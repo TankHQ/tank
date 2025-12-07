@@ -11,7 +11,7 @@ use tank_core::{
 pub struct MySQLSqlWriter {}
 
 impl MySQLSqlWriter {
-    const DEFAULT_PK_VARCHAR_TYPE: &'static str = "VARCHAR(63)";
+    const DEFAULT_PK_VARCHAR_TYPE: &'static str = "VARCHAR(60)";
 }
 
 impl SqlWriter for MySQLSqlWriter {
