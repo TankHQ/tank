@@ -48,14 +48,11 @@ impl<'c> Executor for PostgresTransaction<'c> {
                 Ok(Either::Left(stream))
             }
             Query::Prepared(prepared) => {
-                let portal = if !prepared.is_complete() {
-                    prepared.complete(self).await?
-                } else {
-                    prepared.get_portal().ok_or(Error::msg(format!(
-                        "The prepared statement `{}` is not complete",
-                        prepared
-                    )))?
-                };
+                let params = prepared.take_params();
+                let portal = self
+                    .0
+                    .bind_raw(&prepared.statement, params.into_iter())
+                    .await?;
                 Ok(Either::Right(self.0.query_portal_raw(&portal, 0).await?))
             }
         })

@@ -1,5 +1,5 @@
 use crate::{
-    PostgresDriver, PostgresPrepared, PostgresTransaction, ValueWrap,
+    PostgresDriver, PostgresPrepared, PostgresTransaction, ValueWrap, postgres_type_to_value,
     util::{row_to_tank_row, stream_postgres_simple_query_message_to_tank_query_result},
 };
 use async_stream::try_stream;
@@ -87,19 +87,17 @@ impl Executor for PostgresConnection {
         let context = Arc::new(format!("While fetching the query:\n{}", query.as_mut()));
         let owned = mem::take(query.as_mut());
         match owned {
-            Query::Raw(sql) => {
-                let stream = async move || {
-                    self.client
+            Query::Raw(mut sql) => {
+                let stream = try_stream! {
+                    let stream = self
+                        .client
                         .query_raw(&sql, Vec::<ValueWrap>::new())
                         .await
                         .map_err(|e| {
                             let error = Error::new(e).context(context.clone());
                             log::error!("{:#}", error);
                             error
-                        })
-                };
-                let stream = try_stream! {
-                    let stream = stream().await?;
+                        })?;
                     let mut stream = pin!(stream);
                     let mut labels: Option<tank_core::RowNames> = None;
                     while let Some(row) = stream.next().await.transpose()? {
@@ -108,30 +106,44 @@ impl Executor for PostgresConnection {
                         });
                         yield tank_core::RowLabeled {
                             labels: labels.clone(),
-                            values: row_to_tank_row(row)?.into(),
+                            values: row_to_tank_row(row)?,
                         };
                     }
+                    *query.as_mut() = Query::Raw(mem::take(&mut sql))
                 };
                 Either::Left(stream)
             }
-            Query::Prepared(prepared) => Either::Right(
-                try_stream! {
-                    let mut transaction = self.begin().await?;
-                    {
-                        let mut query = Query::Prepared(prepared);
-                        let mut stream = pin!(transaction.fetch(&mut query));
-                        while let Some(value) = stream.next().await.transpose()? {
-                            yield value;
-                        }
+            Query::Prepared(mut prepared) => {
+                let mut params = mem::take(&mut prepared.params);
+                let stream = try_stream! {
+                    let types = prepared.statement.params();
+                    for (i, param) in params.iter_mut().enumerate() {
+                        *param = ValueWrap(mem::take(param).0.try_as(&postgres_type_to_value(&types[i]))?);
                     }
-                    transaction.commit().await?;
-                }
-                .map_err(move |e: Error| {
-                    let error = e.context(context.clone());
-                    log::error!("{:#}", error);
-                    error
-                }),
-            ),
+                    let stream: tokio_postgres::RowStream = self
+                        .client
+                        .query_raw(&prepared.statement, params)
+                        .await
+                        .map_err(|e| {
+                            let error = Error::new(e).context(context.clone());
+                            log::error!("{:#}", error);
+                            error
+                        })?;
+                    let mut stream = pin!(stream);
+                    let mut labels: Option<tank_core::RowNames> = None;
+                    while let Some(row) = stream.next().await.transpose()? {
+                        let labels = labels.get_or_insert_with(|| {
+                            row.columns().iter().map(|c| c.name().to_string()).collect()
+                        });
+                        yield tank_core::RowLabeled {
+                            labels: labels.clone(),
+                            values: row_to_tank_row(row)?,
+                        };
+                    }
+                    *query.as_mut() = Query::Prepared(prepared)
+                };
+                Either::Right(stream)
+            }
         }
     }
 }

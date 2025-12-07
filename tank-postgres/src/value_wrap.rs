@@ -5,7 +5,7 @@ use rust_decimal::{Decimal, prelude::FromPrimitive};
 use std::error::Error;
 use tank_core::Value;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct ValueWrap(pub(crate) Value);
 
 impl From<Value> for ValueWrap {

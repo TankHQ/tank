@@ -130,7 +130,7 @@ pub async fn aggregates<E: Executor>(executor: &mut E) {
             .map_ok(|v| u32::try_from_value(v.values[0].clone()).expect("Expected a u32 as value"))
             .try_collect::<Vec<_>>()
             .await
-            .expect("Could not fetch multiple rows from the prepared statement");
+            .expect("Could not fetch rows above average from the prepared statement");
         assert!(query.is_prepared());
         assert_eq!(values.len(), COUNT as usize / 2);
         silent_logs! {
@@ -147,7 +147,7 @@ pub async fn aggregates<E: Executor>(executor: &mut E) {
             .map_ok(|v| u32::try_from_value(v.values[0].clone()).expect("Expected a u32 as value"))
             .try_collect::<Vec<_>>()
             .await
-            .expect("Could not fetch multiple rows from the prepared statement");
+            .expect("Could not fetch positive rows from the prepared statement");
         assert_eq!(values.len(), COUNT as usize);
     }
 }

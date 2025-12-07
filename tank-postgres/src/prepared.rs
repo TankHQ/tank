@@ -1,15 +1,15 @@
-use crate::{PostgresTransaction, ValueWrap, postgres_type_to_value};
+use crate::ValueWrap;
 use std::{
     fmt::{self, Debug, Display},
     mem,
 };
-use tank_core::{AsValue, Error, Prepared, Result, future::Either};
+use tank_core::{AsValue, Error, Prepared, Result};
 use tokio_postgres::{Portal, Statement};
 
 pub struct PostgresPrepared {
     pub(crate) statement: Statement,
     pub(crate) index: u64,
-    pub(crate) value: Either<Vec<Option<ValueWrap>>, Portal>,
+    pub(crate) params: Vec<ValueWrap>,
 }
 
 impl PostgresPrepared {
@@ -17,60 +17,17 @@ impl PostgresPrepared {
         Self {
             statement,
             index: 0,
-            value: Either::Left(vec![]),
+            params: Vec::new(),
         }
     }
-    pub(crate) fn is_complete(&self) -> bool {
-        matches!(self.value, Either::Right(..))
-    }
-    pub(crate) async fn complete<'t>(
-        &mut self,
-        transaction: &mut PostgresTransaction<'t>,
-    ) -> Result<Portal> {
-        let Either::Left(params) = &mut self.value else {
-            return Err(Error::msg("The prepared statement is already complete"));
-        };
-        if let Some(i) = params
-            .iter()
-            .enumerate()
-            .find_map(|(i, v)| if v.is_none() { Some(i) } else { None })
-        {
-            return Err(Error::msg(format!("The parameter {} was not set", i)));
-        }
-        let types = self.statement.params();
-        let mut params = mem::take(params);
-        let mut i = 0;
-        for param in &mut params {
-            *param = Some(ValueWrap(
-                mem::take(param)
-                    .unwrap()
-                    .0
-                    .try_as(&postgres_type_to_value(&types[i]))?,
-            ));
-            i += 1;
-        }
-        let portal = transaction
-            .0
-            .bind_raw(&self.statement, params.into_iter().map(Option::unwrap))
-            .await?;
-        self.value = Either::Right(portal.clone());
-        Ok(portal)
-    }
-    pub(crate) fn get_portal(&self) -> Option<Portal> {
-        if let Either::Right(portal) = &self.value {
-            Some(portal.clone())
-        } else {
-            None
-        }
+    pub(crate) fn take_params(&mut self) -> Vec<ValueWrap> {
+        mem::take(&mut self.params)
     }
 }
 
 impl Prepared for PostgresPrepared {
     fn clear_bindings(&mut self) -> Result<&mut Self> {
-        let Either::Left(params) = &mut self.value else {
-            return Err(Error::msg("The prepared statement is in the portal state"));
-        };
-        params.clear();
+        self.params.clear();
         self.index = 0;
         Ok(self)
     }
@@ -79,16 +36,16 @@ impl Prepared for PostgresPrepared {
         Ok(self)
     }
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
-        let Either::Left(params) = &mut self.value else {
-            return Err(Error::msg("The prepared statement is already complete"));
-        };
         let len = self.statement.params().len();
-        params.resize_with(len, Default::default);
-        let target = params.get_mut(index as usize).ok_or(Error::msg(format!(
-            "Index {index} cannot be bound, the query has only {} parameters",
-            len
-        )))?;
-        *target = Some(value.as_value().into());
+        self.params.resize_with(len, Default::default);
+        let target = self
+            .params
+            .get_mut(index as usize)
+            .ok_or(Error::msg(format!(
+                "Index {index} cannot be bound, the query has only {} parameters",
+                len
+            )))?;
+        *target = value.as_value().into();
         self.index += 1;
         Ok(self)
     }
