@@ -1,9 +1,8 @@
-use std::mem;
-
 use crate::{
     PostgresConnection, PostgresDriver, PostgresPrepared, ValueWrap,
     util::stream_postgres_row_to_tank_row,
 };
+use std::mem;
 use tank_core::{
     AsQuery, Error, Executor, Query, QueryResult, Result, Transaction,
     future::{Either, TryFutureExt},

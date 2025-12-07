@@ -4,7 +4,7 @@ use std::{
     mem,
 };
 use tank_core::{AsValue, Error, Prepared, Result};
-use tokio_postgres::{Portal, Statement};
+use tokio_postgres::Statement;
 
 pub struct PostgresPrepared {
     pub(crate) statement: Statement,

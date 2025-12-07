@@ -67,7 +67,7 @@ where
             });
             yield tank_core::RowLabeled {
                 labels: labels.clone(),
-                values: row_to_tank_row(row)?.into(),
+                values: row_to_tank_row(row)?,
             }.into();
         }
     }
