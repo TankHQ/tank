@@ -12,6 +12,7 @@ mod orders;
 mod readme;
 mod shopping;
 mod simple;
+mod time;
 mod trade;
 mod transaction1;
 mod user;
@@ -25,6 +26,7 @@ use crate::{
     orders::orders,
     shopping::shopping,
     simple::simple,
+    time::times,
     trade::{trade_multiple, trade_simple},
     transaction1::transaction1,
     user::users,
@@ -78,6 +80,7 @@ pub async fn execute_tests<C: Connection>(mut connection: C) {
     arrays2(&mut connection).await;
     shopping(&mut connection).await;
     orders(&mut connection).await;
+    times(&mut connection).await;
     readme(&mut connection)
         .await
         .expect("Readme examples test did not succeed");

@@ -322,12 +322,16 @@ pub trait SqlWriter {
     /// Render a DATE literal (optionally as part of TIMESTAMP composition).
     fn write_value_date(
         &self,
-        _context: &mut Context,
+        context: &mut Context,
         out: &mut String,
         value: &Date,
         timestamp: bool,
     ) {
-        let b = if timestamp { "" } else { "'" };
+        let b = match context.fragment {
+            Fragment::Json if !timestamp => "\"",
+            _ if !timestamp => "'",
+            _ => "",
+        };
         let _ = write!(
             out,
             "{b}{:04}-{:02}-{:02}{b}",
@@ -340,14 +344,18 @@ pub trait SqlWriter {
     /// Render a TIME literal (optionally as part of TIMESTAMP composition).
     fn write_value_time(
         &self,
-        _context: &mut Context,
+        context: &mut Context,
         out: &mut String,
         value: &Time,
         timestamp: bool,
     ) {
         print_timer(
             out,
-            if timestamp { "" } else { "'" },
+            match context.fragment {
+                Fragment::Json if !timestamp => "\"",
+                _ if !timestamp => "'",
+                _ => "",
+            },
             value.hour() as _,
             value.minute(),
             value.second(),
@@ -362,16 +370,16 @@ pub trait SqlWriter {
         out: &mut String,
         value: &PrimitiveDateTime,
     ) {
-        let delimiter = if context.fragment == Fragment::Json {
-            '"'
-        } else {
-            '\''
+        let delimiter = match context.fragment {
+            Fragment::ParameterBinding => "",
+            Fragment::Json => "\"",
+            _ => "'",
         };
-        out.push(delimiter);
+        out.push_str(delimiter);
         self.write_value_date(context, out, &value.date(), true);
         out.push('T');
         self.write_value_time(context, out, &value.time(), true);
-        out.push(delimiter);
+        out.push_str(delimiter);
     }
 
     /// Render a TIMESTAMPTZ literal.

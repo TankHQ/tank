@@ -2,7 +2,10 @@
 pub enum Fragment {
     #[default]
     None,
+    ParameterBinding,
     Casting,
+    Json,
+    JsonKey,
     SqlCommentOnColumn,
     SqlCreateSchema,
     SqlCreateTable,
@@ -20,8 +23,6 @@ pub enum Fragment {
     SqlSelectFrom,
     SqlSelectOrderBy,
     SqlSelectWhere,
-    Json,
-    JsonKey,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,7 +40,14 @@ impl Context {
             qualify_columns,
         }
     }
-    pub const fn new_qualify(qualify_columns: bool) -> Self {
+    pub const fn fragment(fragment: Fragment) -> Self {
+        Self {
+            counter: 0,
+            fragment,
+            qualify_columns: false,
+        }
+    }
+    pub const fn qualify(qualify_columns: bool) -> Self {
         Self {
             counter: 0,
             fragment: Fragment::None,

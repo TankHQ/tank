@@ -87,11 +87,17 @@ pub fn decode_type(ty: &Type) -> (TypeDecoded, Option<CheckPassive>) {
                     *ws.first().expect("Doesn't have width param"),
                     *ws.last().expect("Doesn't have size param"),
                 );
-            } else if matches_path(path, &["time", "Time"]) {
+            } else if matches_path(path, &["time", "Time"])
+                || matches_path(path, &["chrono", "NaiveTime"])
+            {
                 break 'data_type Value::Time(None);
-            } else if matches_path(path, &["time", "Date"]) {
+            } else if matches_path(path, &["time", "Date"])
+                || matches_path(path, &["chrono", "NaiveDate"])
+            {
                 break 'data_type Value::Date(None);
-            } else if matches_path(path, &["time", "PrimitiveDateTime"]) {
+            } else if matches_path(path, &["time", "PrimitiveDateTime"])
+                || matches_path(path, &["chrono", "NaiveDateTime"])
+            {
                 break 'data_type Value::Timestamp(None);
             } else if matches_path(path, &["time", "OffsetDateTime"])
                 || matches_path(path, &["chrono", "DateTime"])

@@ -1,4 +1,4 @@
-use crate::{CBox, error_message_from_ptr};
+use crate::{CBox, error_message_from_ptr, sql_writer::SQLiteSqlWriter};
 use libsqlite3_sys::*;
 use rust_decimal::prelude::ToPrimitive;
 use std::{
@@ -6,7 +6,9 @@ use std::{
     fmt::{self, Display},
     os::raw::{c_char, c_void},
 };
-use tank_core::{AsValue, Error, Prepared, Result, Value, truncate_long};
+use tank_core::{
+    AsValue, Context, Error, Fragment, Prepared, Result, SqlWriter, Value, truncate_long,
+};
 
 #[derive(Debug)]
 pub struct SQLitePrepared {
@@ -15,6 +17,7 @@ pub struct SQLitePrepared {
 }
 
 impl SQLitePrepared {
+    const WRITER: SQLiteSqlWriter = SQLiteSqlWriter {};
     pub(crate) fn new(statement: CBox<*mut sqlite3_stmt>) -> Self {
         Self {
             statement: statement.into(),
@@ -161,42 +164,64 @@ impl Prepared for SQLitePrepared {
                     SQLITE_TRANSIENT(),
                 ),
                 Value::Date(Some(v), ..) => {
-                    let v = v.to_string();
+                    let mut out = String::with_capacity(32);
+                    Self::WRITER.write_value_date(
+                        &mut Context::fragment(Fragment::ParameterBinding),
+                        &mut out,
+                        &v,
+                        false,
+                    );
                     sqlite3_bind_text(
                         statement,
                         index,
-                        v.as_ptr() as *const c_char,
-                        v.len() as c_int,
+                        out.as_ptr() as *const c_char,
+                        out.len() as c_int,
                         SQLITE_TRANSIENT(),
                     )
                 }
                 Value::Time(Some(v), ..) => {
-                    let v = v.to_string();
+                    let mut out = String::with_capacity(32);
+                    Self::WRITER.write_value_time(
+                        &mut Context::fragment(Fragment::ParameterBinding),
+                        &mut out,
+                        &v,
+                        false,
+                    );
                     sqlite3_bind_text(
                         statement,
                         index,
-                        v.as_ptr() as *const c_char,
-                        v.len() as c_int,
+                        out.as_ptr() as *const c_char,
+                        out.len() as c_int,
                         SQLITE_TRANSIENT(),
                     )
                 }
                 Value::Timestamp(Some(v), ..) => {
-                    let v = v.to_string();
+                    let mut out = String::with_capacity(32);
+                    Self::WRITER.write_value_timestamp(
+                        &mut Context::fragment(Fragment::ParameterBinding),
+                        &mut out,
+                        &v,
+                    );
                     sqlite3_bind_text(
                         statement,
                         index,
-                        v.as_ptr() as *const c_char,
-                        v.len() as c_int,
+                        out.as_ptr() as *const c_char,
+                        out.len() as c_int,
                         SQLITE_TRANSIENT(),
                     )
                 }
                 Value::TimestampWithTimezone(Some(v), ..) => {
-                    let v = v.to_string();
+                    let mut out = String::with_capacity(32);
+                    Self::WRITER.write_value_timestamptz(
+                        &mut Context::fragment(Fragment::ParameterBinding),
+                        &mut out,
+                        &v,
+                    );
                     sqlite3_bind_text(
                         statement,
                         index,
-                        v.as_ptr() as *const c_char,
-                        v.len() as c_int,
+                        out.as_ptr() as *const c_char,
+                        out.len() as c_int,
                         SQLITE_TRANSIENT(),
                     )
                 }
