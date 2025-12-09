@@ -138,6 +138,47 @@ pub fn print_timer(out: &mut String, quote: &str, h: i64, m: u8, s: u8, ns: u32)
 }
 
 #[macro_export]
+macro_rules! number_to_month {
+    ($month:expr, $throw:expr $(,)?) => {
+        match $month {
+            1 => Month::January,
+            2 => Month::February,
+            3 => Month::March,
+            4 => Month::April,
+            5 => Month::May,
+            6 => Month::June,
+            7 => Month::July,
+            8 => Month::August,
+            9 => Month::September,
+            10 => Month::October,
+            11 => Month::November,
+            12 => Month::December,
+            _ => $throw,
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! month_to_number {
+    ($month:expr $(,)?) => {
+        match $month {
+            Month::January => 1,
+            Month::February => 2,
+            Month::March => 3,
+            Month::April => 4,
+            Month::May => 5,
+            Month::June => 6,
+            Month::July => 7,
+            Month::August => 8,
+            Month::September => 9,
+            Month::October => 10,
+            Month::November => 11,
+            Month::December => 12,
+        }
+    };
+}
+
+#[macro_export]
 /// Conditionally wrap a generated fragment in parentheses.
 macro_rules! possibly_parenthesized {
     ($out:ident, $cond:expr, $v:expr) => {

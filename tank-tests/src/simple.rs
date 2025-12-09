@@ -1,12 +1,11 @@
+#![allow(unused_imports)]
 use rust_decimal::{Decimal, prelude::FromPrimitive};
-#[allow(unused_imports)]
 use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
     pin::pin,
     sync::{Arc, LazyLock},
 };
-#[allow(unused_imports)]
 use tank::{
     Driver, Entity, Executor, FixedDecimal, Query, QueryResult, RowsAffected, SqlWriter,
     stream::TryStreamExt,

@@ -6,6 +6,13 @@ use syn::{
 };
 use tank_core::decode_type;
 
+fn unwrap_group(expr: &Expr) -> &Expr {
+    match expr {
+        Expr::Group(v) => &*v.expr,
+        _ => expr,
+    }
+}
+
 pub fn decode_expression(expr: &Expr) -> TokenStream {
     match expr {
         Expr::Binary(expr_binary) => {
@@ -30,7 +37,7 @@ pub fn decode_expression(expr: &Expr) -> TokenStream {
                         BinOp::Ne(..) => quote! { ::tank::BinaryOpType::NotEqual },
                         _ => unreachable!(),
                     };
-                    if let Expr::Cast(cast) = expr_binary.right.as_ref() {
+                    if let Expr::Cast(cast) = unwrap_group(expr_binary.right.as_ref()) {
                         if let Type::Path(TypePath {
                             path: Path { segments, .. },
                             ..
@@ -41,7 +48,21 @@ pub fn decode_expression(expr: &Expr) -> TokenStream {
                                     .last()
                                     .expect("The path has exactly one segment on this branch")
                                     .ident;
-                                if identifier == "LIKE" {
+                                if identifier == "IN" {
+                                    rhs = &cast.expr;
+                                    result = match op {
+                                        BinOp::Eq(..) => quote! { ::tank::BinaryOpType::In },
+                                        BinOp::Ne(..) => quote! { ::tank::BinaryOpType::NotIn },
+                                        _ => unreachable!(),
+                                    }
+                                } else if identifier == "IS" {
+                                    rhs = &cast.expr;
+                                    result = match op {
+                                        BinOp::Eq(..) => quote! { ::tank::BinaryOpType::Is },
+                                        BinOp::Ne(..) => quote! { ::tank::BinaryOpType::IsNot },
+                                        _ => unreachable!(),
+                                    }
+                                } else if identifier == "LIKE" {
                                     rhs = &cast.expr;
                                     result = match op {
                                         BinOp::Eq(..) => quote! { ::tank::BinaryOpType::Like },
@@ -272,6 +293,14 @@ pub fn decode_expression(expr: &Expr) -> TokenStream {
                 .map(|v| decode_expression(v))
                 .collect::<Punctuated<_, Comma>>();
             quote! { ::tank::Operand::LitArray(&[#v]) }
+        }
+        Expr::Tuple(v) => {
+            let v = v
+                .elems
+                .iter()
+                .map(|v| decode_expression(v))
+                .collect::<Punctuated<_, Comma>>();
+            quote! { ::tank::Operand::LitTuple(&[#v]) }
         }
         Expr::Group(ExprGroup { expr, .. }) => decode_expression(&expr),
         _ => panic!(

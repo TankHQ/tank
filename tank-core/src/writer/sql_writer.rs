@@ -541,6 +541,8 @@ pub trait SqlWriter {
             BinaryOpType::Greater => 300,
             BinaryOpType::LessEqual => 300,
             BinaryOpType::GreaterEqual => 300,
+            BinaryOpType::In => 400,
+            BinaryOpType::NotIn => 400,
             BinaryOpType::Is => 400,
             BinaryOpType::IsNot => 400,
             BinaryOpType::Like => 400,
@@ -589,6 +591,18 @@ pub trait SqlWriter {
                     ", ",
                 );
                 out.push(']');
+            }
+            Operand::LitTuple(v) => {
+                out.push('(');
+                separated_by(
+                    out,
+                    *v,
+                    |out, v| {
+                        v.write_query(self.as_dyn(), context, out);
+                    },
+                    ", ",
+                );
+                out.push(')');
             }
             Operand::Null => drop(out.push_str("NULL")),
             Operand::Type(v) => self.write_column_type(context, out, v),
@@ -653,6 +667,8 @@ pub trait SqlWriter {
             BinaryOpType::ShiftRight => ("", " >> ", "", false, false),
             BinaryOpType::BitwiseAnd => ("", " & ", "", false, false),
             BinaryOpType::BitwiseOr => ("", " | ", "", false, false),
+            BinaryOpType::In => ("", " IN ", "", false, false),
+            BinaryOpType::NotIn => ("", " NOT IN ", "", false, false),
             BinaryOpType::Is => ("", " IS ", "", false, false),
             BinaryOpType::IsNot => ("", " IS NOT ", "", false, false),
             BinaryOpType::Like => ("", " LIKE ", "", false, false),

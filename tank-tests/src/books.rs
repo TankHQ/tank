@@ -1,6 +1,5 @@
-#[allow(unused_imports)]
+#![allow(unused_imports)]
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
-#[allow(unused_imports)]
 use tank::{
     AsValue, DataSet, Driver, Entity, Executor, Passive, Query, QueryResult, RowLabeled, SqlWriter,
     Value, cols, expr, join,

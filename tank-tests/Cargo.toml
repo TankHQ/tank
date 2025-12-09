@@ -9,10 +9,11 @@ repository.workspace = true
 categories.workspace = true
 
 [dependencies]
+chrono.workspace = true
 env_logger.workspace = true
 log.workspace = true
 rust_decimal.workspace = true
-tank.workspace = true
+tank = { workspace = true, features = ["chrono"] }
 time.workspace = true
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
 uuid = { workspace = true, features = ["v4"] }

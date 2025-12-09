@@ -1,4 +1,4 @@
-#[allow(unused_imports)]
+#![allow(unused_imports)]
 use std::{
     collections::{BTreeMap, HashSet},
     sync::LazyLock,

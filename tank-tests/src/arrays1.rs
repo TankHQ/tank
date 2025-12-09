@@ -1,5 +1,6 @@
+#![allow(dead_code)]
+#![allow(unused_imports)]
 use std::{borrow::Cow, pin::pin, sync::LazyLock};
-#[allow(unused_imports)]
 use tank::{Driver, Entity, Executor, Query, QueryResult, SqlWriter, cols, stream::TryStreamExt};
 use tokio::sync::Mutex;
 

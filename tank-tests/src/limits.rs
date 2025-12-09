@@ -1,9 +1,7 @@
+#![allow(unused_imports)]
 use core::f64;
-#[allow(unused_imports)]
 use std::{pin::pin, sync::LazyLock};
-#[allow(unused_imports)]
 use tank::{Driver, QueryResult, RowsAffected, SqlWriter, expr, stream::StreamExt};
-#[allow(unused_imports)]
 use tank::{Entity, Executor, Interval};
 use time::{Date, Month, Time};
 use tokio::sync::Mutex;

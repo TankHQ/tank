@@ -1,7 +1,6 @@
+#![allow(unused_imports)]
 use rust_decimal::Decimal;
-#[allow(unused_imports)]
 use std::{collections::BTreeMap, pin::pin, str::FromStr, sync::LazyLock};
-#[allow(unused_imports)]
 use tank::{
     Driver, Entity, Executor, FixedDecimal, Passive, Query, QueryResult, RowsAffected, SqlWriter,
     stream::{StreamExt, TryStreamExt},

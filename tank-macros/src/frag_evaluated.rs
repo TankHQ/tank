@@ -9,15 +9,15 @@ pub fn flag_evaluated(input: TokenStream) -> TokenStream {
         iter::from_fn(move || {
             let prev = cur.clone();
             if let Some(token) = iter.next() {
-                let next = iter.peek_mut().cloned();
+                let next = iter.peek_mut();
                 cur = Some(token.clone());
                 match (&prev, cur.as_ref().unwrap(), next) {
                     // #identifier
                     (_, TokenTree::Punct(p), Some(tt))
                         if p.as_char() == '#' && p.spacing() == Spacing::Alone =>
                     {
-                        iter.next(); // Consume the following token
                         let wrapped: TokenStream = quote!(::tank::evaluated!(#tt)).into();
+                        iter.next(); // Consume the following token
                         return Some(TokenTree::Group(Group::new(
                             Delimiter::None,
                             wrapped.into(),
@@ -43,9 +43,21 @@ pub fn flag_evaluated(input: TokenStream) -> TokenStream {
                     }
 
                     // IS
-                    (_, TokenTree::Ident(ident), Some(ref mut rhs)) if ident == "IS" => {
+                    (_, TokenTree::Ident(ident), Some(rhs)) if ident == "IS" => {
                         *rhs = TokenTree::Group(Group::new(Delimiter::None, quote!(#rhs as IS)));
                         return Some(TokenTree::Group(Group::new(Delimiter::None, quote!(==))));
+                    }
+
+                    // IN
+                    (Some(prev), TokenTree::Ident(ident), Some(rhs)) if ident == "IN" => {
+                        *rhs = TokenTree::Group(Group::new(Delimiter::None, quote!(#rhs as IN)));
+                        return Some(TokenTree::Group(Group::new(
+                            Delimiter::None,
+                            match prev {
+                                TokenTree::Ident(v) if v == "NOT" => quote!(!=),
+                                _ => quote!(==),
+                            },
+                        )));
                     }
 
                     // Question mark

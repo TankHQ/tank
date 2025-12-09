@@ -1,8 +1,11 @@
+#![allow(unused_imports)]
 use crate::{
     Error, FixedDecimal, Interval, Passive, Result, Value, consume_while, extract_number,
-    truncate_long,
+    month_to_number, number_to_month, truncate_long,
 };
 use anyhow::Context;
+#[cfg(feature = "chrono")]
+use chrono::{Datelike, Timelike};
 use rust_decimal::{Decimal, prelude::FromPrimitive, prelude::ToPrimitive};
 use std::{
     any,
@@ -13,7 +16,7 @@ use std::{
     rc::Rc,
     sync::{Arc, RwLock},
 };
-use time::{PrimitiveDateTime, format_description::parse_borrowed};
+use time::{Month, PrimitiveDateTime, format_description::parse_borrowed};
 use uuid::Uuid;
 
 /// Value conversion and simple parsing utilities. It is the central conversion and
@@ -360,7 +363,7 @@ impl_as_value!(
         match input {
             x if x.eq_ignore_ascii_case("true") || x.eq_ignore_ascii_case("t") || x.eq("1") => Ok(true),
             x if x.eq_ignore_ascii_case("false") || x.eq_ignore_ascii_case("f") || x.eq("0") => Ok(false),
-            _  => return Err(Error::msg(format!("Cannot parse boolean from '{input}'")))
+            _  => return Err(Error::msg(format!("Cannot parse boolean from `{input}`")))
         }
     },
     Value::Int8(Some(v), ..) => Ok(v != 0),
@@ -413,13 +416,19 @@ impl_as_value!(
     },
     Value::Varchar(Some(v), ..) => {
         if v.len() != 1 {
-            return Err(Error::msg("Cannot convert Value::Varchar containing more then one character into a char"))
+            return Err(Error::msg(format!(
+                "Cannot convert varchar `{}` into a char because it has more than one character",
+                truncate_long!(v)
+            )))
         }
         Ok(v.chars().next().unwrap())
     },
     Value::Json(Some(serde_json::Value::String(v)), ..) => {
         if v.len() != 1 {
-            return Err(Error::msg("Cannot convert Value::Json containing a string with more then one character into a char"))
+            return Err(Error::msg(format!(
+                "Cannot convert json `{}` into a char because it has more than one character",
+                truncate_long!(v)
+            )))
         }
         Ok(v.chars().next().unwrap())
     }
@@ -457,7 +466,7 @@ impl_as_value!(
     |mut input: &str| {
         let context = || {
             Error::msg(format!(
-                "Cannot extract interval from `{}`",
+                "Cannot parse interval from `{}`",
                 truncate_long!(input)
             ))
             .into()
@@ -615,7 +624,7 @@ impl_as_value!(
     |input: &str| {
         let uuid = Uuid::parse_str(input).with_context(|| {
             format!(
-                "Cannot extract a uuid value from `{}`",
+                "Cannot parse a uuid value from `{}`",
                 truncate_long!(input)
             )
         })?;
@@ -746,6 +755,200 @@ impl_as_value!(
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
+#[cfg(feature = "chrono")]
+impl AsValue for chrono::NaiveDate {
+    fn as_empty_value() -> Value {
+        Value::Date(None)
+    }
+    fn as_value(self) -> Value {
+        Value::Date(
+            'date: {
+                time::Date::from_calendar_date(
+                    self.year(),
+                    number_to_month!(
+                        self.month(),
+                        break 'date Err(Error::msg(format!(
+                            "Unexpected month value {}",
+                            self.month()
+                        )))
+                    ),
+                    self.day() as _,
+                )
+                .map_err(Into::into)
+            }
+            .inspect_err(|e| {
+                log::error!("Could not create a Value::Date from chrono::NaiveDate: {e:?}");
+            })
+            .ok(),
+        )
+    }
+    fn try_from_value(value: Value) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let context = Arc::new(format!(
+            "Could not create a chrono::NaiveDate from {value:?}"
+        ));
+        let v = <time::Date as AsValue>::try_from_value(value).context(context.clone())?;
+        chrono::NaiveDate::from_ymd_opt(v.year(), month_to_number!(v.month()), v.day() as _)
+            .context(context)
+    }
+}
+
+#[cfg(feature = "chrono")]
+impl AsValue for chrono::NaiveTime {
+    fn as_empty_value() -> Value {
+        Value::Time(None)
+    }
+    fn as_value(self) -> Value {
+        Value::Time(
+            time::Time::from_hms_nano(
+                self.hour() as _,
+                self.minute() as _,
+                self.second() as _,
+                self.nanosecond() as _,
+            )
+            .inspect_err(|e| {
+                log::error!("Could not create a Value::Time from chrono::NaiveTime: {e:?}",)
+            })
+            .ok(),
+        )
+    }
+    fn try_from_value(value: Value) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let context = Arc::new(format!(
+            "Could not create a chrono::NaiveTime from {value:?}"
+        ));
+        let v = <time::Time as AsValue>::try_from_value(value).context(context.clone())?;
+        Self::from_hms_nano_opt(
+            v.hour() as _,
+            v.minute() as _,
+            v.second() as _,
+            v.nanosecond() as _,
+        )
+        .context(context)
+    }
+}
+
+#[cfg(feature = "chrono")]
+impl AsValue for chrono::NaiveDateTime {
+    fn as_empty_value() -> Value {
+        Value::Timestamp(None)
+    }
+    fn as_value(self) -> Value {
+        Value::Timestamp(
+            'value: {
+                let Ok(date) = AsValue::try_from_value(self.date().as_value()) else {
+                    break 'value Err(Error::msg(
+                        "failed to convert the date part from chrono::NaiveDate to time::Date",
+                    ));
+                };
+                let Ok(time) = AsValue::try_from_value(self.time().as_value()) else {
+                    break 'value Err(Error::msg(
+                        "failed to convert the time part from chrono::NaiveTime to time::Time",
+                    ));
+                };
+                Ok(time::PrimitiveDateTime::new(date, time))
+            }
+            .inspect_err(|e| {
+                log::error!(
+                    "Could not create a Value::Timestamp from chrono::NaiveDateTime: {e:?}",
+                );
+            })
+            .ok(),
+        )
+    }
+    fn try_from_value(value: Value) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let context = Arc::new(format!(
+            "Could not create a chrono::NaiveDateTime from {value:?}"
+        ));
+        let v =
+            <time::PrimitiveDateTime as AsValue>::try_from_value(value).context(context.clone())?;
+        let date = AsValue::try_from_value(v.date().as_value()).context(context.clone())?;
+        let time = AsValue::try_from_value(v.time().as_value()).context(context.clone())?;
+        Ok(Self::new(date, time))
+    }
+}
+
+#[cfg(feature = "chrono")]
+impl AsValue for chrono::DateTime<chrono::FixedOffset> {
+    fn as_empty_value() -> Value {
+        Value::TimestampWithTimezone(None)
+    }
+    fn as_value(self) -> Value {
+        Value::TimestampWithTimezone(
+            'value: {
+                use chrono::Offset;
+                let Ok(date) = AsValue::try_from_value(self.date_naive().as_value()) else {
+                    break 'value Err(Error::msg(
+                        "failed to convert the date part from chrono::NaiveDate to time::Date",
+                    ));
+                };
+                let Ok(time) = AsValue::try_from_value(self.time().as_value()) else {
+                    break 'value Err(Error::msg(
+                        "failed to convert the time part from chrono::NaiveTime to time::Time",
+                    ));
+                };
+                let Ok(offset) =
+                    time::UtcOffset::from_whole_seconds(self.offset().fix().local_minus_utc())
+                else {
+                    break 'value Err(Error::msg("failed to convert the offset part from"));
+                };
+                Ok(time::OffsetDateTime::new_in_offset(date, time, offset))
+            }
+            .inspect_err(|e| {
+                log::error!(
+                    "Could not create a Value::Timestamp from chrono::NaiveDateTime: {e:?}",
+                );
+            })
+            .ok(),
+        )
+    }
+    fn try_from_value(value: Value) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let context = Arc::new(format!(
+            "Could not create a chrono::DateTime from {value:?}"
+        ));
+        let v =
+            <time::OffsetDateTime as AsValue>::try_from_value(value).context(context.clone())?;
+        let date = AsValue::try_from_value(v.date().as_value()).context(context.clone())?;
+        let time = AsValue::try_from_value(v.time().as_value()).context(context.clone())?;
+        let date_time = chrono::NaiveDateTime::new(date, time);
+        let offset =
+            chrono::FixedOffset::east_opt(v.offset().whole_seconds()).context(context.clone())?;
+        Ok(Self::from_naive_utc_and_offset(date_time, offset))
+    }
+}
+
+#[cfg(feature = "chrono")]
+impl AsValue for chrono::DateTime<chrono::Utc> {
+    fn as_empty_value() -> Value {
+        Value::TimestampWithTimezone(None)
+    }
+    fn as_value(self) -> Value {
+        let odt = time::OffsetDateTime::from_unix_timestamp_nanos(
+            self.timestamp_nanos_opt().unwrap() as i128,
+        )
+        .unwrap();
+        Value::TimestampWithTimezone(Some(odt))
+    }
+    fn try_from_value(value: Value) -> Result<Self> {
+        let odt = <time::OffsetDateTime as AsValue>::try_from_value(value)?;
+        let utc_odt = odt.to_offset(time::UtcOffset::UTC);
+        let secs = utc_odt.unix_timestamp();
+        let nanos = utc_odt.nanosecond();
+        Self::from_timestamp(secs, nanos)
+            .ok_or_else(|| Error::msg("Timestamp out of range for chrono::DateTime<Utc>"))
+    }
+}
+
 impl AsValue for Decimal {
     fn as_empty_value() -> Value {
         Value::Decimal(None, 0, 0)
@@ -787,7 +990,7 @@ impl AsValue for Decimal {
         let input = input.as_ref();
         Ok(input.parse::<Decimal>().with_context(|| {
             Error::msg(format!(
-                "Cannot extract a decimal value from `{}`",
+                "Cannot parse a decimal value from `{}`",
                 truncate_long!(input)
             ))
         })?)
@@ -947,6 +1150,23 @@ macro_rules! impl_as_value {
 }
 impl_as_value!(BTreeMap, Ord);
 impl_as_value!(HashMap, Eq, Hash);
+
+impl<'s> AsValue for &'s str {
+    fn as_empty_value() -> Value {
+        Value::Varchar(None)
+    }
+    fn as_value(self) -> Value {
+        Value::Varchar(Some(self.into()))
+    }
+    fn try_from_value(_value: Value) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        Err(Error::msg(
+            "Cannot get a string reference from a owned value",
+        ))
+    }
+}
 
 impl<'a> AsValue for Cow<'a, str> {
     fn as_empty_value() -> Value {

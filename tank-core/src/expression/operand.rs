@@ -12,6 +12,7 @@ pub enum Operand<'a> {
     LitInt(i128),
     LitStr(&'a str),
     LitArray(&'a [Operand<'a>]),
+    LitTuple(&'a [Operand<'a>]),
     Null,
     Type(Value),
     Variable(Value),
@@ -38,10 +39,15 @@ impl PartialEq for Operand<'_> {
             (Self::LitBool(l), Self::LitBool(r)) => l == r,
             (Self::LitFloat(l), Self::LitFloat(r)) => l == r,
             (Self::LitIdent(l), Self::LitIdent(r)) => l == r,
+            (Self::LitField(l), Self::LitField(r)) => l == r,
             (Self::LitInt(l), Self::LitInt(r)) => l == r,
             (Self::LitStr(l), Self::LitStr(r)) => l == r,
             (Self::LitArray(l), Self::LitArray(r)) => l == r,
+            (Self::LitTuple(l), Self::LitTuple(r)) => l == r,
             (Self::Type(l), Self::Type(r)) => l.same_type(r),
+            (Self::Variable(l), Self::Variable(r)) => l == r,
+            (Self::Asterisk, Self::Asterisk) => true,
+            (Self::QuestionMark, Self::QuestionMark) => true,
             _ => false,
         }
     }

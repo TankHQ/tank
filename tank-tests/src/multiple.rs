@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::sync::LazyLock;
 use tank::AsValue;
 use tank::{Driver, Entity, Executor, QueryResult, SqlWriter, stream::TryStreamExt};

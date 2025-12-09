@@ -8,6 +8,7 @@ mod interval;
 mod limits;
 mod multiple;
 mod operations;
+mod orders;
 mod readme;
 mod shopping;
 mod simple;
@@ -21,6 +22,7 @@ use crate::{
     insane::insane,
     limits::limits,
     operations::{advanced_operations, operations},
+    orders::orders,
     shopping::shopping,
     simple::simple,
     trade::{trade_multiple, trade_simple},
@@ -75,6 +77,7 @@ pub async fn execute_tests<C: Connection>(mut connection: C) {
     #[cfg(not(feature = "disable-arrays"))]
     arrays2(&mut connection).await;
     shopping(&mut connection).await;
+    orders(&mut connection).await;
     readme(&mut connection)
         .await
         .expect("Readme examples test did not succeed");

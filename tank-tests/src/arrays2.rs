@@ -1,6 +1,6 @@
-#[allow(unused_imports)]
+#![allow(dead_code)]
+#![allow(unused_imports)]
 use std::{pin::pin, str::FromStr, sync::LazyLock};
-#[allow(unused_imports)]
 use tank::{
     Driver, Entity, Executor, Interval, Query, QueryResult, SqlWriter,
     stream::{StreamExt, TryStreamExt},

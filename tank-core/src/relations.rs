@@ -1,6 +1,10 @@
 use crate::{AsValue, ColumnDef, Entity, TableRef};
 use rust_decimal::Decimal;
-use std::{marker::PhantomData, mem};
+use std::{
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+    mem,
+};
 
 /// Decimal wrapper enforcing compile-time width/scale.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -46,7 +50,7 @@ impl<T: AsValue> Passive<T> {
     }
 }
 
-impl<T: AsValue + PartialEq> PartialEq for Passive<T> {
+impl<T: PartialEq + AsValue> PartialEq for Passive<T> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Set(lhs), Self::Set(rhs)) => lhs == rhs,
@@ -55,7 +59,9 @@ impl<T: AsValue + PartialEq> PartialEq for Passive<T> {
     }
 }
 
-impl<T: AsValue + Clone> Clone for Passive<T>
+impl<T: Eq + AsValue> Eq for Passive<T> {}
+
+impl<T: Clone + AsValue> Clone for Passive<T>
 where
     T: Clone,
 {
@@ -70,6 +76,15 @@ where
 impl<T: AsValue> From<T> for Passive<T> {
     fn from(value: T) -> Self {
         Self::Set(value)
+    }
+}
+
+impl<T: Hash + AsValue> Hash for Passive<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        mem::discriminant(self).hash(state);
+        if let Passive::Set(v) = self {
+            v.hash(state);
+        }
     }
 }
 

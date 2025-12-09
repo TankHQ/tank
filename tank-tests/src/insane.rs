@@ -1,4 +1,4 @@
-#[allow(unused_imports)]
+#![allow(unused_imports)]
 use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
@@ -10,7 +10,6 @@ use std::{
 use tank::{Entity, Executor};
 use time::Time;
 use tokio::sync::Mutex;
-#[allow(unused_imports)]
 use uuid::Uuid;
 
 #[derive(Entity)]

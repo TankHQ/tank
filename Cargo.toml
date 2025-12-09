@@ -22,6 +22,7 @@ categories = ["database"]
 [workspace.dependencies]
 anyhow = { version = "1", features = ["backtrace"] }
 async-stream = "0"
+chrono = "0"
 env_logger = "0"
 futures = "0"
 indoc = "2"
@@ -32,7 +33,7 @@ rust_decimal = "1"
 serde_json = "1"
 syn = { version = "2", features = ["full"] }
 tank = "0"
-tank-core = "0"
+tank-core = { version = "0", default-features = false }
 tank-macros = "0"
 time = { version = "0", features = ["macros", "parsing"] }
 tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread", "sync"] }
@@ -50,7 +51,7 @@ edition.workspace = true
 repository.workspace = true
 
 [dependencies]
-tank-core.workspace = true
+tank-core = { workspace = true, default-features = false }
 tank-macros.workspace = true
 
 [dev-dependencies]
@@ -63,3 +64,7 @@ uuid.workspace = true
 tank.path = "."
 tank-core.path = "tank-core"
 tank-macros.path = "tank-macros"
+
+[features]
+default = []
+chrono = ["tank-core/chrono"]

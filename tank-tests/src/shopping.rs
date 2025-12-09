@@ -1,6 +1,6 @@
+#![allow(unused_imports)]
 use rust_decimal::Decimal;
 use std::pin::pin;
-#[allow(unused_imports)]
 use std::{str::FromStr, sync::Arc, sync::LazyLock};
 use tank::{
     AsValue, DataSet, Entity, Executor, FixedDecimal, cols, expr, join,
