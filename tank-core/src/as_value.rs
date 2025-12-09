@@ -698,6 +698,11 @@ impl_as_value!(
         }
         Ok(result)
     },
+    Value::Interval(Some(v), ..) => {
+        let (h, m, s, ns) = v.as_hmsns();
+        time::Time::from_hms_nano(h as _, m, s, ns,)
+            .map_err(|e| Error::msg(format!("Cannot convert interval `{v:?}` into time: {e:?}")))
+    },
     Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );

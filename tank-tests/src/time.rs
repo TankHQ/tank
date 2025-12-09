@@ -171,7 +171,6 @@ pub async fn times<E: Executor>(executor: &mut E) {
         .expect("Failed to insert timestamps");
 
     /*
-     * 1980-01-01 00:00:00
      * 1987-10-05 14:09:00
      * 1999-12-31 23:59:00
      * 2025-01-01 00:00:00
@@ -183,6 +182,7 @@ pub async fn times<E: Executor>(executor: &mut E) {
      * 2050-09-09 00:00:00
      */
 
+    // Query timestamp 1
     let mut query_timestamp_1 = Times::table()
         .prepare(
             executor,
@@ -234,7 +234,7 @@ pub async fn times<E: Executor>(executor: &mut E) {
     let values = executor
         .fetch(&mut query_timestamp_1)
         .and_then(|v| async {
-            PrimitiveDateTime::try_from_value(
+            NaiveDateTime::try_from_value(
                 v.values
                     .into_iter()
                     .next()
@@ -248,15 +248,83 @@ pub async fn times<E: Executor>(executor: &mut E) {
     assert_eq!(
         values,
         [
-            "2050-11-11 18:45:59.0",
-            "2050-09-09 0:00:00.0",
-            "2038-01-19 3:14:07.0",
-            "2025-07-19 9:42:00.0",
-            "2025-01-01 0:00:00.0",
-            "1999-12-31 23:59:00.0",
-            "1987-10-05 14:09:00.0",
-            "1980-01-01 0:00:00.0",
-            "1950-06-15 8:30:00.0",
+            "2050-11-11 18:45:59",
+            "2050-09-09 00:00:00",
+            "2038-01-19 03:14:07",
+            "2025-07-19 09:42:00",
+            "2025-01-01 00:00:00",
+            "1999-12-31 23:59:00",
+            "1987-10-05 14:09:00",
+            "1980-01-01 00:00:00",
+            "1950-06-15 08:30:00",
+        ]
+    );
+
+    // Query timestamp 2
+    let mut query_timestamp_2 = Times::table()
+        .prepare(
+            executor,
+            cols!(Times::timestamp_2 ASC),
+            &expr!(Times::timestamp_1 <= ?),
+            None,
+        )
+        .await
+        .expect("Could not prepare the query timestamp 1");
+    query_timestamp_2
+        .bind(NaiveDateTime::new(
+            NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
+            NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
+        ))
+        .expect("Could not bind the timestamp 1");
+    let values = executor
+        .fetch(&mut query_timestamp_2)
+        .and_then(|v| async {
+            NaiveDateTime::try_from_value(
+                v.values
+                    .into_iter()
+                    .next()
+                    .expect("Could not get the first column"),
+            )
+            .map(|v| v.to_string())
+        })
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Could not collect the values from the stream");
+    assert_eq!(
+        values,
+        [
+            "1950-06-15 08:30:00",
+            "1980-01-01 00:00:00",
+            "1987-10-05 14:09:00",
+            "1999-12-31 23:59:00",
+            "2025-01-01 00:00:00",
+        ]
+    );
+
+    // Query time 1
+    let mut query_time_1 = Times::table()
+        .prepare(executor, cols!(Times::time_1 DESC), &true, None)
+        .await
+        .expect("Could not prepare the query timestamp 1");
+    let values = executor
+        .fetch(&mut query_time_1)
+        .and_then(|v| async {
+            NaiveTime::try_from_value(
+                v.values
+                    .into_iter()
+                    .next()
+                    .expect("Could not get the first column"),
+            )
+            .map(|v| v.to_string())
+        })
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Could not collect the values from the stream");
+    assert_eq!(
+        values,
+        [
+            "23:59:00", "18:45:59", "14:09:00", "09:42:00", "08:30:00", "03:14:07", "00:00:00",
+            "00:00:00", "00:00:00",
         ]
     );
 }
