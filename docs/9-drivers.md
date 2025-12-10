@@ -12,13 +12,13 @@ Opening a new battlefront means forging a fresh **Driver** — the armored bridg
 
 ## Battlefield Topography
 A driver is a thin composite of five moving parts:
-| Trait                 | Purpose                                                                            |
-| --------------------- | ---------------------------------------------------------------------------------- |
-| `Driver`              | Public entry point for all the database abstractions                               |
-| `Connection`          | Live session running queries and possibly starting a transaction                   |
-| `Transaction`         | Abstraction over transactional database capabilities, borrows mutably a connection |
-| `Prepared`            | Owns a compiled statement, binds positional parameters                             |
-| `SqlWriter`           | Converts Tank's operations and semantic AST fragments into backend query language  |
+| Trait         | Purpose                                                                            |
+| ------------- | ---------------------------------------------------------------------------------- |
+| `Driver`      | Public entry point for all the database abstractions                               |
+| `Connection`  | Live session running queries and possibly starting a transaction                   |
+| `Transaction` | Abstraction over transactional database capabilities, borrows mutably a connection |
+| `Prepared`    | Owns a compiled statement, binds positional parameters                             |
+| `SqlWriter`   | Converts Tank's operations and semantic AST fragments into backend query language  |
 
 All other machinery (entities, expressions, joins) already speak through these interfaces.
 
