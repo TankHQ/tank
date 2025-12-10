@@ -185,11 +185,10 @@ Filter transmissions above a strength threshold:
 ```rust
 let mut query =
     RadioLog::prepare_find(executor, &expr!(RadioLog::signal_strength > ?), None).await?;
-if let Query::Prepared(p) = &mut query {
-    p.bind(40)?;
-}
-let messages: Vec<_> = query
-    .fetch_many(executor)
+p.bind(40)?
+
+let messages: Vec<_> = executor
+    .fetch_many(query)
     .map_ok(|row| row.values[0].clone())
     .try_collect()
     .await?;
