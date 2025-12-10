@@ -9,6 +9,7 @@ Every tactical primitive you can execute against an `Entity`. Each item maps to 
 * [`Entity::drop_table()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.drop_table): break camp
 * [`Entity::insert_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.insert_one): deploy a single unit
 * [`Entity::insert_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.insert_many): bulk deployment
+* [`Entity::prepare_find()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.prepare_find): reconnaissance
 * [`Entity::find_pk()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.find_pk): identify the target
 * [`Entity::find_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.find_one): silent recon
 * [`Entity::find_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.find_many): wide-area sweep
@@ -85,13 +86,13 @@ Key points:
 ## Insert
 Single unit insertion:
 ```rust
-Operator {
-    id: operator_1_id,
+let operator = Operator {
+    id: Uuid::new_v4(),
     callsign: "SteelHammer".into(),
     service_rank: "Major".into(),
     enlisted: date!(2015 - 06 - 20),
     is_certified: true,
-},
+};
 Operator::insert_one(executor, &operator).await?;
 ```
 
@@ -114,8 +115,10 @@ RadioLog::insert_many(executor, &logs).await?;
 ## Find
 Find by primary key:
 ```rust
-let found = Operator::find_pk(&mut executor, &operator.primary_key()).await?;
-if let Some(op) = found { /* confirm identity */ }
+let found = Operator::find_pk(executor, &operator.primary_key()).await?;
+if let Some(op) = found {
+    log::debug!("Found operator: {:?}", op.callsign);
+}
 ```
 
 First matching row (use a predicate with `find_one`):
@@ -172,6 +175,7 @@ RadioLog::delete_one(executor, log.primary_key()).await?;
 
 Scorched earth pattern:
 ```rust
+let operator_id = operator.id;
 RadioLog::delete_many(executor, &expr!(RadioLog::operator == #operator_id)).await?;
 ```
 
@@ -185,10 +189,9 @@ Filter transmissions above a strength threshold:
 ```rust
 let mut query =
     RadioLog::prepare_find(executor, &expr!(RadioLog::signal_strength > ?), None).await?;
-p.bind(40)?
-
-let messages: Vec<_> = executor
-    .fetch_many(query)
+query.bind(40)?;
+let _messages: Vec<_> = executor
+    .fetch(query)
     .map_ok(|row| row.values[0].clone())
     .try_collect()
     .await?;

@@ -117,8 +117,7 @@ pub async fn aggregates<E: Executor>(executor: &mut E) {
 
     // SELECT value WHERE value > ?
     {
-        let mut query = Values::table()
-            .prepare(executor, [Values::value], &expr!(Values::value > ?), None)
+        let mut query = Values::prepare_find(executor, &expr!(Values::value > ?), None)
             .await
             .expect("Failed to prepare the query");
         assert!(query.is_prepared());
@@ -127,7 +126,6 @@ pub async fn aggregates<E: Executor>(executor: &mut E) {
             .expect("Could not bind the parameter");
         let values = executor
             .fetch(&mut query)
-            .map_ok(|v| u32::try_from_value(v.values[0].clone()).expect("Expected a u32 as value"))
             .try_collect::<Vec<_>>()
             .await
             .expect("Could not fetch rows above average from the prepared statement");
@@ -144,7 +142,6 @@ pub async fn aggregates<E: Executor>(executor: &mut E) {
         query.bind(0).expect("Could not bind a second time");
         let values = executor
             .fetch(&mut query)
-            .map_ok(|v| u32::try_from_value(v.values[0].clone()).expect("Expected a u32 as value"))
             .try_collect::<Vec<_>>()
             .await
             .expect("Could not fetch positive rows from the prepared statement");

@@ -1,7 +1,7 @@
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    DataSet, Driver, Entity, Executor, Prepared, Query, QueryResult, Result, RowsAffected,
-    SqlWriter, cols, expr, join,
+    DataSet, Driver, Entity, Executor, QueryResult, Result, RowsAffected, SqlWriter, cols, expr,
+    join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, OffsetDateTime, Time, UtcOffset, macros::date};
@@ -116,9 +116,7 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
     // Prepare
     let mut query =
         RadioLog::prepare_find(executor, &expr!(RadioLog::signal_strength > ?), None).await?;
-    if let Query::Prepared(p) = &mut query {
-        p.bind(40)?;
-    }
+    query.bind(40)?;
     let _messages: Vec<_> = executor
         .fetch(query)
         .map_ok(|row| row.values[0].clone())
@@ -277,31 +275,30 @@ pub async fn advanced_operations<E: Executor>(executor: &mut E) -> Result<()> {
         .await
         .expect("Could not insert radio logs");
 
-    let messages = join!(
-        Operator JOIN RadioLog ON Operator::id == RadioLog::operator
-    )
-    .select(
-        executor,
-        cols!(
-            RadioLog::signal_strength as strength DESC,
-            Operator::callsign ASC,
-            RadioLog::message,
-        ),
-        &expr!(Operator::is_certified && RadioLog::message != "Radio check%" as LIKE),
-        Some(100),
-    )
-    .map(|row| {
-        row.and_then(|row| {
-            #[derive(Entity)]
-            struct Row {
-                message: String,
-                callsign: String,
-            }
-            Row::from_row(row).and_then(|row| Ok((row.message, row.callsign)))
+    let messages = join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operator)
+        .select(
+            executor,
+            cols!(
+                RadioLog::signal_strength as strength DESC,
+                Operator::callsign ASC,
+                RadioLog::message,
+            ),
+            // NOT LIKE is transformed in RadioLog::message != "Radio check%" as LIKE, before parsing the expression
+            &expr!(Operator::is_certified && RadioLog::message != "Radio check%" as LIKE),
+            Some(100),
+        )
+        .map(|row| {
+            row.and_then(|row| {
+                #[derive(Entity)]
+                struct Row {
+                    message: String,
+                    callsign: String,
+                }
+                Row::from_row(row).and_then(|row| Ok((row.message, row.callsign)))
+            })
         })
-    })
-    .try_collect::<Vec<_>>()
-    .await?;
+        .try_collect::<Vec<_>>()
+        .await?;
     assert!(
         messages.iter().map(|(a, b)| (a.as_str(), b.as_str())).eq([
             ("Heavy armor spotted, grid 4C.", "SteelHammer"),

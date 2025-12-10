@@ -73,9 +73,7 @@ pub fn decode_expression(expr: &Expr) -> TokenStream {
                                     rhs = &cast.expr;
                                     result = match op {
                                         BinOp::Eq(..) => quote! { ::tank::BinaryOpType::Regexp },
-                                        BinOp::Ne(..) => {
-                                            quote! { ::tank::BinaryOpType::NotRegexp }
-                                        }
+                                        BinOp::Ne(..) => quote! { ::tank::BinaryOpType::NotRegexp },
                                         _ => unreachable!(),
                                     }
                                 } else if identifier == "GLOB" {

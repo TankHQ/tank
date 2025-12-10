@@ -77,31 +77,30 @@ The [`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) supports
 
 Objective: strongest certified transmissions excluding routine radio checks.
 ```rust
-let messages = join!(
-    Operator JOIN RadioLog ON Operator::id == RadioLog::operator
-)
-.select(
-    executor,
-    cols!(
-        RadioLog::signal_strength as strength DESC,
-        Operator::callsign ASC,
-        RadioLog::message,
-    ),
-    &expr!(Operator::is_certified && RadioLog::message != "Radio check%" as LIKE),
-    Some(100),
-)
-.map(|row| {
-    row.and_then(|row| {
-        #[derive(Entity)]
-        struct Row {
-            message: String,
-            callsign: String,
-        }
-        Row::from_row(row).and_then(|row| Ok((row.message, row.callsign)))
+let messages = join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operator)
+    .select(
+        executor,
+        cols!(
+            RadioLog::signal_strength as strength DESC,
+            Operator::callsign ASC,
+            RadioLog::message,
+        ),
+        // NOT LIKE is transformed in RadioLog::message != "Radio check%" as LIKE, before parsing the expression
+        &expr!(Operator::is_certified && RadioLog::message != "Radio check%" as LIKE),
+        Some(100),
+    )
+    .map(|row| {
+        row.and_then(|row| {
+            #[derive(Entity)]
+            struct Row {
+                message: String,
+                callsign: String,
+            }
+            Row::from_row(row).and_then(|row| Ok((row.message, row.callsign)))
+        })
     })
-})
-.try_collect::<Vec<_>>()
-.await?;
+    .try_collect::<Vec<_>>()
+    .await?;
 assert!(
     messages.iter().map(|(a, b)| (a.as_str(), b.as_str())).eq([
         ("Heavy armor spotted, grid 4C.", "SteelHammer"),
@@ -126,11 +125,11 @@ It accepts a subset of Rust syntax with additional sentinel tokens for SQL seman
 - `(flags >> 1) & 3` bitwise operations: `|`, `&`, `<<`, `>>`
 - `[1, 2, 3][0]` array or map indexing
 - `alpha == ? && beta > ?` prepared statement parameters
-- `col == NULL`, `col != NULL` null check, it becomes `IS NULL` / `IS NOT NULL`
 - `COUNT(*)`, `SUM(RadioLog::signal_strength)` function calls and aggregates
 - `1 as u128` type casting
 - `PI` identifiers
-- `value != "ab%" as LIKE` pattern matching, it becomes `value NOT LIKE 'ab%'`, it also supports `REGEXP` and `GLOB` (actual supports depends on the driver)
+- `col == NULL`, `col != NULL` null check, it becomes `IS NULL` / `IS NOT NULL`
+- `value != "ab%" as LIKE` pattern matching, it becomes `value NOT LIKE 'ab%'` in sql, it also supports `IN`, `REGEXP` and `GLOB` (actual supports depends on the driver)
 - `-(-PI) + 2 * (5 % (2 + 1)) == 7 && !(4 < 2)` combination of the previous
 
 Parentheses obey standard Rust precedence. Empty invocation (`expr!()`) yields `false`. Ultimately, the drivers decide if and how these expressions are translated into the specific query language.

@@ -202,7 +202,7 @@ pub async fn users<E: Executor>(executor: &mut E) {
     assert_eq!(total_users, 4, "There should be 4 users remaining");
 
     // Delete all users who never logged in (only Dean)
-    let result = UserProfile::delete_many(executor, &expr!(last_login IS NULL))
+    let result = UserProfile::delete_many(executor, &expr!(last_login == NULL))
         .await
         .expect("Expected query to succeed");
     assert_eq!(result.rows_affected, 1, "Should have removed 1 rows");

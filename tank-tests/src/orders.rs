@@ -106,10 +106,10 @@ pub async fn orders<E: Executor>(executor: &mut E) {
                 Order::created_at
             ),
             &expr!(
-                Order::status IN (?, ?) &&
+                Order::status == (?, ?) as IN &&
                 Order::created_at >= ? &&
                 Order::total >= ? &&
-                Order::country IN (?, ?)
+                Order::country == (?, ?) as IN
             ),
             None,
         )
