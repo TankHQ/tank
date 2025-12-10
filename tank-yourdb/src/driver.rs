@@ -1,7 +1,7 @@
 use crate::{YourDBConnection, YourDBPrepared, YourDBSqlWriter, YourDBTransaction};
 use tank_core::Driver;
 
-#[derive(Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct YourDBDriver;
 impl YourDBDriver {
     pub const fn new() -> Self {

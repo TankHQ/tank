@@ -1,7 +1,7 @@
 use crate::{YourDBDriver, YourDBPrepared, YourDBTransaction};
 use std::borrow::Cow;
 use tank_core::{
-    Connection, Driver, Error, Executor, Query, QueryResult, Result,
+    AsQuery, Connection, Driver, Error, Executor, Query, QueryResult, Result,
     stream::{self, Stream},
 };
 
@@ -19,9 +19,9 @@ impl Executor for YourDBConnection {
         Ok(Query::Prepared(YourDBPrepared::new()))
     }
 
-    fn run(
-        &mut self,
-        query: Query<Self::Driver>,
+    fn run<'s>(
+        &'s mut self,
+        query: impl AsQuery<Self::Driver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         stream::iter([])
     }
