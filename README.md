@@ -31,8 +31,8 @@ https://crates.io/crates/tank
 - Optional appender API for high caliber bulk inserts.
 
 ## No-fly zone
-- No schema migrations
-- No implicit joins (no entities as fields, every alliance is signed)
+- No schema migrations (just table creation and destroy for fast setup)
+- No implicit joins (no entities as fields, joins are explicit every alliance is signed)
 - No complex query builder (write raw SQL and take full credit)
 
 ## Getting started
