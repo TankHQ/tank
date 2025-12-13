@@ -23,10 +23,9 @@ https://crates.io/crates/tank
 
 ## Mission objectives
 - Async operations - fire and forget.
-- Simple workflow - every query is visible on your tactical map.
 - Extensible driver system - swap databases like changing magazines mid-battle.
-- SQL and NoSQL support: one Tank, all terrains.
-- Transactional strikes: commit on success or rollback and retreat.
+- SQL and NoSQL support - one Tank, all terrains.
+- Transactional strikes - commit on success or rollback and retreat.
 - Rich type arsenal with automatic conversions.
 - Optional appender API for high caliber bulk inserts.
 
