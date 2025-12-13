@@ -30,6 +30,6 @@ tank-tests = { path = "../tank-tests", features = [
     "disable-multiple-statements",
     "disable-old-dates",
 ] }
-testcontainers-modules = { version = "0", features = ["mysql"] }
+testcontainers-modules = { version = "0", features = ["mysql", "mariadb"] }
 tokio.workspace = true
 urlencoding.workspace = true

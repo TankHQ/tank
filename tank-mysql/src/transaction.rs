@@ -6,6 +6,8 @@ pub struct MySQLTransaction<'c> {
     pub(crate) transaction: MySQLQueryable<mysql_async::Transaction<'c>>,
 }
 
+pub type MariaDBTransaction<'c> = MySQLTransaction<'c>;
+
 impl<'c> MySQLTransaction<'c> {
     pub async fn new(connection: &'c mut MySQLConnection) -> Result<Self> {
         Ok(Self {

@@ -2,34 +2,34 @@ mod init;
 
 #[cfg(test)]
 mod tests {
-    use crate::init::init_mysql;
+    use crate::init::init_mariadb;
     use std::sync::Mutex;
     use tank_core::Driver;
-    use tank_mysql::MySQLDriver;
+    use tank_mysql::MariaDBDriver;
     use tank_tests::{execute_tests, init_logs};
     use url::Url;
 
     static MUTEX: Mutex<()> = Mutex::new(());
 
     #[tokio::test]
-    async fn mysql() {
+    async fn mariadb() {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
 
         // Unencrypted
-        let (url, container) = init_mysql(false).await;
+        let (url, container) = init_mariadb(false).await;
         let container = container.expect("Could not launch container");
         let error_msg = format!("Could not connect to `{url}`");
-        let driver = MySQLDriver::new();
+        let driver = MariaDBDriver::new();
         let connection = driver.connect(url.clone().into()).await.expect(&error_msg);
         execute_tests(connection).await;
         drop(container);
 
         // SSL
-        let (ssl_url, container) = init_mysql(true).await;
+        let (ssl_url, container) = init_mariadb(true).await;
         let container = container.expect("Could not launch container");
         let error_msg = format!("Could not connect to `{ssl_url}`");
-        let driver = MySQLDriver::new();
+        let driver = MariaDBDriver::new();
 
         let url = Url::parse(&url).expect("Could not parse the url returned from init");
         let mut url_base = url.clone();

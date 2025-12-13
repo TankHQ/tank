@@ -13,6 +13,8 @@ pub struct MySQLPrepared {
     pub(crate) index: u64,
 }
 
+pub type MariaDBPrepared = MySQLPrepared;
+
 impl MySQLPrepared {
     pub(crate) fn new(statement: Statement) -> Self {
         Self {

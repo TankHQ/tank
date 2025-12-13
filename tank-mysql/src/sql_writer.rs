@@ -10,6 +10,8 @@ use tank_core::{
 #[derive(Default)]
 pub struct MySQLSqlWriter {}
 
+pub type MariaDBWriter = MySQLSqlWriter;
+
 impl MySQLSqlWriter {
     const DEFAULT_PK_VARCHAR_TYPE: &'static str = "VARCHAR(60)";
 }

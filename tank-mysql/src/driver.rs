@@ -9,6 +9,8 @@ impl MySQLDriver {
     }
 }
 
+pub type MariaDBDriver = MySQLDriver;
+
 impl Driver for MySQLDriver {
     type Connection = MySQLConnection;
     type SqlWriter = MySQLSqlWriter;

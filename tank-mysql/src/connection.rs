@@ -10,6 +10,8 @@ pub struct MySQLConnection {
     pub(crate) conn: MySQLQueryable<Conn>,
 }
 
+pub type MariaDBConnection = MySQLConnection;
+
 impl_executor_transaction!(MySQLDriver, MySQLConnection, conn);
 
 impl Connection for MySQLConnection {
