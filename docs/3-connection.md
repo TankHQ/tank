@@ -29,10 +29,10 @@ async fn establish_duckdb_connection() -> Result<DuckDBConnection> {
 - Memory: `duckdb://:memory:` or `duckdb://database?mode=memory`
 
 Modes:
-- `mode=ro`: read-only access (fails if the database doesn’t exist)
-- `mode=rw`: read-write access (creates the database if it doesn’t exist)
+- `mode=ro`: read-only access (fails if the file doesn’t exist)
+- `mode=rw`: read-write access (creates the file if it doesn’t exist)
 - `mode=rwc`: alias for `rw`
-- `mode=memory`: in-memory access (creates a temporary database that lives only for the duration of the connection)
+- `mode=memory`: in-memory access (temporary database that lives only for the duration of the connection)
 
 The `mode` parameter provides a common syntax for specifying connection access, similar to SQLite. The values map respectively to `access_mode=READ_ONLY`, `access_mode=READ_WRITE`, `access_mode=READ_WRITE` and the special `duckdb://:memory:` path. Additional URL parameters are passed directly to the DuckDB C API. See the full list of supported options on the [DuckDB website](https://duckdb.org/docs/stable/configuration/overview#global-configuration-options).
 
@@ -57,10 +57,10 @@ async fn establish_sqlite_connection() -> Result<SQLiteConnection> {
 - Memory: `sqlite://:memory:` or `sqlite://database?mode=memory`
 
 Modes:
-- `mode=ro`: read-only access (fails if the database doesn’t exist)
-- `mode=rw`: read-write access (fails if the database doesn’t exist)
-- `mode=rwc`: read-write access (creates the database if it doesn’t exist)
-- `mode=memory`: in-memory access (creates a temporary database that lives only for the duration of the connection)
+- `mode=ro`: read-only access (fails if the file doesn’t exist)
+- `mode=rw`: read-write access (fails if the file doesn’t exist)
+- `mode=rwc`: read-write access (creates the file if it doesn’t exist)
+- `mode=memory`: in-memory access (temporary database that lives only for the duration of the connection)
 
 Additional URL parameters are passed directly to the SQLite API. See the full list of supported options on the [SQLite website](https://sqlite.org/uri.html#recognized_query_parameters).
 
@@ -74,7 +74,7 @@ use tank_postgres::{PostgresConnection, PostgresDriver};
 async fn establish_postgres_connection() -> Result<PostgresConnection> {
     let driver = PostgresDriver::new();
     let connection = driver
-		.connect("postgres://tank-user:armored@127.0.0.1:32790/military?sslmode=require&sslrootcert=/path/to/root.crt&sslcert=/path/to/client.crt&sslkey=/path/to/client.key".into())
+		.connect("postgres://tank-user:armored@127.0.0.1:32790/military?sslmode=require&sslrootcert=ROOT_PATH&sslcert=CERT_PATH&sslkey=KEY_PATH".into())
     	.await?;
     Ok(connection)
 }
@@ -91,7 +91,7 @@ Parameters:
 - `sslcert`: Client certificate path (falls back to environment variable `PGSSLCERT` or `~/.postgresql/postgresql.crt`).
 - `sslkey`: Client private key path (falls back to environment variable `PGSSLKEY` or `~/.postgresql/postgresql.key`).
 
-#### MySQL
+#### MySQL / MariaDB
 MySQL is the battle-hardened workhorse of the digital front: widely deployed, solid transactional engine, broad tooling ecosystem.
 
 ```rust
@@ -101,13 +101,20 @@ use tank_mysql::{MySQLConnection, MySQLDriver};
 async fn establish_mysql_connection() -> Result<MySQLConnection> {
   let driver = MySQLDriver::new();
   let connection = driver
-    .connect("mysql://user:pass@127.0.0.1:3306/operations".into())
+    .connect("mysql://tank-mysql-user@localhost:33231/operations_db?require_ssl=true&ssl_ca=/home/user/Git/tank/tank-mysql/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-mysql/tests/assets/client.p12&ssl_pass=my%26pass%3Fis%3DP%40%24%24".into())
     .await?;
   Ok(connection)
 }
 ```
 
-**URL Format**: `mysql://user:password@host:port/database?param=value`
+**URL Format**: `mysql://user@host:port/database?require_ssl=true&ssl_ca=CA_PATH&ssl_cert=CERT_PATH&ssl_pass=CERT_PASS`
+
+Parameters:
+- `require_ssl (bool)`: Require secure connection, defaults to false.
+- `ssl_ca`: CA certificate path (falls back to environment variable `MYSQL_SSL_CA`).
+- `ssl_cert`: Client certificate path (falls back to environment variable `MYSQL_SSL_CERT`).
+
+Additional URL parameters are passed directly to the mysql_async API. See the full list of supported options from options structure [Opts](https://docs.rs/mysql_async/latest/mysql_async/struct.Opts.html).
 
 ## Operations Briefing
 - [`prepare("SELECT * FROM ...*")`](https://docs.rs/tank/latest/tank/trait.Executor.html#tymethod.prepare):

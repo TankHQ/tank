@@ -85,7 +85,7 @@ let messages = join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operato
             Operator::callsign ASC,
             RadioLog::message,
         ),
-        // NOT LIKE is transformed in RadioLog::message != "Radio check%" as LIKE, before parsing the expression
+        // X != Y as LIKE => X NOT LIKE Y
         &expr!(Operator::is_certified && RadioLog::message != "Radio check%" as LIKE),
         Some(100),
     )

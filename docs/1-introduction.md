@@ -24,7 +24,7 @@ In plain terms: Tank is a lightweight, multi-database abstraction that lets you 
 - [**tank-duckdb**](https://crates.io/crates/tank-duckdb): DuckDB.
 - [**tank-sqlite**](https://crates.io/crates/tank-sqlite): SQLite.
 - [**tank-postgres**](https://crates.io/crates/tank-postgres): Postgres.
-- [**tank-mysql**](https://crates.io/crates/tank-mysql): MySQL.
+- [**tank-mysql**](https://crates.io/crates/tank-mysql): MySQL and MariaDB.
 
 All the crates in this workspace share the same version.
 
