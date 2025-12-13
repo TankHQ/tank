@@ -28,6 +28,11 @@ pub trait Driver: Debug {
     /// Human-readable backend name.
     const NAME: &'static str;
 
+    /// Name of the driver (of the database). Connection URL starts with this string
+    fn name(&self) -> &'static str {
+        Self::NAME
+    }
+
     /// Establish a connection given a URL.
     fn connect(&self, url: Cow<'static, str>) -> impl Future<Output = Result<impl Connection>> {
         Self::Connection::connect(url)
