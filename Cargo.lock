@@ -1580,6 +1580,7 @@ dependencies = [
  "keyed_priority_queue",
  "lru",
  "mysql_common",
+ "native-tls",
  "pem",
  "percent-encoding",
  "rand 0.9.2",
@@ -1588,6 +1589,7 @@ dependencies = [
  "socket2 0.5.10",
  "thiserror",
  "tokio",
+ "tokio-native-tls",
  "tokio-util",
  "twox-hash",
  "url",
@@ -2833,6 +2835,7 @@ dependencies = [
  "async-stream",
  "log",
  "mysql_async",
+ "rcgen",
  "serde_json",
  "tank-core",
  "tank-tests",
@@ -2840,6 +2843,7 @@ dependencies = [
  "time",
  "tokio",
  "url",
+ "urlencoding",
 ]
 
 [[package]]
@@ -3076,6 +3080,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.109",
+]
+
+[[package]]
+name = "tokio-native-tls"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbae76ab933c85776efabc971569dd6119c580d8f5d448769dec1764bf796ef2"
+dependencies = [
+ "native-tls",
+ "tokio",
 ]
 
 [[package]]

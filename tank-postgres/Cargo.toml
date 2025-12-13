@@ -28,7 +28,7 @@ urlencoding.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-rcgen = "0.14.5"
+rcgen = "0"
 tank-tests = { path = "../tank-tests", features = [
     "disable-large-integers",
     "disable-lists",

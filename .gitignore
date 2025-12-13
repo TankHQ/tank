@@ -4,3 +4,4 @@ docs/.vitepress/dist/
 target/
 *.crt
 *.key
+*.pem

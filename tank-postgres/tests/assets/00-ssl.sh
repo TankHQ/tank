@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-cp /docker-entrypoint-initdb.d/root.crt     "$PGDATA"/root.crt
+cp /docker-entrypoint-initdb.d/root.crt   "$PGDATA"/root.crt
 cp /docker-entrypoint-initdb.d/server.crt "$PGDATA"/server.crt
 cp /docker-entrypoint-initdb.d/server.key "$PGDATA"/server.key
 chmod 600  "$PGDATA"/server.key || true

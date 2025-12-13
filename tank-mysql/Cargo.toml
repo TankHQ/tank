@@ -15,13 +15,14 @@ categories.workspace = true
 [dependencies]
 async-stream.workspace = true
 log.workspace = true
-mysql_async = { version = "0", features = ["rust_decimal", "time"] }
+mysql_async = { version = "0", features = ["native-tls-tls", "rust_decimal", "time"] }
 serde_json.workspace = true
 tank-core.workspace = true
 time.workspace = true
 url.workspace = true
 
 [dev-dependencies]
+rcgen = "0"
 tank-tests = { path = "../tank-tests", features = [
     "disable-infinity",
     "disable-large-integers",
@@ -31,3 +32,4 @@ tank-tests = { path = "../tank-tests", features = [
 ] }
 testcontainers-modules = { version = "0", features = ["mysql"] }
 tokio.workspace = true
+urlencoding.workspace = true
