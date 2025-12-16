@@ -83,7 +83,7 @@ impl ToTokens for Action {
     }
 }
 
-/// Declarative specification of a table column.
+/// Column specification.
 #[derive(Default, Debug)]
 pub struct ColumnDef {
     /// Column identity.

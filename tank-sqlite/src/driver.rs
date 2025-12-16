@@ -1,6 +1,7 @@
 use crate::{SQLiteConnection, SQLitePrepared, SQLiteTransaction, sql_writer::SQLiteSqlWriter};
 use tank_core::Driver;
 
+/// SQLite driver.
 #[derive(Debug)]
 pub struct SQLiteDriver {}
 

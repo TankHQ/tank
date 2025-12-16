@@ -19,66 +19,17 @@ use std::{
 use time::{Month, PrimitiveDateTime, format_description::parse_borrowed};
 use uuid::Uuid;
 
-/// Value conversion and simple parsing utilities. It is the central conversion and
-/// parsing abstraction used throughout `tank` to move between native Rust types and
-/// the dynamically typed [`Value`] representation that backs query parameters and
-/// row decoding.
-///
-/// # Implementing `AsValue` for custom types
-/// Implementations must decide how to represent themselves as a [`Value`]. For
-/// example wrapping a struct inside `Value::Map` or serialising into
-/// `Value::Varchar`. A minimal implementation:
-///
-/// # Parsing contract
-/// - `parse` delegates to `extract` then verifies the slice is exhausted.
-/// - `extract` MUST update the input slice only on success.
-/// - Implementations should return descriptive errors including the original
-///   fragment; prefer `any::type_name::<Self>()` for uniform messages.
-///
-/// # Error semantics
-/// - Range checks always occur before returning numeric conversions. The error
-///   message includes both the offending literal and target type.
-/// - Temporal parsing attempts multiple format strings, if none match an error
-///   with the remaining slice is returned.
-/// - `parse` errors when residual unconsumed input remains, helping surface
-///   accidental trailing characters like `123abc`.
-///
-/// # Examples
-/// ```rust
-/// use tank_core::{AsValue, Value};
-/// let v = 42i32.as_value();
-/// assert!(matches!(v, Value::Int32(Some(42), ..)));
-/// let n: i32 = AsValue::try_from_value(v).unwrap();
-/// assert_eq!(n, 42);
-/// ```
+/// Convert both ways between Rust types and `Value` (plus simple parsing).
 pub trait AsValue {
-    /// Return an "empty" (NULL-like) value variant for this type. Used when
-    /// constructing composite `Value` containers (arrays, maps) or representing
-    /// absent optional data. This should never allocate and should not rely on
-    /// default trait implementations of `Self`.
+    /// Return a NULL equivalent variant for this type.
     fn as_empty_value() -> Value;
-    /// Convert this value into its owned [`Value`] representation. This should
-    /// perform any necessary wrapping (e.g. collections into `List`, decimals
-    /// into `Decimal`) but avoid lossy transformations unless explicitly
-    /// documented.
+    /// Convert into owned `Value`.
     fn as_value(self) -> Value;
-    /// Attempt to convert a dynamic [`Value`] into `Self`.
-    ///
-    /// Implementations should:
-    /// - Accept the canonical `Value` variant for the type (e.g. `Value::Int32`
-    ///   for `i32`).
-    /// - Optionally accept alternate numeric widths performing range checks.
-    /// - Optionally fall back to parsing `Value::Unknown` via [`AsValue::parse`].
-    /// - Return an `Error` describing the mismatch on failure.
+    /// Try to convert a dynamic `Value` into `Self`.
     fn try_from_value(value: Value) -> Result<Self>
     where
         Self: Sized;
-    /// Parse a full string into `Self` delegating to [`AsValue::extract`].
-    ///
-    /// Fails if the parsing routine does not consume the entire input (guards
-    /// against accidentally accepting things like `123abc`). Prefer `extract`
-    /// when embedding within a higher level parser, and `parse` for top-level
-    /// user input / literals.
+    /// Parse a full string into `Self`.
     fn parse(input: impl AsRef<str>) -> Result<Self>
     where
         Self: Sized,

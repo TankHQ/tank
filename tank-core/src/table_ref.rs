@@ -6,7 +6,7 @@ use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
 use std::borrow::Cow;
 
-/// Reference to a table (schema-qualified + optional alias).
+/// Schema-qualified table reference (optional alias).
 #[derive(Default, Clone, PartialEq, Eq, Debug)]
 pub struct TableRef {
     /// Table name.
@@ -68,7 +68,7 @@ impl ToTokens for TableRef {
         let schema = &self.schema;
         let alias = quote_cow(&self.alias);
         tokens.append_all(quote! {
-            ::tank::ColumnRef {
+            ::tank::TableRef {
                 name: #name,
                 schema: #schema,
                 alias: #alias,

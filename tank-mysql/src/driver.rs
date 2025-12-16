@@ -1,6 +1,7 @@
 use crate::{MySQLConnection, MySQLPrepared, MySQLSqlWriter, MySQLTransaction};
 use tank_core::Driver;
 
+/// MySQL/MariaDB driver.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MySQLDriver;
 impl MySQLDriver {
@@ -9,6 +10,7 @@ impl MySQLDriver {
     }
 }
 
+/// Alias for MariaDB.
 pub type MariaDBDriver = MySQLDriver;
 
 impl Driver for MySQLDriver {

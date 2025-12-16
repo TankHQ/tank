@@ -1,10 +1,6 @@
 use crate::{Executor, Result};
 
-/// A mutable transactional context implementing [`Executor`].
-///
-/// Consuming methods (`commit`, `rollback`) finalize the transaction. Dropping
-/// without explicit finalization should implicitly rollback, prefer an explicit
-/// choice for clarity.
+/// Transactional `Executor` with `commit` and `rollback`.
 pub trait Transaction<'c>: Executor {
     /// Commit the outstanding changes.
     fn commit(self) -> impl Future<Output = Result<()>>;

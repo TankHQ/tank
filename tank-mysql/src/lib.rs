@@ -1,3 +1,4 @@
+//! MySQL/MariaDB driver for `tank`.
 mod connection;
 mod driver;
 mod executor;

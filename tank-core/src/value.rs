@@ -7,14 +7,12 @@ use std::{collections::HashMap, hash::Hash, mem::discriminant};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
 
-/// Strongly-typed, nullable SQL value representation used across Tank.
+/// SQL value representation used across Tank.
 ///
-/// Variants wrap `Option<T>` – `None` signifies SQL NULL (except `Null` which
-/// unconditionally represents a NULL of unknown type). Complex variants carry
-/// additional shape metadata (element type, length, precision, etc.).
+/// Variants hold `Option<T>` to store the actual value (`None` means SQL NULL) and additional needed type information.
 #[derive(Default, Debug, Clone)]
 pub enum Value {
-    /// Untyped NULL placeholder.
+    /// Untyped NULL.
     #[default]
     Null,
     Boolean(Option<bool>),
@@ -30,7 +28,7 @@ pub enum Value {
     UInt128(Option<u128>),
     Float32(Option<f32>),
     Float64(Option<f64>),
-    /// Arbitrary precision decimal with width/scale hints.
+    /// Decimal with width and scale information.
     Decimal(Option<Decimal>, /* width: */ u8, /* scale: */ u8),
     Char(Option<char>),
     Varchar(Option<String>),
@@ -47,7 +45,7 @@ pub enum Value {
         /* type: */ Box<Value>,
         /* len: */ u32,
     ),
-    /// Variable length homogeneous list.
+    /// Variable-length homogeneous list.
     List(Option<Vec<Value>>, /* type: */ Box<Value>),
     /// Map with homogeneous key/value types.
     Map(
@@ -56,12 +54,12 @@ pub enum Value {
         /* value: */ Box<Value>,
     ),
     Json(Option<JsonValue>),
-    /// Struct with named fields and their types.
+    /// Struct with named fields and types.
     Struct(
         Option<Vec<(String, Value)>>,
         /* type: */ Vec<(String, Value)>,
     ),
-    /// Parsing fallback / unknown driver-provided type.
+    /// Unknown value type (usually the driver cannot provide type information).
     Unknown(Option<String>),
 }
 
@@ -328,7 +326,7 @@ impl Hash for Value {
     }
 }
 
-/// Intermediate decoded type information used by derive macros.
+/// Internally decoded type info for macros.
 #[derive(Default)]
 pub struct TypeDecoded {
     /// Representative value establishing variant & metadata.

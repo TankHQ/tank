@@ -9,13 +9,13 @@ use crate::{
 /// Implementors know how to render themselves inside a FROM clause and whether
 /// column references should be qualified with schema and table.
 pub trait DataSet {
-    /// Whether columns should be qualified (`schema.table.column`).
+    /// Should columns be qualified (`schema.table.col`)?
     fn qualified_columns() -> bool
     where
         Self: Sized;
-    /// Write the textual representation into `out` using the given writer.
+    /// Render into `out`.
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut String);
-    /// Execute a SELECT, streaming labeled rows.
+    /// Fetch a SELECT query and stream labeled rows.
     fn select<'s, Exec, Item, Cols, Expr>(
         &'s self,
         executor: &'s mut Exec,
@@ -37,7 +37,7 @@ pub trait DataSet {
             .write_select(&mut query, columns, self, condition, limit);
         executor.fetch(query)
     }
-    /// Prepare (but do not yet run) a SQL select query.
+    /// Prepare a SELECT query.
     fn prepare<Exec, Item, Cols, Expr>(
         &self,
         executor: &mut Exec,

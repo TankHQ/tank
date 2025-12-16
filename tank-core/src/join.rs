@@ -9,7 +9,7 @@ use syn::{
     parse::{Parse, ParseStream},
 };
 
-/// Binary join of two datasets with optional ON predicate.
+/// Binary join with optional ON predicate.
 #[derive(Debug)]
 pub struct Join<L: DataSet, R: DataSet, E: Expression> {
     /// Join kind.
@@ -22,7 +22,7 @@ pub struct Join<L: DataSet, R: DataSet, E: Expression> {
     pub on: Option<E>,
 }
 
-/// Supported SQL join variants.
+/// SQL join variants.
 #[derive(Default, Clone, Copy, Debug)]
 pub enum JoinType {
     /// Plain `JOIN` (backend default semantics, often INNER).

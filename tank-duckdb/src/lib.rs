@@ -1,3 +1,4 @@
+//! DuckDB driver for `tank`.
 mod cbox;
 mod connection;
 mod conversions;

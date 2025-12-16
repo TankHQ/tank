@@ -1,3 +1,4 @@
+//! SQLite driver for `tank`.
 mod cbox;
 mod connection;
 mod driver;

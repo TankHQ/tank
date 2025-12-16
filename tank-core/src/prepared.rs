@@ -15,9 +15,9 @@ use std::fmt::{Debug, Display};
 /// prepared.bind(42)?.bind("hello")?;
 /// ```
 pub trait Prepared: Send + Sync + Display + Debug {
-    /// Remove all the previously bound values
+    /// Clear all bound values.
     fn clear_bindings(&mut self) -> Result<&mut Self>;
-    /// Append a parameter value.
+    /// Append a bound value.
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self>;
     /// Bind a value at a specific index.
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self>;

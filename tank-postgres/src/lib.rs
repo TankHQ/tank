@@ -1,3 +1,4 @@
+//! PostgreSQL driver for `tank`.
 mod connection;
 mod driver;
 mod interval_wrap;

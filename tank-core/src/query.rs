@@ -4,15 +4,12 @@ use std::{
     sync::Arc,
 };
 
-/// A query ready to be executed by an [`Executor`].
-///
-/// Represents either raw SQL (`Raw`) or a backend prepared statement
-/// (`Prepared`) carrying driver-specific caching / parsing state.
+/// Executable query: raw SQL or prepared statement.
 #[derive(Debug)]
 pub enum Query<D: Driver> {
     /// Unprepared SQL text.
     Raw(String),
-    /// Driver prepared handle.
+    /// Driver prepared statement.
     Prepared(D::Prepared),
 }
 
@@ -20,7 +17,7 @@ impl<D: Driver> Query<D> {
     pub fn is_prepared(&self) -> bool {
         matches!(self, Query::Prepared(..))
     }
-    /// Remove all the previously bound values
+    /// Clear all bound values.
     pub fn clear_bindings(&mut self) -> Result<&mut Self> {
         let Self::Prepared(prepared) = self else {
             return Err(Error::msg("Cannot clear bindings of a raw query"));
@@ -28,7 +25,8 @@ impl<D: Driver> Query<D> {
         prepared.clear_bindings()?;
         Ok(self)
     }
-    /// Append a parameter value.
+    /// Append a bound value.
+    /// It results in a error if the query is not prepared.
     pub fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         let Self::Prepared(prepared) = self else {
             return Err(Error::msg("Cannot bind a raw query"));
@@ -37,6 +35,7 @@ impl<D: Driver> Query<D> {
         Ok(self)
     }
     /// Bind a value at a specific index.
+    /// It results in a error if the query is not prepared.
     pub fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
         let Self::Prepared(prepared) = self else {
             return Err(Error::msg("Cannot bind index of a raw query"));
@@ -125,9 +124,9 @@ impl<D: Driver> AsMut<Query<D>> for Query<D> {
 /// Metadata about modify operations (INSERT/UPDATE/DELETE).
 #[derive(Default, Debug, Clone, Copy)]
 pub struct RowsAffected {
-    /// Total number of rows impacted.
+    /// Total rows affected.
     pub rows_affected: u64,
-    /// Backend-specific last inserted / affected identifier when available.
+    /// Optional last inserted or affected id.
     pub last_affected_id: Option<i64>,
 }
 
@@ -136,12 +135,12 @@ pub type RowNames = Arc<[String]>;
 /// Owned row value slice matching `RowNames` length.
 pub type Row = Box<[Value]>;
 
-/// A result row with its corresponding column labels.
+/// Row with column labels.
 #[derive(Debug, Clone)]
 pub struct RowLabeled {
     /// Column names.
     pub labels: RowNames,
-    /// Data values (aligned by index with `labels`).
+    /// Values aligned with labels.
     pub values: Row,
 }
 
@@ -166,7 +165,7 @@ impl RowLabeled {
     }
 }
 
-/// Heterogeneous items emitted by `Executor::run` combining rows and modify results.
+/// Items from `Executor::run`: rows or effects.
 #[derive(Debug)]
 pub enum QueryResult {
     /// A labeled row.

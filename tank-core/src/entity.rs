@@ -9,12 +9,7 @@ use std::{
     pin::pin,
 };
 
-/// Represents a database-backed record with schema and persistence behavior.
-///
-/// An `Entity` defines:
-/// - Static table/column metadata
-/// - Conversion to/from database returned row
-/// - Helper CRUD operations using an `Executor`
+/// A table-mapped record with schema and CRUD helpers.
 pub trait Entity {
     /// Primary key type. Tuple of the types of the fields forming the primary key.
     type PrimaryKey<'a>;
