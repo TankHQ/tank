@@ -80,7 +80,8 @@ async fn establish_postgres_connection() -> Result<PostgresConnection> {
 }
 ```
 
-**URL Format**: `postgres://user:pass@host:5432/database`
+**URL Format**:
+- `postgres://user:pass@host:5432/database`
 
 Parameters:
 - `sslmode`: How a secure SSL TCP/IP connection will be negotiated with the server. Falls back to the environment variable `PGSSLMODE`, otherwise `disable`. This parameter is passed to `tokio_postgres`, for this reason only the following alternatives are supported (even tough Postgres supports more modes):
@@ -107,7 +108,8 @@ async fn establish_mysql_connection() -> Result<MySQLConnection> {
 }
 ```
 
-**URL Format**: `mysql://user@host:port/database?require_ssl=true&ssl_ca=CA_PATH&ssl_cert=CERT_PATH&ssl_pass=CERT_PASS`
+**URL Format**:
+- `mysql://user@host:port/database?require_ssl=true&ssl_ca=CA_PATH&ssl_cert=CERT_PATH&ssl_pass=CERT_PASS`
 
 Parameters:
 - `require_ssl (bool)`: Require secure connection, defaults to false.
