@@ -105,9 +105,9 @@ impl Prepared for SQLitePrepared {
                 Value::Int64(Some(v), ..) => sqlite3_bind_int64(statement, index, v),
                 Value::Int128(Some(v), ..) => {
                     if v as sqlite3_int64 as i128 != v {
-                        return Err(Error::msg(
-                            "Cannot bind i128 value `{}` into sqlite integer because it's out of bounds",
-                        ));
+                        return Err(Error::msg(format!(
+                            "Cannot bind i128 value `{v}` into sqlite integer because it's out of bounds"
+                        )));
                     }
                     sqlite3_bind_int64(statement, index, v as sqlite3_int64)
                 }
@@ -116,17 +116,17 @@ impl Prepared for SQLitePrepared {
                 Value::UInt32(Some(v), ..) => sqlite3_bind_int(statement, index, v as c_int),
                 Value::UInt64(Some(v), ..) => {
                     if v as sqlite3_int64 as u64 != v {
-                        return Err(Error::msg(
-                            "Cannot bind i128 value `{}` into sqlite integer because it's out of bounds",
-                        ));
+                        return Err(Error::msg(format!(
+                            "Cannot bind i128 value `{v}` into sqlite integer because it's out of bounds"
+                        )));
                     }
                     sqlite3_bind_int64(statement, index, v as sqlite3_int64)
                 }
                 Value::UInt128(Some(v), ..) => {
                     if v as sqlite3_int64 as u128 != v {
-                        return Err(Error::msg(
-                            "Cannot bind i128 value `{}` into sqlite integer because it's out of bounds",
-                        ));
+                        return Err(Error::msg(format!(
+                            "Cannot bind i128 value `{v}` into sqlite integer because it's out of bounds"
+                        )));
                     }
                     sqlite3_bind_int64(statement, index, v as sqlite3_int64)
                 }
@@ -136,7 +136,7 @@ impl Prepared for SQLitePrepared {
                     statement,
                     index,
                     v.to_f64().ok_or_else(|| {
-                        Error::msg(format!("Cannot convert the Decimal value `{}` to f64", v))
+                        Error::msg(format!("Cannot bind the Decimal value `{v}` to f64"))
                     })?,
                 ),
                 Value::Char(Some(v), ..) => {
@@ -247,8 +247,7 @@ impl Prepared for SQLitePrepared {
                 let query = sqlite3_sql(statement);
                 let error = Error::msg(error_message_from_ptr(&sqlite3_errmsg(db)).to_string())
                     .context(format!(
-                        "Cannot bind parameter {} to query:\n{}",
-                        index,
+                        "Cannot bind parameter {index} to query:\n{}",
                         truncate_long!(CStr::from_ptr(query).to_string_lossy())
                     ));
                 log::error!("{:#}", error);

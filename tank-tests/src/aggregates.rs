@@ -78,8 +78,8 @@ pub async fn aggregates<E: Executor>(executor: &mut E) {
                 let b = i128::try_from_value((*values)[1].clone());
                 match (a, b) {
                     (Ok(a), Ok(b)) => Some((a, b)),
-                    (Err(e), _) => panic!("{}", e),
-                    (_, Err(e)) => panic!("{}", e),
+                    (Err(e), _) => panic!("{e}"),
+                    (_, Err(e)) => panic!("{e}"),
                 }
             }
             _ => None,

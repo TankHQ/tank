@@ -136,7 +136,7 @@ pub trait SqlWriter {
             Value::Decimal(.., precision, scale) => {
                 out.push_str("DECIMAL");
                 if (precision, scale) != (&0, &0) {
-                    let _ = write!(out, "({},{})", precision, scale);
+                    let _ = write!(out, "({precision},{scale})");
                 }
             }
             Value::Char(..) => out.push_str("CHAR(1)"),
@@ -150,7 +150,7 @@ pub trait SqlWriter {
             Value::Uuid(..) => out.push_str("UUID"),
             Value::Array(.., inner, size) => {
                 self.write_column_type(context, out, inner);
-                let _ = write!(out, "[{}]", size);
+                let _ = write!(out, "[{size}]");
             }
             Value::List(.., inner) => {
                 self.write_column_type(context, out, inner);
@@ -1082,7 +1082,7 @@ pub trait SqlWriter {
             );
         }
         if let Some(limit) = limit {
-            let _ = write!(out, "\nLIMIT {}", limit);
+            let _ = write!(out, "\nLIMIT {limit}");
         }
         out.push(';');
     }

@@ -40,8 +40,7 @@ impl Prepared for MySQLPrepared {
         Ok(self)
     }
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
-        self.bind_index(value, self.index)?;
-        Ok(self)
+        self.bind_index(value, self.index)
     }
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
         let len = self.statement.num_params();
@@ -52,8 +51,7 @@ impl Prepared for MySQLPrepared {
             .params
             .get_mut(index as usize)
             .ok_or(Error::msg(format!(
-                "Index {index} cannot be bound, the query has only {} parameters",
-                len
+                "Index {index} cannot be bound, the query has only {len} parameters",
             )))?;
         *target = value.as_value();
         self.index = index + 1;

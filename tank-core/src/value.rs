@@ -202,7 +202,6 @@ impl Value {
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Null, Self::Null) => true,
             (Self::Boolean(l), Self::Boolean(r)) => l == r,
             (Self::Int8(l), Self::Int8(r)) => l == r,
             (Self::Int16(l), Self::Int16(r)) => l == r,

@@ -20,10 +20,7 @@ pub(crate) fn extract_value(statement: *mut sqlite3_stmt, index: c_int) -> Resul
                 String::from_utf8_unchecked((0..len).map(|i| *ptr.add(i)).collect()).as_value()
             }
             _ => {
-                return Err(Error::msg(format!(
-                    "Unexpected column type {}",
-                    column_type
-                )));
+                return Err(Error::msg(format!("Unexpected column type {column_type}",)));
             }
         })
     }

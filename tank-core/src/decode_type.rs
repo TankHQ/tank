@@ -181,7 +181,7 @@ pub fn decode_type(ty: &Type) -> (TypeDecoded, Option<CheckPassive>) {
                                     let GenericArgument::Type(second_type) =
                                         bracketed.args.get(1).expect(panic_msg)
                                     else {
-                                        panic!("{}", panic_msg);
+                                        panic!("{panic_msg}");
                                     };
                                     let second_type = decode_type(second_type).0;
                                     break 'data_type Value::Map(

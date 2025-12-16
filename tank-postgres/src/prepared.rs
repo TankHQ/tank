@@ -32,8 +32,7 @@ impl Prepared for PostgresPrepared {
         Ok(self)
     }
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
-        self.bind_index(value, self.index)?;
-        Ok(self)
+        self.bind_index(value, self.index)
     }
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
         let len = self.statement.params().len();

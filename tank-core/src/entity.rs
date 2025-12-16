@@ -205,8 +205,7 @@ pub trait Entity {
                             } else {
                                 Level::Error
                             },
-                            "{}",
-                            error
+                            "{error}",
                         );
                         return Err(error);
                     }

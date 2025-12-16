@@ -16,7 +16,6 @@ mod tests {
 
     #[test]
     fn value_none() {
-        assert_eq!(Value::Null, Value::Null);
         assert_ne!(Value::Float32(Some(1.0)), Value::Null);
     }
 

@@ -15,9 +15,9 @@ mod tests {
         const DB_PATH: &'static str = "../target/debug/tests.sqlite";
         let _guard = MUTEX.lock().unwrap();
         if Path::new(DB_PATH).exists() {
-            fs::remove_file(DB_PATH).await.expect(
-                format!("Failed to remove existing test database file {}", DB_PATH).as_str(),
-            );
+            fs::remove_file(DB_PATH)
+                .await
+                .expect(format!("Failed to remove existing test database file {DB_PATH}").as_str());
         }
         assert!(
             !Path::new(DB_PATH).exists(),
@@ -25,7 +25,7 @@ mod tests {
         );
         let driver = SQLiteDriver::new();
         let connection = driver
-            .connect(format!("sqlite://{}?mode=rwc", DB_PATH).into())
+            .connect(format!("sqlite://{DB_PATH}?mode=rwc").into())
             .await
             .expect("Could not open the database");
         assert!(

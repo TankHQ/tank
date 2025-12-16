@@ -992,8 +992,7 @@ impl<T: AsValue, const N: usize> AsValue for [T; N] {
                 .try_into()
                 .map_err(|v: Vec<T>| {
                     Error::msg(format!(
-                        "Expected array of length {}, got {} elements ({})",
-                        N,
+                        "Expected array of length {N}, got {} elements ({})",
                         v.len(),
                         any::type_name::<[T; N]>()
                     ))

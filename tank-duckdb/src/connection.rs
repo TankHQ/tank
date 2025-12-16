@@ -518,7 +518,7 @@ impl Connection for DuckDBConnection {
         let mut parts = url.trim_start_matches(&prefix).splitn(2, '?');
         let path = parts
             .next()
-            .ok_or(Error::msg(format!("Invalid database url `{}`", url,)))?;
+            .ok_or(Error::msg(format!("Invalid database url `{url}`")))?;
         let params = parts.next().unwrap_or_default();
         let mut path = decode(path)
             .with_context(context)
@@ -566,7 +566,7 @@ impl Connection for DuckDBConnection {
                 }
             };
             if rc != duckdb_state_DuckDBSuccess {
-                let error = Error::msg(format!("Error while setting config `{}={}`", key, value));
+                let error = Error::msg(format!("Error while setting config `{key}={value}`"));
                 log::warn!("{:#}", error);
                 return Err(error);
             }
@@ -595,7 +595,7 @@ impl Connection for DuckDBConnection {
             connection = CBox::new(ptr::null_mut(), |mut p| duckdb_disconnect(&mut p));
             let rc = duckdb_connect(database, &mut *connection);
             if rc != duckdb_state_DuckDBSuccess {
-                let error = Error::msg(format!("Failed to connect to database url `{}`", url));
+                let error = Error::msg(format!("Failed to connect to database url `{url}`"));
                 log::error!("{:#}", error);
                 return Err(error);
             };

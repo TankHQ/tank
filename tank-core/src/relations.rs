@@ -39,7 +39,7 @@ impl<T: AsValue> Passive<T> {
     pub fn expect(self, msg: &str) -> T {
         match self {
             Passive::Set(v) => v,
-            Passive::NotSet => panic!("{}", msg),
+            Passive::NotSet => panic!("{msg}"),
         }
     }
     pub fn unwrap(self) -> T {

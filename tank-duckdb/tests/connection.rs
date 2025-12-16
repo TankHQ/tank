@@ -16,15 +16,15 @@ mod tests {
         const DB_PATH: &'static str = "../target/debug/creation.duckdb";
         let _guard = MUTEX.lock().unwrap();
         if Path::new(DB_PATH).exists() {
-            fs::remove_file(DB_PATH).await.expect(
-                format!("Failed to remove existing test database file {}", DB_PATH).as_str(),
-            );
+            fs::remove_file(DB_PATH)
+                .await
+                .expect(format!("Failed to remove existing test database file {DB_PATH}").as_str());
         }
         assert!(
             !Path::new(DB_PATH).exists(),
             "Database file should not exist before test"
         );
-        DuckDBConnection::connect(format!("duckdb://{}?mode=rw", DB_PATH).into())
+        DuckDBConnection::connect(format!("duckdb://{DB_PATH}?mode=rw").into())
             .await
             .expect("Could not open the database");
         assert!(
