@@ -8,7 +8,6 @@ impl SqlWriter for YourDBSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
-
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,

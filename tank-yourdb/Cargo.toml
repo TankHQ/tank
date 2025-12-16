@@ -15,11 +15,11 @@ categories = ["database"]
 [dependencies]
 log = "0"
 rust_decimal = "1"
+scylla = "1"
 tank-core = "0"
-time = "0" # if supported
+time = "0"
 url = "2"
 uuid = "1"
-# yourdb-sys = "1"
 
 [dev-dependencies]
 tank-tests = { version = "0", features = ["disable-transactions"] }

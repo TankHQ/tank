@@ -13,12 +13,10 @@ impl Executor for YourDBConnection {
     fn driver(&self) -> &Self::Driver {
         &YourDBDriver {}
     }
-
     async fn prepare(&mut self, query: String) -> Result<Query<Self::Driver>> {
         // Return Err if not supported
         Ok(Query::Prepared(YourDBPrepared::new()))
     }
-
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
@@ -42,7 +40,6 @@ impl Connection for YourDBConnection {
         }
         Ok(YourDBConnection {})
     }
-
     #[allow(refining_impl_trait)]
     async fn begin(&mut self) -> Result<YourDBTransaction<'_>> {
         Err(Error::msg("Transactions are not supported by YourDB"))

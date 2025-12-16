@@ -11,7 +11,6 @@ impl<'c> Transaction<'c> for YourDBTransaction<'c> {
     async fn commit(self) -> Result<()> {
         Err(Error::msg("Transactions are not supported by YourDB"))
     }
-
     async fn rollback(self) -> Result<()> {
         Err(Error::msg("Transactions are not supported by YourDB"))
     }

@@ -17,14 +17,11 @@ impl Prepared for YourDBPrepared {
         // Clear
         Ok(self)
     }
-
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
-        let index = self.index;
-        self.index += 1;
-        self.bind_index(value, index)
+        self.bind_index(value, self.index)
     }
-
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
+        self.index = index + 1;
         Ok(self)
     }
 }
