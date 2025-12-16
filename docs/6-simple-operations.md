@@ -1,22 +1,22 @@
 # Simple Operations
 ###### *Field Manual Section 6* - Front-Line Extraction
 
-The Entity is your combat unit, a Rust struct mapped one-to-one with a database table. This section trains you on the basic maneuvers every unit must master: insertions, deletions, and extractions.
+The Entity maps one-to-one with a database table. This section trains you on the basic maneuvers every unit must master: insertions, deletions, and extractions.
 
 ## Mission Scope
-Every tactical primitive you can execute against an `Entity`. Each item maps to a single, unambiguous action. Almost all higher-level patterns are just compositions of these fundamentals.
-* [`Entity::create_table()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.create_table): establish operating base
-* [`Entity::drop_table()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.drop_table): break camp
-* [`Entity::insert_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.insert_one): deploy a single unit
-* [`Entity::insert_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.insert_many): bulk deployment
-* [`Entity::prepare_find()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.prepare_find): reconnaissance
-* [`Entity::find_pk()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.find_pk): identify the target
-* [`Entity::find_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.find_one): silent recon
-* [`Entity::find_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.find_many): wide-area sweep
-* [`Entity::delete_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.delete_one): precision strike
-* [`Entity::delete_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.delete_many): scorched-earth withdrawal
-* [`entity.save()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.save): resupply and hold the position
-* [`entity.delete()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.delete): stand-down order
+Core operations on `Entity`:
+* [`Entity::create_table()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.create_table): create table and optionally schema
+* [`Entity::drop_table()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.drop_table): drop table and optionally schema
+* [`Entity::insert_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.insert_one): insert one row
+* [`Entity::insert_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.insert_many): insert many rows (possibly in a optimized way)
+* [`Entity::prepare_find()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.prepare_find): prepare a SELECT query against this table
+* [`Entity::find_pk()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.find_pk): find by primary key
+* [`Entity::find_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.find_one): first matching row
+* [`Entity::find_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.find_many): stream matching entities
+* [`Entity::delete_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.delete_one): delete by primary key
+* [`Entity::delete_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.delete_many): delete by condition
+* [`entity.save()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.save): insert or update (works only for entities defining a primary key)
+* [`entity.delete()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.delete): delete this entity (works only for entities defining a primary key)
 
 ## Operations Schema
 This is the schema we will use for every operation example that follows. All CRUD, streaming, prepared, and batching demonstrations below act on these two tables so you can focus on behavior instead of switching contexts. `Operator` is the identity table, `RadioLog` references an operator (foreign key) to record transmissions.
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS operations.radio_log (
 :::
 
 ## Setup
-Deployment is initial insertion of your units into the theater: create tables (and schema) before any data flows, tear them down when the operation ends.
+Create/drop tables (and schema) as needed:
 ```rust
 RadioLog::drop_table(executor, true, false).await?;
 Operator::drop_table(executor, true, false).await?;
@@ -81,7 +81,7 @@ RadioLog::create_table(executor, false, false).await?;
 Key points:
 - `if_not_exists` / `if_exists` guard repeated ops.
 - Schema creation runs before the table when requested.
-- Foreign key in `RadioLog.operator` enforces referential discipline.
+- `RadioLog.operator` has a foreign key to `Operator.id`.
 
 ## Insert
 Single unit insertion:
@@ -96,7 +96,7 @@ let operator = Operator {
 Operator::insert_one(executor, &operator).await?;
 ```
 
-Bulk deployment of logs:
+Insert many:
 ```rust
 let op_id = operator.id;
 let logs: Vec<RadioLog> = (0..5)
@@ -121,7 +121,7 @@ if let Some(op) = found {
 }
 ```
 
-First matching row (use a predicate with `find_one`):
+First matching row (use a predicate):
 ```rust
 if let Some(radio_log) =
     RadioLog::find_one(executor, &expr!(RadioLog::unit_callsign == "Alpha-1")).await?
@@ -132,7 +132,7 @@ if let Some(radio_log) =
 
 Under the hood: `find_one` is just `find_many` with a limit of 1.
 
-All matching transmissions with limit:
+Stream matching rows with a limit:
 ```rust
 {
     let mut stream = pin!(RadioLog::find_many(
@@ -149,14 +149,14 @@ All matching transmissions with limit:
 The stream must be pinned with [`std::pin::pin`](https://doc.rust-lang.org/std/pin/macro.pin.html) so the async machinery can safely borrow it without relocation mid‑flight.
 
 ## Save
-`save()` attempts insert or update (UPSERT) if the driver supports conflict clauses. Otherwise it falls back to an insert and may error if the row already exists.
+`save()` inserts or updates (UPSERT) if supported. Otherwise it falls back to an insert and may error if the row already exists.
 ```rust
 let mut operator = operator;
 operator.callsign = "SteelHammerX".into();
 operator.save(executor).await?;
 ```
 
-RadioLog also has a primary key, so editing a message:
+Instance method to save the current entity (works only for entities defining a primary key):
 ```rust
 let mut log = RadioLog::find_one(executor, &expr!(RadioLog::message == "Ping #2"))
     .await?
@@ -168,24 +168,24 @@ log.save(executor).await?;
 If a table has no primary key, `save()` returns an error, use `insert_one` instead.
 
 ## Delete
-Precision strike:
+Delete one entity by primary key:
 ```rust
 RadioLog::delete_one(executor, log.primary_key()).await?;
 ```
 
-Scorched earth pattern:
+Delete many entities matching a expression:
 ```rust
 let operator_id = operator.id;
-RadioLog::delete_many(executor, &expr!(RadioLog::operator == #operator_id)).await?;
+RadioLog::delete_many(executor, expr!(RadioLog::operator == #operator_id)).await?;
 ```
 
-Instance form (validates exactly one row):
+Instance method to delete the current entity (works only for entities defining a primary key):
 ```rust
 operator.delete(executor).await?;
 ```
 
 ## Prepared
-Filter transmissions above a strength threshold:
+Filter by strength (prepared):
 ```rust
 let mut query =
     RadioLog::prepare_find(executor, &expr!(RadioLog::signal_strength > ?), None).await?;
@@ -198,7 +198,7 @@ let _messages: Vec<_> = executor
 ```
 
 ## Multi-Statement
-Combine delete + insert + select in one roundtrip:
+Delete + insert + select in one roundtrip:
 ```rust
 let writer = executor.driver().sql_writer();
 let mut sql = String::new();
@@ -235,16 +235,14 @@ writer.write_select(
     }
 }
 ```
-While the returned stream is in scope the executor is locked to it and cannot service other maneuvers, contain the pinned stream in a tight block so dropping it releases the executor promptly.
+While the stream is alive, the executor is borrowed by it and cannot service other queries. Enclose the pinned stream in a scoping or drop it after execution.
 
-Process `QueryResult::Affected` then `QueryResult::Row` items sequentially.
-
-## Error Signals & Edge Cases
+## Errors & Edge Cases
 - `save()` / `delete()` on entities without PK result in immediate error.
 - `delete()` with affected rows not exactly one results in error.
 - Prepared binds validate conversion, failure returns `Result::Err`.
 
-## Performance Hints (Radio Theater)
+## Performance
 - Use prepared statements for hot paths (changing only parameters).
 - Limit streaming scans with a numeric `limit` to avoid unbounded pulls.
 

@@ -49,7 +49,7 @@ Tank maps ordinary Rust types (numbers, strings, times, collections) to the clos
 > The special `isize` / `usize` types map to the native pointer-width integer (64‑bit on 64‑bit targets, 32‑bit on 32‑bit targets). For cross‑database portability prefer explicit `i64` / `u64` unless you truly need platform width.
 
 ## Wrapper Types
-Beyond the standard munitions listed above, Tank supports a range of wrapper types you can deploy directly in your entities. The resulting SQL type is inferred from the inner payload your wrapper carries into battle.
+Built‑in wrappers you can use directly in entities. SQL type is inferred from the inner type.
 
 Supported wrappers:
 - `tank::Passive<T>`: Omit on update / allow default generation on insert.

@@ -9,10 +9,10 @@ Three firing modes:
 - `executor.fetch(query)`: Convenience method that yields only rows. Internally calls `Executor::run` and discards `QueryResult::Affected`.
 - `executor.execute(query)`: Damage report only. Aggregates all `RowsAffected` across the batch and returns a single total. Internally calls `Executor::run` and discards rows (if any).
 
-What can you feed the gun? Anything that implements [`AsQuery`](https://docs.rs/tank/latest/tank/trait.AsQuery.html). The executor accepts a raw `String`, a `&str`, a fully built [`Query<D>`](https://docs.rs/tank/latest/tank/enum.Query.html), or a `&mut Query<D>`. All three entry calls (`run`, `fetch`, `execute`) take `impl AsQuery<Driver>` tied to the executor's lifetime, so you can pass owned text, borrowed text, or a prepared handle without ceremony. Whatever you provide, Tank will chamber it and fire.
+Anything implementing [`AsQuery`](https://docs.rs/tank/latest/tank/trait.AsQuery.html) works: `String`, `&str`, `Query<D>`, or `&mut Query<D>`.
 
 ## Composing SQL With `SqlWriter`
-Every driver exposes a `SqlWriter` that produces dialect-correct fragments and handles quoting for identifiers and values. You can concatenate multiple statements into one `String` and fire them in one go. Writers append the necessary statement separators (`;`) automatically.
+Every driver exposes a `SqlWriter` for dialect‑correct sql fragments. Concatenate multiple statements into one `String`. Writers add separators (`;`) automatically.
 
 Example building 8 statements (1 *CREATE SCHEMA* included by the first *CREATE TABLE*, 2 *CREATE TABLE*, 3 *INSERT INTO* and 2 *SELECT*):
 ```rust
@@ -30,7 +30,7 @@ let results = executor.run(sql).try_collect::<Vec<_>>().await?;
 ```
 
 ### Mixed Results
-In a composite batch, each statement yields either an `Affected` count or one or more `Row` values. Collect and filter as needed:
+Each statement yields `Affected` or one or more `Row` values. Collect and filter as needed:
 ```rust
 use tank::QueryResult;
 let rows = results
@@ -98,7 +98,7 @@ let messages: Vec<_> = executor
     .await?;
 ```
 
-Prepared statements cache driver parsing/optimizer state where available and validate parameter conversions at bind time.
+Prepared statements cache driver parsing/optimizer state (when available) and validate parameter conversions at bind time.
 
 ### Notes & Driver Support
 - `SqlWriter::write_create_table::<T>(&mut sql, include_schema)` will emit `CREATE SCHEMA` first when `include_schema` is `true` and the backend supports schemas.

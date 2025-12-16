@@ -3,7 +3,7 @@
 
 Welcome to the Tank field manual. This is the quick-and-mean guide for developers who want to drive, fight and survive with Tank (Table Abstraction & Navigation Kit): the Rust data layer.
 
-In plain terms: Tank is a lightweight, multi-database abstraction that lets you define entities, run async queries, and mix raw SQL with ergonomic helpers without locking you into an all-or-nothing ORM worldview.
+In plain terms: Tank is a lightweight, multi-database SQL toolkit. Define entities, run async queries, and mix raw SQL with ergonomic helpers without locking you into an all-or-nothing ORM worldview.
 
 ## Mission objectives
 - **Async operations** - fire and forget.
@@ -15,10 +15,11 @@ In plain terms: Tank is a lightweight, multi-database abstraction that lets you 
 
 ## Equipment
 ###### Core Arsenal
-- [**tank**](https://crates.io/crates/tank): The command vehicle, rallying the core arsenal and procedural macro firepower for seamless battlefield operations.
+- [**tank**](https://crates.io/crates/tank): The command vehicle, main crate to use together with a driver.
 - [**tank-core**](https://crates.io/crates/tank-core): All the heavy machinery that makes the Tank move.
-- [**tank-macros**](https://crates.io/crates/tank-macros): Because Rust requires procedural macros to live in a separate silo, this crate houses the derive magic.
-- [**tank-tests**](https://crates.io/crates/tank-tests): The proving ground. Shared integration tests used by every driver to ensure that when the shooting starts, nothing jams.
+- [**tank-macros**](https://crates.io/crates/tank-macros): Derives and helper macros.
+- [**tank-tests**](https://crates.io/crates/tank-tests): Shared integration tests for drivers.
+
 ###### Drivers
 - [**tank-duckdb**](https://crates.io/crates/tank-duckdb): DuckDB.
 - [**tank-sqlite**](https://crates.io/crates/tank-sqlite): SQLite.

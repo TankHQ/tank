@@ -113,7 +113,7 @@ assert!(
 ```
 
 ## Expr
-[`expr!()`](https://docs.rs/tank/latest/tank/macro.expr.html) is your tactical toolkit for crafting query expressions in Tank, blending Rust syntax with SQL semantics for precision strikes in database operations. It parses your input into an expression tree that drivers translate into backend-specific syntax. You can use it to specify conditions for fetch queries or column default values.
+[`expr!()`](https://docs.rs/tank/latest/tank/macro.expr.html) parses a Rust‑like expression into a typed AST that drivers translate into backend‑specific SQL. Use it for conditions or default values.
 
 It accepts a subset of Rust syntax with additional sentinel tokens for SQL semantics:
 - `42`, `1.2`, `"Alpha"`, `true`, `NULL`, `[1, 2, 3]` literal values
@@ -135,8 +135,7 @@ It accepts a subset of Rust syntax with additional sentinel tokens for SQL seman
 Parentheses obey standard Rust precedence. Empty invocation (`expr!()`) yields `false`. Ultimately, the drivers decide if and how these expressions are translated into the specific query language.
 
 ## Cols
-[`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) builds a slice of column expressions (optionally ordered) suitable for a `SELECT` projection.
-Each comma separated item becomes either a expression (parsed via [`expr!`](7-advanced-operations.html#expr)) or a ordered expression when followed by `ASC` or `DESC`.
+[`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) builds a slice of projection expressions (optionally ordered). Each item is an expression (parsed via [`expr!`](7-advanced-operations.html#expr)) or an ordered expression when followed by `ASC` or `DESC`.
 
 Example of valid syntax
 - `RadioLog::transmission_time`

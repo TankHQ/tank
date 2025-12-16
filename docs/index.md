@@ -22,5 +22,5 @@ features:
   - title: Battlefield adaptability
     details: Plug new backends in like changing magazines. Designed from day one to be extensible.
   - title: Rich type arsenal
-    details: Define your units and let Tank take care of conversions.
+    details: Map Rust types to SQL with automatic conversions.
 ---

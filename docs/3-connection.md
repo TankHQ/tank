@@ -123,24 +123,19 @@ Additional URL parameters are passed directly to the mysql_async API. See the fu
   Compiles a raw SQL string into a reusable [`Query<Driver>`](https://docs.rs/tank/latest/tank/enum.Query.html) object without firing it. Use when the same statement will be dispatched multiple times.
 
 - [`run(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#tymethod.run):
-  Streams a mixed feed of [`QueryResult`](https://docs.rs/tank/latest/tank/enum.QueryResult.html) values (`Row` or `Affected`). Use when you want to run multiple statements (e.g. INSERT INTO followed by SELECT), or you are not sure what result type you might receive.
+  Streams [`QueryResult`](https://docs.rs/tank/latest/tank/enum.QueryResult.html) items (`Row` or `Affected`). Useful for multi‑statement batches (if supported by the database driver).
 
 - [`fetch(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.fetch):
-  Precise extraction. Wraps `run` and streams only row results (`QueryResult::Row`), executing all statements while filtering out counts.
+  Streams only rows (`QueryResult::Row`), discarding `Affected`.
 
 - [`execute(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.execute):
-  Complement to `fetch` for impact reports: awaits the stream and aggregates all `QueryResult::Affected` values into a single `RowsAffected` total (INSERT / UPDATE / DELETE). Row payloads are ignored.
+  Aggregates all `Affected` counts into one `RowsAffected`. Rows are ignored.
 
 - [`append(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.append):
-  Convenience bulk insert for an iterator of entities. Builds an INSERT (or driver-optimized append if supported) and returns `RowsAffected`. Use when staging large batches into a table.
+  Bulk insert entities, using driver fast‑path when available.
 
 - [`begin()`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.begin):
-  Launch a coordinated operation. Borrow the connection and yield a transactional executor. Issue any of the above ops against it, then `commit` (secure ground) or `rollback` (tactical retreat). Uncommitted drop triggers a rollback and gives back the connection.
-
-## Transaction
-Sometimes you need to execute multiple operations as a single atomic mission - all or nothing. That's where **Transactions** come in. You [`begin()`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.begin) a transaction, execute your operations, then either [`commit()`](https://docs.rs/tank/latest/tank/trait.Transaction.html#tymethod.commit) (mission success) or [`rollback()`](https://docs.rs/tank/latest/tank/trait.Transaction.html#tymethod.rollback) (abort and retreat). Uncommitted drop triggers a rollback and gives back the connection.
-
-Transactions support depends on the specific driver and database capabilities. This is a thin layer over the database's native transaction concept. For databases without transaction support, `begin` should return an error.
+  Borrow the connection and start a transaction. Issue any of the above operations against the transactional executor, then `commit` or `rollback`. Uncommitted drop triggers a rollback and gives back the connection.
 
 ## Connection Lifecycle
 1. **Establish**: Call `driver.connect("dbms://...").await?` with your database URL.

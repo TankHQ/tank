@@ -11,7 +11,7 @@ Opening a new battlefront means forging a fresh **Driver** — the armored bridg
 - Ship a lean, consistent crate aligned with existing armor plating
 
 ## Battlefield Topography
-A driver is a thin composite of five moving parts:
+A driver is a thin composite of five parts:
 | Trait         | Purpose                                                                            |
 | ------------- | ---------------------------------------------------------------------------------- |
 | `Driver`      | Public entry point for all the database abstractions                               |
@@ -29,7 +29,7 @@ Create `tank-yourdb` in your favorite source repository.
 
 <<< @/../tank-yourdb/Cargo.toml
 
-## Assembly Steps
+## Steps
 ### 1. The Driver Shell
 <<< @/../tank-yourdb/src/driver.rs
 
@@ -44,12 +44,12 @@ Skeleton:
 
 <<< @/../tank-yourdb/src/connection.rs
 
-### 3. Prepared Ordnance
-Implement parameter binding according to backend type system. Convert each Rust value from `AsValue` into the native representation.
+### 3. Prepared Statements
+Implement parameter binding according to the backend type system. Convert each Rust value (via `AsValue`) into the native representation.
 
 <<< @/../tank-yourdb/src/prepared.rs
 
-### 4. Dialect Scribe (`SqlWriter`)
+### 4. SQL Writer (`SqlWriter`)
 Override only differences from the generic fallback:
 - Identifier quoting style
 - Column type mapping
@@ -69,14 +69,14 @@ Tip: Start from `tank-core`'s `GenericSqlWriter` implementation; copy then trim.
 
 If not supported, return relevant error messages in related functions and enable `disable-transactions` in `tank-tests`.
 
-### 6. Test Range Certification
+### 6. Test Certification
 Add an integration test `tests/yourdb.rs`:
 
 <<< @/../tank-yourdb/tests/yourdb.rs
 
 Enable feature flags to disable specific functionality until green.
 
-### Feature Flags Doctrine
+### Feature Flags
 `tank-tests` exposes opt-out switches:
 - `disable-arrays`, `disable-lists`, `disable-maps`: collections not implemented
 - `disable-intervals`: interval types absent
@@ -95,12 +95,12 @@ Enable feature flags to disable specific functionality until green.
 
 Remove a flag the moment your driver truly supports the capability. Each removed flag unlocks corresponding test sorties.
 
-## Performance Brief
+## Performance Notes
 - Prefer streaming APIs over buffering entire result sets.
 - Implement backend bulk ingestion if native (like DuckDB's appender) for `append()`.
 - Reuse prepared statements internally if engine offers server‑side caching.
 
-## Failure Signals
+## Errors
 Return early with rich context:
 - Wrong URL prefix: immediate `Error::msg("YourDB connection url must start with `yourdb://`")`
 - Prepare failure: attach truncated query text (`truncate_long!` style) to context

@@ -3,7 +3,7 @@
 
 What follows is just a visit to the shooting range, not the full campaign. This minimal example shows Tank in action: connecting, defining a unit, and executing basic maneuvers. Just enough to get mud on your boots and feel the recoil.
 
-Plain brief: install Tank + a driver, define an entity struct, create the table, insert a few rows, then query them. For full tactical exercises including transactions, complex queries, and multi-driver deployments, proceed to the [*Field Manual Section 3* - Supply Lines](3-connection.md).
+Plain brief: install Tank and a driver, define a entity, create the table, insert a few rows, then query them. For full tactical exercises including transactions, complex queries, and multi-driver deployments, proceed to the [*Field Manual Section 3* - Supply Lines](3-connection.md).
 1) Arm your cargo
 ```sh
 cargo add tank
@@ -87,7 +87,7 @@ async fn data() -> Result<()> {
     my_tank.save(connection).await?;
 
     /*
-     * In the case of DuckDB, it uses the appender API, in other cases the resulting query is:
+     * DuckDB uses the appender API. Other drivers generate a INSERT:
      * INSERT INTO "army"."tank" ("name", "country", "caliber", "speed", "is_operational", "units_produced") VALUES
      *     ('T-34/85', 'Soviet Union', 85, 53.0, false, 49200),
      *     ('M1 Abrams', 'USA', 120, 72.0, true, NULL);
@@ -141,6 +141,6 @@ async fn data() -> Result<()> {
 ```
 
 > [!NOTE]
-> The use of `expr!` macro is explained in the [Field Manual Section 7 - Tactical Coordination](7-advanced-operations.md#expr)
+> The `expr!` macro is explained in the [Field Manual Section 7 - Tactical Coordination](7-advanced-operations.md#expr)
 
 *Rustaceans don't hide behind ORMs, they drive Tanks.*

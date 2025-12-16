@@ -3,10 +3,10 @@
 
 Lock and load, soldier! In Tank's war machine, the "Entity" is your frontline fighter. A Rust struct rigged with the `#[derive(Entity)]` macro that maps straight to a database table and gives you convenient functions to access and modify the data. Tank automatically handles the heavy lifting of converting Rust values to database columns and back.
 
-Before you can deploy entities, you must have an operational connection (see [*Field Manual Section 3 - Supply Lines*](3-connection.md#connect)). All entity operations execute through either a live connection or a locked transaction; without a supply line, your units can't move.
+You need a live connection (see [*Field Manual Section 3 - Supply Lines*](3-connection.md#connect)) or a transaction to execute operations.
 
 ## Mission Briefing
-Zero boilerplate. Define a struct, tag it, deploy. Tank matches your Rust field types to the closest database type for each driver. Unified arsenal, same blueprint across all battlefields.
+Zero boilerplate. Define a struct, derive `Entity`. Field types map to driver column types.
 
 ## Entity
 Start with a plain Rust struct and derive the `tank::Entity` trait. The fields can have any of the types supported (see [*Field Manual Section 4* - Payload Specs](4-types.md))
@@ -27,10 +27,10 @@ pub struct Mission {
 * `tank::Passive<T>` lets the database provide or retain a value: omit it when updating, or allow default generation on insert.
 * `Option<T>` marks the column nullable.
 
-You have now forged a battle-ready map of your database. Create, destroy, deploy new records or extract targets one-by-one. Execute every maneuver through a live connection or a locked transaction for maximum firepower.
+You now have  view of your table. Use a connection or transaction to run operations.
 
 ## Attributes
-Tank's `#[tank(...)]` attributes are your weapon mods, fine-tuning structs for precision strikes.
+Tank's `#[tank(...)]` attributes configure tables and columns.
 - <Badge type="tip" text="struct" /><Badge type="tip" text="field" /> `name = "the_name"`: Table name on a struct / column name on a field. **Default**: snake_case of identifier.
 - <Badge type="tip" text="struct" /> `schema = "your_schema"`: Database schema. Default: none.
 - <Badge type="tip" text="struct" /> `primary_key = "some_field"` or `primary_key = ("column_1", Self::column_2, ..)`: Table primary key.
