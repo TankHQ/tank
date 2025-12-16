@@ -9,6 +9,7 @@ mod tests {
         collections::{LinkedList, VecDeque},
         str::FromStr,
     };
+    use tank::TableRef;
     use tank_core::{AsValue, Interval, Value};
     use time::Month;
     use uuid::Uuid;
@@ -1097,15 +1098,12 @@ mod tests {
         let s = Value::Struct(
             Some(vec![("id".into(), 1_i32.as_value())]),
             vec![("id".into(), i32::as_empty_value())],
-        );
-        let s_same = s.clone();
-        assert_ne!(
-            s, s_same,
-            "Struct equality currently not implemented; expected inequality"
+            TableRef::new("special_type_t"),
         );
         let s_diff = Value::Struct(
             Some(vec![("id".into(), 2_i32.as_value())]),
             vec![("id".into(), i32::as_empty_value())],
+            TableRef::new("special_type_t"),
         );
         assert_ne!(s, s_diff);
     }

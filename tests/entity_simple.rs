@@ -32,8 +32,8 @@ mod tests {
         assert!(matches!(
             SomeSimpleEntity::table(),
             TableRef {
-                name: "simple_entity",
-                schema: "",
+                name: Cow::Borrowed("simple_entity"),
+                schema: Cow::Borrowed(""),
                 alias: Cow::Borrowed(""),
             }
         ));

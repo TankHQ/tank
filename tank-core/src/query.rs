@@ -124,9 +124,9 @@ impl<D: Driver> AsMut<Query<D>> for Query<D> {
 /// Metadata about modify operations (INSERT/UPDATE/DELETE).
 #[derive(Default, Debug, Clone, Copy)]
 pub struct RowsAffected {
-    /// Total rows affected.
-    pub rows_affected: u64,
-    /// Optional last inserted or affected id.
+    /// Optional count of affected rows
+    pub rows_affected: Option<u64>,
+    /// Optional last inserted or affected id
     pub last_affected_id: Option<i64>,
 }
 
@@ -138,9 +138,9 @@ pub type Row = Box<[Value]>;
 /// Row with column labels.
 #[derive(Debug, Clone)]
 pub struct RowLabeled {
-    /// Column names.
+    /// Column names
     pub labels: RowNames,
-    /// Values aligned with labels.
+    /// Values aligned with labels
     pub values: Row,
 }
 
@@ -168,16 +168,20 @@ impl RowLabeled {
 /// Items from `Executor::run`: rows or effects.
 #[derive(Debug)]
 pub enum QueryResult {
-    /// A labeled row.
+    /// A labeled row
     Row(RowLabeled),
-    /// A modify effect aggregation.
+    /// A modify effect aggregation
     Affected(RowsAffected),
 }
 
 impl Extend<RowsAffected> for RowsAffected {
     fn extend<T: IntoIterator<Item = RowsAffected>>(&mut self, iter: T) {
         for elem in iter {
-            self.rows_affected += elem.rows_affected;
+            if self.rows_affected.is_some() || elem.rows_affected.is_some() {
+                self.rows_affected = Some(
+                    self.rows_affected.unwrap_or_default() + elem.rows_affected.unwrap_or_default(),
+                );
+            }
             if elem.last_affected_id.is_some() {
                 self.last_affected_id = elem.last_affected_id;
             }

@@ -137,11 +137,15 @@ pub async fn books<E: Executor>(executor: &mut E) {
     let result = Author::insert_many(executor, authors.iter())
         .await
         .expect("Failed to insert authors");
-    assert_eq!(result.rows_affected, 4);
+    if let Some(affected) = result.rows_affected {
+        assert_eq!(affected, 4);
+    }
     let result = Book::insert_many(executor, books.iter())
         .await
         .expect("Failed to insert books");
-    assert_eq!(result.rows_affected, 5);
+    if let Some(affected) = result.rows_affected {
+        assert_eq!(affected, 5);
+    }
 
     // Find authords
     let author = Author::find_pk(

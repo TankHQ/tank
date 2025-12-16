@@ -63,7 +63,7 @@ impl SQLiteConnection {
                             send_value!(
                                 tx,
                                 Ok(QueryResult::Affected(RowsAffected {
-                                    rows_affected: sqlite3_changes64(connection) as u64,
+                                    rows_affected: Some(sqlite3_changes64(connection) as _),
                                     last_affected_id: Some(sqlite3_last_insert_rowid(connection)),
                                 }))
                             );
@@ -209,7 +209,7 @@ impl Executor for SQLiteConnection {
         query: impl AsQuery<Self::Driver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
-        let context = Arc::new(format!("While executing the query:\n{}", query.as_mut()));
+        let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
         let connection = AtomicPtr::new(*self.connection);
         let mut owned = mem::take(query.as_mut());

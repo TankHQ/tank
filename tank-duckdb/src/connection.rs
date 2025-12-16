@@ -72,7 +72,7 @@ impl DuckDBConnection {
                 send_value!(
                     tx,
                     Ok(QueryResult::Affected(RowsAffected {
-                        rows_affected,
+                        rows_affected: Some(rows_affected),
                         ..Default::default()
                     }))
                 );
@@ -264,7 +264,7 @@ impl Executor for DuckDBConnection {
         query: impl AsQuery<DuckDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> {
         let mut query = query.as_query();
-        let context = Arc::new(format!("While executing the query:\n{}", query.as_mut()));
+        let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
         let connection = AtomicPtr::new(*self.connection);
         let mut owned = mem::take(query.as_mut());
@@ -312,14 +312,14 @@ impl Executor for DuckDBConnection {
                     connection,
                     as_c_string(catalog).as_ptr(),
                     as_c_string(schema).as_ptr(),
-                    as_c_string(table_ref.name).as_ptr(),
+                    as_c_string(table_ref.name()).as_ptr(),
                     &mut *appender,
                 )
             } else {
                 duckdb_appender_create(
                     connection,
-                    as_c_string(table_ref.schema).as_ptr(),
-                    as_c_string(table_ref.name).as_ptr(),
+                    as_c_string(table_ref.schema()).as_ptr(),
+                    as_c_string(table_ref.name()).as_ptr(),
                     &mut *appender,
                 )
             };
@@ -493,8 +493,8 @@ impl Executor for DuckDBConnection {
                 duckdb_appender_end_row(*appender);
             }
             Ok(RowsAffected {
+                rows_affected: Some(rows_affected),
                 last_affected_id: None,
-                rows_affected,
             })
         })
         .await?

@@ -77,12 +77,6 @@ pub async fn trade_simple<E: Executor>(executor: &mut E) {
     assert!(result.is_none(), "Expected no trades at this time");
     assert_eq!(Trade::find_many(executor, &true, None).count().await, 0);
 
-    // Delete unexisting trade
-    trade
-        .delete(executor)
-        .await
-        .expect_err("Expected to fail delete");
-
     // Save a trade
     trade.save(executor).await.expect("Failed to save trade");
 

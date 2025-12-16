@@ -5,7 +5,7 @@ use std::{
     ffi::{CStr, c_void},
     ptr, slice,
 };
-use tank_core::{Error, Interval, Result, Value};
+use tank_core::{Error, Interval, Result, TableRef, Value};
 use uuid::Uuid;
 
 pub(crate) fn convert_date(date: duckdb_date_struct) -> Result<time::Date> {
@@ -298,7 +298,15 @@ pub(crate) fn extract_value(
                     .map(|(k, v)| (k.clone(), v.as_null()))
                     .collect();
                 let value = if is_valid { Some(entries) } else { None };
-                Value::Struct(value, value_type)
+                let name = CBox::new(duckdb_logical_type_get_alias(logical_type), |ptr| {
+                    duckdb_free(ptr as _)
+                });
+                let name = if name.is_null() {
+                    Default::default()
+                } else {
+                    CStr::from_ptr(*name).to_string_lossy()
+                };
+                Value::Struct(value, value_type, TableRef::new(name))
             }
             DUCKDB_TYPE_DUCKDB_TYPE_MAP => {
                 let k_type = CBox::new(duckdb_map_type_key_type(logical_type), |mut v| {

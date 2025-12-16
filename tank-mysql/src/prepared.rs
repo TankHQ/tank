@@ -56,7 +56,7 @@ impl Prepared for MySQLPrepared {
                 len
             )))?;
         *target = value.as_value();
-        self.index += 1;
+        self.index = index + 1;
         Ok(self)
     }
 }

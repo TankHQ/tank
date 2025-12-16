@@ -7,17 +7,24 @@ use quote::{ToTokens, TokenStreamExt, quote};
 use std::borrow::Cow;
 
 /// Schema-qualified table reference (optional alias).
-#[derive(Default, Clone, PartialEq, Eq, Debug)]
+#[derive(Default, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct TableRef {
     /// Table name.
-    pub name: &'static str,
+    pub name: Cow<'static, str>,
     /// Schema name.
-    pub schema: &'static str,
+    pub schema: Cow<'static, str>,
     /// Optional alias used when rendering.
     pub alias: Cow<'static, str>,
 }
 
 impl TableRef {
+    pub fn new(name: impl Into<Cow<'static, str>>) -> Self {
+        Self {
+            name: name.into(),
+            schema: "".into(),
+            alias: "".into(),
+        }
+    }
     pub fn full_name(&self) -> String {
         let mut result = String::new();
         if !self.alias.is_empty() {
@@ -35,6 +42,18 @@ impl TableRef {
         let mut result = self.clone();
         result.alias = alias.into();
         result
+    }
+    pub fn name<'s>(&'s self) -> &'s str {
+        // TODO: replace with .as_str() and make the function const once https://github.com/rust-lang/rust/issues/130366 is stable
+        &self.name
+    }
+    pub fn schema<'s>(&'s self) -> &'s str {
+        // TODO: replace with .as_str() and make the function const once https://github.com/rust-lang/rust/issues/130366 is stable
+        &self.schema
+    }
+    pub fn alias<'s>(&'s self) -> &'s str {
+        // TODO: replace with .as_str() and make the function const once https://github.com/rust-lang/rust/issues/130366 is stable
+        &self.alias
     }
 }
 

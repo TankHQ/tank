@@ -88,10 +88,12 @@ pub async fn orders<E: Executor>(executor: &mut E) {
             created_at: chrono::Utc::now() - chrono::Duration::hours(2),
         },
     ];
-    let inserted = Order::insert_many(executor, orders.iter())
+    let result = Order::insert_many(executor, orders.iter())
         .await
         .expect("Failed to insert orders");
-    assert_eq!(inserted.rows_affected, 7);
+    if let Some(affected) = result.rows_affected {
+        assert_eq!(affected, 7);
+    }
 
     // Prepare
     let mut query = Order::table()

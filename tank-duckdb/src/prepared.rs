@@ -165,7 +165,7 @@ impl Prepared for DuckDBPrepared {
                 log::error!("{:#}", error);
                 return Err(error);
             }
-            self.index += 1;
+            self.index = index + 1;
             Ok(self)
         }
     }

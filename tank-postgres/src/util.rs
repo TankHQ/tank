@@ -108,7 +108,7 @@ where
                         rows = false;
                     } else {
                         yield tank_core::QueryResult::Affected(tank_core::RowsAffected {
-                            rows_affected,
+                            rows_affected: Some(rows_affected),
                             ..Default::default()
                         })
                         .into();
@@ -123,7 +123,9 @@ where
                             .collect::<tank_core::RowNames>(),
                     );
                     if columns.is_empty() {
-                        log::warn!("The row description contains no columns, this can be expected but it can also be symthon of a wrong query")
+                        log::warn!(
+                            "The row description contains no columns, this can be expected but it can also be symthon of a wrong query"
+                        )
                     }
                 }
                 _ => {}

@@ -37,8 +37,8 @@ mod tests {
         assert!(matches!(
             MyEntity::table(),
             TableRef {
-                name: "a_table",
-                schema: "",
+                name: Cow::Borrowed("a_table"),
+                schema: Cow::Borrowed(""),
                 alias: Cow::Borrowed(""),
             }
         ));

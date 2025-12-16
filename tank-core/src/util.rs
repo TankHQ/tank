@@ -94,8 +94,14 @@ pub fn separated_by<T, F>(
 }
 
 /// Convenience wrapper converting into a `CString`, panicking on interior NUL.
-pub fn as_c_string<S: Into<Vec<u8>>>(str: S) -> CString {
-    CString::new(str.into()).expect("Expected a valid C string")
+pub fn as_c_string(str: impl Into<Vec<u8>>) -> CString {
+    CString::new(
+        str.into()
+            .into_iter()
+            .map(|b| if b == 0 { b'?' } else { b })
+            .collect::<Vec<u8>>(),
+    )
+    .unwrap_or_default()
 }
 
 /// Consume a prefix of `input` while the predicate returns true, returning that slice.

@@ -46,7 +46,7 @@ impl Prepared for PostgresPrepared {
                 len
             )))?;
         *target = value.as_value().into();
-        self.index += 1;
+        self.index = index + 1;
         Ok(self)
     }
 }

@@ -119,8 +119,8 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
 
             fn table() -> &'static ::tank::TableRef {
                 static TABLE: ::tank::TableRef = ::tank::TableRef {
-                    name: #name,
-                    schema: #schema,
+                    name: ::std::borrow::Cow::Borrowed(#name),
+                    schema: ::std::borrow::Cow::Borrowed(#schema),
                     alias: ::std::borrow::Cow::Borrowed(""),
                 };
                 &TABLE
@@ -270,7 +270,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
 
             fn find_many(
                 executor: &mut impl ::tank::Executor,
-                condition: &impl ::tank::Expression,
+                condition: impl ::tank::Expression,
                 limit: Option<u32>,
             ) -> impl ::tank::stream::Stream<Item = ::tank::Result<Self>> {
                 ::tank::stream::StreamExt::map(

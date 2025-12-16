@@ -42,7 +42,7 @@ impl<T: mysql_async::prelude::Queryable> Executor for MySQLQueryable<T> {
                     let affected = result.affected_rows();
                     if rows == 0 && affected > 0 {
                         yield tank_core::QueryResult::Affected(tank_core::RowsAffected {
-                            rows_affected: affected,
+                            rows_affected: Some(affected),
                             last_affected_id: result.last_insert_id().map(|v| v as _),
                         });
                     }

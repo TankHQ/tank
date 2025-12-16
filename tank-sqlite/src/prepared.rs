@@ -254,7 +254,7 @@ impl Prepared for SQLitePrepared {
                 log::error!("{:#}", error);
                 return Err(error);
             }
-            self.index += 1;
+            self.index = index as u64 + 1;
             Ok(self)
         }
     }

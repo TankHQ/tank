@@ -20,7 +20,7 @@ pub trait DataSet {
         &'s self,
         executor: &'s mut Exec,
         columns: Cols,
-        condition: &Expr,
+        condition: Expr,
         limit: Option<u32>,
     ) -> impl Stream<Item = Result<RowLabeled>> + 's
     where

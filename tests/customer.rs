@@ -28,8 +28,8 @@ mod tests {
         assert!(matches!(
             Customer::table(),
             TableRef {
-                name: "customers",
-                schema: "",
+                name: Cow::Borrowed("customers"),
+                schema: Cow::Borrowed(""),
                 alias: Cow::Borrowed(""),
             }
         ));

@@ -65,8 +65,8 @@ mod tests {
         assert!(matches!(
             Trade::table(),
             TableRef {
-                name: "trade_execution",
-                schema: "trading.company",
+                name: Cow::Borrowed("trade_execution"),
+                schema: Cow::Borrowed("trading.company"),
                 alias: Cow::Borrowed(""),
             }
         ));

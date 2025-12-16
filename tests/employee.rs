@@ -56,8 +56,8 @@ mod tests {
         assert!(matches!(
             Employee::table(),
             TableRef {
-                name: "employee",
-                schema: "company",
+                name: Cow::Borrowed("employee"),
+                schema: Cow::Borrowed("company"),
                 alias: Cow::Borrowed(""),
             }
         ));

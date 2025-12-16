@@ -84,7 +84,7 @@ impl Executor for PostgresConnection {
     fn fetch<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
-    ) -> impl Stream<Item = Result<tank_core::RowLabeled>> + Send + 's {
+    ) -> impl Stream<Item = Result<tank_core::RowLabeled>> + Send {
         let mut query = query.as_query();
         let context = Arc::new(format!("While fetching the query:\n{}", query.as_mut()));
         let owned = mem::take(query.as_mut());

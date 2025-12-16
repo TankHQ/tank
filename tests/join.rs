@@ -35,14 +35,14 @@ mod tests {
             Join {
                 join: JoinType::Default,
                 lhs: DeclareTableRef(TableRef {
-                    name: "alpha",
-                    schema: "my_data",
+                    name: Cow::Borrowed("alpha"),
+                    schema: Cow::Borrowed("my_data"),
                     alias: Cow::Borrowed("AA"),
                     ..
                 }),
                 rhs: DeclareTableRef(TableRef {
-                    name: "bravo",
-                    schema: "",
+                    name: Cow::Borrowed("bravo"),
+                    schema: Cow::Borrowed(""),
                     alias: Cow::Borrowed("BB"),
                     ..
                 }),
@@ -210,10 +210,13 @@ mod tests {
                 lhs: Join {
                     join: JoinType::Default,
                     lhs: TableRef {
-                        name: "another_table",
+                        name: Cow::Borrowed("another_table"),
                         ..
                     },
-                    rhs: TableRef { name: "alpha", .. },
+                    rhs: TableRef {
+                        name: Cow::Borrowed("alpha"),
+                        ..
+                    },
                     on: Some(BinaryOp {
                         op: BinaryOpType::Less,
                         lhs: ColumnRef {
@@ -230,7 +233,10 @@ mod tests {
                     }),
                     ..
                 },
-                rhs: TableRef { name: "bravo", .. },
+                rhs: TableRef {
+                    name: Cow::Borrowed("bravo"),
+                    ..
+                },
                 on: Some(BinaryOp {
                     op: BinaryOpType::Equal,
                     lhs: ColumnRef { name: "a", .. },
@@ -268,20 +274,20 @@ mod tests {
             Join {
                 join: JoinType::Outer,
                 lhs: TableRef {
-                    name: "bravo",
-                    schema: "",
+                    name: Cow::Borrowed("bravo"),
+                    schema: Cow::Borrowed(""),
                     ..
                 },
                 rhs: Join {
                     join: JoinType::Left,
                     lhs: TableRef {
-                        name: "delta_table",
-                        schema: "delta_dataset",
+                        name: Cow::Borrowed("delta_table"),
+                        schema: Cow::Borrowed("delta_dataset"),
                         ..
                     },
                     rhs: TableRef {
-                        name: "alpha",
-                        schema: "my_data",
+                        name: Cow::Borrowed("alpha"),
+                        schema: Cow::Borrowed("my_data"),
                         ..
                     },
                     on: Some(BinaryOp {
@@ -341,13 +347,13 @@ mod tests {
                 lhs: Join {
                     join: JoinType::Outer,
                     lhs: DeclareTableRef(TableRef {
-                        name: "alpha",
-                        schema: "my_data",
+                        name: Cow::Borrowed("alpha"),
+                        schema: Cow::Borrowed("my_data"),
                         alias: Cow::Borrowed("A"),
                         ..
                     }),
                     rhs: TableRef {
-                        name: "bravo",
+                        name: Cow::Borrowed("bravo"),
                         // alias: Cow::Borrowed(""),
                         ..
                     },
@@ -368,7 +374,10 @@ mod tests {
                     }),
                     ..
                 },
-                rhs: TableRef { name: "some", .. },
+                rhs: TableRef {
+                    name: Cow::Borrowed("some"),
+                    ..
+                },
                 on: Some(BinaryOp {
                     op: BinaryOpType::Equal,
                     lhs: ColumnRef {
@@ -419,14 +428,23 @@ mod tests {
                         join: JoinType::Cross,
                         lhs: Join {
                             join: JoinType::Natural,
-                            lhs: TableRef { name: "alpha", .. },
-                            rhs: TableRef { name: "ccc", .. },
+                            lhs: TableRef {
+                                name: Cow::Borrowed("alpha"),
+                                ..
+                            },
+                            rhs: TableRef {
+                                name: Cow::Borrowed("ccc"),
+                                ..
+                            },
                             on: None,
                             ..
                         },
                         ..
                     },
-                    rhs: TableRef { name: "bravo", .. },
+                    rhs: TableRef {
+                        name: Cow::Borrowed("bravo"),
+                        ..
+                    },
                     on: Some(BinaryOp {
                         op: BinaryOpType::Equal,
                         lhs: ColumnRef {
@@ -444,7 +462,10 @@ mod tests {
                     }),
                     ..
                 },
-                rhs: TableRef { name: "delta", .. },
+                rhs: TableRef {
+                    name: Cow::Borrowed("delta"),
+                    ..
+                },
                 on: None,
                 ..
             }
@@ -467,13 +488,13 @@ mod tests {
             Join {
                 join: JoinType::Right,
                 lhs: TableRef {
-                    name: "alpha",
-                    schema: "my_data",
+                    name: Cow::Borrowed("alpha"),
+                    schema: Cow::Borrowed("my_data"),
                     ..
                 },
                 rhs: TableRef {
-                    name: "bravo",
-                    schema: "",
+                    name: Cow::Borrowed("bravo"),
+                    schema: Cow::Borrowed(""),
                     ..
                 },
                 on: Some(BinaryOp {

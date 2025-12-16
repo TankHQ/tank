@@ -85,7 +85,7 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
     {
         let mut stream = pin!(RadioLog::find_many(
             executor,
-            &expr!(RadioLog::signal_strength >= 40),
+            expr!(RadioLog::signal_strength >= 40),
             Some(100)
         ));
         while let Some(radio_log) = stream.try_next().await? {

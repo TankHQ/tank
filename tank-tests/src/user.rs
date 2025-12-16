@@ -127,7 +127,9 @@ pub async fn users<E: Executor>(executor: &mut E) {
         "Failed to insert users: {:?}",
         result.unwrap_err()
     );
-    assert_eq!(result.unwrap().rows_affected, 5);
+    if let Some(affected) = result.unwrap().rows_affected {
+        assert_eq!(affected, 5);
+    }
 
     // Find active users (should be 3: alice, charlie, dean)
     let active_users = UserProfile::find_many(executor, &expr!(is_active), None)
@@ -205,7 +207,9 @@ pub async fn users<E: Executor>(executor: &mut E) {
     let result = UserProfile::delete_many(executor, &expr!(last_login == NULL))
         .await
         .expect("Expected query to succeed");
-    assert_eq!(result.rows_affected, 1, "Should have removed 1 rows");
+    if let Some(affected) = result.rows_affected {
+        assert_eq!(affected, 1, "Should have removed 1 rows");
+    }
 
     // There must be 3 users left (alice, bob, charlie)
     let final_users = UserProfile::find_many(executor, &true, None)

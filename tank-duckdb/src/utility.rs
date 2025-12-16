@@ -95,7 +95,7 @@ pub(crate) fn tank_value_to_duckdb_logical_type(v: &Value) -> CBox<duckdb_logica
                     *tank_value_to_duckdb_logical_type(v),
                 )
             }
-            Value::Struct(.., v) => {
+            Value::Struct(.., v, type_ref) => {
                 let names = v
                     .iter()
                     .map(|name| as_c_string(name.0.to_string()))
@@ -112,7 +112,9 @@ pub(crate) fn tank_value_to_duckdb_logical_type(v: &Value) -> CBox<duckdb_logica
                         .collect::<Vec<_>>()
                         .as_mut_ptr(),
                     v.len() as u64,
-                )
+                );
+                let name = as_c_string(type_ref.name());
+                duckdb_logical_type_set_alias(*result, name.as_ptr());
             }
             _ => {
                 log::error!("tank::Value `{:?}` is unsupported", v);

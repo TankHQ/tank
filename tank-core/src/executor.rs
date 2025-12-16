@@ -36,7 +36,7 @@ pub trait Executor: Send + Sized {
     fn fetch<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
-    ) -> impl Stream<Item = Result<RowLabeled>> + Send + 's {
+    ) -> impl Stream<Item = Result<RowLabeled>> + Send {
         self.run(query).filter_map(|v| async move {
             match v {
                 Ok(QueryResult::Row(v)) => Some(Ok(v)),

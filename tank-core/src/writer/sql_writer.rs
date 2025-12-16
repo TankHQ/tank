@@ -593,8 +593,8 @@ pub trait SqlWriter {
                 separated_by(
                     out,
                     *v,
-                    |out, v| {
-                        v.write_query(self.as_dyn(), context, out);
+                    |out, op| {
+                        op.write_query(self.as_dyn(), context, out);
                     },
                     ", ",
                 );
@@ -605,8 +605,8 @@ pub trait SqlWriter {
                 separated_by(
                     out,
                     *v,
-                    |out, v| {
-                        v.write_query(self.as_dyn(), context, out);
+                    |out, op| {
+                        op.write_query(self.as_dyn(), context, out);
                     },
                     ", ",
                 );
@@ -621,8 +621,8 @@ pub trait SqlWriter {
                 separated_by(
                     out,
                     *args,
-                    |out, v| {
-                        v.write_query(self.as_dyn(), context, out);
+                    |out, expr| {
+                        expr.write_query(self.as_dyn(), context, out);
                     },
                     ",",
                 );
@@ -811,7 +811,7 @@ pub trait SqlWriter {
         if if_not_exists {
             out.push_str("IF NOT EXISTS ");
         }
-        self.write_identifier_quoted(&mut context, out, E::table().schema);
+        self.write_identifier_quoted(&mut context, out, E::table().schema());
         out.push(';');
     }
 
@@ -830,7 +830,7 @@ pub trait SqlWriter {
         if if_exists {
             out.push_str("IF EXISTS ");
         }
-        self.write_identifier_quoted(&mut context, out, E::table().schema);
+        self.write_identifier_quoted(&mut context, out, E::table().schema());
         out.push(';');
     }
 
@@ -855,8 +855,8 @@ pub trait SqlWriter {
         separated_by(
             out,
             E::columns(),
-            |out, v| {
-                self.write_create_table_column_fragment(&mut context, out, v);
+            |out, col| {
+                self.write_create_table_column_fragment(&mut context, out, col);
             },
             ",\n",
         );
@@ -866,13 +866,13 @@ pub trait SqlWriter {
             separated_by(
                 out,
                 primary_key,
-                |out, v| {
+                |out, col| {
                     self.write_identifier_quoted(
                         &mut context
                             .switch_fragment(Fragment::SqlCreateTablePrimaryKey)
                             .current,
                         out,
-                        v.name(),
+                        col.name(),
                     );
                 },
                 ", ",
@@ -885,13 +885,13 @@ pub trait SqlWriter {
                 separated_by(
                     out,
                     unique,
-                    |out, v| {
+                    |out, col| {
                         self.write_identifier_quoted(
                             &mut context
                                 .switch_fragment(Fragment::SqlCreateTableUnique)
                                 .current,
                             out,
-                            v.name(),
+                            col.name(),
                         );
                     },
                     ", ",
@@ -1026,19 +1026,19 @@ pub trait SqlWriter {
     }
 
     /// Emit SELECT statement (projection, FROM, WHERE, ORDER, LIMIT).
-    fn write_select<Item, Cols, Data, Cond>(
+    fn write_select<Item, Cols, Data, Expr>(
         &self,
         out: &mut String,
         columns: Cols,
         from: &Data,
-        condition: &Cond,
+        condition: Expr,
         limit: Option<u32>,
     ) where
         Self: Sized,
         Item: Expression,
         Cols: IntoIterator<Item = Item> + Clone,
         Data: DataSet,
-        Cond: Expression,
+        Expr: Expression,
     {
         let cols = columns.clone().into_iter().count();
         out.reserve(128 + cols * 32);
@@ -1117,8 +1117,8 @@ pub trait SqlWriter {
             separated_by(
                 out,
                 row.iter(),
-                |out, v| {
-                    self.write_identifier_quoted(&mut context, out, v.0);
+                |out, (name, ..)| {
+                    self.write_identifier_quoted(&mut context, out, name);
                 },
                 ", ",
             );
@@ -1126,8 +1126,8 @@ pub trait SqlWriter {
             separated_by(
                 out,
                 columns.clone(),
-                |out, v| {
-                    self.write_identifier_quoted(&mut context, out, v.name());
+                |out, col| {
+                    self.write_identifier_quoted(&mut context, out, col.name());
                 },
                 ", ",
             );
@@ -1215,8 +1215,8 @@ pub trait SqlWriter {
             separated_by(
                 out,
                 pk,
-                |out, v| {
-                    self.write_identifier_quoted(context, out, v.name());
+                |out, col| {
+                    self.write_identifier_quoted(context, out, col.name());
                 },
                 ", ",
             );
@@ -1226,10 +1226,10 @@ pub trait SqlWriter {
         separated_by(
             out,
             columns.filter(|c| c.primary_key == PrimaryKeyType::None),
-            |out, v| {
-                self.write_identifier_quoted(context, out, v.name());
+            |out, col| {
+                self.write_identifier_quoted(context, out, col.name());
                 out.push_str(" = EXCLUDED.");
-                self.write_identifier_quoted(context, out, v.name());
+                self.write_identifier_quoted(context, out, col.name());
             },
             ",\n",
         );
@@ -1241,7 +1241,7 @@ pub trait SqlWriter {
         Self: Sized,
         E: Entity,
     {
-        out.reserve(128 + E::table().schema.len() + E::table().name.len());
+        out.reserve(128 + E::table().schema().len() + E::table().name().len());
         if !out.is_empty() {
             out.push('\n');
         }

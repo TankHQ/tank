@@ -48,12 +48,14 @@ pub async fn aggregates<E: Executor>(executor: &mut E) {
             result.unwrap_err()
         );
         let result = result.unwrap();
-        assert_eq!(
-            result.rows_affected,
-            rows.len() as u64,
-            "Values::insert_many should have affected {} rows",
-            rows.len()
-        );
+        if let Some(affected) = result.rows_affected {
+            assert_eq!(
+                affected,
+                rows.len() as u64,
+                "Values::insert_many should have affected {} rows",
+                rows.len()
+            );
+        }
     }
 
     // SELECT COUNT(*), SUM(value)

@@ -25,8 +25,8 @@ pub struct ColumnRef {
 impl ColumnRef {
     pub fn table(&self) -> TableRef {
         TableRef {
-            name: self.table,
-            schema: self.schema,
+            name: self.table.into(),
+            schema: self.schema.into(),
             ..Default::default()
         }
     }

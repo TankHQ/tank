@@ -1,4 +1,4 @@
-use crate::{AsValue, Error, Result, interval::Interval};
+use crate::{AsValue, Error, Result, TableRef, interval::Interval};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use rust_decimal::Decimal;
@@ -58,6 +58,7 @@ pub enum Value {
     Struct(
         Option<Vec<(String, Value)>>,
         /* type: */ Vec<(String, Value)>,
+        /* name: */ TableRef,
     ),
     /// Unknown value type (usually the driver cannot provide type information).
     Unknown(Option<String>),
@@ -148,7 +149,7 @@ impl Value {
             Value::List(.., t) => Value::List(None, t.clone()),
             Value::Map(.., k, v) => Value::Map(None, k.clone(), v.clone()),
             Value::Json(..) => Value::Json(None),
-            Value::Struct(.., t) => Value::Struct(None, t.clone()),
+            Value::Struct(.., ty, name) => Value::Struct(None, ty.clone(), name.clone()),
             Value::Unknown(..) => Value::Unknown(None),
         }
     }
@@ -243,6 +244,9 @@ impl PartialEq for Value {
             }
             (Self::Map(..), Self::Map(..)) => self.same_type(other),
             (Self::Json(l), Self::Json(r)) => l == r,
+            (Self::Struct(l, l_ty, l_name), Self::Struct(r, r_ty, r_name)) => {
+                l_name == r_name && l == r && l_ty == r_ty
+            }
             (Self::Unknown(..), Self::Unknown(..)) => false,
             _ => false,
         }
@@ -314,12 +318,13 @@ impl Hash for Value {
                 val.hash(state);
             }
             Json(v) => v.hash(state),
-            Struct(v, t) => {
+            Struct(v, t, name) => {
                 match v {
                     Some(v) => v.hash(state),
                     None => {}
                 }
                 t.hash(state);
+                name.hash(state);
             }
             Unknown(v) => v.hash(state),
         }
@@ -381,9 +386,9 @@ impl ToTokens for Value {
                 quote!(::tank::Value::Map(None, Box::new(#key), Box::new(#value)))
             }
             Value::Json(..) => quote!(::tank::Value::Json(None)),
-            Value::Struct(.., t) => {
-                let values = t.into_iter().map(|(k, v)| quote!((#k.into(), #v)));
-                quote!(::tank::Value::Struct(None, vec!(#(#values),*)))
+            Value::Struct(.., ty, name) => {
+                let values = ty.into_iter().map(|(k, v)| quote!((#k.into(), #v)));
+                quote!(::tank::Value::Struct(None, vec!(#(#values),*), #name))
             }
             Value::Unknown(..) => quote!(::tank::Value::Unknown(None)),
         };

@@ -126,7 +126,7 @@ pub trait Entity {
     /// (if supported by the driver, unlimited otherwise).
     fn find_many(
         executor: &mut impl Executor,
-        condition: &impl Expression,
+        condition: impl Expression,
         limit: Option<u32>,
     ) -> impl Stream<Item = Result<Self>> + Send
     where
@@ -194,24 +194,24 @@ pub trait Entity {
         }
         Either::Right(Self::delete_one(executor, self.primary_key()).map(|v| {
             v.and_then(|v| {
-                if v.rows_affected == 1 {
-                    Ok(())
-                } else {
-                    let error = Error::msg(format!(
-                        "The query deleted {} rows instead of the expected 1",
-                        v.rows_affected
-                    ));
-                    log::log!(
-                        if v.rows_affected == 0 {
-                            Level::Info
-                        } else {
-                            Level::Error
-                        },
-                        "{}",
-                        error
-                    );
-                    Err(error)
+                if let Some(affected) = v.rows_affected {
+                    if affected != 1 {
+                        let error = Error::msg(format!(
+                            "The query deleted {affected} rows instead of the expected 1"
+                        ));
+                        log::log!(
+                            if affected == 0 {
+                                Level::Info
+                            } else {
+                                Level::Error
+                            },
+                            "{}",
+                            error
+                        );
+                        return Err(error);
+                    }
                 }
+                Ok(())
             })
         }))
     }
