@@ -7,7 +7,6 @@ In plain terms: Tank is a lightweight, multi-database abstraction that lets you 
 
 ## Mission objectives
 - **Async operations** - fire and forget.
-- **Simple workflow** - every query is visible on your tactical map.
 - **Extensible driver system** - swap databases like changing magazines mid-battle.
 - **SQL and NoSQL support** - one Tank, all terrains.
 - **Transactional strikes** - commit on success or rollback and retreat.
