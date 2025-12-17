@@ -170,79 +170,6 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 #from_row_factory::<Self>::from_row(row)
             }
 
-            async fn create_table(
-                executor: &mut impl ::tank::Executor,
-                if_not_exists: bool,
-                create_schema: bool,
-            ) -> ::tank::Result<()> {
-                let mut query = String::with_capacity(2048);
-                if create_schema && !#schema.is_empty() {
-                    ::tank::SqlWriter::write_create_schema::<#ident>(
-                        &::tank::Driver::sql_writer(executor.driver()),
-                        &mut query,
-                        true,
-                    );
-                }
-                ::tank::SqlWriter::write_create_table::<#ident>(
-                    &::tank::Driver::sql_writer(executor.driver()),
-                    &mut query,
-                    if_not_exists,
-                );
-                // Remove the FutureExt::boxed wrapper once once https://github.com/rust-lang/rust/issues/100013 is fixed
-                ::tank::future::FutureExt::boxed(executor.execute(query))
-                    .await
-                    .map(|_| ())
-            }
-
-            async fn drop_table(
-                executor: &mut impl ::tank::Executor,
-                if_exists: bool,
-                drop_schema: bool,
-            ) -> ::tank::Result<()> {
-                let mut query = String::with_capacity(256);
-                ::tank::SqlWriter::write_drop_table::<#ident>(
-                    &::tank::Driver::sql_writer(executor.driver()),
-                    &mut query,
-                    if_exists,
-                );
-                if drop_schema && !#schema.is_empty() {
-                    ::tank::SqlWriter::write_drop_schema::<#ident>(
-                        &::tank::Driver::sql_writer(executor.driver()),
-                        &mut query,
-                        true,
-                    );
-                }
-                // Remove the FutureExt::boxed wrapper once https://github.com/rust-lang/rust/issues/100013 is fixed
-                ::tank::future::FutureExt::boxed(executor.execute(query))
-                    .await
-                    .map(|_| ())
-            }
-
-            fn insert_one(
-                executor: &mut impl ::tank::Executor,
-                entity: &impl ::tank::Entity,
-            ) -> impl ::std::future::Future<Output = ::tank::Result<::tank::RowsAffected>> + Send {
-                let mut query = String::with_capacity(128);
-                ::tank::SqlWriter::write_insert(
-                    &::tank::Driver::sql_writer(executor.driver()),
-                    &mut query,
-                    [entity],
-                    false,
-                );
-                executor.execute(query)
-            }
-
-            fn insert_many<'a, It>(
-                executor: &mut impl ::tank::Executor,
-                entities: It,
-            ) -> impl ::std::future::Future<Output = ::tank::Result<::tank::RowsAffected>> + Send
-            where
-                Self: 'a,
-                It: IntoIterator<Item = &'a Self> + Send,
-            {
-                executor.append(entities)
-            }
-
             fn find_pk(
                 executor: &mut impl ::tank::Executor,
                 primary_key: &Self::PrimaryKey<'_>,
@@ -268,25 +195,6 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                     }
             }
 
-            fn find_many(
-                executor: &mut impl ::tank::Executor,
-                condition: impl ::tank::Expression,
-                limit: Option<u32>,
-            ) -> impl ::tank::stream::Stream<Item = ::tank::Result<Self>> {
-                ::tank::stream::StreamExt::map(
-                    ::tank::DataSet::select(
-                        Self::table(),
-                        executor,
-                        Self::columns()
-                            .iter()
-                            .map(|c| &c.column_ref as &dyn ::tank::Expression),
-                        condition,
-                        limit,
-                    ),
-                    |result| result.and_then(Self::from_row),
-                )
-            }
-
             fn delete_one(
                 executor: &mut impl ::tank::Executor,
                 primary_key: Self::PrimaryKey<'_>,
@@ -301,22 +209,6 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                     &::tank::Driver::sql_writer(executor.driver()),
                     &mut query,
                     &condition,
-                );
-                executor.execute(query)
-            }
-
-            fn delete_many(
-                executor: &mut impl ::tank::Executor,
-                condition: &impl ::tank::Expression,
-            ) -> impl ::std::future::Future<Output = ::tank::Result<::tank::RowsAffected>> + Send
-            where
-                Self: Sized
-            {
-                let mut query = String::with_capacity(128);
-                ::tank::SqlWriter::write_delete::<Self>(
-                    &::tank::Driver::sql_writer(executor.driver()),
-                    &mut query,
-                    condition,
                 );
                 executor.execute(query)
             }

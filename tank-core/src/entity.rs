@@ -53,7 +53,19 @@ pub trait Entity {
         executor: &mut impl Executor,
         if_not_exists: bool,
         create_schema: bool,
-    ) -> impl Future<Output = Result<()>> + Send;
+    ) -> impl Future<Output = Result<()>> + Send
+    where
+        Self: Sized,
+    {
+        let mut query = String::with_capacity(2048);
+        let writer = executor.driver().sql_writer();
+        if create_schema && !Self::table().schema().is_empty() {
+            writer.write_create_schema::<Self>(&mut query, true);
+        }
+        writer.write_create_table::<Self>(&mut query, if_not_exists);
+        // TODO: Remove boxed() once https://github.com/rust-lang/rust/issues/100013 is fixed
+        async { executor.execute(query).boxed().await.map(|_| ()) }
+    }
 
     /// Drops the underlying table (and optionally schema) if requested.
     ///
@@ -64,7 +76,19 @@ pub trait Entity {
         executor: &mut impl Executor,
         if_exists: bool,
         drop_schema: bool,
-    ) -> impl Future<Output = Result<()>> + Send;
+    ) -> impl Future<Output = Result<()>> + Send
+    where
+        Self: Sized,
+    {
+        let mut query = String::with_capacity(256);
+        let writer = executor.driver().sql_writer();
+        writer.write_drop_table::<Self>(&mut query, if_exists);
+        if drop_schema && !Self::table().schema().is_empty() {
+            writer.write_drop_schema::<Self>(&mut query, true);
+        }
+        // TODO: Remove boxed() once https://github.com/rust-lang/rust/issues/100013 is fixed
+        async { executor.execute(query).boxed().await.map(|_| ()) }
+    }
 
     /// Inserts a single entity row.
     ///
@@ -72,7 +96,14 @@ pub trait Entity {
     fn insert_one(
         executor: &mut impl Executor,
         entity: &impl Entity,
-    ) -> impl Future<Output = Result<RowsAffected>> + Send;
+    ) -> impl Future<Output = Result<RowsAffected>> + Send {
+        let mut query = String::with_capacity(128);
+        executor
+            .driver()
+            .sql_writer()
+            .write_insert(&mut query, [entity], false);
+        executor.execute(query)
+    }
 
     /// Multiple insert for a homogeneous iterator of entities.
     ///
@@ -82,8 +113,11 @@ pub trait Entity {
         items: It,
     ) -> impl Future<Output = Result<RowsAffected>> + Send
     where
-        Self: 'a,
-        It: IntoIterator<Item = &'a Self> + Send;
+        Self: 'a + Sized,
+        It: IntoIterator<Item = &'a Self> + Send,
+    {
+        executor.append(items)
+    }
 
     /// Prepare (but do not yet run) a SQL select query.
     ///
@@ -130,7 +164,19 @@ pub trait Entity {
         limit: Option<u32>,
     ) -> impl Stream<Item = Result<Self>> + Send
     where
-        Self: Sized;
+        Self: Sized,
+    {
+        Self::table()
+            .select(
+                executor,
+                Self::columns()
+                    .iter()
+                    .map(|c| &c.column_ref as &dyn Expression),
+                condition,
+                limit,
+            )
+            .map(|result| result.and_then(Self::from_row))
+    }
 
     /// Deletes exactly one entity by primary key.
     ///
@@ -150,7 +196,15 @@ pub trait Entity {
         condition: &impl Expression,
     ) -> impl Future<Output = Result<RowsAffected>> + Send
     where
-        Self: Sized;
+        Self: Sized,
+    {
+        let mut query = String::with_capacity(128);
+        executor
+            .driver()
+            .sql_writer()
+            .write_delete::<Self>(&mut query, condition);
+        executor.execute(query)
+    }
 
     /// Saves the entity (insert or update if available) based on primary key presence.
     ///
