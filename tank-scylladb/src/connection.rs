@@ -1,5 +1,5 @@
 use crate::{RowWrap, ScyllaDBDriver, ScyllaDBPrepared, ScyllaDBTransaction};
-use async_stream::try_stream;
+use async_stream::{stream, try_stream};
 use scylla::{
     client::{PoolSize, session::Session, session_builder::SessionBuilder},
     frame::Compression,
@@ -40,7 +40,7 @@ impl Executor for ScyllaDBConnection {
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
-        try_stream! {
+        stream! {
             let mut paging_state = PagingState::start();
             loop {
                 let (query_result, paging_state_response) = match query.as_mut() {
@@ -62,11 +62,11 @@ impl Executor for ScyllaDBConnection {
                 if query_result.is_rows() {
                     for row in query_result.into_rows_result()?.rows::<RowWrap>()? {
                         let row = row?.0;
-                        yield QueryResult::Row(row);
+                        yield Ok(QueryResult::Row(row));
                     }
                 } else {
                     // The driver does not give the number of affected rows
-                    yield QueryResult::Affected(Default::default());
+                    yield Ok(QueryResult::Affected(Default::default()));
                 }
                 match paging_state_response.into_paging_control_flow() {
                     ControlFlow::Break(..) => {
@@ -91,7 +91,7 @@ impl Executor for ScyllaDBConnection {
     ) -> impl Stream<Item = Result<RowLabeled>> + Send {
         let mut query = query.as_query();
         let context = Arc::new(format!("While fetching the query:\n{}", query.as_mut()));
-        try_stream! {
+        stream! {
             let stream = match query.as_mut() {
                 Query::Raw(sql) => {
                     let sql = sql.as_str();
@@ -109,17 +109,15 @@ impl Executor for ScyllaDBConnection {
                 }
             };
             let mut stream = pin!(stream);
-            while let Some(row) = stream.next().await {
-                match row {
-                    Ok(row) => yield row.0,
-                    Err(e) => {
-                        let error = Error::new(e).context(context.clone());
-                        log::error!("{:#}", error);
-                        Err(error)?;
-                    }
-                }
+            while let Some(row) = stream.next().await.transpose()? {
+                yield Ok(row.0)
             }
         }
+        .map_err(move |e: Error| {
+            let error = e.context(context.clone());
+            log::error!("{:#}", error);
+            error
+        })
     }
 }
 
