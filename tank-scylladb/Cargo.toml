@@ -1,0 +1,27 @@
+[package]
+name = "tank-scylladb"
+description = "ScyllaDB driver implementation for Tank: the Rust data layer"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+categories.workspace = true
+
+[dependencies]
+async-stream.workspace = true
+log.workspace = true
+rust_decimal.workspace = true
+scylla = { version = "1", features = [ "time-03" ] }
+tank-core.workspace = true
+time.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+rcgen = "0"
+tank-tests = { path = "../tank-tests", features = [
+    "disable-multiple-statements",
+] }
+testcontainers-modules = { version = "0", features = ["scylladb"] }
+tokio.workspace = true

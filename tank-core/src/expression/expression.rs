@@ -12,6 +12,10 @@ pub trait Expression: OpPrecedence + Send + Sync + Debug {
     fn is_ordered(&self) -> bool {
         false
     }
+    /// True if it is a expression that simply evaluates to true
+    fn is_true(&self) -> bool {
+        false
+    }
 }
 
 impl<T: Expression> Expression for &T {
@@ -30,6 +34,9 @@ impl Expression for &dyn Expression {
     fn is_ordered(&self) -> bool {
         (*self).is_ordered()
     }
+    fn is_true(&self) -> bool {
+        (*self).is_true()
+    }
 }
 
 impl Expression for () {
@@ -39,6 +46,9 @@ impl Expression for () {
 impl Expression for bool {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut String) {
         writer.write_value_bool(context, out, *self);
+    }
+    fn is_true(&self) -> bool {
+        *self
     }
 }
 
