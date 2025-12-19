@@ -176,8 +176,7 @@ impl DuckDBConnection {
                         let data = duckdb_vector_get_data(vector);
                         let validity = duckdb_vector_get_validity(vector);
                         let name = CStr::from_ptr(duckdb_column_name(&mut *result, i))
-                            .to_str()
-                            .unwrap();
+                            .to_string_lossy();
                         (vector, logical_type, type_id, data, validity, name)
                     })
                     .collect::<Box<[_]>>();
@@ -189,18 +188,24 @@ impl DuckDBConnection {
                     let columns = (0..cols).map(|col| {
                         let col = col as usize;
                         let info = &info[col];
-                        Ok(extract_value(
+                        extract_value(
                             info.0,
                             row as usize,
                             *info.1,
                             info.2,
                             info.3,
                             info.4,
-                        )?)
+                        )
                     });
-                    let row =
-                        RowLabeled::new(names.clone(), columns.collect::<Result<_>>().unwrap());
-                    send_value!(tx, Ok(QueryResult::Row(row)));
+                    match columns.collect::<Result<Vec<_>>>() {
+                        Ok(vals) => {
+                            let row = RowLabeled::new(names.clone(), vals);
+                            send_value!(tx, Ok(QueryResult::Row(row)));
+                        }
+                        Err(e) => {
+                            send_value!(tx, Err(e));
+                        }
+                    }
                 }
             }
         }

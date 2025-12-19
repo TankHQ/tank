@@ -13,14 +13,14 @@ impl mysql_async::prelude::FromRow for RowWrap {
             .iter()
             .map(|v| v.name_str().into_owned())
             .collect();
-        let values: tank_core::Row = (0..row.len())
-            .map(|i| {
-                row.take_opt::<ValueWrap, _>(i)
-                    .expect("Unexpected error: the column does not exist")
-                    .map(|v| v.0)
-            })
-            .collect::<Result<_, _>>()
-            .map_err(|_| FromRowError(row))?;
+        let mut values_vec: tank_core::Row = Vec::with_capacity(row.len());
+        for i in 0..row.len() {
+            match row.take_opt::<ValueWrap, _>(i) {
+                Ok(opt) => values_vec.push(opt.map(|v| v.0).unwrap_or(tank_core::Value::Null)),
+                Err(_) => return Err(FromRowError(row)),
+            }
+        }
+        let values: tank_core::Row = values_vec.into_iter().collect();
         Ok(RowWrap(tank_core::RowLabeled::new(names, values)))
     }
 }
