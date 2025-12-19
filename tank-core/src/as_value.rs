@@ -889,11 +889,15 @@ impl AsValue for chrono::DateTime<chrono::Utc> {
         Value::TimestampWithTimezone(None)
     }
     fn as_value(self) -> Value {
-        let odt = time::OffsetDateTime::from_unix_timestamp_nanos(
-            self.timestamp_nanos_opt().unwrap() as i128,
-        )
-        .unwrap();
-        Value::TimestampWithTimezone(Some(odt))
+        let odt_opt = self
+            .timestamp_nanos_opt()
+            .and_then(|nanos| time::OffsetDateTime::from_unix_timestamp_nanos(nanos as i128).ok());
+        if odt_opt.is_none() {
+            log::error!(
+                "Could not convert chrono::DateTime to time::OffsetDateTime (out of range or missing)"
+            );
+        }
+        Value::TimestampWithTimezone(odt_opt)
     }
     fn try_from_value(value: Value) -> Result<Self> {
         let odt = <time::OffsetDateTime as AsValue>::try_from_value(value)?;
@@ -1232,9 +1236,13 @@ impl<T: AsValue> AsValue for RwLock<T> {
         T::as_empty_value()
     }
     fn as_value(self) -> Value {
-        self.into_inner()
-            .expect("Error occurred while trying to take the content of the RwLock")
-            .as_value()
+        match self.into_inner() {
+            Ok(v) => v.as_value(),
+            Err(e) => {
+                log::error!("Error occurred while trying to take the content of the RwLock: {e:?}");
+                T::as_empty_value()
+            }
+        }
     }
     fn try_from_value(value: Value) -> Result<Self> {
         Ok(RwLock::new(<T as AsValue>::try_from_value(value)?))

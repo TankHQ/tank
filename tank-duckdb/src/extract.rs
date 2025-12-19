@@ -10,11 +10,10 @@ use uuid::Uuid;
 
 pub(crate) fn convert_date(date: duckdb_date_struct) -> Result<time::Date> {
     time::Date::from_calendar_date(
-        date.year,
-        (date.month as u8).try_into().unwrap(),
-        date.day as u8,
-    )
-    .map_err(|e| Error::new(e).context("Error while creating extracting a date value"))
+        let month = time::Month::try_from(date.month as u8)
+            .map_err(|_| Error::msg(format!("Invalid month value: {}", date.month)))?;
+        time::Date::from_calendar_date(date.year, month, date.day as u8)
+            .map_err(|e| Error::new(e).context("Error while creating extracting a date value"))
 }
 
 pub(crate) fn convert_time(time: duckdb_time_struct) -> Result<time::Time> {
