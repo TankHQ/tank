@@ -8,7 +8,7 @@ use anyhow::Context;
 use chrono::{Datelike, Timelike};
 use rust_decimal::{Decimal, prelude::FromPrimitive, prelude::ToPrimitive};
 use std::{
-    any,
+    any, array,
     borrow::Cow,
     cell::{Cell, RefCell},
     collections::{BTreeMap, HashMap, LinkedList, VecDeque},
@@ -1008,6 +1008,11 @@ impl<T: AsValue, const N: usize> AsValue for [T; N] {
                 })
         }
         match value {
+            Value::Varchar(Some(v), ..)
+                if matches!(T::as_empty_value(), Value::Char(..)) && v.len() == N =>
+            {
+                convert_iter(v.chars())
+            }
             Value::List(Some(v), ..) if v.len() == N => convert_iter(v.into_iter()),
             Value::Array(Some(v), ..) if v.len() == N => convert_iter(v.into_iter()),
             Value::Json(Some(serde_json::Value::Array(v))) if v.len() == N => {

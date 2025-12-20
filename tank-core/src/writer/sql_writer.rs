@@ -37,8 +37,12 @@ macro_rules! write_float {
 }
 
 /// Dialect printer converting semantic constructs into concrete SQL strings.
-pub trait SqlWriter {
+pub trait SqlWriter: Send {
     fn as_dyn(&self) -> &dyn SqlWriter;
+
+    fn executes_multiple_statements(&self) -> bool {
+        true
+    }
 
     /// Whether the current fragment context allows alias declaration.
     fn alias_declaration(&self, context: &mut Context) -> bool {
@@ -209,12 +213,13 @@ pub trait SqlWriter {
             }
             Value::Interval(Some(v), ..) => self.write_value_interval(context, out, v),
             Value::Uuid(Some(v), ..) => self.write_value_uuid(context, out, v),
-            Value::Array(Some(..), ..) | Value::List(Some(..), ..) => match value {
+            Value::Array(Some(..), elem_ty, ..) | Value::List(Some(..), elem_ty, ..) => match value
+            {
                 Value::Array(Some(v), ..) => {
-                    self.write_value_list(context, out, Either::Left(v), value)
+                    self.write_value_list(context, out, Either::Left(v), value, &*elem_ty)
                 }
                 Value::List(Some(v), ..) => {
-                    self.write_value_list(context, out, Either::Right(v), value)
+                    self.write_value_list(context, out, Either::Right(v), value, &*elem_ty)
                 }
                 _ => unreachable!(),
             },
@@ -476,6 +481,7 @@ pub trait SqlWriter {
         out: &mut String,
         value: Either<&Box<[Value]>, &Vec<Value>>,
         _ty: &Value,
+        _elem_ty: &Value,
     ) {
         out.push('[');
         separated_by(

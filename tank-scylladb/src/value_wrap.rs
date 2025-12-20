@@ -10,13 +10,12 @@ use scylla::{
         value::SerializeValue,
         writers::{CellWriter, WrittenCellProof},
     },
-    value::{Counter, CqlDecimalBorrowed, CqlDuration, CqlTimestamp, CqlVarintBorrowed},
+    value::{CqlDecimal, CqlDecimalBorrowed, CqlDuration, CqlTimestamp, CqlVarintBorrowed},
 };
 use std::{
-    array,
     borrow::Cow,
     collections::{HashMap, HashSet},
-    io::{Error, ErrorKind},
+    io::{self, Error, ErrorKind},
 };
 use tank_core::{AsValue, Interval, TableRef, Value};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
@@ -65,7 +64,7 @@ impl SerializeValue for ValueWrap {
             ty: &ColumnType,
             writer: CellWriter<'b>,
         ) -> Result<WrittenCellProof<'b>, SerializationError> {
-            V::try_from_value(value)
+            Option::<V>::try_from_value(value)
                 .map_err(|e| {
                     SerializationError::new(Error::new(ErrorKind::InvalidData, format!("{}", e)))
                 })?
@@ -76,21 +75,21 @@ impl SerializeValue for ValueWrap {
                 NativeType::Ascii => do_serialize::<String>(value, ty, writer),
                 NativeType::Boolean => do_serialize::<bool>(value, ty, writer),
                 NativeType::Blob => do_serialize::<Vec<u8>>(value, ty, writer),
-                NativeType::Counter => Counter(i64::try_from_value(value).map_err(|e| {
-                    SerializationError::new(Error::new(ErrorKind::InvalidData, format!("{}", e)))
-                })?)
-                .serialize(ty, writer),
+                NativeType::Counter => do_serialize::<Vec<u8>>(value, ty, writer),
                 NativeType::Date => do_serialize::<Date>(value, ty, writer),
                 NativeType::Decimal => {
-                    let decimal = Decimal::try_from_value(value).map_err(|e| {
+                    if self.0.is_null() {
+                        return Ok(writer.set_null());
+                    }
+                    let v = Decimal::try_from_value(value).map_err(|e| {
                         SerializationError::new(Error::new(
                             ErrorKind::InvalidData,
                             format!("{}", e),
                         ))
                     })?;
-                    CqlDecimalBorrowed::from_signed_be_bytes_slice_and_exponent(
-                        &decimal.mantissa().to_be_bytes(),
-                        decimal.scale() as _,
+                    CqlDecimal::from_signed_be_bytes_slice_and_exponent(
+                        &v.mantissa().to_be_bytes(),
+                        v.scale() as _,
                     )
                     .serialize(ty, writer)
                 }
@@ -159,27 +158,102 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
     ) -> Result<Self, DeserializationError> {
         let value = match ty {
             ColumnType::Native(native_type) => match native_type {
-                NativeType::Ascii => Value::Varchar(DeserializeValue::deserialize(ty, v)?),
                 NativeType::Boolean => Value::Boolean(DeserializeValue::deserialize(ty, v)?),
+                NativeType::TinyInt => Value::Int8(DeserializeValue::deserialize(ty, v)?),
+                NativeType::SmallInt => Value::Int16(DeserializeValue::deserialize(ty, v)?),
+                NativeType::Int => Value::Int32(DeserializeValue::deserialize(ty, v)?),
+                NativeType::BigInt => Value::Int64(DeserializeValue::deserialize(ty, v)?),
+                NativeType::Counter => Value::Int64(DeserializeValue::deserialize(ty, v)?),
+                NativeType::Varint => Value::Int128(
+                    if let Some(varint) =
+                        <Option<CqlVarintBorrowed> as DeserializeValue>::deserialize(ty, v)?
+                    {
+                        let bytes = varint.as_signed_bytes_be_slice();
+                        let len = bytes.len();
+                        if len > 16 {
+                            return Err(DeserializationError::new(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "Could not deserialize NativeType::Varint as Value::Int128: overflow (more than 16 bytes)",
+                            )));
+                        }
+                        let mut padded = [0u8; 16];
+                        padded[(16 - len)..].copy_from_slice(bytes);
+                        let num = i128::from_be_bytes(padded);
+                        Some(num)
+                    } else {
+                        None
+                    },
+                ),
+                NativeType::Float => Value::Float32(DeserializeValue::deserialize(ty, v)?),
+                NativeType::Double => Value::Float64(DeserializeValue::deserialize(ty, v)?),
+                NativeType::Decimal => {
+                    if let Some(d) =
+                        <Option<CqlDecimalBorrowed> as DeserializeValue>::deserialize(ty, v)?
+                    {
+                        let error = |details: Cow<'_, str>| {
+                            DeserializationError::new(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                format!(
+                                    "Could not deserialize NativeType::Decimal as Value::Decimal{}{}",
+                                    if !details.is_empty() { ": " } else { "" },
+                                    details
+                                ),
+                            ))
+                        };
+                        let (bytes, mut scale) = d.as_signed_be_bytes_slice_and_exponent();
+                        let len = bytes.len();
+                        if len > 16 {
+                            return Err(error("overflow (more than 16 bytes)".into()));
+                        }
+                        let pad_len = 16 - len;
+                        let mut padded = [0u8; 16];
+                        padded[pad_len..].copy_from_slice(bytes);
+                        let mut num = i128::from_be_bytes(padded);
+                        if scale < 0 {
+                            let Some(scaled) = 10_i128
+                                .checked_pow(scale as _)
+                                .and_then(|p| num.checked_mul(p))
+                            else {
+                                return Err(error(
+                                    format!("overflow (while applying the scale {scale})").into(),
+                                ));
+                            };
+                            scale = 0;
+                            num = scaled;
+                        }
+                        if scale > u8::MAX as _ {
+                            return Err(error(
+                                format!("overflow (scale {scale} is too big)").into(),
+                            ));
+                        }
+                        let scale = scale as u8;
+                        let value = Decimal::try_from_i128_with_scale(num, scale as _)
+                            .map_err(|e| error(format!("{e:?} (mantissa: {num})").into()))?;
+                        Value::Decimal(Some(value), 0, scale)
+                    } else {
+                        Value::Decimal(None, 0, 0)
+                    }
+                }
+                NativeType::Ascii => Value::Varchar(
+                    <Option<String> as DeserializeValue>::deserialize(ty, v)?.map(Into::into),
+                ),
+                NativeType::Text => Value::Varchar(
+                    <Option<String> as DeserializeValue>::deserialize(ty, v)?.map(Into::into),
+                ),
                 NativeType::Blob => Value::Blob(
                     <Option<Vec<u8>> as DeserializeValue>::deserialize(ty, v)?.map(Into::into),
                 ),
-                NativeType::Counter => todo!(),
                 NativeType::Date => Value::Date(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Decimal => Value::Decimal(
-                    <Option<CqlDecimalBorrowed> as DeserializeValue>::deserialize(ty, v)?.map(
-                        |v| {
-                            let (bytes, scale) = v.as_signed_be_bytes_slice_and_exponent();
-                            let num = i128::from_be_bytes(array::from_fn(|i| {
-                                if i < 16 { bytes[i] } else { 0 }
-                            }));
-                            Decimal::from_i128_with_scale(num, scale as _)
-                        },
-                    ),
-                    0,
-                    0,
+                NativeType::Time => Value::Time(DeserializeValue::deserialize(ty, v)?),
+                NativeType::Timestamp => Value::Timestamp(
+                    <Option<CqlTimestamp> as DeserializeValue>::deserialize(ty, v)?
+                        .map(|v| {
+                            OffsetDateTime::from_unix_timestamp_nanos((v.0 as i128) * 1_000_000)
+                                .map(|v| PrimitiveDateTime::new(v.date(), v.time()))
+                        })
+                        .transpose()
+                        .map_err(DeserializationError::new)?,
                 ),
-                NativeType::Double => Value::Float64(DeserializeValue::deserialize(ty, v)?),
                 NativeType::Duration => Value::Interval(
                     <Option<CqlDuration> as DeserializeValue>::deserialize(ty, v)?.map(|v| {
                         Interval {
@@ -189,103 +263,82 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                         }
                     }),
                 ),
-                NativeType::Float => Value::Float32(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Int => Value::Int32(DeserializeValue::deserialize(ty, v)?),
-                NativeType::BigInt => Value::Int64(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Text => Value::Varchar(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Timestamp => Value::Timestamp(
-                    <Option<CqlTimestamp> as DeserializeValue>::deserialize(ty, v)?.map(|v| {
-                        OffsetDateTime::from_unix_timestamp_nanos(v.0 as _).map(
-                            |v| PrimitiveDateTime::new(v.date(), v.time())
-                        )
-                    })
-                        .transpose()
-                        .map_err(DeserializationError::new)?,
-                ),
                 NativeType::Inet => todo!(),
-                NativeType::SmallInt => Value::Int16(DeserializeValue::deserialize(ty, v)?),
-                NativeType::TinyInt => Value::Int8(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Time => Value::Time(DeserializeValue::deserialize(ty, v)?),
                 NativeType::Timeuuid => Value::Uuid(DeserializeValue::deserialize(ty, v)?),
                 NativeType::Uuid => Value::Uuid(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Varint => Value::Int128(
-                    <Option<CqlVarintBorrowed> as DeserializeValue>::deserialize(ty, v)
-                        .map(|v| {
-                            v.map(|v| {
-                                let bytes = v.as_signed_bytes_be_slice();
-                                if bytes.len() > 16 {
-                                    return Err(DeserializationError::new(Error::new(
-                                        ErrorKind::InvalidData,
-                                        "The varint value cannot be represented as a 128 bit integer"
-                                    )));
-                                }
-                                Ok(i128::from_be_bytes(array::from_fn(|i| {
-                                    if i < 16 { bytes[i] } else { 0 }
-                                })))
-                            })
-                            .transpose()
-                        })
-                        .flatten()?,
-                ),
-                _ => todo!(),
+                _ => {
+                    let error = DeserializationError::new(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("Unexpected type {ty:?} from ScyllaDB"),
+                    ));
+                    log::error!("{:#}", error);
+                    return Err(error);
+                }
             },
-            ColumnType::Collection { frozen, typ } => match typ {
+            ColumnType::Collection { frozen: _, typ } => match typ {
                 CollectionType::List(elem_type) => Value::List(
                     <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(ty, v)?
-                        .map(|v|  v.into_iter().map(|v| v.0).collect()),
+                        .map(|v| v.into_iter().map(|v| v.0).collect()),
                     Self::deserialize(elem_type, None)?.0.into(),
                 ),
                 CollectionType::Map(k_type, v_type) => Value::Map(
-                    <Option<HashMap<ValueWrap, ValueWrap>> as DeserializeValue>::deserialize(ty, v)?
-                        .map(|v|  v.into_iter().map(|(k,v)| (k.0,v.0)).collect()),
+                    <Option<HashMap<ValueWrap, ValueWrap>> as DeserializeValue>::deserialize(
+                        ty, v,
+                    )?
+                    .map(|v| v.into_iter().map(|(k, v)| (k.0, v.0)).collect()),
                     Self::deserialize(k_type, None)?.0.into(),
                     Self::deserialize(v_type, None)?.0.into(),
                 ),
                 CollectionType::Set(elem_type) => Value::List(
                     <Option<HashSet<ValueWrap>> as DeserializeValue>::deserialize(ty, v)?
-                        .map(|v|  v.into_iter().map(|v| v.0).collect()),
+                        .map(|v| v.into_iter().map(|v| v.0).collect()),
                     Self::deserialize(elem_type, None)?.0.into(),
                 ),
-                _ => return Err(DeserializationError::new(Error::new(
-                    ErrorKind::InvalidData,
-                    format!("Unexpected collection type {ty:?}")
-                )))
-            }
+                _ => {
+                    return Err(DeserializationError::new(Error::new(
+                        ErrorKind::InvalidData,
+                        format!("Unexpected collection type {ty:?}"),
+                    )));
+                }
+            },
             ColumnType::Vector { typ, dimensions } => Value::Array(
                 <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(ty, v)?
-                    .map(|v|  v.into_iter().map(|v| v.0).collect()),
+                    .map(|v| v.into_iter().map(|v| v.0).collect()),
                 Self::deserialize(typ, None)?.0.into(),
-                *dimensions as _
+                *dimensions as _,
             ),
             ColumnType::UserDefinedType { frozen, definition } => {
                 let type_ref = TableRef {
                     schema: definition.keyspace.to_string().into(),
                     name: definition.name.to_string().into(),
-                    alias: Cow::Borrowed(""),
+                    alias: "".into(),
                 };
                 let fields = UdtIterator::deserialize(ty, v)?
                     .map(|((name, ty), res)| {
                         res.and_then(|v| {
-                            let val = Option::<ValueWrap>::deserialize(ty, v.flatten())?.unwrap_or_default().0;
+                            let val = Option::<ValueWrap>::deserialize(ty, v.flatten())?
+                                .unwrap_or_default()
+                                .0;
                             Ok((name.clone().into_owned(), val))
                         })
-                     })
+                    })
                     .collect::<Result<Vec<_>, _>>()?;
-                let ty = fields.iter().map(|(name, value)| {
-                    (name.clone(), value.as_null())
-                }).collect();
-                Value::Struct(if v.is_none() {None} else {Some(fields)}, ty, type_ref)
-            },
+                let ty = fields
+                    .iter()
+                    .map(|(name, value)| (name.clone(), value.as_null()))
+                    .collect();
+                Value::Struct(if v.is_none() { None } else { Some(fields) }, ty, type_ref)
+            }
             ColumnType::Tuple(elem_types) => Value::Array(
                 <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(ty, v)?
-                    .map(|v|  v.into_iter().map(|v| v.0).collect()),
+                    .map(|v| v.into_iter().map(|v| v.0).collect()),
                 Value::Unknown(None).into(),
-                elem_types.len() as _
+                elem_types.len() as _,
             ),
-            _ =>  {
+            _ => {
                 return Err(DeserializationError::new(Error::new(
                     ErrorKind::InvalidData,
-                    format!("Unexpected type {ty:?}")
+                    format!("Unexpected type {ty:?}"),
                 )));
             }
         };

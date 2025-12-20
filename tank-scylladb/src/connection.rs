@@ -46,14 +46,12 @@ impl Executor for ScyllaDBConnection {
                 let (query_result, paging_state_response) = match query.as_mut() {
                     Query::Raw(sql) => {
                         let sql = sql.as_str();
-
                         self.session
                             .query_single_page(sql, &[], paging_state)
                             .await?
                     }
                     Query::Prepared(prepared) => {
                         let params = prepared.take_params()?;
-
                         self.session
                             .execute_single_page(&prepared.statement.clone(), params, paging_state)
                             .await?

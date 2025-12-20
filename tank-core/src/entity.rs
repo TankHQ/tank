@@ -6,6 +6,7 @@ use futures::{FutureExt, StreamExt, TryFutureExt};
 use log::Level;
 use std::{
     future::{self, Future},
+    mem,
     pin::pin,
 };
 
@@ -57,14 +58,33 @@ pub trait Entity {
     where
         Self: Sized,
     {
-        let mut query = String::with_capacity(2048);
-        let writer = executor.driver().sql_writer();
-        if create_schema && !Self::table().schema().is_empty() {
-            writer.write_create_schema::<Self>(&mut query, true);
+        async move {
+            let mut query = String::with_capacity(2048);
+            let writer = executor.driver().sql_writer();
+            if create_schema && !Self::table().schema().is_empty() {
+                writer.write_create_schema::<Self>(&mut query, true);
+            }
+            if !executor
+                .driver()
+                .sql_writer()
+                .executes_multiple_statements()
+                && !query.is_empty()
+            {
+                let mut q = Query::Raw(query);
+                executor.execute(&mut q).boxed().await?;
+                let Query::Raw(mut q) = q else {
+                    return Err(Error::msg(
+                        "The executor was borrowed a raw query but it did not return it",
+                    ));
+                };
+                // To save the storage capacity and avoid reallocation
+                query = mem::take(&mut q);
+                query.clear();
+            }
+            writer.write_create_table::<Self>(&mut query, if_not_exists);
+            // TODO: Remove boxed() once https://github.com/rust-lang/rust/issues/100013 is fixed
+            executor.execute(query).boxed().await.map(|_| ())
         }
-        writer.write_create_table::<Self>(&mut query, if_not_exists);
-        // TODO: Remove boxed() once https://github.com/rust-lang/rust/issues/100013 is fixed
-        async { executor.execute(query).boxed().await.map(|_| ()) }
     }
 
     /// Drops the underlying table (and optionally schema) if requested.
@@ -80,14 +100,32 @@ pub trait Entity {
     where
         Self: Sized,
     {
-        let mut query = String::with_capacity(256);
-        let writer = executor.driver().sql_writer();
-        writer.write_drop_table::<Self>(&mut query, if_exists);
-        if drop_schema && !Self::table().schema().is_empty() {
-            writer.write_drop_schema::<Self>(&mut query, true);
+        async move {
+            let mut query = String::with_capacity(256);
+            let writer = executor.driver().sql_writer();
+            writer.write_drop_table::<Self>(&mut query, if_exists);
+            if drop_schema && !Self::table().schema().is_empty() {
+                if !executor
+                    .driver()
+                    .sql_writer()
+                    .executes_multiple_statements()
+                {
+                    let mut q = Query::Raw(query);
+                    executor.execute(&mut q).boxed().await?;
+                    let Query::Raw(mut q) = q else {
+                        return Err(Error::msg(
+                            "The executor was borrowed a raw query but it did not return it",
+                        ));
+                    };
+                    // To save the storage capacity and avoid reallocation
+                    query = mem::take(&mut q);
+                    query.clear();
+                }
+                writer.write_drop_schema::<Self>(&mut query, true);
+            }
+            // TODO: Remove boxed() once https://github.com/rust-lang/rust/issues/100013 is fixed
+            executor.execute(query).boxed().await.map(|_| ())
         }
-        // TODO: Remove boxed() once https://github.com/rust-lang/rust/issues/100013 is fixed
-        async { executor.execute(query).boxed().await.map(|_| ()) }
     }
 
     /// Inserts a single entity row.

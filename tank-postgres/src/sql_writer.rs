@@ -179,6 +179,7 @@ impl SqlWriter for PostgresSqlWriter {
         out: &mut String,
         value: Either<&Box<[Value]>, &Vec<Value>>,
         ty: &Value,
+        _elem_ty: &Value,
     ) {
         out.push_str("ARRAY[");
         separated_by(

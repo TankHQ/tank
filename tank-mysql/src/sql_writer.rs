@@ -120,6 +120,7 @@ impl SqlWriter for MySQLSqlWriter {
         out: &mut String,
         value: Either<&Box<[Value]>, &Vec<Value>>,
         _ty: &Value,
+        _elem_ty: &Value,
     ) {
         let is_json = context.is_inside_json();
         let mut context = context.switch_fragment(Fragment::Json);

@@ -1,6 +1,10 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
-use tank_core::{ColumnDef, Context, DataSet, Entity, Expression, Fragment, SqlWriter, Value};
+use tank_core::{
+    ColumnDef, Context, DataSet, Entity, Error, Expression, Fragment, PrimaryKeyType, Result,
+    SqlWriter, Value, future::Either, indoc::indoc, separated_by,
+};
+use uuid::Uuid;
 
 #[derive(Default)]
 pub struct ScyllaDBSqlWriter {}
@@ -8,6 +12,10 @@ pub struct ScyllaDBSqlWriter {}
 impl SqlWriter for ScyllaDBSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
+    }
+
+    fn executes_multiple_statements(&self) -> bool {
+        false
     }
 
     fn write_column_overridden_type(
@@ -51,9 +59,13 @@ impl SqlWriter for ScyllaDBSqlWriter {
             Value::Interval(..) => out.push_str("DURATION"),
             Value::Uuid(..) => out.push_str("UUID"),
             Value::Array(.., inner, size) => {
-                out.push_str("VECTOR<");
-                self.write_column_type(context, out, inner);
-                let _ = write!(out, ",{size}>");
+                if matches!(inner.as_ref(), Value::Char(..)) {
+                    out.push_str("ASCII");
+                } else {
+                    out.push_str("VECTOR<");
+                    self.write_column_type(context, out, inner);
+                    let _ = write!(out, ",{size}>");
+                }
             }
             Value::List(.., inner) => {
                 out.push_str("LIST<");
@@ -73,6 +85,149 @@ impl SqlWriter for ScyllaDBSqlWriter {
                 value
             ),
         };
+    }
+
+    fn write_value_blob(&self, context: &mut Context, out: &mut String, value: &[u8]) {
+        let delimiter = if context.fragment == Fragment::Json {
+            "\""
+        } else {
+            ""
+        };
+        let _ = write!(out, "{delimiter}0x");
+        for v in value {
+            let _ = write!(out, "{:X}", v);
+        }
+        out.push_str(delimiter);
+    }
+
+    fn write_value_uuid(&self, context: &mut Context, out: &mut String, value: &Uuid) {
+        if context.is_inside_json() {
+            let _ = write!(out, "\"{value}\"");
+        } else {
+            let _ = write!(out, "{value}");
+        };
+    }
+
+    fn write_value_list(
+        &self,
+        context: &mut Context,
+        out: &mut String,
+        value: Either<&Box<[Value]>, &Vec<Value>>,
+        ty: &Value,
+        elem_ty: &Value,
+    ) {
+        if matches!(ty, Value::Array(..)) && matches!(elem_ty, Value::Char(..)) {
+            // Array of characters are stored as ASCII
+            let value = match value {
+                Either::Left(v) => v
+                    .iter()
+                    .map(|v| {
+                        if let Value::Char(Some(v)) = v {
+                            Ok(v)
+                        } else {
+                            return Err(Error::msg(""));
+                        }
+                    })
+                    .collect::<Result<String>>(),
+                Either::Right(v) => v
+                    .iter()
+                    .map(|v| {
+                        if let Value::Char(Some(v)) = v {
+                            Ok(v)
+                        } else {
+                            return Err(Error::msg(""));
+                        }
+                    })
+                    .collect::<Result<String>>(),
+            }
+            .unwrap();
+            self.write_value_string(context, out, &value);
+            return;
+        }
+        out.push('[');
+        separated_by(
+            out,
+            match value {
+                Either::Left(v) => v.iter(),
+                Either::Right(v) => v.iter(),
+            },
+            |out, v| {
+                self.write_value(context, out, v);
+            },
+            ",",
+        );
+        out.push(']');
+    }
+
+    fn write_create_schema<E>(&self, out: &mut String, if_not_exists: bool)
+    where
+        Self: Sized,
+        E: Entity,
+    {
+        out.reserve(32 + E::table().schema.len());
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("CREATE KEYSPACE ");
+        let mut context = Context::new(Fragment::SqlCreateSchema, E::qualified_columns());
+        if if_not_exists {
+            out.push_str("IF NOT EXISTS ");
+        }
+        self.write_identifier_quoted(&mut context, out, E::table().schema());
+        out.push('\n');
+        out.push_str(indoc! {r#"
+            WITH replication = {
+                'class': 'SimpleStrategy',
+                'replication_factor': 1
+            };
+        "#});
+    }
+
+    fn write_drop_schema<E>(&self, out: &mut String, if_exists: bool)
+    where
+        Self: Sized,
+        E: Entity,
+    {
+        out.reserve(24 + E::table().schema.len());
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("DROP KEYSPACE ");
+        let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
+        if if_exists {
+            out.push_str("IF EXISTS ");
+        }
+        self.write_identifier_quoted(&mut context, out, E::table().schema());
+        out.push(';');
+    }
+
+    fn write_create_table_column_fragment(
+        &self,
+        context: &mut Context,
+        out: &mut String,
+        column: &ColumnDef,
+    ) where
+        Self: Sized,
+    {
+        self.write_identifier_quoted(context, out, &column.name());
+        out.push(' ');
+        let len = out.len();
+        self.write_column_overridden_type(context, out, column, &column.column_type);
+        let didnt_write_type = out.len() == len;
+        if didnt_write_type {
+            SqlWriter::write_column_type(self, context, out, &column.value);
+        }
+        if column.primary_key == PrimaryKeyType::PrimaryKey {
+            // Composite primary key will be printed elsewhere
+            out.push_str(" PRIMARY KEY");
+        }
+    }
+
+    fn write_column_comments_statements<E>(&self, context: &mut Context, out: &mut String)
+    where
+        Self: Sized,
+        E: Entity,
+    {
     }
 
     fn write_insert_update_fragment<'a, E>(
