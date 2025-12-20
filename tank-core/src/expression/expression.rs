@@ -25,6 +25,9 @@ impl<T: Expression> Expression for &T {
     fn is_ordered(&self) -> bool {
         (*self).is_ordered()
     }
+    fn is_true(&self) -> bool {
+        (*self).is_true()
+    }
 }
 
 impl Expression for &dyn Expression {
@@ -49,6 +52,12 @@ impl Expression for bool {
     }
     fn is_true(&self) -> bool {
         *self
+    }
+}
+
+impl Expression for &'static str {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut String) {
+        writer.write_value_string(context, out, self);
     }
 }
 

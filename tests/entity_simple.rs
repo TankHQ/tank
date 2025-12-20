@@ -2,7 +2,10 @@
 mod tests {
     use indoc::indoc;
     use std::{borrow::Cow, sync::Mutex};
-    use tank::{Entity, GenericSqlWriter, PrimaryKeyType, SqlWriter, TableRef, Value, expr};
+    use tank::{
+        DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, SqlWriter, TableRef, Value,
+        expr,
+    };
 
     #[derive(Entity)]
     #[tank(name = "simple_entity", unique = ("a", Self::c), unique = (SomeSimpleEntity::b, "c"))]
@@ -57,9 +60,9 @@ mod tests {
         assert_eq!(columns[0].nullable, false);
         assert_eq!(columns[1].nullable, true);
         assert_eq!(columns[2].nullable, false);
-        assert!(matches!(columns[0].default, None));
-        assert!(matches!(columns[1].default, None));
-        assert!(matches!(columns[2].default, None));
+        assert!(matches!(columns[0].default, DefaultValueType::None));
+        assert!(matches!(columns[1].default, DefaultValueType::None));
+        assert!(matches!(columns[2].default, DefaultValueType::None));
         assert_eq!(columns[0].primary_key, PrimaryKeyType::None);
         assert_eq!(columns[1].primary_key, PrimaryKeyType::None);
         assert_eq!(columns[2].primary_key, PrimaryKeyType::None);

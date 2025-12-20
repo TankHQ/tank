@@ -3,6 +3,7 @@ use rust_decimal::{Decimal, prelude::FromPrimitive};
 use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
+    i128,
     pin::pin,
     sync::{Arc, LazyLock},
 };
@@ -122,7 +123,9 @@ pub async fn simple<E: Executor>(executor: &mut E) {
             let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) = result else {
                 panic!("Unexpected result type:\n{result:#?}");
             };
-            assert_eq!(rows_affected, 0);
+            if let Some(rows_affected) = rows_affected {
+                assert_eq!(rows_affected, 0);
+            }
             let result = stream
                 .try_next()
                 .await
@@ -236,13 +239,17 @@ pub async fn simple<E: Executor>(executor: &mut E) {
             else {
                 panic!("Could not process the first query correctly")
             };
-            assert_eq!(rows_affected, 1);
+            if let Some(rows_affected) = rows_affected {
+                assert_eq!(rows_affected, 1);
+            }
             let Ok(Some(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
                 stream.try_next().await
             else {
                 panic!("Could not process the first query correctly")
             };
-            assert_eq!(rows_affected, 1);
+            if let Some(rows_affected) = rows_affected {
+                assert_eq!(rows_affected, 1);
+            }
             let Ok(Some(QueryResult::Row(row))) = stream.try_next().await else {
                 panic!("Could not process the second query correctly")
             };

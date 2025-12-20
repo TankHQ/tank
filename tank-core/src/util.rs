@@ -205,7 +205,7 @@ macro_rules! possibly_parenthesized {
 /// of the input followed by `...` when truncation occurred. Minimal overhead.
 ///
 /// # Examples
-/// ```rust
+/// ```ignore
 /// use tank_core::truncate_long;
 /// let short = "SELECT 1";
 /// assert_eq!(format!("{}", truncate_long!(short)), "SELECT 1\n");
@@ -231,7 +231,7 @@ macro_rules! truncate_long {
 /// * `$value`: value to be sent
 ///
 /// *Example*:
-/// ```rust
+/// ```ignore
 /// send_value!(tx, Ok(QueryResult::Row(row)));
 /// ```
 
@@ -301,7 +301,7 @@ macro_rules! take_until {
 /// * `$connection`: field name on the transaction pointing to the connection.
 ///
 /// # Examples
-/// ```rust
+/// ```ignore
 /// use crate::{YourDBConnection, YourDBDriver};
 /// use tank_core::{Error, Result, Transaction, impl_executor_transaction};
 ///

@@ -11,6 +11,7 @@ use std::{
     fmt::Write,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
+use uuid::Uuid;
 
 macro_rules! write_integer {
     ($out:ident, $value:expr, $delim:expr) => {{
@@ -207,10 +208,7 @@ pub trait SqlWriter {
                 self.write_value_timestamptz(context, out, v)
             }
             Value::Interval(Some(v), ..) => self.write_value_interval(context, out, v),
-            Value::Uuid(Some(v), ..) => {
-                let b = if context.is_inside_json() { '"' } else { '\'' };
-                let _ = write!(out, "{b}{v}{b}");
-            }
+            Value::Uuid(Some(v), ..) => self.write_value_uuid(context, out, v),
             Value::Array(Some(..), ..) | Value::List(Some(..), ..) => match value {
                 Value::Array(Some(v), ..) => {
                     self.write_value_list(context, out, Either::Left(v), value)
@@ -463,6 +461,12 @@ pub trait SqlWriter {
             }
         }
         out.push(delimiter);
+    }
+
+    /// Render UUID literal.
+    fn write_value_uuid(&self, context: &mut Context, out: &mut String, value: &Uuid) {
+        let b = if context.is_inside_json() { '"' } else { '\'' };
+        let _ = write!(out, "{b}{value}{b}");
     }
 
     /// Render list/array literal.
@@ -947,9 +951,9 @@ pub trait SqlWriter {
         if !column.nullable && column.primary_key == PrimaryKeyType::None {
             out.push_str(" NOT NULL");
         }
-        if let Some(default) = &column.default {
+        if column.default.is_set() {
             out.push_str(" DEFAULT ");
-            default.write_query(self.as_dyn(), context, out);
+            column.default.write_query(self.as_dyn(), context, out);
         }
         if column.primary_key == PrimaryKeyType::PrimaryKey {
             // Composite primary key will be printed elsewhere
@@ -1063,12 +1067,14 @@ pub trait SqlWriter {
             &mut context.switch_fragment(Fragment::SqlSelectFrom).current,
             out,
         );
-        out.push_str("\nWHERE ");
-        condition.write_query(
-            self,
-            &mut context.switch_fragment(Fragment::SqlSelectWhere).current,
-            out,
-        );
+        if !condition.is_true() {
+            out.push_str("\nWHERE ");
+            condition.write_query(
+                self,
+                &mut context.switch_fragment(Fragment::SqlSelectWhere).current,
+                out,
+            );
+        }
         if has_order_by {
             out.push_str("\nORDER BY ");
             let mut order_context = context.switch_fragment(Fragment::SqlSelectOrderBy);

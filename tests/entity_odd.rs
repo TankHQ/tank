@@ -3,7 +3,10 @@ mod tests {
     use indoc::indoc;
     use rust_decimal::{Decimal, prelude::FromPrimitive};
     use std::{borrow::Cow, sync::Arc, time::Duration};
-    use tank::{Entity, GenericSqlWriter, PrimaryKeyType, SqlWriter, TableRef, Value, expr};
+    use tank::{
+        DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, SqlWriter, TableRef, Value,
+        expr,
+    };
 
     #[derive(Entity)]
     #[tank(name = "a_table", primary_key = ("bravo", "delta"))]
@@ -67,11 +70,11 @@ mod tests {
         assert_eq!(columns[2].column_ref.schema, "");
         assert_eq!(columns[3].column_ref.schema, "");
         assert_eq!(columns[4].column_ref.schema, "");
-        assert!(matches!(columns[0].default, None));
-        assert!(matches!(columns[1].default, None));
-        assert!(matches!(columns[2].default, None));
-        assert!(matches!(columns[3].default, None));
-        assert!(matches!(columns[4].default, None));
+        assert!(matches!(columns[0].default, DefaultValueType::None));
+        assert!(matches!(columns[1].default, DefaultValueType::None));
+        assert!(matches!(columns[2].default, DefaultValueType::None));
+        assert!(matches!(columns[3].default, DefaultValueType::None));
+        assert!(matches!(columns[4].default, DefaultValueType::None));
         assert!(matches!(columns[0].value, Value::Float64(..)));
         assert!(matches!(columns[1].value, Value::Int16(..)));
         assert!(matches!(columns[2].value, Value::Decimal(..)));
@@ -82,11 +85,11 @@ mod tests {
         assert_eq!(columns[2].nullable, true);
         assert_eq!(columns[3].nullable, false);
         assert_eq!(columns[4].nullable, true);
-        assert!(matches!(columns[0].default, None));
-        assert!(matches!(columns[1].default, None));
-        assert!(matches!(columns[2].default, None));
-        assert!(matches!(columns[3].default, None));
-        assert!(matches!(columns[4].default, None));
+        assert!(matches!(columns[0].default, DefaultValueType::None));
+        assert!(matches!(columns[1].default, DefaultValueType::None));
+        assert!(matches!(columns[2].default, DefaultValueType::None));
+        assert!(matches!(columns[3].default, DefaultValueType::None));
+        assert!(matches!(columns[4].default, DefaultValueType::None));
         assert_eq!(columns[0].primary_key, PrimaryKeyType::None);
         assert_eq!(columns[1].primary_key, PrimaryKeyType::PartOfPrimaryKey);
         assert_eq!(columns[2].primary_key, PrimaryKeyType::None);

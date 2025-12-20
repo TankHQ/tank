@@ -10,7 +10,7 @@ pub fn encode_column_def(metadata: &ColumnMetadata, column_ref: TokenStream) -> 
     let default = metadata
         .default
         .as_ref()
-        .map_or(quote!(None), |v| quote!(Some(Box::new(#v))));
+        .map_or(quote!(Default::default()), |v| quote!(#v.into()));
     let primary_key = &metadata.primary_key;
     let references = if let Some(Either::Left(tokens)) = &metadata.references {
         let tokens = tokens.clone();

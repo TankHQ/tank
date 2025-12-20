@@ -1,4 +1,3 @@
-use crate::expr;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::{collections::BTreeMap, fmt::Debug};
@@ -164,7 +163,7 @@ pub fn decode_column(field: &Field) -> ColumnMetadata {
                 if name == "ignore" {
                     metadata.ignored = true;
                 } else if name == "default" {
-                    metadata.default = Some(expr(value.to_token_stream().into()).into());
+                    metadata.default = Some(value.to_token_stream().into());
                 } else if name == "name" {
                     let Ok(v) = parse2::<LitStr>(value.clone()) else {
                         panic!("Cannot parse `name`, example: `#[tank(name = \"my_column\")]`");

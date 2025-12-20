@@ -1,11 +1,3 @@
-//! Async, portable SQL toolkit for Rust.
-//!
-//! - Define entities with `#[derive(Entity)]`.
-//! - Build expressions (`expr!`, `cols!`, `join!`).
-//! - Execute with any driver via `Executor`.
-//! - Typed values via `Value`/`AsValue`.
-//!
-//! All fallible APIs use `tank::Result<T>`. Futures/streams do nothing until awaited.
 mod as_value;
 mod column;
 mod connection;

@@ -87,6 +87,7 @@ macro_rules! impl_as_value {
                         Ok(v as $source)
                     }
                     #[allow(unreachable_patterns)]
+                    // SQL INTEGER becomes i64
                     Value::Int64(Some(v), ..) => {
                         if (v as i128).clamp(<$source>::MIN as _, <$source>::MAX as _) != v as i128 {
                             return Err(Error::msg(format!(
@@ -96,6 +97,14 @@ macro_rules! impl_as_value {
                         }
                         Ok(v as $source)
                     }
+                    #[allow(unreachable_patterns)]
+                    // SQL VARINT becomes i128
+                    Value::Int128(Some(v), ..) => {
+                        if v < 0 || v > u64::MAX as _ {
+                            return Err(Error::msg(format!("Value {v}: i128 does not fit into u64")));
+                        }
+                        Ok(v as _)
+                    },
                     Value::Json(Some(serde_json::Value::Number(v)), ..) => {
                         if let Some(v) = v.as_i128()
                             && v.clamp(<$source>::MIN as _, <$source>::MAX as _) == v as i128 {
@@ -1106,7 +1115,7 @@ macro_rules! impl_as_value {
 impl_as_value!(BTreeMap, Ord);
 impl_as_value!(HashMap, Eq, Hash);
 
-impl<'s> AsValue for &'s str {
+impl AsValue for &'static str {
     fn as_empty_value() -> Value {
         Value::Varchar(None)
     }
@@ -1123,7 +1132,7 @@ impl<'s> AsValue for &'s str {
     }
 }
 
-impl<'a> AsValue for Cow<'a, str> {
+impl AsValue for Cow<'static, str> {
     fn as_empty_value() -> Value {
         Value::Varchar(None)
     }

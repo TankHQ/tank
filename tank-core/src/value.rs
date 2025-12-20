@@ -3,7 +3,7 @@ use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use rust_decimal::Decimal;
 use serde_json::Value as JsonValue;
-use std::{collections::HashMap, hash::Hash, mem::discriminant};
+use std::{borrow::Cow, collections::HashMap, hash::Hash, mem::discriminant};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
 
@@ -31,7 +31,7 @@ pub enum Value {
     /// Decimal with width and scale information.
     Decimal(Option<Decimal>, /* width: */ u8, /* scale: */ u8),
     Char(Option<char>),
-    Varchar(Option<String>),
+    Varchar(Option<Cow<'static, str>>),
     Blob(Option<Box<[u8]>>),
     Date(Option<Date>),
     Time(Option<Time>),

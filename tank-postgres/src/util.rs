@@ -160,7 +160,7 @@ pub(crate) fn extract_value(
             Type::NUMERIC => Value::Decimal(convert::<Decimal>(ty, raw)?, 0, 0),
             Type::OID => Value::UInt32(convert::<u32>(ty, raw)?),
             Type::VARCHAR | Type::TEXT | Type::NAME | Type::BPCHAR | Type::JSON | Type::XML => {
-                Value::Varchar(convert::<String>(ty, raw)?)
+                Value::Varchar(convert::<String>(ty, raw)?.map(Into::into))
             }
             Type::BYTEA => Value::Blob(convert::<Vec<u8>>(ty, raw)?.map(Into::into)),
             Type::DATE => Value::Date(convert::<Date>(ty, raw)?),

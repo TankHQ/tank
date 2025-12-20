@@ -199,11 +199,13 @@ pub async fn books<E: Executor>(executor: &mut E) {
             let mut iter = row.values.into_iter();
             (
                 match iter.next().unwrap() {
-                    Value::Varchar(Some(v)) | Value::Unknown(Some(v)) => v,
+                    Value::Varchar(Some(v)) => v,
+                    Value::Unknown(Some(v)) => v.into(),
                     v => panic!("Expected first value to be non null varchar, found {v:?}"),
                 },
                 match iter.next().unwrap() {
-                    Value::Varchar(Some(v)) | Value::Unknown(Some(v)) => v,
+                    Value::Varchar(Some(v)) => v,
+                    Value::Unknown(Some(v)) => v.into(),
                     v => panic!("Expected second value to be non null varchar, found {v:?}"),
                 },
             )
@@ -240,15 +242,18 @@ pub async fn books<E: Executor>(executor: &mut E) {
             let mut iter = row.values.into_iter();
             (
                 match iter.next().unwrap() {
-                    Value::Varchar(Some(v)) | Value::Unknown(Some(v)) => v,
+                    Value::Varchar(Some(v)) => v,
+                    Value::Unknown(Some(v)) => v.into(),
                     v => panic!("Expected 1st value to be non null varchar, found {v:?}"),
                 },
                 match iter.next().unwrap() {
-                    Value::Varchar(Some(v)) | Value::Unknown(Some(v)) => v,
+                    Value::Varchar(Some(v)) => v,
+                    Value::Unknown(Some(v)) => v.into(),
                     v => panic!("Expected 2nd value to be non null varchar, found {v:?}"),
                 },
                 match iter.next().unwrap() {
-                    Value::Varchar(Some(v)) | Value::Unknown(Some(v)) => Some(v),
+                    Value::Varchar(Some(v)) => Some(v),
+                    Value::Unknown(Some(v)) => Some(v.into()),
                     Value::Varchar(None) | Value::Null => None,
                     v => panic!(
                         "Expected 3rd value to be a Some(Value::Varchar(..)) | Value::Unknown(Some(..)) | Some(Value::Null)), found {v:?}",

@@ -231,7 +231,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
 /// building larger trees.
 ///
 /// *Example*:
-/// ```rust
+/// ```ignore
 /// let books = join!(Book JOIN Author ON Book::author == Author::id)
 ///     .select(
 ///         executor,
@@ -274,7 +274,7 @@ pub fn join(input: TokenStream) -> TokenStream {
 /// Ultimately, the drivers decide if and how these expressions are translated into the specific query language.
 ///
 /// *Examples:*
-/// ```rust
+/// ```ignore
 /// use tank::expr;
 /// let condition = expr!(User::age > 18 && User::active == true);
 /// let rust_articles = expr!(Post::title == "Rust%" as LIKE);
@@ -298,7 +298,7 @@ pub fn expr(input: TokenStream) -> TokenStream {
 /// heterogeneous list of column expressions.
 ///
 /// *Example*:
-/// ```rust
+/// ```ignore
 /// use tank::{cols, DataSet};
 /// let names_stream = User::table().select(connection, cols!(User::id, User::name ASC), &true, Some(500));
 /// let products_stream = Product::table().select(

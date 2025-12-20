@@ -3,15 +3,15 @@ mod tests {
     use indoc::indoc;
     use std::borrow::Cow;
     use tank::{
-        Entity, Expression, GenericSqlWriter, Operand, PrimaryKeyType, SqlWriter, TableRef, Value,
-        expr,
+        AsValue, DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, SqlWriter, TableRef,
+        Value, expr,
     };
 
     #[derive(Entity)]
     #[tank(name = "customers")]
     struct Customer {
         _transaction_ids: Vec<u64>,
-        #[tank(default = ["discount", "newsletter"], name = "settings")]
+        #[tank(default = ["discount", "newsletter"].as_value(), name = "settings")]
         _preferences: Option<Vec<String>>,
         _values: Box<Option<Vec<f32>>>,
         _signup_duration: std::time::Duration,
@@ -74,16 +74,14 @@ mod tests {
         assert_eq!(columns[2].nullable, true);
         assert_eq!(columns[3].nullable, false);
         assert_eq!(columns[4].nullable, true);
-        assert!(matches!(columns[0].default, None));
-        let column1_default =
-            columns[1].default.as_deref().unwrap() as *const dyn Expression as *const Operand;
+        assert!(matches!(columns[0].default, DefaultValueType::None));
         assert!(matches!(
-            unsafe { &*column1_default },
-            Operand::LitArray([Operand::LitStr("discount"), Operand::LitStr("newsletter"),])
+            columns[1].default,
+            DefaultValueType::Value(Value::Array(Some(..), .., 2))
         ));
-        assert!(matches!(columns[2].default, None));
-        assert!(matches!(columns[3].default, None));
-        assert!(matches!(columns[4].default, None));
+        assert!(matches!(columns[2].default, DefaultValueType::None));
+        assert!(matches!(columns[3].default, DefaultValueType::None));
+        assert!(matches!(columns[4].default, DefaultValueType::None));
         assert_eq!(columns[0].primary_key, PrimaryKeyType::None);
         assert_eq!(columns[1].primary_key, PrimaryKeyType::None);
         assert_eq!(columns[2].primary_key, PrimaryKeyType::None);
@@ -139,7 +137,7 @@ mod tests {
             indoc! {r#"
                 CREATE TABLE "customers" (
                 "transaction_ids" UBIGINT[] NOT NULL,
-                "settings" VARCHAR[] DEFAULT ['discount', 'newsletter'],
+                "settings" VARCHAR[] DEFAULT ['discount','newsletter'],
                 "values" FLOAT[],
                 "signup_duration" INTERVAL NOT NULL,
                 "recent_purchases" BIGINT[][]);

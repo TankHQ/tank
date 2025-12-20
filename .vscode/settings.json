@@ -22,6 +22,14 @@
             "database": "military",
             "username": "tank-user",
             "password": "armored"
+        },
+        {
+            "server": "localhost",
+            "port": 33724,
+            "previewLimit": 50,
+            "driver": "Cassandra",
+            "name": "Test",
+            "password": ""
         }
     ]
 }

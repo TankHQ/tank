@@ -1,4 +1,4 @@
-use crate::{Expression, OpPrecedence, TableRef, Value, writer::Context};
+use crate::{DefaultValueType, Expression, OpPrecedence, TableRef, Value, writer::Context};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
 use std::collections::BTreeMap;
@@ -95,7 +95,7 @@ pub struct ColumnDef {
     /// Nullability flag.
     pub nullable: bool,
     /// Default value (expression rendered by `SqlWriter`).
-    pub default: Option<Box<dyn Expression>>,
+    pub default: DefaultValueType,
     /// Primary key participation.
     pub primary_key: PrimaryKeyType,
     /// Unique constraint (single column only, composite handled in the `TableDef`).

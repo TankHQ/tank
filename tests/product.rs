@@ -3,7 +3,10 @@ mod tests {
     use indoc::indoc;
     use rust_decimal::Decimal;
     use std::borrow::Cow;
-    use tank::{Entity, GenericSqlWriter, Passive, PrimaryKeyType, SqlWriter, TableRef, Value};
+    use tank::{
+        DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, SqlWriter, TableRef,
+        Value,
+    };
     use time::{Date, Month, PrimitiveDateTime, Time};
 
     #[derive(Entity)]
@@ -83,12 +86,12 @@ mod tests {
         assert_eq!(columns[3].nullable, false);
         assert_eq!(columns[4].nullable, false);
         assert_eq!(columns[5].nullable, false);
-        assert!(matches!(columns[0].default, None));
-        assert!(matches!(columns[1].default, None));
-        assert!(matches!(columns[2].default, None));
-        assert!(matches!(columns[3].default, None));
-        assert!(matches!(columns[4].default, None));
-        assert!(matches!(columns[5].default, None));
+        assert!(matches!(columns[0].default, DefaultValueType::None));
+        assert!(matches!(columns[1].default, DefaultValueType::None));
+        assert!(matches!(columns[2].default, DefaultValueType::None));
+        assert!(matches!(columns[3].default, DefaultValueType::None));
+        assert!(matches!(columns[4].default, DefaultValueType::None));
+        assert!(matches!(columns[5].default, DefaultValueType::None));
         assert_eq!(columns[0].primary_key, PrimaryKeyType::PrimaryKey);
         assert_eq!(columns[1].primary_key, PrimaryKeyType::None);
         assert_eq!(columns[2].primary_key, PrimaryKeyType::None);

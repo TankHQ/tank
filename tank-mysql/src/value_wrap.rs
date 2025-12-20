@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use tank_core::Interval;
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
@@ -128,7 +129,10 @@ impl TryFrom<ValueWrap> for mysql_async::Value {
             TankValue::Float64(Some(v), ..) => MySQLValue::from(v),
             TankValue::Decimal(Some(v), ..) => MySQLValue::from(v),
             TankValue::Char(Some(v), ..) => MySQLValue::from(v.to_string()),
-            TankValue::Varchar(Some(v), ..) => MySQLValue::from(v),
+            TankValue::Varchar(Some(v), ..) => match v {
+                Cow::Borrowed(v) => MySQLValue::from(v),
+                Cow::Owned(v) => MySQLValue::from(v),
+            },
             TankValue::Blob(Some(v), ..) => MySQLValue::from(v),
             TankValue::Date(Some(v), ..) => MySQLValue::from(v),
             TankValue::Time(Some(v), ..) => MySQLValue::from(v),

@@ -242,13 +242,17 @@ pub async fn limits<E: Executor>(executor: &mut E) {
         else {
             panic!("Could not get the result of the first statement");
         };
-        assert_eq!(rows_affected, 1, "Should have deleted one row");
+        if let Some(rows_affected) = rows_affected {
+            assert_eq!(rows_affected, 1, "Should have deleted one row");
+        }
         let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
             stream.next().await
         else {
             panic!("Could not get the result of the second statement");
         };
-        assert_eq!(rows_affected, 2, "Should have inserted two rows");
+        if let Some(rows_affected) = rows_affected {
+            assert_eq!(rows_affected, 2, "Should have inserted two rows");
+        }
         let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
             panic!("Could not get the row of the third statement");
         };

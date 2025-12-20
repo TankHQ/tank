@@ -160,7 +160,7 @@ pub(crate) fn extract_value(
                     None
                 };
                 if type_id == DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR {
-                    Value::Varchar(value.map(|v| String::from_utf8_unchecked(v.into())))
+                    Value::Varchar(value.map(|v| String::from_utf8_lossy(v).into_owned().into()))
                 } else {
                     Value::Blob(value.map(|v| v.into()))
                 }

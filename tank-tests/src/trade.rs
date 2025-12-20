@@ -2,7 +2,8 @@
 use rust_decimal::Decimal;
 use std::{collections::BTreeMap, pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
-    Driver, Entity, Executor, FixedDecimal, Passive, Query, QueryResult, RowsAffected, SqlWriter,
+    AsValue, Driver, Entity, Executor, FixedDecimal, Passive, Query, QueryResult, RowsAffected,
+    SqlWriter, Value,
     stream::{StreamExt, TryStreamExt},
 };
 use time::macros::datetime;
@@ -14,7 +15,7 @@ use uuid::Uuid;
 pub struct Trade {
     #[tank(name = "trade_id")]
     pub trade: u64,
-    #[tank(name = "order_id", default = "241d362d-797e-4769-b3f6-412440c8cf68")]
+    #[tank(name = "order_id", default = Uuid::from_str("241d362d-797e-4769-b3f6-412440c8cf68").unwrap().as_value())]
     pub order: Uuid,
     /// Ticker symbol
     pub symbol: String,
@@ -367,13 +368,17 @@ pub async fn trade_multiple<E: Executor>(executor: &mut E) {
         else {
             panic!("Could not get the result of the first query");
         };
-        assert_eq!(rows_affected, 5);
+        if let Some(rows_affected) = rows_affected {
+            assert_eq!(rows_affected, 5);
+        }
         let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
             stream.next().await
         else {
             panic!("Could not get the result of the first statement");
         };
-        assert_eq!(rows_affected, 1);
+        if let Some(rows_affected) = rows_affected {
+            assert_eq!(rows_affected, 1);
+        }
         let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
             panic!("Could not get the result of the second statement");
         };

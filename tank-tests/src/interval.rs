@@ -152,13 +152,17 @@ pub async fn interval<E: Executor>(executor: &mut E) {
         else {
             panic!("Could not get the result of deleting the rows")
         };
-        assert_eq!(rows_affected, 1);
+        if let Some(rows_affected) = rows_affected {
+            assert_eq!(rows_affected, 1);
+        }
         let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
             stream.next().await
         else {
             panic!("Could not get the result of inserting the rows")
         };
-        assert_eq!(rows_affected, 2);
+        if let Some(rows_affected) = rows_affected {
+            assert_eq!(rows_affected, 2);
+        }
         let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
             panic!("Could not get the result of selecting the rows")
         };

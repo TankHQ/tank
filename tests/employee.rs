@@ -3,8 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::{borrow::Cow, collections::HashMap};
     use tank::{
-        Entity, Expression, GenericSqlWriter, Operand, Passive, PrimaryKeyType, SqlWriter,
-        TableRef, Value, expr,
+        DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, SqlWriter, TableRef,
+        Value, expr,
     };
     use time::{Date, Month, Time};
     use uuid::Uuid;
@@ -121,19 +121,17 @@ mod tests {
         assert_eq!(columns[6].nullable, true);
         assert_eq!(columns[7].nullable, false);
         assert_eq!(columns[8].nullable, false);
-        assert!(matches!(columns[0].default, None));
-        assert!(matches!(columns[1].default, None));
-        assert!(matches!(columns[2].default, None));
-        assert!(matches!(columns[3].default, None));
-        assert!(matches!(columns[4].default, None));
-        assert!(matches!(columns[5].default, None));
-        assert!(matches!(columns[6].default, None));
-        assert!(matches!(columns[7].default, None));
-        let column8_default =
-            columns[8].default.as_deref().unwrap() as *const dyn Expression as *const Operand;
+        assert!(matches!(columns[0].default, DefaultValueType::None));
+        assert!(matches!(columns[1].default, DefaultValueType::None));
+        assert!(matches!(columns[2].default, DefaultValueType::None));
+        assert!(matches!(columns[3].default, DefaultValueType::None));
+        assert!(matches!(columns[4].default, DefaultValueType::None));
+        assert!(matches!(columns[5].default, DefaultValueType::None));
+        assert!(matches!(columns[6].default, DefaultValueType::None));
+        assert!(matches!(columns[7].default, DefaultValueType::None));
         assert!(matches!(
-            unsafe { &*column8_default },
-            Operand::LitBool(false)
+            columns[8].default,
+            DefaultValueType::Value(Value::Boolean(Some(false)))
         ));
         assert_eq!(columns[0].primary_key, PrimaryKeyType::PrimaryKey);
         assert_eq!(columns[1].primary_key, PrimaryKeyType::None);

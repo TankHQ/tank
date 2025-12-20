@@ -30,6 +30,12 @@ impl OpPrecedence for bool {
     }
 }
 
+impl OpPrecedence for &'static str {
+    fn precedence(&self, _writer: &dyn SqlWriter) -> i32 {
+        0
+    }
+}
+
 impl OpPrecedence for Value {
     fn precedence(&self, _writer: &dyn SqlWriter) -> i32 {
         0

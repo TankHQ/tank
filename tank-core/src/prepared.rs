@@ -11,7 +11,7 @@ use std::fmt::{Debug, Display};
 /// * `bind_index` sets the parameter at `index` (from 0).
 ///
 /// Methods return `&mut Self` for fluent chaining:
-/// ```rust, ignore
+/// ```ignore
 /// prepared.bind(42)?.bind("hello")?;
 /// ```
 pub trait Prepared: Send + Sync + Display + Debug {

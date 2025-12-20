@@ -363,9 +363,14 @@ impl Executor for DuckDBConnection {
                         Value::Char(Some(v), ..) => {
                             duckdb_append_varchar(*appender, as_c_string(v.to_string()).as_ptr())
                         }
-                        Value::Varchar(Some(v), ..) => {
-                            duckdb_append_varchar(*appender, as_c_string(v).as_ptr())
-                        }
+                        Value::Varchar(Some(v), ..) => duckdb_append_varchar(
+                            *appender,
+                            match v {
+                                Cow::Borrowed(v) => as_c_string(v),
+                                Cow::Owned(v) => as_c_string(v),
+                            }
+                            .as_ptr(),
+                        ),
                         Value::Blob(Some(v), ..) => duckdb_append_blob(
                             *appender,
                             v.as_ptr() as *const c_void,

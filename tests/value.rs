@@ -424,6 +424,14 @@ mod tests {
             String::parse("\"\"").expect("Could not parse string"),
             "\"\""
         );
+        assert_eq!(
+            Value::Varchar(Some(Cow::Borrowed("hello"))),
+            Value::Varchar(Some(Cow::Owned("hello".into()))),
+        );
+        assert_eq!(
+            Value::Varchar(Some(Cow::Owned("world".into()))),
+            Value::Varchar(Some(Cow::Borrowed("world"))),
+        );
     }
 
     #[test]

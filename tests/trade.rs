@@ -8,7 +8,7 @@ mod tests {
         collections::{BTreeMap, HashMap},
     };
     use tank::{
-        Action, Entity, Expression, GenericSqlWriter, Operand, Passive, PrimaryKeyType, SqlWriter,
+        Action, DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, SqlWriter,
         TableRef, Value, expr,
     };
     use time::macros::datetime;
@@ -152,24 +152,24 @@ mod tests {
         assert_eq!(columns[10].nullable, true);
         assert_eq!(columns[11].nullable, true);
         assert_eq!(columns[12].nullable, true);
-        assert!(matches!(columns[0].default, None));
-        let column1_default =
-            columns[1].default.as_deref().unwrap() as *const dyn Expression as *const Operand;
+        assert!(matches!(columns[0].default, DefaultValueType::None));
         assert!(matches!(
-            unsafe { &*column1_default },
-            Operand::LitStr("241d362d-797e-4769-b3f6-412440c8cf68"),
+            columns[1].default,
+            DefaultValueType::Value(Value::Varchar(Some(Cow::Borrowed(
+                "241d362d-797e-4769-b3f6-412440c8cf68"
+            )))),
         ));
-        assert!(matches!(columns[2].default, None));
-        assert!(matches!(columns[3].default, None));
-        assert!(matches!(columns[4].default, None));
-        assert!(matches!(columns[5].default, None));
-        assert!(matches!(columns[6].default, None));
-        assert!(matches!(columns[7].default, None));
-        assert!(matches!(columns[8].default, None));
-        assert!(matches!(columns[9].default, None));
-        assert!(matches!(columns[10].default, None));
-        assert!(matches!(columns[11].default, None));
-        assert!(matches!(columns[12].default, None));
+        assert!(matches!(columns[2].default, DefaultValueType::None));
+        assert!(matches!(columns[3].default, DefaultValueType::None));
+        assert!(matches!(columns[4].default, DefaultValueType::None));
+        assert!(matches!(columns[5].default, DefaultValueType::None));
+        assert!(matches!(columns[6].default, DefaultValueType::None));
+        assert!(matches!(columns[7].default, DefaultValueType::None));
+        assert!(matches!(columns[8].default, DefaultValueType::None));
+        assert!(matches!(columns[9].default, DefaultValueType::None));
+        assert!(matches!(columns[10].default, DefaultValueType::None));
+        assert!(matches!(columns[11].default, DefaultValueType::None));
+        assert!(matches!(columns[12].default, DefaultValueType::None));
         assert_eq!(columns[0].primary_key, PrimaryKeyType::PartOfPrimaryKey);
         assert_eq!(columns[1].primary_key, PrimaryKeyType::None);
         assert_eq!(columns[2].primary_key, PrimaryKeyType::None);
