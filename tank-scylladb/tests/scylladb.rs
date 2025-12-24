@@ -6,9 +6,9 @@ mod tests {
     use std::sync::Mutex;
     use tank_core::Driver;
     use tank_scylladb::ScyllaDBDriver;
-    use tank_tests::{execute_tests, init_logs};
-    use testcontainers_modules::scylladb::ScyllaDB;
-    use url::Url;
+    use tank_tests::{
+        init_logs, interval, limits, simple, trade_multiple, trade_simple, transaction1,
+    };
 
     static MUTEX: Mutex<()> = Mutex::new(());
 
@@ -22,8 +22,13 @@ mod tests {
         let container = container.expect("Could not launch container");
         let error_msg = format!("Could not connect to `{url}`");
         let driver = ScyllaDBDriver::new();
-        let connection = driver.connect(url.clone().into()).await.expect(&error_msg);
-        execute_tests(connection).await;
+        let mut connection = driver.connect(url.clone().into()).await.expect(&error_msg);
+        simple(&mut connection).await;
+        trade_simple(&mut connection).await;
+        trade_multiple(&mut connection).await;
+        limits(&mut connection).await;
+        interval(&mut connection).await;
+        transaction1(&mut connection).await;
         drop(container);
     }
 }

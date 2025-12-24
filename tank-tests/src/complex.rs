@@ -15,12 +15,24 @@ struct TankUnsupported {
 struct ComplexNullFields {
     #[cfg(not(feature = "disable-arrays"))]
     first: Option<[Option<f64>; 8]>,
-    #[cfg(all(not(feature = "disable-lists"), not(feature = "disable-intervals")))]
+    #[cfg(all(
+        not(feature = "disable-lists"),
+        not(feature = "disable-intervals"),
+        not(feature = "disable-nested-collections"),
+    ))]
     second: Option<Vec<Option<Duration>>>,
     third: Option<Box<[u8]>>,
-    #[cfg(all(not(feature = "disable-maps"), not(feature = "disable-arrays")))]
+    #[cfg(all(
+        not(feature = "disable-arrays"),
+        not(feature = "disable-maps"),
+        not(feature = "disable-nested-collections"),
+    ))]
     fourth: Option<Box<BTreeMap<String, Option<[Option<i128>; 3]>>>>,
-    #[cfg(all(not(feature = "disable-lists"), not(feature = "disable-maps")))]
+    #[cfg(all(
+        not(feature = "disable-lists"),
+        not(feature = "disable-maps"),
+        not(feature = "disable-nested-collections"),
+    ))]
     fifth: LinkedList<Option<VecDeque<Option<BTreeMap<i32, Option<i32>>>>>>,
     #[tank(ignore)]
     sixth: TankUnsupported,
@@ -30,12 +42,24 @@ impl Default for ComplexNullFields {
         Self {
             #[cfg(not(feature = "disable-arrays"))]
             first: None,
-            #[cfg(all(not(feature = "disable-lists"), not(feature = "disable-intervals")))]
+            #[cfg(all(
+                not(feature = "disable-lists"),
+                not(feature = "disable-intervals"),
+                not(feature = "disable-nested-collections"),
+            ))]
             second: None,
             third: None,
-            #[cfg(all(not(feature = "disable-maps"), not(feature = "disable-arrays")))]
+            #[cfg(all(
+                not(feature = "disable-arrays"),
+                not(feature = "disable-maps"),
+                not(feature = "disable-nested-collections"),
+            ))]
             fourth: None,
-            #[cfg(all(not(feature = "disable-lists"), not(feature = "disable-maps")))]
+            #[cfg(all(
+                not(feature = "disable-lists"),
+                not(feature = "disable-maps"),
+                not(feature = "disable-nested-collections"),
+            ))]
             fifth: Default::default(),
             sixth: TankUnsupported { field: 777 },
         }
@@ -61,7 +85,11 @@ pub async fn complex<E: Executor>(executor: &mut E) {
     let entity = ComplexNullFields {
         #[cfg(not(feature = "disable-arrays"))]
         first: None,
-        #[cfg(all(not(feature = "disable-lists"), not(feature = "disable-intervals")))]
+        #[cfg(all(
+            not(feature = "disable-lists"),
+            not(feature = "disable-intervals"),
+            not(feature = "disable-nested-collections"),
+        ))]
         second: Some(vec![
             None,
             None,
@@ -76,7 +104,11 @@ pub async fn complex<E: Executor>(executor: &mut E) {
             None,
         ]),
         third: Some(Box::new([0x75, 0xAA, 0x30, 0x77])),
-        #[cfg(all(not(feature = "disable-maps"), not(feature = "disable-arrays")))]
+        #[cfg(all(
+            not(feature = "disable-arrays"),
+            not(feature = "disable-maps"),
+            not(feature = "disable-nested-collections"),
+        ))]
         fourth: Some(Box::new(BTreeMap::from_iter([
             ("aa".into(), Some([19314.into(), 241211.into(), None])),
             (
@@ -87,7 +119,11 @@ pub async fn complex<E: Executor>(executor: &mut E) {
             ("dd".into(), Some([None, None, None])),
             ("ee".into(), Some([None, 777.into(), None])),
         ]))),
-        #[cfg(all(not(feature = "disable-lists"), not(feature = "disable-maps")))]
+        #[cfg(all(
+            not(feature = "disable-lists"),
+            not(feature = "disable-maps"),
+            not(feature = "disable-nested-collections"),
+        ))]
         fifth: LinkedList::from_iter([]),
         sixth: Default::default(),
     };
@@ -100,7 +136,11 @@ pub async fn complex<E: Executor>(executor: &mut E) {
         .expect("Failed to find complex 1");
     #[cfg(not(feature = "disable-arrays"))]
     assert_eq!(entity.first, None);
-    #[cfg(all(not(feature = "disable-lists"), not(feature = "disable-intervals")))]
+    #[cfg(all(
+        not(feature = "disable-lists"),
+        not(feature = "disable-intervals"),
+        not(feature = "disable-nested-collections"),
+    ))]
     assert_eq!(
         entity.second,
         Some(vec![
@@ -118,7 +158,11 @@ pub async fn complex<E: Executor>(executor: &mut E) {
         ])
     );
     assert_eq!(*entity.third.unwrap(), [0x75, 0xAA, 0x30, 0x77]);
-    #[cfg(all(not(feature = "disable-maps"), not(feature = "disable-arrays")))]
+    #[cfg(all(
+        not(feature = "disable-arrays"),
+        not(feature = "disable-maps"),
+        not(feature = "disable-nested-collections"),
+    ))]
     assert_eq!(
         *entity.fourth.unwrap(),
         BTreeMap::from_iter([
@@ -132,7 +176,11 @@ pub async fn complex<E: Executor>(executor: &mut E) {
             ("ee".into(), Some([None, 777.into(), None])),
         ])
     );
-    #[cfg(all(not(feature = "disable-lists"), not(feature = "disable-maps")))]
+    #[cfg(all(
+        not(feature = "disable-lists"),
+        not(feature = "disable-maps"),
+        not(feature = "disable-nested-collections"),
+    ))]
     assert_eq!(entity.fifth.len(), 0);
 
     // Complex 2
@@ -154,12 +202,24 @@ pub async fn complex<E: Executor>(executor: &mut E) {
             None,
             777.777.into(),
         ]),
-        #[cfg(all(not(feature = "disable-lists"), not(feature = "disable-intervals")))]
+        #[cfg(all(
+            not(feature = "disable-lists"),
+            not(feature = "disable-intervals"),
+            not(feature = "disable-nested-collections"),
+        ))]
         second: None,
         third: None,
-        #[cfg(all(not(feature = "disable-maps"), not(feature = "disable-arrays")))]
+        #[cfg(all(
+            not(feature = "disable-arrays"),
+            not(feature = "disable-maps"),
+            not(feature = "disable-nested-collections"),
+        ))]
         fourth: None,
-        #[cfg(all(not(feature = "disable-lists"), not(feature = "disable-maps")))]
+        #[cfg(all(
+            not(feature = "disable-lists"),
+            not(feature = "disable-maps"),
+            not(feature = "disable-nested-collections"),
+        ))]
         fifth: LinkedList::from_iter([
             None,
             None,
@@ -192,12 +252,24 @@ pub async fn complex<E: Executor>(executor: &mut E) {
         .expect("Failed to find complex 2");
     #[cfg(not(feature = "disable-arrays"))]
     assert_eq!(loaded.first, entity.first);
-    #[cfg(all(not(feature = "disable-lists"), not(feature = "disable-intervals")))]
+    #[cfg(all(
+        not(feature = "disable-lists"),
+        not(feature = "disable-intervals"),
+        not(feature = "disable-nested-collections"),
+    ))]
     assert_eq!(loaded.second, None);
     assert_eq!(loaded.third, None);
-    #[cfg(all(not(feature = "disable-maps"), not(feature = "disable-arrays")))]
+    #[cfg(all(
+        not(feature = "disable-arrays"),
+        not(feature = "disable-maps"),
+        not(feature = "disable-nested-collections"),
+    ))]
     assert_eq!(loaded.fourth, None);
-    #[cfg(all(not(feature = "disable-lists"), not(feature = "disable-maps")))]
+    #[cfg(all(
+        not(feature = "disable-lists"),
+        not(feature = "disable-maps"),
+        not(feature = "disable-nested-collections"),
+    ))]
     assert_eq!(loaded.fifth, entity.fifth);
     assert_eq!(loaded.sixth.field, 777);
 }

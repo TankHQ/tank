@@ -16,7 +16,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 #[derive(Debug, Entity, PartialEq)]
-struct SimpleFields {
+pub struct SimpleFields {
     #[tank(primary_key)]
     alpha: u8,
     bravo: Option<i32>,

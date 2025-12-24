@@ -1,5 +1,5 @@
 use crate::{RowWrap, ScyllaDBDriver, ScyllaDBPrepared, ScyllaDBTransaction};
-use async_stream::{stream, try_stream};
+use async_stream::stream;
 use scylla::{
     client::{PoolSize, session::Session, session_builder::SessionBuilder},
     frame::Compression,

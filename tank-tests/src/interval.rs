@@ -9,6 +9,8 @@ use tokio::sync::Mutex;
 
 #[derive(Entity)]
 struct Intervals {
+    #[tank(primary_key)]
+    pk: u32,
     first: time::Duration,
     second: Interval,
     third: Duration,
@@ -29,6 +31,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
     Intervals::insert_one(
         executor,
         &Intervals {
+            pk: 1,
             first: Default::default(),
             second: Default::default(),
             third: Default::default(),
@@ -40,6 +43,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
         .await
         .expect("Failed to retrieve zero intervals")
         .expect("Missing zero interval row");
+    assert_eq!(value.pk, 1);
     assert_eq!(value.first, time::Duration::default());
     assert_eq!(value.second, Interval::default());
     assert_eq!(value.third, Duration::default());
@@ -50,6 +54,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
     Intervals::insert_one(
         executor,
         &Intervals {
+            pk: 2,
             first: time::Duration::minutes(1) + time::Duration::days(1),
             #[cfg(not(feature = "disable-large-intervals"))]
             second: Interval::from_years(1_000),
@@ -64,6 +69,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
         .await
         .expect("Could not retrieve the intervals row")
         .expect("There was no interval inserted in the table intervals");
+    assert_eq!(value.pk, 2);
     assert_eq!(value.first, time::Duration::minutes(1 + 24 * 60));
     #[cfg(not(feature = "disable-large-intervals"))]
     assert_eq!(value.second, Interval::from_months(1_000 * 12));
@@ -80,6 +86,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
     Intervals::insert_one(
         executor,
         &Intervals {
+            pk: 3,
             #[cfg(not(feature = "disable-large-intervals"))]
             first: time::Duration::weeks(52) + time::Duration::hours(3),
             #[cfg(feature = "disable-large-intervals")]
@@ -94,6 +101,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
         .await
         .expect("Failed to retrieve large intervals")
         .expect("Missing large interval row");
+    assert_eq!(value.pk, 3);
     #[cfg(not(feature = "disable-large-intervals"))]
     assert_eq!(
         value.first,
@@ -107,12 +115,6 @@ pub async fn interval<E: Executor>(executor: &mut E) {
     assert_eq!(value.second, -Interval::from_days(11));
     assert_eq!(value.third, Duration::from_micros(999_999_999));
     value.third += Duration::from_micros(1);
-    silent_logs! {
-    value
-        .save(executor)
-        .await
-        .expect_err("Should not be able to save a entity without a primary key");
-    }
 
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]

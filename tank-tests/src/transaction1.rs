@@ -4,11 +4,13 @@ use tokio::sync::Mutex;
 
 #[derive(Entity)]
 struct EntityA {
+    #[tank(primary_key)]
     name: String,
     field: i64,
 }
 #[derive(Entity)]
 struct EntityB {
+    #[tank(primary_key)]
     name: String,
     field: i64,
 }

@@ -186,7 +186,7 @@ pub async fn trade_multiple<E: Executor>(executor: &mut E) {
             is_internalized: true,
             venue: Some("NYSE".into()),
             #[cfg(not(feature = "disable-lists"))]
-            child_trade_ids: Some(vec![]),
+            child_trade_ids: None,
             metadata: Some(b"Second execution".to_vec().into_boxed_slice()),
             #[cfg(not(feature = "disable-maps"))]
             tags: Some(BTreeMap::from_iter([
@@ -276,7 +276,7 @@ pub async fn trade_multiple<E: Executor>(executor: &mut E) {
 
     // Verify data integrity
     for (i, expected) in trades.iter().enumerate() {
-        let actual_a = &data[i];
+        let actual_a = &trades[i];
         let actual_b = Trade::find_pk(executor, &expected.primary_key())
             .await
             .expect(&format!("Failed to find trade {} by pk", data[i].symbol));

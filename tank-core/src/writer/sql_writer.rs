@@ -1113,6 +1113,7 @@ pub trait SqlWriter: Send {
         let Some(mut row) = rows.next() else {
             return;
         };
+        let single = rows.peek().is_none();
         let cols = E::columns().len();
         out.reserve(128 + cols * 48);
         if !out.is_empty() {
@@ -1123,7 +1124,6 @@ pub trait SqlWriter: Send {
         self.write_table_ref(&mut context, out, E::table());
         out.push_str(" (");
         let columns = E::columns().iter();
-        let single = rows.peek().is_none();
         if single {
             // Inserting a single row uses row_labeled to filter out Passive::NotSet columns
             separated_by(

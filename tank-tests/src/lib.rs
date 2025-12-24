@@ -17,34 +17,27 @@ mod trade;
 mod transaction1;
 mod user;
 
-use crate::{
-    books::books,
-    complex::complex,
-    insane::insane,
-    limits::limits,
-    operations::{advanced_operations, operations},
-    orders::orders,
-    shopping::shopping,
-    simple::simple,
-    time::times,
-    trade::{trade_multiple, trade_simple},
-    transaction1::transaction1,
-    user::users,
-};
-use aggregates::aggregates;
-
-#[cfg(not(feature = "disable-arrays"))]
-use arrays1::arrays1;
-#[cfg(not(feature = "disable-arrays"))]
-use arrays2::arrays2;
-#[cfg(not(feature = "disable-intervals"))]
-use interval::interval;
+pub use aggregates::*;
+pub use arrays1::*;
+pub use arrays2::*;
+pub use books::*;
+pub use complex::*;
+pub use insane::*;
+pub use interval::*;
+pub use limits::*;
 use log::LevelFilter;
-#[cfg(not(feature = "disable-multiple-statements"))]
-use multiple::multiple;
-use readme::readme;
+pub use multiple::*;
+pub use operations::*;
+pub use orders::*;
+pub use readme::*;
+pub use shopping::*;
+pub use simple::*;
 use std::env;
 use tank::Connection;
+pub use time::*;
+pub use trade::*;
+pub use transaction1::*;
+pub use user::*;
 
 pub fn init_logs() {
     let mut logger = env_logger::builder();
@@ -70,14 +63,14 @@ pub async fn execute_tests<C: Connection>(mut connection: C) {
     limits(&mut connection).await;
     #[cfg(not(feature = "disable-multiple-statements"))]
     multiple(&mut connection).await;
-    #[cfg(not(feature = "disable-transactions"))]
-    transaction1(&mut connection).await;
     #[cfg(not(feature = "disable-intervals"))]
     interval(&mut connection).await;
     #[cfg(not(feature = "disable-arrays"))]
     arrays1(&mut connection).await;
     #[cfg(not(feature = "disable-arrays"))]
     arrays2(&mut connection).await;
+    #[cfg(not(feature = "disable-transactions"))]
+    transaction1(&mut connection).await;
     shopping(&mut connection).await;
     orders(&mut connection).await;
     times(&mut connection).await;
@@ -89,7 +82,7 @@ pub async fn execute_tests<C: Connection>(mut connection: C) {
         .expect("Operations examples test did not succeed");
     advanced_operations(&mut connection)
         .await
-        .expect("Advanced operations examples test did not succeed")
+        .expect("Advanced operations examples test did not succeed");
 }
 
 #[macro_export]

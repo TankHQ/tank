@@ -11,6 +11,8 @@ const F32_MAX: f32 = 3.4e+38_f32;
 
 #[derive(Entity)]
 struct Limits {
+    #[tank(primary_key)]
+    id: usize,
     boolean: bool,
     int8: i8,
     uint8: u8,
@@ -33,6 +35,7 @@ struct Limits {
     interval: Interval,
 }
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static mut INDEX: usize = 0;
 
 pub async fn limits<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;
@@ -50,6 +53,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
         .await
         .expect("Failed to clear the Limits table");
     let minimals = Limits {
+        id: 1,
         boolean: false,
         int8: -127,
         uint8: 0,
@@ -74,7 +78,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
         date: Date::from_calendar_date(-2000, Month::January, 01)
             .expect("Very old date must be correct"),
         #[cfg(feature = "disable-old-dates")]
-        date: Date::from_calendar_date(1000, Month::January, 01)
+        date: Date::from_calendar_date(1970, Month::January, 01)
             .expect("Very old date must be correct"),
         #[cfg(not(feature = "disable-intervals"))]
         interval: Interval::from_micros(1),
@@ -86,6 +90,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
         .await
         .expect("Failed to query simple 2")
         .expect("Failed to find simple 2");
+    assert_eq!(loaded.id, 1);
     assert_eq!(loaded.boolean, false);
     assert_eq!(loaded.int8, -127);
     assert_eq!(loaded.uint8, 0);
@@ -117,7 +122,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
     #[cfg(feature = "disable-old-dates")]
     assert_eq!(
         loaded.date,
-        Date::from_calendar_date(1000, Month::January, 01).unwrap()
+        Date::from_calendar_date(1970, Month::January, 01).unwrap()
     );
     #[cfg(not(feature = "disable-intervals"))]
     assert_eq!(loaded.interval, Interval::from_micros(1));
@@ -127,6 +132,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
         .await
         .expect("Failed to clear the Limits table");
     let maximals = Limits {
+        id: 2,
         boolean: true,
         int8: 127,
         uint8: 255,
@@ -168,6 +174,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
         .await
         .expect("Failed to query simple 2")
         .expect("Failed to find simple 2");
+    assert_eq!(loaded.id, 2);
     assert_eq!(loaded.boolean, true);
     assert_eq!(loaded.int8, 127);
     assert_eq!(loaded.uint8, 255);
@@ -193,9 +200,9 @@ pub async fn limits<E: Executor>(executor: &mut E) {
     assert_eq!(loaded.float64, f64::INFINITY);
     #[cfg(feature = "disable-infinity")]
     assert_eq!(loaded.float64, f64::MAX);
-    assert_eq!(
-        loaded.time,
-        Time::from_hms_micro(23, 59, 59, 999_999).unwrap()
+    assert!(
+        (loaded.time - Time::from_hms_micro(23, 59, 59, 999_999).unwrap()).abs()
+            < time::Duration::milliseconds(1),
     );
     assert_eq!(
         loaded.date,

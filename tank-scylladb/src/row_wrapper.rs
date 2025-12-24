@@ -12,7 +12,7 @@ use tank_core::RowLabeled;
 pub(crate) struct RowWrap(pub(crate) RowLabeled);
 
 impl<'frame, 'metadata> DeserializeRow<'frame, 'metadata> for RowWrap {
-    fn type_check(specs: &[ColumnSpec]) -> Result<(), TypeCheckError> {
+    fn type_check(_specs: &[ColumnSpec]) -> Result<(), TypeCheckError> {
         Ok(())
     }
     fn deserialize(row: ColumnIterator<'frame, 'metadata>) -> Result<Self, DeserializationError> {

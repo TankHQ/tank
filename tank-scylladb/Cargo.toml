@@ -22,6 +22,8 @@ uuid.workspace = true
 rcgen = "0"
 tank-tests = { path = "../tank-tests", features = [
     "disable-multiple-statements",
+    "disable-nested-collections",
+    "disable-old-dates",
 ] }
 testcontainers-modules = { version = "0", features = ["scylladb"] }
 tokio.workspace = true

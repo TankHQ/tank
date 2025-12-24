@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use tank_core::{
-    ColumnDef, Context, DataSet, Entity, Error, Expression, Fragment, PrimaryKeyType, Result,
-    SqlWriter, Value, future::Either, indoc::indoc, separated_by,
+    ColumnDef, Context, DataSet, Entity, Error, Expression, Fragment, Interval, PrimaryKeyType,
+    Result, SqlWriter, Value, future::Either, indoc::indoc, print_timer, separated_by,
 };
+use time::Time;
 use uuid::Uuid;
 
 #[derive(Default)]
@@ -87,6 +88,34 @@ impl SqlWriter for ScyllaDBSqlWriter {
         };
     }
 
+    fn write_value_infinity(&self, _context: &mut Context, out: &mut String, negative: bool) {
+        if negative {
+            out.push('-');
+        }
+        out.push_str("Infinity");
+    }
+    fn write_value_time(
+        &self,
+        context: &mut Context,
+        out: &mut String,
+        value: &Time,
+        timestamp: bool,
+    ) {
+        let nanos = value.nanosecond();
+        print_timer(
+            out,
+            match context.fragment {
+                Fragment::Json if !timestamp => "\"",
+                _ if !timestamp => "'",
+                _ => "",
+            },
+            value.hour() as _,
+            value.minute(),
+            value.second(),
+            nanos - nanos % 1_000_000,
+        );
+    }
+
     fn write_value_blob(&self, context: &mut Context, out: &mut String, value: &[u8]) {
         let delimiter = if context.fragment == Fragment::Json {
             "\""
@@ -98,6 +127,48 @@ impl SqlWriter for ScyllaDBSqlWriter {
             let _ = write!(out, "{:X}", v);
         }
         out.push_str(delimiter);
+    }
+
+    fn value_interval_units(&self) -> &[(&str, i128)] {
+        static UNITS: &[(&str, i128)] = &[
+            ("d", Interval::NANOS_IN_DAY),
+            ("h", Interval::NANOS_IN_SEC * 3600),
+            ("m", Interval::NANOS_IN_SEC * 60),
+            ("s", Interval::NANOS_IN_SEC),
+            ("us", 1_000),
+            ("ns", 1),
+        ];
+        UNITS
+    }
+
+    fn write_value_interval(&self, _context: &mut Context, out: &mut String, value: &Interval) {
+        if value.is_zero() {
+            out.push_str("0s");
+        }
+        let mut months = value.months;
+        let mut nanos = value.nanos + value.days as i128 * Interval::NANOS_IN_DAY;
+        if months != 0 {
+            if months > 48 || months % 12 == 0 {
+                let _ = write!(out, "{}y", months / 12);
+                months = months % 12;
+            }
+            if months != 0 {
+                let _ = write!(out, "{months}mo");
+            }
+        }
+        for &(name, factor) in self.value_interval_units() {
+            let rem = nanos % factor;
+            if rem == 0 || factor / rem > 1_000_000 {
+                let value = nanos / factor;
+                if value != 0 {
+                    let _ = write!(out, "{value}{name}");
+                    nanos = rem;
+                    if nanos == 0 {
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     fn write_value_uuid(&self, context: &mut Context, out: &mut String, value: &Uuid) {
@@ -223,23 +294,83 @@ impl SqlWriter for ScyllaDBSqlWriter {
         }
     }
 
-    fn write_column_comments_statements<E>(&self, context: &mut Context, out: &mut String)
+    fn write_column_comments_statements<E>(&self, _context: &mut Context, _out: &mut String)
     where
         Self: Sized,
         E: Entity,
     {
     }
 
-    fn write_insert_update_fragment<'a, E>(
+    fn write_insert<'b, E>(
         &self,
-        _context: &mut Context,
-        _out: &mut String,
-        _columns: impl Iterator<Item = &'a ColumnDef>,
+        out: &mut String,
+        entities: impl IntoIterator<Item = &'b E>,
+        _update: bool,
     ) where
         Self: Sized,
-        E: Entity,
+        E: Entity + 'b,
     {
-        // CQL does not need separate update logic, a INSERT is already a UPSERT
+        let mut rows = entities.into_iter().map(Entity::row_filtered).peekable();
+        let Some(row) = rows.next() else {
+            return;
+        };
+        let single = rows.peek().is_none();
+        let cols = E::columns().len();
+        out.reserve(128 + cols * 48);
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        if !single {
+            out.push_str("BEGIN BATCH\n");
+        }
+        let first = true;
+        let mut row = Some(row);
+        while let Some(current) = row.as_deref() {
+            if !first {
+                out.push('\n');
+            }
+            out.push_str("INSERT INTO ");
+            let mut context = Context::new(Fragment::SqlInsertInto, E::qualified_columns());
+            self.write_table_ref(&mut context, out, E::table());
+            out.push_str(" (");
+            separated_by(
+                out,
+                current.iter(),
+                |out, (name, ..)| {
+                    self.write_identifier_quoted(&mut context, out, name);
+                },
+                ", ",
+            );
+            out.push_str(") VALUES\n");
+            let mut context = context.switch_fragment(Fragment::SqlInsertIntoValues);
+            out.push('(');
+            let mut fields = current.iter();
+            let mut field = fields.next();
+            separated_by(
+                out,
+                E::columns(),
+                |out, col| {
+                    if Some(col.name()) == field.map(|v| v.0) {
+                        self.write_value(
+                            &mut context.current,
+                            out,
+                            field
+                                .map(|v| &v.1)
+                                .expect(&format!("Column {} does not have a value", col.name())),
+                        );
+                        field = fields.next();
+                    } else if !single {
+                        out.push_str("DEFAULT");
+                    }
+                },
+                ", ",
+            );
+            out.push_str(");");
+            row = rows.next();
+        }
+        if !single {
+            out.push_str("\nAPPLY BATCH;");
+        }
     }
 
     fn write_delete<E>(&self, out: &mut String, condition: &impl Expression)

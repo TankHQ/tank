@@ -117,9 +117,10 @@ impl SerializeValue for ValueWrap {
                 CollectionType::Set(..) => do_serialize::<Vec<ValueWrap>>(value, ty, writer),
                 _ => todo!(),
             },
-            ColumnType::Vector { typ: _, dimensions } => {
-                do_serialize::<Vec<ValueWrap>>(value, ty, writer)
-            }
+            ColumnType::Vector {
+                typ: _,
+                dimensions: _,
+            } => do_serialize::<Vec<ValueWrap>>(value, ty, writer),
             ColumnType::UserDefinedType {
                 frozen: _,
                 definition,
@@ -164,12 +165,18 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                 NativeType::Int => Value::Int32(DeserializeValue::deserialize(ty, v)?),
                 NativeType::BigInt => Value::Int64(DeserializeValue::deserialize(ty, v)?),
                 NativeType::Counter => Value::Int64(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Varint => Value::Int128(
-                    if let Some(varint) =
+                NativeType::Varint => {
+                    let mut unsigned = false;
+                    let value = if let Some(varint) =
                         <Option<CqlVarintBorrowed> as DeserializeValue>::deserialize(ty, v)?
                     {
-                        let bytes = varint.as_signed_bytes_be_slice();
-                        let len = bytes.len();
+                        let mut bytes = varint.as_signed_bytes_be_slice();
+                        let mut len = bytes.len();
+                        if len == 17 && bytes[0] == 0 {
+                            len = 16;
+                            unsigned = true;
+                            bytes = &bytes[1..];
+                        }
                         if len > 16 {
                             return Err(DeserializationError::new(io::Error::new(
                                 io::ErrorKind::InvalidData,
@@ -182,8 +189,13 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                         Some(num)
                     } else {
                         None
-                    },
-                ),
+                    };
+                    if unsigned {
+                        Value::UInt128(value.map(|v| v as _))
+                    } else {
+                        Value::Int128(value)
+                    }
+                }
                 NativeType::Float => Value::Float32(DeserializeValue::deserialize(ty, v)?),
                 NativeType::Double => Value::Float64(DeserializeValue::deserialize(ty, v)?),
                 NativeType::Decimal => {

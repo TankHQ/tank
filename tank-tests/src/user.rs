@@ -13,9 +13,10 @@ use uuid::Uuid;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 #[derive(Entity, Debug, Clone)]
-#[tank(schema = "testing", name = "user_profiles")]
+// follower_count is PK to allow ordering for ScyllaDB / Cassandra
+#[tank(schema = "testing", name = "user_profiles", primary_key = (id, follower_count))]
 pub struct UserProfile {
-    #[tank(primary_key, name = "user_id")]
+    #[tank(name = "user_id")]
     pub id: Passive<Uuid>,
     #[tank(unique, column_type = (mysql = "VARCHAR(128)"))]
     pub username: String,
@@ -131,8 +132,15 @@ pub async fn users<E: Executor>(executor: &mut E) {
         assert_eq!(affected, 5);
     }
 
+    // Find users with more than 1000 followers (should be 2: charlie, dean)
+    let popular_users = UserProfile::find_many(executor, &expr!(follower_count > 1000), None)
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap();
+    assert_eq!(popular_users.len(), 2);
+
     // Find active users (should be 3: alice, charlie, dean)
-    let active_users = UserProfile::find_many(executor, &expr!(is_active), None)
+    let active_users = UserProfile::find_many(executor, &expr!(is_active == true), None)
         .try_collect::<Vec<_>>()
         .await
         .unwrap();
@@ -146,19 +154,11 @@ pub async fn users<E: Executor>(executor: &mut E) {
         HashSet::from_iter(["alice".into(), "charlie".into(), "dean".into()])
     );
 
-    // Find users with more than 1000 followers (should be 2: charlie, dean)
-    let popular_users = UserProfile::find_many(executor, &expr!(follower_count > 1000), None)
-        .try_collect::<Vec<_>>()
-        .await
-        .unwrap();
-    assert_eq!(popular_users.len(), 2);
-
     // 4. Update a Bob
     let mut bob = UserProfile::find_one(executor, &expr!(username == "bob"))
         .await
         .expect("Expected query to succeed")
         .expect("Could not find bob ");
-
     bob.is_active = true;
     bob.full_name = Some("Robert Builder".into());
     bob.last_login = Some(datetime!(2025-07-17 20:00:00));
@@ -177,10 +177,11 @@ pub async fn users<E: Executor>(executor: &mut E) {
     assert!(updated_bob.last_login.is_some());
 
     // There must be 4 active users
-    let active_users_after_update = UserProfile::find_many(executor, &expr!(is_active), None)
-        .try_collect::<Vec<_>>()
-        .await
-        .unwrap();
+    let active_users_after_update =
+        UserProfile::find_many(executor, &expr!(is_active == true), None)
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
     assert_eq!(active_users_after_update.len(), 4);
 
     // Find eve user and delete it.
