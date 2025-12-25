@@ -5,7 +5,7 @@ pub struct YourDBTransaction<'c> {
     connection: &'c mut YourDBConnection,
 }
 
-impl_executor_transaction!(YourDBDriver, YourDBTransaction<'c>, connection);
+impl_executor_transaction!(YourDBDriver, YourDBTransaction<'c>, connection, true);
 
 impl<'c> Transaction<'c> for YourDBTransaction<'c> {
     async fn commit(self) -> Result<()> {

@@ -17,6 +17,8 @@ pub trait Executor: Send + Sized {
     /// Associated driver.
     type Driver: Driver;
 
+    fn is_transaction(&self) -> bool;
+
     /// Driver instance.
     fn driver(&self) -> &Self::Driver;
 

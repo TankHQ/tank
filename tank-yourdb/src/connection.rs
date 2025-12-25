@@ -10,6 +10,9 @@ pub struct YourDBConnection {}
 impl Executor for YourDBConnection {
     type Driver = YourDBDriver;
 
+    fn is_transaction(&self) -> bool {
+        false
+    }
     fn driver(&self) -> &Self::Driver {
         &YourDBDriver {}
     }

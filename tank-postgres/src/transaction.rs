@@ -22,6 +22,10 @@ impl<'c> PostgresTransaction<'c> {
 
 impl<'c> Executor for PostgresTransaction<'c> {
     type Driver = PostgresDriver;
+
+    fn is_transaction(&self) -> bool {
+        true
+    }
     fn driver(&self) -> &Self::Driver {
         &PostgresDriver {}
     }

@@ -26,7 +26,7 @@ impl<'c> MySQLTransaction<'c> {
     }
 }
 
-impl_executor_transaction!(MySQLDriver, MySQLTransaction<'c>, transaction);
+impl_executor_transaction!(MySQLDriver, MySQLTransaction<'c>, transaction, true);
 
 impl<'c> Transaction<'c> for MySQLTransaction<'c> {
     async fn commit(self) -> Result<()> {

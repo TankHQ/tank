@@ -218,6 +218,10 @@ impl Debug for DuckDBConnection {
 impl Executor for DuckDBConnection {
     type Driver = DuckDBDriver;
 
+    fn is_transaction(&self) -> bool {
+        false
+    }
+
     fn driver(&self) -> &Self::Driver {
         &DuckDBDriver {}
     }

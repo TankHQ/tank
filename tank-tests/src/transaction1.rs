@@ -1,5 +1,5 @@
 use std::sync::LazyLock;
-use tank::{Connection, DataSet, Entity, Transaction, cols, stream::TryStreamExt};
+use tank::{Connection, DataSet, Entity, Executor, Transaction, cols, stream::TryStreamExt};
 use tokio::sync::Mutex;
 
 #[derive(Entity)]
@@ -17,12 +17,15 @@ struct EntityB {
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn transaction1<C: Connection>(connection: &mut C) {
+    assert!(!connection.is_transaction());
+
     let _lock = MUTEX.lock().await;
 
     let mut transaction = connection
         .begin()
         .await
         .expect("Could not begin a transaction");
+    assert!(transaction.is_transaction());
 
     // Setup
     EntityA::drop_table(&mut transaction, true, false)

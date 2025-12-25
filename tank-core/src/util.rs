@@ -315,9 +315,13 @@ macro_rules! take_until {
 /// ```
 macro_rules! impl_executor_transaction {
     // Case 1: Lifetime is present (necessary for transactions)
-    ($driver:ty, $transaction:ident $(< $lt:lifetime >)?, $connection:ident) => {
+    ($driver:ty, $transaction:ident $(< $lt:lifetime >)?, $connection:ident, $is_transaction:literal) => {
        impl $(<$lt>)? ::tank_core::Executor for $transaction $(<$lt>)? {
             type Driver = $driver;
+
+            fn is_transaction(&self) -> bool {
+                $is_transaction
+            }
 
             fn driver(&self) -> &Self::Driver {
                 self.$connection.driver()

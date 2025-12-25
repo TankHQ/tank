@@ -13,6 +13,10 @@ pub(crate) struct MySQLQueryable<T: mysql_async::prelude::Queryable> {
 impl<T: mysql_async::prelude::Queryable> Executor for MySQLQueryable<T> {
     type Driver = MySQLDriver;
 
+    fn is_transaction(&self) -> bool {
+        false
+    }
+
     fn driver(&self) -> &Self::Driver {
         &MySQLDriver {}
     }

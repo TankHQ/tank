@@ -4,6 +4,7 @@ use scylla::{
     client::{PoolSize, session::Session, session_builder::SessionBuilder},
     frame::Compression,
     response::PagingState,
+    statement::batch::{Batch, BatchType},
 };
 use std::{borrow::Cow, num::NonZeroUsize, ops::ControlFlow, pin::pin, sync::Arc, time::Duration};
 use tank_core::{
@@ -18,8 +19,33 @@ pub struct ScyllaDBConnection {
     pub(crate) session: Session,
 }
 
+impl ScyllaDBConnection {
+    pub fn begin_logged_batch<'c>(&'c mut self) -> ScyllaDBTransaction<'c> {
+        ScyllaDBTransaction {
+            connection: self,
+            batch: Batch::new(BatchType::Logged),
+        }
+    }
+    pub fn begin_unlogged_batch<'c>(&'c mut self) -> ScyllaDBTransaction<'c> {
+        ScyllaDBTransaction {
+            connection: self,
+            batch: Batch::new(BatchType::Unlogged),
+        }
+    }
+    pub fn begin_counter_batch<'c>(&'c mut self) -> ScyllaDBTransaction<'c> {
+        ScyllaDBTransaction {
+            connection: self,
+            batch: Batch::new(BatchType::Counter),
+        }
+    }
+}
+
 impl Executor for ScyllaDBConnection {
     type Driver = ScyllaDBDriver;
+
+    fn is_transaction(&self) -> bool {
+        false
+    }
 
     fn driver(&self) -> &Self::Driver {
         &ScyllaDBDriver {}
@@ -256,7 +282,13 @@ impl Connection for ScyllaDBConnection {
     }
 
     #[allow(refining_impl_trait)]
-    async fn begin(&mut self) -> Result<ScyllaDBTransaction<'_>> {
-        Err(Error::msg("Transactions are not supported by ScyllaDB"))
+    async fn begin<'c>(&'c mut self) -> Result<ScyllaDBTransaction<'c>> {
+        let result = Self::begin_logged_batch(self);
+        result
+            .connection
+            .execute("BEGIN BATCH")
+            .await
+            .context("While beginning a ScyllaDB batch")?;
+        Ok(result)
     }
 }
