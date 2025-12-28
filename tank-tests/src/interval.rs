@@ -3,7 +3,8 @@
 use crate::silent_logs;
 use std::{pin::pin, sync::LazyLock, time::Duration};
 use tank::{
-    Driver, Entity, Executor, Interval, QueryResult, RowsAffected, SqlWriter, stream::StreamExt,
+    Driver, Entity, Executor, Interval, QueryResult, RowsAffected, SqlWriter,
+    stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
 
@@ -126,6 +127,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
             &mut query,
             &[
                 Intervals {
+                    pk: 4,
                     first: time::Duration::weeks(4) + time::Duration::hours(5),
                     #[cfg(not(feature = "disable-large-intervals"))]
                     second: Interval::from_years(20_000) + Interval::from_millis(300),
@@ -134,6 +136,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
                     third: Duration::from_secs(0),
                 },
                 Intervals {
+                    pk: 5,
                     first: time::Duration::minutes(20) + time::Duration::milliseconds(1),
                     second: Interval::from_months(4) + Interval::from_days(2),
                     third: Duration::from_nanos(5000),
@@ -149,6 +152,8 @@ pub async fn interval<E: Executor>(executor: &mut E) {
             None,
         );
         let mut stream = pin!(executor.run(query));
+
+        // DELETE
         let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
             stream.next().await
         else {
@@ -157,6 +162,8 @@ pub async fn interval<E: Executor>(executor: &mut E) {
         if let Some(rows_affected) = rows_affected {
             assert_eq!(rows_affected, 1);
         }
+
+        // INSERT
         let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
             stream.next().await
         else {
@@ -165,10 +172,23 @@ pub async fn interval<E: Executor>(executor: &mut E) {
         if let Some(rows_affected) = rows_affected {
             assert_eq!(rows_affected, 2);
         }
+
+        // SELECT
+        let mut intervals = Vec::new();
         let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
             panic!("Could not get the result of selecting the rows")
         };
-        let interval = Intervals::from_row(row).expect("Could not decode the first Intervals row");
+        intervals.push(Intervals::from_row(row).expect("Could not decode the first Intervals row"));
+        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
+            panic!("Could not get the result of selecting the rows")
+        };
+        intervals
+            .push(Intervals::from_row(row).expect("Could not decode the second Intervals row"));
+        intervals.sort_by(|a, b| a.pk.cmp(&b.pk));
+
+        // Row 1
+        let interval = &intervals[0];
+        assert_eq!(interval.pk, 4);
         assert_eq!(interval.first, time::Duration::hours(4 * 7 * 24 + 5));
         #[cfg(not(feature = "disable-large-intervals"))]
         assert_eq!(
@@ -181,5 +201,15 @@ pub async fn interval<E: Executor>(executor: &mut E) {
             Interval::from_hours(3) + Interval::from_millis(300),
         );
         assert_eq!(interval.third, Duration::ZERO);
+
+        // Row 2
+        let interval = &intervals[1];
+        assert_eq!(interval.pk, 5);
+        assert_eq!(interval.first, time::Duration::milliseconds(1200001));
+        assert_eq!(
+            interval.second,
+            Interval::from_months(4) + Interval::from_hours(48)
+        );
+        assert_eq!(interval.third, Duration::from_nanos(5000));
     }
 }

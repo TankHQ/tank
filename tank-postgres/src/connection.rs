@@ -30,10 +30,6 @@ pub struct PostgresConnection {
 impl Executor for PostgresConnection {
     type Driver = PostgresDriver;
 
-    fn is_transaction(&self) -> bool {
-        false
-    }
-
     fn driver(&self) -> &Self::Driver {
         &PostgresDriver {}
     }

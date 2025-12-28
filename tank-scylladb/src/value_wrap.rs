@@ -40,9 +40,11 @@ impl AsValue for ValueWrap {
     fn as_empty_value() -> Value {
         Value::Unknown(None)
     }
+
     fn as_value(self) -> Value {
         self.0
     }
+
     fn try_from_value(value: Value) -> tank_core::Result<Self> {
         Ok(Self(value))
     }
@@ -153,6 +155,7 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
     fn type_check(typ: &ColumnType) -> Result<(), TypeCheckError> {
         Ok(())
     }
+
     fn deserialize(
         ty: &'metadata ColumnType<'metadata>,
         v: Option<FrameSlice<'frame>>,

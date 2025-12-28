@@ -40,10 +40,6 @@ macro_rules! write_float {
 pub trait SqlWriter: Send {
     fn as_dyn(&self) -> &dyn SqlWriter;
 
-    fn executes_multiple_statements(&self) -> bool {
-        true
-    }
-
     /// Whether the current fragment context allows alias declaration.
     fn alias_declaration(&self, context: &mut Context) -> bool {
         match context.fragment {

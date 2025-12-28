@@ -23,9 +23,6 @@ impl<'c> PostgresTransaction<'c> {
 impl<'c> Executor for PostgresTransaction<'c> {
     type Driver = PostgresDriver;
 
-    fn is_transaction(&self) -> bool {
-        true
-    }
     fn driver(&self) -> &Self::Driver {
         &PostgresDriver {}
     }
@@ -74,6 +71,7 @@ impl<'c> Transaction<'c> for PostgresTransaction<'c> {
             e
         })
     }
+
     fn rollback(self) -> impl Future<Output = Result<()>> {
         self.0.rollback().map_err(|e| {
             let e = Error::new(e);

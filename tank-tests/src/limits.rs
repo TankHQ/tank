@@ -35,7 +35,6 @@ struct Limits {
     interval: Interval,
 }
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static mut INDEX: usize = 0;
 
 pub async fn limits<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;

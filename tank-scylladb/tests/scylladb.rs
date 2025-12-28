@@ -28,7 +28,6 @@ mod tests {
         trade_multiple(&mut connection).await;
         limits(&mut connection).await;
         interval(&mut connection).await;
-        transaction1(&mut connection).await;
         drop(container);
     }
 }

@@ -64,12 +64,7 @@ pub trait Entity {
             if create_schema && !Self::table().schema().is_empty() {
                 writer.write_create_schema::<Self>(&mut query, true);
             }
-            if !executor
-                .driver()
-                .sql_writer()
-                .executes_multiple_statements()
-                && !query.is_empty()
-            {
+            if !executor.accepts_multiple_statements() && !query.is_empty() {
                 let mut q = Query::Raw(query);
                 executor.execute(&mut q).boxed().await?;
                 let Query::Raw(mut q) = q else {
@@ -105,11 +100,7 @@ pub trait Entity {
             let writer = executor.driver().sql_writer();
             writer.write_drop_table::<Self>(&mut query, if_exists);
             if drop_schema && !Self::table().schema().is_empty() {
-                if !executor
-                    .driver()
-                    .sql_writer()
-                    .executes_multiple_statements()
-                {
+                if !executor.accepts_multiple_statements() {
                     let mut q = Query::Raw(query);
                     executor.execute(&mut q).boxed().await?;
                     let Query::Raw(mut q) = q else {

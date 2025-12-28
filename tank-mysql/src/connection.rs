@@ -12,7 +12,7 @@ pub struct MySQLConnection {
 
 pub type MariaDBConnection = MySQLConnection;
 
-impl_executor_transaction!(MySQLDriver, MySQLConnection, conn, false);
+impl_executor_transaction!(MySQLDriver, MySQLConnection, conn);
 
 impl Connection for MySQLConnection {
     async fn connect(url: Cow<'static, str>) -> Result<MySQLConnection> {

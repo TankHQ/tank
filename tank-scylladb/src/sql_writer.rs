@@ -15,10 +15,6 @@ impl SqlWriter for ScyllaDBSqlWriter {
         self
     }
 
-    fn executes_multiple_statements(&self) -> bool {
-        false
-    }
-
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
@@ -310,23 +306,8 @@ impl SqlWriter for ScyllaDBSqlWriter {
         Self: Sized,
         E: Entity + 'b,
     {
-        let mut rows = entities.into_iter().map(Entity::row_filtered).peekable();
-        let Some(row) = rows.next() else {
-            return;
-        };
-        let single = rows.peek().is_none();
-        let cols = E::columns().len();
-        out.reserve(128 + cols * 48);
-        if !out.is_empty() {
-            out.push('\n');
-        }
-        if !single {
-            out.push_str("BEGIN BATCH\n");
-        }
-        let first = true;
-        let mut row = Some(row);
-        while let Some(current) = row.as_deref() {
-            if !first {
+        for row in entities.into_iter().map(Entity::row_filtered) {
+            if !out.is_empty() {
                 out.push('\n');
             }
             out.push_str("INSERT INTO ");
@@ -335,7 +316,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
             out.push_str(" (");
             separated_by(
                 out,
-                current.iter(),
+                row.iter(),
                 |out, (name, ..)| {
                     self.write_identifier_quoted(&mut context, out, name);
                 },
@@ -344,32 +325,15 @@ impl SqlWriter for ScyllaDBSqlWriter {
             out.push_str(") VALUES\n");
             let mut context = context.switch_fragment(Fragment::SqlInsertIntoValues);
             out.push('(');
-            let mut fields = current.iter();
-            let mut field = fields.next();
             separated_by(
                 out,
-                E::columns(),
-                |out, col| {
-                    if Some(col.name()) == field.map(|v| v.0) {
-                        self.write_value(
-                            &mut context.current,
-                            out,
-                            field
-                                .map(|v| &v.1)
-                                .expect(&format!("Column {} does not have a value", col.name())),
-                        );
-                        field = fields.next();
-                    } else if !single {
-                        out.push_str("DEFAULT");
-                    }
+                row.iter(),
+                |out, (_, value)| {
+                    self.write_value(&mut context.current, out, value);
                 },
                 ", ",
             );
             out.push_str(");");
-            row = rows.next();
-        }
-        if !single {
-            out.push_str("\nAPPLY BATCH;");
         }
     }
 

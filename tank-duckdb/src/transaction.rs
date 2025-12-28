@@ -22,7 +22,7 @@ impl<'c> DuckDBTransaction<'c> {
     }
 }
 
-impl_executor_transaction!(DuckDBDriver, DuckDBTransaction<'c>, connection, true);
+impl_executor_transaction!(DuckDBDriver, DuckDBTransaction<'c>, connection);
 impl<'c> Transaction<'c> for DuckDBTransaction<'c> {
     fn commit(self) -> impl Future<Output = Result<()>> {
         let mut sql = String::new();
