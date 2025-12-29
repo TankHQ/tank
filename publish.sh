@@ -18,6 +18,9 @@ cd ../ &&
 cd tank-postgres/ &&
 cargo publish &&
 cd ../ &&
+cd tank-scylladb/ &&
+cargo publish &&
+cd ../ &&
 cd tank-sqlite/ &&
 cargo publish &&
 cd ../
