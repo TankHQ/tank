@@ -1,8 +1,9 @@
 use crate::{ScyllaDBConnection, ScyllaDBDriver, ScyllaDBPrepared, ValueWrap};
 use scylla::statement::batch::Batch;
-use std::future;
+use std::{future, mem};
 use tank_core::{
-    Error, ErrorContext, Executor, Query, Result, RowsAffected, Transaction,
+    Driver, Entity, Error, ErrorContext, Executor, Query, Result, RowsAffected, SqlWriter,
+    Transaction,
     future::Either,
     stream::{self, Stream},
     truncate_long,
@@ -60,7 +61,10 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
             query.as_mut()
         );
         match query.as_mut() {
-            Query::Raw(sql) => self.batch.append_statement(sql.as_str()),
+            Query::Raw(sql) => {
+                self.params.push(Default::default());
+                self.batch.append_statement(sql.as_str());
+            }
             Query::Prepared(prepared) => {
                 self.params
                     .push(match prepared.take_params().context(context) {
@@ -69,10 +73,35 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
                             return Either::Left(stream::once(future::ready(Err(e))));
                         }
                     });
-                self.batch.append_statement(prepared.statement.clone())
+                self.batch.append_statement(prepared.statement.clone());
             }
         }
         Either::Right(stream::empty())
+    }
+
+    async fn append<'a, E, It>(&mut self, entities: It) -> Result<RowsAffected>
+    where
+        E: Entity + 'a,
+        It: IntoIterator<Item = &'a E>,
+        <It as IntoIterator>::IntoIter: Send,
+    {
+        let mut sql = String::with_capacity(512);
+        let writer = self.driver().sql_writer();
+        for entity in entities {
+            writer.write_insert::<E>(&mut sql, [entity], false);
+            let mut query = Query::Raw(sql);
+            self.execute(&mut query).await?;
+            sql = mem::take(match &mut query {
+                Query::Raw(sql) => sql,
+                Query::Prepared(..) => {
+                    return Err(Error::msg(
+                        "Unexpected (invariant violated), the query should have been the Raw variant",
+                    ));
+                }
+            });
+            sql.clear();
+        }
+        Ok(Default::default())
     }
 }
 

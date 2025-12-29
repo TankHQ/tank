@@ -967,7 +967,7 @@ impl<const W: u8, const S: u8> AsValue for FixedDecimal<W, S> {
         Decimal::as_empty_value()
     }
     fn as_value(self) -> Value {
-        Value::Decimal(Some(self.0), W, S)
+        Value::Decimal(Some(self.0), W, self.0.scale() as _)
     }
     fn try_from_value(value: Value) -> Result<Self>
     where

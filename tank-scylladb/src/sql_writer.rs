@@ -306,7 +306,13 @@ impl SqlWriter for ScyllaDBSqlWriter {
         Self: Sized,
         E: Entity + 'b,
     {
-        for row in entities.into_iter().map(Entity::row_filtered) {
+        let mut it = entities.into_iter().map(Entity::row_filtered).peekable();
+        let mut row = it.next();
+        let multiple = row.is_some() && it.peek().is_some();
+        if multiple {
+            out.push_str("BEGIN BATCH\n");
+        }
+        while let Some(current) = row {
             if !out.is_empty() {
                 out.push('\n');
             }
@@ -316,24 +322,27 @@ impl SqlWriter for ScyllaDBSqlWriter {
             out.push_str(" (");
             separated_by(
                 out,
-                row.iter(),
+                current.iter(),
                 |out, (name, ..)| {
                     self.write_identifier_quoted(&mut context, out, name);
                 },
                 ", ",
             );
-            out.push_str(") VALUES\n");
+            out.push_str(")\nVALUES (");
             let mut context = context.switch_fragment(Fragment::SqlInsertIntoValues);
-            out.push('(');
             separated_by(
                 out,
-                row.iter(),
+                current.iter(),
                 |out, (_, value)| {
                     self.write_value(&mut context.current, out, value);
                 },
                 ", ",
             );
             out.push_str(");");
+            row = it.next();
+        }
+        if multiple {
+            out.push_str("\nAPPLY BATCH;");
         }
     }
 

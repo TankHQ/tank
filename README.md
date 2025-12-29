@@ -18,7 +18,7 @@ https://crates.io/crates/tank
 - SQLite
 - PostgreSQL
 - MySQL / MariaDB
-- Cassandra / ScyllaDB (Coming soon)
+- Cassandra / ScyllaDB
 - More to be decided...
 
 ## Mission objectives

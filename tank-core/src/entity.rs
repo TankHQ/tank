@@ -144,6 +144,7 @@ pub trait Entity {
     where
         Self: 'a + Sized,
         It: IntoIterator<Item = &'a Self> + Send,
+        <It as IntoIterator>::IntoIter: Send,
     {
         executor.append(items)
     }

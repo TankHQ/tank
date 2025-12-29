@@ -295,6 +295,7 @@ impl Executor for DuckDBConnection {
     where
         E: Entity + 'a,
         It: IntoIterator<Item = &'a E> + Send,
+        <It as IntoIterator>::IntoIter: Send,
     {
         let connection = AtomicPtr::new(*self.connection);
         let rows = rows.into_iter().map(Entity::row_full).collect::<Vec<_>>();

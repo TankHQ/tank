@@ -8,8 +8,8 @@ use scylla::{
 };
 use std::{borrow::Cow, num::NonZeroUsize, ops::ControlFlow, pin::pin, sync::Arc, time::Duration};
 use tank_core::{
-    AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query, QueryResult, Result,
-    RowLabeled, RowsAffected,
+    AsQuery, Connection, Driver, Error, ErrorContext, Executor, Query, QueryResult, Result,
+    RowLabeled,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
@@ -147,15 +147,6 @@ impl Executor for ScyllaDBConnection {
             log::error!("{:#}", error);
             error
         })
-    }
-
-    async fn append<'a, E, It>(&mut self, entities: It) -> Result<RowsAffected>
-    where
-        E: Entity + 'a,
-        It: IntoIterator<Item = &'a E> + Send,
-    {
-        let mut tx = self.begin().await?;
-        tx.append(entities).await
     }
 }
 
@@ -297,12 +288,6 @@ impl Connection for ScyllaDBConnection {
 
     #[allow(refining_impl_trait)]
     async fn begin<'c>(&'c mut self) -> Result<ScyllaDBTransaction<'c>> {
-        let result = Self::begin_logged_batch(self);
-        result
-            .connection
-            .execute("BEGIN BATCH")
-            .await
-            .context("While beginning a ScyllaDB batch")?;
-        Ok(result)
+        Ok(Self::begin_logged_batch(self))
     }
 }

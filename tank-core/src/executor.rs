@@ -74,6 +74,7 @@ pub trait Executor: Send + Sized {
     where
         E: Entity + 'a,
         It: IntoIterator<Item = &'a E> + Send,
+        <It as IntoIterator>::IntoIter: Send,
     {
         let mut query = String::new();
         self.driver()
