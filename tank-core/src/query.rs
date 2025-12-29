@@ -14,6 +14,7 @@ pub enum Query<D: Driver> {
 }
 
 impl<D: Driver> Query<D> {
+    /// Returns `true` when this `Query` contains a backend-prepared statement.
     pub fn is_prepared(&self) -> bool {
         matches!(self, Query::Prepared(..))
     }
@@ -26,7 +27,7 @@ impl<D: Driver> Query<D> {
         Ok(self)
     }
     /// Append a bound value.
-    /// It results in a error if the query is not prepared.
+    /// It results in an error if the query is not prepared.
     pub fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         let Self::Prepared(prepared) = self else {
             return Err(Error::msg("Cannot bind a raw query"));
@@ -35,7 +36,7 @@ impl<D: Driver> Query<D> {
         Ok(self)
     }
     /// Bind a value at a specific index.
-    /// It results in a error if the query is not prepared.
+    /// It results in an error if the query is not prepared.
     pub fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
         let Self::Prepared(prepared) = self else {
             return Err(Error::msg("Cannot bind index of a raw query"));
@@ -151,12 +152,15 @@ impl RowLabeled {
             values,
         }
     }
+    /// Returns the column labels for this row.
     pub fn names(&self) -> &[String] {
         &self.labels
     }
+    /// Returns the values associated with `names()`.
     pub fn values(&self) -> &[Value] {
         &self.values
     }
+    /// Look up a column value by its label name.
     pub fn get_column(&self, name: &str) -> Option<&Value> {
         self.labels
             .iter()

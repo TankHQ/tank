@@ -160,7 +160,7 @@ impl_as_value!(
     Value::Decimal(Some(v), ..) => {
         let error = Error::msg(format!("Value {v}: Decimal does not fit into i32"));
         if !v.is_integer() {
-            return Err(error.context("The value is not a integer"));
+            return Err(error.context("The value is not an integer"));
         }
         v.to_i32().ok_or(error)
     }
@@ -178,7 +178,7 @@ impl_as_value!(
     Value::Decimal(Some(v), ..) => {
         let error = Error::msg(format!("Value {v}: Decimal does not fit into i64"));
         if !v.is_integer() {
-            return Err(error.context("The value is not a integer"));
+            return Err(error.context("The value is not an integer"));
         }
         v.to_i64().ok_or(error)
     }
@@ -198,7 +198,7 @@ impl_as_value!(
     Value::Decimal(Some(v), ..) => {
         let error = Error::msg(format!("Value {v}: Decimal does not fit into i128"));
         if !v.is_integer() {
-            return Err(error.context("The value is not a integer"));
+            return Err(error.context("The value is not an integer"));
         }
         v.to_i128().ok_or(error)
     }
@@ -216,7 +216,7 @@ impl_as_value!(
     Value::Decimal(Some(v), ..) => {
         let error = Error::msg(format!("Value {v}: Decimal does not fit into i64"));
         if !v.is_integer() {
-            return Err(error.context("The value is not a integer"));
+            return Err(error.context("The value is not an integer"));
         }
         v.to_isize().ok_or(error)
     }
@@ -255,7 +255,7 @@ impl_as_value!(
     Value::Decimal(Some(v), ..) => {
         let error = Error::msg(format!("Value {v}: Decimal does not fit into u64"));
         if !v.is_integer() {
-            return Err(error.context("The value is not a integer"));
+            return Err(error.context("The value is not an integer"));
         }
         v.to_u64().ok_or(error)
     }
@@ -270,7 +270,7 @@ impl_as_value!(
     Value::Decimal(Some(v), ..) => {
         let error = Error::msg(format!("Value {v}: Decimal does not fit into u128"));
         if !v.is_integer() {
-            return Err(error.context("The value is not a integer"));
+            return Err(error.context("The value is not an integer"));
         }
         v.to_u128().ok_or(error)
     }
@@ -284,7 +284,7 @@ impl_as_value!(
     Value::Decimal(Some(v), ..) => {
         let error = Error::msg(format!("Value {v}: Decimal does not fit into u64"));
         if !v.is_integer() {
-            return Err(error.context("The value is not a integer"));
+            return Err(error.context("The value is not an integer"));
         }
         v.to_usize().ok_or(error)
     }

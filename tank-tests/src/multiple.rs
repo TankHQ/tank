@@ -129,7 +129,7 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
     let mut result = result.into_iter().peekable();
     assert_eq!(*result.peek().unwrap().labels, ["a2", "string"]);
     assert_eq!(
-        Two::from_row(result.peek().unwrap().clone()).expect("The row was not a entity Two"),
+        Two::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
         Two {
             a2: 21,
             string: "aaa".into()
@@ -138,7 +138,7 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
     result.next();
     assert_eq!(*result.peek().unwrap().labels, ["a2", "string"]);
     assert_eq!(
-        Two::from_row(result.peek().unwrap().clone()).expect("The row was not a entity Two"),
+        Two::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
         Two {
             a2: 22,
             string: "bbb".into()
@@ -147,7 +147,7 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
     result.next();
     assert_eq!(*result.peek().unwrap().labels, ["string"]);
     assert_eq!(
-        Three::from_row(result.peek().unwrap().clone()).expect("The row was not a entity Two"),
+        Three::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
         Three {
             string: "ccc".into(),
         }
@@ -155,7 +155,7 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
     result.next();
     assert_eq!(*result.peek().unwrap().labels, ["string"]);
     assert_eq!(
-        Three::from_row(result.peek().unwrap().clone()).expect("The row was not a entity Two"),
+        Three::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
         Three {
             string: "ddd".into(),
         }
@@ -163,7 +163,7 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
     result.next();
     assert_eq!(*result.peek().unwrap().labels, ["a2", "string"]);
     assert_eq!(
-        Two::from_row(result.peek().unwrap().clone()).expect("The row was not a entity Two"),
+        Two::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
         Two {
             a2: 23,
             string: "eee".into()
@@ -172,7 +172,7 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
     result.next();
     assert_eq!(*result.peek().unwrap().labels, ["a1", "string", "c1"]);
     assert_eq!(
-        One::from_row(result.peek().unwrap().clone()).expect("The row was not a entity Two"),
+        One::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
         One {
             a1: 11,
             string: "zzz".into(),

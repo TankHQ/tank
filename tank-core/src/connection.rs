@@ -28,6 +28,10 @@ pub trait Connection: Executor {
     /// Begin a transaction scope tied to the current connection.
     fn begin(&mut self) -> impl Future<Output = Result<impl Transaction<'_>>>;
 
+    /// Disconnect and release the underlying session(s).
+    ///
+    /// Default implementation is a no-op; drivers may override to close sockets
+    /// or return the connection to a pool asynchronously.
     fn disconnect(self) -> impl Future<Output = Result<()>> {
         future::ready(Ok(()))
     }

@@ -12,7 +12,7 @@ pub trait Expression: OpPrecedence + Send + Sync + Debug {
     fn is_ordered(&self) -> bool {
         false
     }
-    /// True if it is a expression that simply evaluates to true
+    /// True if it is an expression that simply evaluates to true
     fn is_true(&self) -> bool {
         false
     }

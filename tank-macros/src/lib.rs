@@ -292,7 +292,7 @@ pub fn expr(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 /// Build a slice of column expressions (optionally ordered) suitable for a `SELECT` projection.
-/// Each comma separated item becomes either a expression (parsed via [`expr!`]) or a ordered expression when followed by `ASC` or `DESC`.
+/// Each comma separated item becomes either an expression (parsed via [`expr!`]) or an ordered expression when followed by `ASC` or `DESC`.
 ///
 /// Returns `&[&dyn Expression]` allowing direct passing to APIs expecting a
 /// heterogeneous list of column expressions.

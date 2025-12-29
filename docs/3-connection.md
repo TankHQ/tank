@@ -118,6 +118,29 @@ Parameters:
 
 Additional URL parameters are passed directly to the mysql_async API. See the full list of supported options from options structure [Opts](https://docs.rs/mysql_async/latest/mysql_async/struct.Opts.html).
 
+### ScyllaDB / Cassandra
+ScyllaDB is the rapid‑response strike force: distributed, built to swarm data with relentless, low‑latency fire.
+
+```rust
+use tank::Driver;
+use tank_scylladb::{ScyllaConnection, ScyllaDriver};
+
+async fn establish_scylla_connection() -> Result<ScyllaConnection> {
+  let driver = ScyllaDriver::new();
+  let connection = driver
+    .connect("scylladb://127.0.0.1:9042/keyspace_name".into())
+    .await?;
+  Ok(connection)
+}
+```
+
+**URL Format**:
+- `scylla://host1,host2:9042/keyspace?consistency=quorum&compression=Lz4`
+
+Parameters:
+- `consistency`: Query consistency level (examples: `one`, `quorum`, `all`).
+- `timeout_ms`: Request timeout in milliseconds.
+
 ## Operations Briefing
 - [`prepare("SELECT * FROM ...*")`](https://docs.rs/tank/latest/tank/trait.Executor.html#tymethod.prepare):
   Compiles a raw SQL string into a reusable [`Query<Driver>`](https://docs.rs/tank/latest/tank/enum.Query.html) object without firing it. Use when the same statement will be dispatched multiple times.

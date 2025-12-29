@@ -17,6 +17,8 @@ pub trait Executor: Send + Sized {
     /// Associated driver.
     type Driver: Driver;
 
+    /// Returns true if the executor accepts multiple SQL statements in a single
+    /// request (e.g. `CREATE; INSERT; SELECT`). Defaults to `true`.
     fn accepts_multiple_statements(&self) -> bool {
         true
     }

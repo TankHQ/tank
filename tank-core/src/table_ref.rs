@@ -18,6 +18,7 @@ pub struct TableRef {
 }
 
 impl TableRef {
+    /// Create a new `TableRef` with an empty schema and alias.
     pub fn new(name: impl Into<Cow<'static, str>>) -> Self {
         Self {
             name: name.into(),
@@ -25,6 +26,7 @@ impl TableRef {
             alias: "".into(),
         }
     }
+    /// Return the display name: alias when present, otherwise `schema.name` or `name`.
     pub fn full_name(&self) -> String {
         let mut result = String::new();
         if !self.alias.is_empty() {
@@ -38,19 +40,23 @@ impl TableRef {
         }
         result
     }
+    /// Return a clone of this `TableRef` with the given alias set.
     pub fn with_alias(&self, alias: Cow<'static, str>) -> Self {
         let mut result = self.clone();
         result.alias = alias.into();
         result
     }
+    /// Return the table name as a borrowed `&str`.
     pub fn name<'s>(&'s self) -> &'s str {
         // TODO: replace with .as_str() and make the function const once https://github.com/rust-lang/rust/issues/130366 is stable
         &self.name
     }
+    /// Return the schema name as a borrowed `&str` (may be empty).
     pub fn schema<'s>(&'s self) -> &'s str {
         // TODO: replace with .as_str() and make the function const once https://github.com/rust-lang/rust/issues/130366 is stable
         &self.schema
     }
+    /// Return the alias as a borrowed `&str` (may be empty).
     pub fn alias<'s>(&'s self) -> &'s str {
         // TODO: replace with .as_str() and make the function const once https://github.com/rust-lang/rust/issues/130366 is stable
         &self.alias

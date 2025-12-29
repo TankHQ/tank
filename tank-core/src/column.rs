@@ -23,6 +23,7 @@ pub struct ColumnRef {
 }
 
 impl ColumnRef {
+    /// Return a `TableRef` referencing the column's table and schema.
     pub fn table(&self) -> TableRef {
         TableRef {
             name: self.table.into(),
@@ -113,12 +114,15 @@ pub struct ColumnDef {
 }
 
 impl ColumnDef {
+    /// Column name (as declared in the table definition).
     pub fn name(&self) -> &'static str {
         &self.column_ref.name
     }
+    /// Table name owning this column.
     pub fn table(&self) -> &'static str {
         &self.column_ref.table
     }
+    /// Schema name owning this column (may be empty).
     pub fn schema(&self) -> &'static str {
         &self.column_ref.schema
     }

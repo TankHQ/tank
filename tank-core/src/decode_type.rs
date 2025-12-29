@@ -78,7 +78,7 @@ pub fn decode_type(ty: &Type) -> (TypeDecoded, Option<CheckPassive>) {
                     .map(|arg| match arg {
                         GenericArgument::Const(Expr::Lit(ExprLit {
                             lit: Lit::Int(v), ..
-                        })) => v.base10_digits().parse::<u8>().expect("Must be a integer"),
+                        })) => v.base10_digits().parse::<u8>().expect("Must be an integer"),
                         _ => panic!(),
                     })
                     .collect::<Vec<_>>();
@@ -216,7 +216,7 @@ pub fn decode_type(ty: &Type) -> (TypeDecoded, Option<CheckPassive>) {
                 None,
                 Box::new(decode_type(&*elem).0.value),
                 len.base10_parse().expect(&format!(
-                    "Expected a integer literal array length in `{}`",
+                    "Expected an integer literal array length in `{}`",
                     ty.to_token_stream().to_string()
                 )),
             );
