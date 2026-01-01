@@ -13,10 +13,10 @@ async-stream.workspace = true
 byteorder = "1"
 bytes = "1"
 log.workspace = true
-native-tls = "0.2.14"
-openssl = "0.10.75"
-postgres-openssl = "0.5.2"
-postgres-protocol = "0.6.9"
+native-tls = "0"
+openssl = "0"
+postgres-openssl = "0"
+postgres-protocol = "0"
 postgres-types = "0"
 rust_decimal = { workspace = true, features = ["db-tokio-postgres"] }
 tank-core.workspace = true

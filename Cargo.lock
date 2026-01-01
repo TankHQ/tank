@@ -2508,6 +2508,7 @@ dependencies = [
  "futures",
  "hashbrown 0.15.5",
  "itertools",
+ "openssl",
  "rand 0.9.2",
  "rand_pcg",
  "scylla-cql",
@@ -2515,6 +2516,7 @@ dependencies = [
  "socket2 0.5.10",
  "thiserror",
  "tokio",
+ "tokio-openssl",
  "tracing",
  "uuid",
 ]
@@ -2989,6 +2991,7 @@ version = "0.13.0"
 dependencies = [
  "async-stream",
  "log",
+ "openssl",
  "rcgen",
  "rust_decimal",
  "scylla",

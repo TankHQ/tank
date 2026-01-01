@@ -165,7 +165,6 @@ pub async fn init_mariadb(ssl: bool) -> (String, Option<ContainerAsync<Mariadb>>
             .await
             .expect("Could not create the certificate files for ssl session");
 
-        // Mount certs into container (override auto-generated ones)
         container = container
             .with_copy_to("/etc/mysql/conf.d/my.cnf", path.join("tests/assets/my.cnf"))
             .with_copy_to("//var/lib/mysql/ca.pem", path.join("tests/assets/ca.pem"))

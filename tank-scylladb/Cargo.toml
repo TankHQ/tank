@@ -11,8 +11,9 @@ categories.workspace = true
 [dependencies]
 async-stream.workspace = true
 log.workspace = true
+openssl = "0"
 rust_decimal.workspace = true
-scylla = { version = "1", features = [ "time-03" ] }
+scylla = { version = "1", features = [ "openssl-010", "time-03" ] }
 tank-core.workspace = true
 time.workspace = true
 url.workspace = true

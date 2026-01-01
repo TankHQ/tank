@@ -1,0 +1,7 @@
+client_encryption_options:
+    enabled: true
+    certificate: /etc/scylla/certs/server-cert.pem
+    keyfile: /etc/scylla/certs/server-key.pem
+    truststore: /etc/scylla/certs/ca.pem
+    require_client_auth: true
+native_transport_port_ssl: 9042

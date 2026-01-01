@@ -1,5 +1,6 @@
 use crate::{RowWrap, ScyllaDBDriver, ScyllaDBPrepared, ScyllaDBTransaction};
 use async_stream::stream;
+use openssl::ssl::{SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
 use scylla::{
     client::{PoolSize, session::Session, session_builder::SessionBuilder},
     frame::Compression,
@@ -181,6 +182,55 @@ impl Connection for ScyllaDBConnection {
             && let Some(keyspace) = segments.next()
         {
             session = session.use_keyspace(keyspace, true);
+        }
+        let mut context_builder = SslContextBuilder::new(SslMethod::tls()).with_context(context)?;
+        context_builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
+        let mut ssl = false;
+        if let Some(path) = &url
+            .query_pairs()
+            .find_map(|(k, v)| if k == "sslca" { Some(v) } else { None })
+        {
+            context_builder
+                .set_ca_file(match path {
+                    Cow::Borrowed(v) => v,
+                    Cow::Owned(v) => v.as_str(),
+                })
+                .with_context(context)?;
+            ssl = true;
+        };
+        if let Some(path) = &url
+            .query_pairs()
+            .find_map(|(k, v)| if k == "sslcert" { Some(v) } else { None })
+        {
+            context_builder
+                .set_certificate_file(
+                    match path {
+                        Cow::Borrowed(v) => v,
+                        Cow::Owned(v) => v.as_str(),
+                    },
+                    SslFiletype::PEM,
+                )
+                .with_context(context)?;
+            ssl = true;
+        };
+        if let Some(path) = &url
+            .query_pairs()
+            .find_map(|(k, v)| if k == "sslkey" { Some(v) } else { None })
+        {
+            context_builder
+                .set_private_key_file(
+                    match path {
+                        Cow::Borrowed(v) => v,
+                        Cow::Owned(v) => v.as_str(),
+                    },
+                    SslFiletype::PEM,
+                )
+                .with_context(context)?;
+            context_builder.check_private_key().with_context(context)?;
+            ssl = true;
+        };
+        if ssl {
+            session = session.tls_context(Some(context_builder.build()));
         }
         if let Some(compression) = url.query_pairs().find_map(|(k, v)| {
             if k == "compression"
