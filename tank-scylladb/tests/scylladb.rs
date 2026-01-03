@@ -33,15 +33,15 @@ mod tests {
         drop(container);
 
         // SSL
-        // let (ssl_url, container) = init_scylladb(true).await;
-        // let container = container.expect("Could not launch container");
-        // let error_msg = format!("Could not connect to `{ssl_url}`");
-        // let driver = ScyllaDBDriver::new();
-        // let connection = driver
-        //     .connect(ssl_url.clone().into())
-        //     .await
-        //     .expect(&error_msg);
-        // execute_tests(connection).await;
-        // drop(container);
+        let (ssl_url, container) = init_scylladb(true).await;
+        let container = container.expect("Could not launch container");
+        let error_msg = format!("Could not connect to `{ssl_url}`");
+        let driver = ScyllaDBDriver::new();
+        let connection = driver
+            .connect(ssl_url.clone().into())
+            .await
+            .expect(&error_msg);
+        execute_tests(connection).await;
+        drop(container);
     }
 }

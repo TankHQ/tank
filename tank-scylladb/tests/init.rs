@@ -20,11 +20,15 @@ use testcontainers_modules::{
     scylladb::ScyllaDB,
     testcontainers::{
         ContainerAsync, ImageExt,
-        core::logs::{LogFrame, consumer::LogConsumer},
+        core::{
+            ContainerPort,
+            logs::{LogFrame, consumer::LogConsumer},
+        },
         runners::AsyncRunner,
     },
 };
 use tokio::fs;
+use url::Url;
 
 struct TestcontainersLogConsumer;
 impl LogConsumer for TestcontainersLogConsumer {
@@ -46,14 +50,6 @@ pub async fn init_scylladb(ssl: bool) -> (String, Option<ContainerAsync<ScyllaDB
     if let Ok(url) = env::var("TANK_SCYLLA_TEST") {
         return (url, None);
     };
-    if !Command::new("docker")
-        .arg("ps")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or_default()
-    {
-        log::error!("Cannot access docker");
-    }
     let mut image = ScyllaDB::default()
         .with_startup_timeout(Duration::from_secs(120))
         .with_log_consumer(TestcontainersLogConsumer);
@@ -62,69 +58,59 @@ pub async fn init_scylladb(ssl: bool) -> (String, Option<ContainerAsync<ScyllaDB
         generate_ssl_files()
             .await
             .expect("Could not create the certificate files for SSL session");
-        let config = indoc! {r#"
-            client_encryption_options:
-                enabled: true
-                certificate: /etc/scylla/certs/server-cert.pem
-                keyfile: /etc/scylla/certs/server-key.pem
-                truststore: /etc/scylla/certs/ca.pem
-                require_client_auth: true
-            native_transport_port_ssl: 9042
-        "#};
-        let config_path = path.join("tests/assets/scylla.yaml");
-        fs::write(&config_path, config.as_bytes())
-            .await
-            .expect("Failed to write scylla SSL config snippet");
         image = image
-            .with_copy_to("/etc/scylla/scylla.d/ssl.conf", config_path)
-            .with_copy_to("/etc/scylla/certs/ca.pem", path.join("tests/assets/ca.pem"))
+            .with_mapped_port(9042, ContainerPort::Tcp(9042))
+            .with_mapped_port(9142, ContainerPort::Tcp(9142))
             .with_copy_to(
-                "/etc/scylla/certs/server-cert.pem",
-                path.join("tests/assets/server-cert.pem"),
+                "/etc/scylla/scylla.yaml",
+                path.join("tests/assets/scylla.yaml"),
+            )
+            .with_copy_to("/etc/scylla/ca.pem", path.join("tests/assets/ca.pem"))
+            .with_copy_to(
+                "/etc/scylla/scylla.crt",
+                path.join("tests/assets/scylla.crt"),
             )
             .with_copy_to(
-                "/etc/scylla/certs/server-key.pem",
-                path.join("tests/assets/server-key.pem"),
+                "/etc/scylla/scylla.key",
+                path.join("tests/assets/scylla.key"),
             );
     }
     let container = image
         .start()
         .await
         .expect("Could not start the ScyllaDB container");
-    let port = container
+    let plaintext_port = container
         .get_host_port_ipv4(9042)
         .await
-        .expect("Cannot get the port of ScyllaDB");
-    let url = format!("scylladb://localhost:{port}");
-    let params = if ssl {
-        format!(
+        .expect("Cannot get the plaintext port (9042) of ScyllaDB");
+    let final_url = if ssl {
+        let ssl_host_port = container
+            .get_host_port_ipv4(9142)
+            .await
+            .expect("Cannot get the SSL port");
+        let params = format!(
             "sslca={}&sslcert={}&sslkey={}",
             path.join("tests/assets/ca.pem").to_string_lossy(),
             path.join("tests/assets/client-cert.pem").to_string_lossy(),
             path.join("tests/assets/client-key.pem").to_string_lossy(),
-        )
+        );
+        format!("scylladb://localhost:{ssl_host_port}/scylla_keyspace?{params}")
     } else {
-        Default::default()
+        format!("scylladb://localhost:{plaintext_port}/scylla_keyspace")
     };
+    let mut plain_url = Url::parse(&final_url).expect("The URL was not correct");
+    plain_url.set_path("");
     ScyllaDBDriver::new()
-        .connect(url.clone().into())
+        .connect(plain_url.to_string().into())
         .await
-        .expect("Could not connect to the newly created ScyllaDB instance")
+        .expect("Could not connect to ScyllaDB for setup")
         .execute(indoc! {r#"
             CREATE KEYSPACE IF NOT EXISTS scylla_keyspace
             WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': 1}
         "#})
         .await
         .expect("Could not create the keyspace");
-    let url = format!(
-        "{url}/scylla_keyspace{}",
-        if !params.is_empty() {
-            format!("?{params}")
-        } else {
-            Default::default()
-        }
-    );
-    (url, Some(container))
+    (final_url, Some(container))
 }
 
 async fn generate_ssl_files() -> Result<()> {
@@ -161,9 +147,9 @@ async fn generate_ssl_files() -> Result<()> {
         .distinguished_name
         .push(DnType::CommonName, "localhost");
     let server_cert = server_params.signed_by(&server_key, &ca_issuer)?;
-    fs::write(path.join("tests/assets/server-cert.pem"), server_cert.pem()).await?;
+    fs::write(path.join("tests/assets/scylla.crt"), server_cert.pem()).await?;
     fs::write(
-        path.join("tests/assets/server-key.pem"),
+        path.join("tests/assets/scylla.key"),
         server_key.serialize_pem(),
     )
     .await?;
