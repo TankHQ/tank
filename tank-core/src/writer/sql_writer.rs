@@ -866,24 +866,9 @@ pub trait SqlWriter: Send {
             },
             ",\n",
         );
-        let primary_key = E::primary_key_def();
-        if primary_key.len() > 1 {
-            out.push_str(",\nPRIMARY KEY (");
-            separated_by(
-                out,
-                primary_key,
-                |out, col| {
-                    self.write_identifier_quoted(
-                        &mut context
-                            .switch_fragment(Fragment::SqlCreateTablePrimaryKey)
-                            .current,
-                        out,
-                        col.name(),
-                    );
-                },
-                ", ",
-            );
-            out.push(')');
+        let pk = E::primary_key_def();
+        if pk.len() > 1 {
+            self.write_create_table_primary_key_fragment(&mut context, out, pk.iter().map(|v| *v));
         }
         for unique in E::unique_defs() {
             if unique.len() > 1 {
@@ -967,6 +952,34 @@ pub trait SqlWriter: Send {
         if !column.comment.is_empty() {
             self.write_column_comment_inline(context, out, column);
         }
+    }
+
+    fn write_create_table_primary_key_fragment<'a, It>(
+        &self,
+        context: &mut Context,
+        out: &mut String,
+        primary_key: It,
+    ) where
+        Self: Sized,
+        It: IntoIterator<Item = &'a ColumnDef>,
+        It::IntoIter: Clone,
+    {
+        out.push_str(",\nPRIMARY KEY (");
+        separated_by(
+            out,
+            primary_key,
+            |out, col| {
+                self.write_identifier_quoted(
+                    &mut context
+                        .switch_fragment(Fragment::SqlCreateTablePrimaryKey)
+                        .current,
+                    out,
+                    col.name(),
+                );
+            },
+            ", ",
+        );
+        out.push(')');
     }
 
     /// Emit referential action keyword.

@@ -290,6 +290,46 @@ impl SqlWriter for ScyllaDBSqlWriter {
         }
     }
 
+    fn write_create_table_primary_key_fragment<'a, It>(
+        &self,
+        context: &mut Context,
+        out: &mut String,
+        primary_key: It,
+    ) where
+        Self: Sized,
+        It: IntoIterator<Item = &'a ColumnDef>,
+        It::IntoIter: Clone,
+    {
+        let primary_key = primary_key.into_iter();
+        let mut parentheses_closed = false;
+        out.push_str(",\nPRIMARY KEY (");
+        let has_clustering = primary_key
+            .clone()
+            .find(|v: &&'a ColumnDef| v.clustering_key)
+            .is_some();
+        if has_clustering {
+            out.push('(');
+        }
+        let mut primary_key = primary_key.into_iter().peekable();
+        while let Some(col) = primary_key.next() {
+            self.write_identifier_quoted(
+                &mut context
+                    .switch_fragment(Fragment::SqlCreateTablePrimaryKey)
+                    .current,
+                out,
+                col.name(),
+            );
+            if let Some(next) = primary_key.peek() {
+                if next.clustering_key && !parentheses_closed {
+                    out.push(')');
+                    parentheses_closed = true;
+                }
+                out.push(',');
+            }
+        }
+        out.push(')');
+    }
+
     fn write_column_comments_statements<E>(&self, _context: &mut Context, _out: &mut String)
     where
         Self: Sized,

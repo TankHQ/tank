@@ -14,6 +14,7 @@ pub(crate) struct TableMetadata {
     pub(crate) name: String,
     pub(crate) item: ItemStruct,
     pub(crate) schema: String,
+    pub(crate) primary_key: Vec<usize>,
     pub(crate) unique: Vec<Vec<usize>>,
 }
 
@@ -65,7 +66,12 @@ fn decode_set_columns<'a, I: Iterator<Item = &'a ColumnMetadata> + Clone>(
             }
             elems.into_iter().flat_map(identity).collect()
         }
-        _ => return Err(Error::new(Span::call_site(), "")),
+        _ => {
+            return Err(Error::new(
+                Span::call_site(),
+                format!("Unexpected column set {col:?}"),
+            ));
+        }
     })
 }
 
@@ -78,7 +84,17 @@ pub fn decode_table(item: ItemStruct) -> TableMetadata {
         .collect();
     let mut name = item.ident.to_string().to_case(Case::Snake);
     let mut schema = String::new();
-    let mut primary_key = vec![];
+    let mut primary_key: Vec<_> = columns
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| {
+            if c.primary_key != PrimaryKeyType::None {
+                Some(i)
+            } else {
+                None
+            }
+        })
+        .collect();
     let mut unique = vec![];
     if name.starts_with('_') {
         name.remove(0);
@@ -105,11 +121,15 @@ pub fn decode_table(item: ItemStruct) -> TableMetadata {
                     };
                     schema = value.value();
                 } else if arg.path.is_ident("primary_key") {
-                    let Ok(value) = arg
+                    let cols_ids = arg
                         .value()
                         .and_then(ParseBuffer::parse::<Expr>)
-                        .and_then(|v| decode_set_columns(&item, v, columns.iter())) else {
-                        panic!("Error while parsing `primary_key`, use it like: `#[tank(primary_key = (\"k1\", \"k2\", ..))]`");
+                        .and_then(|v| decode_set_columns(&item, v, columns.iter()));
+                    let cols_ids = match cols_ids {
+                        Ok(v) => v,
+                        Err(e) => {
+                            panic!("Error while parsing `primary_key`, use it like: `#[tank(primary_key = (\"k1\", \"k2\", ..))]` ({e})");
+                        }
                     };
                     if !primary_key.is_empty() {
                         panic!("Primary key attribute can appear just once on a table");
@@ -120,7 +140,7 @@ pub fn decode_table(item: ItemStruct) -> TableMetadata {
                             column.name
                         )
                     }
-                    primary_key = value
+                    primary_key = cols_ids
                 } else if arg.path.is_ident("unique") {
                     let Ok(value) = arg
                         .value()
@@ -151,6 +171,7 @@ pub fn decode_table(item: ItemStruct) -> TableMetadata {
         name,
         item,
         schema,
+        primary_key,
         unique,
     }
 }

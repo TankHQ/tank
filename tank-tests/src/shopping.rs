@@ -45,7 +45,6 @@ struct Cart {
     price: FixedDecimal<8, 2>,
     timestamp: PrimitiveDateTime,
 }
-
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn shopping<E: Executor>(executor: &mut E) {

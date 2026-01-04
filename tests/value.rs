@@ -1,3 +1,6 @@
+use std::borrow::Cow;
+use tank::{AsValue, Value};
+
 #[cfg(test)]
 mod tests {
     use rust_decimal::{
@@ -1114,4 +1117,27 @@ mod tests {
         );
         assert_ne!(s, s_diff);
     }
+}
+
+#[test]
+fn value_value() {
+    assert_eq!(
+        Value::try_from_value("hello".as_value()).expect("Could not get a value from a value"),
+        Cow::Borrowed("hello").as_value()
+    );
+    assert_ne!("2hello".as_value(), Cow::Borrowed("1hello").as_value());
+    assert_eq!(
+        "hello".to_string().as_value(),
+        Cow::Borrowed("hello").as_value(),
+    );
+    assert_ne!(
+        Cow::Borrowed("hello3").as_value(),
+        "hello4".to_string().as_value(),
+    );
+    assert!(matches!(Value::as_empty_value(), Value::Null));
+    assert_eq!(
+        <[u128; 23]>::as_empty_value(),
+        Value::Array(None, Box::new(Value::UInt128(None)), 23)
+    );
+    assert!(Value::parse("some input").is_err());
 }

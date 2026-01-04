@@ -93,7 +93,7 @@ pub fn separated_by<T, F>(
     }
 }
 
-/// Convenience wrapper converting into a `CString`, panicking on interior NUL.
+/// Convenience wrapper converting into a `CString`.
 pub fn as_c_string(str: impl Into<Vec<u8>>) -> CString {
     CString::new(
         str.into()

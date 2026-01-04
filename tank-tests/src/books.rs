@@ -147,7 +147,7 @@ pub async fn books<E: Executor>(executor: &mut E) {
         assert_eq!(affected, 5);
     }
 
-    // Find authords
+    // Find authors
     let author = Author::find_pk(
         executor,
         &(&(&Uuid::parse_str("f938f818-0a40-4ce3-8fbc-259ac252a1b5")

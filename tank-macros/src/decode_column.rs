@@ -22,6 +22,7 @@ pub(crate) struct ColumnMetadata {
     pub(crate) nullable: bool,
     pub(crate) default: Option<TokenStream>,
     pub(crate) primary_key: PrimaryKeyType,
+    pub(crate) clustering_key: bool,
     pub(crate) references: Option<Either<TokenStream, (String, String)>>,
     pub(crate) on_delete: Option<Action>,
     pub(crate) on_update: Option<Action>,
@@ -42,6 +43,7 @@ impl Debug for ColumnMetadata {
             .field("nullable", &self.nullable)
             .field("default", &self.default)
             .field("primary_key", &self.primary_key)
+            .field("clustering_key", &self.clustering_key)
             .field("references", &self.references)
             .field("on_delete", &self.on_delete)
             .field("on_update", &self.on_update)
@@ -140,6 +142,7 @@ pub fn decode_column(field: &Field) -> ColumnMetadata {
         nullable: false,
         default: None,
         primary_key: PrimaryKeyType::None,
+        clustering_key: false,
         references: None,
         on_delete: None,
         on_update: None,
@@ -175,6 +178,9 @@ pub fn decode_column(field: &Field) -> ColumnMetadata {
                     metadata.column_type = column_type.types;
                 } else if name == "primary_key" {
                     metadata.primary_key = PrimaryKeyType::PrimaryKey;
+                    metadata.nullable = false;
+                } else if name == "clustering_key" {
+                    metadata.clustering_key = true;
                     metadata.nullable = false;
                 } else if name == "references" {
                     let reference = if let Ok(v) = parse2::<ExprMethodCall>(value.clone()) {

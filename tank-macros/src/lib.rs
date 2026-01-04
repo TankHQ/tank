@@ -28,7 +28,6 @@ use syn::{
     Expr, Ident, Index, ItemStruct, parse_macro_input, parse2, punctuated::Punctuated,
     token::AndAnd,
 };
-use tank_core::PrimaryKeyType;
 
 #[proc_macro_derive(Entity, attributes(tank))]
 pub fn derive_entity(input: TokenStream) -> TokenStream {
@@ -50,25 +49,12 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
         })
         .collect::<Vec<_>>();
     let (from_row_factory, from_row) = from_row_trait(&table);
-    let primary_keys: Vec<_> = metadata_and_filter
-        .iter()
-        .enumerate()
-        .filter_map(|(i, (m, ..))| {
-            if matches!(
-                m.primary_key,
-                PrimaryKeyType::PrimaryKey | PrimaryKeyType::PartOfPrimaryKey
-            ) {
-                Some((i, m))
-            } else {
-                None
-            }
-        })
-        .collect();
-    let primary_key = primary_keys
-        .iter()
-        .map(|(_i, c)| c.ident.clone())
-        .map(|ident| quote!(self.#ident));
-    let primary_key_def = primary_keys.iter().map(|(i, _)| quote!(columns[#i]));
+    let primary_key_cols = table.primary_key.iter().map(|i| &table.columns[*i]);
+    let primary_key = primary_key_cols.clone().map(|col| {
+        let ident = &col.ident;
+        quote!(self.#ident)
+    });
+    let primary_keys_def = table.primary_key.iter().map(|i| quote!(&columns[#i]));
     let unique_defs = &table
         .unique
         .iter()
@@ -82,7 +68,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
         })
         .collect::<Vec<_>>();
     let unique_defs = quote!(vec![#(#unique_defs),*].into_boxed_slice());
-    let primary_key_types = primary_keys.iter().map(|(_, c)| c.ty.clone());
+    let primary_key_types = primary_key_cols.clone().map(|col| col.ty.clone());
     let column = column_trait(&table);
     let label_value_and_filter = metadata_and_filter.iter().map(|(column, filter)| {
         let name = &column.name;
@@ -96,20 +82,23 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
         let field = &c.ident;
         encode_column_def(&c, quote!(#ident::#field))
     });
-    let primary_key_condition = primary_keys.iter().enumerate().map(|(i, (_, c))| {
-        (
-            &c.ident,
-            Index::from(i),
-            Ident::new(&format!("pk{}", i), c.ident.span()),
-        )
+    let primary_key_condition = table.primary_key.iter().enumerate().map(|(i, pki)| {
+        let ident = table.columns[*pki].ident.clone();
+        let span = ident.span();
+        (ident, Ident::new(&format!("pk{}", i), span))
     });
     let primary_key_condition_declaration = primary_key_condition
         .clone()
-        .map(|(_, i, pk)| quote! { let #pk = primary_key.#i.to_owned(); })
+        .enumerate()
+        .clone()
+        .map(|(i, (_, pk))| {
+            let i = Index::from(i);
+            quote! { let #pk = primary_key.#i.to_owned(); }
+        })
         .collect::<TokenStream2>();
     let primary_key_condition_expression = primary_key_condition
         .clone()
-        .map(|(field, _i, pk)| quote!(#ident::#field == # #pk))
+        .map(|(field, pk)| quote!(#ident::#field == # #pk))
         .collect::<Punctuated<_, AndAnd>>();
     quote! {
         #from_row
@@ -132,13 +121,13 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 &RESULT
             }
 
-            fn primary_key_def() -> impl ExactSizeIterator<Item = &'static ::tank::ColumnDef> {
-                static RESULT: ::std::sync::LazyLock<Box<[&::tank::ColumnDef]>> =
+            fn primary_key_def() ->  &'static [&'static ::tank::ColumnDef] {
+                static RESULT: ::std::sync::LazyLock<Box<[&'static ::tank::ColumnDef]>> =
                     ::std::sync::LazyLock::new(|| {
-                        let columns = #ident::columns();
-                        vec![#(&#primary_key_def),*].into_boxed_slice()
+                        let columns = <#ident as ::tank::Entity>::columns();
+                        vec![#(#primary_keys_def),*].into_boxed_slice()
                     });
-                RESULT.iter().copied()
+                &RESULT
             }
 
             fn primary_key<'a>(&'a self) -> Self::PrimaryKey<'a> {

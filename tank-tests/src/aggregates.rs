@@ -13,10 +13,10 @@ struct Values {
     /// This column contains the actual value
     value: u32,
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 const EXPECTED_SUM: u32 = 68978385;
 const EXPECTED_AVG: u32 = 5873;
 const COUNT: u32 = 11745;
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn aggregates<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock();

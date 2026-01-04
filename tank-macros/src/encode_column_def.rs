@@ -12,6 +12,7 @@ pub fn encode_column_def(metadata: &ColumnMetadata, column_ref: TokenStream) -> 
         .as_ref()
         .map_or(quote!(Default::default()), |v| quote!(#v.into()));
     let primary_key = &metadata.primary_key;
+    let clustering_key = metadata.clustering_key;
     let references = if let Some(Either::Left(tokens)) = &metadata.references {
         let tokens = tokens.clone();
         quote!(Some(#tokens))
@@ -43,6 +44,7 @@ pub fn encode_column_def(metadata: &ColumnMetadata, column_ref: TokenStream) -> 
             nullable: #nullable,
             default: #default,
             primary_key: #primary_key,
+            clustering_key: #clustering_key,
             references: #references,
             on_delete: #on_delete,
             on_update: #on_update,

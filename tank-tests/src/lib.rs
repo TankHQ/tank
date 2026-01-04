@@ -6,6 +6,7 @@ mod complex;
 mod insane;
 mod interval;
 mod limits;
+mod metrics;
 mod multiple;
 mod operations;
 mod orders;
@@ -26,6 +27,7 @@ pub use insane::*;
 pub use interval::*;
 pub use limits::*;
 use log::LevelFilter;
+pub use metrics::*;
 pub use multiple::*;
 pub use operations::*;
 pub use orders::*;
@@ -83,6 +85,7 @@ pub async fn execute_tests<C: Connection>(mut connection: C) {
     advanced_operations(&mut connection)
         .await
         .expect("Advanced operations examples test did not succeed");
+    metrics(&mut connection).await;
 }
 
 #[macro_export]

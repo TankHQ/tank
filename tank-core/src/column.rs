@@ -99,6 +99,8 @@ pub struct ColumnDef {
     pub default: DefaultValueType,
     /// Primary key participation.
     pub primary_key: PrimaryKeyType,
+    /// Defines the ordering of the rows.
+    pub clustering_key: bool,
     /// Unique constraint (single column only, composite handled in the `TableDef`).
     pub unique: bool,
     /// Foreign key target column.

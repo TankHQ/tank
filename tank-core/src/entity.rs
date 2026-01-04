@@ -22,7 +22,7 @@ pub trait Entity {
     fn columns() -> &'static [ColumnDef];
 
     /// Iterator over columns forming the primary key. Empty iterator means no PK.
-    fn primary_key_def() -> impl ExactSizeIterator<Item = &'static ColumnDef>;
+    fn primary_key_def() -> &'static [&'static ColumnDef];
 
     /// Extracts the primary key value(s) from `self`.
     fn primary_key(&self) -> Self::PrimaryKey<'_>;
@@ -271,8 +271,9 @@ pub trait Entity {
         Self: Sized,
     {
         if Self::primary_key_def().len() == 0 {
-            let error =
-                Error::msg("Cannot delete an entity without a primary key, it would delete nothing");
+            let error = Error::msg(
+                "Cannot delete an entity without a primary key, it would delete nothing",
+            );
             log::error!("{:#}", error);
             return Either::Left(future::ready(Err(error)));
         }

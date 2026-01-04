@@ -4,8 +4,6 @@ use tank::{AsValue, DataSet, Entity, Executor, cols, expr, stream::TryStreamExt}
 use time::{Date, Month, PrimitiveDateTime, Time};
 use tokio::sync::Mutex;
 
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-
 #[derive(Entity, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Times {
     pub timestamp_1: PrimitiveDateTime,
@@ -15,6 +13,7 @@ pub struct Times {
     pub time_1: time::Time,
     pub time_2: NaiveTime,
 }
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn times<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;

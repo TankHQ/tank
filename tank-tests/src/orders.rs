@@ -4,8 +4,6 @@ use tank::{DataSet, Entity, Executor, FixedDecimal, Passive, cols, expr, stream:
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-
 #[derive(Entity, Debug, Clone, PartialEq, Eq, Hash)]
 #[tank(schema = "testing", name = "orders")]
 pub struct Order {
@@ -17,6 +15,7 @@ pub struct Order {
     pub status: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn orders<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;
