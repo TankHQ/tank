@@ -46,7 +46,7 @@ mod tests {
             }
         ));
 
-        let pk: Vec<_> = MyEntity::primary_key_def().collect();
+        let pk = MyEntity::primary_key_def().to_vec();
         assert_eq!(pk.len(), 2);
         assert_eq!(pk[0].nullable, false);
         assert_eq!(pk[0].primary_key, PrimaryKeyType::PartOfPrimaryKey);

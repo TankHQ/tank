@@ -69,7 +69,7 @@ fn decode_set_columns<'a, I: Iterator<Item = &'a ColumnMetadata> + Clone>(
         _ => {
             return Err(Error::new(
                 Span::call_site(),
-                format!("Unexpected column set {col:?}"),
+                format!("Unexpected column set {col:#?}"),
             ));
         }
     })
