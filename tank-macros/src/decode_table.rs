@@ -67,10 +67,7 @@ fn decode_set_columns<'a, I: Iterator<Item = &'a ColumnMetadata> + Clone>(
             elems.into_iter().flat_map(identity).collect()
         }
         _ => {
-            return Err(Error::new(
-                Span::call_site(),
-                format!("Unexpected column set {col:#?}"),
-            ));
+            return Err(Error::new(Span::call_site(), "Unexpected column set"));
         }
     })
 }
