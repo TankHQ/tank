@@ -2879,7 +2879,7 @@ dependencies = [
 
 [[package]]
 name = "tank"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "indoc",
  "rust_decimal",
@@ -2891,7 +2891,7 @@ dependencies = [
 
 [[package]]
 name = "tank-core"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -2914,7 +2914,7 @@ dependencies = [
 
 [[package]]
 name = "tank-duckdb"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "async-stream",
  "flume",
@@ -2932,7 +2932,7 @@ dependencies = [
 
 [[package]]
 name = "tank-macros"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -2943,7 +2943,7 @@ dependencies = [
 
 [[package]]
 name = "tank-mysql"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "async-stream",
  "log",
@@ -2961,7 +2961,7 @@ dependencies = [
 
 [[package]]
 name = "tank-postgres"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "async-stream",
  "byteorder",
@@ -2987,7 +2987,7 @@ dependencies = [
 
 [[package]]
 name = "tank-scylladb"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "async-stream",
  "log",
@@ -3006,7 +3006,7 @@ dependencies = [
 
 [[package]]
 name = "tank-sqlite"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "async-stream",
  "flume",
@@ -3023,7 +3023,7 @@ dependencies = [
 
 [[package]]
 name = "tank-tests"
-version = "0.14.0"
+version = "0.14.1"
 dependencies = [
  "chrono",
  "env_logger",
