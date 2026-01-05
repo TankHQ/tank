@@ -1,6 +1,6 @@
 use crate::{
     DuckDBPrepared, DuckDBTransaction, cbox::CBox, date_to_duckdb_date, decimal_to_duckdb_decimal,
-    driver::DuckDBDriver, error_message_from_ptr, extract::extract_value, i128_to_duckdb_hugeint,
+    driver::DuckDBDriver, extract::extract_value, i128_to_duckdb_hugeint,
     interval_to_duckdb_interval, offsetdatetime_to_duckdb_timestamp,
     primitive_date_time_to_duckdb_timestamp, tank_value_to_duckdb_logical_type,
     tank_value_to_duckdb_value, time_to_duckdb_time, u128_to_duckdb_uhugeint,
@@ -21,7 +21,8 @@ use std::{
 };
 use tank_core::{
     AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query, QueryResult, Result,
-    RowLabeled, RowsAffected, Value, as_c_string, send_value, stream::Stream, truncate_long,
+    RowLabeled, RowsAffected, Value, as_c_string, error_message_from_ptr, send_value,
+    stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
 use url::form_urlencoded;

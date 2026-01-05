@@ -10,18 +10,6 @@ use std::{
 };
 use tank_core::{Value, as_c_string};
 
-pub(crate) fn error_message_from_ptr(ptr: &'_ *const i8) -> &'_ str {
-    unsafe {
-        if *ptr != ptr::null() {
-            CStr::from_ptr(*ptr)
-                .to_str()
-                .unwrap_or("Unknown error: the error message was not a valid utf8 string")
-        } else {
-            "Unknown error: could not extract it from DuckDB"
-        }
-    }
-}
-
 pub(crate) fn tank_value_to_duckdb_logical_type(v: &Value) -> CBox<duckdb_logical_type> {
     unsafe {
         let mut result = CBox::new(ptr::null_mut(), |mut p| duckdb_destroy_logical_type(&mut p));

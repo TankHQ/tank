@@ -1,6 +1,6 @@
 use crate::{
-    cbox::CBox, date_to_duckdb_date, decimal_to_duckdb_decimal, error_message_from_ptr,
-    i128_to_duckdb_hugeint, interval_to_duckdb_interval, offsetdatetime_to_duckdb_timestamp,
+    cbox::CBox, date_to_duckdb_date, decimal_to_duckdb_decimal, i128_to_duckdb_hugeint,
+    interval_to_duckdb_interval, offsetdatetime_to_duckdb_timestamp,
     primitive_date_time_to_duckdb_timestamp, time_to_duckdb_time, u128_to_duckdb_uhugeint,
 };
 use libduckdb_sys::*;
@@ -8,7 +8,7 @@ use std::{
     ffi::c_void,
     fmt::{self, Display},
 };
-use tank_core::{AsValue, Error, Prepared, Result, Value};
+use tank_core::{AsValue, Error, Prepared, Result, Value, error_message_from_ptr};
 
 #[derive(Debug)]
 pub struct DuckDBPrepared {

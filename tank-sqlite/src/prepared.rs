@@ -1,4 +1,4 @@
-use crate::{CBox, error_message_from_ptr, sql_writer::SQLiteSqlWriter};
+use crate::{CBox, sql_writer::SQLiteSqlWriter};
 use libsqlite3_sys::*;
 use rust_decimal::prelude::ToPrimitive;
 use std::{
@@ -7,7 +7,8 @@ use std::{
     os::raw::{c_char, c_void},
 };
 use tank_core::{
-    AsValue, Context, Error, Fragment, Prepared, Result, SqlWriter, Value, truncate_long,
+    AsValue, Context, Error, Fragment, Prepared, Result, SqlWriter, Value, error_message_from_ptr,
+    truncate_long,
 };
 
 #[derive(Debug)]
@@ -33,7 +34,7 @@ impl SQLitePrepared {
             let errcode = sqlite3_errcode(db);
             format!(
                 "Error ({errcode}): {}",
-                error_message_from_ptr(&sqlite3_errmsg(db)).to_string(),
+                error_message_from_ptr(&sqlite3_errmsg(db)),
             )
         }
     }

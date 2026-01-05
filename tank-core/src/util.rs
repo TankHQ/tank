@@ -1,6 +1,13 @@
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
-use std::{borrow::Cow, cmp::min, collections::BTreeMap, ffi::CString, fmt::Write};
+use std::{
+    borrow::Cow,
+    cmp::min,
+    collections::BTreeMap,
+    ffi::{CStr, CString},
+    fmt::Write,
+    ptr,
+};
 use syn::Path;
 
 #[derive(Clone)]
@@ -102,6 +109,16 @@ pub fn as_c_string(str: impl Into<Vec<u8>>) -> CString {
             .collect::<Vec<u8>>(),
     )
     .unwrap_or_default()
+}
+
+pub fn error_message_from_ptr<'a>(ptr: &'a *const i8) -> Cow<'a, str> {
+    unsafe {
+        if *ptr != ptr::null() {
+            CStr::from_ptr(*ptr).to_string_lossy()
+        } else {
+            Cow::Borrowed("Unknown error: could not extract the error message")
+        }
+    }
 }
 
 /// Consume a prefix of `input` while the predicate returns true, returning that slice.

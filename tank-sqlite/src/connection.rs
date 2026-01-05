@@ -1,5 +1,5 @@
 use crate::{
-    CBox, SQLiteDriver, SQLitePrepared, SQLiteTransaction, error_message_from_ptr,
+    CBox, SQLiteDriver, SQLitePrepared, SQLiteTransaction,
     extract::{extract_name, extract_value},
 };
 use async_stream::try_stream;
@@ -16,7 +16,7 @@ use std::{
 };
 use tank_core::{
     AsQuery, Connection, Driver, Error, ErrorContext, Executor, Query, QueryResult, Result,
-    RowLabeled, RowsAffected, send_value, stream::Stream, truncate_long,
+    RowLabeled, RowsAffected, error_message_from_ptr, send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -31,7 +31,7 @@ impl SQLiteConnection {
             let errcode = sqlite3_errcode(*self.connection);
             format!(
                 "Error ({errcode}): {}",
-                error_message_from_ptr(&sqlite3_errmsg(*self.connection)).to_string(),
+                error_message_from_ptr(&sqlite3_errmsg(*self.connection)),
             )
         }
     }
