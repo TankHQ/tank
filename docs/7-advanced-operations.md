@@ -126,13 +126,22 @@ It accepts a subset of Rust syntax with additional sentinel tokens for SQL seman
 - `[1, 2, 3][0]` array or map indexing
 - `alpha == ? && beta > ?` prepared statement parameters
 - `COUNT(*)`, `SUM(RadioLog::signal_strength)` function calls and aggregates
-- `1 as u128` type casting
+- `Operator::id as op_id` aliasing (column renaming)
 - `PI` identifiers
 - `col == NULL`, `col != NULL` null check, it becomes `IS NULL` / `IS NOT NULL`
 - `value != "ab%" as LIKE` pattern matching, it becomes `value NOT LIKE 'ab%'` in sql, it also supports `IN`, `REGEXP` and `GLOB` (actual supports depends on the driver)
 - `-(-PI) + 2 * (5 % (2 + 1)) == 7 && !(4 < 2)` combination of the previous
+- `CAST((2 > 1) as i32)` casting expression (mind the parentheses), the type names are automatically converted by the driver
 
 Parentheses obey standard Rust precedence. Empty invocation (`expr!()`) yields `false`. Ultimately, the drivers decide if and how these expressions are translated into the specific query language.
+
+> [!NOTE]
+> The Rust cast expression (as) have a different meaning depending on the context.
+> Consider the following example: `CAST((4 == (2, 3, 4, 5) as IN) as i64) as read`.
+> The 3 as expression have 3 different meanings:
+>     1. States that `4 == (2, 3, 4, 5)` is actually `4 IN (2, 3, 4, 5)`
+>     2. Separates the target type of the casting from the expression casted.
+>     3. Gives a name to the resulting column (when used in a SELECT for example)
 
 ## Cols
 [`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) builds a slice of projection expressions (optionally ordered). Each item is an expression (parsed via [`expr!`](7-advanced-operations.html#expr)) or an ordered expression when followed by `ASC` or `DESC`.

@@ -28,11 +28,12 @@ impl TryFrom<mysql_async::Value> for ValueWrap {
                 let json = serde_json::from_slice::<serde_json::Value>(&v);
                 match json {
                     Ok(json @ serde_json::Value::Array(..))
-                    | Ok(json @ serde_json::Value::Object(..)) => {
+                    | Ok(json @ serde_json::Value::Object(..))
+                    | Ok(json @ serde_json::Value::Number(..)) => {
                         tank_core::Value::Json(Some(json))
                     }
                     _ => {
-                        // TODO replace with String::from_utf8_lossy_owned to avoid copy, if stable
+                        // TODO Replace it with String::from_utf8_lossy_owned once https://github.com/rust-lang/rust/issues/129436 is fixed
                         tank_core::Value::Unknown(Some(String::from_utf8_lossy(&v).to_string()))
                     }
                 }

@@ -105,13 +105,27 @@ macro_rules! impl_as_value {
                         }
                         Ok(v as _)
                     },
+                    #[allow(unreachable_patterns)]
+                    // SQL Generic floating point value
+                    Value::Float64(Some(v), ..) => {
+                        if v.is_finite() && v.fract() == 0.0 {
+                            return Self::try_from_value(Value::Int64(Some(v as _)))
+                        }
+                        Err(Error::msg(format!("Value {v}: f64 does not fit into a integer")))
+                    },
                     Value::Json(Some(serde_json::Value::Number(v)), ..) => {
-                        if let Some(v) = v.as_i128()
+                        let integer = v.as_i128().or_else(|| {
+                            if let Some(v) = v.as_f64() && v.fract() == 0.0 {
+                                return Some(v.trunc() as i128);
+                            }
+                            None
+                        });
+                        if let Some(v) = integer
                             && v.clamp(<$source>::MIN as _, <$source>::MAX as _) == v as i128 {
                             return Ok(v as $source);
                         }
                         Err(Error::msg(format!(
-                            "Value {v} from json number is out of range for {}",
+                            "Value {v} from json number is out of range for {} (extracted integer is: {integer:?})",
                             any::type_name::<Self>(),
                         )))
                     }
@@ -336,7 +350,17 @@ impl_as_value!(
     Value::UInt32(Some(v), ..) => Ok(v != 0),
     Value::UInt64(Some(v), ..) => Ok(v != 0),
     Value::UInt128(Some(v), ..) => Ok(v != 0),
-    Value::Json(Some(serde_json::Value::Bool(v)), ..) => Ok(v)
+    Value::Json(Some(serde_json::Value::Bool(v)), ..) => Ok(v),
+    Value::Json(Some(serde_json::Value::Number(v)), ..) => {
+        let n = v.as_i64();
+        if n == Some(0) {
+            Ok(false)
+        } else if n == Some(1) {
+            Ok(true)
+        } else {
+            Err(Error::msg(format!("Cannot convert json number `{v:?}` into bool")))
+        }
+    },
 );
 impl_as_value!(
     f32,
@@ -937,14 +961,13 @@ impl AsValue for Decimal {
             Value::Float64(Some(v), ..) => Ok(Decimal::from_f64(v)
                 .ok_or(Error::msg(format!("Cannot convert {value:?} to Decimal")))?),
             Value::Json(Some(serde_json::Value::Number(v)), ..) => {
-                if let Some(v) = v.as_i128()
-                    && let Some(v) = Decimal::from_i128(v)
+                if let Some(v) = v.as_f64()
+                    && let Some(v) = Decimal::from_f64(v)
                 {
                     return Ok(v);
                 }
                 Err(Error::msg(format!(
-                    "Value {v} from json number is out of range for {}",
-                    any::type_name::<Self>(),
+                    "Value {v} from json number is out of range for Decimal",
                 )))
             }
             Value::Unknown(Some(v), ..) => Self::parse(&v),

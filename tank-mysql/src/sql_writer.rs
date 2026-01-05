@@ -57,7 +57,28 @@ impl SqlWriter for MySQLSqlWriter {
         }
     }
 
-    fn write_column_type(&self, _context: &mut Context, out: &mut String, value: &Value) {
+    fn write_column_type(&self, context: &mut Context, out: &mut String, value: &Value) {
+        if context.fragment == Fragment::Casting {
+            match value {
+                Value::Int8(..)
+                | Value::Int16(..)
+                | Value::Int32(..)
+                | Value::Int64(..)
+                | Value::Int128(..) => {
+                    out.push_str("SIGNED");
+                    return;
+                }
+                Value::UInt8(..)
+                | Value::UInt16(..)
+                | Value::UInt32(..)
+                | Value::UInt64(..)
+                | Value::UInt128(..) => {
+                    out.push_str("UNSIGNED");
+                    return;
+                }
+                _ => {}
+            }
+        }
         match value {
             Value::Boolean(..) => out.push_str("BOOLEAN"),
             Value::Int8(..) => out.push_str("TINYINT"),

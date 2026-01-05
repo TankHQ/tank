@@ -2,6 +2,7 @@
 pub enum Fragment {
     #[default]
     None,
+    Aliasing,
     ParameterBinding,
     Casting,
     Json,

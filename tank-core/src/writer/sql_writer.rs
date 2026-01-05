@@ -590,7 +590,13 @@ pub trait SqlWriter: Send {
         match value {
             Operand::LitBool(v) => self.write_value_bool(context, out, *v),
             Operand::LitFloat(v) => write_float!(self, context, out, *v, delimiter),
-            Operand::LitIdent(v) => drop(out.push_str(v)),
+            Operand::LitIdent(v) => {
+                if context.fragment == Fragment::Aliasing {
+                    self.write_identifier_quoted(context, out, v);
+                } else {
+                    out.push_str(v);
+                }
+            }
             Operand::LitField(v) => separated_by(out, *v, |out, v| out.push_str(v), "."),
             Operand::LitInt(v) => write_integer!(out, *v, delimiter),
             Operand::LitStr(v) => self.write_value_string(context, out, v),
@@ -722,6 +728,13 @@ pub trait SqlWriter: Send {
                 .write_query(self.as_dyn(), &mut context.current, out)
         );
         out.push_str(infix);
+        let mut context = context
+            .current
+            .switch_fragment(if value.op == BinaryOpType::Alias {
+                Fragment::Aliasing
+            } else {
+                context.current.fragment
+            });
         possibly_parenthesized!(
             out,
             !rhs_parenthesized && value.rhs.precedence(self.as_dyn()) <= precedence,
@@ -1243,17 +1256,24 @@ pub trait SqlWriter: Send {
             );
             out.push(')');
         }
-        out.push_str(" DO UPDATE SET\n");
-        separated_by(
-            out,
-            columns.filter(|c| c.primary_key == PrimaryKeyType::None),
-            |out, col| {
-                self.write_identifier_quoted(context, out, col.name());
-                out.push_str(" = EXCLUDED.");
-                self.write_identifier_quoted(context, out, col.name());
-            },
-            ",\n",
-        );
+        let mut update_cols = columns
+            .filter(|c| c.primary_key == PrimaryKeyType::None)
+            .peekable();
+        if update_cols.peek().is_some() {
+            out.push_str(" DO UPDATE SET\n");
+            separated_by(
+                out,
+                update_cols,
+                |out, col| {
+                    self.write_identifier_quoted(context, out, col.name());
+                    out.push_str(" = EXCLUDED.");
+                    self.write_identifier_quoted(context, out, col.name());
+                },
+                ",\n",
+            );
+        } else {
+            out.push_str(" DO NOTHING");
+        }
     }
 
     /// Emit DELETE statement with WHERE clause.

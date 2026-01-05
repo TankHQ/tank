@@ -4,10 +4,7 @@ use crate::{
     primitive_date_time_to_duckdb_timestamp, time_to_duckdb_time, u128_to_duckdb_uhugeint,
 };
 use libduckdb_sys::*;
-use std::{
-    ffi::{CStr, c_char},
-    ptr,
-};
+use std::{ffi::c_char, ptr};
 use tank_core::{Value, as_c_string};
 
 pub(crate) fn tank_value_to_duckdb_logical_type(v: &Value) -> CBox<duckdb_logical_type> {
