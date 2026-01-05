@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 use tank::{
-    DataSet, Entity, Executor, Result, cols, expr,
+    AsValue, DataSet, Entity, Executor, Result, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -73,34 +73,28 @@ pub async fn math<E: Executor>(executor: &mut E) {
     let result = MathTable::table()
         .select(
             executor,
-            cols!(
-                MathTable::id,
-                CAST((90 > 89 && (10 & 6) == 2) as i32) as read
-            ),
+            cols!(MathTable::id, (90 > 89 && (10 & 6) == 2) as read),
             expr!(MathTable::id == 0),
             None,
         )
-        .map_ok(MathTable::from_row)
+        .map_ok(|v| bool::try_from_value(v.values.into_iter().nth(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await
         .expect("Could not get the result 4");
-    assert_eq!(result, [MathTable { id: 0, read: 1 }]);
+    assert_eq!(result, [true]);
 
     let result = MathTable::table()
         .select(
             executor,
-            cols!(
-                MathTable::id,
-                CAST((4 == (2, 3, 4, 5) as IN) as i64) as read
-            ),
+            cols!(MathTable::id, (4 == (2, 3, 4, 5) as IN) as read),
             expr!(MathTable::id == 0),
             None,
         )
-        .map_ok(MathTable::from_row)
+        .map_ok(|v| bool::try_from_value(v.values.into_iter().nth(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await
         .expect("Could not get the result 5");
-    assert_eq!(result, [MathTable { id: 0, read: 1 }]);
+    assert_eq!(result, [true]);
 }

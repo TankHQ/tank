@@ -677,7 +677,9 @@ pub trait SqlWriter: Send {
     ) {
         let (prefix, infix, suffix, lhs_parenthesized, rhs_parenthesized) = match value.op {
             BinaryOpType::Indexing => ("", "[", "]", false, true),
-            BinaryOpType::Cast => ("CAST(", " AS ", ")", true, true),
+            BinaryOpType::Cast => {
+                return self.write_expression_cast(context, out, value.lhs, value.rhs);
+            }
             BinaryOpType::Multiplication => ("", " * ", "", false, false),
             BinaryOpType::Division => ("", " / ", "", false, false),
             BinaryOpType::Remainder => ("", " % ", "", false, false),
@@ -713,28 +715,19 @@ pub trait SqlWriter: Send {
                 }
             }
         };
-        let mut context = context.switch_fragment(if value.op == BinaryOpType::Cast {
-            Fragment::Casting
-        } else {
-            context.fragment
-        });
         let precedence = self.expression_binary_op_precedence(&value.op);
         out.push_str(prefix);
         possibly_parenthesized!(
             out,
             !lhs_parenthesized && value.lhs.precedence(self.as_dyn()) < precedence,
-            value
-                .lhs
-                .write_query(self.as_dyn(), &mut context.current, out)
+            value.lhs.write_query(self.as_dyn(), context, out)
         );
         out.push_str(infix);
-        let mut context = context
-            .current
-            .switch_fragment(if value.op == BinaryOpType::Alias {
-                Fragment::Aliasing
-            } else {
-                context.current.fragment
-            });
+        let mut context = context.switch_fragment(if value.op == BinaryOpType::Alias {
+            Fragment::Aliasing
+        } else {
+            context.fragment
+        });
         possibly_parenthesized!(
             out,
             !rhs_parenthesized && value.rhs.precedence(self.as_dyn()) <= precedence,
@@ -743,6 +736,22 @@ pub trait SqlWriter: Send {
                 .write_query(self.as_dyn(), &mut context.current, out)
         );
         out.push_str(suffix);
+    }
+
+    /// Render casting expression
+    fn write_expression_cast(
+        &self,
+        context: &mut Context,
+        out: &mut String,
+        expr: &dyn Expression,
+        ty: &dyn Expression,
+    ) {
+        let mut context = context.switch_fragment(Fragment::Casting);
+        out.push_str("CAST(");
+        expr.write_query(self.as_dyn(), &mut context.current, out);
+        out.push_str(" AS ");
+        ty.write_query(self.as_dyn(), &mut context.current, out);
+        out.push(')');
     }
 
     /// Render ordered expression inside ORDER BY.
@@ -967,6 +976,7 @@ pub trait SqlWriter: Send {
         }
     }
 
+    /// Emit PRIMARY KEY constraint for the CREATE TABLE query
     fn write_create_table_primary_key_fragment<'a, It>(
         &self,
         context: &mut Context,
