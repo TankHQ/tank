@@ -6,7 +6,9 @@ mod tests {
     use std::sync::Mutex;
     use tank_core::{Connection, Driver};
     use tank_scylladb::ScyllaDBDriver;
-    use tank_tests::{init_logs, interval, limits, metrics, simple, trade_multiple, trade_simple};
+    use tank_tests::{
+        init_logs, interval, limits, metrics, simple, trade_multiple, trade_simple, transaction1,
+    };
 
     static MUTEX: Mutex<()> = Mutex::new(());
 
@@ -16,6 +18,7 @@ mod tests {
         trade_multiple(&mut connection).await;
         limits(&mut connection).await;
         interval(&mut connection).await;
+        transaction1(&mut connection).await;
         metrics(&mut connection).await;
     }
 

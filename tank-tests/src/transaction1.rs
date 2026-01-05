@@ -1,5 +1,8 @@
 use std::sync::LazyLock;
-use tank::{Connection, DataSet, Entity, Transaction, cols, stream::TryStreamExt};
+use tank::{
+    Connection, DataSet, Entity, Transaction, cols,
+    stream::{StreamExt, TryStreamExt},
+};
 use tokio::sync::Mutex;
 
 #[derive(Entity)]
@@ -16,36 +19,30 @@ struct EntityB {
 }
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+/// Test the transaction functionality using only inserts and deletes (no select)
 pub async fn transaction1<C: Connection>(connection: &mut C) {
     let _lock = MUTEX.lock().await;
 
-    let mut transaction = connection
-        .begin()
-        .await
-        .expect("Could not begin a transaction");
-
     // Setup
-    EntityA::drop_table(&mut transaction, true, false)
+    EntityA::drop_table(connection, true, false)
         .await
         .expect("Failed to drop EntityA table");
-    EntityA::create_table(&mut transaction, true, true)
+    EntityA::create_table(connection, true, true)
         .await
         .expect("Failed to create EntityA table");
-    EntityB::drop_table(&mut transaction, true, false)
+    EntityB::drop_table(connection, true, false)
         .await
         .expect("Failed to drop EntityB table");
-    EntityB::create_table(&mut transaction, true, true)
+    EntityB::create_table(connection, true, true)
         .await
         .expect("Failed to create EntityB table");
-    transaction
-        .commit()
-        .await
-        .expect("Filed to commit the transaction");
 
+    // Insert values and rollback
     let mut transaction = connection
         .begin()
         .await
         .expect("Could not begin a transaction");
+
     EntityA::insert_many(
         &mut transaction,
         &[
@@ -77,12 +74,6 @@ pub async fn transaction1<C: Connection>(connection: &mut C) {
     )
     .await
     .expect("Failed to insert 6 EntityA");
-    let entities = EntityA::table()
-        .select(&mut transaction, cols!(*), &true, None)
-        .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not select EntityA rows");
-    assert_eq!(entities.len(), 6);
 
     EntityB::insert_one(
         &mut transaction,
@@ -93,19 +84,89 @@ pub async fn transaction1<C: Connection>(connection: &mut C) {
     )
     .await
     .expect("Failed to save EntityB");
+
     transaction
         .rollback()
         .await
         .expect("Failed to rollback the transaction");
 
-    let mut transaction = connection
-        .begin()
-        .await
-        .expect("Could not begin a transaction");
+    // Expect empty tables
     let entities = EntityA::table()
-        .select(&mut transaction, cols!(*), &true, None)
+        .select(connection, cols!(*), &true, None)
         .try_collect::<Vec<_>>()
         .await
         .expect("Could not select EntityA rows");
-    assert_eq!(entities.len(), 0);
+    assert!(entities.is_empty());
+
+    let entities = EntityB::table()
+        .select(connection, cols!(*), &true, None)
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Could not select EntityB rows");
+    assert!(entities.is_empty());
+
+    // Insert more values and commit
+    let mut transaction = connection
+        .begin()
+        .await
+        .expect("Could not begin another transaction");
+
+    EntityA {
+        name: "myField".into(),
+        field: 777,
+    }
+    .save(&mut transaction)
+    .await
+    .expect("Could not save myField 777");
+
+    EntityA {
+        name: "mySecondField".into(),
+        field: 999,
+    }
+    .save(&mut transaction)
+    .await
+    .expect("Could not save mySecondField 999");
+
+    EntityB::insert_many(
+        &mut transaction,
+        &[
+            EntityB {
+                name: "aa".into(),
+                field: 11,
+            },
+            EntityB {
+                name: "bb".into(),
+                field: 22,
+            },
+            EntityB {
+                name: "cc".into(),
+                field: 33,
+            },
+            EntityB {
+                name: "dd".into(),
+                field: 44,
+            },
+        ],
+    )
+    .await
+    .expect("Could not insert many EntityB values");
+
+    EntityB {
+        name: "aa".into(),
+        field: 11,
+    }
+    .delete(&mut transaction)
+    .await
+    .expect("Could not delete the first EntityB");
+
+    transaction
+        .commit()
+        .await
+        .expect("Could not commit the transaction");
+
+    let entity_a_entries = EntityA::find_many(connection, true, None).count().await;
+    assert_eq!(entity_a_entries, 2);
+
+    let entity_b_entries = EntityB::find_many(connection, true, None).count().await;
+    assert_eq!(entity_b_entries, 3);
 }

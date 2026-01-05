@@ -22,17 +22,20 @@ https://crates.io/crates/tank
 - More to be decided...
 
 ## Mission objectives
-- Async operations - fire and forget.
-- Extensible driver system - swap databases like changing magazines mid-battle.
-- SQL and NoSQL support - one Tank, all terrains.
-- Transactional strikes - commit on success or rollback and retreat.
-- Rich type arsenal with automatic conversions.
-- Optional appender API for high caliber bulk inserts.
+- **Async operations** - Fire and forget.
+- **Designed to be extensible** - Swap databases like changing magazines mid-battle.
+- **SQL and NoSQL support** - One Tank, all terrains.
+- **Transactions abstraction** - Commit on success or rollback and retreat.
+- **Rich type arsenal** - Automatic conversions between Rust and database types.
+- **Optional appender API** - High caliber bulk inserts.
+- **TLS** - No open radios on this battlefield.
+- **Joins** - Multi unit coordination.
+- **Raw SQL** - You're never limited by the abstractions provided.
 
 ## No-fly zone
-- No schema migrations (just table creation and destroy for fast setup)
-- No implicit joins (no entities as fields, joins are explicit, every alliance is signed)
-- No complex query builder (write raw SQL and take full credit)
+- No schema migrations (just table creation and destroy for fast setup).
+- No implicit joins (no entities as fields, joins are explicit, every alliance is signed).
+- No complex query builder (write raw SQL and take full credit).
 
 ## Getting started
 1) Arm your cargo

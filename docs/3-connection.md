@@ -3,6 +3,32 @@
 
 Welcome to the armored convoy, commander. Before you can unleash Tank's firepower, you have to secure your supply lines. Open a **Connection** to your database, and when the mission escalates, lock operations inside a **Transaction**. No connection, no combat. It's that simple.
 
+## Operations Briefing
+- [`prepare("SELECT...")`](https://docs.rs/tank/latest/tank/trait.Executor.html#tymethod.prepare):
+  Compile a raw SQL string into a reusable [`Query<Driver>`](https://docs.rs/tank/latest/tank/enum.Query.html) object without firing it. Use when the same statement will be dispatched multiple times.
+
+- [`run(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#tymethod.run):
+  Streams [`QueryResult`](https://docs.rs/tank/latest/tank/enum.QueryResult.html) items (`Row` or `Affected`). Useful for multi‑statement batches (if supported by the database driver).
+
+- [`fetch(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.fetch):
+  Streams only [`QueryResult::Row`](https://docs.rs/tank/latest/tank/struct.RowLabeled.html), discarding [`QueryResult::Affected`](https://docs.rs/tank/latest/tank/struct.RowsAffected.html).
+
+- [`execute(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.execute):
+  Aggregates all `QueryResult::Affected` counts into one [`RowsAffected`](https://docs.rs/tank/latest/tank/struct.RowsAffected.html). Rows are ignored.
+
+- [`append(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.append):
+  Bulk insert entities, using driver fast‑path when available.
+
+- [`begin()`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.begin):
+  Borrow the connection and start a transaction. Issue any of the above operations against the transactional executor, then `commit` or `rollback`. Uncommitted drop triggers a rollback and gives back the connection.
+
+## Connection Lifecycle
+1. **Establish**: Call `driver.connect("dbms://...").await?` with your database URL.
+2. **Deploy**: Use the connection for queries, inserts, updates, and deletes.
+3. **Lock (optional)**: Start a transaction with `connection.begin().await?`, this borrows the connection. All operations route through the transactional executor until `commit()` or `rollback()`.
+4. **Maintain**: Current drivers expose a single underlying session (DuckDB shares process instance; Postgres spawns one async connection; SQLite opens one handle).
+5. **Terminate**: Connections close automatically when dropped. Disconnection is ensured after a call to `disconnect().await`.
+
 ## Connect
 Every database connection abstraction implements the [`Connection`](https://docs.rs/tank/latest/tank/trait.Connection.html) trait. This is your communication link to the database server. Call [`driver.connect("dbms://...")`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect) with a URL to let Tank establish the line. Every driver is its own crate. Load only what you need for the operation. Check the [drivers](1-introduction.md#drivers) to see the available connections.
 
@@ -140,31 +166,5 @@ async fn establish_scylla_connection() -> Result<ScyllaConnection> {
 Parameters:
 - `consistency`: Query consistency level (examples: `one`, `quorum`, `all`).
 - `timeout_ms`: Request timeout in milliseconds.
-
-## Operations Briefing
-- [`prepare("SELECT * FROM ...*")`](https://docs.rs/tank/latest/tank/trait.Executor.html#tymethod.prepare):
-  Compiles a raw SQL string into a reusable [`Query<Driver>`](https://docs.rs/tank/latest/tank/enum.Query.html) object without firing it. Use when the same statement will be dispatched multiple times.
-
-- [`run(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#tymethod.run):
-  Streams [`QueryResult`](https://docs.rs/tank/latest/tank/enum.QueryResult.html) items (`Row` or `Affected`). Useful for multi‑statement batches (if supported by the database driver).
-
-- [`fetch(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.fetch):
-  Streams only rows (`QueryResult::Row`), discarding `Affected`.
-
-- [`execute(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.execute):
-  Aggregates all `Affected` counts into one `RowsAffected`. Rows are ignored.
-
-- [`append(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.append):
-  Bulk insert entities, using driver fast‑path when available.
-
-- [`begin()`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.begin):
-  Borrow the connection and start a transaction. Issue any of the above operations against the transactional executor, then `commit` or `rollback`. Uncommitted drop triggers a rollback and gives back the connection.
-
-## Connection Lifecycle
-1. **Establish**: Call `driver.connect("dbms://...").await?` with your database URL.
-2. **Deploy**: Use the connection for queries, inserts, updates, and deletes.
-3. **Lock (optional)**: Start a transaction with `connection.begin().await?`, this borrows the connection. All operations route through the transactional executor until `commit()` or `rollback()`.
-4. **Maintain**: Current drivers expose a single underlying session (DuckDB shares process instance; Postgres spawns one async connection; SQLite opens one handle). External pooling is not bundled.
-5. **Terminate**: Connections close automatically when dropped. Disconnection is ensured after a call to `disconnect().await`.
 
 *Lock, commit, advance. Dismissed.*

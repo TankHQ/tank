@@ -6,12 +6,20 @@ Welcome to the Tank field manual. This is the quick-and-mean guide for developer
 In plain terms: Tank is a lightweight, multi-database SQL toolkit. Define entities, run async queries, and mix raw SQL with ergonomic helpers without locking you into an all-or-nothing ORM worldview.
 
 ## Mission objectives
-- **Async operations** - fire and forget.
-- **Extensible driver system** - swap databases like changing magazines mid-battle.
-- **SQL and NoSQL support** - one Tank, all terrains.
-- **Transactional strikes** - commit on success or rollback and retreat.
-- **Rich type arsenal** with automatic conversions between Rust and database types.
-- **Optional appender API** for high caliber bulk inserts.
+- **Async operations** - Fire and forget.
+- **Designed to be extensible** - Swap databases like changing magazines mid-battle.
+- **SQL and NoSQL support** - One Tank, all terrains.
+- **Transactions abstraction** - Commit on success or rollback and retreat.
+- **Rich type arsenal** - Automatic conversions between Rust and database types.
+- **Optional appender API** - High caliber bulk inserts.
+- **TLS** - No open radios on this battlefield.
+- **Joins** - Multi unit coordination.
+- **Raw SQL** - You're never limited by the abstractions provided.
+
+## No-fly zone
+- No schema migrations (just table creation and destroy for fast setup).
+- No implicit joins (no entities as fields, joins are explicit, every alliance is signed).
+- No complex query builder (write raw SQL and take full credit).
 
 ## Equipment
 ###### Core Arsenal

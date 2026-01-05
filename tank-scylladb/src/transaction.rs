@@ -116,6 +116,7 @@ impl<'c> Transaction<'c> for ScyllaDBTransaction<'c> {
     }
 
     async fn rollback(self) -> Result<()> {
-        Err(Error::msg("ScyllaDB does not support rollback on batches"))
+        // Nothing to do, the batch is executed on commit in ScyllaDB / Cassandra which means nothing was sent so far
+        Ok(())
     }
 }
