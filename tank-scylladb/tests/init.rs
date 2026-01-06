@@ -11,15 +11,16 @@ use std::{
     time::Duration,
 };
 use tank_core::{
-    Driver, Executor, Result,
+    Connection, Driver, Executor, Result,
     future::{BoxFuture, FutureExt},
     indoc::indoc,
 };
-use tank_scylladb::ScyllaDBDriver;
+use tank_scylladb::{CassandraDriver, ScyllaDBDriver};
+use tank_tests::{interval, limits, metrics, simple, trade_multiple, trade_simple, transaction1};
 use testcontainers_modules::{
     scylladb::ScyllaDB,
     testcontainers::{
-        ContainerAsync, ImageExt,
+        ContainerAsync, GenericImage, ImageExt,
         core::{
             ContainerPort,
             logs::{LogFrame, consumer::LogConsumer},
@@ -29,6 +30,16 @@ use testcontainers_modules::{
 };
 use tokio::fs;
 use url::Url;
+
+pub(crate) async fn execute_tests<C: Connection>(mut connection: C) {
+    simple(&mut connection).await;
+    trade_simple(&mut connection).await;
+    trade_multiple(&mut connection).await;
+    limits(&mut connection).await;
+    interval(&mut connection).await;
+    transaction1(&mut connection).await;
+    metrics(&mut connection).await;
+}
 
 struct TestcontainersLogConsumer;
 impl LogConsumer for TestcontainersLogConsumer {
@@ -113,6 +124,73 @@ pub async fn init_scylladb(ssl: bool) -> (String, Option<ContainerAsync<ScyllaDB
     (final_url, Some(container))
 }
 
+pub async fn init_cassandra(ssl: bool) -> (String, Option<ContainerAsync<GenericImage>>) {
+    if let Ok(url) = env::var("TANK_CASSANDRA_TEST") {
+        return (url, None);
+    };
+    let mut image = GenericImage::new("cassandra", "5")
+        .with_startup_timeout(Duration::from_secs(120))
+        .with_log_consumer(TestcontainersLogConsumer);
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    if ssl {
+        generate_ssl_files()
+            .await
+            .expect("Could not create the certificate files for SSL session");
+        image = image
+            .with_mapped_port(9042, ContainerPort::Tcp(9042))
+            .with_mapped_port(9142, ContainerPort::Tcp(9142))
+            .with_copy_to(
+                "/etc/cassandra/cassandra.yaml",
+                path.join("tests/assets/cassandra.yaml"),
+            )
+            .with_copy_to("/etc/cassandra/ca.pem", path.join("tests/assets/ca.pem"))
+            .with_copy_to(
+                "/etc/cassandra/cassandra.crt",
+                path.join("tests/assets/cassandra.crt"),
+            )
+            .with_copy_to(
+                "/etc/cassandra/cassandra.key",
+                path.join("tests/assets/cassandra.key"),
+            );
+    }
+    let container = image
+        .start()
+        .await
+        .expect("Could not start the Cassandra container");
+    let plaintext_port = container
+        .get_host_port_ipv4(9042)
+        .await
+        .expect("Cannot get the plaintext port (9042) of Cassandra");
+    let final_url = if ssl {
+        let ssl_host_port = container
+            .get_host_port_ipv4(9142)
+            .await
+            .expect("Cannot get the SSL port");
+        let params = format!(
+            "sslca={}&sslcert={}&sslkey={}",
+            path.join("tests/assets/ca.pem").to_string_lossy(),
+            path.join("tests/assets/client-cert.pem").to_string_lossy(),
+            path.join("tests/assets/client-key.pem").to_string_lossy(),
+        );
+        format!("cassandra://localhost:{ssl_host_port}/cassandra_keyspace?{params}")
+    } else {
+        format!("cassandra://localhost:{plaintext_port}/cassandra_keyspace")
+    };
+    let mut plain_url = Url::parse(&final_url).expect("The URL was not correct");
+    plain_url.set_path("");
+    CassandraDriver::new()
+        .connect(plain_url.to_string().into())
+        .await
+        .expect("Could not connect to Cassandra for setup")
+        .execute(indoc! {r#"
+            CREATE KEYSPACE IF NOT EXISTS cassandra_keyspace
+            WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': 1}
+        "#})
+        .await
+        .expect("Could not create the keyspace");
+    (final_url, Some(container))
+}
+
 async fn generate_ssl_files() -> Result<()> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
@@ -150,6 +228,12 @@ async fn generate_ssl_files() -> Result<()> {
     fs::write(path.join("tests/assets/scylla.crt"), server_cert.pem()).await?;
     fs::write(
         path.join("tests/assets/scylla.key"),
+        server_key.serialize_pem(),
+    )
+    .await?;
+    fs::write(path.join("tests/assets/cassandra.crt"), server_cert.pem()).await?;
+    fs::write(
+        path.join("tests/assets/cassandra.key"),
         server_key.serialize_pem(),
     )
     .await?;

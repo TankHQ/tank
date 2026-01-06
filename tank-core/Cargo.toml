@@ -25,6 +25,7 @@ serde_json.workspace = true
 syn.workspace = true
 time.workspace = true
 tokio = { version = "1", features = ["sync"] }
+url.workspace = true
 uuid.workspace = true
 
 [features]

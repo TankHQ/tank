@@ -33,10 +33,6 @@ impl ScyllaDBTransaction<'_> {
 impl<'c> Executor for ScyllaDBTransaction<'c> {
     type Driver = ScyllaDBDriver;
 
-    fn driver(&self) -> &Self::Driver {
-        &ScyllaDBDriver {}
-    }
-
     async fn prepare(&mut self, sql: String) -> Result<tank_core::Query<Self::Driver>> {
         let context = format!(
             "While preparing the query:\n{}",

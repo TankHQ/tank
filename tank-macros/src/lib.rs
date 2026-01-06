@@ -195,7 +195,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 let condition = ::tank::expr!(#primary_key_condition_expression);
                 let mut query = String::with_capacity(128);
                 ::tank::SqlWriter::write_delete::<Self>(
-                    &::tank::Driver::sql_writer(executor.driver()),
+                    &::tank::Driver::sql_writer(&executor.driver()),
                     &mut query,
                     &condition,
                 );

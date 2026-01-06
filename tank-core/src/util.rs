@@ -340,10 +340,6 @@ macro_rules! impl_executor_transaction {
                 self.$connection.accepts_multiple_statements()
             }
 
-            fn driver(&self) -> &Self::Driver {
-                self.$connection.driver()
-            }
-
             fn prepare(
                 &mut self,
                 query: String,

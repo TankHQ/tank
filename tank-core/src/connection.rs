@@ -1,8 +1,10 @@
-use crate::{Driver, Executor, Result, Transaction};
+use crate::{Driver, Error, Executor, Result, Transaction, truncate_long};
+use anyhow::Context;
 use std::{
     borrow::Cow,
     future::{self, Future},
 };
+use url::Url;
 
 /// A live database handle capable of executing queries and spawning transactions.
 ///
@@ -19,6 +21,38 @@ use std::{
 ///   [`Transaction`]. Commit / rollback MUST be awaited to guarantee resource
 ///   release.
 pub trait Connection: Executor {
+    fn sanitize_url(mut url: Cow<'static, str>) -> Result<Url> {
+        let mut in_memory = false;
+        if let Some((scheme, host)) = url.split_once("://")
+            && host.starts_with(":memory:")
+        {
+            url = format!("{scheme}://localhost{}", &host[8..]).into();
+            in_memory = true;
+        }
+        let context = || format!("While trying to connect to `{}`", truncate_long!(url));
+        let mut result = Url::parse(&url).with_context(context)?;
+        if in_memory {
+            result.query_pairs_mut().append_pair("mode", "memory");
+        }
+        let names = <Self::Driver as Driver>::NAME;
+        'prefix: {
+            for name in names {
+                let prefix = format!("{}://", name);
+                if url.starts_with(&prefix) {
+                    break 'prefix prefix;
+                }
+            }
+            let error = Error::msg(format!(
+                "Connection URL must start with: {}",
+                names.join(", ")
+            ))
+            .context(context());
+            log::error!("{:#}", error);
+            return Err(error);
+        };
+        Ok(result)
+    }
+
     /// Create a connection (or pool) with at least one underlying session
     /// established to the given URL.
     fn connect(

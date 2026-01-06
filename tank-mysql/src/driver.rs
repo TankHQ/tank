@@ -19,7 +19,7 @@ impl Driver for MySQLDriver {
     type Prepared = MySQLPrepared;
     type Transaction<'c> = MySQLTransaction<'c>;
 
-    const NAME: &'static str = "mysql";
+    const NAME: &'static [&'static str] = &["mysql", "mariadb"];
     fn sql_writer(&self) -> Self::SqlWriter {
         MySQLSqlWriter::default()
     }

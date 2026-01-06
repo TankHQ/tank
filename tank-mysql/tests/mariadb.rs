@@ -57,10 +57,7 @@ mod tests {
                 .is_err()
         );
 
-        let connection = driver
-            .connect(ssl_url.to_string().into())
-            .await
-            .expect(&error_msg);
+        let connection = driver.connect(ssl_url.into()).await.expect(&error_msg);
         execute_tests(connection).await;
         drop(container);
     }

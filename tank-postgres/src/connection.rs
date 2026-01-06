@@ -7,18 +7,15 @@ use crate::{
 use async_stream::try_stream;
 use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
 use postgres_openssl::MakeTlsConnector;
-use std::{borrow::Cow, env, mem, path::PathBuf, pin::pin, str::FromStr, sync::Arc};
+use std::{borrow::Cow, env, mem, path::PathBuf, pin::pin, str::FromStr};
 use tank_core::{
-    AsQuery, Connection, Driver, Error, ErrorContext, Executor, Query, QueryResult, Result,
-    Transaction,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Transaction,
     future::Either,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
 use tokio::{spawn, task::JoinHandle};
 use tokio_postgres::NoTls;
-use url::Url;
-use urlencoding::decode;
 
 #[derive(Debug)]
 pub struct PostgresConnection {
@@ -29,10 +26,6 @@ pub struct PostgresConnection {
 
 impl Executor for PostgresConnection {
     type Driver = PostgresDriver;
-
-    fn driver(&self) -> &Self::Driver {
-        &PostgresDriver {}
-    }
 
     async fn prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
         let sql = sql.trim_end().trim_end_matches(';');
@@ -54,7 +47,7 @@ impl Executor for PostgresConnection {
         query: impl AsQuery<Self::Driver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
-        let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
+        let context = format!("While running the query:\n{}", query.as_mut());
         let mut owned = mem::take(query.as_mut());
         match owned {
             Query::Raw(sql) => {
@@ -86,7 +79,7 @@ impl Executor for PostgresConnection {
         query: impl AsQuery<Self::Driver> + 's,
     ) -> impl Stream<Item = Result<tank_core::RowLabeled>> + Send {
         let mut query = query.as_query();
-        let context = Arc::new(format!("While fetching the query:\n{}", query.as_mut()));
+        let context = format!("While fetching the query:\n{}", query.as_mut());
         let owned = mem::take(query.as_mut());
         stream_postgres_row_to_tank_row(async move || {
             let row_stream = match owned {
@@ -128,19 +121,8 @@ impl Executor for PostgresConnection {
 impl Connection for PostgresConnection {
     #[allow(refining_impl_trait)]
     async fn connect(url: Cow<'static, str>) -> Result<PostgresConnection> {
-        let context = || format!("While trying to connect to `{}`", truncate_long!(url));
-        let url = decode(&url).with_context(context)?;
-        let prefix = format!("{}://", <Self::Driver as Driver>::NAME);
-        if !url.starts_with(&prefix) {
-            let error = Error::msg(format!(
-                "Postgres connection url must start with `{}`",
-                &prefix
-            ))
-            .context(context());
-            log::error!("{:#}", error);
-            return Err(error);
-        }
-        let mut url = Url::parse(&url).with_context(context)?;
+        let context = format!("While trying to connect to `{}`", truncate_long!(url));
+        let mut url = Self::sanitize_url(url)?;
         let mut take_url_param = |key: &str, env_var: &str, remove: bool| {
             let value = url
                 .query_pairs()
@@ -174,7 +156,7 @@ impl Connection for PostgresConnection {
                     .as_deref()
                     .unwrap_or("~/.postgresql/root.crt"),
             )
-            .context(context())?;
+            .with_context(|| context.clone())?;
             if path.exists() {
                 builder.set_ca_file(path)?;
             }
@@ -183,7 +165,7 @@ impl Connection for PostgresConnection {
                     .as_deref()
                     .unwrap_or("~/.postgresql/postgresql.crt"),
             )
-            .context(context())?;
+            .with_context(|| context.clone())?;
             if path.exists() {
                 builder.set_certificate_chain_file(path)?;
             }
@@ -192,7 +174,7 @@ impl Connection for PostgresConnection {
                     .as_deref()
                     .unwrap_or("~/.postgresql/postgresql.key"),
             )
-            .context(context())?;
+            .with_context(|| context.clone())?;
             if path.exists() {
                 builder.set_private_key_file(path, SslFiletype::PEM)?;
             }

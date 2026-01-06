@@ -9,13 +9,15 @@ impl ScyllaDBDriver {
     }
 }
 
+pub type CassandraDriver = ScyllaDBDriver;
+
 impl Driver for ScyllaDBDriver {
     type Connection = ScyllaDBConnection;
     type SqlWriter = ScyllaDBSqlWriter;
     type Prepared = ScyllaDBPrepared;
     type Transaction<'c> = ScyllaDBTransaction<'c>;
 
-    const NAME: &'static str = "scylladb";
+    const NAME: &'static [&'static str] = &["scylladb", "cassandra"];
     fn sql_writer(&self) -> Self::SqlWriter {
         ScyllaDBSqlWriter::default()
     }

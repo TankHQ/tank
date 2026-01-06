@@ -2,9 +2,8 @@ use crate::{MySQLDriver, MySQLQueryable, MySQLTransaction};
 use mysql_async::{ClientIdentity, Conn, Opts, OptsBuilder};
 use std::{borrow::Cow, env, path::PathBuf};
 use tank_core::{
-    Connection, Driver, Error, ErrorContext, Result, impl_executor_transaction, truncate_long,
+    Connection, Error, ErrorContext, Result, impl_executor_transaction, truncate_long,
 };
-use url::Url;
 
 pub struct MySQLConnection {
     pub(crate) conn: MySQLQueryable<Conn>,
@@ -16,18 +15,8 @@ impl_executor_transaction!(MySQLDriver, MySQLConnection, conn);
 
 impl Connection for MySQLConnection {
     async fn connect(url: Cow<'static, str>) -> Result<MySQLConnection> {
-        let context = || format!("While trying to connect to `{}`", truncate_long!(url));
-        let prefix = format!("{}://", <Self::Driver as Driver>::NAME);
-        if !url.starts_with(&prefix) {
-            let error = Error::msg(format!(
-                "MySQL connection url must start with `{}`",
-                &prefix
-            ))
-            .context(context());
-            log::error!("{:#}", error);
-            return Err(error);
-        }
-        let mut url = Url::parse(&url).with_context(context)?;
+        let context = format!("While trying to connect to `{}`", truncate_long!(&url));
+        let mut url = Self::sanitize_url(url)?;
         let mut take_url_param = |key: &str, env_var: &str, remove: bool| {
             let value = url
                 .query_pairs()
@@ -46,7 +35,7 @@ impl Connection for MySQLConnection {
         let ssl_ca = take_url_param("ssl_ca", "MYSQL_SSL_CA", true);
         let ssl_cert = take_url_param("ssl_cert", "MYSQL_SSL_CERT", true);
         let ssl_pass = take_url_param("ssl_pass", "MYSQL_SSL_PASS", true);
-        let opts = Opts::from_url(url.as_str()).with_context(context)?;
+        let opts = Opts::from_url(url.as_str()).with_context(|| context.clone())?;
         let mut ssl_opts = opts.ssl_opts().cloned();
         let mut opts = OptsBuilder::from_opts(opts);
         if let Some(ssl_ca) = ssl_ca {
@@ -56,7 +45,7 @@ impl Connection for MySQLConnection {
                     "SSL CA file not found: `{}`",
                     ca_path.to_string_lossy()
                 ))
-                .context(context());
+                .context(context);
                 log::error!("{:#}", error);
                 return Err(error);
             }
@@ -70,7 +59,7 @@ impl Connection for MySQLConnection {
                     "SSL CERT file not found: `{}`",
                     ssl_cert.to_string_lossy()
                 ))
-                .context(context());
+                .context(context);
                 log::error!("{:#}", error);
                 return Err(error);
             }
@@ -85,7 +74,7 @@ impl Connection for MySQLConnection {
             );
         }
         opts = opts.ssl_opts(ssl_opts);
-        let connection = Conn::new(opts).await.with_context(context)?;
+        let connection = Conn::new(opts).await.context(context)?;
         Ok(MySQLConnection {
             conn: MySQLQueryable {
                 executor: connection,

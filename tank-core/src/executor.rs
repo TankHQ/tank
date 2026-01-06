@@ -24,7 +24,12 @@ pub trait Executor: Send + Sized {
     }
 
     /// Driver instance.
-    fn driver(&self) -> &Self::Driver;
+    fn driver(&self) -> Self::Driver
+    where
+        Self: Sized,
+    {
+        Default::default()
+    }
 
     /// Prepare a query for later execution.
     fn prepare(

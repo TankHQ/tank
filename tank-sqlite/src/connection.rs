@@ -9,14 +9,15 @@ use std::{
     borrow::Cow,
     ffi::{CStr, CString, c_char, c_int},
     mem, ptr,
+    str::FromStr,
     sync::{
         Arc,
         atomic::{AtomicPtr, Ordering},
     },
 };
 use tank_core::{
-    AsQuery, Connection, Driver, Error, ErrorContext, Executor, Query, QueryResult, Result,
-    RowLabeled, RowsAffected, error_message_from_ptr, send_value, stream::Stream, truncate_long,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowLabeled,
+    RowsAffected, error_message_from_ptr, send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -157,10 +158,6 @@ impl SQLiteConnection {
 impl Executor for SQLiteConnection {
     type Driver = SQLiteDriver;
 
-    fn driver(&self) -> &Self::Driver {
-        &SQLiteDriver {}
-    }
-
     async fn prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
         let connection = AtomicPtr::new(*self.connection);
         let context = format!(
@@ -242,19 +239,10 @@ impl Executor for SQLiteConnection {
 impl Connection for SQLiteConnection {
     #[allow(refining_impl_trait)]
     async fn connect(url: Cow<'static, str>) -> Result<SQLiteConnection> {
-        let context = || format!("While trying to connect to `{}`", truncate_long!(url));
-        let prefix = format!("{}://", <Self::Driver as Driver>::NAME);
-        if !url.starts_with(&prefix) {
-            let error = Error::msg(format!(
-                "SQLite connection url must start with `{}`",
-                &prefix
-            ))
-            .context(context());
-            log::error!("{:#}", error);
-            return Err(error);
-        }
-        let url = CString::new(format!("file:{}", url.trim_start_matches(&prefix)))
-            .with_context(context)?;
+        let context = format!("While trying to connect to `{}`", truncate_long!(url));
+        let url = Self::sanitize_url(url)?;
+        let url = CString::from_str(&url.as_str().replacen("sqlite://", "file:", 1))
+            .with_context(|| context.clone())?;
         let mut connection;
         unsafe {
             connection = CBox::new(ptr::null_mut(), |p| {
@@ -271,7 +259,7 @@ impl Connection for SQLiteConnection {
             if rc != SQLITE_OK {
                 let error =
                     Error::msg(error_message_from_ptr(&sqlite3_errmsg(*connection)).to_string())
-                        .context(context());
+                        .context(context);
                 log::error!("{:#}", error);
                 return Err(error);
             }

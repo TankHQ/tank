@@ -2,7 +2,7 @@ use crate::{Connection, Prepared, Result, Transaction, writer::SqlWriter};
 use std::{borrow::Cow, fmt::Debug, future::Future};
 
 /// Backend connector and SQL dialect provider.
-pub trait Driver: Debug {
+pub trait Driver: Default + Debug {
     /// Concrete connection.
     type Connection: Connection;
     /// SQL dialect writer.
@@ -13,11 +13,11 @@ pub trait Driver: Debug {
     type Transaction<'c>: Transaction<'c>;
 
     /// Human-readable backend name.
-    const NAME: &'static str;
+    const NAME: &'static [&'static str];
 
     /// Driver name (used in URLs).
     fn name(&self) -> &'static str {
-        Self::NAME
+        Self::NAME[0]
     }
 
     /// Connect to database `url`.

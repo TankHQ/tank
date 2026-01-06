@@ -1,7 +1,7 @@
 use crate::{YourDBDriver, YourDBPrepared, YourDBTransaction};
 use std::borrow::Cow;
 use tank_core::{
-    AsQuery, Connection, Driver, Error, Executor, Query, QueryResult, Result,
+    AsQuery, Connection, Error, Executor, Query, QueryResult, Result,
     stream::{self, Stream},
 };
 
@@ -9,9 +9,6 @@ pub struct YourDBConnection {}
 
 impl Executor for YourDBConnection {
     type Driver = YourDBDriver;
-    fn driver(&self) -> &Self::Driver {
-        &YourDBDriver {}
-    }
     async fn prepare(&mut self, query: String) -> Result<Query<Self::Driver>> {
         // Return Err if not supported
         Ok(Query::Prepared(YourDBPrepared::new()))
@@ -27,16 +24,8 @@ impl Executor for YourDBConnection {
 impl Connection for YourDBConnection {
     async fn connect(url: Cow<'static, str>) -> Result<YourDBConnection> {
         let context = || format!("While trying to connect to `{url}`");
-        let prefix = format!("{}://", <Self::Driver as Driver>::NAME);
-        if !url.starts_with(&prefix) {
-            let error = Error::msg(format!(
-                "YourDB connection url must start with `{}`",
-                &prefix
-            ))
-            .context(context());
-            log::error!("{:#}", error);
-            return Err(error);
-        }
+        let url = Self::sanitize_url(url);
+        // Establish connection
         Ok(YourDBConnection {})
     }
     #[allow(refining_impl_trait)]

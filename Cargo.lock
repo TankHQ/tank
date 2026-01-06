@@ -2909,6 +2909,7 @@ dependencies = [
  "syn 2.0.109",
  "time",
  "tokio",
+ "url",
  "uuid",
 ]
 
@@ -2926,7 +2927,6 @@ dependencies = [
  "time",
  "tokio",
  "url",
- "urlencoding",
  "uuid",
 ]
 

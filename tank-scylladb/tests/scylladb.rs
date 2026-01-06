@@ -2,25 +2,13 @@ mod init;
 
 #[cfg(test)]
 mod tests {
-    use crate::init::init_scylladb;
+    use crate::init::{execute_tests, init_scylladb};
     use std::sync::Mutex;
-    use tank_core::{Connection, Driver};
+    use tank_core::Driver;
     use tank_scylladb::ScyllaDBDriver;
-    use tank_tests::{
-        init_logs, interval, limits, metrics, simple, trade_multiple, trade_simple, transaction1,
-    };
+    use tank_tests::init_logs;
 
     static MUTEX: Mutex<()> = Mutex::new(());
-
-    async fn execute_tests<C: Connection>(mut connection: C) {
-        simple(&mut connection).await;
-        trade_simple(&mut connection).await;
-        trade_multiple(&mut connection).await;
-        limits(&mut connection).await;
-        interval(&mut connection).await;
-        transaction1(&mut connection).await;
-        metrics(&mut connection).await;
-    }
 
     #[tokio::test]
     async fn scylladb() {
@@ -32,7 +20,7 @@ mod tests {
         let container = container.expect("Could not launch container");
         let error_msg = format!("Could not connect to `{url}`");
         let driver = ScyllaDBDriver::new();
-        let connection = driver.connect(url.clone().into()).await.expect(&error_msg);
+        let connection = driver.connect(url.into()).await.expect(&error_msg);
         execute_tests(connection).await;
         drop(container);
 
@@ -41,10 +29,7 @@ mod tests {
         let container = container.expect("Could not launch container");
         let error_msg = format!("Could not connect to `{ssl_url}`");
         let driver = ScyllaDBDriver::new();
-        let connection = driver
-            .connect(ssl_url.clone().into())
-            .await
-            .expect(&error_msg);
+        let connection = driver.connect(ssl_url.into()).await.expect(&error_msg);
         execute_tests(connection).await;
         drop(container);
     }

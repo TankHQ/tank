@@ -2,7 +2,7 @@ use crate::{SQLiteConnection, SQLitePrepared, SQLiteTransaction, sql_writer::SQL
 use tank_core::Driver;
 
 /// SQLite driver.
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct SQLiteDriver {}
 
 impl SQLiteDriver {
@@ -17,7 +17,7 @@ impl Driver for SQLiteDriver {
     type Prepared = SQLitePrepared;
     type Transaction<'c> = SQLiteTransaction<'c>;
 
-    const NAME: &'static str = "sqlite";
+    const NAME: &'static [&'static str] = &["sqlite"];
     fn sql_writer(&self) -> SQLiteSqlWriter {
         SQLiteSqlWriter {}
     }

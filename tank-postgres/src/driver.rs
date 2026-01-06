@@ -2,7 +2,7 @@ use crate::{PostgresConnection, PostgresPrepared, PostgresSqlWriter, PostgresTra
 use tank_core::Driver;
 
 /// Postgres driver.
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct PostgresDriver {}
 
 impl PostgresDriver {
@@ -17,7 +17,7 @@ impl Driver for PostgresDriver {
     type Prepared = PostgresPrepared;
     type Transaction<'c> = PostgresTransaction<'c>;
 
-    const NAME: &'static str = "postgres";
+    const NAME: &'static [&'static str] = &["postgres"];
     fn sql_writer(&self) -> PostgresSqlWriter {
         PostgresSqlWriter {}
     }

@@ -20,13 +20,11 @@ use std::{
     },
 };
 use tank_core::{
-    AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query, QueryResult, Result,
+    AsQuery, Connection, Entity, Error, ErrorContext, Executor, Query, QueryResult, Result,
     RowLabeled, RowsAffected, Value, as_c_string, error_message_from_ptr, send_value,
     stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
-use url::form_urlencoded;
-use urlencoding::decode;
 
 pub struct DuckDBConnection {
     pub(crate) connection: CBox<duckdb_connection>,
@@ -218,10 +216,6 @@ impl Debug for DuckDBConnection {
 
 impl Executor for DuckDBConnection {
     type Driver = DuckDBDriver;
-
-    fn driver(&self) -> &Self::Driver {
-        &DuckDBDriver {}
-    }
 
     async fn prepare(&mut self, sql: String) -> Result<Query<DuckDBDriver>> {
         let connection = AtomicPtr::new(*self.connection);
@@ -511,38 +505,27 @@ impl Executor for DuckDBConnection {
 impl Connection for DuckDBConnection {
     #[allow(refining_impl_trait)]
     async fn connect(url: Cow<'static, str>) -> Result<DuckDBConnection> {
-        let context = || format!("While trying to connect to `{}`", truncate_long!(url));
-        let prefix = format!("{}://", <Self::Driver as Driver>::NAME);
-        if !url.starts_with(&prefix) {
-            let error = Error::msg(format!(
-                "DuckDB connection url must start with `{}`",
-                &prefix,
-            ))
-            .context(context());
-            log::error!("{:#}", error);
-            return Err(error);
-        }
-        let mut parts = url.trim_start_matches(&prefix).splitn(2, '?');
-        let path = parts
-            .next()
-            .ok_or(Error::msg(format!("Invalid database url `{url}`")))?;
-        let params = parts.next().unwrap_or_default();
-        let mut path = decode(path)
-            .with_context(context)
-            .and_then(|v| CString::new(&*v).with_context(context))?;
+        let context = format!("While trying to connect to `{}`", truncate_long!(url));
+        let url = Self::sanitize_url(url)?;
         let mut config: CBox<duckdb_config> = CBox::new(ptr::null_mut(), |mut p| unsafe {
             duckdb_destroy_config(&mut p)
         });
         unsafe {
             let rc = duckdb_create_config(&mut *config);
             if rc != duckdb_state_DuckDBSuccess {
-                let error =
-                    Error::msg("Cannot allocate the duckdb_config object").context(context());
+                let error = Error::msg("Cannot allocate the duckdb_config object").context(context);
                 log::error!("{:#}", error);
                 return Err(error);
             }
         };
-        for (key, value) in form_urlencoded::parse(params.as_bytes()) {
+        let mut path = CString::from_str(&format!(
+            "{}{}",
+            url.host_str()
+                .map_or(Default::default(), |host| format!("{host}/")),
+            url.path()
+        ))
+        .with_context(|| context.clone())?;
+        for (key, value) in url.query_pairs() {
             let rc = unsafe {
                 match &*key {
                     "mode" => {

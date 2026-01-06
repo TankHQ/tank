@@ -1,4 +1,4 @@
-use crate::{RowWrap, ScyllaDBDriver, ScyllaDBPrepared, ScyllaDBTransaction};
+use crate::{CassandraDriver, RowWrap, ScyllaDBDriver, ScyllaDBPrepared, ScyllaDBTransaction};
 use async_stream::stream;
 use openssl::ssl::{SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
 use scylla::{
@@ -9,16 +9,21 @@ use scylla::{
 };
 use std::{borrow::Cow, num::NonZeroUsize, ops::ControlFlow, pin::pin, sync::Arc, time::Duration};
 use tank_core::{
-    AsQuery, Connection, Driver, Error, ErrorContext, Executor, Query, QueryResult, Result,
-    RowLabeled,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowLabeled,
+    impl_executor_transaction,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
-use url::Url;
 
 pub struct ScyllaDBConnection {
     pub(crate) session: Session,
 }
+
+pub struct CassandraConnection {
+    pub scylla: ScyllaDBConnection,
+}
+
+impl_executor_transaction!(CassandraDriver, CassandraConnection, scylla);
 
 impl ScyllaDBConnection {
     pub fn begin_logged_batch<'c>(&'c mut self) -> ScyllaDBTransaction<'c> {
@@ -51,10 +56,6 @@ impl Executor for ScyllaDBConnection {
 
     fn accepts_multiple_statements(&self) -> bool {
         false
-    }
-
-    fn driver(&self) -> &Self::Driver {
-        &ScyllaDBDriver {}
     }
 
     async fn prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
@@ -153,19 +154,9 @@ impl Executor for ScyllaDBConnection {
 
 impl Connection for ScyllaDBConnection {
     async fn connect(url: Cow<'static, str>) -> Result<ScyllaDBConnection> {
-        let context = || format!("While trying to connect to `{}`", url);
-        let prefix = format!("{}://", <Self::Driver as Driver>::NAME);
-        if !url.starts_with(&prefix) {
-            let error = Error::msg(format!(
-                "ScyllaDB connection url must start with `{}`",
-                &prefix
-            ))
-            .context(context());
-            log::error!("{:#}", error);
-            return Err(error);
-        }
-        let url = Url::parse(&url).with_context(context)?;
-        let hostname = url.host_str().with_context(context)?;
+        let context = format!("While trying to connect to `{}`", url);
+        let url = Self::sanitize_url(url)?;
+        let hostname = url.host_str().with_context(|| context.clone())?;
         let port = url.port();
         let username = url.username();
         let password = url.password();
@@ -183,7 +174,8 @@ impl Connection for ScyllaDBConnection {
         {
             session = session.use_keyspace(keyspace, true);
         }
-        let mut context_builder = SslContextBuilder::new(SslMethod::tls()).with_context(context)?;
+        let mut context_builder =
+            SslContextBuilder::new(SslMethod::tls()).with_context(|| context.clone())?;
         context_builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
         let mut ssl = false;
         if let Some(path) = &url
@@ -195,7 +187,7 @@ impl Connection for ScyllaDBConnection {
                     Cow::Borrowed(v) => v,
                     Cow::Owned(v) => v.as_str(),
                 })
-                .with_context(context)?;
+                .with_context(|| context.clone())?;
             ssl = true;
         };
         if let Some(path) = &url
@@ -210,7 +202,7 @@ impl Connection for ScyllaDBConnection {
                     },
                     SslFiletype::PEM,
                 )
-                .with_context(context)?;
+                .with_context(|| context.clone())?;
             ssl = true;
         };
         if let Some(path) = &url
@@ -225,8 +217,10 @@ impl Connection for ScyllaDBConnection {
                     },
                     SslFiletype::PEM,
                 )
-                .with_context(context)?;
-            context_builder.check_private_key().with_context(context)?;
+                .with_context(|| context.clone())?;
+            context_builder
+                .check_private_key()
+                .with_context(|| context.clone())?;
             ssl = true;
         };
         if ssl {
