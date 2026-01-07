@@ -15,7 +15,7 @@ use uuid::Uuid;
 pub(crate) fn row_to_tank_row(row: tokio_postgres::Row) -> tank_core::Result<tank_core::Row> {
     (0..row.len())
         .map(|i| match row.try_get::<_, ValueWrap>(i) {
-            Ok(v) => Ok(v.0),
+            Ok(v) => Ok(v.take_value()),
             Err(e) => {
                 let col = &row.columns()[i];
                 Err(e).context(format!(
@@ -35,7 +35,7 @@ pub(crate) fn simple_query_row_to_tank_row(
     (0..row.len())
         .map(|i| match row.try_get(i) {
             Ok(Some(v)) => ValueWrap::from_sql(&Type::UNKNOWN, v.as_bytes())
-                .map(|v| v.0)
+                .map(|v| v.take_value())
                 .map_err(|e| tank_core::Error::msg(format!("{:#}", e))),
             Ok(None) => Ok(Value::Null),
             Err(..) => {

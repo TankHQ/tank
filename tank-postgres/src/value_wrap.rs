@@ -6,19 +6,40 @@ use bytes::BytesMut;
 use postgres_protocol::types::array_to_sql;
 use postgres_types::{FromSql, IsNull, ToSql, Type, to_sql_checked};
 use rust_decimal::{Decimal, prelude::FromPrimitive};
-use std::error::Error;
+use std::{borrow::Cow, error::Error};
 use tank_core::Value;
 
-#[derive(Debug, Default, Clone)]
-pub(crate) struct ValueWrap(pub(crate) Value);
+#[derive(Debug, Clone)]
+pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, Value>);
 
-impl From<Value> for ValueWrap {
-    fn from(value: Value) -> Self {
-        ValueWrap(value)
+impl<'a> ValueWrap<'a> {
+    pub fn take_value(self) -> Value {
+        match self.0 {
+            Cow::Borrowed(v) => v.clone(),
+            Cow::Owned(v) => v,
+        }
     }
 }
 
-impl<'a> FromSql<'a> for ValueWrap {
+impl<'a> Default for ValueWrap<'a> {
+    fn default() -> Self {
+        Self(Cow::Borrowed(&Value::Null))
+    }
+}
+
+impl<'a> From<&'a Value> for ValueWrap<'a> {
+    fn from(value: &'a Value) -> Self {
+        ValueWrap(Cow::Borrowed(value))
+    }
+}
+
+impl<'a> From<Value> for ValueWrap<'a> {
+    fn from(value: Value) -> Self {
+        ValueWrap(Cow::Owned(value))
+    }
+}
+
+impl<'a> FromSql<'a> for ValueWrap<'a> {
     fn from_sql(ty: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
         Self::from_sql_nullable(ty, Some(raw))
     }
@@ -37,12 +58,12 @@ impl<'a> FromSql<'a> for ValueWrap {
     }
 }
 
-impl ToSql for ValueWrap {
+impl<'a> ToSql for ValueWrap<'a> {
     fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>>
     where
         Self: Sized,
     {
-        match &self.0 {
+        match &self.0.as_ref() {
             Value::Null => None::<String>.to_sql(ty, out),
             Value::Boolean(v) => v.to_sql(ty, out),
             Value::Int8(v) => v.map(|v| v as i16).to_sql(ty, out),
@@ -73,7 +94,7 @@ impl ToSql for ValueWrap {
                     array_to_sql(
                         dimensions,
                         element_type.oid(),
-                        vector.into_iter().map(|v| ValueWrap(v.clone())),
+                        vector.into_iter().map(|v| ValueWrap(Cow::Borrowed(v))),
                         |e, w| match e.to_sql(&element_type, w)? {
                             IsNull::No => Ok(postgres_protocol::IsNull::No),
                             IsNull::Yes => Ok(postgres_protocol::IsNull::Yes),
@@ -90,7 +111,7 @@ impl ToSql for ValueWrap {
                     array_to_sql(
                         dimensions,
                         element_type.oid(),
-                        vector.into_iter().map(|v| ValueWrap(v.clone())),
+                        vector.into_iter().map(|v| ValueWrap(Cow::Borrowed(v))),
                         |e, w| match e.to_sql(&element_type, w)? {
                             IsNull::No => Ok(postgres_protocol::IsNull::No),
                             IsNull::Yes => Ok(postgres_protocol::IsNull::Yes),
@@ -119,30 +140,4 @@ impl ToSql for ValueWrap {
     }
 
     to_sql_checked!();
-}
-
-pub(crate) struct VecWrap<T>(pub Vec<T>);
-
-impl<'a, T: FromSql<'a>> FromSql<'a> for VecWrap<T> {
-    fn from_sql_null(ty: &Type) -> Result<Self, Box<dyn Error + Sync + Send>> {
-        Vec::<T>::from_sql_null(ty).map(VecWrap)
-    }
-    fn from_sql_nullable(
-        ty: &Type,
-        raw: Option<&'a [u8]>,
-    ) -> Result<Self, Box<dyn Error + Sync + Send>> {
-        Vec::<T>::from_sql_nullable(ty, raw).map(VecWrap)
-    }
-    fn from_sql(ty: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
-        Vec::<T>::from_sql(ty, raw).map(VecWrap)
-    }
-    fn accepts(ty: &Type) -> bool {
-        Vec::<T>::accepts(ty)
-    }
-}
-
-impl From<VecWrap<ValueWrap>> for Vec<Value> {
-    fn from(value: VecWrap<ValueWrap>) -> Self {
-        value.0.into_iter().map(|v| v.0).collect()
-    }
 }

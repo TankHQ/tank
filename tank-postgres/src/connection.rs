@@ -102,13 +102,15 @@ impl Executor for PostgresConnection {
                     stream
                 }
                 Query::Prepared(mut prepared) => {
-                    let mut params = mem::take(&mut prepared.params);
+                    let mut params = prepared.take_params();
                     let types = prepared.statement.params();
 
                     for (i, param) in params.iter_mut().enumerate() {
-                        *param = ValueWrap(
-                            mem::take(&mut param.0).try_as(&postgres_type_to_value(&types[i]))?,
-                        );
+                        *param = ValueWrap(Cow::Owned(
+                            mem::take(param)
+                                .take_value()
+                                .try_as(&postgres_type_to_value(&types[i]))?,
+                        ));
                     }
                     let stream = self
                         .client
@@ -151,7 +153,12 @@ impl Executor for PostgresConnection {
         let mut refs = Vec::<&(dyn ToSql + Sync)>::with_capacity(E::columns().len());
         for entity in entities.into_iter() {
             row.clear();
-            row.extend(entity.row_full().into_iter().map(ValueWrap));
+            row.extend(
+                entity
+                    .row_full()
+                    .into_iter()
+                    .map(|v| ValueWrap(Cow::Owned(v))),
+            );
             refs = row.iter().map(|v| v as &(dyn ToSql + Sync)).collect();
             Pin::as_mut(&mut writer)
                 .write(&refs)

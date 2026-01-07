@@ -9,7 +9,7 @@ use tokio_postgres::Statement;
 pub struct PostgresPrepared {
     pub(crate) statement: Statement,
     pub(crate) index: u64,
-    pub(crate) params: Vec<ValueWrap>,
+    pub(crate) params: Vec<ValueWrap<'static>>,
 }
 
 impl PostgresPrepared {
@@ -20,7 +20,7 @@ impl PostgresPrepared {
             params: Vec::new(),
         }
     }
-    pub(crate) fn take_params(&mut self) -> Vec<ValueWrap> {
+    pub(crate) fn take_params(&mut self) -> Vec<ValueWrap<'static>> {
         mem::take(&mut self.params)
     }
 }
