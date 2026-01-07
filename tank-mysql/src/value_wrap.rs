@@ -2,24 +2,34 @@ use std::borrow::Cow;
 use tank_core::Interval;
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
-pub(crate) struct ValueWrap(pub(crate) tank_core::Value);
+pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, tank_core::Value>);
 
-impl From<tank_core::Value> for ValueWrap {
+impl<'a> ValueWrap<'a> {
+    pub fn take_value(self) -> tank_core::Value {
+        match self.0 {
+            Cow::Borrowed(v) => v.clone(),
+            Cow::Owned(v) => v,
+        }
+    }
+}
+
+impl<'a> From<&'a tank_core::Value> for ValueWrap<'a> {
+    fn from(value: &'a tank_core::Value) -> Self {
+        Self(Cow::Borrowed(value))
+    }
+}
+
+impl<'a> From<tank_core::Value> for ValueWrap<'a> {
     fn from(value: tank_core::Value) -> Self {
-        Self(value)
-    }
-}
-impl From<ValueWrap> for tank_core::Value {
-    fn from(value: ValueWrap) -> Self {
-        value.0
+        Self(Cow::Owned(value))
     }
 }
 
-impl mysql_async::prelude::FromValue for ValueWrap {
-    type Intermediate = ValueWrap;
+impl<'a> mysql_async::prelude::FromValue for ValueWrap<'a> {
+    type Intermediate = ValueWrap<'a>;
 }
 
-impl TryFrom<mysql_async::Value> for ValueWrap {
+impl<'a> TryFrom<mysql_async::Value> for ValueWrap<'a> {
     type Error = mysql_async::FromValueError;
     fn try_from(value: mysql_async::Value) -> Result<Self, Self::Error> {
         Ok(match value {
@@ -86,10 +96,10 @@ impl TryFrom<mysql_async::Value> for ValueWrap {
     }
 }
 
-impl TryFrom<ValueWrap> for mysql_async::Value {
+impl<'a> TryFrom<ValueWrap<'a>> for mysql_async::Value {
     type Error = tank_core::Error;
 
-    fn try_from(value: ValueWrap) -> Result<Self, Self::Error> {
+    fn try_from(value: ValueWrap<'a>) -> Result<Self, Self::Error> {
         type TankValue = tank_core::Value;
         type MySQLValue = mysql_async::Value;
         macro_rules! ensure_date_range {
@@ -113,8 +123,8 @@ impl TryFrom<ValueWrap> for mysql_async::Value {
                 }
             }};
         }
-        Ok(match value.0 {
-            _ if value.0.is_null() => MySQLValue::NULL,
+        Ok(match value.take_value() {
+            v if v.is_null() => MySQLValue::NULL,
             TankValue::Boolean(Some(v)) => MySQLValue::from(v),
             TankValue::Int8(Some(v), ..) => MySQLValue::from(v),
             TankValue::Int16(Some(v), ..) => MySQLValue::from(v),
@@ -166,10 +176,9 @@ impl TryFrom<ValueWrap> for mysql_async::Value {
             // TankValue::Map(Some(v), ..) => MySQLValue::from(v),
             // TankValue::Struct(Some(v), ..) => MySQLValue::from(v),
             TankValue::Unknown(Some(v), ..) => MySQLValue::from(v),
-            _ => {
+            v => {
                 return Err(tank_core::Error::msg(format!(
-                    "tank::Value variant `{:?}` is not supported by MySQL",
-                    value.0
+                    "tank::Value variant `{v:?}` is not supported by MySQL",
                 ))
                 .into());
             }

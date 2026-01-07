@@ -1,7 +1,8 @@
 use crate::ValueWrap;
 use mysql_async::Statement;
 use std::{
-    fmt::{self, Display},
+    borrow::Cow,
+    fmt::{self, Debug, Display},
     mem,
 };
 use tank_core::{AsValue, Error, Prepared, Result, Value};
@@ -27,7 +28,7 @@ impl MySQLPrepared {
         Ok(mysql_async::Params::Positional(
             mem::take(&mut self.params)
                 .into_iter()
-                .map(|v| ValueWrap(v).try_into())
+                .map(|v| ValueWrap(Cow::Owned(v)).try_into())
                 .collect::<Result<_>>()?,
         ))
     }
@@ -61,6 +62,7 @@ impl Prepared for MySQLPrepared {
 
 impl Display for MySQLPrepared {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("MySQLPrepared")
+        f.write_str("MySQLPrepared: ")?;
+        self.statement.fmt(f)
     }
 }
