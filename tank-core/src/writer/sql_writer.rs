@@ -1243,7 +1243,7 @@ pub trait SqlWriter: Send {
         &self,
         context: &mut Context,
         out: &mut String,
-        columns: impl Iterator<Item = &'a ColumnDef>,
+        columns: impl Iterator<Item = &'a ColumnDef> + Clone,
     ) where
         Self: Sized,
         E: Entity,

@@ -56,7 +56,7 @@ impl Prepared for PostgresPrepared {
 
 impl Display for PostgresPrepared {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("PostgresPrepared: ");
+        f.write_str("PostgresPrepared: ")?;
         self.statement.fmt(f)
     }
 }

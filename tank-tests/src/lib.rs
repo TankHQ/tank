@@ -1,4 +1,5 @@
 mod aggregates;
+mod ambiguity;
 mod arrays1;
 mod arrays2;
 mod books;
@@ -20,6 +21,7 @@ mod transaction1;
 mod user;
 
 pub use aggregates::*;
+pub use ambiguity::*;
 pub use arrays1::*;
 pub use arrays2::*;
 pub use books::*;
@@ -89,6 +91,7 @@ pub async fn execute_tests<C: Connection>(mut connection: C) {
         .expect("Advanced operations examples test did not succeed");
     metrics(&mut connection).await;
     math(&mut connection).await;
+    ambiguity(&mut connection).await;
 }
 
 #[macro_export]

@@ -6,8 +6,8 @@ use syn::{Ident, Type, spanned::Spanned};
 pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
     let item = &table.item;
     let struct_name = &item.ident;
-    let trait_name = Ident::new(&format!("{}FromRowTrait", item.ident), item.span());
-    let factory_name = Ident::new(&format!("{}FromRowFactory", item.ident), item.span());
+    let trait_name = Ident::new(&format!("{struct_name}FromRowTrait"), item.span());
+    let factory_name = Ident::new(&format!("{struct_name}FromRowFactory"), item.span());
     let fields_holder_declarations = table.columns.iter().map(|c| {
         let ident = &c.ident;
         let ty = &c.ty;

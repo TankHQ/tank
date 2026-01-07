@@ -16,7 +16,9 @@ use tank_core::{
     indoc::indoc,
 };
 use tank_scylladb::{CassandraDriver, ScyllaDBDriver};
-use tank_tests::{interval, limits, metrics, simple, trade_multiple, trade_simple, transaction1};
+use tank_tests::{
+    ambiguity, interval, limits, metrics, simple, trade_multiple, trade_simple, transaction1,
+};
 use testcontainers_modules::{
     scylladb::ScyllaDB,
     testcontainers::{
@@ -39,6 +41,7 @@ pub(crate) async fn execute_tests<C: Connection>(mut connection: C) {
     interval(&mut connection).await;
     transaction1(&mut connection).await;
     metrics(&mut connection).await;
+    ambiguity(&mut connection).await;
 }
 
 struct TestcontainersLogConsumer;

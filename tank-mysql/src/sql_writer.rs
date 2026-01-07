@@ -3,8 +3,8 @@ use std::{
     fmt::Write,
 };
 use tank_core::{
-    ColumnDef, Context, Entity, Fragment, Interval, PrimaryKeyType, SqlWriter, Value,
-    future::Either, print_timer, separated_by,
+    ColumnDef, Context, EitherIterator, Entity, Fragment, Interval, PrimaryKeyType, SqlWriter,
+    Value, future::Either, print_timer, separated_by,
 };
 
 #[derive(Default)]
@@ -219,7 +219,7 @@ impl SqlWriter for MySQLSqlWriter {
         &self,
         context: &mut Context,
         out: &mut String,
-        columns: impl Iterator<Item = &'a ColumnDef>,
+        columns: impl Iterator<Item = &'a ColumnDef> + Clone,
     ) where
         Self: Sized,
         E: Entity,
@@ -229,9 +229,18 @@ impl SqlWriter for MySQLSqlWriter {
             return;
         }
         out.push_str("\nON DUPLICATE KEY UPDATE");
+        let mut update_cols = columns
+            .clone()
+            .filter(|c| c.primary_key == PrimaryKeyType::None)
+            .peekable();
+        let update_cols = if update_cols.peek().is_some() {
+            EitherIterator::Left(update_cols)
+        } else {
+            EitherIterator::Right(columns.filter(|c| c.primary_key != PrimaryKeyType::None))
+        };
         separated_by(
             out,
-            columns.filter(|c| c.primary_key == PrimaryKeyType::None),
+            update_cols,
             |out, v| {
                 self.write_identifier_quoted(context, out, v.name());
                 out.push_str(" = VALUES(");

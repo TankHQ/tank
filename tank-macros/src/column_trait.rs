@@ -28,7 +28,7 @@ pub(crate) fn column_trait(table: &TableMetadata) -> TokenStream {
         }
     });
     quote! {
-        trait #trait_name {
+        pub trait #trait_name {
             #(#columns_fields_declarations)*
         }
         impl #trait_name for #struct_name {
