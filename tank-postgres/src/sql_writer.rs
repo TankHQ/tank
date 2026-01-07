@@ -1,8 +1,34 @@
 use std::{collections::BTreeMap, fmt::Write};
-use tank_core::{ColumnDef, Context, SqlWriter, Value, future::Either, separated_by};
+use tank_core::{
+    ColumnDef, Context, DataSet, Entity, SqlWriter, Value, future::Either, separated_by,
+};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 
 pub struct PostgresSqlWriter {}
+
+impl PostgresSqlWriter {
+    /// Emit COPY FROM STDIN BINARY
+    pub fn write_copy<'b, E>(&self, out: &mut String)
+    where
+        Self: Sized,
+        E: Entity + 'b,
+    {
+        out.reserve(128);
+        out.push_str("COPY ");
+        let mut context = Context::new(Default::default(), E::qualified_columns());
+        self.write_table_ref(&mut context, out, E::table());
+        out.push_str(" (");
+        separated_by(
+            out,
+            E::columns().iter(),
+            |out, col| {
+                self.write_identifier_quoted(&mut context, out, col.name());
+            },
+            ", ",
+        );
+        out.push_str(") FROM STDIN BINARY;");
+    }
+}
 
 impl SqlWriter for PostgresSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
@@ -65,6 +91,7 @@ impl SqlWriter for PostgresSqlWriter {
                 self.write_column_type(context, out, inner);
                 out.push_str("[]");
             }
+            Value::Map(..) | Value::Json(..) | Value::Struct(..) => out.push_str("JSON"),
             _ => log::error!(
                 "Unexpected tank::Value, variant {:?} is not supported",
                 value

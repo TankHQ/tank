@@ -1,21 +1,30 @@
 use crate::{
-    PostgresDriver, PostgresPrepared, PostgresTransaction, ValueWrap, postgres_type_to_value,
+    PostgresDriver, PostgresPrepared, PostgresTransaction, ValueWrap,
     util::{
-        stream_postgres_row_to_tank_row, stream_postgres_simple_query_message_to_tank_query_result,
+        postgres_type_to_value, stream_postgres_row_to_tank_row,
+        stream_postgres_simple_query_message_to_tank_query_result, value_to_postgres_type,
     },
 };
 use async_stream::try_stream;
 use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
 use postgres_openssl::MakeTlsConnector;
-use std::{borrow::Cow, env, mem, path::PathBuf, pin::pin, str::FromStr};
+use postgres_types::ToSql;
+use std::{
+    borrow::Cow,
+    env, mem,
+    path::PathBuf,
+    pin::{Pin, pin},
+    str::FromStr,
+};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Transaction,
+    AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query, QueryResult, Result,
+    RowsAffected, Transaction,
     future::Either,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
 use tokio::{spawn, task::JoinHandle};
-use tokio_postgres::NoTls;
+use tokio_postgres::{NoTls, binary_copy::BinaryCopyInWriter};
 
 #[derive(Debug)]
 pub struct PostgresConnection {
@@ -115,6 +124,43 @@ impl Executor for PostgresConnection {
                 e
             })
         })
+    }
+
+    async fn append<'a, E, It>(&mut self, entities: It) -> Result<RowsAffected>
+    where
+        E: Entity + 'a,
+        It: IntoIterator<Item = &'a E> + Send,
+        <It as IntoIterator>::IntoIter: Send,
+    {
+        let context = || format!("While appending to the table `{}`", E::table().full_name());
+        let mut result = RowsAffected {
+            rows_affected: Some(0),
+            last_affected_id: None,
+        };
+        let writer = self.driver().sql_writer();
+        let mut sql = String::new();
+        writer.write_copy::<E>(&mut sql);
+        let sink = self.client.copy_in(&sql).await.with_context(context)?;
+        let types: Vec<_> = E::columns()
+            .into_iter()
+            .map(|c| value_to_postgres_type(&c.value))
+            .collect();
+        let writer = BinaryCopyInWriter::new(sink, &types);
+        let mut writer = pin!(writer);
+        let mut row = Vec::<ValueWrap>::with_capacity(E::columns().len());
+        let mut refs = Vec::<&(dyn ToSql + Sync)>::with_capacity(E::columns().len());
+        for entity in entities.into_iter() {
+            row.clear();
+            row.extend(entity.row_full().into_iter().map(ValueWrap));
+            refs = row.iter().map(|v| v as &(dyn ToSql + Sync)).collect();
+            Pin::as_mut(&mut writer)
+                .write(&refs)
+                .await
+                .with_context(context)?;
+            *result.rows_affected.as_mut().unwrap() += 1;
+        }
+        writer.finish().await.with_context(context)?;
+        Ok(result)
     }
 }
 

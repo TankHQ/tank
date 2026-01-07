@@ -17,7 +17,6 @@ impl ToSql for IntervalWrap {
                 tank_core::Error::msg(format!("Cannot write Interval into type: {}", ty)).into(),
             );
         }
-
         let micros_all = self.0.nanos / 1000;
         let micros = micros_all.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
         let days = (self.0.days as i128 + (micros_all - micros as i128) / Interval::MICROS_IN_DAY)

@@ -260,9 +260,12 @@ pub async fn trade_multiple<E: Executor>(executor: &mut E) {
     ];
 
     // Insert 5 trades
-    Trade::insert_many(executor, &trades)
+    let affected = Trade::insert_many(executor, &trades)
         .await
         .expect("Coult not insert 5 trade");
+    if let Some(affected) = affected.rows_affected {
+        assert_eq!(affected, 5);
+    }
 
     // Find 5 trades
     let data = Trade::find_many(executor, &true, None)

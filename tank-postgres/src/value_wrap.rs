@@ -1,5 +1,9 @@
-use crate::util::extract_value;
+use crate::{
+    interval_wrap::IntervalWrap,
+    util::{extract_value, flatten_array},
+};
 use bytes::BytesMut;
+use postgres_protocol::types::array_to_sql;
 use postgres_types::{FromSql, IsNull, ToSql, Type, to_sql_checked};
 use rust_decimal::{Decimal, prelude::FromPrimitive};
 use std::error::Error;
@@ -41,14 +45,14 @@ impl ToSql for ValueWrap {
         match &self.0 {
             Value::Null => None::<String>.to_sql(ty, out),
             Value::Boolean(v) => v.to_sql(ty, out),
-            Value::Int8(v) => v.to_sql(ty, out),
+            Value::Int8(v) => v.map(|v| v as i16).to_sql(ty, out),
             Value::Int16(v) => v.to_sql(ty, out),
             Value::Int32(v) => v.to_sql(ty, out),
             Value::Int64(v) => v.to_sql(ty, out),
             Value::Int128(v) => v.map(|v| Decimal::from_i128(v)).to_sql(ty, out),
             Value::UInt8(v) => v.map(|v| v as i16).to_sql(ty, out),
             Value::UInt16(v) => v.map(|v| v as i32).to_sql(ty, out),
-            Value::UInt32(v) => v.to_sql(ty, out),
+            Value::UInt32(v) => v.map(|v| v as i64).to_sql(ty, out),
             Value::UInt64(v) => v.map(|v| Decimal::from_u64(v)).to_sql(ty, out),
             Value::UInt128(v) => v.map(|v| Decimal::from_u128(v)).to_sql(ty, out),
             Value::Float32(v) => v.to_sql(ty, out),
@@ -61,15 +65,42 @@ impl ToSql for ValueWrap {
             Value::Time(v) => v.to_sql(ty, out),
             Value::Timestamp(v) => v.to_sql(ty, out),
             Value::TimestampWithTimezone(v) => v.to_sql(ty, out),
+            Value::Interval(v) => v.map(IntervalWrap).to_sql(ty, out),
             Value::Uuid(v) => v.to_sql(ty, out),
-            Value::Array(v, ..) => v
-                .as_ref()
-                .map(|v| v.clone().into_iter().map(ValueWrap).collect::<Vec<_>>())
-                .to_sql(ty, out),
-            Value::List(v, ..) => v
-                .as_ref()
-                .map(|v| v.clone().into_iter().map(ValueWrap).collect::<Vec<_>>())
-                .to_sql(ty, out),
+            Value::Array(v, element, ..) => match v {
+                Some(v) => {
+                    let (vector, dimensions, element_type) = flatten_array(&**v, element);
+                    array_to_sql(
+                        dimensions,
+                        element_type.oid(),
+                        vector.into_iter().map(|v| ValueWrap(v.clone())),
+                        |e, w| match e.to_sql(&element_type, w)? {
+                            IsNull::No => Ok(postgres_protocol::IsNull::No),
+                            IsNull::Yes => Ok(postgres_protocol::IsNull::Yes),
+                        },
+                        out,
+                    )?;
+                    Ok(IsNull::No)
+                }
+                None => None::<Vec<ValueWrap>>.to_sql(ty, out),
+            },
+            Value::List(v, element) => match v {
+                Some(v) => {
+                    let (vector, dimensions, element_type) = flatten_array(v.as_slice(), element);
+                    array_to_sql(
+                        dimensions,
+                        element_type.oid(),
+                        vector.into_iter().map(|v| ValueWrap(v.clone())),
+                        |e, w| match e.to_sql(&element_type, w)? {
+                            IsNull::No => Ok(postgres_protocol::IsNull::No),
+                            IsNull::Yes => Ok(postgres_protocol::IsNull::Yes),
+                        },
+                        out,
+                    )?;
+                    Ok(IsNull::No)
+                }
+                None => None::<Vec<ValueWrap>>.to_sql(ty, out),
+            },
             _ => {
                 return Err(tank_core::Error::msg(format!(
                     "tank::Value variant `{:?}` is not supported by Postgres",
@@ -88,42 +119,6 @@ impl ToSql for ValueWrap {
     }
 
     to_sql_checked!();
-}
-pub fn postgres_type_to_value(ty: &Type) -> Value {
-    match *ty {
-        Type::BOOL => Value::Boolean(None),
-        Type::CHAR => Value::Int8(None),
-        Type::INT2 => Value::Int16(None),
-        Type::INT4 => Value::Int32(None),
-        Type::INT8 => Value::Int64(None),
-        Type::FLOAT4 => Value::Float32(None),
-        Type::FLOAT8 => Value::Float64(None),
-        Type::NUMERIC => Value::Decimal(None, 0, 0),
-        Type::VARCHAR | Type::TEXT | Type::BPCHAR | Type::JSON | Type::XML => Value::Varchar(None),
-        Type::BYTEA => Value::Blob(None),
-        Type::DATE => Value::Date(None),
-        Type::TIME => Value::Time(None),
-        Type::TIMESTAMP => Value::Timestamp(None),
-        Type::TIMESTAMPTZ => Value::TimestampWithTimezone(None),
-        Type::INTERVAL => Value::Interval(None),
-        Type::UUID => Value::Uuid(None),
-        Type::BOOL_ARRAY => Value::List(None, Box::new(Value::Boolean(None))),
-        Type::INT2_ARRAY => Value::List(None, Box::new(Value::Int16(None))),
-        Type::INT4_ARRAY => Value::List(None, Box::new(Value::Int32(None))),
-        Type::INT8_ARRAY => Value::List(None, Box::new(Value::Int64(None))),
-        Type::FLOAT4_ARRAY => Value::List(None, Box::new(Value::Float32(None))),
-        Type::FLOAT8_ARRAY => Value::List(None, Box::new(Value::Float64(None))),
-        Type::NUMERIC_ARRAY => Value::List(None, Box::new(Value::Decimal(None, 0, 0))),
-        Type::TEXT_ARRAY | Type::VARCHAR_ARRAY => Value::List(None, Box::new(Value::Varchar(None))),
-        Type::BYTEA_ARRAY => Value::List(None, Box::new(Value::Blob(None))),
-        Type::DATE_ARRAY => Value::List(None, Box::new(Value::Date(None))),
-        Type::TIME_ARRAY => Value::List(None, Box::new(Value::Time(None))),
-        Type::TIMESTAMP_ARRAY => Value::List(None, Box::new(Value::Timestamp(None))),
-        Type::TIMESTAMPTZ_ARRAY => Value::List(None, Box::new(Value::TimestampWithTimezone(None))),
-        Type::INTERVAL_ARRAY => Value::List(None, Box::new(Value::Interval(None))),
-        Type::UUID_ARRAY => Value::List(None, Box::new(Value::Uuid(None))),
-        _ => Value::Null,
-    }
 }
 
 pub(crate) struct VecWrap<T>(pub Vec<T>);

@@ -227,3 +227,152 @@ fn build_array<'a>(
         Value::Array(Some(elements), Box::new(nested_ty), len)
     })
 }
+
+pub(crate) fn flatten_array<'a>(
+    values: &'a [Value],
+    mut element_type: &'a Value,
+) -> (Vec<&'a Value>, Vec<ArrayDimension>, Type) {
+    let mut dimensions = Vec::new();
+    let mut current_level = values;
+    let mut total_capacity = 1;
+    loop {
+        let len = current_level.len();
+        dimensions.push(ArrayDimension {
+            len: len as i32,
+            lower_bound: 1,
+        });
+        total_capacity *= len;
+        if len == 0 {
+            total_capacity = 0;
+            break;
+        }
+        match current_level.first() {
+            Some(Value::Array(Some(inner), ..)) => current_level = inner,
+            Some(Value::List(Some(inner), ..)) => current_level = inner.as_slice(),
+            _ => break,
+        }
+    }
+    loop {
+        match element_type {
+            Value::Array(.., element, _) | Value::List(.., element) => element_type = element,
+            _ => break,
+        }
+    }
+    let pg_type = value_to_postgres_type(element_type);
+    let mut collector = Vec::with_capacity(total_capacity);
+    flatten_recursive(values, &mut collector);
+    (collector, dimensions, pg_type)
+}
+
+fn flatten_recursive<'a>(values: &'a [Value], collector: &mut Vec<&'a Value>) {
+    for value in values {
+        match value {
+            Value::Array(Some(inner), ..) => {
+                flatten_recursive(inner, collector);
+            }
+            Value::List(Some(inner), ..) => {
+                flatten_recursive(inner, collector);
+            }
+            Value::Array(None, ..) | Value::List(None, ..) => {}
+            _ => collector.push(value),
+        }
+    }
+}
+
+pub fn postgres_type_to_value(ty: &Type) -> Value {
+    match *ty {
+        Type::BOOL => Value::Boolean(None),
+        Type::CHAR => Value::Int8(None),
+        Type::INT2 => Value::Int16(None),
+        Type::INT4 => Value::Int32(None),
+        Type::INT8 => Value::Int64(None),
+        Type::FLOAT4 => Value::Float32(None),
+        Type::FLOAT8 => Value::Float64(None),
+        Type::NUMERIC => Value::Decimal(None, 0, 0),
+        Type::VARCHAR | Type::TEXT | Type::BPCHAR | Type::XML => Value::Varchar(None),
+        Type::BYTEA => Value::Blob(None),
+        Type::DATE => Value::Date(None),
+        Type::TIME => Value::Time(None),
+        Type::TIMESTAMP => Value::Timestamp(None),
+        Type::TIMESTAMPTZ => Value::TimestampWithTimezone(None),
+        Type::INTERVAL => Value::Interval(None),
+        Type::UUID => Value::Uuid(None),
+        Type::BOOL_ARRAY => Value::List(None, Box::new(Value::Boolean(None))),
+        Type::INT2_ARRAY => Value::List(None, Box::new(Value::Int16(None))),
+        Type::INT4_ARRAY => Value::List(None, Box::new(Value::Int32(None))),
+        Type::INT8_ARRAY => Value::List(None, Box::new(Value::Int64(None))),
+        Type::FLOAT4_ARRAY => Value::List(None, Box::new(Value::Float32(None))),
+        Type::FLOAT8_ARRAY => Value::List(None, Box::new(Value::Float64(None))),
+        Type::NUMERIC_ARRAY => Value::List(None, Box::new(Value::Decimal(None, 0, 0))),
+        Type::TEXT_ARRAY | Type::VARCHAR_ARRAY => Value::List(None, Box::new(Value::Varchar(None))),
+        Type::BYTEA_ARRAY => Value::List(None, Box::new(Value::Blob(None))),
+        Type::DATE_ARRAY => Value::List(None, Box::new(Value::Date(None))),
+        Type::TIME_ARRAY => Value::List(None, Box::new(Value::Time(None))),
+        Type::TIMESTAMP_ARRAY => Value::List(None, Box::new(Value::Timestamp(None))),
+        Type::TIMESTAMPTZ_ARRAY => Value::List(None, Box::new(Value::TimestampWithTimezone(None))),
+        Type::INTERVAL_ARRAY => Value::List(None, Box::new(Value::Interval(None))),
+        Type::UUID_ARRAY => Value::List(None, Box::new(Value::Uuid(None))),
+        Type::JSON_ARRAY => Value::List(None, Box::new(Value::Json(None))),
+        Type::JSON => Value::Json(None),
+        _ => Value::Null,
+    }
+}
+
+pub fn value_to_postgres_type(value: &Value) -> Type {
+    assert!(matches!(Type::BPCHAR_ARRAY.kind(), Kind::Array(..)));
+    match value {
+        Value::Boolean(..) => Type::BOOL,
+        Value::Int8(..) => Type::INT2,
+        Value::Int16(..) => Type::INT2,
+        Value::Int32(..) => Type::INT4,
+        Value::Int64(..) => Type::INT8,
+        Value::Int128(..) => Type::NUMERIC,
+        Value::UInt8(..) => Type::INT2,
+        Value::UInt16(..) => Type::INT4,
+        Value::UInt32(..) => Type::INT8,
+        Value::UInt64(..) => Type::NUMERIC,
+        Value::UInt128(..) => Type::NUMERIC,
+        Value::Float32(..) => Type::FLOAT4,
+        Value::Float64(..) => Type::FLOAT8,
+        Value::Decimal(.., _, _) => Type::NUMERIC,
+        Value::Char(..) => Type::BPCHAR,
+        Value::Varchar(..) => Type::TEXT,
+        Value::Blob(..) => Type::BYTEA,
+        Value::Date(..) => Type::DATE,
+        Value::Time(..) => Type::TIME,
+        Value::Timestamp(..) => Type::TIMESTAMP,
+        Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ,
+        Value::Interval(..) => Type::INTERVAL,
+        Value::Uuid(..) => Type::UUID,
+        Value::Array(.., element, _) | Value::List(.., element) => match **element {
+            Value::Boolean(..) => Type::BOOL_ARRAY,
+            Value::Int8(..) => Type::INT2_ARRAY,
+            Value::Int16(..) => Type::INT2_ARRAY,
+            Value::Int32(..) => Type::INT4_ARRAY,
+            Value::Int64(..) => Type::INT8_ARRAY,
+            Value::Int128(..) => Type::NUMERIC_ARRAY,
+            Value::UInt8(..) => Type::INT2_ARRAY,
+            Value::UInt16(..) => Type::INT4_ARRAY,
+            Value::UInt32(..) => Type::INT8_ARRAY,
+            Value::UInt64(..) => Type::NUMERIC_ARRAY,
+            Value::UInt128(..) => Type::NUMERIC_ARRAY,
+            Value::Float32(..) => Type::FLOAT4_ARRAY,
+            Value::Float64(..) => Type::FLOAT8_ARRAY,
+            Value::Decimal(..) => Type::NUMERIC_ARRAY,
+            Value::Char(..) => Type::BPCHAR_ARRAY,
+            Value::Varchar(..) => Type::TEXT_ARRAY,
+            Value::Blob(..) => Type::BYTEA_ARRAY,
+            Value::Date(..) => Type::DATE_ARRAY,
+            Value::Time(..) => Type::TIME_ARRAY,
+            Value::Timestamp(..) => Type::TIMESTAMP_ARRAY,
+            Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ_ARRAY,
+            Value::Interval(..) => Type::INTERVAL_ARRAY,
+            Value::Uuid(..) => Type::UUID_ARRAY,
+            Value::Array(..) | Value::List(..) => value_to_postgres_type(element),
+            Value::Map(..) | Value::Json(..) | Value::Struct(..) => Type::JSON_ARRAY,
+            _ => Type::UNKNOWN,
+        },
+        Value::Map(..) | Value::Json(..) | Value::Struct(..) => Type::JSON,
+        _ => Type::UNKNOWN,
+    }
+}

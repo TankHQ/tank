@@ -1,6 +1,6 @@
 use rcgen::{
     CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose,
-    SanType,
+    PKCS_RSA_SHA256, SanType,
 };
 use std::{
     env, future,
@@ -22,7 +22,7 @@ use testcontainers_modules::{
     testcontainers::{
         ContainerAsync, GenericImage, ImageExt,
         core::{
-            ContainerPort,
+            ContainerPort, WaitFor,
             logs::{LogFrame, consumer::LogConsumer},
         },
         runners::AsyncRunner,
@@ -130,14 +130,15 @@ pub async fn init_cassandra(ssl: bool) -> (String, Option<ContainerAsync<Generic
     };
     let mut image = GenericImage::new("cassandra", "5")
         .with_startup_timeout(Duration::from_secs(120))
-        .with_log_consumer(TestcontainersLogConsumer);
+        .with_log_consumer(TestcontainersLogConsumer)
+        .with_mapped_port(9042, ContainerPort::Tcp(9042))
+        .with_ready_conditions(vec![WaitFor::message_on_either_std("Startup complete")]);
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     if ssl {
         generate_ssl_files()
             .await
             .expect("Could not create the certificate files for SSL session");
         image = image
-            .with_mapped_port(9042, ContainerPort::Tcp(9042))
             .with_mapped_port(9142, ContainerPort::Tcp(9142))
             .with_copy_to(
                 "/etc/cassandra/cassandra.yaml",
@@ -199,13 +200,13 @@ async fn generate_ssl_files() -> Result<()> {
     ca_params.key_usages.push(KeyUsagePurpose::KeyCertSign);
     ca_params.key_usages.push(KeyUsagePurpose::CrlSign);
     ca_params.use_authority_key_identifier_extension = true;
-    let ca_key = KeyPair::generate()?;
+    let ca_key = KeyPair::generate_for(&PKCS_RSA_SHA256)?;
     let ca_cert = ca_params.self_signed(&ca_key)?;
     fs::write(path.join("tests/assets/ca.pem"), ca_cert.pem()).await?;
 
     let ca_issuer = Issuer::from_params(&ca_params, ca_key);
 
-    let server_key = KeyPair::generate()?;
+    let server_key = KeyPair::generate_for(&PKCS_RSA_SHA256)?;
     let mut server_params = CertificateParams::new(vec!["localhost".to_string()])?;
     server_params.use_authority_key_identifier_extension = true;
     server_params
@@ -238,7 +239,7 @@ async fn generate_ssl_files() -> Result<()> {
     )
     .await?;
 
-    let client_key = KeyPair::generate()?;
+    let client_key = KeyPair::generate_for(&PKCS_RSA_SHA256)?;
     let mut client_params = CertificateParams::new(vec!["tank-mysql-user".to_string()])?;
     client_params.is_ca = IsCa::NoCa;
     client_params
