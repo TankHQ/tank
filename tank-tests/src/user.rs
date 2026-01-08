@@ -22,7 +22,7 @@ pub struct UserProfile {
     #[tank(unique, column_type = (mysql = "VARCHAR(128)"))]
     pub email: String,
     pub full_name: Option<String>,
-    #[tank(default = "0")]
+    #[tank(default = 0)]
     pub follower_count: u32,
     pub is_active: bool,
     pub last_login: Option<time::PrimitiveDateTime>,
