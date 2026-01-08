@@ -37,9 +37,12 @@ Tank's `#[tank(...)]` attributes configure tables and columns.
 - <Badge type="tip" text="field" /> `primary_key`: Marks field as part of primary key. Cannot be combined with struct-level `primary_key`.
 - <Badge type="tip" text="struct" /> `unique = "some_field"` or `unique = ("column_1", Self::column_2, ..)`: Unique constraint.
 - <Badge type="tip" text="field" /> `unique`: Field-level unique constraint.
+- <Badge type="tip" text="field" /> `ignore`: Excludes field from database table and from row materialization.
 - <Badge type="tip" text="field" /> `default`: Default value expression for the column.
 - <Badge type="tip" text="field" /> `references = OtherEntity::column`: Foreign key reference.
-- <Badge type="tip" text="field" /> `ignore`: Excludes field from table and from row materialization.
+ - <Badge type="tip" text="field" /> `on_delete = no_action|restrict|cascade|set_null|set_default`: Action for foreign key when referenced row is deleted.
+ - <Badge type="tip" text="field" /> `on_update = no_action|restrict|cascade|set_null|set_default`: Action for foreign key when referenced row is updated.
+ - <Badge type="tip" text="field" /> `clustering_key`: Marks field as a clustering key (relevant for ScyllaDB/Cassandra; affects clustering/order in table layout).
 - <Badge type="tip" text="field" /> `column_type = (mysql = "VARCHAR(128)", postgres = "TEXT")`: Override column type in DDL (support depends on the driver).
 
 *All units accounted for. Stand by.*
