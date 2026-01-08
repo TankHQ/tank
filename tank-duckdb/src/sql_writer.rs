@@ -33,7 +33,7 @@ impl SqlWriter for DuckDBSqlWriter {
     fn write_value_blob(&self, _context: &mut Context, out: &mut String, value: &[u8]) {
         out.push('\'');
         for b in value {
-            let _ = write!(out, "\\x{:X}", b);
+            let _ = write!(out, "\\x{:02X}", b);
         }
         out.push('\'');
     }

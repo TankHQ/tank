@@ -105,7 +105,7 @@ impl SqlWriter for PostgresSqlWriter {
     fn write_value_blob(&self, _context: &mut Context, out: &mut String, value: &[u8]) {
         out.push_str("'\\x");
         for b in value {
-            let _ = write!(out, "{:X}", b);
+            let _ = write!(out, "{:02X}", b);
         }
         out.push('\'');
     }

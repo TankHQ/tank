@@ -123,7 +123,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         };
         let _ = write!(out, "{delimiter}0x");
         for v in value {
-            let _ = write!(out, "{:X}", v);
+            let _ = write!(out, "{:02X}", v);
         }
         out.push_str(delimiter);
     }

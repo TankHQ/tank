@@ -132,8 +132,8 @@ impl SerializeValue for ValueWrap {
                     let mut builder = writer.into_value_builder();
                     for (field_name, field_type) in &*definition.field_types {
                         let sub_writer = builder.make_sub_writer();
-                        if let Some((k, value)) =
-                            value.iter().find(|(k, v)| k.as_str() == field_name)
+                        if let Some((_, value)) =
+                            value.iter().find(|(k, _)| k.as_str() == field_name)
                         {
                             ValueWrap(value.clone()).serialize(&field_type, sub_writer)?;
                         } else {
@@ -145,14 +145,14 @@ impl SerializeValue for ValueWrap {
                     return Err(error);
                 }
             }
-            ColumnType::Tuple(column_types) => todo!(),
+            ColumnType::Tuple(_) => todo!(),
             _ => todo!(),
         }
     }
 }
 
 impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
-    fn type_check(typ: &ColumnType) -> Result<(), TypeCheckError> {
+    fn type_check(_typ: &ColumnType) -> Result<(), TypeCheckError> {
         Ok(())
     }
 
@@ -322,7 +322,10 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                 Self::deserialize(typ, None)?.0.into(),
                 *dimensions as _,
             ),
-            ColumnType::UserDefinedType { frozen, definition } => {
+            ColumnType::UserDefinedType {
+                frozen: _,
+                definition,
+            } => {
                 let type_ref = TableRef {
                     schema: definition.keyspace.to_string().into(),
                     name: definition.name.to_string().into(),

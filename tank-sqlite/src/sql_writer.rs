@@ -103,7 +103,7 @@ impl SqlWriter for SQLiteSqlWriter {
     fn write_value_blob(&self, _context: &mut Context, out: &mut String, value: &[u8]) {
         out.push_str("X'");
         for b in value {
-            let _ = write!(out, "{:X}", b);
+            let _ = write!(out, "{:02X}", b);
         }
         out.push('\'');
     }

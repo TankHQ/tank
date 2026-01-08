@@ -12,7 +12,8 @@ struct Account {
     balance: FixedDecimal<12, 2>,
     active: bool,
     metadata: Option<String>,
-    payload: Option<Vec<u8>>,
+    #[tank(column_type = (sqlite = "BLOB"))]
+    payload: Option<Box<[u8]>>,
 }
 
 #[derive(Entity, Debug, Clone)]
@@ -56,7 +57,7 @@ pub async fn transaction2<C: Connection>(connection: &mut C) {
             balance: Decimal::new(500_00, 2).into(),
             active: true,
             metadata: None,
-            payload: Some(vec![1, 2, 3]),
+            payload: Some(vec![0x1, 0x2, 0x3].into()),
         },
         Account {
             id: "C".into(),

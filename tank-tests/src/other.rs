@@ -1,6 +1,6 @@
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    DataSet, Entity, Executor, Value, cols,
+    DataSet, Entity, Executor, cols,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;

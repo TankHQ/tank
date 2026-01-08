@@ -1,8 +1,9 @@
 use crate::{
     ColumnDef, Context, DataSet, Driver, Error, Executor, Expression, Query, Result, Row,
-    RowLabeled, RowsAffected, TableRef, Value, future::Either, stream::Stream, writer::SqlWriter,
+    RowLabeled, RowsAffected, TableRef, Value, future::Either, stream::Stream, truncate_long,
+    writer::SqlWriter,
 };
-use futures::{FutureExt, StreamExt, TryFutureExt};
+use futures::{FutureExt, StreamExt};
 use log::Level;
 use std::{
     future::{self, Future},
@@ -257,7 +258,25 @@ pub trait Entity {
             .driver()
             .sql_writer()
             .write_insert(&mut query, [self], true);
-        Either::Right(executor.execute(query).map_ok(|_| ()))
+        let context = format!("While saving using the query: {}", truncate_long!(query));
+        Either::Right(executor.execute(query).map(|mut v| {
+            if let Ok(result) = v
+                && let Some(affected) = result.rows_affected
+                && affected > 2
+            {
+                v = Err(Error::msg(format!(
+                    "The driver returned affected rows: {affected} (expected <= 2)"
+                )));
+            }
+            match v {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    let e = e.context(context);
+                    log::error!("{e:#}");
+                    Err(e)
+                }
+            }
+        }))
     }
 
     /// Deletes this entity instance via its primary key.

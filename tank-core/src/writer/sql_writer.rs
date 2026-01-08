@@ -313,7 +313,7 @@ pub trait SqlWriter: Send {
         };
         out.push(delimiter);
         for v in value {
-            let _ = write!(out, "\\x{:X}", v);
+            let _ = write!(out, "\\x{:02X}", v);
         }
         out.push(delimiter);
     }
