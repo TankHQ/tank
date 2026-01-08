@@ -12,12 +12,14 @@ mod metrics;
 mod multiple;
 mod operations;
 mod orders;
+mod other;
 mod readme;
 mod shopping;
 mod simple;
 mod time;
 mod trade;
 mod transaction1;
+mod transaction2;
 mod user;
 
 pub use aggregates::*;
@@ -35,6 +37,7 @@ pub use metrics::*;
 pub use multiple::*;
 pub use operations::*;
 pub use orders::*;
+pub use other::*;
 pub use readme::*;
 pub use shopping::*;
 pub use simple::*;
@@ -43,6 +46,7 @@ use tank::Connection;
 pub use time::*;
 pub use trade::*;
 pub use transaction1::*;
+pub use transaction2::*;
 pub use user::*;
 
 pub fn init_logs() {
@@ -77,6 +81,7 @@ pub async fn execute_tests<C: Connection>(mut connection: C) {
     arrays2(&mut connection).await;
     #[cfg(not(feature = "disable-transactions"))]
     transaction1(&mut connection).await;
+    transaction2(&mut connection).await;
     shopping(&mut connection).await;
     orders(&mut connection).await;
     times(&mut connection).await;
@@ -92,6 +97,7 @@ pub async fn execute_tests<C: Connection>(mut connection: C) {
     metrics(&mut connection).await;
     math(&mut connection).await;
     ambiguity(&mut connection).await;
+    other(&mut connection).await;
 }
 
 #[macro_export]

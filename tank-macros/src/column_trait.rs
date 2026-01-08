@@ -3,7 +3,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Ident, spanned::Spanned};
 
-pub(crate) fn column_trait(table: &TableMetadata) -> TokenStream {
+pub(crate) fn column_trait(table: &TableMetadata) -> (Ident, TokenStream) {
     let struct_name = &table.item.ident;
     let trait_name = Ident::new(&format!("{}ColumnTrait", struct_name), table.item.span());
     let columns: Vec<_> = table
@@ -27,12 +27,15 @@ pub(crate) fn column_trait(table: &TableMetadata) -> TokenStream {
             const #name: ::tank::ColumnRef = #column_ref;
         }
     });
-    quote! {
-        pub trait #trait_name {
-            #(#columns_fields_declarations)*
-        }
-        impl #trait_name for #struct_name {
-            #(#columns_fields_definitions)*
-        }
-    }
+    (
+        trait_name.clone(),
+        quote! {
+            pub trait #trait_name {
+                #(#columns_fields_declarations)*
+            }
+            impl #trait_name for #struct_name {
+                #(#columns_fields_definitions)*
+            }
+        },
+    )
 }

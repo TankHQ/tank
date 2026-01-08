@@ -69,7 +69,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
         .collect::<Vec<_>>();
     let unique_defs = quote!(vec![#(#unique_defs),*].into_boxed_slice());
     let primary_key_types = primary_key_cols.clone().map(|col| col.ty.clone());
-    let column = column_trait(&table);
+    let (column_trait, column) = column_trait(&table);
     let label_value_and_filter = metadata_and_filter.iter().map(|(column, filter)| {
         let name = &column.name;
         let field = &column.ident;
@@ -80,7 +80,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
     );
     let columns = metadata_and_filter.iter().map(|(c, _)| {
         let field = &c.ident;
-        encode_column_def(&c, quote!(#ident::#field))
+        encode_column_def(&c, quote!(<#ident as #column_trait>::#field))
     });
     let primary_key_condition = table.primary_key.iter().enumerate().map(|(i, pki)| {
         let ident = table.columns[*pki].ident.clone();
