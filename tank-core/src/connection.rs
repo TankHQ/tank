@@ -55,11 +55,18 @@ pub trait Connection: Executor {
 
     /// Create a connection (or pool) with at least one underlying session
     /// established to the given URL.
+    ///
+    /// The returned future must be awaited to obtain the connection object
+    /// (type `Self::Driver::Connection`). Implementations may  perform I/O or validation
+    /// during `connect`; callers should treat this as a potentially expensive operation.
     fn connect(
         url: Cow<'static, str>,
     ) -> impl Future<Output = Result<<Self::Driver as Driver>::Connection>>;
 
     /// Begin a transaction scope tied to the current connection.
+    ///
+    /// The returned value implements [`Transaction`] for the underlying driver.
+    /// `commit` / `rollback` MUST be awaited to ensure resources are released and the scope is finalized.
     fn begin(&mut self) -> impl Future<Output = Result<impl Transaction<'_>>>;
 
     /// Disconnect and release the underlying session(s).

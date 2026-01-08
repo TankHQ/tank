@@ -7,6 +7,9 @@ use tank_core::{
     Value, future::Either, print_timer, separated_by,
 };
 
+/// SQL writer for MySQL / MariaDB dialect.
+///
+/// Emits MySQL / MariaDB specific SQL syntax to mantain compatibility with tank operations.
 #[derive(Default)]
 pub struct MySQLSqlWriter {}
 

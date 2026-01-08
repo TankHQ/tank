@@ -122,12 +122,14 @@ impl<D: Driver> AsMut<Query<D>> for Query<D> {
     }
 }
 
-/// Metadata about modify operations (INSERT/UPDATE/DELETE).
+/// Metadata about modifying operations (INSERT/UPDATE/DELETE).
 #[derive(Default, Debug, Clone, Copy)]
 pub struct RowsAffected {
-    /// Optional count of affected rows
+    /// Optional count of affected rows reported by the backend.
+    /// `None` means the backend did not provide a count.
     pub rows_affected: Option<u64>,
-    /// Optional last inserted or affected id
+    /// Optional last affected identifier (driver-dependent meaning).
+    /// For many drivers this is the last inserted id.
     pub last_affected_id: Option<i64>,
 }
 

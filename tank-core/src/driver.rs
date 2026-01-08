@@ -21,10 +21,16 @@ pub trait Driver: Default + Debug {
     }
 
     /// Connect to database `url`.
+    ///
+    /// The returned future must be awaited to obtain the connection object.
+    /// Implementations may perform I/O or validation during connection.
     fn connect(&self, url: Cow<'static, str>) -> impl Future<Output = Result<impl Connection>> {
         Self::Connection::connect(url)
     }
 
     /// Create a SQL writer.
+    ///
+    /// Returns a writer capable of rendering SQL for this driver's dialect.
+    /// Writers are expected to be cheap to construct as they are usually stateless.
     fn sql_writer(&self) -> Self::SqlWriter;
 }

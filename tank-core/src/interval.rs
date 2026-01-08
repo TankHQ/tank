@@ -4,6 +4,10 @@ use std::{
     ops::{Add, AddAssign, Neg, Sub, SubAssign},
 };
 
+/// Units used to represent different parts of an `Interval` value.
+///
+/// Used when converting or formatting `Interval` values into specific
+/// units (years, months, days, time components, etc.).
 #[derive(PartialEq, Eq)]
 pub enum IntervalUnit {
     Year,
@@ -32,6 +36,11 @@ impl IntervalUnit {
     }
 }
 
+/// A time interval supporting months, days and nanoseconds.
+///
+/// This type represents durations with separate month/day components to preserve calendar-aware semantics.
+/// Months are not a fixed number of days but often converted to 30 days for conversion purpose.
+/// It provides helpers to convert to/from common durations and to extract unit values.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Interval {
     pub months: i64,

@@ -10,6 +10,9 @@ use std::{
 };
 use tank_core::{AsValue, Error, Prepared, Result, Value, error_message_from_ptr};
 
+/// Prepared statement wrapper for DuckDB.
+///
+/// Manages the native `duckdb_prepared_statement` pointer and binding index for use with the `Prepared` trait.
 #[derive(Debug)]
 pub struct DuckDBPrepared {
     pub(crate) statement: CBox<duckdb_prepared_statement>,

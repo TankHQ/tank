@@ -26,6 +26,8 @@ use tank_core::{
 };
 use tokio::task::spawn_blocking;
 
+/// Wrapper around a DuckDB `duckdb_connection` pointer used by the DuckDB driver.
+/// Provides helpers to execute queries and extract results into `tank_core` types.
 pub struct DuckDBConnection {
     pub(crate) connection: CBox<duckdb_connection>,
 }

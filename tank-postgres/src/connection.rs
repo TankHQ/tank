@@ -26,6 +26,10 @@ use tank_core::{
 use tokio::{spawn, task::JoinHandle};
 use tokio_postgres::{NoTls, binary_copy::BinaryCopyInWriter};
 
+/// Connection wrapper for Postgres/Tokio Postgres client.
+///
+/// Manages the client handle and background task used to drive the connection
+/// and implements `Executor` for running queries against Postgres.
 #[derive(Debug)]
 pub struct PostgresConnection {
     pub(crate) client: tokio_postgres::Client,

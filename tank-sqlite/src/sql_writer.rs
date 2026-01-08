@@ -1,6 +1,9 @@
 use std::{collections::BTreeMap, fmt::Write};
 use tank_core::{ColumnDef, ColumnRef, Context, Entity, SqlWriter, TableRef, Value};
 
+/// SQL writer for SQLite dialect.
+///
+/// Emits SQLite specific SQL syntax to mantain compatibility with tank operations.
 pub struct SQLiteSqlWriter {}
 
 impl SqlWriter for SQLiteSqlWriter {

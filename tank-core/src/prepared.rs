@@ -8,7 +8,7 @@ use std::fmt::{Debug, Display};
 ///
 /// # Binding Semantics
 /// * `bind` appends a value (driver chooses actual placeholder numbering).
-/// * `bind_index` sets the parameter at `index` (from 0).
+/// * `bind_index` sets the parameter at `index` (zero-based).
 ///
 /// Methods return `&mut Self` for fluent chaining:
 /// ```ignore

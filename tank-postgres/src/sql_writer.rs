@@ -4,6 +4,9 @@ use tank_core::{
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 
+/// SQL writer for Postgres dialect.
+///
+/// Emits Postgres specific SQL syntax to mantain compatibility with tank operations.
 pub struct PostgresSqlWriter {}
 
 impl PostgresSqlWriter {

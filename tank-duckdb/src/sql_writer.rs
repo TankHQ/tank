@@ -4,6 +4,9 @@ use std::{
 };
 use tank_core::{ColumnDef, Context, Interval, SqlWriter, Value, separated_by};
 
+/// SQL writer for the DuckDB dialect.
+///
+/// Emits DuckDB specific SQL syntax to mantain compatibility with tank operations.
 #[derive(Default)]
 pub struct DuckDBSqlWriter {}
 

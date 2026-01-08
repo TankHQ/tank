@@ -7,6 +7,9 @@ use tank_core::{AsValue, Error, Prepared, Result};
 
 use crate::ValueWrap;
 
+/// Prepared statement wrapper for ScyllaDB.
+///
+/// Contains the `PreparedStatement`, accumulated params and current bind index used when converting `tank_core::Value` into driver parameters.
 pub struct ScyllaDBPrepared {
     pub(crate) statement: PreparedStatement,
     pub(crate) params: Vec<ValueWrap>,

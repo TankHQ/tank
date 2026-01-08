@@ -15,6 +15,9 @@ use tank_core::{
     truncate_long,
 };
 
+/// Connection wrapper for ScyllaDB/Cassandra sessions.
+///
+/// Holds the underlying `scylla::Session` and exposes `Executor`/`Connection` implementations for the ScyllaDB driver.
 pub struct ScyllaDBConnection {
     pub(crate) session: Session,
 }

@@ -11,6 +11,9 @@ use tank_core::{
     truncate_long,
 };
 
+/// Prepared statement wrapper for SQLite.
+///
+/// Manages the native statement pointer and binding index, and implements  the `Prepared` trait to bind parameters from `tank_core::Value`.
 #[derive(Debug)]
 pub struct SQLitePrepared {
     pub(crate) statement: CBox<*mut sqlite3_stmt>,

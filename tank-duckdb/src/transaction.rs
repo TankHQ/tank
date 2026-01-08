@@ -4,6 +4,10 @@ use tank_core::{
     impl_executor_transaction,
 };
 
+/// Wrapper for DuckDB transactions.
+///
+/// Begins a transaction via the driver `SqlWriter` and executes commit/rollback
+/// SQL through the connection. Implements `Transaction` for `tank_core`.
 pub struct DuckDBTransaction<'c> {
     connection: &'c mut DuckDBConnection,
 }

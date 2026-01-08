@@ -5,6 +5,9 @@ use tank_core::{
     Connection, Error, ErrorContext, Result, impl_executor_transaction, truncate_long,
 };
 
+/// Connection wrapper used by the MySQL/MariaDB driver.
+///
+/// Holds the underlying `mysql_async` connection and adapts it to the `tank_core::Connection` / `Executor` APIs.
 pub struct MySQLConnection {
     pub(crate) conn: MySQLQueryable<Conn>,
 }

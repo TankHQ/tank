@@ -24,6 +24,10 @@ pub trait Executor: Send + Sized {
     }
 
     /// Driver instance.
+    ///
+    /// Default implementation returns `Default::default()` for the associated
+    /// `Driver`. Executors that carry per-connection or pooled driver state
+    /// should override this method to return the appropriate driver instance.
     fn driver(&self) -> Self::Driver
     where
         Self: Sized,

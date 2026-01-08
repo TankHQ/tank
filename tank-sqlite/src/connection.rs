@@ -21,6 +21,9 @@ use tank_core::{
 };
 use tokio::task::spawn_blocking;
 
+/// Wrapper for a SQLite `sqlite3` connection pointer used by the SQLite driver.
+///
+/// Provides helpers to prepare/execute statements and stream results into `tank_core` result types.
 pub struct SQLiteConnection {
     pub(crate) connection: CBox<*mut sqlite3>,
     pub(crate) _transaction: bool,

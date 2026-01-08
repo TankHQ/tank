@@ -1,6 +1,10 @@
 use crate::{ScyllaDBConnection, ScyllaDBPrepared, ScyllaDBSqlWriter, ScyllaDBTransaction};
 use tank_core::Driver;
 
+/// Driver entry for ScyllaDB/Cassandra backends.
+///
+/// Provides associated types for connection, prepared statements, transactions and SQL writer suitable for ScyllaDB / Cassandra usage.
+/// It uses the `scylla` crate under the hood which is designed to be compatible with both ScyllaDB and Apache Cassandra databases.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ScyllaDBDriver;
 impl ScyllaDBDriver {
