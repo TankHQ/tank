@@ -285,6 +285,7 @@ impl Executor for DuckDBConnection {
                 })?;
             }
             *query.as_mut() = mem::take(&mut join.await?);
+            query.as_mut().clear_bindings().context(context)?;
         }
     }
 

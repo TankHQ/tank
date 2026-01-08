@@ -25,6 +25,7 @@ impl ScyllaDBPrepared {
         }
     }
     pub(crate) fn take_params(&mut self) -> Result<Vec<ValueWrap>> {
+        self.index = 0;
         Ok(mem::take(&mut self.params))
     }
 }

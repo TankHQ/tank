@@ -1,4 +1,3 @@
-use crate::silent_logs;
 use std::collections::BTreeSet;
 use std::{pin::pin, sync::LazyLock};
 use tank::{
@@ -133,11 +132,6 @@ pub async fn aggregates<E: Executor>(executor: &mut E) {
             .expect("Could not fetch rows above average from the prepared statement");
         assert!(query.is_prepared());
         assert_eq!(values.len(), COUNT as usize / 2);
-        silent_logs! {
-            query
-                .bind(0)
-                .expect_err("Should not be able to bind unexisting params");
-        }
         query
             .clear_bindings()
             .expect("Could not clear the bindings");

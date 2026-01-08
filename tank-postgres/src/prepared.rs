@@ -26,6 +26,7 @@ impl PostgresPrepared {
         }
     }
     pub(crate) fn take_params(&mut self) -> Vec<ValueWrap<'static>> {
+        self.index = 0;
         mem::take(&mut self.params)
             .into_iter()
             .map(|v| ValueWrap(Cow::Owned(v)))

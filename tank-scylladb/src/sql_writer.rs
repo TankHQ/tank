@@ -389,7 +389,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         }
     }
 
-    fn write_delete<E>(&self, out: &mut String, condition: &impl Expression)
+    fn write_delete<E>(&self, out: &mut String, condition: impl Expression)
     where
         Self: Sized,
         E: Entity,

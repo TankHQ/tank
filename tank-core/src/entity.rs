@@ -154,7 +154,7 @@ pub trait Entity {
     /// Returns the prepared statement.
     fn prepare_find<Exec: Executor>(
         executor: &mut Exec,
-        condition: &impl Expression,
+        condition: impl Expression,
         limit: Option<u32>,
     ) -> impl Future<Output = Result<Query<Exec::Driver>>> {
         Self::table().prepare(executor, Self::columns(), condition, limit)
@@ -175,7 +175,7 @@ pub trait Entity {
     /// Returns `Ok(None)` if no row matches.
     fn find_one(
         executor: &mut impl Executor,
-        condition: &impl Expression,
+        condition: impl Expression,
     ) -> impl Future<Output = Result<Option<Self>>> + Send
     where
         Self: Sized,
@@ -223,7 +223,7 @@ pub trait Entity {
     /// Returns the number of rows deleted.
     fn delete_many(
         executor: &mut impl Executor,
-        condition: &impl Expression,
+        condition: impl Expression,
     ) -> impl Future<Output = Result<RowsAffected>> + Send
     where
         Self: Sized,

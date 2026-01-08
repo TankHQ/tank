@@ -16,8 +16,8 @@ use std::{
     },
 };
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowLabeled,
-    RowsAffected, error_message_from_ptr, send_value, stream::Stream, truncate_long,
+    AsQuery, Connection, Error, ErrorContext, Executor, Prepared, Query, QueryResult, Result,
+    RowLabeled, RowsAffected, error_message_from_ptr, send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -103,7 +103,7 @@ impl SQLiteConnection {
                                 .to_string(),
                             ))
                         );
-                        return;
+                        break;
                     }
                 }
             }
@@ -218,11 +218,14 @@ impl Executor for SQLiteConnection {
                 Query::Raw(query) => {
                     Self::do_run_unprepared(connection.load(Ordering::Relaxed), query, tx);
                 }
-                Query::Prepared(prepared) => Self::do_run_prepared(
-                    connection.load(Ordering::Relaxed),
-                    prepared.statement(),
-                    tx,
-                ),
+                Query::Prepared(prepared) => {
+                    Self::do_run_prepared(
+                        connection.load(Ordering::Relaxed),
+                        prepared.statement(),
+                        tx,
+                    );
+                    let _ = prepared.clear_bindings();
+                }
             }
             owned
         });

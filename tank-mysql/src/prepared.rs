@@ -29,6 +29,7 @@ impl MySQLPrepared {
         }
     }
     pub(crate) fn take_params(&mut self) -> Result<mysql_async::Params> {
+        self.index = 0;
         Ok(mysql_async::Params::Positional(
             mem::take(&mut self.params)
                 .into_iter()

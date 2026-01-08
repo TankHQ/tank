@@ -1,4 +1,4 @@
-use std::sync::LazyLock;
+use std::{future, sync::LazyLock};
 use tank::{DataSet, Entity, Executor, cols, expr, stream::TryStreamExt};
 use time::{Date, macros::date};
 use tokio::sync::Mutex;
@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Entity)]
-#[tank(primary_key = (name, country, date, value))]
+#[tank(primary_key = (name, country, value, date))]
 pub struct Metric {
     person: String,
     country: String,
@@ -273,24 +273,19 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
         .await
         .expect("Could not insert the entities");
 
-    let date = date!(2000 - 01 - 01);
+    let height = 170;
     let heights = Metric::table()
         .select(
             executor,
-            cols!(Metric::date DESC, Metric::value DESC),
-            expr!(
-                Metric::name == "height_cm"
-                    && Metric::country == "IT"
-                    && Metric::date >= #date
-            ),
+            cols!(Metric::value DESC, Metric::date DESC),
+            expr!(Metric::name == "height_cm" && Metric::country == "IT" && Metric::value >= #height),
             None,
         )
-        .map_ok(MetricValue::from_row)
-        .map(Result::flatten)
+        .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
         .await
         .expect("Coult not get the Italy height values");
-    assert_eq!(heights, [178.0, 165.0]);
+    assert_eq!(heights, [178.0]);
 
     // Incomes in Italy
     let italy_incomes = Metric::table()
@@ -300,8 +295,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
             expr!(Metric::name == "income_eur" && Metric::country == "IT"),
             None,
         )
-        .map_ok(MetricValue::from_row)
-        .map(Result::flatten)
+        .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
         .await
         .expect("Could not get alice incomes");
@@ -315,61 +309,47 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
             expr!(Metric::name == "income_gbp" && Metric::country == "UK"),
             None,
         )
-        .map_ok(MetricValue::from_row)
-        .map(Result::flatten)
+        .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
         .await
         .expect("Could not get latest alice income");
     assert_eq!(latest_income, [93000.0]);
 
     // Prepared queries
-    let mut prepared = Metric::prepare_find(
-        executor,
-        &expr!(Metric::country == ? && Metric::name == ?),
-        None,
-    )
-    .await
-    .expect("Failed to prepare metric query");
+    let mut prepared = Metric::table()
+        .prepare(
+            executor,
+            cols!(Metric::value DESC, Metric::date DESC),
+            expr!(Metric::country == ? && Metric::name == ?),
+            None,
+        )
+        .await
+        .expect("Failed to prepare metric query");
 
-    prepared
-        .bind("ES")
-        .unwrap()
-        .bind("height_cm")
-        .unwrap();
+    prepared.bind("ES").unwrap().bind("height_cm").unwrap();
     let spain_heights = executor
         .fetch(&mut prepared)
-        .map_ok(MetricValue::from_row)
-        .map(Result::flatten)
+        .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
         .await
         .expect("Could not fetch sophie heights");
     assert_eq!(spain_heights, [162.0]);
 
-    prepared
-        .bind("NL")
-        .unwrap()
-        .bind("weight_kg")
-        .unwrap();
+    prepared.bind("NL").unwrap().bind("weight_kg").unwrap();
     let netherlands_weights = executor
         .fetch(&mut prepared)
-        .map_ok(MetricValue::from_row)
-        .map(Result::flatten)
+        .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
         .await
         .expect("Could not fetch sophie heights");
-    assert_eq!(netherlands_weights, [81.0, 82.5]);
+    assert_eq!(netherlands_weights, [82.5, 81.0]);
 
-    prepared
-        .bind("IT")
-        .unwrap()
-        .bind("weight_kg")
-        .unwrap();
+    prepared.bind("IT").unwrap().bind("weight_kg").unwrap();
     let italy_weights = executor
         .fetch(&mut prepared)
-        .map_ok(MetricValue::from_row)
-        .map(Result::flatten)
+        .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
         .await
         .expect("Could not fetch sophie heights");
-    assert_eq!(italy_weights, [62.5, 64.2, 78.0, 80.5]);
+    assert_eq!(italy_weights, [80.5, 78.0, 64.2, 62.5]);
 }

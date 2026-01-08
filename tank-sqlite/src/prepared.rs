@@ -45,6 +45,7 @@ impl SQLitePrepared {
 
 impl Prepared for SQLitePrepared {
     fn clear_bindings(&mut self) -> Result<&mut Self> {
+        self.index = 1;
         unsafe {
             let rc = sqlite3_reset(self.statement());
             let error = || {
@@ -61,7 +62,6 @@ impl Prepared for SQLitePrepared {
                 return Err(error());
             }
         }
-        self.index = 1;
         Ok(self)
     }
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {

@@ -38,13 +38,15 @@ impl Display for DuckDBPrepared {
 
 impl Prepared for DuckDBPrepared {
     fn clear_bindings(&mut self) -> Result<&mut Self> {
+        self.index = 1;
         unsafe {
             let rc = duckdb_clear_bindings(self.statement());
             if rc != duckdb_state_DuckDBSuccess {
-                return Err(Error::msg("Could not clear the bindings"));
+                let e = Error::msg("Could not clear the bindings from DuckDB statement");
+                log::error!("{e:#}");
+                return Err(e);
             }
         }
-        self.index = 1;
         Ok(self)
     }
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {

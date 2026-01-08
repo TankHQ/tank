@@ -1068,19 +1068,17 @@ pub trait SqlWriter: Send {
     }
 
     /// Emit SELECT statement (projection, FROM, WHERE, ORDER, LIMIT).
-    fn write_select<Item, Cols, Data, Expr>(
+    fn write_select<Item, Data>(
         &self,
         out: &mut String,
-        columns: Cols,
+        columns: impl IntoIterator<Item = Item> + Clone,
         from: &Data,
-        condition: Expr,
+        condition: impl Expression,
         limit: Option<u32>,
     ) where
         Self: Sized,
         Item: Expression,
-        Cols: IntoIterator<Item = Item> + Clone,
         Data: DataSet,
-        Expr: Expression,
     {
         let cols = columns.clone().into_iter().count();
         out.reserve(128 + cols * 32);
@@ -1287,7 +1285,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Emit DELETE statement with WHERE clause.
-    fn write_delete<E>(&self, out: &mut String, condition: &impl Expression)
+    fn write_delete<E>(&self, out: &mut String, condition: impl Expression)
     where
         Self: Sized,
         E: Entity,

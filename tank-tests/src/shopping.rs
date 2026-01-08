@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use rust_decimal::Decimal;
-use std::pin::pin;
 use std::collections::HashMap;
+use std::pin::pin;
 use std::{str::FromStr, sync::Arc, sync::LazyLock};
 use tank::{
     AsValue, DataSet, Entity, Executor, FixedDecimal, cols, expr, join,
@@ -36,7 +36,7 @@ struct User {
 }
 
 #[derive(Debug, Entity)]
-#[tank(schema = "shopping")]
+#[tank(schema = "shopping", primary_key = (user, product))]
 struct Cart {
     #[tank(references = User::id)]
     user: Uuid,
@@ -62,7 +62,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         Product {
             id: 1,
             name: "Rust-Proof Coffee Mug".into(),
-            price: Decimal::new(12_99).into(),
+            price: Decimal::new(12_99, 2).into(),
             desc: Some("Keeps your coffee warm and your compiler calm.".into()),
             stock: 42.into(),
             #[cfg(not(feature = "disable-lists"))]
@@ -71,7 +71,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         Product {
             id: 2,
             name: "Zero-Cost Abstraction Hoodie".into(),
-            price: Decimal::new(49_95).into(),
+            price: Decimal::new(49_95, 2).into(),
             desc: Some("For developers who think runtime overhead is a moral failure.".into()),
             stock: 10.into(),
             #[cfg(not(feature = "disable-lists"))]
@@ -80,7 +80,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         Product {
             id: 3,
             name: "Thread-Safe Notebook".into(),
-            price: Decimal::new(7_50).into(),
+            price: Decimal::new(7_50, 2).into(),
             desc: None,
             stock: 0.into(),
             #[cfg(not(feature = "disable-lists"))]
@@ -89,7 +89,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         Product {
             id: 4,
             name: "Async Teapot".into(),
-            price: Decimal::new(25_00).into(),
+            price: Decimal::new(25_00, 2).into(),
             desc: Some("Returns 418 on brew() call.".into()),
             stock: 3.into(),
             #[cfg(not(feature = "disable-lists"))]
@@ -133,7 +133,8 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         .expect("Product 4 expected");
     let old_stock = prod4.stock.unwrap_or(0);
     prod4.stock = Some(old_stock - 1);
-    prod4.save(executor)
+    prod4
+        .save(executor)
         .await
         .expect("Failed to save updated product 4");
     let prod4_after = Product::find_one(executor, expr!(Product::id == 4))
@@ -196,7 +197,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         Cart {
             user: users[0].id,
             product: 1,
-            price: Decimal::new(12_99).into(),
+            price: Decimal::new(12_99, 2).into(),
             timestamp: PrimitiveDateTime::new(
                 Date::from_calendar_date(2025, Month::March, 1).unwrap(),
                 Time::from_hms(9, 0, 0).unwrap(),
@@ -205,7 +206,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         Cart {
             user: users[0].id,
             product: 2,
-            price: Decimal::new(49_95).into(),
+            price: Decimal::new(49_95, 2).into(),
             timestamp: PrimitiveDateTime::new(
                 Date::from_calendar_date(2025, Month::March, 1).unwrap(),
                 Time::from_hms(9, 5, 0).unwrap(),
@@ -214,7 +215,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         Cart {
             user: users[1].id,
             product: 4,
-            price: Decimal::new(23_50).into(),
+            price: Decimal::new(23_50, 2).into(),
             timestamp: PrimitiveDateTime::new(
                 Date::from_calendar_date(2025, Month::March, 3).unwrap(),
                 Time::from_hms(14, 12, 0).unwrap(),
@@ -236,8 +237,8 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         .await
         .expect("Failed to query product 4 for price check")
         .expect("Expected product 4");
-    assert_eq!(cart_for_4.price.0, Decimal::new(23_50));
-    assert_eq!(product4.price.0, Decimal::new(24_00));
+    assert_eq!(cart_for_4.price.0, Decimal::new(23_50, 2));
+    assert_eq!(product4.price.0, Decimal::new(25_00, 2));
 
     // Delete the cart containing product 2
     let cart_for_2 = Cart::find_one(executor, expr!(Cart::product == 2))
@@ -279,17 +280,12 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
             Carts {
                 user: "Bob Segfault".into(),
                 product: "Async Teapot".into(),
-                price: Decimal::new(23_50),
+                price: Decimal::new(23_50, 2),
             },
             Carts {
                 user: "Alice Compiler".into(),
                 product: "Rust-Proof Coffee Mug".into(),
-                price: Decimal::new(12_99),
-            },
-            Carts {
-                user: "Alice Compiler".into(),
-                product: "Zero-Cost Abstraction Hoodie".into(),
-                price: Decimal::new(49_95),
+                price: Decimal::new(12_99, 2),
             },
         ]
     )

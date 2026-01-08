@@ -1,5 +1,6 @@
 use crate::ambiguity::{
-    first_schema::FirstTableColumnTrait, second_schema::SecondTableColumnTrait,
+    first_schema::FirstTableColumnTrait as _, first_schema::SecondTableColumnTrait as _,
+    second_schema::SecondTableColumnTrait as _,
 };
 use std::sync::{Arc, LazyLock};
 use tank::{
@@ -195,7 +196,10 @@ pub async fn ambiguity<E: Executor>(executor: &mut E) {
     .expect("Inserted row not found");
     assert_eq!(fetched.third_col, Some(Arc::new(19)));
     fetched.third_col = Some(Arc::new(20));
-    fetched.save(executor).await.expect("Could not save updated second_schema::SecondTable");
+    fetched
+        .save(executor)
+        .await
+        .expect("Could not save updated second_schema::SecondTable");
     let fetched2 = second_schema::SecondTable::find_one(
         executor,
         expr!(second_schema::SecondTable::first_col == "another_value"),
@@ -283,19 +287,29 @@ pub async fn ambiguity<E: Executor>(executor: &mut E) {
     first_schema::FirstTable::delete_many(executor, &true)
         .await
         .expect("Failed to clear first_schema::FirstTable");
-    let entity = first_schema::FirstTable {
+    #[allow(unused_mut)]
+    let mut entity = first_schema::FirstTable {
         first_col: "pk_only".into(),
         #[cfg(not(feature = "disable-large-integers"))]
         second_col: None,
     };
     entity.save(executor).await.expect("Failed to save entity");
     #[cfg(not(feature = "disable-large-integers"))]
-    entity.second_col = Some(12345678901234567890u128);
-    entity.save(executor).await.expect("Failed to update entity");
+    {
+        entity.second_col = Some(12345678901234567890u128);
+    }
+    entity
+        .save(executor)
+        .await
+        .expect("Failed to update entity");
     assert_eq!(
-        first_schema::FirstTable::find_many(executor, expr!(first_schema::FirstTable == "pk_only"), None)
-            .count()
-            .await,
+        first_schema::FirstTable::find_many(
+            executor,
+            expr!(first_schema::FirstTable::first_col == "pk_only"),
+            None
+        )
+        .count()
+        .await,
         1
     );
 }

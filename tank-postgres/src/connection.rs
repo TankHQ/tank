@@ -153,21 +153,27 @@ impl Executor for PostgresConnection {
             .collect();
         let writer = BinaryCopyInWriter::new(sink, &types);
         let mut writer = pin!(writer);
-        let mut row = Vec::<ValueWrap>::with_capacity(E::columns().len());
-        let mut refs = Vec::<&(dyn ToSql + Sync)>::with_capacity(E::columns().len());
+        let columns_len = E::columns().len();
+        let mut values = Vec::<ValueWrap>::with_capacity(columns_len);
+        let mut refs = Vec::<&(dyn ToSql + Sync)>::with_capacity(columns_len);
         for entity in entities.into_iter() {
-            row.clear();
-            row.extend(
+            values.extend(
                 entity
                     .row_full()
                     .into_iter()
                     .map(|v| ValueWrap(Cow::Owned(v))),
             );
-            refs = row.iter().map(|v| v as &(dyn ToSql + Sync)).collect();
+            refs.extend(
+                values
+                    .iter()
+                    .map(|v| unsafe { &*(v as &(dyn ToSql + Sync) as *const _) }),
+            );
             Pin::as_mut(&mut writer)
                 .write(&refs)
                 .await
                 .with_context(context)?;
+            refs.clear();
+            values.clear();
             *result.rows_affected.as_mut().unwrap() += 1;
         }
         writer.finish().await.with_context(context)?;

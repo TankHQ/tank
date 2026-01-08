@@ -68,3 +68,9 @@ impl From<&'static str> for DefaultValueType {
         Self::Value(Value::Varchar(Some(value.into())))
     }
 }
+
+impl From<i64> for DefaultValueType {
+    fn from(value: i64) -> Self {
+        Self::Value(Value::Int64(Some(value)))
+    }
+}

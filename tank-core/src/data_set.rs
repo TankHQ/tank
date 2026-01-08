@@ -16,19 +16,17 @@ pub trait DataSet {
     /// Render into `out`.
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut String);
     /// Fetch a SELECT query and stream labeled rows.
-    fn select<'s, Exec, Item, Cols, Expr>(
+    fn select<'s, Exec, Item>(
         &'s self,
         executor: &'s mut Exec,
-        columns: Cols,
-        condition: Expr,
+        columns: impl IntoIterator<Item = Item> + Clone,
+        condition: impl Expression,
         limit: Option<u32>,
     ) -> impl Stream<Item = Result<RowLabeled>> + 's
     where
         Self: Sized,
         Exec: Executor,
         Item: Expression,
-        Cols: IntoIterator<Item = Item> + Clone,
-        Expr: Expression,
     {
         let mut query = String::with_capacity(1024);
         executor
@@ -38,19 +36,17 @@ pub trait DataSet {
         executor.fetch(query)
     }
     /// Prepare a SELECT query.
-    fn prepare<Exec, Item, Cols, Expr>(
+    fn prepare<Exec, Item>(
         &self,
         executor: &mut Exec,
-        columns: Cols,
-        condition: &Expr,
+        columns: impl IntoIterator<Item = Item> + Clone,
+        condition: impl Expression,
         limit: Option<u32>,
     ) -> impl Future<Output = Result<Query<Exec::Driver>>>
     where
         Self: Sized,
         Item: Expression,
-        Cols: IntoIterator<Item = Item> + Clone,
         Exec: Executor,
-        Expr: Expression,
     {
         let mut query = String::with_capacity(1024);
         executor

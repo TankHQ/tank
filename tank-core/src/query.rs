@@ -20,10 +20,9 @@ impl<D: Driver> Query<D> {
     }
     /// Clear all bound values.
     pub fn clear_bindings(&mut self) -> Result<&mut Self> {
-        let Self::Prepared(prepared) = self else {
-            return Err(Error::msg("Cannot clear bindings of a raw query"));
+        if let Self::Prepared(prepared) = self {
+            prepared.clear_bindings()?;
         };
-        prepared.clear_bindings()?;
         Ok(self)
     }
     /// Append a bound value.
