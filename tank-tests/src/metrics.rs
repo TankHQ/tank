@@ -3,6 +3,8 @@ use tank::{DataSet, Entity, Executor, cols, expr, stream::TryStreamExt};
 use time::{Date, macros::date};
 use tokio::sync::Mutex;
 
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
 #[derive(Entity)]
 #[tank(primary_key = (name, country, date, value))]
 pub struct Metric {
@@ -14,7 +16,11 @@ pub struct Metric {
     #[tank(clustering_key)]
     value: f64,
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+#[derive(Entity)]
+struct MetricValue {
+    pub value: f64,
+}
 
 pub async fn metrics<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;
@@ -157,7 +163,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
             country: "UK".into(),
             date: date!(2025 - 11 - 1),
             name: "income_gbp".into(),
-            value: 72000.0,
+            value: 93000.0,
         },
         // Eva, ES (female)
         Metric {
@@ -267,11 +273,6 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
         .await
         .expect("Could not insert the entities");
 
-    #[derive(Entity)]
-    struct MetricValue {
-        pub value: f64,
-    }
-
     let date = date!(2000 - 01 - 01);
     let heights = Metric::table()
         .select(
@@ -284,13 +285,91 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
             ),
             None,
         )
-        .map_ok(|v| {
-            MetricValue::from_row(v)
-                .expect("Could not read the value")
-                .value
-        })
+        .map_ok(MetricValue::from_row)
+        .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await
         .expect("Coult not get the Italy height values");
     assert_eq!(heights, [178.0, 165.0]);
+
+    // Incomes in Italy
+    let italy_incomes = Metric::table()
+        .select(
+            executor,
+            cols!(Metric::value ASC),
+            expr!(Metric::name == "income_eur" && Metric::country == "IT"),
+            None,
+        )
+        .map_ok(MetricValue::from_row)
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Could not get alice incomes");
+    assert_eq!(italy_incomes, [56000.0, 61000.0, 68000.0, 72000.0]);
+
+    // Highest income in the UK
+    let latest_income = Metric::table()
+        .select(
+            executor,
+            cols!(MAX(Metric::value) as value),
+            expr!(Metric::name == "income_gbp" && Metric::country == "UK"),
+            None,
+        )
+        .map_ok(MetricValue::from_row)
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Could not get latest alice income");
+    assert_eq!(latest_income, [93000.0]);
+
+    // Prepared queries
+    let mut prepared = Metric::prepare_find(
+        executor,
+        &expr!(Metric::country == ? && Metric::name == ?),
+        None,
+    )
+    .await
+    .expect("Failed to prepare metric query");
+
+    prepared
+        .bind("ES")
+        .unwrap()
+        .bind("height_cm")
+        .unwrap();
+    let spain_heights = executor
+        .fetch(&mut prepared)
+        .map_ok(MetricValue::from_row)
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Could not fetch sophie heights");
+    assert_eq!(spain_heights, [162.0]);
+
+    prepared
+        .bind("NL")
+        .unwrap()
+        .bind("weight_kg")
+        .unwrap();
+    let netherlands_weights = executor
+        .fetch(&mut prepared)
+        .map_ok(MetricValue::from_row)
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Could not fetch sophie heights");
+    assert_eq!(netherlands_weights, [81.0, 82.5]);
+
+    prepared
+        .bind("IT")
+        .unwrap()
+        .bind("weight_kg")
+        .unwrap();
+    let italy_weights = executor
+        .fetch(&mut prepared)
+        .map_ok(MetricValue::from_row)
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Could not fetch sophie heights");
+    assert_eq!(italy_weights, [62.5, 64.2, 78.0, 80.5]);
 }

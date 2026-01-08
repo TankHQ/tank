@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 use rust_decimal::Decimal;
 use std::pin::pin;
+use std::collections::HashMap;
 use std::{str::FromStr, sync::Arc, sync::LazyLock};
 use tank::{
     AsValue, DataSet, Entity, Executor, FixedDecimal, cols, expr, join,
@@ -61,7 +62,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         Product {
             id: 1,
             name: "Rust-Proof Coffee Mug".into(),
-            price: Decimal::from_str("12.99").unwrap().into(),
+            price: Decimal::new(12_99).into(),
             desc: Some("Keeps your coffee warm and your compiler calm.".into()),
             stock: 42.into(),
             #[cfg(not(feature = "disable-lists"))]
@@ -70,7 +71,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         Product {
             id: 2,
             name: "Zero-Cost Abstraction Hoodie".into(),
-            price: Decimal::from_str("49.95").unwrap().into(),
+            price: Decimal::new(49_95).into(),
             desc: Some("For developers who think runtime overhead is a moral failure.".into()),
             stock: 10.into(),
             #[cfg(not(feature = "disable-lists"))]
@@ -79,7 +80,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         Product {
             id: 3,
             name: "Thread-Safe Notebook".into(),
-            price: Decimal::from_str("7.50").unwrap().into(),
+            price: Decimal::new(7_50).into(),
             desc: None,
             stock: 0.into(),
             #[cfg(not(feature = "disable-lists"))]
@@ -88,7 +89,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         Product {
             id: 4,
             name: "Async Teapot".into(),
-            price: Decimal::from_str("25.00").unwrap().into(),
+            price: Decimal::new(25_00).into(),
             desc: Some("Returns 418 on brew() call.".into()),
             stock: 3.into(),
             #[cfg(not(feature = "disable-lists"))]
@@ -98,11 +99,13 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
     Product::insert_many(executor, &products)
         .await
         .expect("Could not insert the products");
+    let total_products = Product::find_many(executor, &true, None).count().await;
+    assert_eq!(total_products, 4);
     let ordered_products = Product::table()
         .select(
             executor,
             cols!(Product::id, Product::name, Product::price ASC),
-            &expr!(Product::stock > 0),
+            expr!(Product::stock > 0),
             None,
         )
         .map(|r| r.and_then(Product::from_row))
@@ -117,6 +120,27 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         ]
         .into_iter())
     );
+    let zero_stock = Product::find_one(executor, expr!(Product::stock == 0))
+        .await
+        .expect("Failed to query product with zero stock")
+        .expect("Expected a product with zero stock");
+    assert_eq!(zero_stock.id, 3);
+
+    // Decrease stock for product id 4 by 1 and verify save works
+    let mut prod4 = Product::find_one(executor, expr!(Product::id == 4))
+        .await
+        .expect("Failed to query product 4")
+        .expect("Product 4 expected");
+    let old_stock = prod4.stock.unwrap_or(0);
+    prod4.stock = Some(old_stock - 1);
+    prod4.save(executor)
+        .await
+        .expect("Failed to save updated product 4");
+    let prod4_after = Product::find_one(executor, expr!(Product::id == 4))
+        .await
+        .expect("Failed to query product 4 after update")
+        .expect("Product 4 expected after update");
+    assert_eq!(prod4_after.stock, Some(old_stock - 1));
 
     // User
     User::drop_table(executor, true, false)
@@ -172,7 +196,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         Cart {
             user: users[0].id,
             product: 1,
-            price: Decimal::from_str("12.99").unwrap().into(),
+            price: Decimal::new(12_99).into(),
             timestamp: PrimitiveDateTime::new(
                 Date::from_calendar_date(2025, Month::March, 1).unwrap(),
                 Time::from_hms(9, 0, 0).unwrap(),
@@ -181,7 +205,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         Cart {
             user: users[0].id,
             product: 2,
-            price: Decimal::from_str("49.95").unwrap().into(),
+            price: Decimal::new(49_95).into(),
             timestamp: PrimitiveDateTime::new(
                 Date::from_calendar_date(2025, Month::March, 1).unwrap(),
                 Time::from_hms(9, 5, 0).unwrap(),
@@ -190,7 +214,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         Cart {
             user: users[1].id,
             product: 4,
-            price: Decimal::from_str("23.50").unwrap().into(),
+            price: Decimal::new(23_50).into(),
             timestamp: PrimitiveDateTime::new(
                 Date::from_calendar_date(2025, Month::March, 3).unwrap(),
                 Time::from_hms(14, 12, 0).unwrap(),
@@ -200,6 +224,32 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
     Cart::insert_many(executor, &carts)
         .await
         .expect("Could not insert the carts");
+    let cart_count = Cart::find_many(executor, &true, None).count().await;
+    assert_eq!(cart_count, 3);
+
+    // Product 4 in cart has different price than current product price
+    let cart_for_4 = Cart::find_one(executor, expr!(Cart::product == 4))
+        .await
+        .expect("Failed to query cart for product 4");
+    let cart_for_4 = cart_for_4.expect("Expected a cart for product 4");
+    let product4 = Product::find_one(executor, expr!(Product::id == 4))
+        .await
+        .expect("Failed to query product 4 for price check")
+        .expect("Expected product 4");
+    assert_eq!(cart_for_4.price.0, Decimal::new(23_50));
+    assert_eq!(product4.price.0, Decimal::new(24_00));
+
+    // Delete the cart containing product 2
+    let cart_for_2 = Cart::find_one(executor, expr!(Cart::product == 2))
+        .await
+        .expect("Failed to query cart for product 2")
+        .expect("Expected a cart for product 2");
+    cart_for_2
+        .delete(executor)
+        .await
+        .expect("Failed to delete cart for product 2");
+    let cart_count_after = Cart::find_many(executor, &true, None).count().await;
+    assert_eq!(cart_count_after, 2);
 
     // Join
     #[derive(Debug, Entity, PartialEq)]
@@ -229,17 +279,17 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
             Carts {
                 user: "Bob Segfault".into(),
                 product: "Async Teapot".into(),
-                price: Decimal::from_str("23.50").unwrap(),
+                price: Decimal::new(23_50),
             },
             Carts {
                 user: "Alice Compiler".into(),
                 product: "Rust-Proof Coffee Mug".into(),
-                price: Decimal::from_str("12.99").unwrap(),
+                price: Decimal::new(12_99),
             },
             Carts {
                 user: "Alice Compiler".into(),
                 product: "Zero-Cost Abstraction Hoodie".into(),
-                price: Decimal::from_str("49.95").unwrap(),
+                price: Decimal::new(49_95),
             },
         ]
     )
