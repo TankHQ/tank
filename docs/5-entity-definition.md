@@ -45,16 +45,15 @@ Tank's `#[tank(...)]` attributes configure tables and columns.
  - <Badge type="tip" text="field" /> `clustering_key`: Marks field as a clustering key (relevant for ScyllaDB/Cassandra; affects clustering/order in table layout).
 - <Badge type="tip" text="field" /> `column_type = (mysql = "VARCHAR(128)", postgres = "TEXT")`: Override column type in DDL (support depends on the driver).
 ### Examples
-> [!TIP]
-> ```rust
-> #[derive(Entity, Debug, PartialEq)]
-> #[tank(schema = "trading", name = "trade_execution", primary_key = ("trade_id", "execution_time"))]
-> pub struct Trade {
->     #[tank(name = "trade_id")]
->     pub trade: u64,
->     #[tank(name = "order_id", default = Uuid::from_str("241d362d-797e-4769-b3f6-412440c8cf68").unwrap().as_value())]
->     pub order: Uuid,
-> }
-> ```
+```rust
+#[derive(Entity, Debug, PartialEq)]
+#[tank(schema = "trading", name = "trade_execution", primary_key = ("trade_id", "execution_time"))]
+pub struct Trade {
+    #[tank(name = "trade_id")]
+    pub trade: u64,
+    #[tank(name = "order_id", default = Uuid::from_str("241d362d-797e-4769-b3f6-412440c8cf68").unwrap().as_value())]
+    pub order: Uuid,
+}
+```
 
 *All units accounted for. Stand by.*
