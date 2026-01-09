@@ -155,7 +155,7 @@ mod tests {
             &mut query,
             MyEntity::columns(),
             MyEntity::table(),
-            &expr!(MyEntity::_bravo < 0),
+            expr!(MyEntity::_bravo < 0),
             Some(300),
         );
         assert_eq!(
@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn test_odd_entity_delete() {
         let mut query = String::new();
-        WRITER.write_delete::<MyEntity>(&mut query, &expr!(MyEntity::_echo == 5));
+        WRITER.write_delete::<MyEntity>(&mut query, expr!(MyEntity::_echo == 5));
         assert_eq!(
             query,
             indoc! {r#"

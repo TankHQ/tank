@@ -123,7 +123,7 @@ async fn data() -> Result<()> {
      */
     let tanks = Tank::find_many(
         connection,
-        &expr!(Tank::is_operational == false),
+        expr!(Tank::is_operational == false),
         Some(1000),
     )
     .try_collect::<Vec<_>>()

@@ -124,7 +124,7 @@ if let Some(op) = found {
 First matching row (use a predicate):
 ```rust
 if let Some(radio_log) =
-    RadioLog::find_one(executor, &expr!(RadioLog::unit_callsign == "Alpha-1")).await?
+    RadioLog::find_one(executor, expr!(RadioLog::unit_callsign == "Alpha-1")).await?
 {
     log::debug!("Found radio log: {:?}", radio_log.id);
 }
@@ -137,7 +137,7 @@ Stream matching rows with a limit:
 {
     let mut stream = pin!(RadioLog::find_many(
         executor,
-        &expr!(RadioLog::signal_strength >= 40),
+        expr!(RadioLog::signal_strength >= 40),
         Some(100)
     ));
     while let Some(radio_log) = stream.try_next().await? {
@@ -158,7 +158,7 @@ operator.save(executor).await?;
 
 Instance method to save the current entity (works only for entities defining a primary key):
 ```rust
-let mut log = RadioLog::find_one(executor, &expr!(RadioLog::message == "Ping #2"))
+let mut log = RadioLog::find_one(executor, expr!(RadioLog::message == "Ping #2"))
     .await?
     .expect("Missing log");
 log.message = "Ping #2 ACK".into();
@@ -188,7 +188,7 @@ operator.delete(executor).await?;
 Filter by strength (prepared):
 ```rust
 let mut query =
-    RadioLog::prepare_find(executor, &expr!(RadioLog::signal_strength > ?), None).await?;
+    RadioLog::prepare_find(executor, expr!(RadioLog::signal_strength > ?), None).await?;
 query.bind(40)?;
 let _messages: Vec<_> = executor
     .fetch(query)
@@ -202,7 +202,7 @@ Delete + insert + select in one roundtrip:
 ```rust
 let writer = executor.driver().sql_writer();
 let mut sql = String::new();
-writer.write_delete::<RadioLog>(&mut sql, &expr!(RadioLog::signal_strength < 10));
+writer.write_delete::<RadioLog>(&mut sql, expr!(RadioLog::signal_strength < 10));
 writer.write_insert(&mut sql, [&operator], false);
 writer.write_insert(
     &mut sql,
@@ -220,7 +220,7 @@ writer.write_select(
     &mut sql,
     RadioLog::columns(),
     RadioLog::table(),
-    &expr!(true),
+    true,
     Some(50),
 );
 {

@@ -161,7 +161,7 @@ mod tests {
             &mut query,
             Customer::columns(),
             Customer::table(),
-            &expr!(len(Customer::_values) > 10),
+            expr!(len(Customer::_values) > 10),
             Some(10),
         );
         assert_eq!(
@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn test_customer_delete() {
         let mut query = String::new();
-        WRITER.write_delete::<Customer>(&mut query, &expr!(true));
+        WRITER.write_delete::<Customer>(&mut query, true);
         assert_eq!(
             query,
             indoc! {r#"

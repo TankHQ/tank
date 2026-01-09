@@ -87,7 +87,7 @@ You can also build prepared statements via entities for common patterns:
 use tank::{Query};
 let mut query = RadioLog::prepare_find(
     executor,
-    &expr!(RadioLog::signal_strength > ?),
+    expr!(RadioLog::signal_strength > ?),
     Some(50),
 ).await?;
 if let Query::Prepared(p) = &mut query { p.bind(40)?; }

@@ -77,7 +77,7 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
     }
 
     if let Some(radio_log) =
-        RadioLog::find_one(executor, &expr!(RadioLog::unit_callsign == "Alpha-1")).await?
+        RadioLog::find_one(executor, expr!(RadioLog::unit_callsign == "Alpha-1")).await?
     {
         log::debug!("Found radio log: {:?}", radio_log.id);
     }
@@ -99,7 +99,7 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
     operator.callsign = "SteelHammerX".into();
     operator.save(executor).await?;
 
-    let mut log = RadioLog::find_one(executor, &expr!(RadioLog::message == "Ping #2"))
+    let mut log = RadioLog::find_one(executor, expr!(RadioLog::message == "Ping #2"))
         .await?
         .expect("Missing log");
     log.message = "Ping #2 ACK".into();
@@ -109,13 +109,13 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
     RadioLog::delete_one(executor, log.primary_key()).await?;
 
     let operator_id = operator.id;
-    RadioLog::delete_many(executor, &expr!(RadioLog::operator == #operator_id)).await?;
+    RadioLog::delete_many(executor, expr!(RadioLog::operator == #operator_id)).await?;
 
     operator.delete(executor).await?;
 
     // Prepare
     let mut query =
-        RadioLog::prepare_find(executor, &expr!(RadioLog::signal_strength > ?), None).await?;
+        RadioLog::prepare_find(executor, expr!(RadioLog::signal_strength > ?), None).await?;
     query.bind(40)?;
     let _messages: Vec<_> = executor
         .fetch(query)
@@ -126,7 +126,7 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
     // Multi-Statement
     let writer = executor.driver().sql_writer();
     let mut sql = String::new();
-    writer.write_delete::<RadioLog>(&mut sql, &expr!(RadioLog::signal_strength < 10));
+    writer.write_delete::<RadioLog>(&mut sql, expr!(RadioLog::signal_strength < 10));
     writer.write_insert(&mut sql, [&operator], false);
     writer.write_insert(
         &mut sql,
@@ -144,7 +144,7 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
         &mut sql,
         RadioLog::columns(),
         RadioLog::table(),
-        &expr!(true),
+        true,
         Some(50),
     );
     {
@@ -284,7 +284,7 @@ pub async fn advanced_operations<E: Executor>(executor: &mut E) -> Result<()> {
                 RadioLog::message,
             ),
             // X != Y as LIKE => X NOT LIKE Y
-            &expr!(Operator::is_certified && RadioLog::message != "Radio check%" as LIKE),
+            expr!(Operator::is_certified && RadioLog::message != "Radio check%" as LIKE),
             Some(100),
         )
         .map(|row| {

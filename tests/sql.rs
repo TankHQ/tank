@@ -54,7 +54,7 @@ mod tests {
                 &mut out,
                 Table::columns(),
                 Table::table(),
-                &expr!(Table::_second_column < 100 && Table::_first_column == "OK"),
+                expr!(Table::_second_column < 100 && Table::_first_column == "OK"),
                 None,
             );
             assert_eq!(
@@ -146,7 +146,7 @@ mod tests {
                 &mut out,
                 Cart::columns(),
                 Cart::table(),
-                &expr!(Cart::is_active == true && Cart::total_price > 100),
+                expr!(Cart::is_active == true && Cart::total_price > 100),
                 Some(1000),
             );
             assert_eq!(

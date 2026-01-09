@@ -95,7 +95,7 @@ pub async fn readme<E: Executor>(connection: &mut E) -> Result<()> {
      */
     let tanks = Tank::find_many(
         connection,
-        &expr!(Tank::is_operational == false),
+        expr!(Tank::is_operational == false),
         Some(1000),
     )
     .try_collect::<Vec<_>>()

@@ -186,7 +186,7 @@ pub async fn times<E: Executor>(executor: &mut E) {
         .prepare(
             executor,
             cols!(Times::timestamp_1 DESC),
-            &expr!(Times::timestamp_2 > ?),
+            expr!(Times::timestamp_2 > ?),
             None,
         )
         .await
@@ -264,7 +264,7 @@ pub async fn times<E: Executor>(executor: &mut E) {
         .prepare(
             executor,
             cols!(Times::timestamp_2 ASC),
-            &expr!(Times::timestamp_1 <= ?),
+            expr!(Times::timestamp_1 <= ?),
             None,
         )
         .await

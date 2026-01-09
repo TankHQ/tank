@@ -133,14 +133,14 @@ pub async fn users<E: Executor>(executor: &mut E) {
     }
 
     // Find users with more than 1000 followers (should be 2: charlie, dean)
-    let popular_users = UserProfile::find_many(executor, &expr!(follower_count > 1000), None)
+    let popular_users = UserProfile::find_many(executor, expr!(follower_count > 1000), None)
         .try_collect::<Vec<_>>()
         .await
         .unwrap();
     assert_eq!(popular_users.len(), 2);
 
     // Find active users (should be 3: alice, charlie, dean)
-    let active_users = UserProfile::find_many(executor, &expr!(is_active == true), None)
+    let active_users = UserProfile::find_many(executor, expr!(is_active == true), None)
         .try_collect::<Vec<_>>()
         .await
         .unwrap();
@@ -155,7 +155,7 @@ pub async fn users<E: Executor>(executor: &mut E) {
     );
 
     // 4. Update a Bob
-    let mut bob = UserProfile::find_one(executor, &expr!(username == "bob"))
+    let mut bob = UserProfile::find_one(executor, expr!(username == "bob"))
         .await
         .expect("Expected query to succeed")
         .expect("Could not find bob ");
@@ -178,14 +178,14 @@ pub async fn users<E: Executor>(executor: &mut E) {
 
     // There must be 4 active users
     let active_users_after_update =
-        UserProfile::find_many(executor, &expr!(is_active == true), None)
+        UserProfile::find_many(executor, expr!(is_active == true), None)
             .try_collect::<Vec<_>>()
             .await
             .unwrap();
     assert_eq!(active_users_after_update.len(), 4);
 
     // Find eve user and delete it.
-    let eve = UserProfile::find_one(executor, &expr!(username == "eve"))
+    let eve = UserProfile::find_one(executor, expr!(username == "eve"))
         .await
         .expect("Expected query to succeed")
         .expect("Could not find eve ");
@@ -205,7 +205,7 @@ pub async fn users<E: Executor>(executor: &mut E) {
     assert_eq!(total_users, 4, "There should be 4 users remaining");
 
     // Delete all users who never logged in (only Dean)
-    let result = UserProfile::delete_many(executor, &expr!(last_login == NULL))
+    let result = UserProfile::delete_many(executor, expr!(last_login == NULL))
         .await
         .expect("Expected query to succeed");
     if let Some(affected) = result.rows_affected {

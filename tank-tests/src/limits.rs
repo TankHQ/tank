@@ -232,14 +232,14 @@ pub async fn limits<E: Executor>(executor: &mut E) {
             &mut query,
             Limits::columns(),
             Limits::table(),
-            &expr!(!Limits::boolean),
+            expr!(!Limits::boolean),
             None,
         );
         writer.write_select(
             &mut query,
             Limits::columns(),
             Limits::table(),
-            &expr!(Limits::boolean),
+            expr!(Limits::boolean),
             None,
         );
         let mut stream = pin!(executor.run(query));

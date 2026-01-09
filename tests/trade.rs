@@ -285,7 +285,7 @@ mod tests {
             &mut query,
             Trade::columns(),
             Trade::table(),
-            &expr!(Trade::quantity >= 100 && Trade::price > 1000),
+            expr!(Trade::quantity >= 100 && Trade::price > 1000),
             None,
         );
         assert_eq!(
@@ -318,7 +318,7 @@ mod tests {
     #[test]
     fn test_trade_delete() {
         let mut query = String::new();
-        WRITER.write_delete::<Trade>(&mut query, &expr!(Trade::trade == 68391));
+        WRITER.write_delete::<Trade>(&mut query, expr!(Trade::trade == 68391));
         assert_eq!(
             query,
             indoc! {r#"

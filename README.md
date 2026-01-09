@@ -19,6 +19,7 @@ https://crates.io/crates/tank
 - PostgreSQL
 - MySQL / MariaDB
 - Cassandra / ScyllaDB
+- MongoDB WIP
 - More to be decided...
 
 ## Mission objectives
@@ -35,7 +36,6 @@ https://crates.io/crates/tank
 ## No-fly zone
 - No schema migrations (just table creation and destroy for fast setup).
 - No implicit joins (no entities as fields, joins are explicit, every alliance is signed).
-- No complex query builder (write raw SQL and take full credit).
 
 ## Getting started
 1) Arm your cargo
@@ -155,7 +155,7 @@ async fn data() -> Result<()> {
      */
     let tanks = Tank::find_many(
         connection,
-        &expr!(Tank::is_operational == false),
+        expr!(Tank::is_operational == false),
         Some(1000),
     )
     .try_collect::<Vec<_>>()

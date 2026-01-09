@@ -115,7 +115,7 @@ mod tests {
             &mut query,
             SomeSimpleEntity::columns(),
             SomeSimpleEntity::table(),
-            &expr!(SomeSimpleEntity::a > 100),
+            expr!(SomeSimpleEntity::a > 100),
             Some(1000),
         );
         assert_eq!(
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn test_simple_entity_delete() {
         let mut query = String::new();
-        WRITER.write_delete::<SomeSimpleEntity>(&mut query, &expr!(SomeSimpleEntity::b != "hello"));
+        WRITER.write_delete::<SomeSimpleEntity>(&mut query, expr!(SomeSimpleEntity::b != "hello"));
         assert_eq!(
             query,
             indoc! {r#"

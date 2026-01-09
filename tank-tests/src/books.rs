@@ -168,7 +168,7 @@ pub async fn books<E: Executor>(executor: &mut E) {
         })
     );
 
-    let author = Author::find_one(executor, &expr!(Author::name == "Linus Torvalds"))
+    let author = Author::find_one(executor, expr!(Author::name == "Linus Torvalds"))
         .await
         .expect("Failed to query author by pk");
     assert_eq!(
@@ -188,7 +188,7 @@ pub async fn books<E: Executor>(executor: &mut E) {
         .select(
             executor,
             &[expr!(B.title), expr!(A.name)],
-            &expr!(B.year < 2000),
+            expr!(B.year < 2000),
             None,
         )
         .try_collect::<Vec<RowLabeled>>()
@@ -377,14 +377,14 @@ pub async fn books<E: Executor>(executor: &mut E) {
             &mut query,
             Book::columns(),
             Book::table(),
-            &expr!(Book::title == "Metro 2033"),
+            expr!(Book::title == "Metro 2033"),
             Some(1),
         );
         writer.write_select(
             &mut query,
             Book::columns(),
             Book::table(),
-            &expr!(Book::title == "Harry Potter and the Deathly Hallows"),
+            expr!(Book::title == "Harry Potter and the Deathly Hallows"),
             Some(1),
         );
         let mut stream = pin!(executor.run(query));

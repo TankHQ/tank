@@ -86,7 +86,7 @@ let messages = join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operato
             RadioLog::message,
         ),
         // X != Y as LIKE => X NOT LIKE Y
-        &expr!(Operator::is_certified && RadioLog::message != "Radio check%" as LIKE),
+        expr!(Operator::is_certified && RadioLog::message != "Radio check%" as LIKE),
         Some(100),
     )
     .map(|row| {
