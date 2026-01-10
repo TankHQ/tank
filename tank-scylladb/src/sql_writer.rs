@@ -234,7 +234,9 @@ impl SqlWriter for ScyllaDBSqlWriter {
         Self: Sized,
         E: Entity,
     {
-        out.buffer().reserve(32 + E::table().schema.len());
+        let table = E::table();
+        self.update_table_ref(out, table);
+        out.buffer().reserve(128 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
         }
@@ -258,16 +260,18 @@ impl SqlWriter for ScyllaDBSqlWriter {
         Self: Sized,
         E: Entity,
     {
-        out.buffer().reserve(24 + E::table().schema.len());
+        let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
+        let table = E::table();
+        self.update_table_ref(out, table);
+        out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("DROP KEYSPACE ");
-        let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
         if if_exists {
             out.push_str("IF EXISTS ");
         }
-        self.write_identifier_quoted(&mut context, out, E::table().schema());
+        self.write_identifier_quoted(&mut context, out, table.schema());
         out.push(';');
     }
 
@@ -349,9 +353,12 @@ impl SqlWriter for ScyllaDBSqlWriter {
         Self: Sized,
         E: Entity + 'b,
     {
+        let table = E::table();
+        self.update_table_ref(out, table);
         let mut it = entities.into_iter().map(Entity::row_filtered).peekable();
         let mut row = it.next();
         let multiple = row.is_some() && it.peek().is_some();
+        out.buffer().reserve(128 + E::columns().len() * 32);
         if multiple {
             out.push_str("BEGIN BATCH\n");
         }
@@ -361,7 +368,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
             }
             out.push_str("INSERT INTO ");
             let mut context = Context::new(Fragment::SqlInsertInto, E::qualified_columns());
-            self.write_table_ref(&mut context, out, E::table());
+            self.write_table_ref(&mut context, out, table);
             out.push_str(" (");
             separated_by(
                 out,
@@ -394,6 +401,9 @@ impl SqlWriter for ScyllaDBSqlWriter {
         Self: Sized,
         E: Entity,
     {
+        let table = E::table();
+        self.update_table_ref(out, table);
+        out.buffer().reserve(128);
         let is_true = condition.is_true();
         if is_true {
             out.push_str("TRUNCATE ");

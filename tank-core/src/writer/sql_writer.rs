@@ -872,7 +872,7 @@ pub trait SqlWriter: Send {
         let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
         let table = E::table();
         self.update_table_ref(out, table);
-        out.buffer().reserve(24 + table.schema.len());
+        out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
         }
@@ -1174,7 +1174,7 @@ pub trait SqlWriter: Send {
         };
         let single = rows.peek().is_none();
         let cols = E::columns().len();
-        out.buffer().reserve(128 + cols * 48);
+        out.buffer().reserve(128 + cols * 32);
         if !out.is_empty() {
             out.push('\n');
         }
@@ -1321,8 +1321,7 @@ pub trait SqlWriter: Send {
     {
         let table = E::table();
         self.update_table_ref(out, table);
-        out.buffer()
-            .reserve(128 + table.schema().len() + table.name().len());
+        out.buffer().reserve(128);
         if !out.is_empty() {
             out.push('\n');
         }
