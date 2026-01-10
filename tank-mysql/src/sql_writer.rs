@@ -3,8 +3,8 @@ use std::{
     fmt::Write,
 };
 use tank_core::{
-    ColumnDef, Context, EitherIterator, Entity, Fragment, Interval, PrimaryKeyType, SqlWriter,
-    Value, future::Either, print_timer, separated_by,
+    ColumnDef, Context, EitherIterator, Entity, Fragment, Interval, PrimaryKeyType, RawQuery,
+    SqlWriter, Value, future::Either, print_timer, separated_by,
 };
 
 /// SQL writer for MySQL / MariaDB dialect.
@@ -24,7 +24,7 @@ impl SqlWriter for MySQLSqlWriter {
         self
     }
 
-    fn write_identifier_quoted(&self, context: &mut Context, out: &mut String, value: &str) {
+    fn write_identifier_quoted(&self, context: &mut Context, out: &mut RawQuery, value: &str) {
         out.push('`');
         self.write_escaped(context, out, value, '"', "``");
         out.push('`');
@@ -33,7 +33,7 @@ impl SqlWriter for MySQLSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
@@ -60,7 +60,7 @@ impl SqlWriter for MySQLSqlWriter {
         }
     }
 
-    fn write_column_type(&self, context: &mut Context, out: &mut String, value: &Value) {
+    fn write_column_type(&self, context: &mut Context, out: &mut RawQuery, value: &Value) {
         if context.fragment == Fragment::Casting {
             match value {
                 Value::Int8(..)
@@ -122,17 +122,17 @@ impl SqlWriter for MySQLSqlWriter {
         };
     }
 
-    fn write_value_infinity(&self, context: &mut Context, out: &mut String, _negative: bool) {
+    fn write_value_infinity(&self, context: &mut Context, out: &mut RawQuery, _negative: bool) {
         log::error!("MySQL does not support float infinity values, will write NULL instead");
         self.write_value_none(context, out);
     }
 
-    fn write_value_nan(&self, context: &mut Context, out: &mut String) {
+    fn write_value_nan(&self, context: &mut Context, out: &mut RawQuery) {
         log::warn!("MySQL does not support float NaN values, will write NULL instead");
         self.write_value_none(context, out);
     }
 
-    fn write_value_interval(&self, context: &mut Context, out: &mut String, value: &Interval) {
+    fn write_value_interval(&self, context: &mut Context, out: &mut RawQuery, value: &Interval) {
         let delimiter = if context.is_inside_json() { "\"" } else { "\'" };
         let (h, m, s, ns) = value.as_hmsns();
         print_timer(out, delimiter, h as _, m, s, ns);
@@ -141,7 +141,7 @@ impl SqlWriter for MySQLSqlWriter {
     fn write_value_list(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: Either<&Box<[Value]>, &Vec<Value>>,
         _ty: &Value,
         _elem_ty: &Value,
@@ -171,7 +171,7 @@ impl SqlWriter for MySQLSqlWriter {
     fn write_value_map(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &HashMap<Value, Value>,
     ) {
         let inside_string = context.fragment == Fragment::Json;
@@ -202,7 +202,7 @@ impl SqlWriter for MySQLSqlWriter {
     fn write_column_comment_inline(
         &self,
         mut context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         column: &ColumnDef,
     ) where
         Self: Sized,
@@ -211,7 +211,7 @@ impl SqlWriter for MySQLSqlWriter {
         self.write_value_string(&mut context, out, column.comment);
     }
 
-    fn write_column_comments_statements<E>(&self, _context: &mut Context, _out: &mut String)
+    fn write_column_comments_statements<E>(&self, _context: &mut Context, _out: &mut RawQuery)
     where
         Self: Sized,
         E: Entity,
@@ -221,7 +221,7 @@ impl SqlWriter for MySQLSqlWriter {
     fn write_insert_update_fragment<'a, E>(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         columns: impl Iterator<Item = &'a ColumnDef> + Clone,
     ) where
         Self: Sized,

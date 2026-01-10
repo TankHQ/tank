@@ -96,7 +96,7 @@ impl Executor for MongoDBConnection {
         It: IntoIterator<Item = &'a E> + Send,
         <It as IntoIterator>::IntoIter: Send,
     {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         self.driver()
             .sql_writer()
             .write_insert(&mut query, entities, false);

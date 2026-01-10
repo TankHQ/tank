@@ -31,7 +31,7 @@ impl SqlWriter for MongoDBSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
@@ -43,7 +43,7 @@ impl SqlWriter for MongoDBSqlWriter {
         }
     }
 
-    fn write_create_table<E>(&self, out: &mut String, _if_not_exists: bool)
+    fn write_create_table<E>(&self, out: &mut RawQuery, _if_not_exists: bool)
     where
         Self: Sized,
         E: Entity,
@@ -55,7 +55,7 @@ impl SqlWriter for MongoDBSqlWriter {
         out.push_str(&format!("MONGO:CREATE_COLLECTION {name};"));
     }
 
-    fn write_drop_table<E>(&self, out: &mut String, _if_exists: bool)
+    fn write_drop_table<E>(&self, out: &mut RawQuery, _if_exists: bool)
     where
         Self: Sized,
         E: Entity,
@@ -67,7 +67,7 @@ impl SqlWriter for MongoDBSqlWriter {
         out.push_str(&format!("MONGO:DROP_COLLECTION {name};"));
     }
 
-    fn write_create_schema<E>(&self, out: &mut String, _if_not_exists: bool)
+    fn write_create_schema<E>(&self, out: &mut RawQuery, _if_not_exists: bool)
     where
         Self: Sized,
         E: Entity,
@@ -81,7 +81,7 @@ impl SqlWriter for MongoDBSqlWriter {
         }
     }
 
-    fn write_drop_schema<E>(&self, out: &mut String, _if_exists: bool)
+    fn write_drop_schema<E>(&self, out: &mut RawQuery, _if_exists: bool)
     where
         Self: Sized,
         E: Entity,
@@ -95,7 +95,7 @@ impl SqlWriter for MongoDBSqlWriter {
         }
     }
 
-    fn write_insert<'b, E>(&self, out: &mut String, entities: impl IntoIterator<Item = &'b E>, _update: bool)
+    fn write_insert<'b, E>(&self, out: &mut RawQuery, entities: impl IntoIterator<Item = &'b E>, _update: bool)
     where
         Self: Sized,
         E: Entity + 'b,

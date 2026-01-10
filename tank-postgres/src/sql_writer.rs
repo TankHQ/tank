@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fmt::Write};
 use tank_core::{
-    ColumnDef, Context, DataSet, Entity, SqlWriter, Value, future::Either, separated_by,
+    ColumnDef, Context, DataSet, Entity, RawQuery, SqlWriter, Value, future::Either, separated_by,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 
@@ -11,12 +11,12 @@ pub struct PostgresSqlWriter {}
 
 impl PostgresSqlWriter {
     /// Emit COPY FROM STDIN BINARY
-    pub fn write_copy<'b, E>(&self, out: &mut String)
+    pub fn write_copy<'b, E>(&self, out: &mut RawQuery)
     where
         Self: Sized,
         E: Entity + 'b,
     {
-        out.reserve(128);
+        out.buffer().reserve(128);
         out.push_str("COPY ");
         let mut context = Context::new(Default::default(), E::qualified_columns());
         self.write_table_ref(&mut context, out, E::table());
@@ -41,7 +41,7 @@ impl SqlWriter for PostgresSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
@@ -56,7 +56,7 @@ impl SqlWriter for PostgresSqlWriter {
         }
     }
 
-    fn write_column_type(&self, context: &mut Context, out: &mut String, value: &Value) {
+    fn write_column_type(&self, context: &mut Context, out: &mut RawQuery, value: &Value) {
         match value {
             Value::Boolean(..) => out.push_str("BOOLEAN"),
             Value::Int8(..) => out.push_str("SMALLINT"),
@@ -102,7 +102,7 @@ impl SqlWriter for PostgresSqlWriter {
         };
     }
 
-    fn write_value_blob(&self, _context: &mut Context, out: &mut String, value: &[u8]) {
+    fn write_value_blob(&self, _context: &mut Context, out: &mut RawQuery, value: &[u8]) {
         out.push_str("'\\x");
         for b in value {
             let _ = write!(out, "{:02X}", b);
@@ -113,7 +113,7 @@ impl SqlWriter for PostgresSqlWriter {
     fn write_value_date(
         &self,
         _context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &Date,
         timestamp: bool,
     ) {
@@ -140,7 +140,7 @@ impl SqlWriter for PostgresSqlWriter {
     fn write_value_time(
         &self,
         _context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &Time,
         timestamp: bool,
     ) {
@@ -168,7 +168,7 @@ impl SqlWriter for PostgresSqlWriter {
     fn write_value_timestamp(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &PrimitiveDateTime,
     ) {
         out.push('\'');
@@ -184,7 +184,7 @@ impl SqlWriter for PostgresSqlWriter {
     fn write_value_timestamptz(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &OffsetDateTime,
     ) {
         out.push('\'');
@@ -206,7 +206,7 @@ impl SqlWriter for PostgresSqlWriter {
     fn write_value_list(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: Either<&Box<[Value]>, &Vec<Value>>,
         ty: &Value,
         _elem_ty: &Value,
@@ -227,7 +227,7 @@ impl SqlWriter for PostgresSqlWriter {
         self.write_column_type(context, out, ty);
     }
 
-    fn write_expression_operand_question_mark(&self, context: &mut Context, out: &mut String) {
+    fn write_expression_operand_question_mark(&self, context: &mut Context, out: &mut RawQuery) {
         context.counter += 1;
         let _ = write!(out, "${}", context.counter);
     }

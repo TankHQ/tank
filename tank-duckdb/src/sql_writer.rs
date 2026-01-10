@@ -2,7 +2,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
 };
-use tank_core::{ColumnDef, Context, Interval, SqlWriter, Value, separated_by};
+use tank_core::{ColumnDef, Context, Interval, RawQuery, SqlWriter, Value, separated_by};
 
 /// SQL writer for the DuckDB dialect.
 ///
@@ -18,7 +18,7 @@ impl SqlWriter for DuckDBSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
@@ -30,7 +30,7 @@ impl SqlWriter for DuckDBSqlWriter {
         }
     }
 
-    fn write_value_blob(&self, _context: &mut Context, out: &mut String, value: &[u8]) {
+    fn write_value_blob(&self, _context: &mut Context, out: &mut RawQuery, value: &[u8]) {
         out.push('\'');
         for b in value {
             let _ = write!(out, "\\x{:02X}", b);
@@ -52,7 +52,7 @@ impl SqlWriter for DuckDBSqlWriter {
     fn write_value_map(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &HashMap<Value, Value>,
     ) {
         out.push_str("MAP{");

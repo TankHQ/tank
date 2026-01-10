@@ -8,7 +8,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use tank::{
-    Driver, Entity, Executor, FixedDecimal, Query, QueryResult, RowsAffected, SqlWriter,
+    Driver, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery, RowsAffected, SqlWriter,
     stream::TryStreamExt,
 };
 use time::{Date, Time, macros::date};
@@ -105,7 +105,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
         let writer = executor.driver().sql_writer();
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         writer.write_delete::<SimpleFields>(&mut query, &false); // Does not delete anything
         writer.write_select(
             &mut query,
@@ -222,7 +222,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
         let writer = executor.driver().sql_writer();
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         writer.write_delete::<SimpleFields>(&mut query, &true);
         writer.write_insert(&mut query, [&entity], false);
         writer.write_select(

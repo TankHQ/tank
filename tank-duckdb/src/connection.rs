@@ -20,8 +20,8 @@ use std::{
     },
 };
 use tank_core::{
-    AsQuery, Connection, Entity, Error, ErrorContext, Executor, Query, QueryResult, Result,
-    RowLabeled, RowsAffected, Value, as_c_string, error_message_from_ptr, send_value,
+    AsQuery, Connection, Entity, Error, ErrorContext, Executor, Query, QueryResult, RawQuery,
+    Result, RowLabeled, RowsAffected, Value, as_c_string, error_message_from_ptr, send_value,
     stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
@@ -219,7 +219,7 @@ impl Debug for DuckDBConnection {
 impl Executor for DuckDBConnection {
     type Driver = DuckDBDriver;
 
-    async fn prepare(&mut self, sql: String) -> Result<Query<DuckDBDriver>> {
+    async fn prepare(&mut self, sql: RawQuery) -> Result<Query<DuckDBDriver>> {
         let connection = AtomicPtr::new(*self.connection);
         let context = format!(
             "While preparing the query:\n{}",
@@ -227,7 +227,7 @@ impl Executor for DuckDBConnection {
         );
         let prepared = spawn_blocking(move || unsafe {
             let mut prepared = CBox::new(ptr::null_mut(), |mut p| duckdb_destroy_prepare(&mut p));
-            let sql = match CString::new(sql.as_bytes()) {
+            let sql = match CString::new(sql.as_str().as_bytes()) {
                 Ok(sql) => sql,
                 Err(e) => {
                     let error = Error::new(e)
@@ -268,9 +268,11 @@ impl Executor for DuckDBConnection {
         let join = spawn_blocking(move || {
             match &mut owned {
                 Query::Raw(query) => {
-                    let sql = unsafe { CString::from_vec_unchecked(mem::take(query).into_bytes()) };
+                    let sql = unsafe {
+                        CString::from_vec_unchecked(mem::take(query.buffer()).into_bytes())
+                    };
                     Self::do_run_unprepared(connection.load(Ordering::Relaxed), sql.as_c_str(), tx);
-                    *query = unsafe { String::from_utf8_unchecked(sql.into_bytes()) }
+                    *query = unsafe { RawQuery::new(String::from_utf8_unchecked(sql.into_bytes())) }
                 }
                 Query::Prepared(query) => Self::do_run_prepared(query.statement(), tx),
             }

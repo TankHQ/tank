@@ -1,5 +1,5 @@
 use crate::{
-    AsQuery, Driver, Entity, Query, QueryResult, Result, RowLabeled, RowsAffected,
+    AsQuery, Driver, Entity, Query, QueryResult, RawQuery, Result, RowLabeled, RowsAffected,
     stream::{Stream, StreamExt, TryStreamExt},
     writer::SqlWriter,
 };
@@ -38,7 +38,7 @@ pub trait Executor: Send + Sized {
     /// Prepare a query for later execution.
     fn prepare(
         &mut self,
-        query: String,
+        query: RawQuery,
     ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send;
 
     /// Run a query, streaming `QueryResult` items.
@@ -87,7 +87,7 @@ pub trait Executor: Send + Sized {
         It: IntoIterator<Item = &'a E> + Send,
         <It as IntoIterator>::IntoIter: Send,
     {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         self.driver()
             .sql_writer()
             .write_insert(&mut query, entities, false);

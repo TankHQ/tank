@@ -16,8 +16,9 @@ use std::{
     },
 };
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Prepared, Query, QueryResult, Result,
-    RowLabeled, RowsAffected, error_message_from_ptr, send_value, stream::Stream, truncate_long,
+    AsQuery, Connection, Error, ErrorContext, Executor, Prepared, Query, QueryResult, RawQuery,
+    Result, RowLabeled, RowsAffected, error_message_from_ptr, send_value, stream::Stream,
+    truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -26,7 +27,6 @@ use tokio::task::spawn_blocking;
 /// Provides helpers to prepare/execute statements and stream results into `tank_core` result types.
 pub struct SQLiteConnection {
     pub(crate) connection: CBox<*mut sqlite3>,
-    pub(crate) _transaction: bool,
 }
 
 impl SQLiteConnection {
@@ -161,7 +161,7 @@ impl SQLiteConnection {
 impl Executor for SQLiteConnection {
     type Driver = SQLiteDriver;
 
-    async fn prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
+    async fn prepare(&mut self, mut sql: RawQuery) -> Result<Query<Self::Driver>> {
         let connection = AtomicPtr::new(*self.connection);
         let context = format!(
             "While preparing the query:\n{}",
@@ -170,7 +170,7 @@ impl Executor for SQLiteConnection {
         let prepared = spawn_blocking(move || unsafe {
             let connection = connection.load(Ordering::Relaxed);
             let len = sql.len();
-            let sql = CString::new(sql.as_bytes())?;
+            let sql = CString::new(mem::take(sql.buffer()).into_bytes())?;
             let mut statement = CBox::new(ptr::null_mut(), |p| {
                 sqlite3_finalize(p);
             });
@@ -216,7 +216,7 @@ impl Executor for SQLiteConnection {
         let join = spawn_blocking(move || {
             match &mut owned {
                 Query::Raw(query) => {
-                    Self::do_run_unprepared(connection.load(Ordering::Relaxed), query, tx);
+                    Self::do_run_unprepared(connection.load(Ordering::Relaxed), query.as_str(), tx);
                 }
                 Query::Prepared(prepared) => {
                     Self::do_run_prepared(
@@ -270,10 +270,7 @@ impl Connection for SQLiteConnection {
                 return Err(error);
             }
         }
-        Ok(Self {
-            connection,
-            _transaction: false,
-        })
+        Ok(Self { connection })
     }
 
     #[allow(refining_impl_trait)]

@@ -2,8 +2,8 @@ use crate::{ScyllaDBConnection, ScyllaDBDriver, ScyllaDBPrepared, ValueWrap};
 use scylla::statement::batch::Batch;
 use std::{future, mem};
 use tank_core::{
-    Driver, Entity, Error, ErrorContext, Executor, Query, Result, RowsAffected, SqlWriter,
-    Transaction,
+    Driver, Entity, Error, ErrorContext, Executor, Query, RawQuery, Result, RowsAffected,
+    SqlWriter, Transaction,
     future::Either,
     stream::{self, Stream},
     truncate_long,
@@ -37,7 +37,7 @@ impl ScyllaDBTransaction<'_> {
 impl<'c> Executor for ScyllaDBTransaction<'c> {
     type Driver = ScyllaDBDriver;
 
-    async fn prepare(&mut self, sql: String) -> Result<tank_core::Query<Self::Driver>> {
+    async fn prepare(&mut self, sql: RawQuery) -> Result<tank_core::Query<Self::Driver>> {
         let context = format!(
             "While preparing the query:\n{}",
             truncate_long!(sql.as_str())
@@ -45,7 +45,7 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
         let statement = self
             .connection
             .session
-            .prepare(sql)
+            .prepare(sql.as_str())
             .await
             .with_context(|| context)?;
         Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
@@ -85,13 +85,13 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
         It: IntoIterator<Item = &'a E>,
         <It as IntoIterator>::IntoIter: Send,
     {
-        let mut sql = String::with_capacity(512);
+        let mut query = RawQuery::default();
         let writer = self.driver().sql_writer();
         for entity in entities {
-            writer.write_insert::<E>(&mut sql, [entity], false);
-            let mut query = Query::Raw(sql);
-            self.execute(&mut query).await?;
-            sql = mem::take(match &mut query {
+            writer.write_insert::<E>(&mut query, [entity], false);
+            let mut sql = Query::Raw(query);
+            self.execute(&mut sql).await?;
+            query = mem::take(match &mut sql {
                 Query::Raw(sql) => sql,
                 Query::Prepared(..) => {
                     return Err(Error::msg(
@@ -99,7 +99,7 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
                     ));
                 }
             });
-            sql.clear();
+            query.buffer().clear();
         }
         Ok(Default::default())
     }

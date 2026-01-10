@@ -1,5 +1,5 @@
 use crate::{
-    DataSet, quote_cow,
+    DataSet, RawQuery, quote_cow,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::TokenStream;
@@ -70,8 +70,11 @@ impl DataSet for TableRef {
     {
         false
     }
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut String) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery) {
         writer.write_table_ref(context, out, self)
+    }
+    fn table_ref(&self) -> TableRef {
+        self.clone()
     }
 }
 
@@ -82,8 +85,11 @@ impl DataSet for &TableRef {
     {
         false
     }
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut String) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery) {
         (*writer).write_table_ref(context, out, self)
+    }
+    fn table_ref(&self) -> TableRef {
+        (*self).clone()
     }
 }
 
@@ -113,8 +119,11 @@ impl DataSet for DeclareTableRef {
     {
         false
     }
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut String) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery) {
         writer.write_table_ref(context, out, &self.0)
+    }
+    fn table_ref(&self) -> TableRef {
+        self.0.clone()
     }
 }
 

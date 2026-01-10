@@ -3,7 +3,7 @@ mod tests {
     use std::borrow::Cow;
     use tank::{
         BinaryOp, BinaryOpType, ColumnRef, DataSet, DeclareTableRef, Entity, Join, JoinType,
-        Operand, SqlWriter, TableRef, join,
+        Operand, RawQuery, SqlWriter, TableRef, join,
     };
 
     struct Writer;
@@ -55,10 +55,10 @@ mod tests {
                 ..
             }
         ));
-        let mut out = String::new();
-        join.write_query(&WRITER, &mut Default::default(), &mut out);
+        let mut query = RawQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
-            out,
+            query.as_str(),
             r#""my_data"."alpha" AA JOIN "bravo" BB ON AA.a = BB.first"#
         );
 
@@ -70,10 +70,10 @@ mod tests {
                 ..
             }
         ));
-        let mut out = String::new();
-        join.write_query(&WRITER, &mut Default::default(), &mut out);
+        let mut query = RawQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
-            out,
+            query.as_str(),
             r#""my_data"."alpha" INNER JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."first""#
         );
 
@@ -85,10 +85,10 @@ mod tests {
                 ..
             }
         ));
-        let mut out = String::new();
-        join.write_query(&WRITER, &mut Default::default(), &mut out);
+        let mut query = RawQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
-            out,
+            query.as_str(),
             r#""my_data"."alpha" OUTER JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."first""#
         );
 
@@ -100,10 +100,10 @@ mod tests {
                 ..
             }
         ));
-        let mut out = String::new();
-        join.write_query(&WRITER, &mut Default::default(), &mut out);
+        let mut query = RawQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
-            out,
+            query.as_str(),
             r#""my_data"."alpha" OUTER JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."first""#
         );
 
@@ -115,10 +115,10 @@ mod tests {
                 ..
             }
         ));
-        let mut out = String::new();
-        join.write_query(&WRITER, &mut Default::default(), &mut out);
+        let mut query = RawQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
-            out,
+            query.as_str(),
             r#""my_data"."alpha" LEFT JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."first""#
         );
 
@@ -130,10 +130,10 @@ mod tests {
                 ..
             }
         ));
-        let mut out = String::new();
-        join.write_query(&WRITER, &mut Default::default(), &mut out);
+        let mut query = RawQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
-            out,
+            query.as_str(),
             r#""my_data"."alpha" LEFT JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."first""#
         );
 
@@ -145,10 +145,10 @@ mod tests {
                 ..
             }
         ));
-        let mut out = String::new();
-        join.write_query(&WRITER, &mut Default::default(), &mut out);
+        let mut query = RawQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
-            out,
+            query.as_str(),
             r#""my_data"."alpha" RIGHT JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."first""#
         );
 
@@ -160,10 +160,10 @@ mod tests {
                 ..
             }
         ));
-        let mut out = String::new();
-        join.write_query(&WRITER, &mut Default::default(), &mut out);
+        let mut query = RawQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
-            out,
+            query.as_str(),
             r#""my_data"."alpha" RIGHT JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."first""#
         );
 
@@ -176,9 +176,9 @@ mod tests {
                 ..
             },
         ));
-        let mut out = String::new();
-        join.write_query(&WRITER, &mut Default::default(), &mut out);
-        assert_eq!(out, r#""my_data"."alpha" CROSS "bravo""#);
+        let mut query = RawQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        assert_eq!(query.as_str(), r#""my_data"."alpha" CROSS "bravo""#);
 
         let join = join!(Alpha NATURAL JOIN Bravo);
         assert!(matches!(
@@ -189,9 +189,9 @@ mod tests {
                 ..
             },
         ));
-        let mut out = String::new();
-        join.write_query(&WRITER, &mut Default::default(), &mut out);
-        assert_eq!(out, r#""my_data"."alpha" NATURAL JOIN "bravo""#);
+        let mut query = RawQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        assert_eq!(query.as_str(), r#""my_data"."alpha" NATURAL JOIN "bravo""#);
     }
 
     #[test]
@@ -246,10 +246,10 @@ mod tests {
                 ..
             }
         ));
-        let mut out = String::new();
-        join.write_query(&WRITER, &mut Default::default(), &mut out);
+        let mut query = RawQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
-            out,
+            query.as_str(),
             r#""another_table" JOIN "my_data"."alpha" ON "another_table"."column" < "my_data"."alpha"."b" JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."second""#
         );
     }
@@ -325,10 +325,10 @@ mod tests {
                 ..
             }
         ));
-        let mut out = String::new();
-        join.write_query(&WRITER, &mut Default::default(), &mut out);
+        let mut query = RawQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
-            out,
+            query.as_str(),
             r#""bravo" OUTER JOIN "delta_dataset"."delta_table" LEFT JOIN "my_data"."alpha" ON "delta_dataset"."delta_table"."the_string" < "my_data"."alpha"."b" ON "bravo"."second" = "delta_dataset"."delta_table"."the_string""#
         );
     }
@@ -395,10 +395,10 @@ mod tests {
                 ..
             }
         ));
-        let mut out = String::new();
-        join.write_query(&WRITER, &mut Default::default(), &mut out);
+        let mut query = RawQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
-            out,
+            query.as_str(),
             r#""my_data"."alpha" A OUTER JOIN "bravo" ON "my_data"."alpha"."b" >= "bravo"."second" RIGHT JOIN "some" ON "some"."col" = "bravo"."first""#
         );
     }
@@ -470,10 +470,10 @@ mod tests {
                 ..
             }
         ));
-        let mut out = String::new();
-        join.write_query(&WRITER, &mut Default::default(), &mut out);
+        let mut query = RawQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
-            out,
+            query.as_str(),
             r#""my_data"."alpha" NATURAL JOIN "ccc" CROSS "bravo" LEFT JOIN "bravo" ON "bravo"."second" = "my_data"."alpha"."b" CROSS "delta""#
         );
     }
@@ -516,10 +516,10 @@ mod tests {
                 ..
             }
         ));
-        let mut out = String::new();
-        join.write_query(&WRITER, &mut Default::default(), &mut out);
+        let mut query = RawQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
-            out,
+            query.as_str(),
             r#""my_data"."alpha" RIGHT JOIN "bravo" ON "my_data"."alpha"."a" <= "bravo"."first""#
         );
     }

@@ -1,5 +1,5 @@
 use crate::{
-    ColumnDef, Context, DataSet, Driver, Error, Executor, Expression, Query, Result, Row,
+    ColumnDef, Context, DataSet, Driver, Error, Executor, Expression, Query, RawQuery, Result, Row,
     RowLabeled, RowsAffected, TableRef, Value, future::Either, stream::Stream, truncate_long,
     writer::SqlWriter,
 };
@@ -60,7 +60,7 @@ pub trait Entity {
         Self: Sized,
     {
         async move {
-            let mut query = String::with_capacity(2048);
+            let mut query = RawQuery::with_capacity(2048);
             let writer = executor.driver().sql_writer();
             if create_schema && !Self::table().schema().is_empty() {
                 writer.write_create_schema::<Self>(&mut query, true);
@@ -75,7 +75,7 @@ pub trait Entity {
                 };
                 // To save the storage capacity and avoid reallocation
                 query = mem::take(&mut q);
-                query.clear();
+                query.buffer().clear();
             }
             writer.write_create_table::<Self>(&mut query, if_not_exists);
             // TODO: Remove boxed() once https://github.com/rust-lang/rust/issues/100013 is fixed
@@ -97,7 +97,7 @@ pub trait Entity {
         Self: Sized,
     {
         async move {
-            let mut query = String::with_capacity(256);
+            let mut query = RawQuery::with_capacity(256);
             let writer = executor.driver().sql_writer();
             writer.write_drop_table::<Self>(&mut query, if_exists);
             if drop_schema && !Self::table().schema().is_empty() {
@@ -111,7 +111,7 @@ pub trait Entity {
                     };
                     // To save the storage capacity and avoid reallocation
                     query = mem::take(&mut q);
-                    query.clear();
+                    query.buffer().clear();
                 }
                 writer.write_drop_schema::<Self>(&mut query, true);
             }
@@ -127,7 +127,7 @@ pub trait Entity {
         executor: &mut impl Executor,
         entity: &impl Entity,
     ) -> impl Future<Output = Result<RowsAffected>> + Send {
-        let mut query = String::with_capacity(128);
+        let mut query = RawQuery::with_capacity(128);
         executor
             .driver()
             .sql_writer()
@@ -229,7 +229,7 @@ pub trait Entity {
     where
         Self: Sized,
     {
-        let mut query = String::with_capacity(128);
+        let mut query = RawQuery::with_capacity(128);
         executor
             .driver()
             .sql_writer()
@@ -253,12 +253,13 @@ pub trait Entity {
             log::error!("{:#}", error);
             return Either::Left(future::ready(Err(error)));
         }
-        let mut query = String::with_capacity(512);
+        let mut query = RawQuery::with_capacity(512);
         executor
             .driver()
             .sql_writer()
             .write_insert(&mut query, [self], true);
-        let context = format!("While saving using the query: {}", truncate_long!(query));
+        let sql = query.as_str();
+        let context = format!("While saving using the query: {}", truncate_long!(sql));
         Either::Right(executor.execute(query).map(|mut v| {
             if let Ok(result) = v
                 && let Some(affected) = result.rows_affected
@@ -332,7 +333,11 @@ impl<E: Entity> DataSet for E {
     }
 
     /// Writes the table reference into the out string.
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut String) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery) {
         Self::table().write_query(writer, context, out);
+    }
+
+    fn table_ref(&self) -> TableRef {
+        Self::table().clone()
     }
 }

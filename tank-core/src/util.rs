@@ -10,6 +10,8 @@ use std::{
 };
 use syn::Path;
 
+use crate::RawQuery;
+
 #[derive(Clone)]
 /// Polymorphic iterator adapter returning items from either variant.
 pub enum EitherIterator<A, B>
@@ -83,12 +85,12 @@ pub fn matches_path(path: &Path, expect: &[&str]) -> bool {
 
 /// Write an iterator of items separated by a delimiter into a string.
 pub fn separated_by<T, F>(
-    out: &mut String,
+    out: &mut RawQuery,
     values: impl IntoIterator<Item = T>,
     mut f: F,
     separator: &str,
 ) where
-    F: FnMut(&mut String, T),
+    F: FnMut(&mut RawQuery, T),
 {
     let mut len = out.len();
     for v in values {
@@ -147,7 +149,7 @@ pub fn extract_number<'s, const SIGNED: bool>(input: &mut &'s str) -> &'s str {
     result
 }
 
-pub fn print_timer(out: &mut String, quote: &str, h: i64, m: u8, s: u8, ns: u32) {
+pub fn print_timer(out: &mut impl Write, quote: &str, h: i64, m: u8, s: u8, ns: u32) {
     let mut subsecond = ns;
     let mut width = 9;
     while width > 1 && subsecond % 10 == 0 {
@@ -342,7 +344,7 @@ macro_rules! impl_executor_transaction {
 
             fn prepare(
                 &mut self,
-                query: String,
+                query: ::tank_core::RawQuery,
             ) -> impl Future<Output = ::tank_core::Result<::tank_core::Query<Self::Driver>>> + Send
             {
                 self.$connection.prepare(query)

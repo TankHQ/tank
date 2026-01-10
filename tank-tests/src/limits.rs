@@ -2,7 +2,7 @@
 use core::f64;
 use std::{pin::pin, sync::LazyLock};
 use tank::{Driver, QueryResult, RowsAffected, SqlWriter, expr, stream::StreamExt};
-use tank::{Entity, Executor, Interval};
+use tank::{Entity, Executor, Interval, RawQuery};
 use time::{Date, Month, Time};
 use tokio::sync::Mutex;
 
@@ -224,7 +224,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         let writer = executor.driver().sql_writer();
         writer.write_delete::<Limits>(&mut query, &true);
         writer.write_insert(&mut query, &[minimals, maximals], false);

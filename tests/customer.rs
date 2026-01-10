@@ -3,8 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::borrow::Cow;
     use tank::{
-        AsValue, DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, SqlWriter, TableRef,
-        Value, expr,
+        AsValue, DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, RawQuery, SqlWriter,
+        TableRef, Value, expr,
     };
 
     #[derive(Entity)]
@@ -130,10 +130,10 @@ mod tests {
 
     #[test]
     fn test_customer_create_table() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_create_table::<Customer>(&mut query, false);
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 CREATE TABLE "customers" (
                 "transaction_ids" UBIGINT[] NOT NULL,
@@ -149,14 +149,14 @@ mod tests {
 
     #[test]
     fn test_customer_drop_table() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_drop_table::<Customer>(&mut query, false);
-        assert_eq!(query, r#"DROP TABLE "customers";"#);
+        assert_eq!(query.as_str(), r#"DROP TABLE "customers";"#);
     }
 
     #[test]
     fn test_customer_select() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_select(
             &mut query,
             Customer::columns(),
@@ -165,7 +165,7 @@ mod tests {
             Some(10),
         );
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 SELECT "transaction_ids", "settings", "values", "signup_duration", "recent_purchases"
                 FROM "customers"
@@ -178,10 +178,10 @@ mod tests {
 
     #[test]
     fn test_customer_delete() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_delete::<Customer>(&mut query, true);
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 DELETE FROM "customers"
                 WHERE true;

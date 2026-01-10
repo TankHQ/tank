@@ -1,4 +1,4 @@
-use crate::{Context, Expression, OpPrecedence, SqlWriter, Value};
+use crate::{Context, Expression, OpPrecedence, RawQuery, SqlWriter, Value};
 
 #[derive(Default, Debug)]
 pub enum DefaultValueType {
@@ -28,7 +28,7 @@ impl OpPrecedence for DefaultValueType {
 }
 
 impl Expression for DefaultValueType {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut String) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery) {
         match self {
             DefaultValueType::None => ().write_query(writer, context, out),
             DefaultValueType::Value(v) => v.write_query(writer, context, out),

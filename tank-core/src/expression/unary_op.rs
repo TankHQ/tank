@@ -1,5 +1,5 @@
 use crate::{
-    Expression, OpPrecedence,
+    Expression, OpPrecedence, RawQuery,
     writer::{Context, SqlWriter},
 };
 
@@ -27,7 +27,7 @@ impl<E: Expression> OpPrecedence for UnaryOp<E> {
 }
 
 impl<E: Expression> Expression for UnaryOp<E> {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut String) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery) {
         writer.write_expression_unary_op(
             context,
             out,

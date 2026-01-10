@@ -1,7 +1,9 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 use std::{borrow::Cow, pin::pin, sync::LazyLock};
-use tank::{Driver, Entity, Executor, Query, QueryResult, SqlWriter, cols, stream::TryStreamExt};
+use tank::{
+    Driver, Entity, Executor, Query, QueryResult, RawQuery, SqlWriter, cols, stream::TryStreamExt,
+};
 use tokio::sync::Mutex;
 
 #[derive(Entity, Debug, PartialEq)]
@@ -113,7 +115,7 @@ pub async fn arrays1<E: Executor>(executor: &mut E) {
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         let writer = executor.driver().sql_writer();
         writer.write_drop_table::<Arrays1>(&mut query, true);
         writer.write_create_table::<Arrays1>(&mut query, true);

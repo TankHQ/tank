@@ -3,7 +3,7 @@
 use crate::silent_logs;
 use std::{pin::pin, sync::LazyLock, time::Duration};
 use tank::{
-    Driver, Entity, Executor, Interval, QueryResult, RowsAffected, SqlWriter,
+    Driver, Entity, Executor, Interval, QueryResult, RawQuery, RowsAffected, SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -120,7 +120,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         let writer = executor.driver().sql_writer();
         writer.write_delete::<Intervals>(&mut query, &true);
         writer.write_insert(

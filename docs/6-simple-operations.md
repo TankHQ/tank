@@ -201,11 +201,11 @@ let _messages: Vec<_> = executor
 Delete + insert + select in one roundtrip:
 ```rust
 let writer = executor.driver().sql_writer();
-let mut sql = String::new();
-writer.write_delete::<RadioLog>(&mut sql, expr!(RadioLog::signal_strength < 10));
-writer.write_insert(&mut sql, [&operator], false);
+let mut query = RawQuery::default();
+writer.write_delete::<RadioLog>(&mut query, expr!(RadioLog::signal_strength < 10));
+writer.write_insert(&mut query, [&operator], false);
 writer.write_insert(
-    &mut sql,
+    &mut query,
     [&RadioLog {
         id: Uuid::new_v4(),
         operator: operator.id,
@@ -217,14 +217,14 @@ writer.write_insert(
     false,
 );
 writer.write_select(
-    &mut sql,
+    &mut query,
     RadioLog::columns(),
     RadioLog::table(),
     true,
     Some(50),
 );
 {
-    let mut stream = pin!(executor.run(sql));
+    let mut stream = pin!(executor.run(query));
     while let Some(result) = stream.try_next().await? {
         match result {
             QueryResult::Row(row) => log::debug!("Row: {row:?}"),

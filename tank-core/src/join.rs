@@ -1,5 +1,5 @@
 use crate::{
-    DataSet, Expression,
+    DataSet, Expression, RawQuery, TableRef,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::{TokenStream, TokenTree};
@@ -43,7 +43,7 @@ impl<L: DataSet, R: DataSet, E: Expression> DataSet for Join<L, R, E> {
     {
         true
     }
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut String) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery) {
         writer.write_join(
             context,
             out,
@@ -54,6 +54,21 @@ impl<L: DataSet, R: DataSet, E: Expression> DataSet for Join<L, R, E> {
                 on: self.on.as_ref().map(|v| v as &dyn Expression),
             },
         );
+    }
+
+    fn table_ref(&self) -> TableRef {
+        let mut result = self.lhs.table_ref();
+        let other = self.rhs.table_ref();
+        if result.name != other.name {
+            result.name = Default::default();
+        }
+        if result.schema != other.schema {
+            result.schema = Default::default();
+        }
+        if result.alias != other.alias {
+            result.alias = Default::default();
+        }
+        result
     }
 }
 

@@ -1,5 +1,5 @@
 use crate::{
-    Expression, OpPrecedence, Value,
+    Expression, OpPrecedence, RawQuery, Value,
     writer::{Context, SqlWriter},
 };
 
@@ -28,7 +28,7 @@ impl OpPrecedence for Operand<'_> {
 }
 
 impl Expression for Operand<'_> {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut String) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery) {
         writer.write_expression_operand(context, out, self)
     }
 }

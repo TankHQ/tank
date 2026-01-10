@@ -17,16 +17,16 @@ Every driver exposes a `SqlWriter` for dialect‑correct sql fragments. Concaten
 Example building 8 statements (1 *CREATE SCHEMA* included by the first *CREATE TABLE*, 2 *CREATE TABLE*, 3 *INSERT INTO* and 2 *SELECT*):
 ```rust
 let writer = executor.driver().sql_writer();
-let mut sql = String::new();
-writer.write_create_table::<One>(&mut sql, true);
-writer.write_create_table::<Two>(&mut sql, false);
-writer.write_insert(&mut sql, &[One { string: "ddd".into() }, One { string: "ccc".into() }], false);
-writer.write_insert(&mut sql, &[Two { a2: 21, string: "aaa".into() }, Two { a2: 22, string: "bbb".into() }], false);
-writer.write_insert(&mut sql, &[One { a1: 11, string: "zzz".into(), c1: 512 }], false);
-writer.write_select(&mut sql, [One::a1, One::string, One::c1], One::table(), &true, None);
-writer.write_select(&mut sql, Two::columns(), Two::table(), &true, None);
+let mut query = RawQuery::default();
+writer.write_create_table::<One>(&mut query, true);
+writer.write_create_table::<Two>(&mut query, false);
+writer.write_insert(&mut query, &[One { string: "ddd".into() }, One { string: "ccc".into() }], false);
+writer.write_insert(&mut query, &[Two { a2: 21, string: "aaa".into() }, Two { a2: 22, string: "bbb".into() }], false);
+writer.write_insert(&mut query, &[One { a1: 11, string: "zzz".into(), c1: 512 }], false);
+writer.write_select(&mut query, [One::a1, One::string, One::c1], One::table(), &true, None);
+writer.write_select(&mut query, Two::columns(), Two::table(), &true, None);
 // Fire the batch
-let results = executor.run(sql).try_collect::<Vec<_>>().await?;
+let results = executor.run(query).try_collect::<Vec<_>>().await?;
 ```
 
 ### Mixed Results

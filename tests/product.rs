@@ -4,8 +4,8 @@ mod tests {
     use rust_decimal::Decimal;
     use std::borrow::Cow;
     use tank::{
-        DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, SqlWriter, TableRef,
-        Value,
+        DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, RawQuery, SqlWriter,
+        TableRef, Value,
     };
     use time::{Date, Month, PrimitiveDateTime, Time};
 
@@ -133,10 +133,10 @@ mod tests {
 
     #[test]
     fn test_product_create_table() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_create_table::<Product>(&mut query, false);
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 CREATE TABLE "products" (
                 "id" UBIGINT PRIMARY KEY,
@@ -152,10 +152,10 @@ mod tests {
 
     #[test]
     fn test_product_insert() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_insert(&mut query, [&Product::sample()], false);
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 INSERT INTO "products" ("name", "price", "available", "tags", "added_on") VALUES
                 ('Smartphone', 499.99, true, ['electronics','mobile'], '2025-06-24T10:30:07.0');
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn test_product_insert_multiple() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_insert(
             &mut query,
             [
@@ -198,7 +198,7 @@ mod tests {
             false,
         );
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 INSERT INTO "products" ("id", "name", "price", "available", "tags", "added_on") VALUES
                 (74, 'Headphones', 129.95, false, ['electronics','audio'], '2025-07-08T14:15:01.0'),

@@ -1,8 +1,8 @@
 use crate::{
     Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, DataSet, EitherIterator, Entity,
     Expression, Fragment, Interval, Join, JoinType, Operand, Order, Ordered, PrimaryKeyType,
-    TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized, print_timer, separated_by,
-    writer::Context,
+    RawQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized, print_timer,
+    separated_by, writer::Context,
 };
 use core::f64;
 use futures::future::Either;
@@ -48,11 +48,29 @@ pub trait SqlWriter: Send {
         }
     }
 
+    fn update_table_ref(&self, out: &mut RawQuery, table: &TableRef) {
+        let is_empty = out.is_empty();
+        let current = out.table_mut();
+        if is_empty {
+            *current = table.clone();
+        } else {
+            if current.name != table.name {
+                current.name = Default::default();
+            }
+            if current.schema != table.schema {
+                current.schema = Default::default();
+            }
+            if current.alias != table.alias {
+                current.alias = Default::default();
+            }
+        }
+    }
+
     /// Escape occurrences of `search` char with `replace` while copying into buffer.
     fn write_escaped(
         &self,
         _context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &str,
         search: char,
         replace: &str,
@@ -69,14 +87,14 @@ pub trait SqlWriter: Send {
     }
 
     /// Quote identifiers ("name") doubling inner quotes.
-    fn write_identifier_quoted(&self, context: &mut Context, out: &mut String, value: &str) {
+    fn write_identifier_quoted(&self, context: &mut Context, out: &mut RawQuery, value: &str) {
         out.push('"');
         self.write_escaped(context, out, value, '"', "\"\"");
         out.push('"');
     }
 
     /// Render a table reference with optional alias.
-    fn write_table_ref(&self, context: &mut Context, out: &mut String, value: &TableRef) {
+    fn write_table_ref(&self, context: &mut Context, out: &mut RawQuery, value: &TableRef) {
         if self.alias_declaration(context) || value.alias.is_empty() {
             if !value.schema.is_empty() {
                 self.write_identifier_quoted(context, out, &value.schema);
@@ -90,7 +108,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render a column reference optionally qualifying with schema/table.
-    fn write_column_ref(&self, context: &mut Context, out: &mut String, value: &ColumnRef) {
+    fn write_column_ref(&self, context: &mut Context, out: &mut RawQuery, value: &ColumnRef) {
         if context.qualify_columns && !value.table.is_empty() {
             if !value.schema.is_empty() {
                 self.write_identifier_quoted(context, out, &value.schema);
@@ -106,7 +124,7 @@ pub trait SqlWriter: Send {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
@@ -119,7 +137,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render the SQL type for a `Value` prototype.
-    fn write_column_type(&self, context: &mut Context, out: &mut String, value: &Value) {
+    fn write_column_type(&self, context: &mut Context, out: &mut RawQuery, value: &Value) {
         match value {
             Value::Boolean(..) => out.push_str("BOOLEAN"),
             Value::Int8(..) => out.push_str("TINYINT"),
@@ -173,7 +191,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render a concrete value (including proper quoting / escaping).
-    fn write_value(&self, context: &mut Context, out: &mut String, value: &Value) {
+    fn write_value(&self, context: &mut Context, out: &mut RawQuery, value: &Value) {
         let delimiter = if context.fragment == Fragment::JsonKey {
             "\""
         } else {
@@ -228,7 +246,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render NULL literal.
-    fn write_value_none(&self, context: &mut Context, out: &mut String) {
+    fn write_value_none(&self, context: &mut Context, out: &mut RawQuery) {
         out.push_str(if context.fragment == Fragment::Json {
             "null"
         } else {
@@ -237,7 +255,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render boolean literal.
-    fn write_value_bool(&self, context: &mut Context, out: &mut String, value: bool) {
+    fn write_value_bool(&self, context: &mut Context, out: &mut RawQuery, value: bool) {
         if context.fragment == Fragment::JsonKey {
             out.push('"');
         }
@@ -248,7 +266,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render +/- INF via CAST for dialect portability.
-    fn write_value_infinity(&self, context: &mut Context, out: &mut String, negative: bool) {
+    fn write_value_infinity(&self, context: &mut Context, out: &mut RawQuery, negative: bool) {
         let mut buffer = ryu::Buffer::new();
         self.write_expression_binary_op(
             context,
@@ -266,7 +284,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render NaN via CAST for dialect portability.
-    fn write_value_nan(&self, context: &mut Context, out: &mut String) {
+    fn write_value_nan(&self, context: &mut Context, out: &mut RawQuery) {
         let mut buffer = ryu::Buffer::new();
         self.write_expression_binary_op(
             context,
@@ -280,7 +298,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render and escape a string literal using single quotes.
-    fn write_value_string(&self, context: &mut Context, out: &mut String, value: &str) {
+    fn write_value_string(&self, context: &mut Context, out: &mut RawQuery, value: &str) {
         let (delimiter, escaped) =
             if context.fragment == Fragment::Json || context.fragment == Fragment::JsonKey {
                 ('"', r#"\""#)
@@ -305,7 +323,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render a blob literal using hex escapes.
-    fn write_value_blob(&self, context: &mut Context, out: &mut String, value: &[u8]) {
+    fn write_value_blob(&self, context: &mut Context, out: &mut RawQuery, value: &[u8]) {
         let delimiter = if context.fragment == Fragment::Json {
             '"'
         } else {
@@ -322,7 +340,7 @@ pub trait SqlWriter: Send {
     fn write_value_date(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &Date,
         timestamp: bool,
     ) {
@@ -344,7 +362,7 @@ pub trait SqlWriter: Send {
     fn write_value_time(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &Time,
         timestamp: bool,
     ) {
@@ -366,7 +384,7 @@ pub trait SqlWriter: Send {
     fn write_value_timestamp(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &PrimitiveDateTime,
     ) {
         let delimiter = match context.fragment {
@@ -385,7 +403,7 @@ pub trait SqlWriter: Send {
     fn write_value_timestamptz(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &OffsetDateTime,
     ) {
         let date_time = value.to_utc();
@@ -410,7 +428,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render INTERVAL literal using largest representative units.
-    fn write_value_interval(&self, context: &mut Context, out: &mut String, value: &Interval) {
+    fn write_value_interval(&self, context: &mut Context, out: &mut RawQuery, value: &Interval) {
         out.push_str("INTERVAL ");
         let delimiter = if context.fragment == Fragment::Json {
             '"'
@@ -465,7 +483,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render UUID literal.
-    fn write_value_uuid(&self, context: &mut Context, out: &mut String, value: &Uuid) {
+    fn write_value_uuid(&self, context: &mut Context, out: &mut RawQuery, value: &Uuid) {
         let b = if context.is_inside_json() { '"' } else { '\'' };
         let _ = write!(out, "{b}{value}{b}");
     }
@@ -474,7 +492,7 @@ pub trait SqlWriter: Send {
     fn write_value_list(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: Either<&Box<[Value]>, &Vec<Value>>,
         _ty: &Value,
         _elem_ty: &Value,
@@ -498,7 +516,7 @@ pub trait SqlWriter: Send {
     fn write_value_map(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &HashMap<Value, Value>,
     ) {
         out.push('{');
@@ -519,7 +537,7 @@ pub trait SqlWriter: Send {
     fn write_value_struct(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &Vec<(String, Value)>,
     ) {
         out.push('{');
@@ -581,7 +599,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render an operand (literal / variable / nested expression).
-    fn write_expression_operand(&self, context: &mut Context, out: &mut String, value: &Operand) {
+    fn write_expression_operand(&self, context: &mut Context, out: &mut RawQuery, value: &Operand) {
         let delimiter = if context.fragment == Fragment::JsonKey {
             "\""
         } else {
@@ -646,7 +664,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render parameter placeholder (dialect may override).
-    fn write_expression_operand_question_mark(&self, _context: &mut Context, out: &mut String) {
+    fn write_expression_operand_question_mark(&self, _context: &mut Context, out: &mut RawQuery) {
         out.push('?');
     }
 
@@ -654,7 +672,7 @@ pub trait SqlWriter: Send {
     fn write_expression_unary_op(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &UnaryOp<&dyn Expression>,
     ) {
         match value.op {
@@ -672,7 +690,7 @@ pub trait SqlWriter: Send {
     fn write_expression_binary_op(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) {
         let (prefix, infix, suffix, lhs_parenthesized, rhs_parenthesized) = match value.op {
@@ -742,7 +760,7 @@ pub trait SqlWriter: Send {
     fn write_expression_cast(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         expr: &dyn Expression,
         ty: &dyn Expression,
     ) {
@@ -758,7 +776,7 @@ pub trait SqlWriter: Send {
     fn write_expression_ordered(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         value: &Ordered<&dyn Expression>,
     ) {
         value.expression.write_query(self.as_dyn(), context, out);
@@ -775,7 +793,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render join keyword(s) for the given join type.
-    fn write_join_type(&self, _context: &mut Context, out: &mut String, join_type: &JoinType) {
+    fn write_join_type(&self, _context: &mut Context, out: &mut RawQuery, join_type: &JoinType) {
         out.push_str(match &join_type {
             JoinType::Default => "JOIN",
             JoinType::Inner => "INNER JOIN",
@@ -791,7 +809,7 @@ pub trait SqlWriter: Send {
     fn write_join(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         join: &Join<&dyn DataSet, &dyn DataSet, &dyn Expression>,
     ) {
         let mut context = context.switch_fragment(Fragment::SqlJoin);
@@ -810,27 +828,29 @@ pub trait SqlWriter: Send {
     }
 
     /// Emit BEGIN statement.
-    fn write_transaction_begin(&self, out: &mut String) {
+    fn write_transaction_begin(&self, out: &mut RawQuery) {
         out.push_str("BEGIN;");
     }
 
     /// Emit COMMIT statement.
-    fn write_transaction_commit(&self, out: &mut String) {
+    fn write_transaction_commit(&self, out: &mut RawQuery) {
         out.push_str("COMMIT;");
     }
 
     /// Emit ROLLBACK statement.
-    fn write_transaction_rollback(&self, out: &mut String) {
+    fn write_transaction_rollback(&self, out: &mut RawQuery) {
         out.push_str("ROLLBACK;");
     }
 
     /// Emit CREATE SCHEMA.
-    fn write_create_schema<E>(&self, out: &mut String, if_not_exists: bool)
+    fn write_create_schema<E>(&self, out: &mut RawQuery, if_not_exists: bool)
     where
         Self: Sized,
         E: Entity,
     {
-        out.reserve(32 + E::table().schema.len());
+        let table = E::table();
+        self.update_table_ref(out, table);
+        out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
         }
@@ -839,22 +859,24 @@ pub trait SqlWriter: Send {
         if if_not_exists {
             out.push_str("IF NOT EXISTS ");
         }
-        self.write_identifier_quoted(&mut context, out, E::table().schema());
+        self.write_identifier_quoted(&mut context, out, table.schema());
         out.push(';');
     }
 
     /// Emit DROP SCHEMA.
-    fn write_drop_schema<E>(&self, out: &mut String, if_exists: bool)
+    fn write_drop_schema<E>(&self, out: &mut RawQuery, if_exists: bool)
     where
         Self: Sized,
         E: Entity,
     {
-        out.reserve(24 + E::table().schema.len());
+        let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
+        let table = E::table();
+        self.update_table_ref(out, table);
+        out.buffer().reserve(24 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("DROP SCHEMA ");
-        let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
         if if_exists {
             out.push_str("IF EXISTS ");
         }
@@ -863,14 +885,15 @@ pub trait SqlWriter: Send {
     }
 
     /// Emit CREATE TABLE with columns, constraints & comments.
-    fn write_create_table<E>(&self, out: &mut String, if_not_exists: bool)
+    fn write_create_table<E>(&self, out: &mut RawQuery, if_not_exists: bool)
     where
         Self: Sized,
         E: Entity,
     {
         let mut context = Context::new(Fragment::SqlCreateTable, E::qualified_columns());
+        self.update_table_ref(out, E::table());
         let estimated = 128 + E::columns().len() * 64 + E::primary_key_def().len() * 24;
-        out.reserve(estimated);
+        out.buffer().reserve(estimated);
         if !out.is_empty() {
             out.push('\n');
         }
@@ -944,7 +967,7 @@ pub trait SqlWriter: Send {
     fn write_create_table_column_fragment(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         column: &ColumnDef,
     ) where
         Self: Sized,
@@ -980,7 +1003,7 @@ pub trait SqlWriter: Send {
     fn write_create_table_primary_key_fragment<'a, It>(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         primary_key: It,
     ) where
         Self: Sized,
@@ -1009,7 +1032,7 @@ pub trait SqlWriter: Send {
     fn write_create_table_references_action(
         &self,
         _context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         action: &Action,
     ) {
         out.push_str(match action {
@@ -1024,7 +1047,7 @@ pub trait SqlWriter: Send {
     fn write_column_comment_inline(
         &self,
         _context: &mut Context,
-        _out: &mut String,
+        _out: &mut RawQuery,
         _column: &ColumnDef,
     ) where
         Self: Sized,
@@ -1032,7 +1055,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Emit COMMENT ON COLUMN statements for columns carrying comments.
-    fn write_column_comments_statements<E>(&self, context: &mut Context, out: &mut String)
+    fn write_column_comments_statements<E>(&self, context: &mut Context, out: &mut RawQuery)
     where
         Self: Sized,
         E: Entity,
@@ -1049,12 +1072,15 @@ pub trait SqlWriter: Send {
     }
 
     /// Emit DROP TABLE statement.
-    fn write_drop_table<E>(&self, out: &mut String, if_exists: bool)
+    fn write_drop_table<E>(&self, out: &mut RawQuery, if_exists: bool)
     where
         Self: Sized,
         E: Entity,
     {
-        out.reserve(24 + E::table().schema.len() + E::table().name.len());
+        let table = E::table();
+        self.update_table_ref(out, table);
+        out.buffer()
+            .reserve(24 + table.schema.len() + table.name.len());
         if !out.is_empty() {
             out.push('\n');
         }
@@ -1063,14 +1089,14 @@ pub trait SqlWriter: Send {
         if if_exists {
             out.push_str("IF EXISTS ");
         }
-        self.write_table_ref(&mut context, out, E::table());
+        self.write_table_ref(&mut context, out, table);
         out.push(';');
     }
 
     /// Emit SELECT statement (projection, FROM, WHERE, ORDER, LIMIT).
     fn write_select<Item, Data>(
         &self,
-        out: &mut String,
+        out: &mut RawQuery,
         columns: impl IntoIterator<Item = Item> + Clone,
         from: &Data,
         condition: impl Expression,
@@ -1080,8 +1106,9 @@ pub trait SqlWriter: Send {
         Item: Expression,
         Data: DataSet,
     {
+        self.update_table_ref(out, &from.table_ref());
         let cols = columns.clone().into_iter().count();
-        out.reserve(128 + cols * 32);
+        out.buffer().reserve(128 + cols * 32);
         if !out.is_empty() {
             out.push('\n');
         }
@@ -1132,26 +1159,28 @@ pub trait SqlWriter: Send {
     /// Emit INSERT (single/multi-row) optionally with ON CONFLICT DO UPDATE.
     fn write_insert<'b, E>(
         &self,
-        out: &mut String,
+        out: &mut RawQuery,
         entities: impl IntoIterator<Item = &'b E>,
         update: bool,
     ) where
         Self: Sized,
         E: Entity + 'b,
     {
+        let table = E::table();
+        self.update_table_ref(out, table);
         let mut rows = entities.into_iter().map(Entity::row_filtered).peekable();
         let Some(mut row) = rows.next() else {
             return;
         };
         let single = rows.peek().is_none();
         let cols = E::columns().len();
-        out.reserve(128 + cols * 48);
+        out.buffer().reserve(128 + cols * 48);
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("INSERT INTO ");
         let mut context = Context::new(Fragment::SqlInsertInto, E::qualified_columns());
-        self.write_table_ref(&mut context, out, E::table());
+        self.write_table_ref(&mut context, out, table);
         out.push_str(" (");
         let columns = E::columns().iter();
         if single {
@@ -1240,7 +1269,7 @@ pub trait SqlWriter: Send {
     fn write_insert_update_fragment<'a, E>(
         &self,
         context: &mut Context,
-        out: &mut String,
+        out: &mut RawQuery,
         columns: impl Iterator<Item = &'a ColumnDef> + Clone,
     ) where
         Self: Sized,
@@ -1285,18 +1314,21 @@ pub trait SqlWriter: Send {
     }
 
     /// Emit DELETE statement with WHERE clause.
-    fn write_delete<E>(&self, out: &mut String, condition: impl Expression)
+    fn write_delete<E>(&self, out: &mut RawQuery, condition: impl Expression)
     where
         Self: Sized,
         E: Entity,
     {
-        out.reserve(128 + E::table().schema().len() + E::table().name().len());
+        let table = E::table();
+        self.update_table_ref(out, table);
+        out.buffer()
+            .reserve(128 + table.schema().len() + table.name().len());
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("DELETE FROM ");
         let mut context = Context::new(Fragment::SqlDeleteFrom, E::qualified_columns());
-        self.write_table_ref(&mut context, out, E::table());
+        self.write_table_ref(&mut context, out, table);
         out.push_str("\nWHERE ");
         condition.write_query(
             self,

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
-use tank::AsValue;
+use tank::{AsValue, RawQuery};
 use tank::{Driver, Entity, Executor, QueryResult, SqlWriter, stream::TryStreamExt};
 use tokio::sync::Mutex;
 
@@ -24,27 +24,27 @@ static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 pub async fn multiple<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;
 
-    let mut sql = String::new();
+    let mut query = RawQuery::default();
     let writer = executor.driver().sql_writer();
-    sql.push_str("    \n\n  \n \n\t\t\n   \n    ");
+    query.push_str("    \n\n  \n \n\t\t\n   \n    ");
     // 1
-    writer.write_drop_table::<One>(&mut sql, true);
-    sql.push_str("\t\t");
+    writer.write_drop_table::<One>(&mut query, true);
+    query.push_str("\t\t");
     // 2
-    writer.write_drop_table::<Two>(&mut sql, true);
+    writer.write_drop_table::<Two>(&mut query, true);
     // 3
-    writer.write_drop_table::<Three>(&mut sql, true);
+    writer.write_drop_table::<Three>(&mut query, true);
     // 4
-    writer.write_create_table::<One>(&mut sql, true);
-    sql.push('\n');
+    writer.write_create_table::<One>(&mut query, true);
+    query.push('\n');
     // 5
-    writer.write_create_table::<Two>(&mut sql, true);
+    writer.write_create_table::<Two>(&mut query, true);
     // 6
-    writer.write_create_table::<Three>(&mut sql, true);
-    sql.push_str(" ");
+    writer.write_create_table::<Three>(&mut query, true);
+    query.push_str(" ");
     // 7
     writer.write_insert(
-        &mut sql,
+        &mut query,
         [
             &Two {
                 a2: 21,
@@ -61,10 +61,10 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
         ],
         false,
     );
-    sql.push_str("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+    query.push_str("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
     // 8
     writer.write_insert(
-        &mut sql,
+        &mut query,
         [
             &Three {
                 string: "ddd".into(),
@@ -76,10 +76,10 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
         false,
     );
     // 9
-    writer.write_select(&mut sql, [Three::string], Three::table(), &true, None);
+    writer.write_select(&mut query, [Three::string], Three::table(), &true, None);
     // 10
     writer.write_insert(
-        &mut sql,
+        &mut query,
         [&One {
             a1: 11,
             string: "zzz".into(),
@@ -89,17 +89,23 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
     );
     // 11
     writer.write_select(
-        &mut sql,
+        &mut query,
         [One::a1, One::string, One::c1],
         One::table(),
         &true,
         None,
     );
     // 12
-    writer.write_select(&mut sql, [Two::a2, Two::string], Two::table(), &true, None);
-    sql.push_str("            \t    \t\t  \n \n \n \t    \n\n\n ");
+    writer.write_select(
+        &mut query,
+        [Two::a2, Two::string],
+        Two::table(),
+        &true,
+        None,
+    );
+    query.push_str("            \t    \t\t  \n \n \n \t    \n\n\n ");
     let result = executor
-        .run(sql)
+        .run(query)
         .try_collect::<Vec<_>>()
         .await
         .expect("Could not run the composite query");

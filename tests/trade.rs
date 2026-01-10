@@ -8,8 +8,8 @@ mod tests {
         collections::{BTreeMap, HashMap},
     };
     use tank::{
-        Action, DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, SqlWriter,
-        TableRef, Value, expr,
+        Action, DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, RawQuery,
+        SqlWriter, TableRef, Value, expr,
     };
     use time::macros::datetime;
     use uuid::Uuid;
@@ -240,10 +240,10 @@ mod tests {
 
     #[test]
     fn test_trade_create_table() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_create_table::<Trade>(&mut query, false);
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 CREATE TABLE "trading.company"."trade_execution" (
                 "trade_id" UBIGINT,
@@ -270,17 +270,17 @@ mod tests {
 
     #[test]
     fn test_trade_drop_table() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_drop_table::<Trade>(&mut query, true);
         assert_eq!(
-            query,
+            query.as_str(),
             r#"DROP TABLE IF EXISTS "trading.company"."trade_execution";"#
         );
     }
 
     #[test]
     fn test_trade_select() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_select(
             &mut query,
             Trade::columns(),
@@ -289,7 +289,7 @@ mod tests {
             None,
         );
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 SELECT "trade_id", "order_id", "symbol", "isin", "price", "quantity", "execution_time", "currency", "is_internalized", "venue", "child_trade_ids", "metadata", "tags"
                 FROM "trading.company"."trade_execution"
@@ -304,11 +304,11 @@ mod tests {
         let mut docs = HashMap::new();
         docs.insert("contract.pdf".to_string(), vec![1, 2, 3, 4]);
         let employee = Trade::sample();
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_insert(&mut query, [&employee], false);
         assert!(
             // Last part of the query (the map) is removed becaus order of keys is not defined. Value stores a HashMap
-            query.starts_with(indoc! {r#"
+            query.as_str().starts_with(indoc! {r#"
                 INSERT INTO "trading.company"."trade_execution" ("trade_id", "order_id", "symbol", "isin", "price", "quantity", "execution_time", "currency", "is_internalized", "venue", "child_trade_ids", "metadata", "tags") VALUES
                 (46923, '550e8400-e29b-41d4-a716-446655440000', 'RIVN', ['U','S','7','6','9','5','4','A','1','0','3','4'], 12.26, 500, '2025-06-07T14:32:00.0', 'USD', true, 'NASDAQ', [36209,85320], '\x4D\x65\x74\x61\x64\x61\x74\x61\x20\x42\x79\x74\x65\x73',
             "#}.trim())
@@ -317,10 +317,10 @@ mod tests {
 
     #[test]
     fn test_trade_delete() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_delete::<Trade>(&mut query, expr!(Trade::trade == 68391));
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 DELETE FROM "trading.company"."trade_execution"
                 WHERE "trade_id" = 68391;

@@ -2,7 +2,7 @@
 #![allow(unused_imports)]
 use std::{pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
-    Driver, Entity, Executor, Interval, Query, QueryResult, SqlWriter,
+    Driver, Entity, Executor, Interval, Query, QueryResult, RawQuery, SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -21,7 +21,7 @@ pub async fn arrays2<E: Executor>(executor: &mut E) {
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         let writer = executor.driver().sql_writer();
         writer.write_drop_table::<Container>(&mut query, true);
         writer.write_create_table::<Container>(&mut query, true);

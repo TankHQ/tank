@@ -1,4 +1,4 @@
-use crate::{AsValue, Result};
+use crate::{AsValue, Result, TableRef};
 use std::fmt::{Debug, Display};
 
 /// A parameterized, backend-prepared query handle.
@@ -21,4 +21,8 @@ pub trait Prepared: Send + Sync + Display + Debug {
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self>;
     /// Bind a value at a specific index.
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self>;
+    /// Set the schema and table context this query targets.
+    fn with_table(self, table: TableRef) -> Self;
+    /// Table and schema this query targets. The values (schema / table / alias) can also be empty.
+    fn table(&self) -> &TableRef;
 }

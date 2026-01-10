@@ -1,7 +1,7 @@
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    DataSet, Driver, Entity, Executor, QueryResult, Result, RowsAffected, SqlWriter, cols, expr,
-    join,
+    DataSet, Driver, Entity, Executor, QueryResult, RawQuery, Result, RowsAffected, SqlWriter,
+    cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, OffsetDateTime, Time, UtcOffset, macros::date};
@@ -125,11 +125,11 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
 
     // Multi-Statement
     let writer = executor.driver().sql_writer();
-    let mut sql = String::new();
-    writer.write_delete::<RadioLog>(&mut sql, expr!(RadioLog::signal_strength < 10));
-    writer.write_insert(&mut sql, [&operator], false);
+    let mut query = RawQuery::default();
+    writer.write_delete::<RadioLog>(&mut query, expr!(RadioLog::signal_strength < 10));
+    writer.write_insert(&mut query, [&operator], false);
     writer.write_insert(
-        &mut sql,
+        &mut query,
         [&RadioLog {
             id: Uuid::new_v4(),
             operator: operator.id,
@@ -141,14 +141,14 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
         false,
     );
     writer.write_select(
-        &mut sql,
+        &mut query,
         RadioLog::columns(),
         RadioLog::table(),
         true,
         Some(50),
     );
     {
-        let mut stream = pin!(executor.run(sql));
+        let mut stream = pin!(executor.run(query));
         while let Some(result) = stream.try_next().await? {
             match result {
                 QueryResult::Row(row) => log::debug!("Row: {row:?}"),

@@ -3,7 +3,7 @@ mod tests {
     use indoc::indoc;
     use rust_decimal::Decimal;
     use std::str::FromStr;
-    use tank::{Entity, Passive, SqlWriter, expr};
+    use tank::{Entity, Passive, RawQuery, SqlWriter, expr};
     use time::{Date, Month, PrimitiveDateTime, Time};
     use uuid::Uuid;
 
@@ -28,10 +28,10 @@ mod tests {
         }
         // CREATE TABLE
         {
-            let mut out = String::new();
-            WRITER.write_create_table::<Table>(&mut out, false);
+            let mut query = RawQuery::default();
+            WRITER.write_create_table::<Table>(&mut query, false);
             assert_eq!(
-                out,
+                query.as_str(),
                 indoc! {r#"
                     CREATE TABLE "my_table" (
                     "special_column" VARCHAR,
@@ -43,22 +43,22 @@ mod tests {
         }
         // DROP TABLE IF EXISTS
         {
-            let mut out = String::new();
-            WRITER.write_drop_table::<Table>(&mut out, true);
-            assert_eq!(out, r#"DROP TABLE IF EXISTS "my_table";"#);
+            let mut query = RawQuery::default();
+            WRITER.write_drop_table::<Table>(&mut query, true);
+            assert_eq!(query.as_str(), r#"DROP TABLE IF EXISTS "my_table";"#);
         }
         // SELECT
         {
-            let mut out = String::new();
+            let mut query = RawQuery::default();
             WRITER.write_select(
-                &mut out,
+                &mut query,
                 Table::columns(),
                 Table::table(),
                 expr!(Table::_second_column < 100 && Table::_first_column == "OK"),
                 None,
             );
             assert_eq!(
-                out,
+                query.as_str(),
                 indoc! {r#"
                     SELECT "special_column", "second_column", "third_column"
                     FROM "my_table"
@@ -69,11 +69,11 @@ mod tests {
         }
         // INSERT single
         {
-            let mut out = String::new();
+            let mut query = RawQuery::default();
             let table = Table::default();
-            WRITER.write_insert(&mut out, [&table], false);
+            WRITER.write_insert(&mut query, [&table], false);
             assert_eq!(
-                out,
+                query.as_str(),
                 indoc! {r#"
                     INSERT INTO "my_table" ("special_column", "second_column", "third_column") VALUES
                     (NULL, 0.0, 0);
@@ -82,15 +82,15 @@ mod tests {
         }
         // INSERT single with upsert
         {
-            let mut out = String::new();
+            let mut query = RawQuery::default();
             let table = Table {
                 _first_column: Some("hello".into()),
                 _second_column: 512.5.into(),
                 _third_column: 478,
             };
-            WRITER.write_insert(&mut out, [&table], true);
+            WRITER.write_insert(&mut query, [&table], true);
             assert_eq!(
-                out,
+                query.as_str(),
                 indoc! {r#"
                     INSERT INTO "my_table" ("special_column", "second_column", "third_column") VALUES
                     ('hello', 512.5, 478)
@@ -117,10 +117,10 @@ mod tests {
         }
         // CREATE TABLE IF NOT EXISTS
         {
-            let mut out = String::new();
-            WRITER.write_create_table::<Cart>(&mut out, true);
+            let mut query = RawQuery::default();
+            WRITER.write_create_table::<Cart>(&mut query, true);
             assert_eq!(
-                out,
+                query.as_str(),
                 indoc! {r#"
                     CREATE TABLE IF NOT EXISTS "cart" (
                     "id" UINTEGER PRIMARY KEY,
@@ -135,22 +135,22 @@ mod tests {
         }
         // DROP TABLE
         {
-            let mut out = String::new();
-            WRITER.write_drop_table::<Cart>(&mut out, false);
-            assert_eq!(out, r#"DROP TABLE "cart";"#);
+            let mut query = RawQuery::default();
+            WRITER.write_drop_table::<Cart>(&mut query, false);
+            assert_eq!(query.as_str(), r#"DROP TABLE "cart";"#);
         }
         // SELECT with LIMIT
         {
-            let mut out = String::new();
+            let mut query = RawQuery::default();
             WRITER.write_select(
-                &mut out,
+                &mut query,
                 Cart::columns(),
                 Cart::table(),
                 expr!(Cart::is_active == true && Cart::total_price > 100),
                 Some(1000),
             );
             assert_eq!(
-                out,
+                query.as_str(),
                 indoc! {r#"
                     SELECT "id", "user_id", "created_at", "items", "is_active", "total_price"
                     FROM "cart"
@@ -162,7 +162,7 @@ mod tests {
         }
         // INSERT single
         {
-            let mut out = String::new();
+            let mut query = RawQuery::default();
             let cart = Cart {
                 id: Default::default(),
                 user_id: Uuid::from_str("b0fa843f-6ae4-4a16-a13c-ddf5512f3bb2").unwrap(),
@@ -174,9 +174,9 @@ mod tests {
                 is_active: Default::default(),
                 total_price: Default::default(),
             };
-            WRITER.write_insert(&mut out, [&cart], false);
+            WRITER.write_insert(&mut query, [&cart], false);
             assert_eq!(
-                out,
+                query.as_str(),
                 indoc! {r#"
                     INSERT INTO "cart" ("user_id", "created_at", "items", "is_active", "total_price") VALUES
                     ('b0fa843f-6ae4-4a16-a13c-ddf5512f3bb2', '2025-05-31T12:30:11.0', [], false, 0);
@@ -185,7 +185,7 @@ mod tests {
         }
         // INSERT single with upsert
         {
-            let mut out = String::new();
+            let mut query = RawQuery::default();
             let cart = Cart {
                 id: Default::default(),
                 user_id: Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
@@ -201,9 +201,9 @@ mod tests {
                 is_active: true,
                 total_price: Decimal::new(2599, 2), // 25.99
             };
-            WRITER.write_insert(&mut out, [&cart], true);
+            WRITER.write_insert(&mut query, [&cart], true);
             assert_eq!(
-                out,
+                query.as_str(),
                 indoc! {r#"
                     INSERT INTO "cart" ("user_id", "created_at", "items", "is_active", "total_price") VALUES
                     ('22222222-2222-2222-2222-222222222222', '2020-01-19T19:26:54.0', ['30c68157-5c43-452d-8caa-300776260b3f','772ba17d-b3bd-4771-a34e-2926d4731b44','3d4e9cb1-021f-48ab-848e-6c97d0ad670d'], true, 25.99)

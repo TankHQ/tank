@@ -1,4 +1,6 @@
-use crate::{DefaultValueType, Expression, OpPrecedence, TableRef, Value, writer::Context};
+use crate::{
+    DefaultValueType, Expression, OpPrecedence, RawQuery, TableRef, Value, writer::Context,
+};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
 use std::collections::BTreeMap;
@@ -143,7 +145,12 @@ impl OpPrecedence for ColumnRef {
 }
 
 impl Expression for ColumnRef {
-    fn write_query(&self, writer: &dyn crate::SqlWriter, context: &mut Context, out: &mut String) {
+    fn write_query(
+        &self,
+        writer: &dyn crate::SqlWriter,
+        context: &mut Context,
+        out: &mut RawQuery,
+    ) {
         writer.write_column_ref(context, out, self);
     }
 }
@@ -155,7 +162,12 @@ impl OpPrecedence for ColumnDef {
 }
 
 impl Expression for ColumnDef {
-    fn write_query(&self, writer: &dyn crate::SqlWriter, context: &mut Context, out: &mut String) {
+    fn write_query(
+        &self,
+        writer: &dyn crate::SqlWriter,
+        context: &mut Context,
+        out: &mut RawQuery,
+    ) {
         writer.write_column_ref(context, out, &self.column_ref);
     }
 }

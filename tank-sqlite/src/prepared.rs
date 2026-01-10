@@ -7,8 +7,8 @@ use std::{
     os::raw::{c_char, c_void},
 };
 use tank_core::{
-    AsValue, Context, Error, Fragment, Prepared, Result, SqlWriter, Value, error_message_from_ptr,
-    truncate_long,
+    AsValue, Context, Error, Fragment, Prepared, RawQuery, Result, SqlWriter, TableRef, Value,
+    error_message_from_ptr, truncate_long,
 };
 
 /// Prepared statement wrapper for SQLite.
@@ -18,6 +18,7 @@ use tank_core::{
 pub struct SQLitePrepared {
     pub(crate) statement: CBox<*mut sqlite3_stmt>,
     pub(crate) index: u64,
+    pub(crate) table: TableRef,
 }
 
 impl SQLitePrepared {
@@ -26,6 +27,7 @@ impl SQLitePrepared {
         Self {
             statement: statement.into(),
             index: 1,
+            table: Default::default(),
         }
     }
     pub(crate) fn statement(&self) -> *mut sqlite3_stmt {
@@ -168,7 +170,7 @@ impl Prepared for SQLitePrepared {
                     SQLITE_TRANSIENT(),
                 ),
                 Value::Date(Some(v), ..) => {
-                    let mut out = String::with_capacity(32);
+                    let mut out = RawQuery::with_capacity(32);
                     Self::WRITER.write_value_date(
                         &mut Context::fragment(Fragment::ParameterBinding),
                         &mut out,
@@ -178,13 +180,13 @@ impl Prepared for SQLitePrepared {
                     sqlite3_bind_text(
                         statement,
                         index,
-                        out.as_ptr() as *const c_char,
+                        out.as_str().as_ptr() as *const c_char,
                         out.len() as c_int,
                         SQLITE_TRANSIENT(),
                     )
                 }
                 Value::Time(Some(v), ..) => {
-                    let mut out = String::with_capacity(32);
+                    let mut out = RawQuery::with_capacity(32);
                     Self::WRITER.write_value_time(
                         &mut Context::fragment(Fragment::ParameterBinding),
                         &mut out,
@@ -194,13 +196,13 @@ impl Prepared for SQLitePrepared {
                     sqlite3_bind_text(
                         statement,
                         index,
-                        out.as_ptr() as *const c_char,
+                        out.as_str().as_ptr() as *const c_char,
                         out.len() as c_int,
                         SQLITE_TRANSIENT(),
                     )
                 }
                 Value::Timestamp(Some(v), ..) => {
-                    let mut out = String::with_capacity(32);
+                    let mut out = RawQuery::with_capacity(32);
                     Self::WRITER.write_value_timestamp(
                         &mut Context::fragment(Fragment::ParameterBinding),
                         &mut out,
@@ -209,13 +211,13 @@ impl Prepared for SQLitePrepared {
                     sqlite3_bind_text(
                         statement,
                         index,
-                        out.as_ptr() as *const c_char,
+                        out.as_str().as_ptr() as *const c_char,
                         out.len() as c_int,
                         SQLITE_TRANSIENT(),
                     )
                 }
                 Value::TimestampWithTimezone(Some(v), ..) => {
-                    let mut out = String::with_capacity(32);
+                    let mut out = RawQuery::with_capacity(32);
                     Self::WRITER.write_value_timestamptz(
                         &mut Context::fragment(Fragment::ParameterBinding),
                         &mut out,
@@ -224,7 +226,7 @@ impl Prepared for SQLitePrepared {
                     sqlite3_bind_text(
                         statement,
                         index,
-                        out.as_ptr() as *const c_char,
+                        out.as_str().as_ptr() as *const c_char,
                         out.len() as c_int,
                         SQLITE_TRANSIENT(),
                     )
@@ -260,6 +262,15 @@ impl Prepared for SQLitePrepared {
             self.index = index as u64 + 1;
             Ok(self)
         }
+    }
+
+    fn with_table(mut self, table: TableRef) -> Self {
+        self.table = table;
+        self
+    }
+
+    fn table(&self) -> &TableRef {
+        &self.table
     }
 }
 

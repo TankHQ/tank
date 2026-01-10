@@ -4,8 +4,8 @@ mod tests {
     use rust_decimal::{Decimal, prelude::FromPrimitive};
     use std::{borrow::Cow, sync::Arc, time::Duration};
     use tank::{
-        DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, SqlWriter, TableRef, Value,
-        expr,
+        DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, RawQuery, SqlWriter, TableRef,
+        Value, expr,
     };
 
     #[derive(Entity)]
@@ -124,10 +124,10 @@ mod tests {
 
     #[test]
     fn test_odd_entity_create_table() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_create_table::<MyEntity>(&mut query, true);
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 CREATE TABLE IF NOT EXISTS "a_table" (
                 "alpha" DOUBLE NOT NULL,
@@ -143,14 +143,14 @@ mod tests {
 
     #[test]
     fn test_odd_entity_drop_table() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_drop_table::<MyEntity>(&mut query, false);
-        assert_eq!(query, r#"DROP TABLE "a_table";"#);
+        assert_eq!(query.as_str(), r#"DROP TABLE "a_table";"#);
     }
 
     #[test]
     fn test_odd_entity_select() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_select(
             &mut query,
             MyEntity::columns(),
@@ -159,7 +159,7 @@ mod tests {
             Some(300),
         );
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 SELECT "alpha", "bravo", "charlie", "delta", "echo"
                 FROM "a_table"
@@ -172,10 +172,10 @@ mod tests {
 
     #[test]
     fn test_odd_entity_insert() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_insert(&mut query, [&MyEntity::sample()], true);
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 INSERT INTO "a_table" ("alpha", "bravo", "charlie", "delta", "echo") VALUES
                 (0.0, 2, 10.2, INTERVAL '1 SECOND', 23.44)
@@ -190,10 +190,10 @@ mod tests {
 
     #[test]
     fn test_odd_entity_delete() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_delete::<MyEntity>(&mut query, expr!(MyEntity::_echo == 5));
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 DELETE FROM "a_table"
                 WHERE "echo" = 5;

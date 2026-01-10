@@ -9,8 +9,8 @@ use scylla::{
 };
 use std::{borrow::Cow, num::NonZeroUsize, ops::ControlFlow, pin::pin, sync::Arc, time::Duration};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowLabeled,
-    impl_executor_transaction,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result,
+    RowLabeled, impl_executor_transaction,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
@@ -61,12 +61,16 @@ impl Executor for ScyllaDBConnection {
         false
     }
 
-    async fn prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
+    async fn prepare(&mut self, sql: RawQuery) -> Result<Query<Self::Driver>> {
         let context = format!(
             "While preparing the query:\n{}",
             truncate_long!(sql.as_str())
         );
-        let statement = self.session.prepare(sql).await.with_context(|| context)?;
+        let statement = self
+            .session
+            .prepare(sql.as_str())
+            .await
+            .with_context(|| context)?;
         Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
     }
 

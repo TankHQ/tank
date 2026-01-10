@@ -5,7 +5,7 @@ use std::{
     fmt::{self, Debug, Display},
     mem,
 };
-use tank_core::{AsValue, Error, Prepared, Result, Value};
+use tank_core::{AsValue, Error, Prepared, Result, TableRef, Value};
 
 #[derive(Debug)]
 /// Prepared statement wrapper for MySQL/MariaDB.
@@ -16,9 +16,8 @@ pub struct MySQLPrepared {
     pub(crate) statement: Statement,
     pub(crate) params: Vec<Value>,
     pub(crate) index: u64,
+    pub(crate) table: TableRef,
 }
-
-pub type MariaDBPrepared = MySQLPrepared;
 
 impl MySQLPrepared {
     pub(crate) fn new(statement: Statement) -> Self {
@@ -26,6 +25,7 @@ impl MySQLPrepared {
             statement,
             params: Vec::new(),
             index: 0,
+            table: Default::default(),
         }
     }
     pub(crate) fn take_params(&mut self) -> Result<mysql_async::Params> {
@@ -62,6 +62,15 @@ impl Prepared for MySQLPrepared {
         *target = value.as_value();
         self.index = index + 1;
         Ok(self)
+    }
+
+    fn with_table(mut self, table: TableRef) -> Self {
+        self.table = table;
+        self
+    }
+
+    fn table(&self) -> &TableRef {
+        &self.table
     }
 }
 

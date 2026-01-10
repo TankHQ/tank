@@ -1,5 +1,5 @@
 use crate::{
-    Driver, Executor, Expression, Query, Result, RowLabeled,
+    Driver, Executor, Expression, Query, RawQuery, Result, RowLabeled, TableRef,
     stream::Stream,
     writer::{Context, SqlWriter},
 };
@@ -13,8 +13,10 @@ pub trait DataSet {
     fn qualified_columns() -> bool
     where
         Self: Sized;
-    /// Render into `out`.
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut String);
+    /// Render the sql bits representing this data set into `out`.
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery);
+    /// TableRef representing this data set
+    fn table_ref(&self) -> TableRef;
     /// Fetch a SELECT query and stream labeled rows.
     fn select<'s, Exec, Item>(
         &'s self,
@@ -28,7 +30,7 @@ pub trait DataSet {
         Exec: Executor,
         Item: Expression,
     {
-        let mut query = String::with_capacity(1024);
+        let mut query = RawQuery::with_capacity(1024);
         executor
             .driver()
             .sql_writer()
@@ -48,7 +50,7 @@ pub trait DataSet {
         Item: Expression,
         Exec: Executor,
     {
-        let mut query = String::with_capacity(1024);
+        let mut query = RawQuery::with_capacity(1024);
         executor
             .driver()
             .sql_writer()
@@ -64,7 +66,10 @@ impl DataSet for &dyn DataSet {
     {
         unreachable!("Cannot call static qualified_columns on a dyn object directly");
     }
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut String) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery) {
         (*self).write_query(writer, context, out)
+    }
+    fn table_ref(&self) -> TableRef {
+        (*self).table_ref()
     }
 }

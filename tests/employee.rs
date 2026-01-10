@@ -3,8 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::{borrow::Cow, collections::HashMap};
     use tank::{
-        DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, SqlWriter, TableRef,
-        Value, expr,
+        DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, RawQuery, SqlWriter,
+        TableRef, Value, expr,
     };
     use time::{Date, Month, Time};
     use uuid::Uuid;
@@ -165,10 +165,10 @@ mod tests {
 
     #[test]
     fn test_employee_create_table() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_create_table::<Employee>(&mut query, false);
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 CREATE TABLE "company"."employee" (
                 "id" UINTEGER PRIMARY KEY,
@@ -187,14 +187,17 @@ mod tests {
 
     #[test]
     fn test_employee_drop_table() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_drop_table::<Employee>(&mut query, true);
-        assert_eq!(query, r#"DROP TABLE IF EXISTS "company"."employee";"#);
+        assert_eq!(
+            query.as_str(),
+            r#"DROP TABLE IF EXISTS "company"."employee";"#
+        );
     }
 
     #[test]
     fn test_employee_select() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_select(
             &mut query,
             Employee::columns(),
@@ -203,7 +206,7 @@ mod tests {
             Some(10),
         );
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 SELECT "id", "name", "hire_date", "working_hours", "salary", "skills", "documents", "access", "deleted"
                 FROM "company"."employee"
@@ -219,10 +222,10 @@ mod tests {
         let mut docs = HashMap::new();
         docs.insert("contract.pdf".to_string(), vec![1, 2, 3, 4]);
         let employee = Employee::sample();
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_insert(&mut query, [&employee], false);
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 INSERT INTO "company"."employee" ("id", "name", "hire_date", "working_hours", "salary", "skills", "documents", "deleted") VALUES
                 (501, 'Bob Smith', '2022-01-20', ['09:00:00.0','18:00:00.0'], 75000.0, ['Rust','SQL'], {'contract.pdf':'\x25\x50\x44\x46'}, true);
@@ -235,10 +238,10 @@ mod tests {
                 .into(),
             ..Employee::sample()
         };
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_insert(&mut query, [&employee], false);
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 INSERT INTO "company"."employee" ("id", "name", "hire_date", "working_hours", "salary", "skills", "documents", "access", "deleted") VALUES
                 (501, 'Bob Smith', '2022-01-20', ['09:00:00.0','18:00:00.0'], 75000.0, ['Rust','SQL'], {'contract.pdf':'\x25\x50\x44\x46'}, '8f8fcc51-2fa9-4118-b14f-af2d8301a89a', true);
@@ -249,10 +252,10 @@ mod tests {
 
     #[test]
     fn test_sql_delete() {
-        let mut query = String::new();
+        let mut query = RawQuery::default();
         WRITER.write_delete::<Employee>(&mut query, expr!(Employee::name == "Bob"));
         assert_eq!(
-            query,
+            query.as_str(),
             indoc! {r#"
                 DELETE FROM "company"."employee"
                 WHERE "name" = 'Bob';
