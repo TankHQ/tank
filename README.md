@@ -32,10 +32,10 @@ https://crates.io/crates/tank
 - **TLS** - No open radios on this battlefield.
 - **Joins** - Multi unit coordination.
 - **Raw SQL** - You're never limited by the abstractions provided.
+- **Zero setup** - Skip training. Go straight to live fire.
 
 ## No-fly zone
 - No schema migrations (just table creation and destroy for fast setup).
-- No implicit joins (no entities as fields, joins are explicit, every alliance is signed).
 
 ## Getting started
 1) Arm your cargo
