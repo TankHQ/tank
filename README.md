@@ -23,6 +23,8 @@ https://crates.io/crates/tank
 - More to be decided...
 
 ## Mission objectives
+Tank exists to build the best ORM possible in Rust, not merely an improvement on what exists today, but a clean-slate design focused on ergonomics, flexibility, licensing and broad database support.
+
 - **Async operations** - Fire and forget.
 - **Designed to be extensible** - Swap databases like changing magazines mid-battle.
 - **SQL and NoSQL support** - One Tank, all terrains.
@@ -88,11 +90,6 @@ async fn data() -> Result<()> {
         is_operational: false,
         units_produced: Some(1_347),
     };
-
-    /*
-     * DROP TABLE IF EXISTS "army"."tank";
-     */
-    Tank::drop_table(connection, true, false).await?;
 
     /*
      * CREATE SCHEMA IF NOT EXISTS "army";
