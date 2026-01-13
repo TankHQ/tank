@@ -1,9 +1,11 @@
 use std::sync::LazyLock;
 use tank::{
-    Connection, DataSet, Entity, Transaction, cols,
+    Connection, Entity, QueryBuilder, Transaction, cols,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
+
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Entity)]
 struct EntityA {
@@ -11,13 +13,13 @@ struct EntityA {
     name: String,
     field: i64,
 }
+
 #[derive(Entity)]
 struct EntityB {
     #[tank(primary_key)]
     name: String,
     field: i64,
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 /// Test the transaction functionality using only inserts and deletes (no select)
 pub async fn transaction1<C: Connection>(connection: &mut C) {
@@ -91,15 +93,27 @@ pub async fn transaction1<C: Connection>(connection: &mut C) {
         .expect("Failed to rollback the transaction");
 
     // Expect empty tables
-    let entities = EntityA::table()
-        .select(connection, cols!(*), &true, None)
+    let entities = connection
+        .fetch(
+            QueryBuilder::new()
+                .select(cols!(*))
+                .from(EntityA::table())
+                .where_condition(true)
+                .build(&connection.driver()),
+        )
         .try_collect::<Vec<_>>()
         .await
         .expect("Could not select EntityA rows");
     assert!(entities.is_empty());
 
-    let entities = EntityB::table()
-        .select(connection, cols!(*), &true, None)
+    let entities = connection
+        .fetch(
+            QueryBuilder::new()
+                .select(cols!(*))
+                .from(EntityB::table())
+                .where_condition(true)
+                .build(&connection.driver()),
+        )
         .try_collect::<Vec<_>>()
         .await
         .expect("Could not select EntityB rows");

@@ -1,12 +1,14 @@
 #![allow(unused_imports)]
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
 use tank::{
-    AsValue, DataSet, Driver, Entity, Executor, Passive, Query, QueryResult, RawQuery, RowLabeled,
-    SqlWriter, Value, cols, expr, join,
+    AsValue, DataSet, Driver, Entity, Executor, Passive, Query, QueryBuilder, QueryResult,
+    RawQuery, RowLabeled, SqlWriter, Value, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
 use uuid::Uuid;
+
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Entity, Debug, Clone, PartialEq)]
 #[tank(schema = "testing", name = "authors")]
@@ -17,6 +19,7 @@ pub struct Author {
     pub country: String,
     pub books_published: Option<u16>,
 }
+
 #[derive(Entity, Debug, Clone, PartialEq)]
 #[tank(schema = "testing", name = "books", primary_key = (Self::title, Self::author))]
 pub struct Book {
@@ -31,7 +34,6 @@ pub struct Book {
     pub co_author: Option<Uuid>,
     pub year: i32,
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn books<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;
@@ -184,12 +186,13 @@ pub async fn books<E: Executor>(executor: &mut E) {
     );
 
     // Get books before 2000
-    let result = join!(Book B JOIN Author A ON B.author == A.author_id)
-        .select(
-            executor,
-            &[expr!(B.title), expr!(A.name)],
-            expr!(B.year < 2000),
-            None,
+    let result = executor
+        .fetch(
+            QueryBuilder::new()
+                .select(&[expr!(B.title), expr!(A.name)])
+                .from(join!(Book B JOIN Author A ON B.author == A.author_id))
+                .where_condition(expr!(B.year < 2000))
+                .build(&executor.driver()),
         )
         .try_collect::<Vec<RowLabeled>>()
         .await
@@ -227,13 +230,13 @@ pub async fn books<E: Executor>(executor: &mut E) {
         Book B LEFT JOIN Author A1 ON B.author == A1.author_id
             LEFT JOIN Author A2 ON B.co_author == A2.author_id
     );
-    let result = dataset
-        .select(
-            executor,
-            cols!(B.title, A1.name as author, A2.name as co_author),
-            &true,
-            None,
-        )
+    let result = executor.fetch(
+            QueryBuilder::new()
+                .select(cols!(B.title, A1.name as author, A2.name as co_author))
+                .from(dataset)
+                .where_condition(true)
+                .build(&executor.driver())
+        ) 
         .try_collect::<Vec<RowLabeled>>()
         .await
         .expect("Failed to query books and authors joined")
@@ -291,12 +294,12 @@ pub async fn books<E: Executor>(executor: &mut E) {
         pub title: Option<String>,
         pub author: Option<String>,
     }
-    let books = join!(Book JOIN Author ON Book::author == Author::id)
-        .select(
-            executor,
-            cols!(Book::title, Author::name as author, Book::year),
-            &true,
-            None,
+    let books = executor.fetch(
+            QueryBuilder::new()
+                .select(cols!(Book::title, Author::name as author, Book::year))
+                .from(join!(Book JOIN Author ON Book::author == Author::id))
+                .where_condition(true)
+                .build(&executor.driver())
         )
         .and_then(|row| async { Books::from_row(row) })
         .try_collect::<HashSet<_>>()
@@ -351,8 +354,13 @@ pub async fn books<E: Executor>(executor: &mut E) {
     #[cfg(not(feature = "disable-ordering"))]
     {
         // Authors names alphabetical order
-        let authors = Author::table()
-            .select(executor, cols!(Author::name ASC), &true, None)
+        let authors = executor.fetch(
+            QueryBuilder::new()
+                .select(cols!(Author::name ASC))
+                .from(Author::table())
+                .where_condition(true)
+                .build(&executor.driver())
+            )
             .and_then(|row| async move { AsValue::try_from_value((*row.values)[0].clone()) })
             .try_collect::<Vec<String>>()
             .await
@@ -375,17 +383,19 @@ pub async fn books<E: Executor>(executor: &mut E) {
         let writer = executor.driver().sql_writer();
         writer.write_select(
             &mut query,
-            Book::columns(),
-            Book::table(),
-            expr!(Book::title == "Metro 2033"),
-            Some(1),
+            &QueryBuilder::new()
+                .select(Book::columns())
+                .from(Book::table())
+                .where_condition(expr!(Book::title == "Metro 2033"))
+                .limit(Some(1))
         );
         writer.write_select(
             &mut query,
-            Book::columns(),
-            Book::table(),
-            expr!(Book::title == "Harry Potter and the Deathly Hallows"),
-            Some(1),
+            &QueryBuilder::new()
+                .select(Book::columns())
+                .from(Book::table())
+                .where_condition(expr!(Book::title == "Harry Potter and the Deathly Hallows"))
+                .limit(Some(1))
         );
         let mut stream = pin!(executor.run(query));
         let Some(Ok(QueryResult::Row(row))) = stream.next().await else {

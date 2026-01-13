@@ -313,14 +313,14 @@ impl Executor for DuckDBConnection {
                     connection,
                     as_c_string(catalog).as_ptr(),
                     as_c_string(schema).as_ptr(),
-                    as_c_string(table_ref.name()).as_ptr(),
+                    as_c_string((&table_ref.name) as &str).as_ptr(),
                     &mut *appender,
                 )
             } else {
                 duckdb_appender_create(
                     connection,
-                    as_c_string(table_ref.schema()).as_ptr(),
-                    as_c_string(table_ref.name()).as_ptr(),
+                    as_c_string(&table_ref.schema as &str).as_ptr(),
+                    as_c_string(&table_ref.name as &str).as_ptr(),
                     &mut *appender,
                 )
             };

@@ -1,10 +1,13 @@
 use std::collections::BTreeSet;
 use std::{pin::pin, sync::LazyLock};
-use tank::{
-    AsValue, DataSet, Entity, Passive, RowLabeled, expr, stream::StreamExt, stream::TryStreamExt,
-};
-use tank::{Executor, cols};
+use tank::{AsValue, Entity, Passive, RowLabeled, expr, stream::StreamExt, stream::TryStreamExt};
+use tank::{Executor, QueryBuilder, cols};
 use tokio::sync::Mutex;
+
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+const EXPECTED_SUM: u32 = 68978385;
+const EXPECTED_AVG: u32 = 5873;
+const COUNT: u32 = 11745;
 
 #[derive(Default, Entity)]
 struct Values {
@@ -12,10 +15,6 @@ struct Values {
     /// This column contains the actual value
     value: u32,
 }
-const EXPECTED_SUM: u32 = 68978385;
-const EXPECTED_AVG: u32 = 5873;
-const COUNT: u32 = 11745;
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn aggregates<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock();
@@ -59,12 +58,15 @@ pub async fn aggregates<E: Executor>(executor: &mut E) {
 
     // SELECT COUNT(*), SUM(value)
     {
-        let mut stream = pin!(Values::table().select(
-            executor,
-            cols!(COUNT(*), SUM(Values::value)),
-            &true,
-            None
-        ));
+        let mut stream = pin!(
+            executor.fetch(
+                QueryBuilder::new()
+                    .select(cols!(COUNT(*), SUM(Values::value)))
+                    .from(Values::table())
+                    .where_condition(true)
+                    .build(&executor.driver())
+            )
+        );
         let count = stream.next().await;
         assert!(
             stream.next().await.is_none(),
@@ -94,7 +96,15 @@ pub async fn aggregates<E: Executor>(executor: &mut E) {
     // SELECT *
     {
         {
-            let stream = pin!(Values::table().select(executor, cols!(*), &true, None));
+            let stream = pin!(
+                executor.fetch(
+                    QueryBuilder::new()
+                        .select(cols!(*))
+                        .from(Values::table())
+                        .where_condition(true)
+                        .build(&executor.driver())
+                )
+            );
             let values = stream
                 .map(|row| {
                     let row = row.expect("Error while fetching the row");

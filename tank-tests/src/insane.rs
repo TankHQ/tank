@@ -12,6 +12,8 @@ use time::Time;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
 #[derive(Entity)]
 struct InsaneNullFields {
     #[cfg(all(
@@ -49,7 +51,6 @@ struct InsaneNullFields {
     blue: Vec<Option<Arc<VecDeque<i32>>>>,
     green: Box<RefCell<Arc<Box<Arc<Arc<Arc<RefCell<time::Time>>>>>>>>,
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn insane<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;

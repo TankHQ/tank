@@ -1,12 +1,14 @@
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    DataSet, Driver, Entity, Executor, QueryResult, RawQuery, Result, RowsAffected, SqlWriter,
+    Driver, Entity, Executor, QueryBuilder, QueryResult, RawQuery, Result, RowsAffected, SqlWriter,
     cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, OffsetDateTime, Time, UtcOffset, macros::date};
 use tokio::sync::Mutex;
 use uuid::Uuid;
+
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Entity)]
 #[tank(schema = "operations", name = "radio_operator")]
@@ -35,7 +37,6 @@ pub struct RadioLog {
     #[tank(name = "rssi")]
     pub signal_strength: i8,
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
     let _lock = MUTEX.lock().await;
@@ -142,10 +143,11 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
     );
     writer.write_select(
         &mut query,
-        RadioLog::columns(),
-        RadioLog::table(),
-        true,
-        Some(50),
+        &QueryBuilder::new()
+            .select(RadioLog::columns())
+            .from(RadioLog::table())
+            .where_condition(true)
+            .limit(Some(50)),
     );
     {
         let mut stream = pin!(executor.run(query));
@@ -275,17 +277,21 @@ pub async fn advanced_operations<E: Executor>(executor: &mut E) -> Result<()> {
         .await
         .expect("Could not insert radio logs");
 
-    let messages = join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operator)
-        .select(
-            executor,
-            cols!(
-                RadioLog::signal_strength as strength DESC,
-                Operator::callsign ASC,
-                RadioLog::message,
-            ),
-            // X != Y as LIKE => X NOT LIKE Y
-            expr!(Operator::is_certified && RadioLog::message != "Radio check%" as LIKE),
-            Some(100),
+    let messages = executor
+        .fetch(
+            QueryBuilder::new()
+                .select(cols!(
+                    RadioLog::signal_strength as strength DESC,
+                    Operator::callsign ASC,
+                    RadioLog::message,
+                ))
+                .from(join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operator))
+                .where_condition(expr!(
+                    // X != Y as LIKE => X NOT LIKE Y
+                    Operator::is_certified && RadioLog::message != "Radio check%" as LIKE
+                ))
+                .limit(Some(100))
+                .build(&executor.driver()),
         )
         .map(|row| {
             row.and_then(|row| {

@@ -3,8 +3,8 @@ use async_stream::try_stream;
 use mongodb::{Client, Database, bson, options::ClientOptions};
 use std::borrow::Cow;
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowLabeled,
-    RowsAffected, Value as TankValue,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result,
+    RowLabeled, RowsAffected, Value as TankValue,
     stream::{self, Stream},
     truncate_long,
 };
@@ -12,12 +12,15 @@ use tank_core::{
 /// Minimal MongoDB connection wrapper used by the driver.
 pub struct MongoDBConnection {
     client: Client,
-    database: Database,
+    default_database: Database,
 }
 
 impl MongoDBConnection {
-    pub fn new(client: Client, database: Database) -> Self {
-        MongoDBConnection { client, database }
+    pub fn new(client: Client, default_database: Database) -> Self {
+        MongoDBConnection {
+            client,
+            default_database,
+        }
     }
 }
 
@@ -43,11 +46,11 @@ impl Connection for MongoDBConnection {
 }
 
 impl Executor for MongoDBConnection {
-    type Driver;
+    type Driver = MongoDBDriver;
 
     fn prepare(
         &mut self,
-        query: String,
+        query: RawQuery,
     ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
         todo!()
     }
@@ -63,13 +66,10 @@ impl Executor for MongoDBConnection {
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
     ) -> impl Stream<Item = Result<RowLabeled>> + Send {
-        self.run(query).filter_map(|v| async move {
-            match v {
-                Ok(QueryResult::Row(v)) => Some(Ok(v)),
-                Err(e) => Some(Err(e)),
-                _ => None,
-            }
-        })
+        let mut query = query.as_query();
+        let query = query.as_mut();
+        let database = self.client.database(&query.table().schema);
+        {}
     }
 
     fn execute<'s>(

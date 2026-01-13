@@ -1,8 +1,10 @@
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use std::sync::LazyLock;
-use tank::{AsValue, DataSet, Entity, Executor, cols, expr, stream::TryStreamExt};
+use tank::{AsValue, Entity, Executor, QueryBuilder, cols, expr, stream::TryStreamExt};
 use time::{Date, Month, PrimitiveDateTime, Time};
 use tokio::sync::Mutex;
+
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Entity, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Times {
@@ -13,7 +15,6 @@ pub struct Times {
     pub time_1: time::Time,
     pub time_2: NaiveTime,
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn times<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;
@@ -182,12 +183,13 @@ pub async fn times<E: Executor>(executor: &mut E) {
      */
 
     // Query timestamp 1
-    let mut query_timestamp_1 = Times::table()
+    let mut query_timestamp_1 = executor
         .prepare(
-            executor,
-            cols!(Times::timestamp_1 DESC),
-            expr!(Times::timestamp_2 > ?),
-            None,
+            QueryBuilder::new()
+                .select(cols!(Times::timestamp_1 DESC))
+                .from(Times::table())
+                .where_condition(expr!(Times::timestamp_2 > ?))
+                .build(&executor.driver()),
         )
         .await
         .expect("Could not prepare the query timestamp 1");
@@ -260,12 +262,13 @@ pub async fn times<E: Executor>(executor: &mut E) {
     );
 
     // Query timestamp 2
-    let mut query_timestamp_2 = Times::table()
+    let mut query_timestamp_2 = executor
         .prepare(
-            executor,
-            cols!(Times::timestamp_2 ASC),
-            expr!(Times::timestamp_1 <= ?),
-            None,
+            QueryBuilder::new()
+                .select(cols!(Times::timestamp_2 ASC))
+                .from(Times::table())
+                .where_condition(expr!(Times::timestamp_1 <= ?))
+                .build(&executor.driver()),
         )
         .await
         .expect("Could not prepare the query timestamp 1");
@@ -301,8 +304,14 @@ pub async fn times<E: Executor>(executor: &mut E) {
     );
 
     // Query time 1
-    let mut query_time_1 = Times::table()
-        .prepare(executor, cols!(Times::time_1 DESC), &true, None)
+    let mut query_time_1 = executor
+        .prepare(
+            QueryBuilder::new()
+                .select(cols!(Times::time_1 DESC))
+                .from(Times::table())
+                .where_condition(true)
+                .build(&executor.driver()),
+        )
         .await
         .expect("Could not prepare the query timestamp 1");
     let values = executor

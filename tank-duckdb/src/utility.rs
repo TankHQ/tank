@@ -98,7 +98,7 @@ pub(crate) fn tank_value_to_duckdb_logical_type(v: &Value) -> CBox<duckdb_logica
                         .as_mut_ptr(),
                     v.len() as u64,
                 );
-                let name = as_c_string(type_ref.name());
+                let name = as_c_string(&type_ref.name as &str);
                 duckdb_logical_type_set_alias(*result, name.as_ptr());
             }
             _ => {

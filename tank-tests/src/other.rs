@@ -1,6 +1,6 @@
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    DataSet, Entity, Executor, cols,
+    Entity, Executor, QueryBuilder, cols,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -33,14 +33,19 @@ pub async fn other<E: Executor>(executor: &mut E) {
     .expect("Could not save a row");
 
     // SELECT NULL
-    let value = pin!(
-        ATable::table()
-            .select(executor, cols!(NULL), true, None)
-            .map_ok(|v| v.values.into_iter().nth(0).unwrap())
-    )
-    .next()
-    .await
-    .expect("No result returned from the stream")
-    .expect("Could not query for NULL");
+    let stream = executor
+        .fetch(
+            QueryBuilder::new()
+                .select(cols!(NULL))
+                .from(ATable::table())
+                .where_condition(true)
+                .build(&executor.driver()),
+        )
+        .map_ok(|v| v.values.into_iter().nth(0).unwrap());
+    let value = pin!(stream)
+        .next()
+        .await
+        .expect("No result returned from the stream")
+        .expect("Could not query for NULL");
     assert!(value.is_null());
 }

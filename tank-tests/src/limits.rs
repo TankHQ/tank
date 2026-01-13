@@ -6,6 +6,8 @@ use tank::{Entity, Executor, Interval, RawQuery};
 use time::{Date, Month, Time};
 use tokio::sync::Mutex;
 
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
 // Safe max value
 const F32_MAX: f32 = 3.4e+38_f32;
 
@@ -34,7 +36,6 @@ struct Limits {
     #[cfg(not(feature = "disable-intervals"))]
     interval: Interval,
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn limits<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;

@@ -6,6 +6,8 @@ use tank::{
 };
 use tokio::sync::Mutex;
 
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
 #[derive(Entity, Debug, PartialEq)]
 struct Arrays1 {
     #[cfg(not(feature = "disable-intervals"))]
@@ -23,7 +25,6 @@ struct Arrays2 {
     delta: [[[[f64; 2]; 2]; 1]; 1],
     echo: [[[Cow<'static, str>; 2]; 2]; 1],
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn arrays1<E: Executor>(executor: &mut E) {
     let _ = MUTEX.lock().await;

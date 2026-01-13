@@ -3,8 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::borrow::Cow;
     use tank::{
-        AsValue, DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, RawQuery, SqlWriter,
-        TableRef, Value, expr,
+        AsValue, DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
+        RawQuery, SqlWriter, TableRef, Value, expr,
     };
 
     #[derive(Entity)]
@@ -159,10 +159,11 @@ mod tests {
         let mut query = RawQuery::default();
         WRITER.write_select(
             &mut query,
-            Customer::columns(),
-            Customer::table(),
-            expr!(len(Customer::_values) > 10),
-            Some(10),
+            &QueryBuilder::new()
+                .select(Customer::columns())
+                .from(Customer::table())
+                .where_condition(expr!(len(Customer::_values) > 10))
+                .limit(Some(10)),
         );
         assert_eq!(
             query.as_str(),

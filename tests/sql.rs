@@ -3,7 +3,7 @@ mod tests {
     use indoc::indoc;
     use rust_decimal::Decimal;
     use std::str::FromStr;
-    use tank::{Entity, Passive, RawQuery, SqlWriter, expr};
+    use tank::{Entity, Passive, QueryBuilder, RawQuery, SqlWriter, expr};
     use time::{Date, Month, PrimitiveDateTime, Time};
     use uuid::Uuid;
 
@@ -52,10 +52,12 @@ mod tests {
             let mut query = RawQuery::default();
             WRITER.write_select(
                 &mut query,
-                Table::columns(),
-                Table::table(),
-                expr!(Table::_second_column < 100 && Table::_first_column == "OK"),
-                None,
+                &QueryBuilder::new()
+                    .select(Table::columns())
+                    .from(Table::table())
+                    .where_condition(expr!(
+                        Table::_second_column < 100 && Table::_first_column == "OK"
+                    )),
             );
             assert_eq!(
                 query.as_str(),
@@ -144,10 +146,11 @@ mod tests {
             let mut query = RawQuery::default();
             WRITER.write_select(
                 &mut query,
-                Cart::columns(),
-                Cart::table(),
-                expr!(Cart::is_active == true && Cart::total_price > 100),
-                Some(1000),
+                &QueryBuilder::new()
+                    .select(Cart::columns())
+                    .from(Cart::table())
+                    .where_condition(expr!(Cart::is_active == true && Cart::total_price > 100))
+                    .limit(Some(1000)),
             );
             assert_eq!(
                 query.as_str(),

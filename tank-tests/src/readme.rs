@@ -2,6 +2,8 @@ use std::{borrow::Cow, collections::HashSet, sync::LazyLock};
 use tank::{Entity, Executor, Result, expr, stream::TryStreamExt};
 use tokio::sync::Mutex;
 
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
 #[derive(Entity)]
 #[tank(schema = "army")]
 pub struct Tank {
@@ -15,7 +17,6 @@ pub struct Tank {
     pub is_operational: bool,
     pub units_produced: Option<u32>,
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn readme<E: Executor>(connection: &mut E) -> Result<()> {
     let _lock = MUTEX.lock();
@@ -93,13 +94,9 @@ pub async fn readme<E: Executor>(connection: &mut E) -> Result<()> {
      * WHERE "is_operational" = false
      * LIMIT 1000;
      */
-    let tanks = Tank::find_many(
-        connection,
-        expr!(Tank::is_operational == false),
-        Some(1000),
-    )
-    .try_collect::<Vec<_>>()
-    .await?;
+    let tanks = Tank::find_many(connection, expr!(Tank::is_operational == false), Some(1000))
+        .try_collect::<Vec<_>>()
+        .await?;
 
     assert_eq!(
         tanks

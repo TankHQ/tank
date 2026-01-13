@@ -8,8 +8,8 @@ mod tests {
         collections::{BTreeMap, HashMap},
     };
     use tank::{
-        Action, DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, RawQuery,
-        SqlWriter, TableRef, Value, expr,
+        Action, DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, QueryBuilder,
+        RawQuery, SqlWriter, TableRef, Value, expr,
     };
     use time::macros::datetime;
     use uuid::Uuid;
@@ -283,10 +283,10 @@ mod tests {
         let mut query = RawQuery::default();
         WRITER.write_select(
             &mut query,
-            Trade::columns(),
-            Trade::table(),
-            expr!(Trade::quantity >= 100 && Trade::price > 1000),
-            None,
+            &QueryBuilder::new()
+                .select(Trade::columns())
+                .from(Trade::table())
+                .where_condition(expr!(Trade::quantity >= 100 && Trade::price > 1000)),
         );
         assert_eq!(
             query.as_str(),

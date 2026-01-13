@@ -15,6 +15,8 @@ use time::{Date, Time, macros::date};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
 #[derive(Debug, Entity, PartialEq)]
 pub struct SimpleFields {
     #[tank(primary_key)]
@@ -36,7 +38,6 @@ pub struct SimpleFields {
     oscar: Option<RefCell<FixedDecimal<8, 3>>>,
     papa: Option<FixedDecimal<20, 1>>,
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn simple<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;

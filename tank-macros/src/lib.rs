@@ -166,17 +166,14 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 async move {
                     #primary_key_condition_declaration
                     let condition = ::tank::expr!(#primary_key_condition_expression);
-                    let stream = ::tank::DataSet::select(
-                        Self::table(),
-                        executor,
-                        Self::columns()
-                            .iter()
-                            .map(|c| &c.column_ref as &dyn ::tank::Expression),
-                        &condition,
-                        Some(1),
-                    );
+                    let query = ::tank::QueryBuilder::new()
+                        .select(Self::columns())
+                        .from(Self::table())
+                        .where_condition(condition)
+                        .limit(Some(1))
+                        .build(&executor.driver());
                     // Replace StreamExt::boxed wrapper with ::std::pin::pin! once https://github.com/rust-lang/rust/issues/100013 is fixed
-                    let mut stream = ::tank::stream::StreamExt::boxed(stream);
+                    let mut stream = ::tank::stream::StreamExt::boxed(executor.fetch(query));
                     ::tank::stream::StreamExt::next(&mut stream)
                         .await
                         .map(|v| v.and_then(Self::from_row))

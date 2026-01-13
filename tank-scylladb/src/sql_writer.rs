@@ -245,7 +245,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         if if_not_exists {
             out.push_str("IF NOT EXISTS ");
         }
-        self.write_identifier_quoted(&mut context, out, E::table().schema());
+        self.write_identifier_quoted(&mut context, out, &table.schema);
         out.push('\n');
         out.push_str(indoc! {r#"
             WITH replication = {
@@ -271,7 +271,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         if if_exists {
             out.push_str("IF EXISTS ");
         }
-        self.write_identifier_quoted(&mut context, out, table.schema());
+        self.write_identifier_quoted(&mut context, out, &table.schema);
         out.push(';');
     }
 
@@ -409,14 +409,14 @@ impl SqlWriter for ScyllaDBSqlWriter {
             out.push_str("TRUNCATE ");
         } else {
             out.buffer()
-                .reserve(128 + E::table().schema().len() + E::table().name().len());
+                .reserve(128 + table.schema.len() + table.name.len());
             if !out.is_empty() {
                 out.push('\n');
             }
             out.push_str("DELETE FROM ");
         }
         let mut context = Context::new(Fragment::SqlDeleteFrom, E::qualified_columns());
-        self.write_table_ref(&mut context, out, E::table());
+        self.write_table_ref(&mut context, out, table);
         if !is_true {
             out.push_str("\nWHERE ");
             condition.write_query(

@@ -4,8 +4,8 @@ mod tests {
     use rust_decimal::{Decimal, prelude::FromPrimitive};
     use std::{borrow::Cow, sync::Arc, time::Duration};
     use tank::{
-        DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, RawQuery, SqlWriter, TableRef,
-        Value, expr,
+        DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder, RawQuery,
+        SqlWriter, TableRef, Value, expr,
     };
 
     #[derive(Entity)]
@@ -153,10 +153,11 @@ mod tests {
         let mut query = RawQuery::default();
         WRITER.write_select(
             &mut query,
-            MyEntity::columns(),
-            MyEntity::table(),
-            expr!(MyEntity::_bravo < 0),
-            Some(300),
+            &QueryBuilder::new()
+                .select(MyEntity::columns())
+                .from(MyEntity::table())
+                .where_condition(expr!(MyEntity::_bravo < 0))
+                .limit(Some(300)),
         );
         assert_eq!(
             query.as_str(),

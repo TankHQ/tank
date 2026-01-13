@@ -3,8 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::{borrow::Cow, sync::Mutex};
     use tank::{
-        DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, RawQuery, SqlWriter, TableRef,
-        Value, expr,
+        DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder, RawQuery,
+        SqlWriter, TableRef, Value, expr,
     };
 
     #[derive(Entity)]
@@ -113,10 +113,11 @@ mod tests {
         let mut query = RawQuery::default();
         WRITER.write_select(
             &mut query,
-            SomeSimpleEntity::columns(),
-            SomeSimpleEntity::table(),
-            expr!(SomeSimpleEntity::a > 100),
-            Some(1000),
+            &QueryBuilder::new()
+                .select(SomeSimpleEntity::columns())
+                .from(SomeSimpleEntity::table())
+                .where_condition(expr!(SomeSimpleEntity::a > 100))
+                .limit(Some(1000)),
         );
         assert_eq!(
             query.as_str(),

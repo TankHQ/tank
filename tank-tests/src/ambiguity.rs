@@ -9,6 +9,8 @@ use tank::{
 };
 use tokio::sync::Mutex;
 
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
 mod first_schema {
     use std::sync::Arc;
     use tank::Entity;
@@ -21,6 +23,7 @@ mod first_schema {
         #[cfg(not(feature = "disable-large-integers"))]
         pub second_col: Option<u128>,
     }
+
     #[derive(Debug, Entity, PartialEq)]
     #[tank(schema = "first_schema")]
     pub struct SecondTable {
@@ -42,6 +45,7 @@ mod second_schema {
         #[cfg(not(feature = "disable-large-integers"))]
         pub second_col: Option<u128>,
     }
+
     #[derive(Debug, Entity, PartialEq)]
     #[tank(schema = "second_schema")]
     pub struct SecondTable {
@@ -51,7 +55,6 @@ mod second_schema {
         pub third_col: Option<Arc<u8>>,
     }
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn ambiguity<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;

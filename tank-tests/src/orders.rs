@@ -1,8 +1,12 @@
 use rust_decimal::Decimal;
 use std::sync::LazyLock;
-use tank::{DataSet, Entity, Executor, FixedDecimal, Passive, cols, expr, stream::TryStreamExt};
+use tank::{
+    Entity, Executor, FixedDecimal, Passive, QueryBuilder, cols, expr, stream::TryStreamExt,
+};
 use tokio::sync::Mutex;
 use uuid::Uuid;
+
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Entity, Debug, Clone, PartialEq, Eq, Hash)]
 #[tank(schema = "testing", name = "orders")]
@@ -15,7 +19,6 @@ pub struct Order {
     pub status: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn orders<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;
@@ -95,24 +98,25 @@ pub async fn orders<E: Executor>(executor: &mut E) {
     }
 
     // Prepare
-    let mut query = Order::table()
+    let mut query = executor
         .prepare(
-            executor,
-            cols!(
-                Order::id,
-                Order::customer_id,
-                Order::country,
-                Order::total DESC,
-                Order::status,
-                Order::created_at
-            ),
-            expr!(
-                Order::status == (?, ?) as IN &&
-                Order::created_at >= ? &&
-                Order::total >= ? &&
-                Order::country == (?, ?) as IN
-            ),
-            None,
+            QueryBuilder::new()
+                .select(cols!(
+                    Order::id,
+                    Order::customer_id,
+                    Order::country,
+                    Order::total DESC,
+                    Order::status,
+                    Order::created_at
+                ))
+                .from(Order::table())
+                .where_condition(expr!(
+                    Order::status == (?, ?) as IN
+                        && Order::created_at >= ?
+                        && Order::total >= ?
+                        && Order::country == (?, ?) as IN
+                ))
+                .build(&executor.driver()),
         )
         .await
         .expect("Failed to prepare the query");

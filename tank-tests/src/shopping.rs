@@ -3,6 +3,7 @@ use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::pin::pin;
 use std::{str::FromStr, sync::Arc, sync::LazyLock};
+use tank::QueryBuilder;
 use tank::{
     AsValue, DataSet, Entity, Executor, FixedDecimal, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
@@ -10,6 +11,8 @@ use tank::{
 use time::{Date, Month, PrimitiveDateTime, Time};
 use tokio::sync::Mutex;
 use uuid::Uuid;
+
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Default, Debug, Entity)]
 #[tank(schema = "shopping", primary_key = Self::id)]
@@ -46,7 +49,6 @@ struct Cart {
     price: FixedDecimal<8, 2>,
     timestamp: PrimitiveDateTime,
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn shopping<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;
@@ -101,12 +103,13 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         .expect("Could not insert the products");
     let total_products = Product::find_many(executor, &true, None).count().await;
     assert_eq!(total_products, 4);
-    let ordered_products = Product::table()
-        .select(
-            executor,
-            cols!(Product::id, Product::name, Product::price ASC),
-            expr!(Product::stock > 0),
-            None,
+    let ordered_products = executor
+        .fetch(
+            QueryBuilder::new()
+                .select(cols!(Product::id, Product::name, Product::price ASC))
+                .from(Product::table())
+                .where_condition(expr!(Product::stock > 0))
+                .build(&executor.driver()),
         )
         .map(|r| r.and_then(Product::from_row))
         .try_collect::<Vec<Product>>()
@@ -179,11 +182,20 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
     User::insert_many(executor, &users)
         .await
         .expect("Could not insert the users");
-    let row = pin!(User::table().select(executor, cols!(COUNT(*)), &true, Some(1)))
-        .try_next()
-        .await
-        .expect("Failed to query for count")
-        .expect("Did not return some value");
+    let row = pin!(
+        executor.fetch(
+            QueryBuilder::new()
+                .select(cols!(COUNT(*)))
+                .from(User::table())
+                .where_condition(true)
+                .limit(Some(1))
+                .build(&executor.driver())
+        )
+    )
+    .try_next()
+    .await
+    .expect("Failed to query for count")
+    .expect("Did not return some value");
     assert_eq!(i64::try_from_value(row.values[0].clone()).unwrap(), 2);
 
     // Cart
@@ -259,21 +271,22 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         product: String,
         price: Decimal,
     }
-    let carts: Vec<Carts> = join!(
-        User INNER JOIN Cart ON User::id == Cart::user
-            JOIN Product ON Cart::product == Product::id
-    )
-    .select(
-        executor,
-        cols!(Product::name as product ASC, User::name as user ASC, Cart::price),
-        &true,
-        None,
-    )
-    .map_ok(Carts::from_row)
-    .map(Result::flatten)
-    .try_collect::<Vec<_>>()
-    .await
-    .expect("Could not get the products ordered by increasing price");
+    let carts: Vec<Carts> = executor
+        .fetch(
+            QueryBuilder::new()
+                .select(cols!(Product::name as product ASC, User::name as user ASC, Cart::price))
+                .from(join!(
+                    User INNER JOIN Cart ON User::id == Cart::user
+                        JOIN Product ON Cart::product == Product::id
+                ))
+                .where_condition(true)
+                .build(&executor.driver()),
+        )
+        .map_ok(Carts::from_row)
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Could not get the products ordered by increasing price");
     assert_eq!(
         carts,
         &[

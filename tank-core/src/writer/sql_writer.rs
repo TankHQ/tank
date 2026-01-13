@@ -1,8 +1,8 @@
 use crate::{
     Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, DataSet, EitherIterator, Entity,
     Expression, Fragment, Interval, Join, JoinType, Operand, Order, Ordered, PrimaryKeyType,
-    RawQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized, print_timer,
-    separated_by, writer::Context,
+    QueryData, RawQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized,
+    print_timer, separated_by, writer::Context,
 };
 use core::f64;
 use futures::future::Either;
@@ -859,7 +859,7 @@ pub trait SqlWriter: Send {
         if if_not_exists {
             out.push_str("IF NOT EXISTS ");
         }
-        self.write_identifier_quoted(&mut context, out, table.schema());
+        self.write_identifier_quoted(&mut context, out, &table.schema);
         out.push(';');
     }
 
@@ -880,7 +880,7 @@ pub trait SqlWriter: Send {
         if if_exists {
             out.push_str("IF EXISTS ");
         }
-        self.write_identifier_quoted(&mut context, out, E::table().schema());
+        self.write_identifier_quoted(&mut context, out, &table.schema);
         out.push(';');
     }
 
@@ -1094,18 +1094,15 @@ pub trait SqlWriter: Send {
     }
 
     /// Emit SELECT statement (projection, FROM, WHERE, ORDER, LIMIT).
-    fn write_select<Item, Data>(
-        &self,
-        out: &mut RawQuery,
-        columns: impl IntoIterator<Item = Item> + Clone,
-        from: &Data,
-        condition: impl Expression,
-        limit: Option<u32>,
-    ) where
+    fn write_select<'a, Data>(&self, out: &mut RawQuery, query: &impl QueryData<Data>)
+    where
         Self: Sized,
-        Item: Expression,
-        Data: DataSet,
+        Data: DataSet + 'a,
     {
+        let columns = query.get_select();
+        let Some(from) = query.get_from() else {
+            return;
+        };
         self.update_table_ref(out, &from.table_ref());
         let cols = columns.clone().into_iter().count();
         out.buffer().reserve(128 + cols * 32);
@@ -1130,7 +1127,9 @@ pub trait SqlWriter: Send {
             &mut context.switch_fragment(Fragment::SqlSelectFrom).current,
             out,
         );
-        if !condition.is_true() {
+        if let Some(condition) = query.get_where_condition()
+            && !condition.is_true()
+        {
             out.push_str("\nWHERE ");
             condition.write_query(
                 self,
@@ -1150,7 +1149,7 @@ pub trait SqlWriter: Send {
                 ", ",
             );
         }
-        if let Some(limit) = limit {
+        if let Some(limit) = query.get_limit() {
             let _ = write!(out, "\nLIMIT {limit}");
         }
         out.push(';');

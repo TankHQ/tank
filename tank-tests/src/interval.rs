@@ -8,6 +8,8 @@ use tank::{
 };
 use tokio::sync::Mutex;
 
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
 #[derive(Entity)]
 struct Intervals {
     #[tank(primary_key)]
@@ -16,7 +18,6 @@ struct Intervals {
     second: Interval,
     third: Duration,
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn interval<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;

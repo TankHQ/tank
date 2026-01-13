@@ -8,12 +8,13 @@ use tank::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
 #[derive(Entity, Debug, PartialEq)]
 struct Container {
     first: [[Interval; 2]; 1],
     second: [[[Uuid; 1]; 3]; 1],
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn arrays2<E: Executor>(executor: &mut E) {
     let _ = MUTEX.lock().await;

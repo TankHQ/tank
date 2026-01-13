@@ -3,8 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::{borrow::Cow, collections::HashMap};
     use tank::{
-        DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, RawQuery, SqlWriter,
-        TableRef, Value, expr,
+        DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, QueryBuilder,
+        RawQuery, SqlWriter, TableRef, Value, expr,
     };
     use time::{Date, Month, Time};
     use uuid::Uuid;
@@ -200,10 +200,11 @@ mod tests {
         let mut query = RawQuery::default();
         WRITER.write_select(
             &mut query,
-            Employee::columns(),
-            Employee::table(),
-            expr!(Employee::salary > 50000),
-            Some(10),
+            &QueryBuilder::new()
+                .select(Employee::columns())
+                .from(Employee::table())
+                .where_condition(expr!(Employee::salary > 50000))
+                .limit(Some(10)),
         );
         assert_eq!(
             query.as_str(),

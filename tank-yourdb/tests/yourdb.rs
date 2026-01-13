@@ -11,7 +11,7 @@ mod tests {
     async fn yourdb() {
         init_logs();
         const URL: &'static str = "yourdb://";
-        let _guard = MUTEX.lock().unwrap();
+        let _lock = MUTEX.lock().unwrap();
         let driver = YourDBDriver::new();
         let connection = driver
             .connect(URL.into())

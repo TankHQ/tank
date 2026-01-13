@@ -7,10 +7,13 @@ use std::{
 use tank::{Entity, Executor};
 use tokio::sync::Mutex;
 
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
 #[derive(Default)]
 struct TankUnsupported {
     field: i32,
 }
+
 #[derive(Entity)]
 struct ComplexNullFields {
     #[cfg(not(feature = "disable-arrays"))]
@@ -37,6 +40,7 @@ struct ComplexNullFields {
     #[tank(ignore)]
     sixth: TankUnsupported,
 }
+
 impl Default for ComplexNullFields {
     fn default() -> Self {
         Self {
@@ -65,7 +69,6 @@ impl Default for ComplexNullFields {
         }
     }
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn complex<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;

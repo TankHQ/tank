@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
-use tank::{AsValue, RawQuery};
+use tank::{AsValue, QueryBuilder, RawQuery};
 use tank::{Driver, Entity, Executor, QueryResult, SqlWriter, stream::TryStreamExt};
 use tokio::sync::Mutex;
+
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Debug, Entity, PartialEq)]
 struct One {
@@ -10,16 +12,17 @@ struct One {
     string: String,
     c1: u64,
 }
+
 #[derive(Debug, Entity, PartialEq)]
 struct Two {
     a2: u32,
     string: String,
 }
+
 #[derive(Debug, Entity, PartialEq)]
 struct Three {
     string: String,
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn multiple<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;
@@ -76,7 +79,13 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
         false,
     );
     // 9
-    writer.write_select(&mut query, [Three::string], Three::table(), &true, None);
+    writer.write_select(
+        &mut query,
+        &QueryBuilder::new()
+            .select([Three::string])
+            .from(Three::table())
+            .where_condition(true),
+    );
     // 10
     writer.write_insert(
         &mut query,
@@ -90,18 +99,18 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
     // 11
     writer.write_select(
         &mut query,
-        [One::a1, One::string, One::c1],
-        One::table(),
-        &true,
-        None,
+        &QueryBuilder::new()
+            .select([One::a1, One::string, One::c1])
+            .from(One::table())
+            .where_condition(true),
     );
     // 12
     writer.write_select(
         &mut query,
-        [Two::a2, Two::string],
-        Two::table(),
-        &true,
-        None,
+        &QueryBuilder::new()
+            .select([Two::a2, Two::string])
+            .from(Two::table())
+            .where_condition(true),
     );
     query.push_str("            \t    \t\t  \n \n \n \t    \n\n\n ");
     let result = executor

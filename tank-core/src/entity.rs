@@ -1,7 +1,7 @@
 use crate::{
-    ColumnDef, Context, DataSet, Driver, Error, Executor, Expression, Query, RawQuery, Result, Row,
-    RowLabeled, RowsAffected, TableRef, Value, future::Either, stream::Stream, truncate_long,
-    writer::SqlWriter,
+    ColumnDef, Context, DataSet, Driver, Error, Executor, Expression, Query, QueryBuilder,
+    RawQuery, Result, Row, RowLabeled, RowsAffected, TableRef, Value, future::Either,
+    stream::Stream, truncate_long, writer::SqlWriter,
 };
 use futures::{FutureExt, StreamExt};
 use log::Level;
@@ -62,7 +62,7 @@ pub trait Entity {
         async move {
             let mut query = RawQuery::with_capacity(2048);
             let writer = executor.driver().sql_writer();
-            if create_schema && !Self::table().schema().is_empty() {
+            if create_schema && !Self::table().schema.is_empty() {
                 writer.write_create_schema::<Self>(&mut query, true);
             }
             if !executor.accepts_multiple_statements() && !query.is_empty() {
@@ -100,7 +100,7 @@ pub trait Entity {
             let mut query = RawQuery::with_capacity(256);
             let writer = executor.driver().sql_writer();
             writer.write_drop_table::<Self>(&mut query, if_exists);
-            if drop_schema && !Self::table().schema().is_empty() {
+            if drop_schema && !Self::table().schema.is_empty() {
                 if !executor.accepts_multiple_statements() {
                     let mut q = Query::Raw(query);
                     executor.execute(&mut q).boxed().await?;
@@ -143,7 +143,7 @@ pub trait Entity {
         items: It,
     ) -> impl Future<Output = Result<RowsAffected>> + Send
     where
-        Self: 'a + Sized,
+        Self: Sized + 'a,
         It: IntoIterator<Item = &'a Self> + Send,
         <It as IntoIterator>::IntoIter: Send,
     {
@@ -158,7 +158,15 @@ pub trait Entity {
         condition: impl Expression,
         limit: Option<u32>,
     ) -> impl Future<Output = Result<Query<Exec::Driver>>> {
-        Self::table().prepare(executor, Self::columns(), condition, limit)
+        let builder = QueryBuilder::new()
+            .select(Self::columns())
+            .from(Self::table())
+            .where_condition(condition)
+            .limit(limit);
+        let writer = executor.driver().sql_writer();
+        let mut query = RawQuery::default();
+        writer.write_select(&mut query, &builder);
+        executor.prepare(query)
     }
 
     /// Finds an entity by primary key.
@@ -197,15 +205,13 @@ pub trait Entity {
     where
         Self: Sized,
     {
-        Self::table()
-            .select(
-                executor,
-                Self::columns()
-                    .iter()
-                    .map(|c| &c.column_ref as &dyn Expression),
-                condition,
-                limit,
-            )
+        let builder = QueryBuilder::new()
+            .select(Self::columns())
+            .from(Self::table())
+            .where_condition(condition)
+            .limit(limit);
+        executor
+            .fetch(builder.build(&executor.driver()))
             .map(|result| result.and_then(Self::from_row))
     }
 

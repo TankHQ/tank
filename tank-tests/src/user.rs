@@ -11,6 +11,8 @@ use time::macros::datetime;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
 #[derive(Entity, Debug, Clone)]
 // follower_count is PK to allow ordering for ScyllaDB / Cassandra
 #[tank(schema = "testing", name = "user_profiles", primary_key = (id, follower_count))]
@@ -29,7 +31,6 @@ pub struct UserProfile {
     #[cfg(not(feature = "disable-maps"))]
     pub preferences: Option<BTreeMap<String, String>>,
 }
-static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub async fn users<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;

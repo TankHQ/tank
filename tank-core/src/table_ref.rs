@@ -46,21 +46,6 @@ impl TableRef {
         result.alias = alias.into();
         result
     }
-    /// Return the table name as a borrowed `&str`.
-    pub fn name<'s>(&'s self) -> &'s str {
-        // TODO: replace with .as_str() and make the function const once https://github.com/rust-lang/rust/issues/130366 is stable
-        &self.name
-    }
-    /// Return the schema name as a borrowed `&str` (may be empty).
-    pub fn schema<'s>(&'s self) -> &'s str {
-        // TODO: replace with .as_str() and make the function const once https://github.com/rust-lang/rust/issues/130366 is stable
-        &self.schema
-    }
-    /// Return the alias as a borrowed `&str` (may be empty).
-    pub fn alias<'s>(&'s self) -> &'s str {
-        // TODO: replace with .as_str() and make the function const once https://github.com/rust-lang/rust/issues/130366 is stable
-        &self.alias
-    }
 }
 
 impl DataSet for TableRef {

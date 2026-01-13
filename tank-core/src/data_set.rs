@@ -1,6 +1,5 @@
 use crate::{
-    Driver, Executor, Expression, Query, RawQuery, Result, RowLabeled, TableRef,
-    stream::Stream,
+    RawQuery, TableRef,
     writer::{Context, SqlWriter},
 };
 
@@ -17,46 +16,6 @@ pub trait DataSet {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery);
     /// TableRef representing this data set
     fn table_ref(&self) -> TableRef;
-    /// Fetch a SELECT query and stream labeled rows.
-    fn select<'s, Exec, Item>(
-        &'s self,
-        executor: &'s mut Exec,
-        columns: impl IntoIterator<Item = Item> + Clone,
-        condition: impl Expression,
-        limit: Option<u32>,
-    ) -> impl Stream<Item = Result<RowLabeled>> + 's
-    where
-        Self: Sized,
-        Exec: Executor,
-        Item: Expression,
-    {
-        let mut query = RawQuery::with_capacity(1024);
-        executor
-            .driver()
-            .sql_writer()
-            .write_select(&mut query, columns, self, condition, limit);
-        executor.fetch(query)
-    }
-    /// Prepare a SELECT query.
-    fn prepare<Exec, Item>(
-        &self,
-        executor: &mut Exec,
-        columns: impl IntoIterator<Item = Item> + Clone,
-        condition: impl Expression,
-        limit: Option<u32>,
-    ) -> impl Future<Output = Result<Query<Exec::Driver>>>
-    where
-        Self: Sized,
-        Item: Expression,
-        Exec: Executor,
-    {
-        let mut query = RawQuery::with_capacity(1024);
-        executor
-            .driver()
-            .sql_writer()
-            .write_select(&mut query, columns, self, condition, limit);
-        executor.prepare(query)
-    }
 }
 
 impl DataSet for &dyn DataSet {

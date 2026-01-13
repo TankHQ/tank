@@ -1,5 +1,5 @@
 use std::{future, sync::LazyLock};
-use tank::{DataSet, Entity, Executor, cols, expr, stream::TryStreamExt};
+use tank::{Entity, Executor, QueryBuilder, cols, expr, stream::TryStreamExt};
 use time::{Date, macros::date};
 use tokio::sync::Mutex;
 
@@ -274,12 +274,17 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
         .expect("Could not insert the entities");
 
     let height = 170;
-    let heights = Metric::table()
-        .select(
-            executor,
-            cols!(Metric::value DESC, Metric::date DESC),
-            expr!(Metric::name == "height_cm" && Metric::country == "IT" && Metric::value >= #height),
-            None,
+    let heights = executor
+        .fetch(
+            QueryBuilder::new()
+                .select(cols!(Metric::value DESC, Metric::date DESC))
+                .from(Metric::table())
+                .where_condition(expr!(
+                    Metric::name == "height_cm"
+                        && Metric::country == "IT"
+                        && Metric::value >= #height
+                ))
+                .build(&executor.driver()),
         )
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
@@ -288,12 +293,15 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
     assert_eq!(heights, [178.0]);
 
     // Incomes in Italy
-    let italy_incomes = Metric::table()
-        .select(
-            executor,
-            cols!(Metric::value ASC),
-            expr!(Metric::name == "income_eur" && Metric::country == "IT"),
-            None,
+    let italy_incomes = executor
+        .fetch(
+            QueryBuilder::new()
+                .select(cols!(Metric::value ASC))
+                .from(Metric::table())
+                .where_condition(expr!(
+                    Metric::name == "income_eur" && Metric::country == "IT"
+                ))
+                .build(&executor.driver()),
         )
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
@@ -302,12 +310,15 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
     assert_eq!(italy_incomes, [56000.0, 61000.0, 68000.0, 72000.0]);
 
     // Highest income in the UK
-    let latest_income = Metric::table()
-        .select(
-            executor,
-            cols!(MAX(Metric::value) as value),
-            expr!(Metric::name == "income_gbp" && Metric::country == "UK"),
-            None,
+    let latest_income = executor
+        .fetch(
+            QueryBuilder::new()
+                .select(cols!(MAX(Metric::value) as value))
+                .from(Metric::table())
+                .where_condition(expr!(
+                    Metric::name == "income_gbp" && Metric::country == "UK"
+                ))
+                .build(&executor.driver()),
         )
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
@@ -316,12 +327,13 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
     assert_eq!(latest_income, [93000.0]);
 
     // Prepared queries
-    let mut prepared = Metric::table()
+    let mut prepared = executor
         .prepare(
-            executor,
-            cols!(Metric::value DESC, Metric::date DESC),
-            expr!(Metric::country == ? && Metric::name == ?),
-            None,
+            QueryBuilder::new()
+                .select(cols!(Metric::value DESC, Metric::date DESC))
+                .from(Metric::table())
+                .where_condition(expr!(Metric::country == ? && Metric::name == ?))
+                .build(&executor.driver()),
         )
         .await
         .expect("Failed to prepare metric query");
