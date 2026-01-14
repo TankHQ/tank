@@ -22,6 +22,14 @@ impl MongoDBConnection {
             default_database,
         }
     }
+    pub(crate) fn database(&self, query: &Query<MongoDBDriver>) -> Database {
+        let schema = &query.table().schema;
+        if !schema.is_empty() {
+            self.client.database(&schema)
+        } else {
+            self.default_database.clone()
+        }
+    }
 }
 
 impl Connection for MongoDBConnection {
@@ -68,7 +76,11 @@ impl Executor for MongoDBConnection {
     ) -> impl Stream<Item = Result<RowLabeled>> + Send {
         let mut query = query.as_query();
         let query = query.as_mut();
-        let database = self.client.database(&query.table().schema);
+        let database = self.database(query);
+        let collection = database.collection(&query.table().name);
+        if query.limit() == Some(1) {
+            collection.find(filter)
+        }
         {}
     }
 

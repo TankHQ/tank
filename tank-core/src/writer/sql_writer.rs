@@ -188,10 +188,7 @@ pub trait SqlWriter: Send {
                 out.push(')');
             }
             Value::Json(..) => out.push_str("JSON"),
-            _ => log::error!(
-                "Unexpected tank::Value, variant {:?} is not supported",
-                value
-            ),
+            _ => log::error!("Unexpected tank::Value, variant {value:?} is not supported"),
         };
     }
 
@@ -245,7 +242,7 @@ pub trait SqlWriter: Send {
             Value::Map(Some(v), ..) => self.write_value_map(context, out, v),
             Value::Struct(Some(v), ..) => self.write_value_struct(context, out, v),
             _ => {
-                log::error!("Cannot write {:?}", value);
+                log::error!("Cannot write {value:?}");
             }
         };
     }

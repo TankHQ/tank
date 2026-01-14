@@ -95,10 +95,7 @@ impl SqlWriter for PostgresSqlWriter {
                 out.push_str("[]");
             }
             Value::Map(..) | Value::Json(..) | Value::Struct(..) => out.push_str("JSON"),
-            _ => log::error!(
-                "Unexpected tank::Value, variant {:?} is not supported",
-                value
-            ),
+            _ => log::error!("Unexpected tank::Value, Postgres does not support {value:?}"),
         };
     }
 

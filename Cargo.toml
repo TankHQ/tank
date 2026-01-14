@@ -24,6 +24,7 @@ categories = ["database"]
 [workspace.dependencies]
 anyhow = { version = "1", features = ["backtrace"] }
 async-stream = "0"
+bson = "3"
 chrono = "0"
 env_logger = "0"
 futures = "0"

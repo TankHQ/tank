@@ -115,10 +115,7 @@ impl SqlWriter for MySQLSqlWriter {
             Value::List(..) => out.push_str("JSON"),
             Value::Map(..) => out.push_str("JSON"),
             Value::Json(..) => out.push_str("JSON"),
-            _ => log::error!(
-                "Unexpected tank::Value, variant {:?} is not supported",
-                value
-            ),
+            _ => log::error!("Unexpected tank::Value, MySQL does not support {value:?}"),
         };
     }
 

@@ -1,93 +1,8 @@
 use crate::{
-    AsValue, Driver, Error, Prepared, Result, RowLabeled, RowsAffected, TableRef, truncate_long,
+    AsValue, Driver, Error, Prepared, QueryBuffer, RawQuery, Result, RowLabeled, RowsAffected,
+    TableRef, truncate_long,
 };
-use std::{
-    borrow::Cow,
-    fmt::{self, Display, Write},
-};
-
-#[derive(Default, Clone, Debug)]
-pub struct QueryMetadata {
-    pub table: TableRef,
-    pub limit: Option<u32>,
-}
-
-impl QueryMetadata {
-    pub fn from_table(table: TableRef) -> Self {
-        QueryMetadata { table, limit: None }
-    }
-    pub fn from_limit(limit: Option<u32>) -> Self {
-        QueryMetadata {
-            table: Default::default(),
-            limit,
-        }
-    }
-}
-
-impl<'s> From<QueryMetadata> for Cow<'s, QueryMetadata> {
-    fn from(value: QueryMetadata) -> Self {
-        Cow::Owned(value)
-    }
-}
-
-impl<'s> From<&'s QueryMetadata> for Cow<'s, QueryMetadata> {
-    fn from(value: &'s QueryMetadata) -> Self {
-        Cow::Borrowed(value)
-    }
-}
-
-#[derive(Default, Clone, Debug)]
-pub struct RawQuery {
-    value: String,
-    metadata: QueryMetadata,
-}
-
-impl RawQuery {
-    pub fn new(value: String) -> Self {
-        Self {
-            value,
-            metadata: Default::default(),
-        }
-    }
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self::new(String::with_capacity(capacity))
-    }
-    pub fn buffer(&mut self) -> &mut String {
-        &mut self.value
-    }
-    pub fn as_str(&self) -> &str {
-        &self.value
-    }
-    pub fn push_str(&mut self, s: &str) {
-        self.value.push_str(s);
-    }
-    pub fn push(&mut self, c: char) {
-        self.value.push(c);
-    }
-    pub fn len(&self) -> usize {
-        self.value.len()
-    }
-    pub fn is_empty(&self) -> bool {
-        self.value.is_empty()
-    }
-    pub fn metadata(&self) -> &QueryMetadata {
-        &self.metadata
-    }
-    pub fn metadata_mut(&mut self) -> &mut QueryMetadata {
-        &mut self.metadata
-    }
-}
-
-impl Write for RawQuery {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.push_str(s);
-        Ok(())
-    }
-    fn write_char(&mut self, c: char) -> fmt::Result {
-        self.push(c);
-        Ok(())
-    }
-}
+use std::fmt::{self, Display};
 
 /// Executable query: raw SQL or prepared statement.
 #[derive(Debug)]
@@ -197,7 +112,13 @@ where
 impl<D: Driver> Display for Query<D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Query::Raw(query) => write!(f, "{}", truncate_long!(query.value)),
+            Query::Raw(query) => match &query.value {
+                QueryBuffer::String(v) => write!(f, "{}", truncate_long!(&v)),
+                QueryBuffer::Json(document) => {
+                    let v = document.to_string();
+                    write!(f, "{}", truncate_long!(&v))
+                }
+            },
             Query::Prepared(query) => query.fmt(f),
         }
     }
