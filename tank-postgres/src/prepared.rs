@@ -4,7 +4,7 @@ use std::{
     fmt::{self, Debug, Display},
     mem,
 };
-use tank_core::{AsValue, Error, Prepared, Result, TableRef, Value};
+use tank_core::{AsValue, Error, Prepared, QueryMetadata, Result, Value};
 use tokio_postgres::Statement;
 
 /// Prepared statement wrapper for Postgres.
@@ -15,7 +15,7 @@ pub struct PostgresPrepared {
     pub(crate) statement: Statement,
     pub(crate) params: Vec<Value>,
     pub(crate) index: u64,
-    pub(crate) table: TableRef,
+    pub(crate) metadata: QueryMetadata,
 }
 
 impl PostgresPrepared {
@@ -24,7 +24,7 @@ impl PostgresPrepared {
             statement,
             params: Vec::new(),
             index: 0,
-            table: Default::default(),
+            metadata: Default::default(),
         }
     }
     pub(crate) fn take_params(&mut self) -> Vec<ValueWrap<'static>> {
@@ -59,13 +59,12 @@ impl Prepared for PostgresPrepared {
         Ok(self)
     }
 
-    fn with_table(mut self, table: TableRef) -> Self {
-        self.table = table;
-        self
+    fn metadata(&self) -> &QueryMetadata {
+        &self.metadata
     }
 
-    fn table(&self) -> &TableRef {
-        &self.table
+    fn metadata_mut(&mut self) -> &mut QueryMetadata {
+        &mut self.metadata
     }
 }
 

@@ -3,7 +3,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     mem,
 };
-use tank_core::{AsValue, Error, Prepared, Result, TableRef};
+use tank_core::{AsValue, Error, Prepared, QueryMetadata, Result};
 
 use crate::ValueWrap;
 
@@ -14,7 +14,7 @@ pub struct ScyllaDBPrepared {
     pub(crate) statement: PreparedStatement,
     pub(crate) params: Vec<ValueWrap>,
     pub(crate) index: u64,
-    pub(crate) table: TableRef,
+    pub(crate) metadata: QueryMetadata,
 }
 
 impl ScyllaDBPrepared {
@@ -23,7 +23,7 @@ impl ScyllaDBPrepared {
             statement,
             params: Vec::new(),
             index: 0,
-            table: Default::default(),
+            metadata: Default::default(),
         }
     }
     pub(crate) fn take_params(&mut self) -> Result<Vec<ValueWrap>> {
@@ -57,13 +57,12 @@ impl Prepared for ScyllaDBPrepared {
         Ok(self)
     }
 
-    fn with_table(mut self, table: TableRef) -> Self {
-        self.table = table;
-        self
+    fn metadata(&self) -> &QueryMetadata {
+        &self.metadata
     }
 
-    fn table(&self) -> &TableRef {
-        &self.table
+    fn metadata_mut(&mut self) -> &mut QueryMetadata {
+        &mut self.metadata
     }
 }
 

@@ -1,12 +1,13 @@
 use crate::{
     Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, DataSet, EitherIterator, Entity,
     Expression, Fragment, Interval, Join, JoinType, Operand, Order, Ordered, PrimaryKeyType,
-    QueryData, RawQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized,
-    print_timer, separated_by, writer::Context,
+    QueryData, QueryMetadata, RawQuery, TableRef, UnaryOp, UnaryOpType, Value,
+    possibly_parenthesized, print_timer, separated_by, writer::Context,
 };
 use core::f64;
 use futures::future::Either;
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashMap},
     fmt::Write,
 };
@@ -48,19 +49,23 @@ pub trait SqlWriter: Send {
         }
     }
 
-    fn update_table_ref(&self, out: &mut RawQuery, table: &TableRef) {
+    fn update_table_ref<'s>(&'s self, out: &mut RawQuery, metadata: Cow<'s, QueryMetadata>) {
+        let metadata = metadata.into();
         let is_empty = out.is_empty();
-        let current = out.table_mut();
+        let current = &mut out.metadata_mut().table;
         if is_empty {
-            *current = table.clone();
+            *out.metadata_mut() = match metadata {
+                Cow::Borrowed(v) => v.clone(),
+                Cow::Owned(v) => v,
+            };
         } else {
-            if current.name != table.name {
+            if current.name != metadata.table.name {
                 current.name = Default::default();
             }
-            if current.schema != table.schema {
+            if current.schema != metadata.table.schema {
                 current.schema = Default::default();
             }
-            if current.alias != table.alias {
+            if current.alias != metadata.table.alias {
                 current.alias = Default::default();
             }
         }
@@ -849,7 +854,7 @@ pub trait SqlWriter: Send {
         E: Entity,
     {
         let table = E::table();
-        self.update_table_ref(out, table);
+        self.update_table_ref(out, QueryMetadata::from_table(table.clone()).into());
         out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
@@ -871,7 +876,7 @@ pub trait SqlWriter: Send {
     {
         let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
         let table = E::table();
-        self.update_table_ref(out, table);
+        self.update_table_ref(out, QueryMetadata::from_table(table.clone()).into());
         out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
@@ -891,7 +896,8 @@ pub trait SqlWriter: Send {
         E: Entity,
     {
         let mut context = Context::new(Fragment::SqlCreateTable, E::qualified_columns());
-        self.update_table_ref(out, E::table());
+        let table = E::table();
+        self.update_table_ref(out, QueryMetadata::from_table(table.clone()).into());
         let estimated = 128 + E::columns().len() * 64 + E::primary_key_def().len() * 24;
         out.buffer().reserve(estimated);
         if !out.is_empty() {
@@ -901,7 +907,7 @@ pub trait SqlWriter: Send {
         if if_not_exists {
             out.push_str("IF NOT EXISTS ");
         }
-        self.write_table_ref(&mut context, out, E::table());
+        self.write_table_ref(&mut context, out, table);
         out.push_str(" (\n");
         separated_by(
             out,
@@ -1078,7 +1084,7 @@ pub trait SqlWriter: Send {
         E: Entity,
     {
         let table = E::table();
-        self.update_table_ref(out, table);
+        self.update_table_ref(out, QueryMetadata::from_table(table.clone()).into());
         out.buffer()
             .reserve(24 + table.schema.len() + table.name.len());
         if !out.is_empty() {
@@ -1103,7 +1109,15 @@ pub trait SqlWriter: Send {
         let Some(from) = query.get_from() else {
             return;
         };
-        self.update_table_ref(out, &from.table_ref());
+        let limit = query.get_limit();
+        self.update_table_ref(
+            out,
+            QueryMetadata {
+                table: from.table_ref(),
+                limit,
+            }
+            .into(),
+        );
         let cols = columns.clone().into_iter().count();
         out.buffer().reserve(128 + cols * 32);
         if !out.is_empty() {
@@ -1149,7 +1163,7 @@ pub trait SqlWriter: Send {
                 ", ",
             );
         }
-        if let Some(limit) = query.get_limit() {
+        if let Some(limit) = limit {
             let _ = write!(out, "\nLIMIT {limit}");
         }
         out.push(';');
@@ -1166,7 +1180,7 @@ pub trait SqlWriter: Send {
         E: Entity + 'b,
     {
         let table = E::table();
-        self.update_table_ref(out, table);
+        self.update_table_ref(out, QueryMetadata::from_table(table.clone()).into());
         let mut rows = entities.into_iter().map(Entity::row_filtered).peekable();
         let Some(mut row) = rows.next() else {
             return;
@@ -1319,7 +1333,7 @@ pub trait SqlWriter: Send {
         E: Entity,
     {
         let table = E::table();
-        self.update_table_ref(out, table);
+        self.update_table_ref(out, QueryMetadata::from_table(table.clone()).into());
         out.buffer().reserve(128);
         if !out.is_empty() {
             out.push('\n');

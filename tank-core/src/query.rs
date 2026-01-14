@@ -1,19 +1,52 @@
 use crate::{
     AsValue, Driver, Error, Prepared, Result, RowLabeled, RowsAffected, TableRef, truncate_long,
 };
-use std::fmt::{self, Display, Write};
+use std::{
+    borrow::Cow,
+    fmt::{self, Display, Write},
+};
 
-#[derive(Default, Debug)]
+#[derive(Default, Clone, Debug)]
+pub struct QueryMetadata {
+    pub table: TableRef,
+    pub limit: Option<u32>,
+}
+
+impl QueryMetadata {
+    pub fn from_table(table: TableRef) -> Self {
+        QueryMetadata { table, limit: None }
+    }
+    pub fn from_limit(limit: Option<u32>) -> Self {
+        QueryMetadata {
+            table: Default::default(),
+            limit,
+        }
+    }
+}
+
+impl<'s> From<QueryMetadata> for Cow<'s, QueryMetadata> {
+    fn from(value: QueryMetadata) -> Self {
+        Cow::Owned(value)
+    }
+}
+
+impl<'s> From<&'s QueryMetadata> for Cow<'s, QueryMetadata> {
+    fn from(value: &'s QueryMetadata) -> Self {
+        Cow::Borrowed(value)
+    }
+}
+
+#[derive(Default, Clone, Debug)]
 pub struct RawQuery {
     value: String,
-    table: TableRef,
+    metadata: QueryMetadata,
 }
 
 impl RawQuery {
     pub fn new(value: String) -> Self {
         Self {
             value,
-            table: Default::default(),
+            metadata: Default::default(),
         }
     }
     pub fn with_capacity(capacity: usize) -> Self {
@@ -24,16 +57,6 @@ impl RawQuery {
     }
     pub fn as_str(&self) -> &str {
         &self.value
-    }
-    pub fn with_table(mut self, table: TableRef) -> Self {
-        self.table = table;
-        self
-    }
-    pub fn table(&self) -> &TableRef {
-        &self.table
-    }
-    pub fn table_mut(&mut self) -> &mut TableRef {
-        &mut self.table
     }
     pub fn push_str(&mut self, s: &str) {
         self.value.push_str(s);
@@ -46,6 +69,12 @@ impl RawQuery {
     }
     pub fn is_empty(&self) -> bool {
         self.value.is_empty()
+    }
+    pub fn metadata(&self) -> &QueryMetadata {
+        &self.metadata
+    }
+    pub fn metadata_mut(&mut self) -> &mut QueryMetadata {
+        &mut self.metadata
     }
 }
 
@@ -107,24 +136,34 @@ impl<D: Driver> Query<D> {
         prepared.bind_index(value, index)?;
         Ok(self)
     }
-    pub fn with_table(mut self, table: TableRef) -> Self {
-        self = match self {
-            Query::Raw(v) => Query::Raw(v.with_table(table)),
-            Query::Prepared(v) => Query::Prepared(v.with_table(table)),
-        };
-        self
+    pub fn limit(&self) -> Option<u32> {
+        match self {
+            Query::Raw(v) => v.metadata().limit,
+            Query::Prepared(v) => Prepared::get_limit(v),
+        }
     }
     pub fn table(&self) -> &TableRef {
         match self {
-            Query::Raw(v) => v.table(),
-            Query::Prepared(v) => v.table(),
+            Query::Raw(v) => &v.metadata().table,
+            Query::Prepared(v) => Prepared::get_table(v),
         }
     }
-}
-
-pub trait QueryMetadata {
-    fn with_table(self, table: TableRef) -> Self;
-    fn table(&self) -> &TableRef;
+    pub fn table_mut(&mut self) -> &mut TableRef {
+        match self {
+            Query::Raw(v) => &mut v.metadata_mut().table,
+            Query::Prepared(v) => Prepared::get_table_mut(v),
+        }
+    }
+    pub fn with_table(mut self, table: TableRef) -> Self {
+        self = match self {
+            Query::Raw(mut v) => {
+                v.metadata_mut().table = table;
+                Query::Raw(v)
+            }
+            Query::Prepared(v) => Query::Prepared(Prepared::with_table(v, table)),
+        };
+        self
+    }
 }
 
 impl<D: Driver> Default for Query<D> {
