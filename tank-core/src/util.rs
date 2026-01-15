@@ -1,5 +1,8 @@
+use crate::{AsValue, RawQuery, Value};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
+use rust_decimal::prelude::ToPrimitive;
+use serde_json::{Map, Number, Value as JsonValue};
 use std::{
     borrow::Cow,
     cmp::min,
@@ -9,8 +12,7 @@ use std::{
     ptr,
 };
 use syn::Path;
-
-use crate::RawQuery;
+use time::{Date, Time};
 
 #[derive(Clone)]
 /// Polymorphic iterator adapter returning items from either variant.
@@ -22,6 +24,7 @@ where
     Left(A),
     Right(B),
 }
+
 impl<A, B> Iterator for EitherIterator<A, B>
 where
     A: Iterator,
@@ -34,6 +37,134 @@ where
             EitherIterator::Right(b) => b.next(),
         }
     }
+}
+
+pub fn value_to_json(v: &Value) -> Option<JsonValue> {
+    Some(match v {
+        _ if v.is_null() => JsonValue::Null,
+        Value::Boolean(Some(v), ..) => JsonValue::Bool(*v),
+        Value::Int8(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
+        Value::Int16(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
+        Value::Int32(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
+        Value::Int64(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
+        Value::Int128(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
+        Value::UInt8(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
+        Value::UInt16(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
+        Value::UInt32(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
+        Value::UInt64(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
+        Value::UInt128(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
+        Value::Float32(Some(v), ..) => JsonValue::Number(Number::from_f64(*v as _)?),
+        Value::Float64(Some(v), ..) => JsonValue::Number(Number::from_f64(*v as _)?),
+        Value::Decimal(Some(v), ..) => JsonValue::Number(Number::from_f64(v.to_f64()?)?),
+        Value::Char(Some(v), ..) => JsonValue::String(v.to_string()),
+        Value::Varchar(Some(v), ..) => JsonValue::String(v.to_string()),
+        Value::Blob(Some(v), ..) => JsonValue::Array(
+            v.iter()
+                .map(|v| Number::from_u128(*v as _).map(JsonValue::Number))
+                .collect::<Option<_>>()?,
+        ),
+        Value::Date(Some(v), ..) => {
+            JsonValue::String(format!("{:04}-{:02}-{:02}", v.year(), v.month(), v.day()))
+        }
+        Value::Time(Some(v), ..) => {
+            let mut out = String::new();
+            print_timer(
+                &mut out,
+                "",
+                v.hour() as _,
+                v.minute(),
+                v.second(),
+                v.nanosecond(),
+            );
+            JsonValue::String(out)
+        }
+        Value::Timestamp(Some(v), ..) => {
+            let date = v.date();
+            let time = v.time();
+            let mut out = String::new();
+            print_date(&mut out, "", &date);
+            out.push(' ');
+            print_timer(
+                &mut out,
+                "",
+                time.hour() as _,
+                time.minute(),
+                time.second(),
+                time.nanosecond(),
+            );
+            JsonValue::String(out)
+        }
+        Value::TimestampWithTimezone(Some(v), ..) => {
+            let date = v.date();
+            let time = v.time();
+            let mut out = String::new();
+            print_date(&mut out, "", &date);
+            out.push(' ');
+            print_timer(
+                &mut out,
+                "",
+                time.hour() as _,
+                time.minute(),
+                time.second(),
+                time.nanosecond(),
+            );
+            let (h, m, s) = v.offset().as_hms();
+            out.push(' ');
+            if h >= 0 {
+                out.push('+');
+            } else {
+                out.push('-');
+            }
+            let offset = Time::from_hms(h.abs() as _, m.abs() as _, s.abs() as _).ok()?;
+            print_timer(
+                &mut out,
+                "",
+                offset.hour() as _,
+                offset.minute(),
+                offset.second(),
+                offset.nanosecond(),
+            );
+            JsonValue::String(out)
+        }
+        Value::Interval(Some(_v), ..) => {
+            return None;
+        }
+        Value::Uuid(Some(v), ..) => JsonValue::String(v.to_string()),
+        Value::Array(Some(v), ..) => {
+            JsonValue::Array(v.iter().map(value_to_json).collect::<Option<_>>()?)
+        }
+        Value::List(Some(v), ..) => {
+            JsonValue::Array(v.iter().map(value_to_json).collect::<Option<_>>()?)
+        }
+        Value::Map(Some(v), ..) => {
+            let mut map = Map::new();
+            for (k, v) in v.iter() {
+                let Ok(k) = String::try_from_value(k.clone()) else {
+                    return None;
+                };
+                let Some(v) = value_to_json(v) else {
+                    return None;
+                };
+                map.insert(k, v)?;
+            }
+            JsonValue::Object(map)
+        }
+        Value::Json(Some(v), ..) => v.clone(),
+        Value::Struct(Some(v), ..) => {
+            let mut map = Map::new();
+            for (k, v) in v.iter() {
+                let Some(v) = value_to_json(v) else {
+                    return None;
+                };
+                map.insert(k.clone(), v)?;
+            }
+            JsonValue::Object(map)
+        }
+        Value::Unknown(Some(v), ..) => JsonValue::String(v.clone()),
+        _ => {
+            return None;
+        }
+    })
 }
 
 /// Quote a `BTreeMap<K, V>` into tokens.
@@ -147,6 +278,16 @@ pub fn extract_number<'s, const SIGNED: bool>(input: &mut &'s str) -> &'s str {
     let result = &input[..end];
     *input = &input[end..];
     result
+}
+
+pub fn print_date(out: &mut impl Write, quote: &str, date: &Date) {
+    let _ = write!(
+        out,
+        "{quote}{:04}-{:02}-{:02}{quote}",
+        date.year(),
+        date.month() as u8,
+        date.day(),
+    );
 }
 
 pub fn print_timer(out: &mut impl Write, quote: &str, h: i64, m: u8, s: u8, ns: u32) {

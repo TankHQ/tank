@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use crate::{
     Error, FixedDecimal, Interval, Passive, Result, Value, consume_while, extract_number,
-    month_to_number, number_to_month, truncate_long,
+    month_to_number, number_to_month, print_date, print_timer, truncate_long,
 };
 use anyhow::Context;
 #[cfg(feature = "chrono")]
@@ -16,7 +16,7 @@ use std::{
     rc::Rc,
     sync::{Arc, RwLock},
 };
-use time::{Month, PrimitiveDateTime, format_description::parse_borrowed};
+use time::{Month, PrimitiveDateTime, Time, format_description::parse_borrowed};
 use uuid::Uuid;
 
 /// Convert both ways between Rust types and `Value` (plus simple parsing).
@@ -423,7 +423,61 @@ impl_as_value!(
     |input: &str| {
         Ok(input.into())
     },
+    Value::Int8(Some(v), ..) => Ok(v.to_string()),
+    Value::Int16(Some(v), ..) => Ok(v.to_string()),
+    Value::Int32(Some(v), ..) => Ok(v.to_string()),
+    Value::Int64(Some(v), ..) => Ok(v.to_string()),
+    Value::Int128(Some(v), ..) => Ok(v.to_string()),
+    Value::UInt8(Some(v), ..) => Ok(v.to_string()),
+    Value::UInt16(Some(v), ..) => Ok(v.to_string()),
+    Value::UInt32(Some(v), ..) => Ok(v.to_string()),
+    Value::UInt64(Some(v), ..) => Ok(v.to_string()),
+    Value::UInt128(Some(v), ..) => Ok(v.to_string()),
+    Value::Float32(Some(v), ..) => Ok(v.to_string()),
+    Value::Float64(Some(v), ..) => Ok(v.to_string()),
+    Value::Decimal(Some(v), ..) => Ok(v.to_string()),
     Value::Char(Some(v), ..) => Ok(v.into()),
+    Value::Date(Some(v), ..) => {
+        let mut out = String::new();
+        print_date(&mut out, "", &v);
+        Ok(out)
+    },
+    Value::Time(Some(v), ..) => {
+        let mut out = String::new();
+        print_timer(&mut out, "", v.hour() as _, v.minute(), v.second(), v.nanosecond());
+        Ok(out)
+    },
+    Value::Timestamp(Some(v), ..) => {
+        let date = v.date();
+        let time = v.time();
+        let mut out = String::new();
+        print_date(&mut out, "", &date);
+        out.push(' ');
+        print_timer(&mut out, "", time.hour() as _ , time.minute(), time.second(), time.nanosecond());
+        Ok(out)
+    },
+    Value::TimestampWithTimezone(Some(v), ..) => {
+        let date = v.date();
+        let time = v.time();
+        let mut out = String::new();
+        print_date(&mut out, "", &date);
+        out.push(' ');
+        print_timer(&mut out, "", time.hour() as _, time.minute(), time.second(), time.nanosecond());
+        let (h, m, s) = v.offset().as_hms();
+        out.push(' ');
+        if h >= 0 {
+            out.push('+');
+        } else {
+            out.push('-');
+        }
+        let offset = match Time::from_hms(h.abs() as _, m.abs() as _, s.abs() as _){
+            Ok(v) => v,
+            Err(e) => return Err(Error::new(e)),
+        };
+        print_timer(&mut out, "", offset.hour() as _, offset.minute(), offset.second(), offset.nanosecond());
+        Ok(out)
+    },
+    Value::Uuid(Some(v), ..) => Ok(v.to_string()),
     Value::Json(Some(serde_json::Value::String(v)), ..) => Ok(v),
 );
 impl_as_value!(Box<[u8]>, Value::Blob, |mut input: &str| {

@@ -1,6 +1,5 @@
 use crate::{
-    AsValue, Driver, Error, Prepared, QueryBuffer, RawQuery, Result, RowLabeled, RowsAffected,
-    TableRef, truncate_long,
+    AsValue, Driver, Error, Prepared, RawQuery, Result, RowLabeled, RowsAffected, TableRef,
 };
 use std::fmt::{self, Display};
 
@@ -112,13 +111,7 @@ where
 impl<D: Driver> Display for Query<D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Query::Raw(query) => match &query.value {
-                QueryBuffer::String(v) => write!(f, "{}", truncate_long!(&v)),
-                QueryBuffer::Json(document) => {
-                    let v = document.to_string();
-                    write!(f, "{}", truncate_long!(&v))
-                }
-            },
+            Query::Raw(v) => v.fmt(f),
             Query::Prepared(query) => query.fmt(f),
         }
     }

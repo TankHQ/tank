@@ -2,7 +2,7 @@ use crate::{
     Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, DataSet, EitherIterator, Entity,
     Expression, Fragment, Interval, Join, JoinType, Operand, Order, Ordered, PrimaryKeyType,
     QueryData, QueryMetadata, RawQuery, TableRef, UnaryOp, UnaryOpType, Value,
-    possibly_parenthesized, print_timer, separated_by, writer::Context,
+    possibly_parenthesized, print_date, print_timer, separated_by, writer::Context,
 };
 use core::f64;
 use futures::future::Either;
@@ -51,7 +51,7 @@ pub trait SqlWriter: Send {
 
     fn update_table_ref<'s>(&'s self, out: &mut RawQuery, metadata: Cow<'s, QueryMetadata>) {
         let metadata = metadata.into();
-        let is_empty = out.is_empty();
+        let is_empty = out.buffer().is_empty();
         let current = &mut out.metadata_mut().table;
         if is_empty {
             *out.metadata_mut() = match metadata {
@@ -351,13 +351,7 @@ pub trait SqlWriter: Send {
             _ if !timestamp => "'",
             _ => "",
         };
-        let _ = write!(
-            out,
-            "{b}{:04}-{:02}-{:02}{b}",
-            value.year(),
-            value.month() as u8,
-            value.day()
-        );
+        print_date(out, b, value);
     }
 
     /// Render a TIME literal (optionally as part of TIMESTAMP composition).
