@@ -3,8 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::{borrow::Cow, collections::HashMap};
     use tank::{
-        DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, QueryBuilder,
-        RawQuery, SqlWriter, TableRef, Value, expr,
+        DynQuery, DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType,
+        QueryBuilder, SqlWriter, TableRef, Value, expr,
     };
     use time::{Date, Month, Time};
     use uuid::Uuid;
@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_employee_create_table() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_create_table::<Employee>(&mut query, false);
         assert_eq!(
             query.as_str(),
@@ -187,7 +187,7 @@ mod tests {
 
     #[test]
     fn test_employee_drop_table() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_drop_table::<Employee>(&mut query, true);
         assert_eq!(
             query.as_str(),
@@ -197,7 +197,7 @@ mod tests {
 
     #[test]
     fn test_employee_select() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
             &QueryBuilder::new()
@@ -223,7 +223,7 @@ mod tests {
         let mut docs = HashMap::new();
         docs.insert("contract.pdf".to_string(), vec![1, 2, 3, 4]);
         let employee = Employee::sample();
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_insert(&mut query, [&employee], false);
         assert_eq!(
             query.as_str(),
@@ -239,7 +239,7 @@ mod tests {
                 .into(),
             ..Employee::sample()
         };
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_insert(&mut query, [&employee], false);
         assert_eq!(
             query.as_str(),
@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn test_sql_delete() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_delete::<Employee>(&mut query, expr!(Employee::name == "Bob"));
         assert_eq!(
             query.as_str(),

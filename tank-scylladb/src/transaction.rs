@@ -1,8 +1,8 @@
 use crate::{ScyllaDBConnection, ScyllaDBDriver, ScyllaDBPrepared, ValueWrap};
 use scylla::statement::batch::Batch;
-use std::{future, mem};
+use std::future;
 use tank_core::{
-    Driver, Entity, Error, ErrorContext, Executor, Query, RawQuery, Result, RowsAffected,
+    DynQuery, Driver, Entity, Error, ErrorContext, Executor, Query, Result, RowsAffected,
     SqlWriter, Transaction,
     future::Either,
     stream::{self, Stream},
@@ -37,15 +37,12 @@ impl ScyllaDBTransaction<'_> {
 impl<'c> Executor for ScyllaDBTransaction<'c> {
     type Driver = ScyllaDBDriver;
 
-    async fn prepare(&mut self, sql: RawQuery) -> Result<tank_core::Query<Self::Driver>> {
-        let context = format!(
-            "While preparing the query:\n{}",
-            truncate_long!(sql.as_str())
-        );
+    async fn prepare(&mut self, sql: String) -> Result<tank_core::Query<Self::Driver>> {
+        let context = format!("While preparing the query:\n{}", truncate_long!(sql));
         let statement = self
             .connection
             .session
-            .prepare(sql.as_str())
+            .prepare(sql)
             .await
             .with_context(|| context)?;
         Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
@@ -61,9 +58,9 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
             query.as_mut()
         );
         match query.as_mut() {
-            Query::Raw(sql) => {
+            Query::Raw(raw) => {
                 self.params.push(Default::default());
-                self.batch.append_statement(sql.as_str());
+                self.batch.append_statement(raw.sql.as_str());
             }
             Query::Prepared(prepared) => {
                 self.params
@@ -85,20 +82,13 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
         It: IntoIterator<Item = &'a E>,
         <It as IntoIterator>::IntoIter: Send,
     {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         let writer = self.driver().sql_writer();
         for entity in entities {
             writer.write_insert::<E>(&mut query, [entity], false);
-            let mut sql = Query::Raw(query);
-            self.execute(&mut sql).await?;
-            query = mem::take(match &mut sql {
-                Query::Raw(sql) => sql,
-                Query::Prepared(..) => {
-                    return Err(Error::msg(
-                        "Unexpected (invariant violated), the query should have been the Raw variant",
-                    ));
-                }
-            });
+            let mut q = query.into_query(self.driver());
+            self.execute(&mut q).await?;
+            query = q.into();
             query.buffer().clear();
         }
         Ok(Default::default())

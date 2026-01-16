@@ -11,7 +11,7 @@ impl SqlWriter for YourDBSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut RawQuery,
+        out: &mut DynQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {

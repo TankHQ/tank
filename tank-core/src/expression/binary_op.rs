@@ -1,5 +1,5 @@
 use crate::{
-    Expression, OpPrecedence, RawQuery,
+    DynQuery, Expression, OpPrecedence,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::TokenStream;
@@ -60,7 +60,7 @@ impl<L: Expression, R: Expression> OpPrecedence for BinaryOp<L, R> {
 }
 
 impl<L: Expression, R: Expression> Expression for BinaryOp<L, R> {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         writer.write_expression_binary_op(
             context,
             out,

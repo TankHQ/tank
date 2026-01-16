@@ -3,7 +3,7 @@ mod tests {
     use indoc::indoc;
     use std::{borrow::Cow, sync::Mutex};
     use tank::{
-        DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder, RawQuery,
+        DynQuery, DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
         SqlWriter, TableRef, Value, expr,
     };
 
@@ -85,7 +85,7 @@ mod tests {
 
     #[test]
     fn test_simple_entity_create_table() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_create_table::<SomeSimpleEntity>(&mut query, false);
         assert_eq!(
             query.as_str(),
@@ -103,14 +103,14 @@ mod tests {
 
     #[test]
     fn test_simple_entity_drop_table() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_drop_table::<SomeSimpleEntity>(&mut query, true);
         assert_eq!(query.as_str(), r#"DROP TABLE IF EXISTS "simple_entity";"#);
     }
 
     #[test]
     fn test_simple_entity_select() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
             &QueryBuilder::new()
@@ -133,7 +133,7 @@ mod tests {
 
     #[test]
     fn test_simple_entity_insert() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_insert(&mut query, [&SomeSimpleEntity::make_some()], true);
         assert_eq!(
             query.as_str(),
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn test_simple_entity_delete() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_delete::<SomeSimpleEntity>(&mut query, expr!(SomeSimpleEntity::b != "hello"));
         assert_eq!(
             query.as_str(),

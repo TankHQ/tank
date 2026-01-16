@@ -106,7 +106,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
         let writer = executor.driver().sql_writer();
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         writer.write_delete::<SimpleFields>(&mut query, &false); // Does not delete anything
         writer.write_select(
             &mut query,
@@ -223,7 +223,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
         let writer = executor.driver().sql_writer();
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         writer.write_delete::<SimpleFields>(&mut query, &true);
         writer.write_insert(&mut query, [&entity], false);
         writer.write_select(

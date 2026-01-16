@@ -2,7 +2,7 @@
 mod tests {
     use std::borrow::Cow;
     use tank::{
-        BinaryOp, BinaryOpType, ColumnRef, Context, Expression, OpPrecedence, Operand, RawQuery,
+        DynQuery, BinaryOp, BinaryOpType, ColumnRef, Context, Expression, OpPrecedence, Operand,
         SqlWriter, UnaryOp, UnaryOpType, Value,
     };
     use tank_core::Entity;
@@ -21,7 +21,7 @@ mod tests {
     fn test_simple_expressions() {
         let expr = expr!();
         assert!(matches!(expr, Operand::LitBool(false)));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "false");
 
@@ -34,7 +34,7 @@ mod tests {
                 rhs: Operand::LitInt(2),
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "1 + 2");
 
@@ -47,7 +47,7 @@ mod tests {
                 rhs: Operand::LitFloat(1.2),
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "5 * 1.2");
 
@@ -60,7 +60,7 @@ mod tests {
                 rhs: Operand::LitBool(false),
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "true AND false");
 
@@ -76,7 +76,7 @@ mod tests {
                 },
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "45 | -90");
 
@@ -89,7 +89,7 @@ mod tests {
                 rhs: Operand::Type(Value::Int32(..)),
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "CAST(true AS INTEGER)");
 
@@ -102,7 +102,7 @@ mod tests {
                 rhs: Operand::Type(Value::Float64(..)),
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "CAST('1.5' AS DOUBLE)");
 
@@ -115,7 +115,7 @@ mod tests {
                 Operand::LitStr("c"),
             ])
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "['a', 'b', 'c']");
 
@@ -132,7 +132,7 @@ mod tests {
                 rhs: Operand::LitInt(1),
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "[11, 22, 33][1]");
 
@@ -145,7 +145,7 @@ mod tests {
                 rhs: Operand::LitStr("hell_"),
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "'hello' LIKE 'hell_'");
 
@@ -158,7 +158,7 @@ mod tests {
                 rhs: Operand::LitStr("A%"),
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "'abc' NOT LIKE 'A%'");
 
@@ -171,7 +171,7 @@ mod tests {
                 rhs: Operand::LitStr("src/**/log.{txt,csv}"),
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "'log.txt' NOT GLOB 'src/**/log.{txt,csv}'");
 
@@ -184,7 +184,7 @@ mod tests {
                 rhs: Operand::Type(Value::Int32(..))
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "CAST(true AS INTEGER)");
 
@@ -197,7 +197,7 @@ mod tests {
                 rhs: Operand::Null,
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "'value' IS NOT NULL");
     }
@@ -206,7 +206,7 @@ mod tests {
     fn test_asterisk_expressions() {
         let expr = expr!(COUNT(*));
         assert!(matches!(expr, Operand::Call("COUNT", _)));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "COUNT(*)");
 
@@ -217,7 +217,7 @@ mod tests {
         }
         let expr = expr!(SUM(ATable::a_column));
         assert!(matches!(expr, Operand::Call("SUM", _)));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), r#"SUM("my_column")"#);
     }
@@ -241,7 +241,7 @@ mod tests {
                 },
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(true), &mut query);
         assert_eq!(query.as_str(), "alpha = ? AND bravo > ?");
 
@@ -259,7 +259,7 @@ mod tests {
                 rhs: Operand::QuestionMark,
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(true), &mut query);
         assert_eq!(query.as_str(), r#""some_table"."the_column" NOT LIKE ?"#);
     }
@@ -290,7 +290,7 @@ mod tests {
                 },
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "90.5 - -0.54 * 2 < 7 / 2");
 
@@ -323,7 +323,7 @@ mod tests {
                 },
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "(2 + 3) * (4 - 1) >> 1 & (8 | 3)");
 
@@ -369,7 +369,7 @@ mod tests {
                 },
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(
             query.as_str(),
@@ -394,7 +394,7 @@ mod tests {
                 rhs: Operand::Variable(Value::Int32(Some(3))),
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "1 + 2 = 3");
 
@@ -422,7 +422,7 @@ mod tests {
                 Value::Int32(Some(-4)),
             ]
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
         assert_eq!(query.as_str(), "[-1,-2,-3,-4][2 + 1] + 60");
     }
@@ -440,12 +440,12 @@ mod tests {
 
         let expr = expr!(MyEntity::_first + 2);
         {
-            let mut query = RawQuery::default();
+            let mut query = DynQuery::default();
             expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
             assert_eq!(query.as_str(), r#""first" + 2"#);
         }
         {
-            let mut query = RawQuery::default();
+            let mut query = DynQuery::default();
             expr.write_query(&WRITER, &mut Context::qualify(true), &mut query);
             assert_eq!(query.as_str(), r#""the_table"."first" + 2"#);
         }
@@ -510,7 +510,7 @@ mod tests {
                 },
             }
         ));
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(true), &mut query);
         assert_eq!(
             query.as_str(),

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use std::{i64, time::Duration};
-    use tank_core::{AsValue, Interval, RawQuery, SqlWriter};
+    use tank_core::{AsValue, DynQuery, Interval, SqlWriter};
 
     struct Writer;
     impl SqlWriter for Writer {
@@ -13,7 +13,7 @@ mod tests {
 
     macro_rules! test_interval {
         ($interval:expr, $expected:literal) => {{
-            let mut out = RawQuery::default();
+            let mut out = DynQuery::default();
             WRITER.write_value(&mut Default::default(), &mut out, &$interval.as_value());
             assert_eq!(out.as_str(), $expected);
         }};

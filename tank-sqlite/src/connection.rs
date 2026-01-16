@@ -16,9 +16,8 @@ use std::{
     },
 };
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Prepared, Query, QueryResult, RawQuery,
-    Result, RowLabeled, RowsAffected, error_message_from_ptr, send_value, stream::Stream,
-    truncate_long,
+    AsQuery, Connection, Error, ErrorContext, Executor, Prepared, Query, QueryResult, Result,
+    RowLabeled, RowsAffected, error_message_from_ptr, send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -161,16 +160,13 @@ impl SQLiteConnection {
 impl Executor for SQLiteConnection {
     type Driver = SQLiteDriver;
 
-    async fn prepare(&mut self, mut sql: RawQuery) -> Result<Query<Self::Driver>> {
+    async fn prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
         let connection = AtomicPtr::new(*self.connection);
-        let context = format!(
-            "While preparing the query:\n{}",
-            truncate_long!(sql.as_str())
-        );
+        let context = format!("While preparing the query:\n{}", truncate_long!(sql));
         let prepared = spawn_blocking(move || unsafe {
             let connection = connection.load(Ordering::Relaxed);
             let len = sql.len();
-            let sql = CString::new(mem::take(sql.buffer()).into_bytes())?;
+            let sql = CString::new(sql.into_bytes())?;
             let mut statement = CBox::new(ptr::null_mut(), |p| {
                 sqlite3_finalize(p);
             });
@@ -216,7 +212,7 @@ impl Executor for SQLiteConnection {
         let join = spawn_blocking(move || {
             match &mut owned {
                 Query::Raw(query) => {
-                    Self::do_run_unprepared(connection.load(Ordering::Relaxed), query.as_str(), tx);
+                    Self::do_run_unprepared(connection.load(Ordering::Relaxed), &query.sql, tx);
                 }
                 Query::Prepared(prepared) => {
                     Self::do_run_prepared(

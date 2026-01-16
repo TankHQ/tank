@@ -7,7 +7,7 @@ use std::{
     os::raw::{c_char, c_void},
 };
 use tank_core::{
-    AsValue, Context, Error, Fragment, Prepared, QueryMetadata, RawQuery, Result, SqlWriter, Value,
+    DynQuery, AsValue, Context, Error, Fragment, Prepared, QueryMetadata, Result, SqlWriter, Value,
     error_message_from_ptr, truncate_long,
 };
 
@@ -46,6 +46,9 @@ impl SQLitePrepared {
 }
 
 impl Prepared for SQLitePrepared {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
+    }
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         self.index = 1;
         unsafe {
@@ -170,7 +173,7 @@ impl Prepared for SQLitePrepared {
                     SQLITE_TRANSIENT(),
                 ),
                 Value::Date(Some(v), ..) => {
-                    let mut out = RawQuery::with_capacity(32);
+                    let mut out = DynQuery::with_capacity(32);
                     Self::WRITER.write_value_date(
                         &mut Context::fragment(Fragment::ParameterBinding),
                         &mut out,
@@ -186,7 +189,7 @@ impl Prepared for SQLitePrepared {
                     )
                 }
                 Value::Time(Some(v), ..) => {
-                    let mut out = RawQuery::with_capacity(32);
+                    let mut out = DynQuery::with_capacity(32);
                     Self::WRITER.write_value_time(
                         &mut Context::fragment(Fragment::ParameterBinding),
                         &mut out,
@@ -202,7 +205,7 @@ impl Prepared for SQLitePrepared {
                     )
                 }
                 Value::Timestamp(Some(v), ..) => {
-                    let mut out = RawQuery::with_capacity(32);
+                    let mut out = DynQuery::with_capacity(32);
                     Self::WRITER.write_value_timestamp(
                         &mut Context::fragment(Fragment::ParameterBinding),
                         &mut out,
@@ -217,7 +220,7 @@ impl Prepared for SQLitePrepared {
                     )
                 }
                 Value::TimestampWithTimezone(Some(v), ..) => {
-                    let mut out = RawQuery::with_capacity(32);
+                    let mut out = DynQuery::with_capacity(32);
                     Self::WRITER.write_value_timestamptz(
                         &mut Context::fragment(Fragment::ParameterBinding),
                         &mut out,

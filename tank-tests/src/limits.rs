@@ -225,7 +225,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         let writer = executor.driver().sql_writer();
         writer.write_delete::<Limits>(&mut query, &true);
         writer.write_insert(&mut query, &[minimals, maximals], false);

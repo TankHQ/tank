@@ -1,5 +1,5 @@
 use std::{collections::BTreeMap, fmt::Write};
-use tank_core::{ColumnDef, ColumnRef, Context, Entity, RawQuery, SqlWriter, TableRef, Value};
+use tank_core::{DynQuery, ColumnDef, ColumnRef, Context, Entity, SqlWriter, TableRef, Value};
 
 /// SQL writer for SQLite dialect.
 ///
@@ -14,7 +14,7 @@ impl SqlWriter for SQLiteSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut RawQuery,
+        out: &mut DynQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
@@ -26,7 +26,7 @@ impl SqlWriter for SQLiteSqlWriter {
         }
     }
 
-    fn write_column_ref(&self, context: &mut Context, out: &mut RawQuery, value: &ColumnRef) {
+    fn write_column_ref(&self, context: &mut Context, out: &mut DynQuery, value: &ColumnRef) {
         if context.qualify_columns && !value.table.is_empty() {
             out.push('"');
             if !value.schema.is_empty() {
@@ -39,7 +39,7 @@ impl SqlWriter for SQLiteSqlWriter {
         self.write_identifier_quoted(context, out, &value.name);
     }
 
-    fn write_table_ref(&self, context: &mut Context, out: &mut RawQuery, value: &TableRef) {
+    fn write_table_ref(&self, context: &mut Context, out: &mut DynQuery, value: &TableRef) {
         if self.alias_declaration(context) || value.alias.is_empty() {
             out.push('"');
             if !value.schema.is_empty() {
@@ -54,7 +54,7 @@ impl SqlWriter for SQLiteSqlWriter {
         }
     }
 
-    fn write_column_type(&self, _context: &mut Context, out: &mut RawQuery, value: &Value) {
+    fn write_column_type(&self, _context: &mut Context, out: &mut DynQuery, value: &Value) {
         match value {
             Value::Boolean(..) => out.push_str("INTEGER"),
             Value::Int8(..) => out.push_str("INTEGER"),
@@ -85,19 +85,19 @@ impl SqlWriter for SQLiteSqlWriter {
         };
     }
 
-    fn write_value_infinity(&self, _context: &mut Context, out: &mut RawQuery, negative: bool) {
+    fn write_value_infinity(&self, _context: &mut Context, out: &mut DynQuery, negative: bool) {
         if negative {
             out.push('-');
         }
         out.push_str("1.0e+10000");
     }
 
-    fn write_value_nan(&self, context: &mut Context, out: &mut RawQuery) {
+    fn write_value_nan(&self, context: &mut Context, out: &mut DynQuery) {
         log::warn!("SQLite does not support float NaN values, will write NULL instead");
         self.write_value_none(context, out);
     }
 
-    fn write_value_blob(&self, _context: &mut Context, out: &mut RawQuery, value: &[u8]) {
+    fn write_value_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
         out.push_str("X'");
         for b in value {
             let _ = write!(out, "{:02X}", b);
@@ -105,7 +105,7 @@ impl SqlWriter for SQLiteSqlWriter {
         out.push('\'');
     }
 
-    fn write_create_schema<E>(&self, _out: &mut RawQuery, _if_not_exists: bool)
+    fn write_create_schema<E>(&self, _out: &mut DynQuery, _if_not_exists: bool)
     where
         Self: Sized,
         E: Entity,
@@ -113,7 +113,7 @@ impl SqlWriter for SQLiteSqlWriter {
         // SQLite does not support schema
     }
 
-    fn write_drop_schema<E>(&self, _out: &mut RawQuery, _if_exists: bool)
+    fn write_drop_schema<E>(&self, _out: &mut DynQuery, _if_exists: bool)
     where
         Self: Sized,
         E: Entity,
@@ -121,7 +121,7 @@ impl SqlWriter for SQLiteSqlWriter {
         // SQLite does not support schema
     }
 
-    fn write_column_comments_statements<E>(&self, _context: &mut Context, _out: &mut RawQuery)
+    fn write_column_comments_statements<E>(&self, _context: &mut Context, _out: &mut DynQuery)
     where
         Self: Sized,
         E: Entity,

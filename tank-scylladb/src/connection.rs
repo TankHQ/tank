@@ -9,8 +9,8 @@ use scylla::{
 };
 use std::{borrow::Cow, num::NonZeroUsize, ops::ControlFlow, pin::pin, sync::Arc, time::Duration};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result,
-    RowLabeled, impl_executor_transaction,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowLabeled,
+    impl_executor_transaction,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
@@ -61,16 +61,9 @@ impl Executor for ScyllaDBConnection {
         false
     }
 
-    async fn prepare(&mut self, sql: RawQuery) -> Result<Query<Self::Driver>> {
-        let context = format!(
-            "While preparing the query:\n{}",
-            truncate_long!(sql.as_str())
-        );
-        let statement = self
-            .session
-            .prepare(sql.as_str())
-            .await
-            .with_context(|| context)?;
+    async fn prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
+        let context = format!("While preparing the query:\n{}", truncate_long!(sql));
+        let statement = self.session.prepare(sql).await.with_context(|| context)?;
         Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
     }
 
@@ -84,8 +77,8 @@ impl Executor for ScyllaDBConnection {
             let mut paging_state = PagingState::start();
             loop {
                 let (query_result, paging_state_response) = match query.as_mut() {
-                    Query::Raw(sql) => {
-                        let sql = sql.as_str();
+                    Query::Raw(raw) => {
+                        let sql = raw.sql.as_str();
                         self.session
                             .query_single_page(sql, &[], paging_state)
                             .await?
@@ -131,8 +124,8 @@ impl Executor for ScyllaDBConnection {
         let context = Arc::new(format!("While fetching the query:\n{}", query.as_mut()));
         stream! {
             let stream = match query.as_mut() {
-                Query::Raw(sql) => {
-                    let sql = sql.as_str();
+                Query::Raw(raw) => {
+                    let sql = raw.sql.as_str();
                     self.session
                         .query_iter(sql, [])
                         .await?

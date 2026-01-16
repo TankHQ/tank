@@ -21,7 +21,10 @@ use url::Url;
 ///   [`Transaction`]. Commit / rollback MUST be awaited to guarantee resource
 ///   release.
 pub trait Connection: Executor {
-    fn sanitize_url(mut url: Cow<'static, str>) -> Result<Url> {
+    fn sanitize_url(mut url: Cow<'static, str>) -> Result<Url>
+    where
+        Self: Sized,
+    {
         let mut in_memory = false;
         if let Some((scheme, host)) = url.split_once("://")
             && host.starts_with(":memory:")
@@ -61,7 +64,9 @@ pub trait Connection: Executor {
     /// during `connect`; callers should treat this as a potentially expensive operation.
     fn connect(
         url: Cow<'static, str>,
-    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Connection>>;
+    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Connection>>
+    where
+        Self: Sized;
 
     /// Begin a transaction scope tied to the current connection.
     ///
@@ -73,7 +78,10 @@ pub trait Connection: Executor {
     ///
     /// Default implementation is a no-op; drivers may override to close sockets
     /// or return the connection to a pool asynchronously.
-    fn disconnect(self) -> impl Future<Output = Result<()>> {
+    fn disconnect(self) -> impl Future<Output = Result<()>>
+    where
+        Self: Sized,
+    {
         future::ready(Ok(()))
     }
 }

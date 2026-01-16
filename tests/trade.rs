@@ -8,8 +8,8 @@ mod tests {
         collections::{BTreeMap, HashMap},
     };
     use tank::{
-        Action, DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, QueryBuilder,
-        RawQuery, SqlWriter, TableRef, Value, expr,
+        Action, DynQuery, DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType,
+        QueryBuilder, SqlWriter, TableRef, Value, expr,
     };
     use time::macros::datetime;
     use uuid::Uuid;
@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn test_trade_create_table() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_create_table::<Trade>(&mut query, false);
         assert_eq!(
             query.as_str(),
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn test_trade_drop_table() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_drop_table::<Trade>(&mut query, true);
         assert_eq!(
             query.as_str(),
@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn test_trade_select() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
             &QueryBuilder::new()
@@ -304,7 +304,7 @@ mod tests {
         let mut docs = HashMap::new();
         docs.insert("contract.pdf".to_string(), vec![1, 2, 3, 4]);
         let employee = Trade::sample();
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_insert(&mut query, [&employee], false);
         assert!(
             // Last part of the query (the map) is removed becaus order of keys is not defined. Value stores a HashMap
@@ -317,7 +317,7 @@ mod tests {
 
     #[test]
     fn test_trade_delete() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_delete::<Trade>(&mut query, expr!(Trade::trade == 68391));
         assert_eq!(
             query.as_str(),

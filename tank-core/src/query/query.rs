@@ -1,7 +1,20 @@
 use crate::{
-    AsValue, Driver, Error, Prepared, RawQuery, Result, RowLabeled, RowsAffected, TableRef,
+    AsValue, Driver, DynQuery, Error, Prepared, QueryMetadata, Result, RowLabeled, RowsAffected,
+    TableRef, truncate_long,
 };
 use std::fmt::{self, Display};
+
+#[derive(Default, Clone, Debug)]
+pub struct RawQuery {
+    pub sql: String,
+    pub metadata: QueryMetadata,
+}
+
+impl Display for RawQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", truncate_long!(self.sql))
+    }
+}
 
 /// Executable query: raw SQL or prepared statement.
 #[derive(Debug)]
@@ -15,7 +28,10 @@ pub enum Query<D: Driver> {
 impl<D: Driver> Query<D> {
     /// Create a raw query
     pub fn raw(value: String) -> Self {
-        Query::Raw(RawQuery::new(value))
+        Query::Raw(RawQuery {
+            sql: value,
+            metadata: Default::default(),
+        })
     }
     /// Create a prepared query
     pub fn prepared(value: D::Prepared) -> Self {
@@ -52,31 +68,34 @@ impl<D: Driver> Query<D> {
     }
     pub fn limit(&self) -> Option<u32> {
         match self {
-            Query::Raw(v) => v.metadata().limit,
+            Query::Raw(v) => v.metadata.limit,
             Query::Prepared(v) => Prepared::get_limit(v),
         }
     }
     pub fn table(&self) -> &TableRef {
         match self {
-            Query::Raw(v) => &v.metadata().table,
+            Query::Raw(v) => &v.metadata.table,
             Query::Prepared(v) => Prepared::get_table(v),
         }
     }
     pub fn table_mut(&mut self) -> &mut TableRef {
         match self {
-            Query::Raw(v) => &mut v.metadata_mut().table,
+            Query::Raw(v) => &mut v.metadata.table,
             Query::Prepared(v) => Prepared::get_table_mut(v),
         }
     }
     pub fn with_table(mut self, table: TableRef) -> Self {
         self = match self {
             Query::Raw(mut v) => {
-                v.metadata_mut().table = table;
+                v.metadata.table = table;
                 Query::Raw(v)
             }
             Query::Prepared(v) => Query::Prepared(Prepared::with_table(v, table)),
         };
         self
+    }
+    pub fn into_dyn(self) -> DynQuery {
+        self.into()
     }
 }
 

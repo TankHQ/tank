@@ -1,5 +1,6 @@
 use crate::{
-    DefaultValueType, Expression, OpPrecedence, RawQuery, TableRef, Value, writer::Context,
+    DynQuery, DefaultValueType, Expression, OpPrecedence, SqlWriter, TableRef, Value,
+    writer::Context,
 };
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
@@ -139,35 +140,25 @@ impl<'a> From<&'a ColumnDef> for &'a ColumnRef {
 }
 
 impl OpPrecedence for ColumnRef {
-    fn precedence(&self, _writer: &dyn crate::SqlWriter) -> i32 {
+    fn precedence(&self, _writer: &dyn SqlWriter) -> i32 {
         1_000_000
     }
 }
 
 impl Expression for ColumnRef {
-    fn write_query(
-        &self,
-        writer: &dyn crate::SqlWriter,
-        context: &mut Context,
-        out: &mut RawQuery,
-    ) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         writer.write_column_ref(context, out, self);
     }
 }
 
 impl OpPrecedence for ColumnDef {
-    fn precedence(&self, _writer: &dyn crate::SqlWriter) -> i32 {
+    fn precedence(&self, _writer: &dyn SqlWriter) -> i32 {
         1_000_000
     }
 }
 
 impl Expression for ColumnDef {
-    fn write_query(
-        &self,
-        writer: &dyn crate::SqlWriter,
-        context: &mut Context,
-        out: &mut RawQuery,
-    ) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         writer.write_column_ref(context, out, &self.column_ref);
     }
 }

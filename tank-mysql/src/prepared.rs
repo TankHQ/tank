@@ -40,6 +40,9 @@ impl MySQLPrepared {
 }
 
 impl Prepared for MySQLPrepared {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
+    }
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         self.params.clear();
         self.index = 0;

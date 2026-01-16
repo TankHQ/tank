@@ -4,7 +4,7 @@ mod tests {
     use rust_decimal::{Decimal, prelude::FromPrimitive};
     use std::{borrow::Cow, sync::Arc, time::Duration};
     use tank::{
-        DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder, RawQuery,
+        DynQuery, DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
         SqlWriter, TableRef, Value, expr,
     };
 
@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn test_odd_entity_create_table() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_create_table::<MyEntity>(&mut query, true);
         assert_eq!(
             query.as_str(),
@@ -143,14 +143,14 @@ mod tests {
 
     #[test]
     fn test_odd_entity_drop_table() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_drop_table::<MyEntity>(&mut query, false);
         assert_eq!(query.as_str(), r#"DROP TABLE "a_table";"#);
     }
 
     #[test]
     fn test_odd_entity_select() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
             &QueryBuilder::new()
@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn test_odd_entity_insert() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_insert(&mut query, [&MyEntity::sample()], true);
         assert_eq!(
             query.as_str(),
@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn test_odd_entity_delete() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_delete::<MyEntity>(&mut query, expr!(MyEntity::_echo == 5));
         assert_eq!(
             query.as_str(),

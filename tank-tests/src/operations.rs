@@ -1,6 +1,6 @@
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Driver, Entity, Executor, QueryBuilder, QueryResult, RawQuery, Result, RowsAffected, SqlWriter,
+    DynQuery, Driver, Entity, Executor, QueryBuilder, QueryResult, Result, RowsAffected, SqlWriter,
     cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
@@ -126,7 +126,7 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
 
     // Multi-Statement
     let writer = executor.driver().sql_writer();
-    let mut query = RawQuery::default();
+    let mut query = DynQuery::default();
     writer.write_delete::<RadioLog>(&mut query, expr!(RadioLog::signal_strength < 10));
     writer.write_insert(&mut query, [&operator], false);
     writer.write_insert(

@@ -190,7 +190,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
             {
                 #primary_key_condition_declaration
                 let condition = ::tank::expr!(#primary_key_condition_expression);
-                let mut query = ::tank::RawQuery::with_capacity(128);
+                let mut query = ::tank::DynQuery::with_capacity(128);
                 ::tank::SqlWriter::write_delete::<Self>(
                     &::tank::Driver::sql_writer(&executor.driver()),
                     &mut query,

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
-use tank::{AsValue, QueryBuilder, RawQuery};
+use tank::{DynQuery, AsValue, QueryBuilder};
 use tank::{Driver, Entity, Executor, QueryResult, SqlWriter, stream::TryStreamExt};
 use tokio::sync::Mutex;
 
@@ -27,7 +27,7 @@ struct Three {
 pub async fn multiple<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;
 
-    let mut query = RawQuery::default();
+    let mut query = DynQuery::default();
     let writer = executor.driver().sql_writer();
     query.push_str("    \n\n  \n \n\t\t\n   \n    ");
     // 1

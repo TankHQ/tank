@@ -1,13 +1,12 @@
 use crate::{
-    ColumnDef, Context, DataSet, Driver, Error, Executor, Expression, Query, QueryBuilder,
-    RawQuery, Result, Row, RowLabeled, RowsAffected, TableRef, Value, future::Either,
+    ColumnDef, Context, DataSet, Driver, DynQuery, Error, Executor, Expression, Query,
+    QueryBuilder, Result, Row, RowLabeled, RowsAffected, TableRef, Value, future::Either,
     stream::Stream, truncate_long, writer::SqlWriter,
 };
 use futures::{FutureExt, StreamExt};
 use log::Level;
 use std::{
     future::{self, Future},
-    mem,
     pin::pin,
 };
 
@@ -60,21 +59,16 @@ pub trait Entity {
         Self: Sized,
     {
         async move {
-            let mut query = RawQuery::with_capacity(2048);
+            let mut query = DynQuery::with_capacity(2048);
             let writer = executor.driver().sql_writer();
             if create_schema && !Self::table().schema.is_empty() {
                 writer.write_create_schema::<Self>(&mut query, true);
             }
             if !executor.accepts_multiple_statements() && !query.is_empty() {
-                let mut q = Query::Raw(query);
+                let mut q = query.into_query(executor.driver());
                 executor.execute(&mut q).boxed().await?;
-                let Query::Raw(mut q) = q else {
-                    return Err(Error::msg(
-                        "The executor was borrowed a raw query but it did not return it",
-                    ));
-                };
-                // To save the storage capacity and avoid reallocation
-                query = mem::take(&mut q);
+                // To reuse the allocated buffer
+                query = q.into();
                 query.buffer().clear();
             }
             writer.write_create_table::<Self>(&mut query, if_not_exists);
@@ -97,20 +91,15 @@ pub trait Entity {
         Self: Sized,
     {
         async move {
-            let mut query = RawQuery::with_capacity(256);
+            let mut query = DynQuery::with_capacity(256);
             let writer = executor.driver().sql_writer();
             writer.write_drop_table::<Self>(&mut query, if_exists);
             if drop_schema && !Self::table().schema.is_empty() {
                 if !executor.accepts_multiple_statements() {
-                    let mut q = Query::Raw(query);
+                    let mut q = query.into_query(executor.driver());
                     executor.execute(&mut q).boxed().await?;
-                    let Query::Raw(mut q) = q else {
-                        return Err(Error::msg(
-                            "The executor was borrowed a raw query but it did not return it",
-                        ));
-                    };
-                    // To save the storage capacity and avoid reallocation
-                    query = mem::take(&mut q);
+                    // To reuse the allocated buffer
+                    query = q.into();
                     query.buffer().clear();
                 }
                 writer.write_drop_schema::<Self>(&mut query, true);
@@ -127,7 +116,7 @@ pub trait Entity {
         executor: &mut impl Executor,
         entity: &impl Entity,
     ) -> impl Future<Output = Result<RowsAffected>> + Send {
-        let mut query = RawQuery::with_capacity(128);
+        let mut query = DynQuery::with_capacity(128);
         executor
             .driver()
             .sql_writer()
@@ -164,9 +153,9 @@ pub trait Entity {
             .where_condition(condition)
             .limit(limit);
         let writer = executor.driver().sql_writer();
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         writer.write_select(&mut query, &builder);
-        executor.prepare(query)
+        executor.prepare(query.into_buffer())
     }
 
     /// Finds an entity by primary key.
@@ -235,7 +224,7 @@ pub trait Entity {
     where
         Self: Sized,
     {
-        let mut query = RawQuery::with_capacity(128);
+        let mut query = DynQuery::with_capacity(128);
         executor
             .driver()
             .sql_writer()
@@ -259,7 +248,7 @@ pub trait Entity {
             log::error!("{:#}", error);
             return Either::Left(future::ready(Err(error)));
         }
-        let mut query = RawQuery::with_capacity(512);
+        let mut query = DynQuery::with_capacity(512);
         executor
             .driver()
             .sql_writer()
@@ -339,7 +328,7 @@ impl<E: Entity> DataSet for E {
     }
 
     /// Writes the table reference into the out string.
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         Self::table().write_query(writer, context, out);
     }
 

@@ -1,5 +1,8 @@
 use crate::{AsValue, QueryMetadata, Result, TableRef};
-use std::fmt::{Debug, Display};
+use std::{
+    any::Any,
+    fmt::{Debug, Display},
+};
 
 /// A parameterized, backend-prepared query handle.
 ///
@@ -14,13 +17,20 @@ use std::fmt::{Debug, Display};
 /// ```ignore
 /// prepared.bind(42)?.bind("hello")?;
 /// ```
-pub trait Prepared: Send + Sync + Display + Debug {
+pub trait Prepared: Any + Send + Sync + Display + Debug {
+    fn as_any(self: Box<Self>) -> Box<dyn Any>;
     /// Clear all bound values.
-    fn clear_bindings(&mut self) -> Result<&mut Self>;
+    fn clear_bindings(&mut self) -> Result<&mut Self>
+    where
+        Self: Sized;
     /// Append a bound value.
-    fn bind(&mut self, value: impl AsValue) -> Result<&mut Self>;
+    fn bind(&mut self, value: impl AsValue) -> Result<&mut Self>
+    where
+        Self: Sized;
     /// Bind a value at a specific index.
-    fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self>;
+    fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self>
+    where
+        Self: Sized;
     /// Get QueryMetadata
     fn metadata(&self) -> &QueryMetadata;
     /// Get mutable QueryMetadata

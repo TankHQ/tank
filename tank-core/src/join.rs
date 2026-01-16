@@ -1,5 +1,5 @@
 use crate::{
-    DataSet, Expression, RawQuery, TableRef,
+    DynQuery, DataSet, Expression, TableRef,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::{TokenStream, TokenTree};
@@ -43,7 +43,7 @@ impl<L: DataSet, R: DataSet, E: Expression> DataSet for Join<L, R, E> {
     {
         true
     }
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         writer.write_join(
             context,
             out,

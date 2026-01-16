@@ -4,7 +4,7 @@ mod tests {
     use rust_decimal::Decimal;
     use std::borrow::Cow;
     use tank::{
-        DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, RawQuery, SqlWriter,
+        DynQuery, DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, SqlWriter,
         TableRef, Value,
     };
     use time::{Date, Month, PrimitiveDateTime, Time};
@@ -133,7 +133,7 @@ mod tests {
 
     #[test]
     fn test_product_create_table() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_create_table::<Product>(&mut query, false);
         assert_eq!(
             query.as_str(),
@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn test_product_insert() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_insert(&mut query, [&Product::sample()], false);
         assert_eq!(
             query.as_str(),
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn test_product_insert_multiple() {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,
             [

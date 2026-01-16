@@ -1,5 +1,5 @@
 use crate::{
-    RawQuery, TableRef,
+    DynQuery, TableRef,
     writer::{Context, SqlWriter},
 };
 
@@ -13,7 +13,7 @@ pub trait DataSet {
     where
         Self: Sized;
     /// Render the sql bits representing this data set into `out`.
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery);
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery);
     /// TableRef representing this data set
     fn table_ref(&self) -> TableRef;
 }
@@ -25,7 +25,7 @@ impl DataSet for &dyn DataSet {
     {
         unreachable!("Cannot call static qualified_columns on a dyn object directly");
     }
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut RawQuery) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         (*self).write_query(writer, context, out)
     }
     fn table_ref(&self) -> TableRef {

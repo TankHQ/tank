@@ -17,8 +17,8 @@ use std::{
     str::FromStr,
 };
 use tank_core::{
-    AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query, QueryResult,
-    RawQuery, Result, RowsAffected, Transaction,
+    DynQuery, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
+    QueryResult, Result, RowsAffected, Transaction,
     future::Either,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
@@ -40,7 +40,7 @@ pub struct PostgresConnection {
 impl Executor for PostgresConnection {
     type Driver = PostgresDriver;
 
-    async fn prepare(&mut self, sql: RawQuery) -> Result<Query<Self::Driver>> {
+    async fn prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
         let sql = sql.as_str().trim_end().trim_end_matches(';');
         Ok(
             PostgresPrepared::new(self.client.prepare(&sql).await.map_err(|e| {
@@ -63,14 +63,19 @@ impl Executor for PostgresConnection {
         let context = format!("While running the query:\n{}", query.as_mut());
         let mut owned = mem::take(query.as_mut());
         match owned {
-            Query::Raw(sql) => Either::Left(
-                stream_postgres_simple_query_message_to_tank_query_result(async move || {
-                    self.client
-                        .simple_query_raw(sql.as_str())
-                        .await
-                        .map_err(Into::into)
-                }),
-            ),
+            Query::Raw(raw) => Either::Left(try_stream! {
+                let sql = &raw.sql;
+                {
+                    let stream = stream_postgres_simple_query_message_to_tank_query_result(
+                        async move || self.client.simple_query_raw(sql).await.map_err(Into::into),
+                    );
+                    let mut stream = pin!(stream);
+                    while let Some(value) = stream.next().await.transpose()? {
+                        yield value;
+                    }
+                }
+                *query.as_mut() = Query::Raw(raw);
+            }),
             Query::Prepared(..) => Either::Right(try_stream! {
                 let mut transaction = self.begin().await?;
                 {
@@ -99,13 +104,13 @@ impl Executor for PostgresConnection {
         let owned = mem::take(query.as_mut());
         stream_postgres_row_to_tank_row(async move || {
             let row_stream = match owned {
-                Query::Raw(mut sql) => {
+                Query::Raw(raw) => {
                     let stream = self
                         .client
-                        .query_raw(sql.as_str(), Vec::<ValueWrap>::new())
+                        .query_raw(&raw.sql, Vec::<ValueWrap>::new())
                         .await
                         .map_err(|e| Error::new(e).context(context.clone()))?;
-                    *query.as_mut() = Query::Raw(mem::take(&mut sql));
+                    *query.as_mut() = Query::Raw(raw);
                     stream
                 }
                 Query::Prepared(mut prepared) => {
@@ -147,7 +152,7 @@ impl Executor for PostgresConnection {
             last_affected_id: None,
         };
         let writer = self.driver().sql_writer();
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         writer.write_copy::<E>(&mut query);
         let sink = self
             .client

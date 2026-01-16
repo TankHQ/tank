@@ -39,6 +39,9 @@ impl Display for DuckDBPrepared {
 }
 
 impl Prepared for DuckDBPrepared {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
+    }
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         self.index = 1;
         unsafe {

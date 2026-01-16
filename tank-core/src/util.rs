@@ -1,4 +1,4 @@
-use crate::{AsValue, RawQuery, Value};
+use crate::{DynQuery, AsValue, Value};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
 use rust_decimal::prelude::ToPrimitive;
@@ -216,12 +216,12 @@ pub fn matches_path(path: &Path, expect: &[&str]) -> bool {
 
 /// Write an iterator of items separated by a delimiter into a string.
 pub fn separated_by<T, F>(
-    out: &mut RawQuery,
+    out: &mut DynQuery,
     values: impl IntoIterator<Item = T>,
     mut f: F,
     separator: &str,
 ) where
-    F: FnMut(&mut RawQuery, T),
+    F: FnMut(&mut DynQuery, T),
 {
     let mut len = out.len();
     for v in values {
@@ -485,7 +485,7 @@ macro_rules! impl_executor_transaction {
 
             fn prepare(
                 &mut self,
-                query: ::tank_core::RawQuery,
+                query: String,
             ) -> impl Future<Output = ::tank_core::Result<::tank_core::Query<Self::Driver>>> + Send
             {
                 self.$connection.prepare(query)

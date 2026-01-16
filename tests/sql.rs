@@ -3,7 +3,7 @@ mod tests {
     use indoc::indoc;
     use rust_decimal::Decimal;
     use std::str::FromStr;
-    use tank::{Entity, Passive, QueryBuilder, RawQuery, SqlWriter, expr};
+    use tank::{DynQuery, Entity, Passive, QueryBuilder, SqlWriter, expr};
     use time::{Date, Month, PrimitiveDateTime, Time};
     use uuid::Uuid;
 
@@ -28,7 +28,7 @@ mod tests {
         }
         // CREATE TABLE
         {
-            let mut query = RawQuery::default();
+            let mut query = DynQuery::default();
             WRITER.write_create_table::<Table>(&mut query, false);
             assert_eq!(
                 query.as_str(),
@@ -43,13 +43,13 @@ mod tests {
         }
         // DROP TABLE IF EXISTS
         {
-            let mut query = RawQuery::default();
+            let mut query = DynQuery::default();
             WRITER.write_drop_table::<Table>(&mut query, true);
             assert_eq!(query.as_str(), r#"DROP TABLE IF EXISTS "my_table";"#);
         }
         // SELECT
         {
-            let mut query = RawQuery::default();
+            let mut query = DynQuery::default();
             WRITER.write_select(
                 &mut query,
                 &QueryBuilder::new()
@@ -71,7 +71,7 @@ mod tests {
         }
         // INSERT single
         {
-            let mut query = RawQuery::default();
+            let mut query = DynQuery::default();
             let table = Table::default();
             WRITER.write_insert(&mut query, [&table], false);
             assert_eq!(
@@ -84,7 +84,7 @@ mod tests {
         }
         // INSERT single with upsert
         {
-            let mut query = RawQuery::default();
+            let mut query = DynQuery::default();
             let table = Table {
                 _first_column: Some("hello".into()),
                 _second_column: 512.5.into(),
@@ -119,7 +119,7 @@ mod tests {
         }
         // CREATE TABLE IF NOT EXISTS
         {
-            let mut query = RawQuery::default();
+            let mut query = DynQuery::default();
             WRITER.write_create_table::<Cart>(&mut query, true);
             assert_eq!(
                 query.as_str(),
@@ -137,13 +137,13 @@ mod tests {
         }
         // DROP TABLE
         {
-            let mut query = RawQuery::default();
+            let mut query = DynQuery::default();
             WRITER.write_drop_table::<Cart>(&mut query, false);
             assert_eq!(query.as_str(), r#"DROP TABLE "cart";"#);
         }
         // SELECT with LIMIT
         {
-            let mut query = RawQuery::default();
+            let mut query = DynQuery::default();
             WRITER.write_select(
                 &mut query,
                 &QueryBuilder::new()
@@ -165,7 +165,7 @@ mod tests {
         }
         // INSERT single
         {
-            let mut query = RawQuery::default();
+            let mut query = DynQuery::default();
             let cart = Cart {
                 id: Default::default(),
                 user_id: Uuid::from_str("b0fa843f-6ae4-4a16-a13c-ddf5512f3bb2").unwrap(),
@@ -188,7 +188,7 @@ mod tests {
         }
         // INSERT single with upsert
         {
-            let mut query = RawQuery::default();
+            let mut query = DynQuery::default();
             let cart = Cart {
                 id: Default::default(),
                 user_id: Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),

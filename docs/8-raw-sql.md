@@ -17,7 +17,7 @@ Every driver exposes a `SqlWriter` for dialect‑correct sql fragments. Concaten
 Example building 8 statements (1 *CREATE SCHEMA* included by the first *CREATE TABLE*, 2 *CREATE TABLE*, 3 *INSERT INTO* and 2 *SELECT*):
 ```rust
 let writer = executor.driver().sql_writer();
-let mut query = RawQuery::default();
+let mut query = DynQuery::default();
 writer.write_create_table::<One>(&mut query, true);
 writer.write_create_table::<Two>(&mut query, false);
 writer.write_insert(&mut query, &[One { string: "ddd".into() }, One { string: "ccc".into() }], false);

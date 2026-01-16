@@ -201,7 +201,7 @@ let _messages: Vec<_> = executor
 Delete + insert + select in one roundtrip:
 ```rust
 let writer = executor.driver().sql_writer();
-let mut query = RawQuery::default();
+let mut query = DynQuery::default();
 writer.write_delete::<RadioLog>(&mut query, expr!(RadioLog::signal_strength < 10));
 writer.write_insert(&mut query, [&operator], false);
 writer.write_insert(

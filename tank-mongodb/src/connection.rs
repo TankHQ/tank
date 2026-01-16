@@ -81,7 +81,6 @@ impl Executor for MongoDBConnection {
         if query.limit() == Some(1) {
             collection.find(filter)
         }
-        {}
     }
 
     fn execute<'s>(
@@ -108,7 +107,7 @@ impl Executor for MongoDBConnection {
         It: IntoIterator<Item = &'a E> + Send,
         <It as IntoIterator>::IntoIter: Send,
     {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         self.driver()
             .sql_writer()
             .write_insert(&mut query, entities, false);

@@ -1,27 +1,13 @@
-use std::collections::BTreeMap;
-use tank_core::{ColumnDef, Context, SqlWriter, Entity, Value as TankValue};
+use bson::{Document, doc};
 use serde_json::{Map as JsonMap, Value as JsonValue};
+use std::{collections::BTreeMap, mem};
+use tank_core::{
+    BinaryOp, BinaryOpType, ColumnDef, Context, DataSet, Entity, Expression, Fragment, QueryData,
+    QueryMetadata, RawQuery, SqlWriter,
+};
 
 #[derive(Default)]
 pub struct MongoDBSqlWriter {}
-
-fn tank_value_to_json(v: &TankValue) -> JsonValue {
-    match v {
-        TankValue::Null => JsonValue::Null,
-        TankValue::Boolean(Some(b)) => JsonValue::Bool(*b),
-        TankValue::Boolean(None) => JsonValue::Null,
-        TankValue::Int32(Some(i)) => JsonValue::Number((*i).into()),
-        TankValue::Int64(Some(i)) => JsonValue::Number((*i).into()),
-        TankValue::Int8(Some(i)) => JsonValue::Number((*i as i32).into()),
-        TankValue::Int16(Some(i)) => JsonValue::Number((*i as i32).into()),
-        TankValue::Varchar(Some(s)) => JsonValue::String(s.to_string()),
-        TankValue::Char(Some(c)) => JsonValue::String(c.to_string()),
-        TankValue::Float32(Some(f)) => JsonValue::Number(serde_json::Number::from_f64(*f as f64).unwrap_or_default()),
-        TankValue::Float64(Some(f)) => JsonValue::Number(serde_json::Number::from_f64(*f).unwrap_or_default()),
-        TankValue::Json(Some(j)) => j.clone(),
-        other => JsonValue::String(format!("{:?}", other)),
-    }
-}
 
 impl SqlWriter for MongoDBSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
@@ -31,7 +17,7 @@ impl SqlWriter for MongoDBSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut RawQuery,
+        out: &mut DynQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
@@ -43,60 +29,90 @@ impl SqlWriter for MongoDBSqlWriter {
         }
     }
 
-    fn write_create_table<E>(&self, out: &mut RawQuery, _if_not_exists: bool)
-    where
-        Self: Sized,
-        E: Entity,
-    {
-        let name = E::table().full_name();
-        if !out.is_empty() {
-            out.push('\n');
+    fn write_expression_binary_op(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &BinaryOp<&dyn Expression, &dyn Expression>,
+    ) {
+        let doc = out.switch_to_document();
+        let op = match value.op {
+            BinaryOpType::Indexing => todo!(),
+            BinaryOpType::Cast => todo!(),
+            BinaryOpType::Multiplication => todo!(),
+            BinaryOpType::Division => todo!(),
+            BinaryOpType::Remainder => todo!(),
+            BinaryOpType::Addition => todo!(),
+            BinaryOpType::Subtraction => todo!(),
+            BinaryOpType::ShiftLeft => todo!(),
+            BinaryOpType::ShiftRight => todo!(),
+            BinaryOpType::BitwiseAnd => todo!(),
+            BinaryOpType::BitwiseOr => todo!(),
+            BinaryOpType::In => todo!(),
+            BinaryOpType::NotIn => todo!(),
+            BinaryOpType::Is => todo!(),
+            BinaryOpType::IsNot => todo!(),
+            BinaryOpType::Like => todo!(),
+            BinaryOpType::NotLike => todo!(),
+            BinaryOpType::Regexp => todo!(),
+            BinaryOpType::NotRegexp => todo!(),
+            BinaryOpType::Glob => todo!(),
+            BinaryOpType::NotGlob => todo!(),
+            BinaryOpType::Equal => "$eq",
+            BinaryOpType::NotEqual => "$ne",
+            BinaryOpType::Less => "$lt",
+            BinaryOpType::Greater => "$gt",
+            BinaryOpType::LessEqual => "$lte",
+            BinaryOpType::GreaterEqual => "$gte",
+            BinaryOpType::And => todo!(),
+            BinaryOpType::Or => todo!(),
+            BinaryOpType::Alias => todo!(),
+        };
+        let rhs = {
+            let mut doc = DynQuery::new_document();
+            value.rhs.write_query(self, context, &mut doc);
+            mem::take(doc.switch_to_document())
+        };
+        if context.fragment == Fragment::DocMatchCriteria {
+            let mut context = context.switch_fragment(Fragment::DocMatchCriteriaKey);
+            let mut key = DynQuery::new(Default::default());
+            value.lhs.write_query(self, &mut context.current, &mut key);
+            let key = mem::take(key.buffer());
+            doc.insert(key, rhs);
         }
-        out.push_str(&format!("MONGO:CREATE_COLLECTION {name};"));
     }
 
-    fn write_drop_table<E>(&self, out: &mut RawQuery, _if_exists: bool)
+    fn write_select<'a, Data>(&self, out: &mut DynQuery, query: &impl QueryData<Data>)
     where
         Self: Sized,
-        E: Entity,
+        Data: DataSet + 'a,
     {
-        let name = E::table().full_name();
-        if !out.is_empty() {
-            out.push('\n');
-        }
-        out.push_str(&format!("MONGO:DROP_COLLECTION {name};"));
-    }
-
-    fn write_create_schema<E>(&self, out: &mut RawQuery, _if_not_exists: bool)
-    where
-        Self: Sized,
-        E: Entity,
-    {
-        let schema = E::table().schema().to_string();
-        if !schema.is_empty() {
-            if !out.is_empty() {
-                out.push('\n');
+        let columns = query.get_select();
+        let Some(from) = query.get_from() else {
+            return;
+        };
+        let limit = query.get_limit();
+        self.update_table_ref(
+            out,
+            QueryMetadata {
+                table: from.table_ref(),
+                limit,
             }
-            out.push_str(&format!("MONGO:CREATE_DATABASE {schema};"));
+            .into(),
+        );
+        let mut has_order_by = false;
+        let mut context = Context::new(Fragment::DocMatchCriteria, Data::qualified_columns());
+        for column in query.get_where_condition() {
+            column.write_query(self, &mut context, out);
         }
     }
 
-    fn write_drop_schema<E>(&self, out: &mut RawQuery, _if_exists: bool)
-    where
-        Self: Sized,
-        E: Entity,
-    {
-        let schema = E::table().schema().to_string();
-        if !schema.is_empty() {
-            if !out.is_empty() {
-                out.push('\n');
-            }
-            out.push_str(&format!("MONGO:DROP_DATABASE {schema};"));
-        }
-    }
-
-    fn write_insert<'b, E>(&self, out: &mut RawQuery, entities: impl IntoIterator<Item = &'b E>, _update: bool)
-    where
+    fn write_insert<'b, E>(
+        &self,
+        out: &mut DynQuery,
+        entities: impl IntoIterator<Item = &'b E>,
+        _update: bool,
+    ) where
         Self: Sized,
         E: Entity + 'b,
     {
@@ -113,7 +129,11 @@ impl SqlWriter for MongoDBSqlWriter {
             return;
         }
         let name = E::table().full_name();
-        let payload = if docs.len() == 1 { docs.into_iter().next().unwrap() } else { JsonValue::Array(docs) };
+        let payload = if docs.len() == 1 {
+            docs.into_iter().next().unwrap()
+        } else {
+            JsonValue::Array(docs)
+        };
         if !out.is_empty() {
             out.push('\n');
         }

@@ -1,5 +1,5 @@
 use crate::{
-    Context, DataSet, Driver, EitherIterator, Expression, OpPrecedence, RawQuery, SqlWriter,
+    Context, DataSet, Driver, DynQuery, EitherIterator, Expression, OpPrecedence, SqlWriter,
 };
 use std::{iter, marker::PhantomData};
 
@@ -13,13 +13,7 @@ impl OpPrecedence for NA {
 }
 
 impl Expression for NA {
-    fn write_query(
-        &self,
-        _writer: &dyn SqlWriter,
-        _context: &mut Context,
-        _out: &mut crate::RawQuery,
-    ) {
-    }
+    fn write_query(&self, _writer: &dyn SqlWriter, _context: &mut Context, _out: &mut DynQuery) {}
 }
 
 pub struct Builder<Select, From, Where, GroupBy, Having, OrderBy, Limit> {
@@ -224,11 +218,16 @@ where
         self.limit
     }
 
-    pub fn build(&self, driver: &impl Driver) -> RawQuery {
+    pub fn build<D: Driver>(&self, driver: &D) -> String {
         let writer = driver.sql_writer();
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         writer.write_select(&mut query, self);
-        query
+        query.into_buffer()
+    }
+
+    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
+        let writer = driver.sql_writer();
+        writer.write_select(out, self);
     }
 }
 
@@ -244,7 +243,8 @@ where
     fn get_having(&self) -> &Option<impl Expression>;
     fn get_order_by(&self) -> impl Iterator<Item = impl Expression> + Clone;
     fn get_limit(&self) -> Option<u32>;
-    fn build(&self, driver: &impl Driver) -> RawQuery;
+    fn build<D: Driver>(&self, driver: &D) -> String;
+    fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery);
 }
 
 impl<S, From, W, G, H, O, L> QueryData<From> for Builder<S, From, W, G, H, O, L>
@@ -284,7 +284,11 @@ where
         self.get_limit()
     }
 
-    fn build(&self, driver: &impl Driver) -> RawQuery {
+    fn build<D: Driver>(&self, driver: &D) -> String {
         self.build(driver)
+    }
+
+    fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
+        self.build_into(driver, out);
     }
 }

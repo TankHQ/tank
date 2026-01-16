@@ -1,9 +1,8 @@
 #![allow(unused_imports)]
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
 use tank::{
-    AsValue, DataSet, Driver, Entity, Executor, Passive, Query, QueryBuilder, QueryResult,
-    RawQuery, RowLabeled, SqlWriter, Value, cols, expr, join,
-    stream::{StreamExt, TryStreamExt},
+    DynQuery, AsValue, DataSet, Driver, Entity, Executor, Passive, Query, QueryBuilder, QueryResult,
+    RowLabeled, SqlWriter, Value, cols, expr, join, stream::{StreamExt, TryStreamExt}
 };
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -379,7 +378,7 @@ pub async fn books<E: Executor>(executor: &mut E) {
     // Multiple statements
     // #[cfg(not(feature = "disable-multiple-statements"))]
     {
-        let mut query = RawQuery::default();
+        let mut query = DynQuery::default();
         let writer = executor.driver().sql_writer();
         writer.write_select(
             &mut query,

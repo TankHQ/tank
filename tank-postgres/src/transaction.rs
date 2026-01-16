@@ -4,7 +4,7 @@ use crate::{
 };
 use std::mem;
 use tank_core::{
-    AsQuery, Error, Executor, Query, QueryResult, RawQuery, Result, Transaction,
+    AsQuery, Error, Executor, Query, QueryResult, Result, Transaction,
     future::{Either, TryFutureExt},
     stream::{Stream, TryStreamExt},
 };
@@ -26,9 +26,9 @@ impl<'c> PostgresTransaction<'c> {
 impl<'c> Executor for PostgresTransaction<'c> {
     type Driver = PostgresDriver;
 
-    async fn prepare(&mut self, query: RawQuery) -> Result<Query<Self::Driver>> {
+    async fn prepare(&mut self, query: String) -> Result<Query<Self::Driver>> {
         Ok(
-            PostgresPrepared::new(self.0.prepare(query.as_str()).await.map_err(|e| {
+            PostgresPrepared::new(self.0.prepare(&query).await.map_err(|e| {
                 let error = Error::new(e);
                 log::error!("{:#}", error);
                 error
@@ -44,10 +44,7 @@ impl<'c> Executor for PostgresTransaction<'c> {
         let mut owned = mem::take(query.as_mut());
         stream_postgres_row_to_tank_row(async move || match &mut owned {
             Query::Raw(sql) => {
-                let stream = self
-                    .0
-                    .query_raw(sql.as_str(), Vec::<ValueWrap>::new())
-                    .await?;
+                let stream = self.0.query_raw(&sql.sql, Vec::<ValueWrap>::new()).await?;
                 Ok(Either::Left(stream))
             }
             Query::Prepared(prepared) => {
