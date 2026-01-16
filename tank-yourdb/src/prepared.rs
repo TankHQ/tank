@@ -1,5 +1,5 @@
 use std::fmt::{self, Display, Formatter};
-use tank_core::{AsValue, Prepared, QueryMetadata, Result, TableRef};
+use tank_core::{AsValue, Prepared, QueryMetadata, Result};
 
 #[derive(Debug)]
 pub struct YourDBPrepared {
@@ -17,6 +17,9 @@ impl YourDBPrepared {
 }
 
 impl Prepared for YourDBPrepared {
+    fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
+    }
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         // Clear
         Ok(self)
