@@ -27,6 +27,7 @@ impl PostgresPrepared {
             metadata: Default::default(),
         }
     }
+
     pub(crate) fn take_params(&mut self) -> Vec<ValueWrap<'static>> {
         self.index = 0;
         mem::take(&mut self.params)
@@ -40,14 +41,17 @@ impl Prepared for PostgresPrepared {
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
+
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         self.params.clear();
         self.index = 0;
         Ok(self)
     }
+
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         self.bind_index(value, self.index)
     }
+
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
         let len = self.statement.params().len();
         self.params.resize_with(len, Default::default);

@@ -1,4 +1,4 @@
-use crate::{DynQuery, AsValue, Value};
+use crate::{AsValue, DynQuery, Value};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
 use rust_decimal::prelude::ToPrimitive;

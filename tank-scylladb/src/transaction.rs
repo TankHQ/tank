@@ -2,7 +2,7 @@ use crate::{ScyllaDBConnection, ScyllaDBDriver, ScyllaDBPrepared, ValueWrap};
 use scylla::statement::batch::Batch;
 use std::future;
 use tank_core::{
-    DynQuery, Driver, Entity, Error, ErrorContext, Executor, Query, Result, RowsAffected,
+    AsQuery, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query, Result, RowsAffected,
     SqlWriter, Transaction,
     future::Either,
     stream::{self, Stream},
@@ -50,7 +50,7 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
 
     fn run<'s>(
         &'s mut self,
-        query: impl tank_core::AsQuery<Self::Driver> + 's,
+        query: impl AsQuery<Self::Driver> + 's,
     ) -> impl Stream<Item = Result<tank_core::QueryResult>> + Send {
         let mut query = query.as_query();
         let context = format!(

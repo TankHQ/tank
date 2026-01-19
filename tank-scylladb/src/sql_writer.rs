@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use tank_core::{
-    DynQuery, ColumnDef, Context, DataSet, Entity, Error, Expression, Fragment, Interval,
-    PrimaryKeyType, QueryMetadata, Result, SqlWriter, Value, future::Either, indoc::indoc,
-    print_timer, separated_by,
+    ColumnDef, Context, DataSet, DynQuery, Entity, Error, Expression, Fragment, Interval,
+    PrimaryKeyType, QueryMetadata, QueryType, Result, SqlWriter, Value, future::Either,
+    indoc::indoc, print_timer, separated_by,
 };
 use time::Time;
 use uuid::Uuid;
@@ -236,7 +236,15 @@ impl SqlWriter for ScyllaDBSqlWriter {
         E: Entity,
     {
         let table = E::table();
-        self.update_table_ref(out, QueryMetadata::from_table(table.clone()).into());
+        self.update_metadata(
+            out,
+            QueryMetadata {
+                table: table.clone(),
+                limit: None,
+                query_type: QueryType::CreateSchema.into(),
+            }
+            .into(),
+        );
         out.buffer().reserve(128 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
@@ -263,7 +271,15 @@ impl SqlWriter for ScyllaDBSqlWriter {
     {
         let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
         let table = E::table();
-        self.update_table_ref(out, QueryMetadata::from_table(table.clone()).into());
+        self.update_metadata(
+            out,
+            QueryMetadata {
+                table: table.clone(),
+                limit: None,
+                query_type: QueryType::DropSchema.into(),
+            }
+            .into(),
+        );
         out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
@@ -355,7 +371,15 @@ impl SqlWriter for ScyllaDBSqlWriter {
         E: Entity + 'b,
     {
         let table = E::table();
-        self.update_table_ref(out, QueryMetadata::from_table(table.clone()).into());
+        self.update_metadata(
+            out,
+            QueryMetadata {
+                table: table.clone(),
+                limit: None,
+                query_type: QueryType::InsertInto.into(),
+            }
+            .into(),
+        );
         let mut it = entities.into_iter().map(Entity::row_filtered).peekable();
         let mut row = it.next();
         let multiple = row.is_some() && it.peek().is_some();
@@ -403,7 +427,15 @@ impl SqlWriter for ScyllaDBSqlWriter {
         E: Entity,
     {
         let table = E::table();
-        self.update_table_ref(out, QueryMetadata::from_table(table.clone()).into());
+        self.update_metadata(
+            out,
+            QueryMetadata {
+                table: table.clone(),
+                limit: None,
+                query_type: QueryType::DeleteFrom.into(),
+            }
+            .into(),
+        );
         out.buffer().reserve(128);
         let is_true = condition.is_true();
         if is_true {

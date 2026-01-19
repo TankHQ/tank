@@ -1,22 +1,9 @@
 use crate::{
-    Context, DataSet, Driver, DynQuery, EitherIterator, Expression, OpPrecedence, SqlWriter,
+    DataSet, Driver, DynQuery, EitherIterator, Expression, ExpressionCollection, NA, SqlWriter,
 };
 use std::{iter, marker::PhantomData};
 
-#[derive(Debug)]
-pub struct NA;
-
-impl OpPrecedence for NA {
-    fn precedence(&self, _writer: &dyn SqlWriter) -> i32 {
-        0
-    }
-}
-
-impl Expression for NA {
-    fn write_query(&self, _writer: &dyn SqlWriter, _context: &mut Context, _out: &mut DynQuery) {}
-}
-
-pub struct Builder<Select, From, Where, GroupBy, Having, OrderBy, Limit> {
+pub struct SelectQueryBuilder<Select, From, Where, GroupBy, Having, OrderBy, Limit> {
     pub(crate) select: Select,
     pub(crate) from: Option<From>,
     pub(crate) where_condition: Option<Where>,
@@ -27,38 +14,12 @@ pub struct Builder<Select, From, Where, GroupBy, Having, OrderBy, Limit> {
     pub(crate) _l: PhantomData<Limit>,
 }
 
-pub type QueryBuilder = Builder<NA, NA, NA, NA, NA, NA, NA>;
-
-impl Builder<NA, NA, NA, NA, NA, NA, NA> {
-    pub fn new() -> Self {
-        Self {
-            select: NA,
-            from: Default::default(),
-            where_condition: Default::default(),
-            group_by: Default::default(),
-            having: Default::default(),
-            order_by: Default::default(),
-            limit: Default::default(),
-            _l: Default::default(),
-        }
-    }
-    pub fn select<Select>(self, select: Select) -> Builder<Select, NA, NA, NA, NA, NA, NA> {
-        Builder {
-            select,
-            from: Default::default(),
-            where_condition: Default::default(),
-            group_by: Default::default(),
-            having: Default::default(),
-            order_by: Default::default(),
-            limit: Default::default(),
-            _l: Default::default(),
-        }
-    }
-}
-
-impl<S> Builder<S, NA, NA, NA, NA, NA, NA> {
-    pub fn from<From: DataSet>(self, from: From) -> Builder<S, From, NA, NA, NA, NA, NA> {
-        Builder {
+impl<S> SelectQueryBuilder<S, NA, NA, NA, NA, NA, NA> {
+    pub fn from<From: DataSet>(
+        self,
+        from: From,
+    ) -> SelectQueryBuilder<S, From, NA, NA, NA, NA, NA> {
+        SelectQueryBuilder {
             select: self.select,
             from: Some(from),
             where_condition: Default::default(),
@@ -71,12 +32,15 @@ impl<S> Builder<S, NA, NA, NA, NA, NA, NA> {
     }
 }
 
-impl<S, F> Builder<S, F, NA, NA, NA, NA, NA> {
-    pub fn where_condition<Where>(self, condition: Where) -> Builder<S, F, Where, NA, NA, NA, NA>
+impl<S, F> SelectQueryBuilder<S, F, NA, NA, NA, NA, NA> {
+    pub fn where_condition<Where>(
+        self,
+        condition: Where,
+    ) -> SelectQueryBuilder<S, F, Where, NA, NA, NA, NA>
     where
         Where: Expression,
     {
-        Builder {
+        SelectQueryBuilder {
             select: self.select,
             from: self.from,
             where_condition: Some(condition),
@@ -89,12 +53,15 @@ impl<S, F> Builder<S, F, NA, NA, NA, NA, NA> {
     }
 }
 
-impl<S, F, W> Builder<S, F, W, NA, NA, NA, NA> {
-    pub fn group_by<GroupBy>(self, group_by: GroupBy) -> Builder<S, F, W, GroupBy, NA, NA, NA>
+impl<S, F, W> SelectQueryBuilder<S, F, W, NA, NA, NA, NA> {
+    pub fn group_by<GroupBy>(
+        self,
+        group_by: GroupBy,
+    ) -> SelectQueryBuilder<S, F, W, GroupBy, NA, NA, NA>
     where
         GroupBy: Clone,
     {
-        Builder {
+        SelectQueryBuilder {
             select: self.select,
             from: self.from,
             where_condition: self.where_condition,
@@ -107,9 +74,12 @@ impl<S, F, W> Builder<S, F, W, NA, NA, NA, NA> {
     }
 }
 
-impl<S, F, W, G> Builder<S, F, W, G, NA, NA, NA> {
-    pub fn having<Having: Expression>(self, having: Having) -> Builder<S, F, W, G, Having, NA, NA> {
-        Builder {
+impl<S, F, W, G> SelectQueryBuilder<S, F, W, G, NA, NA, NA> {
+    pub fn having<Having: Expression>(
+        self,
+        having: Having,
+    ) -> SelectQueryBuilder<S, F, W, G, Having, NA, NA> {
+        SelectQueryBuilder {
             select: self.select,
             from: self.from,
             where_condition: self.where_condition,
@@ -122,9 +92,12 @@ impl<S, F, W, G> Builder<S, F, W, G, NA, NA, NA> {
     }
 }
 
-impl<S, F, W, G, H> Builder<S, F, W, G, H, NA, NA> {
-    pub fn order_by<OrderBy>(self, order_by: OrderBy) -> Builder<S, F, W, G, H, OrderBy, u32> {
-        Builder {
+impl<S, F, W, G, H> SelectQueryBuilder<S, F, W, G, H, NA, NA> {
+    pub fn order_by<OrderBy>(
+        self,
+        order_by: OrderBy,
+    ) -> SelectQueryBuilder<S, F, W, G, H, OrderBy, NA> {
+        SelectQueryBuilder {
             select: self.select,
             from: self.from,
             where_condition: self.where_condition,
@@ -137,9 +110,9 @@ impl<S, F, W, G, H> Builder<S, F, W, G, H, NA, NA> {
     }
 }
 
-impl<S, F, W, G, H, O> Builder<S, F, W, G, H, O, NA> {
-    pub fn limit(self, limit: Option<u32>) -> Builder<S, F, W, G, H, O, u32> {
-        Builder {
+impl<S, F, W, G, H, O> SelectQueryBuilder<S, F, W, G, H, O, NA> {
+    pub fn limit(self, limit: Option<u32>) -> SelectQueryBuilder<S, F, W, G, H, O, u32> {
+        SelectQueryBuilder {
             select: self.select,
             from: self.from,
             where_condition: self.where_condition,
@@ -152,30 +125,7 @@ impl<S, F, W, G, H, O> Builder<S, F, W, G, H, O, NA> {
     }
 }
 
-pub trait ExpressionCollection {
-    fn expr_iter(&self) -> impl Iterator<Item = impl Expression> + Clone;
-}
-
-impl<I> ExpressionCollection for I
-where
-    Self: Clone,
-    I: IntoIterator,
-    <I as IntoIterator>::Item: Expression,
-    <I as IntoIterator>::IntoIter: Clone,
-{
-    #[allow(refining_impl_trait)]
-    fn expr_iter(&self) -> impl Iterator<Item = <I as IntoIterator>::Item> + Clone {
-        self.clone().into_iter()
-    }
-}
-
-impl ExpressionCollection for NA {
-    fn expr_iter(&self) -> impl Iterator<Item = impl Expression> + Clone {
-        iter::empty::<&dyn Expression>()
-    }
-}
-
-impl<S, From, W, G, H, O, L> Builder<S, From, W, G, H, O, L>
+impl<S, From, W, G, H, O, L> SelectQueryBuilder<S, From, W, G, H, O, L>
 where
     S: ExpressionCollection,
     From: DataSet,
@@ -231,7 +181,7 @@ where
     }
 }
 
-pub trait QueryData<From>
+pub trait SelectQuery<From>
 where
     // Self: 's,
     From: DataSet,
@@ -247,7 +197,7 @@ where
     fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery);
 }
 
-impl<S, From, W, G, H, O, L> QueryData<From> for Builder<S, From, W, G, H, O, L>
+impl<S, From, W, G, H, O, L> SelectQuery<From> for SelectQueryBuilder<S, From, W, G, H, O, L>
 where
     S: ExpressionCollection,
     From: DataSet,

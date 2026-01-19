@@ -17,7 +17,7 @@ use std::{
     str::FromStr,
 };
 use tank_core::{
-    DynQuery, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
+    AsQuery, Connection, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
     QueryResult, Result, RowsAffected, Transaction,
     future::Either,
     stream::{Stream, StreamExt, TryStreamExt},

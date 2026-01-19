@@ -1,5 +1,9 @@
 use crate::{QueryResult, Value};
-use std::sync::Arc;
+use std::{
+    iter::{self},
+    slice,
+    sync::Arc,
+};
 
 /// Metadata about modifying operations (INSERT/UPDATE/DELETE).
 #[derive(Default, Debug, Clone, Copy)]
@@ -47,6 +51,26 @@ impl RowLabeled {
             .iter()
             .position(|v| v == name)
             .map(|i| &self.values()[i])
+    }
+    /// Values count inside this row
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+}
+
+impl<'s> IntoIterator for &'s RowLabeled {
+    type Item = (&'s String, &'s Value);
+    type IntoIter = iter::Zip<slice::Iter<'s, String>, slice::Iter<'s, Value>>;
+    fn into_iter(self) -> Self::IntoIter {
+        iter::zip(self.labels.iter(), self.values.iter())
+    }
+}
+
+impl<'s> IntoIterator for &'s mut RowLabeled {
+    type Item = (&'s String, &'s mut Value);
+    type IntoIter = iter::Zip<slice::Iter<'s, String>, slice::IterMut<'s, Value>>;
+    fn into_iter(self) -> Self::IntoIter {
+        iter::zip(self.labels.iter(), self.values.iter_mut())
     }
 }
 

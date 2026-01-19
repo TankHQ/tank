@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, AsQuery, Driver, Entity, Query, QueryResult, Result, RowLabeled, RowsAffected,
+    AsQuery, Driver, DynQuery, Entity, Query, QueryResult, Result, RowLabeled, RowsAffected,
     stream::{Stream, StreamExt, TryStreamExt},
     writer::SqlWriter,
 };

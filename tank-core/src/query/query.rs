@@ -1,6 +1,6 @@
 use crate::{
     AsValue, Driver, DynQuery, Error, Prepared, QueryMetadata, Result, RowLabeled, RowsAffected,
-    TableRef, truncate_long,
+    truncate_long,
 };
 use std::fmt::{self, Display};
 
@@ -66,33 +66,17 @@ impl<D: Driver> Query<D> {
         prepared.bind_index(value, index)?;
         Ok(self)
     }
-    pub fn limit(&self) -> Option<u32> {
+    pub fn metadata(&self) -> &QueryMetadata {
         match self {
-            Query::Raw(v) => v.metadata.limit,
-            Query::Prepared(v) => Prepared::get_limit(v),
+            Self::Raw(v) => &v.metadata,
+            Self::Prepared(v) => v.metadata(),
         }
     }
-    pub fn table(&self) -> &TableRef {
+    pub fn metadata_mut(&mut self) -> &mut QueryMetadata {
         match self {
-            Query::Raw(v) => &v.metadata.table,
-            Query::Prepared(v) => Prepared::get_table(v),
+            Self::Raw(v) => &mut v.metadata,
+            Self::Prepared(v) => v.metadata_mut(),
         }
-    }
-    pub fn table_mut(&mut self) -> &mut TableRef {
-        match self {
-            Query::Raw(v) => &mut v.metadata.table,
-            Query::Prepared(v) => Prepared::get_table_mut(v),
-        }
-    }
-    pub fn with_table(mut self, table: TableRef) -> Self {
-        self = match self {
-            Query::Raw(mut v) => {
-                v.metadata.table = table;
-                Query::Raw(v)
-            }
-            Query::Prepared(v) => Query::Prepared(Prepared::with_table(v, table)),
-        };
-        self
     }
     pub fn into_dyn(self) -> DynQuery {
         self.into()

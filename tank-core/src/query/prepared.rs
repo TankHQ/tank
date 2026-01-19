@@ -1,4 +1,4 @@
-use crate::{AsValue, QueryMetadata, Result, TableRef};
+use crate::{AsValue, QueryMetadata, Result};
 use std::{
     any::Any,
     fmt::{Debug, Display},
@@ -35,24 +35,4 @@ pub trait Prepared: Any + Send + Sync + Display + Debug {
     fn metadata(&self) -> &QueryMetadata;
     /// Get mutable QueryMetadata
     fn metadata_mut(&mut self) -> &mut QueryMetadata;
-    /// Getter for the query results limit, if it exists
-    fn get_limit(&self) -> Option<u32> {
-        self.metadata().limit
-    }
-    /// Table and schema this query targets. The values (schema / table / alias) can also be empty.
-    fn get_table(&self) -> &TableRef {
-        &self.metadata().table
-    }
-    /// Mutable table and schema this query targets. The values (schema / table / alias) can also be empty.
-    fn get_table_mut(&mut self) -> &mut TableRef {
-        &mut self.metadata_mut().table
-    }
-    /// Replace the target table from this query
-    fn with_table(mut self, table: TableRef) -> Self
-    where
-        Self: Sized,
-    {
-        self.metadata_mut().table = table;
-        self
-    }
 }

@@ -1,4 +1,4 @@
-use crate::{DynQuery, Driver, Query, RawQuery};
+use crate::{Driver, DynQuery, Query, RawQuery};
 
 pub trait AsQuery<D: Driver> {
     type Output: AsMut<Query<D>> + Send;

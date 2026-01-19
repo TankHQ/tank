@@ -15,7 +15,7 @@ impl Executor for YourDBConnection {
     }
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
+        query: impl AsQuery<'s, Self::Driver>,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         stream::iter([])
     }
