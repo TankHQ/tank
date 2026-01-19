@@ -10,11 +10,12 @@ categories.workspace = true
 
 [dependencies]
 async-stream = { workspace = true }
-bson = "2"
 log.workspace = true
 mongodb = "3"
 serde_json = { workspace = true }
+serde.workspace = true
 tank-core.workspace = true
+time.workspace = true
 tokio.workspace = true
 url.workspace = true
 uuid.workspace = true

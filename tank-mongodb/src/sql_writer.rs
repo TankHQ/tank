@@ -1,13 +1,27 @@
-use bson::{Document, doc};
-use serde_json::{Map as JsonMap, Value as JsonValue};
+use crate::{MongoDBDriver, MongoDBPrepared};
 use std::{collections::BTreeMap, mem};
 use tank_core::{
-    BinaryOp, BinaryOpType, ColumnDef, Context, DataSet, Entity, Expression, Fragment, QueryData,
-    QueryMetadata, RawQuery, SqlWriter,
+    BinaryOp, BinaryOpType, ColumnDef, Context, DataSet, DynQuery, Expression, Fragment,
+    QueryMetadata, QueryType, SelectQuery, SqlWriter,
 };
 
 #[derive(Default)]
 pub struct MongoDBSqlWriter {}
+
+impl MongoDBSqlWriter {
+    pub fn make_prepared() -> DynQuery {
+        DynQuery::Prepared(Box::new(MongoDBPrepared::default()))
+    }
+    pub fn switch_to_prepared(query: &mut DynQuery) -> &mut MongoDBPrepared {
+        if query.as_prepared::<MongoDBDriver>().is_none() {
+            *query = DynQuery::Prepared(Box::new(MongoDBPrepared::default()));
+        }
+        let Some(prepared) = query.as_prepared::<MongoDBDriver>() else {
+            unreachable!("Expected to be the MongoDBPrepared here");
+        };
+        prepared
+    }
+}
 
 impl SqlWriter for MongoDBSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
@@ -29,13 +43,16 @@ impl SqlWriter for MongoDBSqlWriter {
         }
     }
 
+    fn write_identifier_quoted(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
+        out.push_str(value);
+    }
+
     fn write_expression_binary_op(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) {
-        let doc = out.switch_to_document();
         let op = match value.op {
             BinaryOpType::Indexing => todo!(),
             BinaryOpType::Cast => todo!(),
@@ -68,75 +85,46 @@ impl SqlWriter for MongoDBSqlWriter {
             BinaryOpType::Or => todo!(),
             BinaryOpType::Alias => todo!(),
         };
+        let mut rhs;
         let rhs = {
-            let mut doc = DynQuery::new_document();
-            value.rhs.write_query(self, context, &mut doc);
-            mem::take(doc.switch_to_document())
+            rhs = MongoDBSqlWriter::make_prepared();
+            value.rhs.write_query(self, context, &mut rhs);
+            Self::switch_to_prepared(&mut rhs)
         };
-        if context.fragment == Fragment::DocMatchCriteria {
-            let mut context = context.switch_fragment(Fragment::DocMatchCriteriaKey);
-            let mut key = DynQuery::new(Default::default());
+        if context.fragment == Fragment::SqlSelectWhere {
+            let mut context = context.switch_fragment(Fragment::JsonKey);
+            let mut key = DynQuery::new(String::new());
             value.lhs.write_query(self, &mut context.current, &mut key);
             let key = mem::take(key.buffer());
-            doc.insert(key, rhs);
+            Self::switch_to_prepared(out)
+                .find
+                .insert(key, mem::take(&mut rhs.current));
         }
     }
 
-    fn write_select<'a, Data>(&self, out: &mut DynQuery, query: &impl QueryData<Data>)
+    fn write_select<'a, Data>(&self, out: &mut DynQuery, query: &impl SelectQuery<Data>)
     where
         Self: Sized,
         Data: DataSet + 'a,
     {
+        Self::switch_to_prepared(out);
         let columns = query.get_select();
         let Some(from) = query.get_from() else {
             return;
         };
         let limit = query.get_limit();
-        self.update_table_ref(
+        self.update_metadata(
             out,
             QueryMetadata {
                 table: from.table_ref(),
                 limit,
+                query_type: QueryType::Select.into(),
             }
             .into(),
         );
-        let mut has_order_by = false;
-        let mut context = Context::new(Fragment::DocMatchCriteria, Data::qualified_columns());
-        for column in query.get_where_condition() {
-            column.write_query(self, &mut context, out);
+        let mut context = Context::new(Fragment::SqlSelectWhere, Data::qualified_columns());
+        for condition in query.get_where_condition() {
+            condition.write_query(self, &mut context, out);
         }
-    }
-
-    fn write_insert<'b, E>(
-        &self,
-        out: &mut DynQuery,
-        entities: impl IntoIterator<Item = &'b E>,
-        _update: bool,
-    ) where
-        Self: Sized,
-        E: Entity + 'b,
-    {
-        let mut docs = Vec::<JsonValue>::new();
-        for ent in entities.into_iter() {
-            let row = ent.row_filtered();
-            let mut map = JsonMap::new();
-            for (k, v) in row.into_iter() {
-                map.insert(k.to_string(), tank_value_to_json(&v));
-            }
-            docs.push(JsonValue::Object(map));
-        }
-        if docs.is_empty() {
-            return;
-        }
-        let name = E::table().full_name();
-        let payload = if docs.len() == 1 {
-            docs.into_iter().next().unwrap()
-        } else {
-            JsonValue::Array(docs)
-        };
-        if !out.is_empty() {
-            out.push('\n');
-        }
-        out.push_str(&format!("MONGO:INSERT {} {};", name, payload.to_string()));
     }
 }

@@ -19,6 +19,6 @@ impl Driver for MongoDBDriver {
 
     const NAME: &'static [&'static str] = &["mongodb"];
     fn sql_writer(&self) -> Self::SqlWriter {
-        Self::default()
+        Default::default()
     }
 }
