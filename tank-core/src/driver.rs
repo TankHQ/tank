@@ -4,7 +4,7 @@ use std::{borrow::Cow, fmt::Debug, future::Future};
 /// Backend connector and SQL dialect provider.
 pub trait Driver: Default + Debug {
     /// Concrete connection.
-    type Connection: Connection;
+    type Connection: Connection<Driver = Self>;
     /// SQL dialect writer.
     type SqlWriter: SqlWriter;
     /// Prepared statement handle.
@@ -24,7 +24,7 @@ pub trait Driver: Default + Debug {
     ///
     /// The returned future must be awaited to obtain the connection object.
     /// Implementations may perform I/O or validation during connection.
-    fn connect(&self, url: Cow<'static, str>) -> impl Future<Output = Result<impl Connection>> {
+    fn connect(&self, url: Cow<'static, str>) -> impl Future<Output = Result<Self::Connection>> {
         Self::Connection::connect(url)
     }
 
