@@ -1,8 +1,10 @@
 #![allow(unused_imports)]
 use core::f64;
 use std::{pin::pin, sync::LazyLock};
-use tank::{Driver, QueryResult, RowsAffected, SqlWriter, expr, stream::StreamExt};
-use tank::{Entity, Executor, Interval, RawQuery};
+use tank::{
+    Driver, DynQuery, Entity, Executor, Interval, QueryBuilder, QueryResult, RawQuery,
+    RowsAffected, SqlWriter, expr, stream::StreamExt,
+};
 use time::{Date, Month, Time};
 use tokio::sync::Mutex;
 
@@ -231,17 +233,17 @@ pub async fn limits<E: Executor>(executor: &mut E) {
         writer.write_insert(&mut query, &[minimals, maximals], false);
         writer.write_select(
             &mut query,
-            Limits::columns(),
-            Limits::table(),
-            expr!(!Limits::boolean),
-            None,
+            &QueryBuilder::new()
+                .select(Limits::columns())
+                .from(Limits::table())
+                .where_condition(expr!(!Limits::boolean)),
         );
         writer.write_select(
             &mut query,
-            Limits::columns(),
-            Limits::table(),
-            expr!(Limits::boolean),
-            None,
+            &QueryBuilder::new()
+                .select(Limits::columns())
+                .from(Limits::table())
+                .where_condition(expr!(Limits::boolean)),
         );
         let mut stream = pin!(executor.run(query));
         let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =

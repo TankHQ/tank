@@ -1,4 +1,4 @@
-use crate::{Driver, Error, Executor, Result, Transaction, truncate_long};
+use crate::{Driver, Error, Executor, Result, truncate_long};
 use anyhow::Context;
 use std::{
     borrow::Cow,
@@ -72,7 +72,7 @@ pub trait Connection: Executor {
     ///
     /// The returned value implements [`Transaction`] for the underlying driver.
     /// `commit` / `rollback` MUST be awaited to ensure resources are released and the scope is finalized.
-    fn begin(&mut self) -> impl Future<Output = Result<impl Transaction<'_>>>;
+    fn begin(&mut self) -> impl Future<Output = Result<<Self::Driver as Driver>::Transaction<'_>>>;
 
     /// Disconnect and release the underlying session(s).
     ///

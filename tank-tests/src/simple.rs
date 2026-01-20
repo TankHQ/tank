@@ -8,8 +8,8 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use tank::{
-    Driver, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery, RowsAffected, SqlWriter,
-    stream::TryStreamExt,
+    Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult, RawQuery,
+    RowsAffected, SqlWriter, stream::TryStreamExt,
 };
 use time::{Date, Time, macros::date};
 use tokio::sync::Mutex;
@@ -110,10 +110,10 @@ pub async fn simple<E: Executor>(executor: &mut E) {
         writer.write_delete::<SimpleFields>(&mut query, &false); // Does not delete anything
         writer.write_select(
             &mut query,
-            SimpleFields::columns(),
-            SimpleFields::table(),
-            &true,
-            None,
+            &QueryBuilder::new()
+                .select(SimpleFields::columns())
+                .from(SimpleFields::table())
+                .where_condition(true),
         );
         {
             let mut stream = pin!(executor.run(query));
@@ -228,10 +228,10 @@ pub async fn simple<E: Executor>(executor: &mut E) {
         writer.write_insert(&mut query, [&entity], false);
         writer.write_select(
             &mut query,
-            SimpleFields::columns(),
-            SimpleFields::table(),
-            &true,
-            None,
+            &QueryBuilder::new()
+                .select(SimpleFields::columns())
+                .from(SimpleFields::table())
+                .where_condition(true),
         );
         {
             let mut stream = pin!(executor.run(query));

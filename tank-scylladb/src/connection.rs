@@ -330,7 +330,6 @@ impl Connection for ScyllaDBConnection {
         })
     }
 
-    #[allow(refining_impl_trait)]
     async fn begin<'c>(&'c mut self) -> Result<ScyllaDBTransaction<'c>> {
         Ok(Self::begin_logged_batch(self))
     }

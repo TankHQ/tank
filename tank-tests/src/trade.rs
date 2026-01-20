@@ -2,8 +2,8 @@
 use rust_decimal::Decimal;
 use std::{collections::BTreeMap, pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
-    AsValue, Driver, Entity, Executor, FixedDecimal, Passive, Query, QueryResult, RawQuery,
-    RowsAffected, SqlWriter, Value,
+    AsValue, Driver, DynQuery, Entity, Executor, FixedDecimal, Passive, Query, QueryBuilder,
+    QueryResult, RawQuery, RowsAffected, SqlWriter, Value,
     stream::{StreamExt, TryStreamExt},
 };
 use time::macros::datetime;
@@ -362,7 +362,13 @@ pub async fn trade_multiple<E: Executor>(executor: &mut E) {
             }],
             false,
         );
-        writer.write_select(&mut query, Trade::columns(), Trade::table(), &true, None);
+        writer.write_select(
+            &mut query,
+            &QueryBuilder::new()
+                .select(Trade::columns())
+                .from(Trade::table())
+                .where_condition(true),
+        );
         let mut stream = pin!(executor.run(query));
         let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
             stream.next().await

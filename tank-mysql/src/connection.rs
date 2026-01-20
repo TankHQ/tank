@@ -85,7 +85,6 @@ impl Connection for MySQLConnection {
         })
     }
 
-    #[allow(refining_impl_trait)]
     fn begin(&mut self) -> impl Future<Output = Result<MySQLTransaction<'_>>> {
         MySQLTransaction::new(self)
     }

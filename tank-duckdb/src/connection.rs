@@ -503,7 +503,6 @@ impl Executor for DuckDBConnection {
 }
 
 impl Connection for DuckDBConnection {
-    #[allow(refining_impl_trait)]
     async fn connect(url: Cow<'static, str>) -> Result<DuckDBConnection> {
         let context = format!("While trying to connect to `{}`", truncate_long!(url));
         let url = Self::sanitize_url(url)?;
@@ -593,7 +592,6 @@ impl Connection for DuckDBConnection {
         Ok(DuckDBConnection { connection })
     }
 
-    #[allow(refining_impl_trait)]
     fn begin(&mut self) -> impl Future<Output = Result<DuckDBTransaction<'_>>> {
         DuckDBTransaction::new(self)
     }

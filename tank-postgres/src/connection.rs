@@ -194,7 +194,6 @@ impl Executor for PostgresConnection {
 }
 
 impl Connection for PostgresConnection {
-    #[allow(refining_impl_trait)]
     async fn connect(url: Cow<'static, str>) -> Result<PostgresConnection> {
         let context = format!("While trying to connect to `{}`", truncate_long!(url));
         let mut url = Self::sanitize_url(url)?;
@@ -272,12 +271,10 @@ impl Connection for PostgresConnection {
         })
     }
 
-    #[allow(refining_impl_trait)]
     fn begin(&mut self) -> impl Future<Output = Result<PostgresTransaction<'_>>> {
         PostgresTransaction::new(self)
     }
 
-    #[allow(refining_impl_trait)]
     async fn disconnect(self) -> Result<()> {
         drop(self.client);
         if let Err(e) = self.handle.await {

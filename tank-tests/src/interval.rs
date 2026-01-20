@@ -3,7 +3,8 @@
 use crate::silent_logs;
 use std::{pin::pin, sync::LazyLock, time::Duration};
 use tank::{
-    Driver, Entity, Executor, Interval, QueryResult, RawQuery, RowsAffected, SqlWriter,
+    Driver, DynQuery, Entity, Executor, Interval, QueryBuilder, QueryResult, RawQuery,
+    RowsAffected, SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -147,10 +148,10 @@ pub async fn interval<E: Executor>(executor: &mut E) {
         );
         writer.write_select(
             &mut query,
-            Intervals::columns(),
-            Intervals::table(),
-            &true,
-            None,
+            &QueryBuilder::new()
+                .select(Intervals::columns())
+                .from(Intervals::table())
+                .where_condition(true),
         );
         let mut stream = pin!(executor.run(query));
 

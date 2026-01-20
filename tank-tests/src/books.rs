@@ -376,7 +376,7 @@ pub async fn books<E: Executor>(executor: &mut E) {
     }
 
     // Multiple statements
-    // #[cfg(not(feature = "disable-multiple-statements"))]
+    #[cfg(not(feature = "disable-multiple-statements"))]
     {
         let mut query = DynQuery::default();
         let writer = executor.driver().sql_writer();

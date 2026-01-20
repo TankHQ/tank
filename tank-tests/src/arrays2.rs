@@ -2,7 +2,8 @@
 #![allow(unused_imports)]
 use std::{pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
-    Driver, Entity, Executor, Interval, Query, QueryResult, RawQuery, SqlWriter,
+    Driver, DynQuery, Entity, Executor, Interval, Query, QueryBuilder, QueryResult, RawQuery,
+    SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -40,10 +41,11 @@ pub async fn arrays2<E: Executor>(executor: &mut E) {
         writer.write_insert(&mut query, &[value], false);
         writer.write_select(
             &mut query,
-            Container::columns(),
-            Container::table(),
-            &true,
-            Some(1),
+            &QueryBuilder::new()
+                .select(Container::columns())
+                .from(Container::table())
+                .where_condition(true)
+                .limit(Some(1)),
         );
         let rows = pin!(executor.run(query).try_filter_map(|v| async move {
             Ok(match v {

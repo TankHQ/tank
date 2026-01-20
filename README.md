@@ -23,7 +23,7 @@ https://crates.io/crates/tank
 - More to be decided...
 
 ## Mission objectives
-Tank exists to implement the best possible design for a ORM written in Rust. A a clean-slate design focused on ergonomics, flexibility, licensing and broad database support.
+Tank exists to implement the best possible design for a ORM written in Rust. A a clean-slate design focused on ergonomics, flexibility and broad database support.
 
 - **Async operations** - Fire and forget.
 - **Designed to be extensible** - Swap databases like changing magazines mid-battle.

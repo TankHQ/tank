@@ -58,7 +58,7 @@ impl Executor for MongoDBConnection {
 
     fn prepare(
         &mut self,
-        query: String,
+        _query: String,
     ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
         future::ready(Err(Error::msg("MongoDB does not support prepare")))
     }

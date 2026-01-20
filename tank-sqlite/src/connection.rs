@@ -239,7 +239,6 @@ impl Executor for SQLiteConnection {
 }
 
 impl Connection for SQLiteConnection {
-    #[allow(refining_impl_trait)]
     async fn connect(url: Cow<'static, str>) -> Result<SQLiteConnection> {
         let context = format!("While trying to connect to `{}`", truncate_long!(url));
         let url = Self::sanitize_url(url)?;
@@ -269,7 +268,6 @@ impl Connection for SQLiteConnection {
         Ok(Self { connection })
     }
 
-    #[allow(refining_impl_trait)]
     fn begin(&mut self) -> impl Future<Output = Result<SQLiteTransaction<'_>>> {
         SQLiteTransaction::new(self)
     }

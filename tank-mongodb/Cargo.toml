@@ -22,4 +22,5 @@ uuid.workspace = true
 
 [dev-dependencies]
 tank-tests = { path = "../tank-tests", features = ["disable-transactions"] }
+testcontainers-modules = { version = "0", features = ["mongo"] }
 tokio.workspace = true

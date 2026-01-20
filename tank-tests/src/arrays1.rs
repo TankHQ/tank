@@ -2,7 +2,8 @@
 #![allow(unused_imports)]
 use std::{borrow::Cow, pin::pin, sync::LazyLock};
 use tank::{
-    Driver, Entity, Executor, Query, QueryResult, RawQuery, SqlWriter, cols, stream::TryStreamExt,
+    Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, RawQuery, SqlWriter,
+    cols, stream::TryStreamExt,
 };
 use tokio::sync::Mutex;
 
@@ -138,7 +139,13 @@ pub async fn arrays1<E: Executor>(executor: &mut E) {
             dd: [[[[[10, 20, 30]]], [[[40, 50, 60]]]]],
         };
         writer.write_insert(&mut query, &[value], false);
-        writer.write_select(&mut query, cols!(*), Arrays1::table(), &true, None);
+        writer.write_select(
+            &mut query,
+            &QueryBuilder::new()
+                .select(cols!(*))
+                .from(Arrays1::table())
+                .where_condition(true),
+        );
         let value = Arrays2 {
             alpha: [1, 2, 3, 4, 5],
             bravo: [[10, 11], [12, 13], [14, 15]],
@@ -152,17 +159,17 @@ pub async fn arrays1<E: Executor>(executor: &mut E) {
         writer.write_insert(&mut query, &[value], false);
         writer.write_select(
             &mut query,
-            [Arrays2::alpha, Arrays2::bravo, Arrays2::charlie],
-            Arrays2::table(),
-            &true,
-            None,
+            &QueryBuilder::new()
+                .select([Arrays2::alpha, Arrays2::bravo, Arrays2::charlie])
+                .from(Arrays2::table())
+                .where_condition(true),
         );
         writer.write_select(
             &mut query,
-            [Arrays2::delta, Arrays2::echo],
-            Arrays2::table(),
-            &true,
-            None,
+            &QueryBuilder::new()
+                .select([Arrays2::delta, Arrays2::echo])
+                .from(Arrays2::table())
+                .where_condition(true),
         );
         let rows = pin!(executor.run(query).try_filter_map(|v| async move {
             Ok(match v {
