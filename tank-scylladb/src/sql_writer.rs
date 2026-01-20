@@ -240,7 +240,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
             out,
             QueryMetadata {
                 table: table.clone(),
-                limit: None,
+                count: None,
                 query_type: QueryType::CreateSchema.into(),
             }
             .into(),
@@ -275,7 +275,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
             out,
             QueryMetadata {
                 table: table.clone(),
-                limit: None,
+                count: None,
                 query_type: QueryType::DropSchema.into(),
             }
             .into(),
@@ -375,7 +375,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
             out,
             QueryMetadata {
                 table: table.clone(),
-                limit: None,
+                count: None,
                 query_type: QueryType::InsertInto.into(),
             }
             .into(),
@@ -431,7 +431,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
             out,
             QueryMetadata {
                 table: table.clone(),
-                limit: None,
+                count: None,
                 query_type: QueryType::DeleteFrom.into(),
             }
             .into(),

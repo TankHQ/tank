@@ -15,7 +15,7 @@ pub enum QueryType {
 #[derive(Default, Clone, Debug)]
 pub struct QueryMetadata {
     pub table: TableRef,
-    pub limit: Option<u32>,
+    pub count: Option<u32>,
     pub query_type: Option<QueryType>,
 }
 

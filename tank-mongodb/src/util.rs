@@ -129,7 +129,6 @@ pub fn bson_to_value(bson: &Bson) -> Result<Value> {
             });
             Value::Array(Some(values), array_type, len as _)
         }
-
         Bson::Document(doc) => {
             let mut map = HashMap::new();
             let mut k_type = OnceCell::new();
@@ -149,7 +148,6 @@ pub fn bson_to_value(bson: &Bson) -> Result<Value> {
                 Box::new(v_type.take().unwrap_or_else(|| Value::Unknown(None))),
             )
         }
-
         _ => {
             return Err(Error::msg(format!("Unexpected Bson type: {bson:?}")));
         }

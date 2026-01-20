@@ -850,7 +850,7 @@ pub trait SqlWriter: Send {
             out,
             QueryMetadata {
                 table: table.clone(),
-                limit: None,
+                count: None,
                 query_type: QueryType::CreateSchema.into(),
             }
             .into(),
@@ -880,7 +880,7 @@ pub trait SqlWriter: Send {
             out,
             QueryMetadata {
                 table: table.clone(),
-                limit: None,
+                count: None,
                 query_type: QueryType::DropSchema.into(),
             }
             .into(),
@@ -909,7 +909,7 @@ pub trait SqlWriter: Send {
             out,
             QueryMetadata {
                 table: table.clone(),
-                limit: None,
+                count: None,
                 query_type: QueryType::CreateTable.into(),
             }
             .into(),
@@ -1104,7 +1104,7 @@ pub trait SqlWriter: Send {
             out,
             QueryMetadata {
                 table: table.clone(),
-                limit: None,
+                count: None,
                 query_type: QueryType::DropTable.into(),
             }
             .into(),
@@ -1138,7 +1138,7 @@ pub trait SqlWriter: Send {
             out,
             QueryMetadata {
                 table: from.table_ref(),
-                limit,
+                count: limit,
                 query_type: QueryType::Select.into(),
             }
             .into(),
@@ -1209,7 +1209,7 @@ pub trait SqlWriter: Send {
             out,
             QueryMetadata {
                 table: table.clone(),
-                limit: None,
+                count: None,
                 query_type: QueryType::InsertInto.into(),
             }
             .into(),
@@ -1370,7 +1370,7 @@ pub trait SqlWriter: Send {
             out,
             QueryMetadata {
                 table: table.clone(),
-                limit: None,
+                count: None,
                 query_type: QueryType::DeleteFrom.into(),
             }
             .into(),

@@ -1,45 +1,53 @@
 use mongodb::{
     bson::Document,
-    options::{FindOneOptions, FindOptions, InsertManyOptions, InsertOneOptions},
+    options::{DeleteOptions, FindOneOptions, FindOptions, InsertManyOptions, InsertOneOptions},
 };
 use std::fmt::{self, Display, Formatter};
-use tank_core::{AsValue, Error, Prepared, QueryMetadata, Result, Value};
+use tank_core::{AsValue, Error, Prepared, QueryMetadata, Result, RowLabeled, Value};
 
-#[derive(Debug)]
-pub enum Options {
-    Find(FindOptions),
-    FindOne(FindOneOptions),
-    InsertMany(InsertManyOptions),
-    InsertOne(InsertOneOptions),
-}
-
-impl Default for Options {
-    fn default() -> Self {
-        Options::Find(Default::default())
-    }
+#[derive(Default, Debug)]
+pub struct FindOnePayload {
+    pub(crate) find: Document,
+    pub(crate) options: FindOneOptions,
 }
 
 #[derive(Default, Debug)]
 pub struct FindPayload {
-    pub(crate) find: Document,
-    pub(crate) options: Options,
+    pub(crate) matching: Document,
+    pub(crate) options: FindOptions,
 }
 
 #[derive(Debug)]
-pub struct InsertPayload {
-    pub(crate) documents: Vec<Document>,
-    pub(crate) options: Options,
+pub struct InsertOnePayload {
+    pub(crate) row: RowLabeled,
+    pub(crate) options: InsertOneOptions,
+}
+
+#[derive(Debug)]
+pub struct InsertManyPayload {
+    pub(crate) rows: Vec<RowLabeled>,
+    pub(crate) options: InsertManyOptions,
+}
+
+#[derive(Default, Debug)]
+pub struct DeletePayload {
+    pub(crate) matching: Document,
+    pub(crate) options: DeleteOptions,
 }
 
 #[derive(Debug)]
 pub enum Payload {
+    None,
+    FindOne(FindOnePayload),
     Find(FindPayload),
-    Insert(InsertPayload),
+    InsertOne(InsertOnePayload),
+    InsertMany(InsertManyPayload),
+    Delete(DeletePayload),
 }
 
 impl Default for Payload {
     fn default() -> Self {
-        Payload::Find(Default::default())
+        Self::None
     }
 }
 

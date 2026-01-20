@@ -1,9 +1,10 @@
-use crate::{MongoDBDriver, MongoDBTransaction, Options, Payload, RowWrap};
+use crate::{MongoDBDriver, MongoDBTransaction, Payload, RowWrap};
 use async_stream::try_stream;
-use mongodb::{Client, Database};
+use mongodb::{Client, Database, bson::Bson};
 use std::{borrow::Cow, future};
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, QueryType, Result,
+    RowsAffected,
     stream::{Stream, TryStreamExt},
     truncate_long,
 };
@@ -70,7 +71,7 @@ impl Executor for MongoDBConnection {
         let database = self.database(query.as_mut());
         let metadata = query.as_mut().metadata();
         let query_type = metadata.query_type;
-        let limit = metadata.limit;
+        let count = metadata.count;
         let collection = database.collection::<RowWrap>(&metadata.table.name);
         try_stream! {
             let Query::Prepared(prepared) = query.as_mut() else {
@@ -83,100 +84,119 @@ impl Executor for MongoDBConnection {
                 Err(Error::msg("Query type is missing from the query metadata"))?;
                 return;
             };
+            let payload = &prepared.payload;
             match query_type {
                 QueryType::Select => {
-                    let Payload::Find(payload) = &prepared.payload else {
-                        Err(Error::msg(
-                            "Query is not the expected tank_mongodb::Payload::Find variant",
-                        ))?;
-                        return;
-                    };
-                    let options = &payload.options;
-                    if limit == Some(1) {
-                        let Options::FindOne(options) = options else {
+                    if count == Some(1) {
+                        let Payload::FindOne(payload) = &payload else {
                             Err(Error::msg(format!(
-                                "Query payload options is {options:?} instead of the expected FindOne variant"
+                                "Query is a select with count 1 but the payload {payload:?} is not the expected FindOne variant"
                             )))?;
                             return;
                         };
+                        let options = &payload.options;
                         match collection
                             .find_one(payload.find.clone())
                             .with_options(options.clone())
                             .await
                         {
-                            Ok(Some(v)) => yield QueryResult::Row(v.0),
+                            Ok(Some(v)) => {
+                                yield QueryResult::Row(match v.0 {
+                                    Cow::Borrowed(v) => v.clone(),
+                                    Cow::Owned(v) => v,
+                                })
+                            }
                             Ok(None) => {}
                             Err(e) => Err(Error::msg(format!("{e}")))?,
                         }
                     } else {
-                        let Options::Find(options) = &payload.options else {
+                        let Payload::Find(payload) = &payload else {
                             Err(Error::msg(format!(
-                                "Query payload options is {options:?} instead of the expected Find variant"
+                                "Query is a select but the payload {payload:?} is not the expected FindOne variant"
                             )))?;
                             return;
                         };
+                        let options = &payload.options;
                         let mut stream = collection
-                            .find(payload.find.clone())
+                            .find(payload.matching.clone())
                             .with_options(options.clone())
                             .await?;
                         while let Some(result) = stream.try_next().await? {
-                            yield QueryResult::Row(result.0);
+                            yield QueryResult::Row(match result.0 {
+                                Cow::Borrowed(v) => v.clone(),
+                                Cow::Owned(v) => v,
+                            });
                         }
                     }
                 }
                 QueryType::InsertInto => {
-                    let Payload::Insert(payload) = &prepared.payload else {
-                        Err(Error::msg(
-                            "Query is not the expected tank_mongodb::Payload::Insert variant",
-                        ))?;
-                        return;
-                    };
-                    let Options::Find(options) = &payload.options else {
+                    if count == Some(1) {
+                        let Payload::InsertOne(payload) = &payload else {
+                            Err(Error::msg(format!(
+                                "Query is a insert with count 1 but the payload {payload:?} is not the expected InsertOne variant"
+                            )))?;
+                            return;
+                        };
+                        let result = collection
+                            .insert_one(RowWrap(Cow::Borrowed(&payload.row)))
+                            .with_options(payload.options.clone())
+                            .await?;
+                        let last_affected_id = match result.inserted_id {
+                            Bson::Int32(v) => Some(v as i64),
+                            Bson::Int64(v) => Some(v),
+                            _ => None,
+                        };
+                        yield QueryResult::Affected(RowsAffected {
+                            rows_affected: Some(1),
+                            last_affected_id,
+                        });
+                    } else {
+                        let Payload::InsertMany(payload) = &payload else {
+                            Err(Error::msg(format!(
+                                "Query is a insert but the payload {payload:?} is not the expected InsertMany variant"
+                            )))?;
+                            return;
+                        };
+                        let len = payload.rows.len();
+                        collection
+                            .insert_many(payload.rows.iter().map(|v| RowWrap(Cow::Borrowed(v))))
+                            .with_options(payload.options.clone())
+                            .await?;
+                        yield QueryResult::Affected(RowsAffected {
+                            rows_affected: Some(len as _),
+                            last_affected_id: None,
+                        });
+                    }
+                }
+                QueryType::DeleteFrom => {
+                    let Payload::Delete(payload) = &payload else {
                         Err(Error::msg(format!(
-                            "Query has limit {limit:?}, but options is not tank_mongodb::Options::FindOne"
+                            "Query is a delete but the payload {payload:?} is not the expected Delete variant"
                         )))?;
                         return;
                     };
-                    let docs = payload.documents;
-                    collection.insert_many(docs).with_options(value)
+                    let result = if count == Some(1) {
+                        collection
+                            .delete_one(payload.matching.clone())
+                            .with_options(payload.options.clone())
+                            .await?
+                    } else {
+                        collection
+                            .delete_many(payload.matching.clone())
+                            .with_options(payload.options.clone())
+                            .await?
+                    };
+                    yield QueryResult::Affected(RowsAffected {
+                        rows_affected: Some(result.deleted_count),
+                        last_affected_id: None,
+                    });
                 }
-                QueryType::DeleteFrom => todo!(),
-                QueryType::CreateTable => todo!(),
-                QueryType::DropTable => todo!(),
-                QueryType::CreateSchema => todo!(),
-                QueryType::DropSchema => todo!(),
+                // There is no need for the following queries in MongoDB
+                QueryType::CreateTable => {}
+                QueryType::DropTable => {}
+                QueryType::CreateSchema => {}
+                QueryType::DropSchema => {},
             }
         }
     }
-
-    // fn execute<'s>(
-    //     &'s mut self,
-    //     query: impl AsQuery<'s, Self::Driver>,
-    // ) -> impl Future<Output = Result<RowsAffected>> + Send {
-    //     self.run(query)
-    //         .filter_map(|v| async move {
-    //             match v {
-    //                 Ok(QueryResult::Affected(v)) => Some(Ok(v)),
-    //                 Err(e) => Some(Err(e)),
-    //                 _ => None,
-    //             }
-    //         })
-    //         .try_collect()
-    // }
-
-    // fn append<'a, E, It>(
-    //     &mut self,
-    //     entities: It,
-    // ) -> impl Future<Output = Result<RowsAffected>> + Send
-    // where
-    //     E: tank_core::Entity + 'a,
-    //     It: IntoIterator<Item = &'a E> + Send,
-    //     <It as IntoIterator>::IntoIter: Send,
-    // {
-    //     let mut query = DynQuery::default();
-    //     self.driver()
-    //         .sql_writer()
-    //         .write_insert(&mut query, entities, false);
-    //     self.execute(query)
-    // }
 }
