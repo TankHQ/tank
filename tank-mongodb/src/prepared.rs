@@ -7,7 +7,7 @@ use tank_core::{AsValue, Error, Prepared, QueryMetadata, Result, RowLabeled, Val
 
 #[derive(Default, Debug)]
 pub struct FindOnePayload {
-    pub(crate) find: Document,
+    pub(crate) matching: Document,
     pub(crate) options: FindOneOptions,
 }
 
@@ -37,7 +37,7 @@ pub struct DeletePayload {
 
 #[derive(Debug)]
 pub enum Payload {
-    None,
+    Fragment(Document),
     FindOne(FindOnePayload),
     Find(FindPayload),
     InsertOne(InsertOnePayload),
@@ -47,7 +47,7 @@ pub enum Payload {
 
 impl Default for Payload {
     fn default() -> Self {
-        Self::None
+        Self::Fragment(Default::default())
     }
 }
 
@@ -63,6 +63,16 @@ pub struct MongoDBPrepared {
 impl MongoDBPrepared {
     pub fn new() -> Self {
         Default::default()
+    }
+    pub fn current_document(&mut self) -> Option<&mut Document> {
+        match &mut self.payload {
+            Payload::Fragment(v) => Some(v),
+            Payload::FindOne(v) => Some(&mut v.matching),
+            Payload::Find(v) => Some(&mut v.matching),
+            Payload::InsertOne(..) => None,
+            Payload::InsertMany(..) => None,
+            Payload::Delete(v) => Some(&mut v.matching),
+        }
     }
 }
 

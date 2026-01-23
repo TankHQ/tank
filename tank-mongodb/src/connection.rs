@@ -96,7 +96,7 @@ impl Executor for MongoDBConnection {
                         };
                         let options = &payload.options;
                         match collection
-                            .find_one(payload.find.clone())
+                            .find_one(payload.matching.clone())
                             .with_options(options.clone())
                             .await
                         {
