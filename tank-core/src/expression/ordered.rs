@@ -43,7 +43,11 @@ impl<E: Expression> Expression for Ordered<E> {
             },
         );
     }
-    fn is_ordered(&self) -> bool {
-        true
+
+    fn matches(&self, matcher: &dyn super::ExpressionMatcher) -> bool {
+        matcher.match_ordered(&Ordered {
+            expression: self as &dyn Expression,
+            order: self.order,
+        })
     }
 }

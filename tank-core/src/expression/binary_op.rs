@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, Expression, OpPrecedence,
+    DynQuery, Expression, ExpressionMatcher, OpPrecedence,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::TokenStream;
@@ -70,6 +70,9 @@ impl<L: Expression, R: Expression> Expression for BinaryOp<L, R> {
                 rhs: &self.rhs,
             },
         )
+    }
+    fn matches(&self, matcher: &dyn ExpressionMatcher) -> bool {
+        matcher.match_binary_op(&self.op, &self.lhs, &self.rhs)
     }
 }
 

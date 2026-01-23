@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, Expression, OpPrecedence, Value,
+    DynQuery, Expression, ExpressionMatcher, OpPrecedence, Value,
     writer::{Context, SqlWriter},
 };
 
@@ -16,6 +16,7 @@ pub enum Operand<'a> {
     Null,
     Type(Value),
     Variable(Value),
+    Value(&'a Value),
     Call(&'static str, &'a [&'a dyn Expression]),
     Asterisk,
     QuestionMark,
@@ -30,6 +31,10 @@ impl OpPrecedence for Operand<'_> {
 impl Expression for Operand<'_> {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         writer.write_expression_operand(context, out, self)
+    }
+
+    fn matches(&self, matcher: &dyn ExpressionMatcher) -> bool {
+        matcher.match_operand(self)
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::{
-    DynQuery, DefaultValueType, Expression, OpPrecedence, SqlWriter, TableRef, Value,
-    writer::Context,
+    DefaultValueType, DynQuery, Expression, ExpressionMatcher, OpPrecedence, SqlWriter, TableRef,
+    Value, writer::Context,
 };
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
@@ -149,6 +149,10 @@ impl Expression for ColumnRef {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         writer.write_column_ref(context, out, self);
     }
+
+    fn matches(&self, matcher: &dyn ExpressionMatcher) -> bool {
+        matcher.match_column(self)
+    }
 }
 
 impl OpPrecedence for ColumnDef {
@@ -160,5 +164,9 @@ impl OpPrecedence for ColumnDef {
 impl Expression for ColumnDef {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         writer.write_column_ref(context, out, &self.column_ref);
+    }
+
+    fn matches(&self, matcher: &dyn ExpressionMatcher) -> bool {
+        matcher.match_column(&self.column_ref)
     }
 }

@@ -37,4 +37,8 @@ impl<E: Expression> Expression for UnaryOp<E> {
             },
         )
     }
+
+    fn matches(&self, matcher: &dyn super::ExpressionMatcher) -> bool {
+        matcher.match_unary_op(&self.op, &self.arg)
+    }
 }

@@ -1,4 +1,4 @@
-use crate::{DynQuery, Context, Expression, OpPrecedence, SqlWriter, Value};
+use crate::{Context, DynQuery, Expression, ExpressionMatcher, OpPrecedence, SqlWriter, Value};
 
 #[derive(Default, Debug)]
 pub enum DefaultValueType {
@@ -35,18 +35,11 @@ impl Expression for DefaultValueType {
             DefaultValueType::Expression(v) => v.write_query(writer, context, out),
         }
     }
-    fn is_ordered(&self) -> bool {
+    fn matches(&self, matcher: &dyn ExpressionMatcher) -> bool {
         match self {
-            DefaultValueType::None => ().is_ordered(),
-            DefaultValueType::Value(v) => v.is_ordered(),
-            DefaultValueType::Expression(v) => v.is_ordered(),
-        }
-    }
-    fn is_true(&self) -> bool {
-        match self {
-            DefaultValueType::None => ().is_true(),
-            DefaultValueType::Value(v) => v.is_true(),
-            DefaultValueType::Expression(v) => v.is_true(),
+            DefaultValueType::None => ().matches(matcher),
+            DefaultValueType::Value(v) => v.matches(matcher),
+            DefaultValueType::Expression(v) => v.matches(matcher),
         }
     }
 }

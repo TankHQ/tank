@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use tank_core::{
-    ColumnDef, Context, DataSet, DynQuery, Entity, Error, Expression, Fragment, Interval,
+    ColumnDef, Context, DataSet, DynQuery, Entity, Error, Expression, Fragment, Interval, IsTrue,
     PrimaryKeyType, QueryMetadata, QueryType, Result, SqlWriter, Value, future::Either,
     indoc::indoc, print_timer, separated_by,
 };
@@ -437,7 +437,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
             .into(),
         );
         out.buffer().reserve(128);
-        let is_true = condition.is_true();
+        let is_true = condition.matches(&IsTrue {});
         if is_true {
             out.push_str("TRUNCATE ");
         } else {

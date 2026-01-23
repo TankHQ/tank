@@ -1,8 +1,8 @@
 use crate::{
     Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, DataSet, DynQuery, EitherIterator,
-    Entity, Expression, Fragment, Interval, Join, JoinType, Operand, Order, Ordered,
-    PrimaryKeyType, QueryMetadata, QueryType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value,
-    possibly_parenthesized, print_date, print_timer, separated_by, writer::Context,
+    Entity, Expression, Fragment, Interval, IsOrdered, IsTrue, Join, JoinType, Operand, Order,
+    Ordered, PrimaryKeyType, QueryMetadata, QueryType, SelectQuery, TableRef, UnaryOp, UnaryOpType,
+    Value, possibly_parenthesized, print_date, print_timer, separated_by, writer::Context,
 };
 use core::f64;
 use futures::future::Either;
@@ -411,7 +411,7 @@ pub trait SqlWriter: Send {
         );
     }
 
-    /// Ordered units used to decompose intervals.
+    /// Units used to decompose intervals (notice the decreasing order).
     fn value_interval_units(&self) -> &[(&str, i128)] {
         static UNITS: &[(&str, i128)] = &[
             ("DAY", Interval::NANOS_IN_DAY),
@@ -642,6 +642,7 @@ pub trait SqlWriter: Send {
             Operand::Null => drop(out.push_str("NULL")),
             Operand::Type(v) => self.write_column_type(context, out, v),
             Operand::Variable(v) => self.write_value(context, out, v),
+            Operand::Value(v) => self.write_value(context, out, v),
             Operand::Call(f, args) => {
                 out.push_str(f);
                 out.push('(');
@@ -1156,7 +1157,7 @@ pub trait SqlWriter: Send {
             columns.clone(),
             |out, col| {
                 col.write_query(self, &mut context, out);
-                has_order_by = has_order_by || col.is_ordered();
+                has_order_by = has_order_by || col.matches(&IsOrdered {});
             },
             ", ",
         );
@@ -1167,7 +1168,7 @@ pub trait SqlWriter: Send {
             out,
         );
         if let Some(condition) = query.get_where_condition()
-            && !condition.is_true()
+            && !condition.matches(&IsTrue {})
         {
             out.push_str("\nWHERE ");
             condition.write_query(
@@ -1181,7 +1182,7 @@ pub trait SqlWriter: Send {
             let mut order_context = context.switch_fragment(Fragment::SqlSelectOrderBy);
             separated_by(
                 out,
-                columns.into_iter().filter(Expression::is_ordered),
+                columns.into_iter().filter(|v| v.matches(&IsOrdered {})),
                 |out, col| {
                     col.write_query(self, &mut order_context.current, out);
                 },
