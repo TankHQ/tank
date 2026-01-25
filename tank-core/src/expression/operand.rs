@@ -33,7 +33,7 @@ impl Expression for Operand<'_> {
         writer.write_expression_operand(context, out, self)
     }
 
-    fn matches(&self, matcher: &dyn ExpressionMatcher) -> bool {
+    fn matches(&self, matcher: &mut dyn ExpressionMatcher) -> bool {
         matcher.match_operand(self)
     }
 }

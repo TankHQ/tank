@@ -3,8 +3,8 @@ use std::{
     fmt::Write,
 };
 use tank_core::{
-    DynQuery, ColumnDef, Context, EitherIterator, Entity, Fragment, Interval, PrimaryKeyType,
-    SqlWriter, Value, future::Either, print_timer, separated_by,
+    ColumnDef, Context, DynQuery, EitherIterator, Entity, Fragment, Interval, PrimaryKeyType,
+    SqlWriter, Value, print_timer, separated_by, write_escaped,
 };
 
 /// SQL writer for MySQL / MariaDB dialect.
@@ -26,7 +26,7 @@ impl SqlWriter for MySQLSqlWriter {
 
     fn write_identifier_quoted(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
         out.push('`');
-        self.write_escaped(context, out, value, '"', "``");
+        write_escaped(out, value, '"', "``");
         out.push('`');
     }
 
@@ -139,7 +139,7 @@ impl SqlWriter for MySQLSqlWriter {
         &self,
         context: &mut Context,
         out: &mut DynQuery,
-        value: Either<&Box<[Value]>, &Vec<Value>>,
+        value: &mut dyn Iterator<Item = &Value>,
         _ty: &Value,
         _elem_ty: &Value,
     ) {
@@ -151,10 +151,7 @@ impl SqlWriter for MySQLSqlWriter {
         out.push('[');
         separated_by(
             out,
-            match value {
-                Either::Left(v) => v.iter(),
-                Either::Right(v) => v.iter(),
-            },
+            value,
             |out, v| {
                 self.write_value(&mut context.current, out, v);
             },

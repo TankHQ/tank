@@ -8,6 +8,7 @@ use log::Level;
 use std::{
     future::{self, Future},
     pin::pin,
+    sync::Arc,
 };
 
 /// A table-mapped record with schema and CRUD helpers.
@@ -37,6 +38,16 @@ pub trait Entity {
 
     /// Returns a full `Row` representation including all persisted columns.
     fn row_full(&self) -> Row;
+
+    fn row_labeled(&self) -> RowLabeled {
+        RowLabeled {
+            labels: Self::columns()
+                .into_iter()
+                .map(|v| v.name().to_string())
+                .collect::<Arc<[String]>>(),
+            values: self.row_full(),
+        }
+    }
 
     /// Constructs `Self` from a labeled database row.
     ///

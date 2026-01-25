@@ -71,7 +71,7 @@ impl<L: Expression, R: Expression> Expression for BinaryOp<L, R> {
             },
         )
     }
-    fn matches(&self, matcher: &dyn ExpressionMatcher) -> bool {
+    fn matches(&self, matcher: &mut dyn ExpressionMatcher) -> bool {
         matcher.match_binary_op(&self.op, &self.lhs, &self.rhs)
     }
 }

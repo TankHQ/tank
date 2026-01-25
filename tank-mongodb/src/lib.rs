@@ -6,7 +6,9 @@ mod sql_writer;
 mod transaction;
 mod util;
 mod value_wrap;
+mod matcher;
 
+pub use matcher::*;
 pub use connection::*;
 pub use driver::*;
 pub use prepared::*;

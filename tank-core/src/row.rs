@@ -6,7 +6,7 @@ use std::{
 };
 
 /// Metadata about modifying operations (INSERT/UPDATE/DELETE).
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug)]
 pub struct RowsAffected {
     /// Optional count of affected rows reported by the backend.
     /// `None` means the backend did not provide a count.
@@ -22,7 +22,7 @@ pub type RowNames = Arc<[String]>;
 pub type Row = Box<[Value]>;
 
 /// Row with column labels.
-#[derive(Debug, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct RowLabeled {
     /// Column names
     pub labels: RowNames,

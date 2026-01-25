@@ -1,5 +1,7 @@
 use std::{collections::BTreeMap, fmt::Write};
-use tank_core::{DynQuery, ColumnDef, ColumnRef, Context, Entity, SqlWriter, TableRef, Value};
+use tank_core::{
+    ColumnDef, ColumnRef, Context, DynQuery, Entity, SqlWriter, TableRef, Value, write_escaped,
+};
 
 /// SQL writer for SQLite dialect.
 ///
@@ -30,10 +32,10 @@ impl SqlWriter for SQLiteSqlWriter {
         if context.qualify_columns && !value.table.is_empty() {
             out.push('"');
             if !value.schema.is_empty() {
-                self.write_escaped(context, out, &value.schema, '"', "\"\"");
+                write_escaped(out, &value.schema, '"', "\"\"");
                 out.push('.');
             }
-            self.write_escaped(context, out, &value.table, '"', "\"\"");
+            write_escaped(out, &value.table, '"', "\"\"");
             out.push_str("\".");
         }
         self.write_identifier_quoted(context, out, &value.name);
@@ -43,10 +45,10 @@ impl SqlWriter for SQLiteSqlWriter {
         if self.alias_declaration(context) || value.alias.is_empty() {
             out.push('"');
             if !value.schema.is_empty() {
-                self.write_escaped(context, out, &value.schema, '"', "\"\"");
+                write_escaped(out, &value.schema, '"', "\"\"");
                 out.push('.');
             }
-            self.write_escaped(context, out, &value.name, '"', "\"\"");
+            write_escaped(out, &value.name, '"', "\"\"");
             out.push('"');
         }
         if !value.alias.is_empty() {

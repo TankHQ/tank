@@ -1,35 +1,3 @@
 {
-    "sqltools.connections": [
-        {
-            "previewLimit": 50,
-            "driver": "DuckDB",
-            "name": "Tests",
-            "database": "${workspaceFolder:tank}/target/debug/tests.duckdb"
-        },
-        {
-            "previewLimit": 50,
-            "driver": "SQLite",
-            "name": "Tests",
-            "database": "${workspaceFolder:tank}/target/debug/tests.sqlite"
-        },
-        {
-            "ssh": "Disabled",
-            "previewLimit": 50,
-            "server": "localhost",
-            "port": 32779,
-            "driver": "PostgreSQL",
-            "name": "Test",
-            "database": "military",
-            "username": "tank-user",
-            "password": "armored"
-        },
-        {
-            "server": "localhost",
-            "port": 33724,
-            "previewLimit": 50,
-            "driver": "Cassandra",
-            "name": "Test",
-            "password": ""
-        }
-    ]
+    "editor.formatOnSave": true
 }

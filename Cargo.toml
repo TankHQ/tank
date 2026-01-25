@@ -9,7 +9,7 @@ members = [
     "tank-scylladb",
     "tank-sqlite",
     "tank-tests",
-    # "tank-mongodb",
+    "tank-mongodb",
     # "tank-yourdb",
 ]
 

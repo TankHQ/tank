@@ -1,4 +1,7 @@
-use crate::{MongoDBDriver, MongoDBTransaction, Payload, RowWrap};
+use crate::{
+    DeletePayload, FindOnePayload, FindPayload, MongoDBDriver, MongoDBTransaction, Payload,
+    RowWrap, UpsertPayload,
+};
 use async_stream::try_stream;
 use mongodb::{Client, Database, bson::Bson};
 use std::{borrow::Cow, future};
@@ -88,15 +91,19 @@ impl Executor for MongoDBConnection {
             match query_type {
                 QueryType::Select => {
                     if count == Some(1) {
-                        let Payload::FindOne(payload) = &payload else {
+                        let Payload::FindOne(FindOnePayload {
+                            matching: Bson::Document(matching),
+                            options,
+                            ..
+                        }) = &payload
+                        else {
                             Err(Error::msg(format!(
-                                "Query is a select with count 1 but the payload {payload:?} is not the expected FindOne variant"
+                                "Query is a select with count 1 but the payload {payload:?} is not a FindOne with a Bson::Document matcher"
                             )))?;
                             return;
                         };
-                        let options = &payload.options;
                         match collection
-                            .find_one(payload.matching.clone())
+                            .find_one(matching.clone())
                             .with_options(options.clone())
                             .await
                         {
@@ -110,15 +117,19 @@ impl Executor for MongoDBConnection {
                             Err(e) => Err(Error::msg(format!("{e}")))?,
                         }
                     } else {
-                        let Payload::Find(payload) = &payload else {
+                        let Payload::Find(FindPayload {
+                            matching: Bson::Document(matching),
+                            options,
+                            ..
+                        }) = &payload
+                        else {
                             Err(Error::msg(format!(
-                                "Query is a select but the payload {payload:?} is not the expected FindOne variant"
+                                "Query is a select with but the payload {payload:?} is not a Payload::Find with a Bson::Document matcher"
                             )))?;
                             return;
                         };
-                        let options = &payload.options;
                         let mut stream = collection
-                            .find(payload.matching.clone())
+                            .find(matching.clone())
                             .with_options(options.clone())
                             .await?;
                         while let Some(result) = stream.try_next().await? {
@@ -133,7 +144,7 @@ impl Executor for MongoDBConnection {
                     if count == Some(1) {
                         let Payload::InsertOne(payload) = &payload else {
                             Err(Error::msg(format!(
-                                "Query is a insert with count 1 but the payload {payload:?} is not the expected InsertOne variant"
+                                "Query is a insert with count 1 but the payload {payload:?} is not the expected Payload::InsertOne variant"
                             )))?;
                             return;
                         };
@@ -153,7 +164,7 @@ impl Executor for MongoDBConnection {
                     } else {
                         let Payload::InsertMany(payload) = &payload else {
                             Err(Error::msg(format!(
-                                "Query is a insert but the payload {payload:?} is not the expected InsertMany variant"
+                                "Query is a insert but the payload {payload:?} is not the expected Payload::InsertMany variant"
                             )))?;
                             return;
                         };
@@ -168,24 +179,53 @@ impl Executor for MongoDBConnection {
                         });
                     }
                 }
-                QueryType::DeleteFrom => {
-                    let Payload::Delete(payload) = &payload else {
+                QueryType::Upsert => {
+                    let Payload::Upsert(UpsertPayload {
+                        matching: Bson::Document(matching),
+                        modifications: Some(modifications),
+                        options,
+                    }) = &payload
+                    else {
                         Err(Error::msg(format!(
-                            "Query is a delete but the payload {payload:?} is not the expected Delete variant"
+                            "Query is a upsert but the payload {payload:?} is not the expected Payload::Upsert with a Bson::Document matcher"
                         )))?;
                         return;
                     };
                     let result = if count == Some(1) {
-                        collection
-                            .delete_one(payload.matching.clone())
-                            .with_options(payload.options.clone())
-                            .await?
+                        collection.update_one(matching.clone(), modifications.clone())
                     } else {
-                        collection
-                            .delete_many(payload.matching.clone())
-                            .with_options(payload.options.clone())
-                            .await?
+                        collection.update_many(matching.clone(), modifications.clone())
+                    }
+                    .with_options(options.clone())
+                    .await?;
+                    let last_affected_id = match result.upserted_id {
+                        Some(Bson::Int32(v)) => Some(v as i64),
+                        Some(Bson::Int64(v)) => Some(v),
+                        _ => None,
                     };
+                    yield QueryResult::Affected(RowsAffected {
+                        rows_affected: Some(result.modified_count),
+                        last_affected_id,
+                    });
+                }
+                QueryType::DeleteFrom => {
+                    let Payload::Delete(DeletePayload {
+                        matching: Bson::Document(matching),
+                        options,
+                    }) = &payload
+                    else {
+                        Err(Error::msg(format!(
+                            "Query is a delete but the payload {payload:?} is not the expected Payload::Delete with a Bson::Document matcher"
+                        )))?;
+                        return;
+                    };
+                    let result = if count == Some(1) {
+                        collection.delete_one(matching.clone())
+                    } else {
+                        collection.delete_many(matching.clone())
+                    }
+                    .with_options(options.clone())
+                    .await?;
                     yield QueryResult::Affected(RowsAffected {
                         rows_affected: Some(result.deleted_count),
                         last_affected_id: None,
@@ -195,7 +235,7 @@ impl Executor for MongoDBConnection {
                 QueryType::CreateTable => {}
                 QueryType::DropTable => {}
                 QueryType::CreateSchema => {}
-                QueryType::DropSchema => {},
+                QueryType::DropSchema => {}
             }
         }
     }

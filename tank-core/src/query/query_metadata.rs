@@ -5,6 +5,7 @@ use std::borrow::Cow;
 pub enum QueryType {
     Select,
     InsertInto,
+    Upsert,
     DeleteFrom,
     CreateTable,
     DropTable,

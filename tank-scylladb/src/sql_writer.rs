@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 use tank_core::{
     ColumnDef, Context, DataSet, DynQuery, Entity, Error, Expression, Fragment, Interval, IsTrue,
-    PrimaryKeyType, QueryMetadata, QueryType, Result, SqlWriter, Value, future::Either,
-    indoc::indoc, print_timer, separated_by,
+    PrimaryKeyType, QueryMetadata, QueryType, Result, SqlWriter, Value, indoc::indoc, print_timer,
+    separated_by,
 };
 use time::Time;
 use uuid::Uuid;
@@ -183,45 +183,29 @@ impl SqlWriter for ScyllaDBSqlWriter {
         &self,
         context: &mut Context,
         out: &mut DynQuery,
-        value: Either<&Box<[Value]>, &Vec<Value>>,
+        value: &mut dyn Iterator<Item = &Value>,
         ty: &Value,
         elem_ty: &Value,
     ) {
         if matches!(ty, Value::Array(..)) && matches!(elem_ty, Value::Char(..)) {
             // Array of characters are stored as ASCII
-            let value = match value {
-                Either::Left(v) => v
-                    .iter()
-                    .map(|v| {
-                        if let Value::Char(Some(v)) = v {
-                            Ok(v)
-                        } else {
-                            return Err(Error::msg(""));
-                        }
-                    })
-                    .collect::<Result<String>>(),
-                Either::Right(v) => v
-                    .iter()
-                    .map(|v| {
-                        if let Value::Char(Some(v)) = v {
-                            Ok(v)
-                        } else {
-                            return Err(Error::msg(""));
-                        }
-                    })
-                    .collect::<Result<String>>(),
-            }
-            .unwrap();
+            let value = value
+                .map(|v| {
+                    if let Value::Char(Some(v)) = v {
+                        Ok(v)
+                    } else {
+                        return Err(Error::msg(""));
+                    }
+                })
+                .collect::<Result<String>>()
+                .unwrap();
             self.write_value_string(context, out, &value);
             return;
         }
         out.push('[');
         separated_by(
             out,
-            match value {
-                Either::Left(v) => v.iter(),
-                Either::Right(v) => v.iter(),
-            },
+            value,
             |out, v| {
                 self.write_value(context, out, v);
             },
@@ -437,7 +421,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
             .into(),
         );
         out.buffer().reserve(128);
-        let is_true = condition.matches(&IsTrue {});
+        let is_true = condition.matches(&mut IsTrue);
         if is_true {
             out.push_str("TRUNCATE ");
         } else {

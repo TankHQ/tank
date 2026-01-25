@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, Expression, OpPrecedence,
+    DynQuery, Expression, ExpressionMatcher, OpPrecedence,
     writer::{Context, SqlWriter},
 };
 
@@ -38,7 +38,7 @@ impl<E: Expression> Expression for UnaryOp<E> {
         )
     }
 
-    fn matches(&self, matcher: &dyn super::ExpressionMatcher) -> bool {
+    fn matches(&self, matcher: &mut dyn ExpressionMatcher) -> bool {
         matcher.match_unary_op(&self.op, &self.arg)
     }
 }

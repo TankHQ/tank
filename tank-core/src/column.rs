@@ -150,7 +150,7 @@ impl Expression for ColumnRef {
         writer.write_column_ref(context, out, self);
     }
 
-    fn matches(&self, matcher: &dyn ExpressionMatcher) -> bool {
+    fn matches(&self, matcher: &mut dyn ExpressionMatcher) -> bool {
         matcher.match_column(self)
     }
 }
@@ -166,7 +166,7 @@ impl Expression for ColumnDef {
         writer.write_column_ref(context, out, &self.column_ref);
     }
 
-    fn matches(&self, matcher: &dyn ExpressionMatcher) -> bool {
+    fn matches(&self, matcher: &mut dyn ExpressionMatcher) -> bool {
         matcher.match_column(&self.column_ref)
     }
 }

@@ -1,7 +1,5 @@
 use std::{collections::BTreeMap, fmt::Write};
-use tank_core::{
-    DynQuery, ColumnDef, Context, DataSet, Entity, SqlWriter, Value, future::Either, separated_by,
-};
+use tank_core::{ColumnDef, Context, DataSet, DynQuery, Entity, SqlWriter, Value, separated_by};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 
 /// SQL writer for Postgres dialect.
@@ -204,17 +202,14 @@ impl SqlWriter for PostgresSqlWriter {
         &self,
         context: &mut Context,
         out: &mut DynQuery,
-        value: Either<&Box<[Value]>, &Vec<Value>>,
+        value: &mut dyn Iterator<Item = &Value>,
         ty: &Value,
         _elem_ty: &Value,
     ) {
         out.push_str("ARRAY[");
         separated_by(
             out,
-            match value {
-                Either::Left(v) => v.iter(),
-                Either::Right(v) => v.iter(),
-            },
+            value,
             |out, v| {
                 self.write_value(context, out, v);
             },

@@ -2,10 +2,10 @@ use crate::{
     Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, DataSet, DynQuery, EitherIterator,
     Entity, Expression, Fragment, Interval, IsOrdered, IsTrue, Join, JoinType, Operand, Order,
     Ordered, PrimaryKeyType, QueryMetadata, QueryType, SelectQuery, TableRef, UnaryOp, UnaryOpType,
-    Value, possibly_parenthesized, print_date, print_timer, separated_by, writer::Context,
+    Value, possibly_parenthesized, print_date, print_timer, separated_by, write_escaped,
+    writer::Context,
 };
 use core::f64;
-use futures::future::Either;
 use std::{
     borrow::Cow,
     collections::{BTreeMap, HashMap},
@@ -72,30 +72,10 @@ pub trait SqlWriter: Send {
         }
     }
 
-    /// Escape occurrences of `search` char with `replace` while copying into buffer.
-    fn write_escaped(
-        &self,
-        _context: &mut Context,
-        out: &mut DynQuery,
-        value: &str,
-        search: char,
-        replace: &str,
-    ) {
-        let mut position = 0;
-        for (i, c) in value.char_indices() {
-            if c == search {
-                out.push_str(&value[position..i]);
-                out.push_str(replace);
-                position = i + 1;
-            }
-        }
-        out.push_str(&value[position..]);
-    }
-
     /// Quote identifiers ("name") doubling inner quotes.
-    fn write_identifier_quoted(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
+    fn write_identifier_quoted(&self, _context: &mut Context, out: &mut DynQuery, value: &str) {
         out.push('"');
-        self.write_escaped(context, out, value, '"', "\"\"");
+        write_escaped(out, value, '"', "\"\"");
         out.push('"');
     }
 
@@ -233,10 +213,10 @@ pub trait SqlWriter: Send {
             Value::Array(Some(..), elem_ty, ..) | Value::List(Some(..), elem_ty, ..) => match value
             {
                 Value::Array(Some(v), ..) => {
-                    self.write_value_list(context, out, Either::Left(v), value, &*elem_ty)
+                    self.write_value_list(context, out, &mut v.iter(), value, &*elem_ty)
                 }
                 Value::List(Some(v), ..) => {
-                    self.write_value_list(context, out, Either::Right(v), value, &*elem_ty)
+                    self.write_value_list(context, out, &mut v.iter(), value, &*elem_ty)
                 }
                 _ => unreachable!(),
             },
@@ -490,23 +470,11 @@ pub trait SqlWriter: Send {
         &self,
         context: &mut Context,
         out: &mut DynQuery,
-        value: Either<&Box<[Value]>, &Vec<Value>>,
+        value: &mut dyn Iterator<Item = &Value>,
         _ty: &Value,
         _elem_ty: &Value,
     ) {
-        out.push('[');
-        separated_by(
-            out,
-            match value {
-                Either::Left(v) => v.iter(),
-                Either::Right(v) => v.iter(),
-            },
-            |out, v| {
-                self.write_value(context, out, v);
-            },
-            ",",
-        );
-        out.push(']');
+        self.write_expression_list(context, out, &mut value.map(|v| v as &dyn Expression));
     }
 
     /// Render map literal.
@@ -643,19 +611,7 @@ pub trait SqlWriter: Send {
             Operand::Type(v) => self.write_column_type(context, out, v),
             Operand::Variable(v) => self.write_value(context, out, v),
             Operand::Value(v) => self.write_value(context, out, v),
-            Operand::Call(f, args) => {
-                out.push_str(f);
-                out.push('(');
-                separated_by(
-                    out,
-                    *args,
-                    |out, expr| {
-                        expr.write_query(self.as_dyn(), context, out);
-                    },
-                    ",",
-                );
-                out.push(')');
-            }
+            Operand::Call(f, args) => self.write_expression_call(context, out, f, args),
             Operand::Asterisk => drop(out.push('*')),
             Operand::QuestionMark => self.write_expression_operand_question_mark(context, out),
         };
@@ -788,6 +744,44 @@ pub trait SqlWriter: Send {
                 }
             );
         }
+    }
+
+    fn write_expression_call(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        function: &str,
+        args: &[&dyn Expression],
+    ) {
+        out.push_str(function);
+        out.push('(');
+        separated_by(
+            out,
+            args,
+            |out, expr| {
+                expr.write_query(self.as_dyn(), context, out);
+            },
+            ",",
+        );
+        out.push(')');
+    }
+
+    fn write_expression_list(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &mut dyn Iterator<Item = &dyn Expression>,
+    ) {
+        out.push('[');
+        separated_by(
+            out,
+            value,
+            |out, v| {
+                v.write_query(self.as_dyn(), context, out);
+            },
+            ",",
+        );
+        out.push(']');
     }
 
     /// Render join keyword(s) for the given join type.
@@ -1157,7 +1151,7 @@ pub trait SqlWriter: Send {
             columns.clone(),
             |out, col| {
                 col.write_query(self, &mut context, out);
-                has_order_by = has_order_by || col.matches(&IsOrdered {});
+                has_order_by = has_order_by || col.matches(&mut IsOrdered);
             },
             ", ",
         );
@@ -1168,7 +1162,7 @@ pub trait SqlWriter: Send {
             out,
         );
         if let Some(condition) = query.get_where_condition()
-            && !condition.matches(&IsTrue {})
+            && !condition.matches(&mut IsTrue)
         {
             out.push_str("\nWHERE ");
             condition.write_query(
@@ -1182,7 +1176,7 @@ pub trait SqlWriter: Send {
             let mut order_context = context.switch_fragment(Fragment::SqlSelectOrderBy);
             separated_by(
                 out,
-                columns.into_iter().filter(|v| v.matches(&IsOrdered {})),
+                columns.into_iter().filter(|v| v.matches(&mut IsOrdered)),
                 |out, col| {
                     col.write_query(self, &mut order_context.current, out);
                 },
@@ -1210,7 +1204,7 @@ pub trait SqlWriter: Send {
             out,
             QueryMetadata {
                 table: table.clone(),
-                count: None,
+                count: Some(0),
                 query_type: QueryType::InsertInto.into(),
             }
             .into(),
@@ -1231,6 +1225,7 @@ pub trait SqlWriter: Send {
         out.push_str(" (");
         let columns = E::columns().iter();
         if single {
+            out.metadata_mut().count = Some(1);
             // Inserting a single row uses row_labeled to filter out Passive::NotSet columns
             separated_by(
                 out,
@@ -1258,6 +1253,7 @@ pub trait SqlWriter: Send {
             if separate {
                 out.push_str(",\n");
             }
+            *out.metadata_mut().count.get_or_insert_default() += 1;
             out.push('(');
             let mut fields = row.iter();
             let mut field = fields.next();

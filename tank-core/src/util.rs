@@ -233,6 +233,19 @@ pub fn separated_by<T, F>(
     }
 }
 
+/// Write, escaping occurrences of `search` char with `replace` while copying into buffer.
+pub fn write_escaped(out: &mut DynQuery, value: &str, search: char, replace: &str) {
+    let mut position = 0;
+    for (i, c) in value.char_indices() {
+        if c == search {
+            out.push_str(&value[position..i]);
+            out.push_str(replace);
+            position = i + 1;
+        }
+    }
+    out.push_str(&value[position..]);
+}
+
 /// Convenience wrapper converting into a `CString`.
 pub fn as_c_string(str: impl Into<Vec<u8>>) -> CString {
     CString::new(

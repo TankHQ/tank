@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, Expression, OpPrecedence,
+    DynQuery, Expression, ExpressionMatcher, OpPrecedence,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::TokenStream;
@@ -44,7 +44,7 @@ impl<E: Expression> Expression for Ordered<E> {
         );
     }
 
-    fn matches(&self, matcher: &dyn super::ExpressionMatcher) -> bool {
+    fn matches(&self, matcher: &mut dyn ExpressionMatcher) -> bool {
         matcher.match_ordered(&Ordered {
             expression: self as &dyn Expression,
             order: self.order,

@@ -8,7 +8,7 @@ pub use drop_table::*;
 pub use insert_into::*;
 pub use select::*;
 
-use crate::{Context, DynQuery, Entity, Expression, OpPrecedence, SqlWriter};
+use crate::{Context, DynQuery, Entity, Expression, ExpressionMatcher, OpPrecedence, SqlWriter};
 use std::iter;
 
 #[derive(Default, Debug)]
@@ -68,7 +68,7 @@ impl OpPrecedence for NA {
 
 impl Expression for NA {
     fn write_query(&self, _writer: &dyn SqlWriter, _context: &mut Context, _out: &mut DynQuery) {}
-    fn matches(&self, _matcher: &dyn crate::ExpressionMatcher) -> bool {
+    fn matches(&self, _matcher: &mut dyn ExpressionMatcher) -> bool {
         false
     }
 }
