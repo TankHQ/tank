@@ -14,7 +14,9 @@ use std::{
 /// A table-mapped record with schema and CRUD helpers.
 pub trait Entity {
     /// Primary key type. Tuple of the types of the fields forming the primary key.
-    type PrimaryKey<'a>;
+    type PrimaryKey<'a>
+    where
+        Self: 'a;
 
     /// Returns the table reference backing this entity.
     fn table() -> &'static TableRef;
@@ -27,6 +29,8 @@ pub trait Entity {
 
     /// Extracts the primary key value(s) from `self`.
     fn primary_key(&self) -> Self::PrimaryKey<'_>;
+
+    fn primary_key_expr(&self) -> impl Expression;
 
     /// Returns an iterator over unique constraint definitions.
     fn unique_defs()
@@ -169,16 +173,6 @@ pub trait Entity {
         executor.prepare(query.into_buffer())
     }
 
-    /// Finds an entity by primary key.
-    ///
-    /// Returns `Ok(None)` if no row matches.
-    fn find_pk(
-        executor: &mut impl Executor,
-        primary_key: &Self::PrimaryKey<'_>,
-    ) -> impl Future<Output = Result<Option<Self>>> + Send
-    where
-        Self: Sized;
-
     /// Finds the first entity matching a condition expression.
     ///
     /// Returns `Ok(None)` if no row matches.
@@ -215,19 +209,9 @@ pub trait Entity {
             .map(|result| result.and_then(Self::from_row))
     }
 
-    /// Deletes exactly one entity by primary key.
-    ///
-    /// Returns rows affected (0 if not found).
-    fn delete_one(
-        executor: &mut impl Executor,
-        primary_key: Self::PrimaryKey<'_>,
-    ) -> impl Future<Output = Result<RowsAffected>> + Send
-    where
-        Self: Sized;
-
     /// Deletes all entities matching a condition.
     ///
-    /// Returns the number of rows deleted.
+    /// Returns the number of deleted rows.
     fn delete_many(
         executor: &mut impl Executor,
         condition: impl Expression,
@@ -303,27 +287,29 @@ pub trait Entity {
             log::error!("{:#}", error);
             return Either::Left(future::ready(Err(error)));
         }
-        Either::Right(Self::delete_one(executor, self.primary_key()).map(|v| {
-            v.and_then(|v| {
-                if let Some(affected) = v.rows_affected {
-                    if affected != 1 {
-                        let error = Error::msg(format!(
-                            "The query deleted {affected} rows instead of the expected 1"
-                        ));
-                        log::log!(
-                            if affected == 0 {
-                                Level::Info
-                            } else {
-                                Level::Error
-                            },
-                            "{error}",
-                        );
-                        return Err(error);
+        Either::Right(
+            Self::delete_many(executor, self.primary_key_expr()).map(|v| {
+                v.and_then(|v| {
+                    if let Some(affected) = v.rows_affected {
+                        if affected != 1 {
+                            let error = Error::msg(format!(
+                                "The query deleted {affected} rows instead of the expected 1"
+                            ));
+                            log::log!(
+                                if affected == 0 {
+                                    Level::Info
+                                } else {
+                                    Level::Error
+                                },
+                                "{error}",
+                            );
+                            return Err(error);
+                        }
                     }
-                }
-                Ok(())
-            })
-        }))
+                    Ok(())
+                })
+            }),
+        )
     }
 }
 

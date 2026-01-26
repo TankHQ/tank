@@ -1,6 +1,6 @@
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    DynQuery, Driver, Entity, Executor, QueryBuilder, QueryResult, Result, RowsAffected, SqlWriter,
+    Driver, DynQuery, Entity, Executor, QueryBuilder, QueryResult, Result, RowsAffected, SqlWriter,
     cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
@@ -50,7 +50,7 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
 
     // Insert
     let operator = Operator {
-        id: Uuid::new_v4(),
+        id: Uuid::parse_str("21c90df5-00db-4062-9f5a-bcfa2e759e78").unwrap(),
         callsign: "SteelHammer".into(),
         service_rank: "Major".into(),
         enlisted: date!(2015 - 06 - 20),
@@ -72,11 +72,6 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
     RadioLog::insert_many(executor, &logs).await?;
 
     // Find
-    let found = Operator::find_pk(executor, &operator.primary_key()).await?;
-    if let Some(op) = found {
-        log::debug!("Found operator: {:?}", op.callsign);
-    }
-
     if let Some(radio_log) =
         RadioLog::find_one(executor, expr!(RadioLog::unit_callsign == "Alpha-1")).await?
     {
@@ -107,7 +102,7 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
     log.save(executor).await?;
 
     // Delete
-    RadioLog::delete_one(executor, log.primary_key()).await?;
+    RadioLog::delete_many(executor, log.primary_key_expr()).await?;
 
     let operator_id = operator.id;
     RadioLog::delete_many(executor, expr!(RadioLog::operator == #operator_id)).await?;

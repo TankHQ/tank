@@ -169,7 +169,7 @@ pub async fn users<E: Executor>(executor: &mut E) {
         "Failed to save Bob: {:?}",
         result.unwrap_err()
     );
-    let updated_bob = UserProfile::find_pk(executor, &bob.primary_key())
+    let updated_bob = UserProfile::find_one(executor, bob.primary_key_expr())
         .await
         .expect("Expected query to succeed")
         .expect("Could not find bob ");
@@ -196,7 +196,7 @@ pub async fn users<E: Executor>(executor: &mut E) {
         "Failed to delete Eve: {:?}",
         result.unwrap_err()
     );
-    let maybe_eve = UserProfile::find_pk(executor, &eve.primary_key())
+    let maybe_eve = UserProfile::find_one(executor, eve.primary_key_expr())
         .await
         .expect("Expected query to succeed");
     assert!(maybe_eve.is_none(), "Eve should have been deleted");

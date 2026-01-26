@@ -26,6 +26,17 @@ impl<'a> TryFrom<Document> for RowWrap<'a> {
     }
 }
 
+impl<'a> TryFrom<RowWrap<'a>> for Document {
+    type Error = tank_core::Error;
+    fn try_from(value: RowWrap<'a>) -> Result<Self, Self::Error> {
+        let mut result = Document::new();
+        for (k, v) in value.0.as_ref() {
+            result.insert(k, value_to_bson(v)?);
+        }
+        Ok(result)
+    }
+}
+
 impl<'a> Serialize for RowWrap<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

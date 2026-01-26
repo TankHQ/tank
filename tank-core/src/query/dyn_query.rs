@@ -23,6 +23,7 @@ impl DynQuery {
     }
     pub fn buffer(&mut self) -> &mut String {
         if !matches!(self, DynQuery::Raw(..)) {
+            log::error!("DynQuery::buffer changed the query to raw, deleting the previous content");
             *self = DynQuery::Raw(Default::default())
         }
         let DynQuery::Raw(RawQuery { sql: value, .. }) = self else {

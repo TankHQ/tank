@@ -35,4 +35,8 @@ pub trait Prepared: Any + Send + Sync + Display + Debug {
     fn metadata(&self) -> &QueryMetadata;
     /// Get mutable QueryMetadata
     fn metadata_mut(&mut self) -> &mut QueryMetadata;
+    /// Returns true if self has no meaningfull value. The meaning depends on the driver.
+    fn is_empty(&self) -> bool {
+        false
+    }
 }

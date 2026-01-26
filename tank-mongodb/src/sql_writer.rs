@@ -1,13 +1,24 @@
 use crate::{
-    FieldConditionMatcher, InsertManyPayload, InsertOnePayload, MongoDBDriver, MongoDBPrepared,
-    Payload,
+    FieldConditionMatcher, FindOnePayload, FindPayload, InsertManyPayload, InsertOnePayload,
+    MongoDBDriver, MongoDBPrepared, Payload, RowWrap, UpsertManyPayload, UpsertOnePayload,
+    value_to_bson,
 };
-use mongodb::bson::Bson;
-use std::{collections::BTreeMap, iter, mem};
+use mongodb::{
+    Namespace,
+    bson::{self, Binary, Bson, Document, spec::BinarySubtype},
+    options::{
+        FindOneOptions, FindOptions, InsertManyOptions, InsertOneOptions, UpdateModifications,
+        UpdateOneModel, UpdateOptions,
+    },
+};
+use std::{borrow::Cow, collections::HashMap, f64, iter, mem};
 use tank_core::{
-    BinaryOp, BinaryOpType, ColumnDef, Context, DynQuery, Entity, Expression, Fragment,
-    QueryMetadata, QueryType, SqlWriter,
+    AsValue, BinaryOp, BinaryOpType, Context, DataSet, DynQuery, Entity, ErrorContext, Expression,
+    Fragment, Interval, QueryMetadata, QueryType, Result, SelectQuery, SqlWriter, Value,
+    print_timer,
 };
+use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
+use uuid::Uuid;
 
 #[derive(Default)]
 pub struct MongoDBSqlWriter {}
@@ -19,6 +30,11 @@ impl MongoDBSqlWriter {
 
     pub fn switch_to_prepared(query: &mut DynQuery) -> &mut MongoDBPrepared {
         if query.as_prepared::<MongoDBDriver>().is_none() {
+            if !query.is_empty() {
+                log::error!(
+                    "The query is not empty, MongoDBSqlWriter::switch_to_prepared will drop the content"
+                );
+            }
             let mut prepared = MongoDBPrepared::default();
             prepared.metadata = mem::take(query.metadata_mut());
             *query = DynQuery::Prepared(Box::new(prepared));
@@ -74,24 +90,292 @@ impl SqlWriter for MongoDBSqlWriter {
         self
     }
 
-    fn write_column_overridden_type(
+    fn write_value(&self, context: &mut Context, out: &mut DynQuery, value: &Value) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec while writing the value {value:?}");
+            return;
+        };
+        *target = match value_to_bson(value) {
+            Ok(v) => v,
+            Err(e) => {
+                log::error!(
+                    "{:#}",
+                    e.context(format!("While writing the value {value:?}"))
+                );
+                return;
+            }
+        };
+    }
+
+    fn write_value_none(&self, context: &mut Context, out: &mut DynQuery) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_none");
+            return;
+        };
+        *target = Bson::Null;
+    }
+
+    fn write_value_bool(&self, context: &mut Context, out: &mut DynQuery, value: bool) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_bool");
+            return;
+        };
+        *target = Bson::Boolean(value);
+    }
+
+    fn write_value_infinity(&self, context: &mut Context, out: &mut DynQuery, negative: bool) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_infinity");
+            return;
+        };
+        *target = Bson::Double(if negative {
+            f64::NEG_INFINITY
+        } else {
+            f64::INFINITY
+        });
+    }
+
+    fn write_value_nan(&self, context: &mut Context, out: &mut DynQuery) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_nan");
+            return;
+        };
+        *target = Bson::Double(f64::NAN);
+    }
+
+    fn write_value_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_string");
+            return;
+        };
+        *target = Bson::String(value.into());
+    }
+
+    fn write_value_blob(&self, context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_blob");
+            return;
+        };
+        *target = Bson::Binary(Binary {
+            subtype: BinarySubtype::Generic,
+            bytes: value.to_vec(),
+        });
+    }
+
+    fn write_value_date(
         &self,
         _context: &mut Context,
         out: &mut DynQuery,
-        _column: &ColumnDef,
-        types: &BTreeMap<&'static str, &'static str>,
+        value: &Date,
+        _timestamp: bool,
     ) {
-        if let Some(t) = types
-            .iter()
-            .find_map(|(k, v)| if *k == "mongodb" { Some(v) } else { None })
-        {
-            out.push_str(t);
-        }
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_date");
+            return;
+        };
+        let midnight = time::Time::MIDNIGHT;
+        let date_time = PrimitiveDateTime::new(*value, midnight).assume_utc();
+        *target = Bson::DateTime(bson::DateTime::from_millis(
+            (date_time.unix_timestamp_nanos() / 1_000_000) as _,
+        ))
     }
 
-    // fn write_identifier_quoted(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
-    //     out.push_str(value);
-    // }
+    fn write_value_time(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+        value: &Time,
+        _timestamp: bool,
+    ) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_time");
+            return;
+        };
+        let mut out = String::new();
+        print_timer(
+            &mut out,
+            "",
+            value.hour() as _,
+            value.minute(),
+            value.second(),
+            value.nanosecond(),
+        );
+        *target = Bson::String(out)
+    }
+
+    fn write_value_timestamp(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+        value: &PrimitiveDateTime,
+    ) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_timestamp");
+            return;
+        };
+        let ms = value.assume_utc().unix_timestamp_nanos() / 1_000_000;
+        *target = Bson::DateTime(bson::DateTime::from_millis(ms as _));
+    }
+
+    fn write_value_timestamptz(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+        value: &OffsetDateTime,
+    ) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!(
+                "Failed to get the bson objec in MongoDBSqlWriter::write_value_timestamptz"
+            );
+            return;
+        };
+        let ms = value.to_utc().unix_timestamp_nanos() / 1_000_000;
+        *target = Bson::DateTime(bson::DateTime::from_millis(ms as _));
+    }
+
+    fn write_value_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {
+        log::error!("MongoDB does not support interval types");
+        return;
+    }
+
+    fn write_value_uuid(&self, context: &mut Context, out: &mut DynQuery, value: &Uuid) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_uuid");
+            return;
+        };
+        *target = Bson::Binary(Binary {
+            subtype: BinarySubtype::Uuid,
+            bytes: value.as_bytes().to_vec(),
+        });
+    }
+
+    fn write_value_list(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+        value: &mut dyn Iterator<Item = &Value>,
+        _ty: &Value,
+        _elem_ty: &Value,
+    ) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_list");
+            return;
+        };
+        let list = match value.map(value_to_bson).collect::<Result<_>>() {
+            Ok(v) => v,
+            Err(e) => {
+                log::error!(
+                    "{:#}",
+                    e.context("While MongoDBSqlWriter::write_value_list")
+                );
+                return;
+            }
+        };
+        *target = Bson::Array(list);
+    }
+
+    fn write_value_map(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+        value: &HashMap<Value, Value>,
+    ) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_map");
+            return;
+        };
+        let mut doc = Document::new();
+        for (k, v) in value.iter() {
+            let Ok(k) = String::try_from_value(k.clone()) else {
+                log::error!("Unexpected tank::Value key: {k:?}, it is not convertible to String");
+                return;
+            };
+            let v = match value_to_bson(v) {
+                Ok(v) => v,
+                Err(e) => {
+                    log::error!(
+                        "{:#}",
+                        e.context(format!("While converting value {v:?} to bson"))
+                    );
+                    return;
+                }
+            };
+            doc.insert(k, v);
+        }
+        *target = Bson::Document(doc);
+    }
+
+    fn write_value_struct(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+        value: &Vec<(String, Value)>,
+    ) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_struct");
+            return;
+        };
+        let mut doc = Document::new();
+        for (k, v) in value.iter() {
+            let v = match value_to_bson(v) {
+                Ok(v) => v,
+                Err(e) => {
+                    log::error!(
+                        "{:#}",
+                        e.context(format!("While converting value {v:?} to bson"))
+                    );
+                    return;
+                }
+            };
+            doc.insert(k, v);
+        }
+        *target = Bson::Document(doc);
+    }
 
     fn write_expression_binary_op(
         &self,
@@ -212,6 +496,129 @@ impl SqlWriter for MongoDBSqlWriter {
         };
     }
 
+    fn write_create_schema<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
+    where
+        Self: Sized,
+        E: Entity,
+    {
+        self.update_metadata(
+            out,
+            QueryMetadata {
+                table: E::table().clone(),
+                count: None,
+                query_type: QueryType::CreateSchema.into(),
+            }
+            .into(),
+        );
+        Self::switch_to_prepared(out);
+    }
+
+    fn write_drop_schema<E>(&self, out: &mut DynQuery, _if_exists: bool)
+    where
+        Self: Sized,
+        E: Entity,
+    {
+        self.update_metadata(
+            out,
+            QueryMetadata {
+                table: E::table().clone(),
+                count: None,
+                query_type: QueryType::DropSchema.into(),
+            }
+            .into(),
+        );
+        Self::switch_to_prepared(out);
+    }
+
+    fn write_create_table<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
+    where
+        Self: Sized,
+        E: Entity,
+    {
+        self.update_metadata(
+            out,
+            QueryMetadata {
+                table: E::table().clone(),
+                count: None,
+                query_type: QueryType::CreateTable.into(),
+            }
+            .into(),
+        );
+        Self::switch_to_prepared(out);
+    }
+
+    fn write_drop_table<E>(&self, out: &mut DynQuery, _if_exists: bool)
+    where
+        Self: Sized,
+        E: Entity,
+    {
+        self.update_metadata(
+            out,
+            QueryMetadata {
+                table: E::table().clone(),
+                count: None,
+                query_type: QueryType::DropTable.into(),
+            }
+            .into(),
+        );
+        Self::switch_to_prepared(out);
+    }
+
+    fn write_select<'a, Data>(&self, out: &mut DynQuery, query: &impl SelectQuery<Data>)
+    where
+        Self: Sized,
+        Data: DataSet + 'a,
+    {
+        let (Some(table), Some(condition)) = (query.get_from(), query.get_where_condition()) else {
+            log::error!("The query does not have the FROM or WHERE part");
+            return;
+        };
+        let limit = query.get_limit();
+        self.update_metadata(
+            out,
+            QueryMetadata {
+                table: table.table_ref(),
+                count: limit,
+                query_type: QueryType::Select.into(),
+            }
+            .into(),
+        );
+        let mut context = Context::fragment(Fragment::SqlSelectWhere);
+        Self::switch_to_prepared(out);
+        condition.write_query(self, &mut context, out);
+        let Some((Some(matching), prepared)) = out
+            .as_prepared::<MongoDBDriver>()
+            .map(|v| (v.current_bson().map(mem::take), v))
+        else {
+            log::error!(
+                "Unexpected error while rendering where expression for a select query, the query must be MongoDBPrepared with current bson"
+            );
+            return;
+        };
+        prepared.payload = if limit == Some(1) {
+            Payload::FindOne(FindOnePayload {
+                matching,
+                options: FindOneOptions::builder()
+                    .comment(Bson::String(format!(
+                        "Tank: select one entity from {}",
+                        table.table_ref().full_name()
+                    )))
+                    .build(),
+            })
+        } else {
+            Payload::Find(FindPayload {
+                matching,
+                options: FindOptions::builder()
+                    .comment(Bson::String(format!(
+                        "Tank: select entities from {}",
+                        table.table_ref().full_name()
+                    )))
+                    .limit(limit.map(|v| v as _))
+                    .build(),
+            })
+        };
+    }
+
     fn write_insert<'b, E>(
         &self,
         out: &mut DynQuery,
@@ -237,32 +644,100 @@ impl SqlWriter for MongoDBSqlWriter {
             .into(),
         );
         let prepared = Self::switch_to_prepared(out);
-        let mut rows = entities.into_iter().map(Entity::row_labeled).peekable();
-        let Some(row) = rows.next() else {
+        let mut entities = entities.into_iter().peekable();
+        let Some(entity) = entities.next() else {
             return;
         };
-        let single = rows.peek().is_none();
+        let single = entities.peek().is_none();
         prepared.payload = match (update, single) {
-            (false, true) => {
-                let payload = InsertOnePayload {
-                    row,
-                    options: Default::default(),
-                };
-                Payload::InsertOne(payload)
-            }
-            (false, false) => {
-                let payload = InsertManyPayload {
-                    rows: iter::chain(iter::once(row), rows).collect(),
-                    options: Default::default(),
-                };
-                Payload::InsertMany(payload)
-            }
+            (false, true) => Payload::InsertOne(InsertOnePayload {
+                row: entity.row_labeled(),
+                options: InsertOneOptions::builder()
+                    .comment(Bson::String(format!(
+                        "Tank: insert one entity in {}",
+                        table.full_name()
+                    )))
+                    .build(),
+            }),
+            (false, false) => Payload::InsertMany(InsertManyPayload {
+                rows: iter::chain(
+                    iter::once(entity.row_labeled()),
+                    entities.map(Entity::row_labeled),
+                )
+                .collect(),
+                options: InsertManyOptions::builder()
+                    .comment(Bson::String(format!(
+                        "Tank: insert entities in {}",
+                        table.full_name()
+                    )))
+                    .build(),
+            }),
             (true, _) => {
-                // let payload = UpsertPayload {
-                //     rows: iter::chain(iter::once(row), rows).collect(),
-                //     options: Default::default(),
-                // };
-                Payload::Upsert(Default::default())
+                let mut values = iter::chain(iter::once(entity), entities).filter_map(|entity| {
+                    let mut query = Self::make_prepared();
+                    entity.primary_key_expr().write_query(
+                        self,
+                        &mut Default::default(),
+                        &mut query,
+                    );
+                    let Some(Bson::Document(matching)) = query
+                        .as_prepared::<MongoDBDriver>()
+                        .and_then(MongoDBPrepared::current_bson)
+                        .map(mem::take)
+                    else {
+                        // Unreachable
+                        log::error!(
+                            "Unexpected error while rendering the primary key expression for upsert, the query does not have a current bson"
+                        );
+                        return None;
+                    };
+                    let modifications = match RowWrap(Cow::Owned(entity.row_labeled()))
+                        .try_into()
+                        .with_context(|| "While rendering the entity to create a upsert query")
+                    {
+                        Ok(v) => v,
+                        Err(e) => {
+                            log::error!("{e:?}");
+                            return None;
+                        }
+                    };
+                    Some((entity, matching, UpdateModifications::Document(modifications)))
+                });
+                if single {
+                    let Some((_, matching, modifications)) = values.next() else {
+                        return;
+                    };
+                    Payload::UpsertOne(UpsertOnePayload {
+                        matching: Bson::Document(matching),
+                        modifications,
+                        options: UpdateOptions::builder()
+                            .upsert(true)
+                            .comment(Bson::String(format!(
+                                "Tank: update one entity in {}",
+                                table.full_name()
+                            )))
+                            .build(),
+                    })
+                } else {
+                    Payload::UpsertMany(UpsertManyPayload {
+                        values: values
+                            .into_iter()
+                            .map(|(entity, matching, modifications)| {
+                                let table = entity.table_ref();
+                                UpdateOneModel::builder()
+                                    .namespace(Namespace {
+                                        db: table.schema.into(),
+                                        coll: table.name.into(),
+                                    })
+                                    .filter(matching)
+                                    .update(modifications)
+                                    .upsert(true)
+                                    .build()
+                            })
+                            .collect(),
+                        options: Default::default(),
+                    })
+                }
             }
         };
     }

@@ -79,7 +79,7 @@ pub fn value_to_bson(v: &Value) -> Result<Bson> {
             let mut doc = Document::new();
             for (k, v) in v.iter() {
                 let v = value_to_bson(v)?;
-                doc.insert(k.clone(), v);
+                doc.insert(k, v);
             }
             Bson::Document(doc)
         }

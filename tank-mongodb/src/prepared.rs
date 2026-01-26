@@ -1,8 +1,8 @@
 use mongodb::{
     bson::{Bson, Document},
     options::{
-        DeleteOptions, FindOneOptions, FindOptions, InsertManyOptions, InsertOneOptions,
-        UpdateModifications, UpdateOptions,
+        BulkWriteOptions, DeleteOptions, FindOneOptions, FindOptions, InsertManyOptions,
+        InsertOneOptions, UpdateModifications, UpdateOneModel, UpdateOptions,
     },
 };
 use std::fmt::{self, Display, Formatter};
@@ -32,11 +32,17 @@ pub struct InsertManyPayload {
     pub(crate) options: InsertManyOptions,
 }
 
-#[derive(Default, Debug)]
-pub struct UpsertPayload {
+#[derive(Debug)]
+pub struct UpsertOnePayload {
     pub(crate) matching: Bson,
-    pub(crate) modifications: Option<UpdateModifications>,
+    pub(crate) modifications: UpdateModifications,
     pub(crate) options: UpdateOptions,
+}
+
+#[derive(Default, Debug)]
+pub struct UpsertManyPayload {
+    pub(crate) values: Vec<UpdateOneModel>,
+    pub(crate) options: BulkWriteOptions,
 }
 
 #[derive(Default, Debug)]
@@ -52,7 +58,8 @@ pub enum Payload {
     Find(FindPayload),
     InsertOne(InsertOnePayload),
     InsertMany(InsertManyPayload),
-    Upsert(UpsertPayload),
+    UpsertOne(UpsertOnePayload),
+    UpsertMany(UpsertManyPayload),
     Delete(DeletePayload),
 }
 
@@ -81,7 +88,8 @@ impl MongoDBPrepared {
             Payload::Find(v) => Some(&mut v.matching),
             Payload::InsertOne(..) => None,
             Payload::InsertMany(..) => None,
-            Payload::Upsert(v) => Some(&mut v.matching),
+            Payload::UpsertOne(v) => Some(&mut v.matching),
+            Payload::UpsertMany(..) => None,
             Payload::Delete(v) => Some(&mut v.matching),
         }
     }
@@ -133,10 +141,24 @@ impl Prepared for MongoDBPrepared {
     fn metadata_mut(&mut self) -> &mut QueryMetadata {
         &mut self.metadata
     }
+
+    fn is_empty(&self) -> bool {
+        self.metadata.query_type.is_none()
+    }
 }
 
 impl Display for MongoDBPrepared {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str("MongoDBPrepared")
+    }
+}
+
+impl Default for UpsertOnePayload {
+    fn default() -> Self {
+        Self {
+            matching: Default::default(),
+            modifications: UpdateModifications::Document(Document::default()),
+            options: Default::default(),
+        }
     }
 }

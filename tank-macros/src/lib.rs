@@ -134,6 +134,12 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 (#(&#primary_key,)*)
             }
 
+            fn primary_key_expr(&self) -> impl ::tank::Expression {
+                    let primary_key = self.primary_key();
+                    #primary_key_condition_declaration
+                    ::tank::expr!(#primary_key_condition_expression)
+            }
+
             fn unique_defs()
             -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = &'static ::tank::ColumnDef>> {
                 static RESULT: ::std::sync::LazyLock<Box<[Box<[&'static ::tank::ColumnDef]>]>> =
@@ -157,46 +163,6 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
 
             fn from_row(row: ::tank::RowLabeled) -> ::tank::Result<Self> {
                 #from_row_factory::<Self>::from_row(row)
-            }
-
-            fn find_pk(
-                executor: &mut impl ::tank::Executor,
-                primary_key: &Self::PrimaryKey<'_>,
-            ) -> impl ::std::future::Future<Output = ::tank::Result<Option<Self>>> {
-                async move {
-                    #primary_key_condition_declaration
-                    let condition = ::tank::expr!(#primary_key_condition_expression);
-                    let query = ::tank::QueryBuilder::new()
-                        .select(Self::columns())
-                        .from(Self::table())
-                        .where_condition(condition)
-                        .limit(Some(1))
-                        .build(&executor.driver());
-                    // Replace StreamExt::boxed wrapper with ::std::pin::pin! once https://github.com/rust-lang/rust/issues/100013 is fixed
-                    let mut stream = ::tank::stream::StreamExt::boxed(executor.fetch(query));
-                    ::tank::stream::StreamExt::next(&mut stream)
-                        .await
-                        .map(|v| v.and_then(Self::from_row))
-                        .transpose()
-                    }
-            }
-
-            fn delete_one(
-                executor: &mut impl ::tank::Executor,
-                primary_key: Self::PrimaryKey<'_>,
-            ) -> impl ::std::future::Future<Output = ::tank::Result<::tank::RowsAffected>> + Send
-            where
-                Self: Sized
-            {
-                #primary_key_condition_declaration
-                let condition = ::tank::expr!(#primary_key_condition_expression);
-                let mut query = ::tank::DynQuery::with_capacity(128);
-                ::tank::SqlWriter::write_delete::<Self>(
-                    &::tank::Driver::sql_writer(&executor.driver()),
-                    &mut query,
-                    &condition,
-                );
-                executor.execute(query)
             }
         }
     }

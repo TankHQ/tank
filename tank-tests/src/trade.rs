@@ -73,7 +73,7 @@ pub async fn trade_simple<E: Executor>(executor: &mut E) {
     };
 
     // Expect to find no trades
-    let result = Trade::find_pk(executor, &trade.primary_key())
+    let result = Trade::find_one(executor, trade.primary_key_expr())
         .await
         .expect("Failed to find trade by primary key");
     assert!(result.is_none(), "Expected no trades at this time");
@@ -83,12 +83,12 @@ pub async fn trade_simple<E: Executor>(executor: &mut E) {
     trade.save(executor).await.expect("Failed to save trade");
 
     // Expect to find the only trade
-    let result = Trade::find_pk(executor, &trade.primary_key())
+    let result = Trade::find_one(executor, trade.primary_key_expr())
         .await
         .expect("Failed to find trade");
     assert!(
         result.is_some(),
-        "Expected Trade::find_pk to return some result",
+        "Expected Trade::find_one to return some result",
     );
     let result = result.unwrap();
     assert_eq!(result.trade, 46923);
@@ -278,7 +278,7 @@ pub async fn trade_multiple<E: Executor>(executor: &mut E) {
     // Verify data integrity
     for (i, expected) in trades.iter().enumerate() {
         let actual_a = &trades[i];
-        let actual_b = Trade::find_pk(executor, &expected.primary_key())
+        let actual_b = Trade::find_one(executor, expected.primary_key_expr())
             .await
             .expect(&format!("Failed to find trade {} by pk", data[i].symbol));
         let Some(actual_b) = actual_b else {

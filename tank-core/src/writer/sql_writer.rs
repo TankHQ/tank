@@ -51,7 +51,7 @@ pub trait SqlWriter: Send {
 
     fn update_metadata<'s>(&'s self, out: &mut DynQuery, metadata: Cow<'s, QueryMetadata>) {
         let metadata = metadata.into();
-        let is_empty = out.buffer().is_empty();
+        let is_empty = out.is_empty();
         if is_empty {
             *out.metadata_mut() = match metadata {
                 Cow::Borrowed(v) => v.clone(),
@@ -1126,6 +1126,7 @@ pub trait SqlWriter: Send {
     {
         let columns = query.get_select();
         let Some(from) = query.get_from() else {
+            log::error!("The query does not have the FROM part");
             return;
         };
         let limit = query.get_limit();

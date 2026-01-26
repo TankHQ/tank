@@ -149,14 +149,13 @@ pub async fn books<E: Executor>(executor: &mut E) {
     }
 
     // Find authors
-    let author = Author::find_pk(
+    let id = Uuid::parse_str("f938f818-0a40-4ce3-8fbc-259ac252a1b5").unwrap().as_value();
+    let author = Author::find_one(
         executor,
-        &(&(&Uuid::parse_str("f938f818-0a40-4ce3-8fbc-259ac252a1b5")
-            .unwrap()
-            .into(),)),
+        expr!(Author::id == #id)
     )
-    .await
-    .expect("Failed to query author by pk");
+        .await
+        .expect("Failed to query author by pk");
     assert_eq!(
         author,
         Some(Author {

@@ -10,10 +10,8 @@ Core operations on `Entity`:
 * [`Entity::insert_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.insert_one): insert one row
 * [`Entity::insert_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.insert_many): insert many rows (possibly in a optimized way)
 * [`Entity::prepare_find()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.prepare_find): prepare a SELECT query against this table
-* [`Entity::find_pk()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.find_pk): find by primary key
 * [`Entity::find_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.find_one): first matching row
 * [`Entity::find_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.find_many): stream matching entities
-* [`Entity::delete_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.delete_one): delete by primary key
 * [`Entity::delete_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.delete_many): delete by condition
 * [`entity.save()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.save): insert or update (works only for entities defining a primary key)
 * [`entity.delete()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.delete): delete this entity (works only for entities defining a primary key)
@@ -113,14 +111,6 @@ RadioLog::insert_many(executor, &logs).await?;
 ```
 
 ## Find
-Find by primary key:
-```rust
-let found = Operator::find_pk(executor, &operator.primary_key()).await?;
-if let Some(op) = found {
-    log::debug!("Found operator: {:?}", op.callsign);
-}
-```
-
 First matching row (use a predicate):
 ```rust
 if let Some(radio_log) =
@@ -168,11 +158,6 @@ log.save(executor).await?;
 If a table has no primary key, `save()` returns an error, use `insert_one` instead.
 
 ## Delete
-Delete one entity by primary key:
-```rust
-RadioLog::delete_one(executor, log.primary_key()).await?;
-```
-
 Delete many entities matching a expression:
 ```rust
 let operator_id = operator.id;
