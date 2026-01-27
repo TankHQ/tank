@@ -249,7 +249,7 @@ pub trait Entity {
             .sql_writer()
             .write_insert(&mut query, [self], true);
         let sql = query.as_str();
-        let context = format!("While saving using the query: {}", truncate_long!(sql));
+        let context = format!("While saving using the query {}", truncate_long!(sql));
         Either::Right(executor.execute(query).map(|mut v| {
             if let Ok(result) = v
                 && let Some(affected) = result.rows_affected

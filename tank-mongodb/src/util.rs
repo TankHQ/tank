@@ -86,7 +86,7 @@ pub fn value_to_bson(v: &Value) -> Result<Bson> {
         Value::Unknown(Some(v), ..) => Bson::String(v.clone()),
         _ => {
             return Err(Error::msg(format!(
-                "Unexpected tank::Value, SQLite does not support {v:?}"
+                "Unexpected tank::Value, MongoDB does not support {v:?}"
             )));
         }
     })

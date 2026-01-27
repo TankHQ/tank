@@ -3,7 +3,7 @@ mod tests {
     use indoc::indoc;
     use std::{borrow::Cow, collections::HashMap};
     use tank::{
-        DynQuery, DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType,
+        DefaultValueType, DynQuery, Entity, GenericSqlWriter, Passive, PrimaryKeyType,
         QueryBuilder, SqlWriter, TableRef, Value, expr,
     };
     use time::{Date, Month, Time};
@@ -65,7 +65,7 @@ mod tests {
         assert_eq!(
             Employee::primary_key_def()
                 .iter()
-                .map(|c| c.column_ref.name)
+                .map(|c| &c.column_ref.name)
                 .collect::<Vec<_>>(),
             ["id"]
         );

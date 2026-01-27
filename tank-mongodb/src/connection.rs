@@ -39,12 +39,17 @@ impl Connection for MongoDBConnection {
     async fn connect(url: Cow<'static, str>) -> Result<MongoDBConnection> {
         let context = format!("While trying to connect to `{}`", truncate_long!(url));
         let url = Self::sanitize_url(url)?;
-        let client = Client::with_uri_str(&url).await.with_context(|| context)?;
-        let database = client.database(
-            url.path_segments()
-                .and_then(|mut v| v.next())
-                .unwrap_or_default(),
-        );
+        let client = Client::with_uri_str(&url)
+            .await
+            .with_context(|| context.clone())?;
+        let database = client.database(match url.path_segments().and_then(|mut v| v.next()) {
+            Some(v) if !v.is_empty() => v,
+            _ => {
+                let error = Error::msg("Empty database name").context(context);
+                log::error!("{:#}", error);
+                return Err(error);
+            }
+        });
         Ok(MongoDBConnection::new(client, database))
     }
 
@@ -209,7 +214,8 @@ impl Executor for MongoDBConnection {
                         let Payload::UpsertMany(UpsertManyPayload { values, options }) = &payload
                         else {
                             Err(Error::msg(format!(
-                                "Query is a upsert with but the payload {payload:?} is not the expected Payload::UpsertMany"
+                                "Query is a upsert with but the payload {} is not the expected Payload::UpsertMany",
+                                truncate_long!(format!("{payload:?}"), true),
                             )))?;
                             return;
                         };

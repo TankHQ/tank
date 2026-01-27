@@ -1,32 +1,49 @@
 use crate::{MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter};
 use mongodb::bson::Document;
 use std::mem;
-use tank_core::{BinaryOpType, ColumnRef, Expression, ExpressionMatcher};
+use tank_core::{BinaryOpType, ColumnRef, Expression, ExpressionMatcher, Operand};
 
 #[derive(Default)]
-pub struct ColumnMatcher {
+pub struct IsColumn {
     pub column: Option<ColumnRef>,
 }
-impl ExpressionMatcher for ColumnMatcher {
+impl ExpressionMatcher for IsColumn {
     fn match_column(&mut self, column: &ColumnRef) -> bool {
         self.column = Some(column.clone());
         true
     }
+    fn match_operand(&mut self, operand: &Operand) -> bool {
+        match operand {
+            Operand::LitField(v) => {
+                let mut it = v.into_iter().rev();
+                let name = it.next().map(ToString::to_string).unwrap_or_default();
+                let table = it.next().map(ToString::to_string).unwrap_or_default();
+                let schema = it.next().map(ToString::to_string).unwrap_or_default();
+                self.column = Some(ColumnRef {
+                    name: name.into(),
+                    table: table.into(),
+                    schema: schema.into(),
+                });
+                true
+            }
+            _ => false,
+        }
+    }
 }
 
 #[derive(Default)]
-pub struct FieldConditionMatcher {
-    pub field_condition: Document,
+pub struct IsFieldCondition {
+    pub condition: Document,
 }
-impl ExpressionMatcher for FieldConditionMatcher {
+impl ExpressionMatcher for IsFieldCondition {
     fn match_binary_op(
         &mut self,
         op: &BinaryOpType,
         lhs: &dyn Expression,
         rhs: &dyn Expression,
     ) -> bool {
-        let l_matcher = &mut ColumnMatcher::default();
-        let r_matcher = &mut ColumnMatcher::default();
+        let l_matcher = &mut IsColumn::default();
+        let r_matcher = &mut IsColumn::default();
         let result = matches!(
             op,
             BinaryOpType::In
@@ -41,9 +58,9 @@ impl ExpressionMatcher for FieldConditionMatcher {
         if !result {
             return false;
         }
-        let (field, value, op) = if let Some(field) = l_matcher.column {
+        let (field, value, op) = if let Some(field) = mem::take(&mut l_matcher.column) {
             (field, rhs, *op)
-        } else if let Some(field) = r_matcher.column {
+        } else if let Some(field) = mem::take(&mut r_matcher.column) {
             (
                 field,
                 lhs,
@@ -77,7 +94,7 @@ impl ExpressionMatcher for FieldConditionMatcher {
             return false;
         };
         let op = writer.expression_binary_op_key(op);
-        self.field_condition
+        self.condition
             .insert(field.name, Document::from_iter([(op.into(), fragment)]));
         true
     }

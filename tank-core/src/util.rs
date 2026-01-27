@@ -377,6 +377,8 @@ macro_rules! possibly_parenthesized {
 /// Returns a `format_args!` that yields at most 497 characters from the start
 /// of the input followed by `...` when truncation occurred. Minimal overhead.
 ///
+/// If true is the second argument, it evaluates the first argument just once.
+///
 /// # Examples
 /// ```ignore
 /// use tank_core::truncate_long;
@@ -395,6 +397,14 @@ macro_rules! truncate_long {
             if $query.len() > 497 { "...\n" } else { "" },
         )
     };
+    ($query:expr,true) => {{
+        let query = $query;
+        format!(
+            "{}{}",
+            &query[..::std::cmp::min(query.len(), 497)].trim(),
+            if query.len() > 497 { "...\n" } else { "" },
+        )
+    }};
 }
 
 /// Sends the value through the channel and logs in case of error.

@@ -957,13 +957,13 @@ pub trait SqlWriter: Send {
             out,
             foreign_keys,
             |out, column| {
-                let references = column.references.unwrap();
+                let references = column.references.as_ref().unwrap();
                 out.push_str(",\nFOREIGN KEY (");
                 self.write_identifier_quoted(&mut context, out, &column.name());
                 out.push_str(") REFERENCES ");
                 self.write_table_ref(&mut context, out, &references.table());
                 out.push('(');
-                self.write_column_ref(&mut context, out, &references);
+                self.write_column_ref(&mut context, out, references);
                 out.push(')');
                 if let Some(on_delete) = &column.on_delete {
                     out.push_str(" ON DELETE ");

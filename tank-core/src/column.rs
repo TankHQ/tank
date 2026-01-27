@@ -4,7 +4,7 @@ use crate::{
 };
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
 /// Helper trait for types that expose an underlying column definition and reference.
 pub trait ColumnTrait {
@@ -15,22 +15,22 @@ pub trait ColumnTrait {
 }
 
 /// Reference to a table column.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct ColumnRef {
     /// Column name.
-    pub name: &'static str,
+    pub name: Cow<'static, str>,
     /// Table name.
-    pub table: &'static str,
+    pub table: Cow<'static, str>,
     /// Schema name (may be empty).
-    pub schema: &'static str,
+    pub schema: Cow<'static, str>,
 }
 
 impl ColumnRef {
     /// Return a `TableRef` referencing the column's table and schema.
     pub fn table(&self) -> TableRef {
         TableRef {
-            name: self.table.into(),
-            schema: self.schema.into(),
+            name: self.table.clone(),
+            schema: self.schema.clone(),
             ..Default::default()
         }
     }
@@ -120,15 +120,15 @@ pub struct ColumnDef {
 
 impl ColumnDef {
     /// Column name (as declared in the table definition).
-    pub fn name(&self) -> &'static str {
+    pub fn name(&self) -> &str {
         &self.column_ref.name
     }
     /// Table name owning this column.
-    pub fn table(&self) -> &'static str {
+    pub fn table(&self) -> &str {
         &self.column_ref.table
     }
     /// Schema name owning this column (may be empty).
-    pub fn schema(&self) -> &'static str {
+    pub fn schema(&self) -> &str {
         &self.column_ref.schema
     }
 }

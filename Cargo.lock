@@ -3528,6 +3528,7 @@ dependencies = [
  "mongodb",
  "serde",
  "serde_json",
+ "tank",
  "tank-core",
  "tank-tests",
  "testcontainers-modules",

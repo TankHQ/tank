@@ -23,9 +23,9 @@ pub fn encode_column_def(metadata: &ColumnMetadata, column_ref: TokenStream) -> 
         };
         quote! {
             Some(::tank::ColumnRef {
-                name: #column,
-                table: #table,
-                schema: #schema,
+                name: ::std::borrow::Cow::Borrowed(#column),
+                table: ::std::borrow::Cow::Borrowed(#table),
+                schema: ::std::borrow::Cow::Borrowed(#schema),
             })
         }
     } else {

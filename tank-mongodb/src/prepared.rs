@@ -5,7 +5,7 @@ use mongodb::{
         InsertOneOptions, UpdateModifications, UpdateOneModel, UpdateOptions,
     },
 };
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display, Formatter, Write};
 use tank_core::{AsValue, Error, Prepared, QueryMetadata, Result, RowLabeled, Value};
 
 #[derive(Default, Debug)]
@@ -149,7 +149,19 @@ impl Prepared for MongoDBPrepared {
 
 impl Display for MongoDBPrepared {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str("MongoDBPrepared")
+        f.write_str("MongoDBPrepared (")?;
+        f.write_str(match self.payload {
+            Payload::Fragment(..) => "fragment",
+            Payload::FindOne(..) => "find one",
+            Payload::Find(..) => "find",
+            Payload::InsertOne(..) => "insert one",
+            Payload::InsertMany(..) => "insert many",
+            Payload::UpsertOne(..) => "upsert one",
+            Payload::UpsertMany(..) => "upsert many",
+            Payload::Delete(..) => "delete",
+        })?;
+        f.write_char(')')?;
+        Ok(())
     }
 }
 

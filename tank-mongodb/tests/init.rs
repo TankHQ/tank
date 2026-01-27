@@ -54,7 +54,7 @@ pub async fn init(ssl: bool) -> (String, Option<ContainerAsync<Mongo>>) {
         .expect("Cannot get the port of Postgres");
     (
         format!(
-            "mongodb://tank-user:armored@127.0.0.1:{port}/{}",
+            "mongodb://tank-user:armored@127.0.0.1:{port}/military{}",
             if ssl {
                 Cow::Owned(format!(
                     "?sslmode=require&sslrootcert={}&sslcert={}&sslkey={}",
@@ -63,7 +63,7 @@ pub async fn init(ssl: bool) -> (String, Option<ContainerAsync<Mongo>>) {
                     path.join("tests/assets/client.key").to_str().unwrap(),
                 ))
             } else {
-                Cow::Borrowed("")
+                Cow::Borrowed("?authSource=admin")
             }
         ),
         Some(container),

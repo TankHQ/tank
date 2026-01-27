@@ -156,7 +156,7 @@ impl Executor for PostgresConnection {
         writer.write_copy::<E>(&mut query);
         let sink = self
             .client
-            .copy_in(query.as_str())
+            .copy_in(&query.as_str() as &str)
             .await
             .with_context(context)?;
         let types: Vec<_> = E::columns()

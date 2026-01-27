@@ -1,6 +1,7 @@
 use crate::{Driver, Prepared, Query, QueryMetadata, RawQuery};
 use std::{
     any::Any,
+    borrow::Cow,
     fmt::{self, Write},
     mem,
 };
@@ -40,10 +41,10 @@ impl DynQuery {
         }
         None
     }
-    pub fn as_str(&self) -> &str {
+    pub fn as_str<'s>(&'s self) -> Cow<'s, str> {
         match self {
-            DynQuery::Raw(v) => &v.sql,
-            DynQuery::Prepared(..) => "",
+            DynQuery::Raw(v) => Cow::Borrowed(&v.sql),
+            DynQuery::Prepared(v) => Cow::Owned(format!("{:?}", *v)),
         }
     }
     pub fn push_str(&mut self, s: &str) {

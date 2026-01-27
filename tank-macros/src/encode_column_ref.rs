@@ -6,9 +6,9 @@ pub fn encode_column_ref(metadata: &ColumnMetadata, table: String, schema: Strin
     let name = &metadata.name;
     quote! {
         ::tank::ColumnRef {
-            name: #name,
-            table: #table,
-            schema: #schema,
+            name: ::std::borrow::Cow::Borrowed(#name),
+            table: ::std::borrow::Cow::Borrowed(#table),
+            schema: ::std::borrow::Cow::Borrowed(#schema),
         }
     }
 }
