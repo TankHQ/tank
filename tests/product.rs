@@ -4,7 +4,7 @@ mod tests {
     use rust_decimal::Decimal;
     use std::borrow::Cow;
     use tank::{
-        DynQuery, DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType, SqlWriter,
+        DefaultValueType, DynQuery, Entity, GenericSqlWriter, Passive, PrimaryKeyType, SqlWriter,
         TableRef, Value,
     };
     use time::{Date, Month, PrimitiveDateTime, Time};
@@ -51,7 +51,7 @@ mod tests {
         assert_eq!(
             Product::primary_key_def()
                 .iter()
-                .map(|c| c.column_ref.name)
+                .map(|c| &c.column_ref.name)
                 .collect::<Vec<_>>(),
             ["id"]
         );

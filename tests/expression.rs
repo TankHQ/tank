@@ -2,7 +2,7 @@
 mod tests {
     use std::borrow::Cow;
     use tank::{
-        DynQuery, BinaryOp, BinaryOpType, ColumnRef, Context, Expression, OpPrecedence, Operand,
+        BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, OpPrecedence, Operand,
         SqlWriter, UnaryOp, UnaryOpType, Value,
     };
     use tank_core::Entity;
@@ -255,7 +255,11 @@ mod tests {
             expr,
             BinaryOp {
                 op: BinaryOpType::NotLike,
-                lhs: SomeTable::some_column,
+                lhs: ColumnRef {
+                    name: Cow::Borrowed("the_column"),
+                    table: Cow::Borrowed("some_table"),
+                    schema: Cow::Borrowed(""),
+                },
                 rhs: Operand::QuestionMark,
             }
         ));
@@ -454,9 +458,9 @@ mod tests {
             BinaryOp {
                 op: BinaryOpType::Addition,
                 lhs: ColumnRef {
-                    name: "first",
-                    table: "the_table",
-                    schema: ""
+                    name: Cow::Borrowed("first"),
+                    table: Cow::Borrowed("the_table"),
+                    schema: Cow::Borrowed(""),
                 },
                 rhs: Operand::LitInt(2),
             }
@@ -468,9 +472,9 @@ mod tests {
             BinaryOp {
                 op: BinaryOpType::IsNot,
                 lhs: ColumnRef {
-                    name: "first",
-                    table: "the_table",
-                    schema: ""
+                    name: Cow::Borrowed("first"),
+                    table: Cow::Borrowed("the_table"),
+                    schema: Cow::Borrowed(""),
                 },
                 rhs: Operand::Null,
             }
@@ -487,24 +491,24 @@ mod tests {
                     lhs: BinaryOp {
                         op: BinaryOpType::Cast,
                         lhs: ColumnRef {
-                            name: "first",
-                            table: "the_table",
-                            schema: ""
+                            name: Cow::Borrowed("first"),
+                            table: Cow::Borrowed("the_table"),
+                            schema: Cow::Borrowed(""),
                         },
                         rhs: Operand::Type(Value::Varchar(None)),
                     },
                     rhs: ColumnRef {
-                        name: "second",
-                        table: "the_table",
-                        schema: ""
+                        name: Cow::Borrowed("second"),
+                        table: Cow::Borrowed("the_table"),
+                        schema: Cow::Borrowed(""),
                     },
                 },
                 rhs: BinaryOp {
                     op: BinaryOpType::Greater,
                     lhs: ColumnRef {
-                        name: "first",
-                        table: "the_table",
-                        schema: ""
+                        name: Cow::Borrowed("first"),
+                        table: Cow::Borrowed("the_table"),
+                        schema: Cow::Borrowed(""),
                     },
                     rhs: Operand::LitInt(0),
                 },

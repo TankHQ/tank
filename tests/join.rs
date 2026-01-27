@@ -2,7 +2,7 @@
 mod tests {
     use std::borrow::Cow;
     use tank::{
-        DynQuery, BinaryOp, BinaryOpType, ColumnRef, DataSet, DeclareTableRef, Entity, Join,
+        BinaryOp, BinaryOpType, ColumnRef, DataSet, DeclareTableRef, DynQuery, Entity, Join,
         JoinType, Operand, SqlWriter, TableRef, join,
     };
 
@@ -220,13 +220,13 @@ mod tests {
                     on: Some(BinaryOp {
                         op: BinaryOpType::Less,
                         lhs: ColumnRef {
-                            name: "column",
-                            table: "another_table",
+                            name: Cow::Borrowed("column"),
+                            table: Cow::Borrowed("another_table"),
                             ..
                         },
                         rhs: ColumnRef {
-                            name: "b",
-                            table: "alpha",
+                            name: Cow::Borrowed("b"),
+                            table: Cow::Borrowed("alpha"),
                             ..
                         },
                         ..
@@ -239,8 +239,14 @@ mod tests {
                 },
                 on: Some(BinaryOp {
                     op: BinaryOpType::Equal,
-                    lhs: ColumnRef { name: "a", .. },
-                    rhs: ColumnRef { name: "second", .. },
+                    lhs: ColumnRef {
+                        name: Cow::Borrowed("a"),
+                        ..
+                    },
+                    rhs: ColumnRef {
+                        name: Cow::Borrowed("second"),
+                        ..
+                    },
                     ..
                 }),
                 ..
@@ -293,15 +299,15 @@ mod tests {
                     on: Some(BinaryOp {
                         op: BinaryOpType::Less,
                         lhs: ColumnRef {
-                            name: "the_string",
-                            table: "delta_table",
-                            schema: "delta_dataset",
+                            name: Cow::Borrowed("the_string"),
+                            table: Cow::Borrowed("delta_table"),
+                            schema: Cow::Borrowed("delta_dataset"),
                             ..
                         },
                         rhs: ColumnRef {
-                            name: "b",
-                            table: "alpha",
-                            schema: "my_data",
+                            name: Cow::Borrowed("b"),
+                            table: Cow::Borrowed("alpha"),
+                            schema: Cow::Borrowed("my_data"),
                             ..
                         },
                         ..
@@ -311,13 +317,13 @@ mod tests {
                 on: Some(BinaryOp {
                     op: BinaryOpType::Equal,
                     lhs: ColumnRef {
-                        name: "second",
-                        table: "bravo",
+                        name: Cow::Borrowed("second"),
+                        table: Cow::Borrowed("bravo"),
                         ..
                     },
                     rhs: ColumnRef {
-                        name: "the_string",
-                        table: "delta_table",
+                        name: Cow::Borrowed("the_string"),
+                        table: Cow::Borrowed("delta_table"),
                         ..
                     },
                     ..
@@ -360,14 +366,14 @@ mod tests {
                     on: Some(BinaryOp {
                         op: BinaryOpType::GreaterEqual,
                         lhs: ColumnRef {
-                            name: "b",
-                            table: "alpha",
-                            schema: "my_data",
+                            name: Cow::Borrowed("b"),
+                            table: Cow::Borrowed("alpha"),
+                            schema: Cow::Borrowed("my_data"),
                             ..
                         },
                         rhs: ColumnRef {
-                            name: "second",
-                            table: "bravo",
+                            name: Cow::Borrowed("second"),
+                            table: Cow::Borrowed("bravo"),
                             ..
                         },
                         ..
@@ -381,13 +387,13 @@ mod tests {
                 on: Some(BinaryOp {
                     op: BinaryOpType::Equal,
                     lhs: ColumnRef {
-                        name: "col",
-                        table: "some",
+                        name: Cow::Borrowed("col"),
+                        table: Cow::Borrowed("some"),
                         ..
                     },
                     rhs: ColumnRef {
-                        name: "first",
-                        table: "bravo",
+                        name: Cow::Borrowed("first"),
+                        table: Cow::Borrowed("bravo"),
                         ..
                     },
                     ..
@@ -448,14 +454,14 @@ mod tests {
                     on: Some(BinaryOp {
                         op: BinaryOpType::Equal,
                         lhs: ColumnRef {
-                            name: "second",
-                            table: "bravo",
+                            name: Cow::Borrowed("second"),
+                            table: Cow::Borrowed("bravo"),
                             ..
                         },
                         rhs: ColumnRef {
-                            name: "b",
-                            table: "alpha",
-                            schema: "my_data",
+                            name: Cow::Borrowed("b"),
+                            table: Cow::Borrowed("alpha"),
+                            schema: Cow::Borrowed("my_data"),
                             ..
                         },
                         ..
@@ -500,15 +506,15 @@ mod tests {
                 on: Some(BinaryOp {
                     op: BinaryOpType::LessEqual,
                     lhs: ColumnRef {
-                        name: "a",
-                        table: "alpha",
-                        schema: "my_data",
+                        name: Cow::Borrowed("a"),
+                        table: Cow::Borrowed("alpha"),
+                        schema: Cow::Borrowed("my_data"),
                         ..
                     },
                     rhs: ColumnRef {
-                        name: "first",
-                        table: "bravo",
-                        schema: "",
+                        name: Cow::Borrowed("first"),
+                        table: Cow::Borrowed("bravo"),
+                        schema: Cow::Borrowed(""),
                         ..
                     },
                     ..

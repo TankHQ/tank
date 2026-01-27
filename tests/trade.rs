@@ -8,7 +8,7 @@ mod tests {
         collections::{BTreeMap, HashMap},
     };
     use tank::{
-        Action, DynQuery, DefaultValueType, Entity, GenericSqlWriter, Passive, PrimaryKeyType,
+        Action, DefaultValueType, DynQuery, Entity, GenericSqlWriter, Passive, PrimaryKeyType,
         QueryBuilder, SqlWriter, TableRef, Value, expr,
     };
     use time::macros::datetime;
@@ -73,7 +73,7 @@ mod tests {
         assert_eq!(
             Trade::primary_key_def()
                 .iter()
-                .map(|c| c.column_ref.name)
+                .map(|c| &c.column_ref.name)
                 .collect::<Vec<_>>(),
             ["trade_id", "execution_time"]
         );
