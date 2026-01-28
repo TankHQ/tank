@@ -144,6 +144,7 @@ macro_rules! impl_as_value {
         }
     };
 }
+
 impl_as_value!(
     i8,
     Value::Int8,
@@ -156,6 +157,7 @@ impl_as_value!(
         Ok(result)
     },
 );
+
 impl_as_value!(
     i16,
     Value::Int16,
@@ -163,6 +165,7 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
 );
+
 impl_as_value!(
     i32,
     Value::Int32,
@@ -179,6 +182,7 @@ impl_as_value!(
         v.to_i32().ok_or(error)
     }
 );
+
 impl_as_value!(
     i64,
     Value::Int64,
@@ -197,6 +201,7 @@ impl_as_value!(
         v.to_i64().ok_or(error)
     }
 );
+
 impl_as_value!(
     i128,
     Value::Int128,
@@ -217,6 +222,7 @@ impl_as_value!(
         v.to_i128().ok_or(error)
     }
 );
+
 impl_as_value!(
     isize,
     Value::Int64,
@@ -235,6 +241,7 @@ impl_as_value!(
         v.to_isize().ok_or(error)
     }
 );
+
 impl_as_value!(
     u8,
     Value::UInt8,
@@ -242,6 +249,7 @@ impl_as_value!(
         v.to_u8().ok_or(Error::msg(format!("Value {v}: i16 is out of range for u8")))
     }
 );
+
 impl_as_value!(
     u16,
     Value::UInt16,
@@ -254,12 +262,14 @@ impl_as_value!(
         Ok(result)
     }
 );
+
 impl_as_value!(
     u32,
     Value::UInt32,
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
 );
+
 impl_as_value!(
     u64,
     Value::UInt64,
@@ -274,6 +284,7 @@ impl_as_value!(
         v.to_u64().ok_or(error)
     }
 );
+
 impl_as_value!(
     u128,
     Value::UInt128,
@@ -289,6 +300,7 @@ impl_as_value!(
         v.to_u128().ok_or(error)
     }
 );
+
 impl_as_value!(
     usize,
     Value::UInt64,
@@ -330,6 +342,7 @@ macro_rules! impl_as_value {
         }
     };
 }
+
 impl_as_value!(
     bool,
     Value::Boolean,
@@ -362,6 +375,7 @@ impl_as_value!(
         }
     },
 );
+
 impl_as_value!(
     f32,
     Value::Float32,
@@ -375,6 +389,7 @@ impl_as_value!(
         Ok(v as _)
     }
 );
+
 impl_as_value!(
     f64,
     Value::Float64,
@@ -417,6 +432,7 @@ impl_as_value!(
         Ok(v.chars().next().unwrap())
     }
 );
+
 impl_as_value!(
     String,
     Value::Varchar,
@@ -480,6 +496,7 @@ impl_as_value!(
     Value::Uuid(Some(v), ..) => Ok(v.to_string()),
     Value::Json(Some(serde_json::Value::String(v)), ..) => Ok(v),
 );
+
 impl_as_value!(Box<[u8]>, Value::Blob, |mut input: &str| {
     if input.starts_with("\\x") {
         input = &input[2..];
@@ -498,6 +515,7 @@ impl_as_value!(Box<[u8]>, Value::Blob, |mut input: &str| {
     ))?;
     Ok(result)
 });
+
 impl_as_value!(
     Interval,
     Value::Interval,
@@ -644,18 +662,21 @@ impl_as_value!(
     },
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
+
 impl_as_value!(
     std::time::Duration,
     Value::Interval,
     |v| <Interval as AsValue>::parse(v).map(Into::into),
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
+
 impl_as_value!(
     time::Duration,
     Value::Interval,
     |v| <Interval as AsValue>::parse(v).map(Into::into),
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
+
 impl_as_value!(
     Uuid,
     Value::Uuid,
@@ -719,8 +740,15 @@ impl_as_value!(
         Ok(result)
     },
     Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
+    Value::Timestamp(Some(v), ..) => {
+        if v.time() != time::Time::MIDNIGHT {
+            return Err(Error::msg(format!("Timestamp {v:?} cannot be converted to date because the time part is not midnight")))
+        }
+        Ok(v.date())
+    },
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
+
 impl_as_value!(
     time::Time,
     Value::Time,

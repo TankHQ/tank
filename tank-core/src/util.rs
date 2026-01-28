@@ -33,8 +33,8 @@ where
     type Item = A::Item;
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            EitherIterator::Left(a) => a.next(),
-            EitherIterator::Right(b) => b.next(),
+            Self::Left(a) => a.next(),
+            Self::Right(b) => b.next(),
         }
     }
 }
