@@ -1,4 +1,3 @@
-use rust_decimal::prelude::Signed;
 use std::{collections::BTreeMap, fmt::Write};
 use tank_core::{
     ColumnDef, ColumnRef, Context, DynQuery, Entity, GenericSqlWriter, SqlWriter, TableRef, Value,
