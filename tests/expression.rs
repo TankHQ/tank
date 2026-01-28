@@ -117,7 +117,7 @@ mod tests {
         ));
         let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
-        assert_eq!(query.as_str(), "['a', 'b', 'c']");
+        assert_eq!(query.as_str(), "['a','b','c']");
 
         let expr = expr!([11, 22, 33][1]);
         assert!(matches!(
@@ -134,7 +134,7 @@ mod tests {
         ));
         let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
-        assert_eq!(query.as_str(), "[11, 22, 33][1]");
+        assert_eq!(query.as_str(), "[11,22,33][1]");
 
         let expr = expr!("hello" == "hell_" as LIKE);
         assert!(matches!(

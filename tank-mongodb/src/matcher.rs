@@ -1,6 +1,6 @@
 use crate::{MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter};
 use mongodb::bson::Document;
-use std::mem;
+use std::{borrow::Cow, mem};
 use tank_core::{BinaryOpType, ColumnRef, Expression, ExpressionMatcher, Operand};
 
 #[derive(Default)]
@@ -14,6 +14,14 @@ impl ExpressionMatcher for IsColumn {
     }
     fn match_operand(&mut self, operand: &Operand) -> bool {
         match operand {
+            Operand::LitIdent(v) => {
+                self.column = Some(ColumnRef {
+                    name: Cow::Owned(v.to_string()),
+                    table: "".into(),
+                    schema: "".into(),
+                });
+                true
+            }
             Operand::LitField(v) => {
                 let mut it = v.into_iter().rev();
                 let name = it.next().map(ToString::to_string).unwrap_or_default();
@@ -47,25 +55,40 @@ impl ExpressionMatcher for IsFieldCondition {
         lhs: &dyn Expression,
         rhs: &dyn Expression,
     ) -> bool {
-        let l_matcher = &mut IsColumn::default();
-        let r_matcher = &mut IsColumn::default();
-        let result = matches!(
+        if *op == BinaryOpType::And {
+            let mut left = IsFieldCondition::default();
+            let mut right = IsFieldCondition::default();
+            if lhs.matches(&mut left) && rhs.matches(&mut right) {
+                self.condition.extend(left.condition);
+                self.condition.extend(right.condition);
+                return true;
+            }
+        }
+        if !matches!(
             op,
             BinaryOpType::In
                 | BinaryOpType::NotIn
+                | BinaryOpType::Is
+                | BinaryOpType::IsNot
                 | BinaryOpType::Equal
                 | BinaryOpType::NotEqual
                 | BinaryOpType::Less
                 | BinaryOpType::Greater
                 | BinaryOpType::LessEqual
                 | BinaryOpType::GreaterEqual
-        ) && (lhs.matches(l_matcher) != rhs.matches(r_matcher));
-        if !result {
+        ) {
             return false;
         }
-        let (field, value, op) = if let Some(field) = mem::take(&mut l_matcher.column) {
+        let mut l_column = IsColumn::default();
+        let mut r_column = IsColumn::default();
+        let lhs_is_col = lhs.matches(&mut l_column);
+        let rhs_is_col = rhs.matches(&mut r_column);
+        if lhs_is_col == rhs_is_col {
+            return false;
+        }
+        let (field, value, op) = if let Some(field) = l_column.column {
             (field, rhs, *op)
-        } else if let Some(field) = mem::take(&mut r_matcher.column) {
+        } else if let Some(field) = mem::take(&mut r_column.column) {
             (
                 field,
                 lhs,

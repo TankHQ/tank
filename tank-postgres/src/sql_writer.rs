@@ -23,7 +23,7 @@ impl PostgresSqlWriter {
             out,
             E::columns().iter(),
             |out, col| {
-                self.write_identifier_quoted(&mut context, out, col.name());
+                self.write_identifier(&mut context, out, col.name(), true);
             },
             ", ",
         );

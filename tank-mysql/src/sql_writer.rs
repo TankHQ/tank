@@ -24,10 +24,20 @@ impl SqlWriter for MySQLSqlWriter {
         self
     }
 
-    fn write_identifier_quoted(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
-        out.push('`');
-        write_escaped(out, value, '"', "``");
-        out.push('`');
+    fn write_identifier(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+        value: &str,
+        quoted: bool,
+    ) {
+        if quoted {
+            out.push('`');
+            write_escaped(out, value, '"', "``");
+            out.push('`');
+        } else {
+            out.push_str(value);
+        }
     }
 
     fn write_column_overridden_type(
@@ -259,9 +269,9 @@ impl SqlWriter for MySQLSqlWriter {
             out,
             update_cols,
             |out, v| {
-                self.write_identifier_quoted(context, out, v.name());
+                self.write_identifier(context, out, v.name(), true);
                 out.push_str(" = VALUES(");
-                self.write_identifier_quoted(context, out, v.name());
+                self.write_identifier(context, out, v.name(), true);
                 out.push(')');
             },
             ",\n",

@@ -106,20 +106,30 @@ pub trait SqlWriter: Send {
     }
 
     /// Quote identifiers ("name") doubling inner quotes.
-    fn write_identifier_quoted(&self, _context: &mut Context, out: &mut DynQuery, value: &str) {
-        out.push('"');
-        write_escaped(out, value, '"', "\"\"");
-        out.push('"');
+    fn write_identifier(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+        value: &str,
+        quoted: bool,
+    ) {
+        if quoted {
+            out.push('"');
+            write_escaped(out, value, '"', "\"\"");
+            out.push('"');
+        } else {
+            out.push_str(value);
+        }
     }
 
     /// Render a table reference with optional alias.
     fn write_table_ref(&self, context: &mut Context, out: &mut DynQuery, value: &TableRef) {
         if self.alias_declaration(context) || value.alias.is_empty() {
             if !value.schema.is_empty() {
-                self.write_identifier_quoted(context, out, &value.schema);
+                self.write_identifier(context, out, &value.schema, true);
                 out.push('.');
             }
-            self.write_identifier_quoted(context, out, &value.name);
+            self.write_identifier(context, out, &value.name, true);
         }
         if !value.alias.is_empty() {
             let _ = write!(out, " {}", value.alias);
@@ -130,13 +140,13 @@ pub trait SqlWriter: Send {
     fn write_column_ref(&self, context: &mut Context, out: &mut DynQuery, value: &ColumnRef) {
         if context.qualify_columns && !value.table.is_empty() {
             if !value.schema.is_empty() {
-                self.write_identifier_quoted(context, out, &value.schema);
+                self.write_identifier(context, out, &value.schema, true);
                 out.push('.');
             }
-            self.write_identifier_quoted(context, out, &value.table);
+            self.write_identifier(context, out, &value.table, true);
             out.push('.');
         }
-        self.write_identifier_quoted(context, out, &value.name);
+        self.write_identifier(context, out, &value.name, true);
     }
 
     /// Render the SQL overridden type.
@@ -584,27 +594,16 @@ pub trait SqlWriter: Send {
             Operand::LitBool(v) => self.write_value_bool(context, out, *v),
             Operand::LitFloat(v) => self.write_value_f64(context, out, *v),
             Operand::LitIdent(v) => {
-                if context.fragment == Fragment::Aliasing {
-                    self.write_identifier_quoted(context, out, v);
-                } else {
-                    out.push_str(v);
-                }
+                self.write_identifier(context, out, v, context.fragment == Fragment::Aliasing)
             }
             Operand::LitField(v) => separated_by(out, *v, |out, v| out.push_str(v), "."),
             Operand::LitInt(v) => self.write_value_i128(context, out, *v),
             Operand::LitStr(v) => self.write_value_string(context, out, v),
-            Operand::LitArray(v) => {
-                out.push('[');
-                separated_by(
-                    out,
-                    *v,
-                    |out, op| {
-                        op.write_query(self.as_dyn(), context, out);
-                    },
-                    ", ",
-                );
-                out.push(']');
-            }
+            Operand::LitArray(v) => self.write_expression_list(
+                context,
+                out,
+                &mut v.iter().map(|v| v as &dyn Expression),
+            ),
             Operand::LitTuple(v) => {
                 out.push('(');
                 separated_by(
@@ -617,7 +616,7 @@ pub trait SqlWriter: Send {
                 );
                 out.push(')');
             }
-            Operand::Null => drop(out.push_str("NULL")),
+            Operand::Null => self.write_value_none(context, out),
             Operand::Type(v) => self.write_column_type(context, out, v),
             Operand::Variable(v) => self.write_value(context, out, v),
             Operand::Value(v) => self.write_value(context, out, v),
@@ -869,7 +868,7 @@ pub trait SqlWriter: Send {
         if if_not_exists {
             out.push_str("IF NOT EXISTS ");
         }
-        self.write_identifier_quoted(&mut context, out, &table.schema);
+        self.write_identifier(&mut context, out, &table.schema, true);
         out.push(';');
     }
 
@@ -898,7 +897,7 @@ pub trait SqlWriter: Send {
         if if_exists {
             out.push_str("IF EXISTS ");
         }
-        self.write_identifier_quoted(&mut context, out, &table.schema);
+        self.write_identifier(&mut context, out, &table.schema, true);
         out.push(';');
     }
 
@@ -949,12 +948,13 @@ pub trait SqlWriter: Send {
                     out,
                     unique,
                     |out, col| {
-                        self.write_identifier_quoted(
+                        self.write_identifier(
                             &mut context
                                 .switch_fragment(Fragment::SqlCreateTableUnique)
                                 .current,
                             out,
                             col.name(),
+                            true,
                         );
                     },
                     ", ",
@@ -969,7 +969,7 @@ pub trait SqlWriter: Send {
             |out, column| {
                 let references = column.references.as_ref().unwrap();
                 out.push_str(",\nFOREIGN KEY (");
-                self.write_identifier_quoted(&mut context, out, &column.name());
+                self.write_identifier(&mut context, out, &column.name(), true);
                 out.push_str(") REFERENCES ");
                 self.write_table_ref(&mut context, out, &references.table());
                 out.push('(');
@@ -999,7 +999,7 @@ pub trait SqlWriter: Send {
     ) where
         Self: Sized,
     {
-        self.write_identifier_quoted(context, out, &column.name());
+        self.write_identifier(context, out, &column.name(), true);
         out.push(' ');
         let len = out.len();
         self.write_column_overridden_type(context, out, column, &column.column_type);
@@ -1042,12 +1042,13 @@ pub trait SqlWriter: Send {
             out,
             primary_key,
             |out, col| {
-                self.write_identifier_quoted(
+                self.write_identifier(
                     &mut context
                         .switch_fragment(Fragment::SqlCreateTablePrimaryKey)
                         .current,
                     out,
                     col.name(),
+                    true,
                 );
             },
             ", ",
@@ -1242,7 +1243,7 @@ pub trait SqlWriter: Send {
                 out,
                 row.iter(),
                 |out, (name, ..)| {
-                    self.write_identifier_quoted(&mut context, out, name);
+                    self.write_identifier(&mut context, out, name, true);
                 },
                 ", ",
             );
@@ -1251,7 +1252,7 @@ pub trait SqlWriter: Send {
                 out,
                 columns.clone(),
                 |out, col| {
-                    self.write_identifier_quoted(&mut context, out, col.name());
+                    self.write_identifier(&mut context, out, col.name(), true);
                 },
                 ", ",
             );
@@ -1341,7 +1342,7 @@ pub trait SqlWriter: Send {
                 out,
                 pk,
                 |out, col| {
-                    self.write_identifier_quoted(context, out, col.name());
+                    self.write_identifier(context, out, col.name(), true);
                 },
                 ", ",
             );
@@ -1356,9 +1357,9 @@ pub trait SqlWriter: Send {
                 out,
                 update_cols,
                 |out, col| {
-                    self.write_identifier_quoted(context, out, col.name());
+                    self.write_identifier(context, out, col.name(), true);
                     out.push_str(" = EXCLUDED.");
-                    self.write_identifier_quoted(context, out, col.name());
+                    self.write_identifier(context, out, col.name(), true);
                 },
                 ",\n",
             );

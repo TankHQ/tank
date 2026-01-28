@@ -269,7 +269,7 @@ pub async fn trade_multiple<E: Executor>(executor: &mut E) {
     }
 
     // Find 5 trades
-    let data = Trade::find_many(executor, &true, None)
+    let data = Trade::find_many(executor, true, None)
         .try_collect::<Vec<_>>()
         .await
         .expect("Failed to query threads");

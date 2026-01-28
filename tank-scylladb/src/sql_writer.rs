@@ -1,4 +1,3 @@
-use rust_decimal::prelude::Signed;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use tank_core::{
@@ -253,7 +252,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         if if_not_exists {
             out.push_str("IF NOT EXISTS ");
         }
-        self.write_identifier_quoted(&mut context, out, &table.schema);
+        self.write_identifier(&mut context, out, &table.schema, true);
         out.push('\n');
         out.push_str(indoc! {r#"
             WITH replication = {
@@ -287,7 +286,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         if if_exists {
             out.push_str("IF EXISTS ");
         }
-        self.write_identifier_quoted(&mut context, out, &table.schema);
+        self.write_identifier(&mut context, out, &table.schema, true);
         out.push(';');
     }
 
@@ -299,7 +298,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
     ) where
         Self: Sized,
     {
-        self.write_identifier_quoted(context, out, &column.name());
+        self.write_identifier(context, out, &column.name(), true);
         out.push(' ');
         let len = out.len();
         self.write_column_overridden_type(context, out, column, &column.column_type);
@@ -335,12 +334,13 @@ impl SqlWriter for ScyllaDBSqlWriter {
         }
         let mut primary_key = primary_key.into_iter().peekable();
         while let Some(col) = primary_key.next() {
-            self.write_identifier_quoted(
+            self.write_identifier(
                 &mut context
                     .switch_fragment(Fragment::SqlCreateTablePrimaryKey)
                     .current,
                 out,
                 col.name(),
+                true,
             );
             if let Some(next) = primary_key.peek() {
                 if next.clustering_key && !parentheses_closed {
@@ -398,7 +398,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
                 out,
                 current.iter(),
                 |out, (name, ..)| {
-                    self.write_identifier_quoted(&mut context, out, name);
+                    self.write_identifier(&mut context, out, name, true);
                 },
                 ", ",
             );

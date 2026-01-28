@@ -1,10 +1,9 @@
-use std::convert::identity;
-
 use crate::decode_column;
 use crate::decode_column::ColumnMetadata;
 use convert_case::{Case, Casing};
 use proc_macro2::Span;
 use quote::ToTokens;
+use std::convert::identity;
 use syn::spanned::Spanned;
 use syn::{Error, Expr, ExprLit, ExprPath, ItemStruct, Lit, LitStr, Result, parse::ParseBuffer};
 use tank_core::{PrimaryKeyType, matches_path};

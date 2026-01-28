@@ -1,11 +1,10 @@
+use crate::ValueWrap;
 use scylla::statement::prepared::PreparedStatement;
 use std::{
     fmt::{self, Debug, Display, Formatter},
     mem,
 };
 use tank_core::{AsValue, Error, Prepared, QueryMetadata, Result};
-
-use crate::ValueWrap;
 
 /// Prepared statement wrapper for ScyllaDB.
 ///

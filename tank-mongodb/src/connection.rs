@@ -252,9 +252,13 @@ impl Executor for MongoDBConnection {
                 }
                 // There is no need for the following queries in MongoDB
                 QueryType::CreateTable => {}
-                QueryType::DropTable => {}
+                QueryType::DropTable => {
+                    collection.drop().await.with_context(|| make_context!(payload))?;
+                }
                 QueryType::CreateSchema => {}
-                QueryType::DropSchema => {}
+                QueryType::DropSchema => {
+                    database.drop().await.with_context(|| make_context!(payload))?;
+                }
                 QueryType::Batch => {
                     let Payload::Batch(BatchPayload { batch, options }) = &payload else {
                         Err(Error::msg(format!(

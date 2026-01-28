@@ -1,6 +1,6 @@
 use crate::{
     BatchPayload, FindManyPayload, FindOnePayload, InsertManyPayload, InsertOnePayload,
-    IsFieldCondition, MongoDBDriver, MongoDBPrepared, Payload, RowWrap, UpsertPayload, prepared,
+    IsFieldCondition, MongoDBDriver, MongoDBPrepared, Payload, RowWrap, UpsertPayload,
     value_to_bson,
 };
 use mongodb::{
@@ -80,7 +80,7 @@ impl MongoDBSqlWriter {
     }
 
     pub fn expression_binary_op_key(&self, value: BinaryOpType) -> &'static str {
-        let value = match value {
+        let result = match value {
             BinaryOpType::Indexing => "$arrayElemAt",
             BinaryOpType::Cast => "",
             BinaryOpType::Multiplication => "$multiply",
@@ -94,7 +94,7 @@ impl MongoDBSqlWriter {
             BinaryOpType::BitwiseOr => "$bitOr",
             BinaryOpType::In => "$in",
             BinaryOpType::NotIn => "$nin",
-            BinaryOpType::Is => "",
+            BinaryOpType::Is => "$eq",
             BinaryOpType::IsNot => "",
             BinaryOpType::Like => "",
             BinaryOpType::NotLike => "",
@@ -112,10 +112,10 @@ impl MongoDBSqlWriter {
             BinaryOpType::Or => "$or",
             BinaryOpType::Alias => "",
         };
-        if value.is_empty() {
-            log::error!("MongoDB does not support {value} binary operator");
+        if result.is_empty() {
+            log::error!("MongoDB does not support {value:?} binary operator");
         }
-        value
+        result
     }
 
     pub fn write_filter_expression(
@@ -149,6 +149,23 @@ impl MongoDBSqlWriter {
 impl SqlWriter for MongoDBSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
+    }
+
+    fn write_identifier(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+        value: &str,
+        _quoted: bool,
+    ) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_identifier",);
+            return;
+        };
+        *target = Bson::String(value.into());
     }
 
     fn write_column_ref(&self, context: &mut Context, out: &mut DynQuery, value: &ColumnRef) {

@@ -39,7 +39,7 @@ impl SqlWriter for SQLiteSqlWriter {
             write_escaped(out, &value.table, '"', "\"\"");
             out.push_str("\".");
         }
-        self.write_identifier_quoted(context, out, &value.name);
+        self.write_identifier(context, out, &value.name, true);
     }
 
     fn write_table_ref(&self, context: &mut Context, out: &mut DynQuery, value: &TableRef) {
