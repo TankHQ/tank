@@ -333,7 +333,8 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
                 .select(cols!(Metric::value DESC, Metric::date DESC))
                 .from(Metric::table())
                 .where_condition(expr!(Metric::country == ? && Metric::name == ?))
-                .build(&executor.driver()),
+                .build(&executor.driver())
+                .into(),
         )
         .await
         .expect("Failed to prepare metric query");

@@ -146,6 +146,12 @@ pub fn bson_to_value(bson: &Bson) -> Result<Value> {
                 Box::new(v_type.take().unwrap_or_else(|| Value::Unknown(None))),
             )
         }
+        Bson::ObjectId(id) => {
+            let mut padded = [0u8; 16];
+            let bytes = id.bytes();
+            padded[16 - bytes.len()..].copy_from_slice(&bytes);
+            u128::from_be_bytes(padded).as_value()
+        }
         _ => {
             return Err(Error::msg(format!("Unexpected Bson type: {bson:?}")));
         }

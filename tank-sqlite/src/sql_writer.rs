@@ -1,6 +1,8 @@
+use rust_decimal::prelude::Signed;
 use std::{collections::BTreeMap, fmt::Write};
 use tank_core::{
-    ColumnDef, ColumnRef, Context, DynQuery, Entity, SqlWriter, TableRef, Value, write_escaped,
+    ColumnDef, ColumnRef, Context, DynQuery, Entity, GenericSqlWriter, SqlWriter, TableRef, Value,
+    write_escaped,
 };
 
 /// SQL writer for SQLite dialect.
@@ -87,16 +89,36 @@ impl SqlWriter for SQLiteSqlWriter {
         };
     }
 
-    fn write_value_infinity(&self, _context: &mut Context, out: &mut DynQuery, negative: bool) {
-        if negative {
-            out.push('-');
+    fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
+        if value.is_infinite() {
+            if value.is_sign_negative() {
+                out.push('-');
+            }
+            out.push_str("1.0e+10000");
+            return;
         }
-        out.push_str("1.0e+10000");
+        if value.is_nan() {
+            log::warn!("SQLite does not support float NaN values, will write NULL instead");
+            self.write_value_none(context, out);
+            return;
+        }
+        GenericSqlWriter::new().write_value_f32(context, out, value);
     }
 
-    fn write_value_nan(&self, context: &mut Context, out: &mut DynQuery) {
-        log::warn!("SQLite does not support float NaN values, will write NULL instead");
-        self.write_value_none(context, out);
+    fn write_value_f64(&self, context: &mut Context, out: &mut DynQuery, value: f64) {
+        if value.is_infinite() {
+            if value.is_sign_negative() {
+                out.push('-');
+            }
+            out.push_str("1.0e+10000");
+            return;
+        }
+        if value.is_nan() {
+            log::warn!("SQLite does not support float NaN values, will write NULL instead");
+            self.write_value_none(context, out);
+            return;
+        }
+        GenericSqlWriter::new().write_value_f64(context, out, value);
     }
 
     fn write_value_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {

@@ -116,7 +116,8 @@ pub async fn orders<E: Executor>(executor: &mut E) {
                         && Order::total >= ?
                         && Order::country == (?, ?) as IN
                 ))
-                .build(&executor.driver()),
+                .build(&executor.driver())
+                .into(),
         )
         .await
         .expect("Failed to prepare the query");

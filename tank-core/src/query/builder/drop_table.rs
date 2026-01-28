@@ -26,7 +26,7 @@ impl<T: Entity, E> DropTableQueryBuilder<T, E> {
         let writer = driver.sql_writer();
         let mut query = DynQuery::default();
         writer.write_drop_table::<T>(&mut query, self.if_exists);
-        query.into_buffer()
+        query.into()
     }
 
     pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {

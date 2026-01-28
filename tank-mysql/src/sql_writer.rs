@@ -3,8 +3,8 @@ use std::{
     fmt::Write,
 };
 use tank_core::{
-    ColumnDef, Context, DynQuery, EitherIterator, Entity, Fragment, Interval, PrimaryKeyType,
-    SqlWriter, Value, print_timer, separated_by, write_escaped,
+    ColumnDef, Context, DynQuery, EitherIterator, Entity, Fragment, GenericSqlWriter, Interval,
+    PrimaryKeyType, SqlWriter, Value, print_timer, separated_by, write_escaped,
 };
 
 /// SQL writer for MySQL / MariaDB dialect.
@@ -119,14 +119,34 @@ impl SqlWriter for MySQLSqlWriter {
         };
     }
 
-    fn write_value_infinity(&self, context: &mut Context, out: &mut DynQuery, _negative: bool) {
-        log::error!("MySQL does not support float infinity values, will write NULL instead");
-        self.write_value_none(context, out);
+    fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
+        if value.is_infinite() || value.is_nan() {
+            if value.is_infinite() {
+                log::error!(
+                    "MySQL does not support float infinite values, will write NULL instead"
+                );
+            } else {
+                log::warn!("MySQL does not support float NaN values, will write NULL instead");
+            }
+            self.write_value_none(context, out);
+            return;
+        }
+        GenericSqlWriter::new().write_value_f32(context, out, value);
     }
 
-    fn write_value_nan(&self, context: &mut Context, out: &mut DynQuery) {
-        log::warn!("MySQL does not support float NaN values, will write NULL instead");
-        self.write_value_none(context, out);
+    fn write_value_f64(&self, context: &mut Context, out: &mut DynQuery, value: f64) {
+        if value.is_infinite() || value.is_nan() {
+            if value.is_infinite() {
+                log::error!(
+                    "MySQL does not support float infinite values, will write NULL instead"
+                );
+            } else {
+                log::warn!("MySQL does not support float NaN values, will write NULL instead");
+            }
+            self.write_value_none(context, out);
+            return;
+        }
+        GenericSqlWriter::new().write_value_f64(context, out, value);
     }
 
     fn write_value_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {

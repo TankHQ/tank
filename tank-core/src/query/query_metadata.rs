@@ -11,13 +11,14 @@ pub enum QueryType {
     DropTable,
     CreateSchema,
     DropSchema,
+    Batch,
 }
 
 #[derive(Default, Clone, Debug)]
 pub struct QueryMetadata {
     pub table: TableRef,
-    pub count: Option<u32>,
     pub query_type: Option<QueryType>,
+    pub count: Option<u32>,
 }
 
 impl<'s> From<QueryMetadata> for Cow<'s, QueryMetadata> {

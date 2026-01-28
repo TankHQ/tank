@@ -1,9 +1,10 @@
+use rust_decimal::prelude::Signed;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use tank_core::{
-    ColumnDef, Context, DataSet, DynQuery, Entity, Error, Expression, Fragment, Interval, IsTrue,
-    PrimaryKeyType, QueryMetadata, QueryType, Result, SqlWriter, Value, indoc::indoc, print_timer,
-    separated_by,
+    ColumnDef, Context, DataSet, DynQuery, Entity, Error, Expression, Fragment, GenericSqlWriter,
+    Interval, IsTrue, PrimaryKeyType, QueryMetadata, QueryType, Result, SqlWriter, Value,
+    indoc::indoc, print_timer, separated_by,
 };
 use time::Time;
 use uuid::Uuid;
@@ -88,12 +89,26 @@ impl SqlWriter for ScyllaDBSqlWriter {
         };
     }
 
-    fn write_value_infinity(&self, _context: &mut Context, out: &mut DynQuery, negative: bool) {
-        if negative {
-            out.push('-');
+    fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
+        if value.is_infinite() {
+            if value.is_sign_negative() {
+                out.push('-');
+            }
+            out.push_str("Infinity");
         }
-        out.push_str("Infinity");
+        GenericSqlWriter::new().write_value_f32(context, out, value);
     }
+
+    fn write_value_f64(&self, context: &mut Context, out: &mut DynQuery, value: f64) {
+        if value.is_infinite() {
+            if value.is_sign_negative() {
+                out.push('-');
+            }
+            out.push_str("Infinity");
+        }
+        GenericSqlWriter::new().write_value_f64(context, out, value);
+    }
+
     fn write_value_time(
         &self,
         context: &mut Context,

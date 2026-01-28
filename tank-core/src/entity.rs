@@ -170,7 +170,7 @@ pub trait Entity {
         let writer = executor.driver().sql_writer();
         let mut query = DynQuery::default();
         writer.write_select(&mut query, &builder);
-        executor.prepare(query.into_buffer())
+        executor.prepare(query.into())
     }
 
     /// Finds the first entity matching a condition expression.

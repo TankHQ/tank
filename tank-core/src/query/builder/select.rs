@@ -168,11 +168,11 @@ where
         self.limit
     }
 
-    pub fn build<D: Driver>(&self, driver: &D) -> String {
+    pub fn build<D: Driver>(&self, driver: &D) -> DynQuery {
         let writer = driver.sql_writer();
         let mut query = DynQuery::default();
         writer.write_select(&mut query, self);
-        query.into_buffer()
+        query.into()
     }
 
     pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
@@ -193,7 +193,7 @@ where
     fn get_having(&self) -> &Option<impl Expression>;
     fn get_order_by(&self) -> impl Iterator<Item = impl Expression> + Clone;
     fn get_limit(&self) -> Option<u32>;
-    fn build<D: Driver>(&self, driver: &D) -> String;
+    fn build<D: Driver>(&self, driver: &D) -> DynQuery;
     fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery);
 }
 
@@ -234,7 +234,7 @@ where
         self.get_limit()
     }
 
-    fn build<D: Driver>(&self, driver: &D) -> String {
+    fn build<D: Driver>(&self, driver: &D) -> DynQuery {
         self.build(driver)
     }
 

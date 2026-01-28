@@ -40,7 +40,7 @@ where
         let writer = driver.sql_writer();
         let mut query = DynQuery::default();
         writer.write_insert::<E>(&mut query, self.values.clone(), self.update);
-        query.into_buffer()
+        query.into()
     }
 
     pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {

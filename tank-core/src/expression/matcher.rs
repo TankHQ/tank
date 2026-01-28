@@ -36,9 +36,22 @@ pub struct IsTrue;
 impl ExpressionMatcher for IsTrue {
     fn match_operand(&mut self, operand: &Operand) -> bool {
         match operand {
-            Operand::LitBool(v) => *v == true,
-            Operand::Variable(Value::Boolean(Some(true), ..)) => true,
-            Operand::Value(Value::Boolean(Some(true), ..)) => true,
+            Operand::LitBool(true)
+            | Operand::Variable(Value::Boolean(Some(true), ..))
+            | Operand::Value(Value::Boolean(Some(true), ..)) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Default, Debug, Copy, Clone)]
+pub struct IsFalse;
+impl ExpressionMatcher for IsFalse {
+    fn match_operand(&mut self, operand: &Operand) -> bool {
+        match operand {
+            Operand::LitBool(false)
+            | Operand::Variable(Value::Boolean(Some(false), ..))
+            | Operand::Value(Value::Boolean(Some(false), ..)) => true,
             _ => false,
         }
     }

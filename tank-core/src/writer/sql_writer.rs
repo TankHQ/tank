@@ -14,27 +14,60 @@ use std::{
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
 
-macro_rules! write_integer {
-    ($out:ident, $value:expr, $delim:expr) => {{
-        $out.push_str($delim);
-        let mut buffer = itoa::Buffer::new();
-        $out.push_str(buffer.format($value));
-        $out.push_str($delim);
-    }};
-}
-macro_rules! write_float {
-    ($this:ident, $context:ident,$out:ident, $value:expr, $delim:expr) => {{
-        if $value.is_infinite() {
-            $this.write_value_infinity($context, $out, $value.is_sign_negative());
-        } else if $value.is_nan() {
-            $this.write_value_nan($context, $out);
-        } else {
-            $out.push_str($delim);
-            let mut buffer = ryu::Buffer::new();
-            $out.push_str(buffer.format($value));
-            $out.push_str($delim);
+macro_rules! write_integer_fn {
+    ($fn_name:ident, $ty:ty) => {
+        fn $fn_name(&self, context: &mut Context, out: &mut DynQuery, value: $ty) {
+            if context.fragment == Fragment::JsonKey {
+                out.push('"');
+            }
+            let mut buffer = itoa::Buffer::new();
+            out.push_str(buffer.format(value));
+            if context.fragment == Fragment::JsonKey {
+                out.push('"');
+            }
         }
-    }};
+    };
+}
+
+macro_rules! write_float_fn {
+    ($fn_name:ident, $ty:ty) => {
+        fn $fn_name(&self, context: &mut Context, out: &mut DynQuery, value: $ty) {
+            let mut buffer = ryu::Buffer::new();
+            if value.is_infinite() {
+                self.write_expression_binary_op(
+                    context,
+                    out,
+                    &BinaryOp {
+                        op: BinaryOpType::Cast,
+                        lhs: &Operand::LitStr(buffer.format(if value.is_sign_negative() {
+                            f64::NEG_INFINITY
+                        } else {
+                            f64::INFINITY
+                        })),
+                        rhs: &Operand::Type(Value::Float64(None)),
+                    },
+                );
+            } else if value.is_nan() {
+                self.write_expression_binary_op(
+                    context,
+                    out,
+                    &BinaryOp {
+                        op: BinaryOpType::Cast,
+                        lhs: &Operand::LitStr(buffer.format(f64::NAN)),
+                        rhs: &Operand::Type(Value::Float64(None)),
+                    },
+                );
+            } else {
+                if context.fragment == Fragment::JsonKey {
+                    out.push('"');
+                }
+                out.push_str(buffer.format(value));
+                if context.fragment == Fragment::JsonKey {
+                    out.push('"');
+                }
+            }
+        }
+    };
 }
 
 /// Dialect printer converting semantic constructs into concrete SQL strings.
@@ -51,24 +84,24 @@ pub trait SqlWriter: Send {
 
     fn update_metadata<'s>(&'s self, out: &mut DynQuery, metadata: Cow<'s, QueryMetadata>) {
         let metadata = metadata.into();
-        let is_empty = out.is_empty();
-        if is_empty {
+        if out.is_empty() {
             *out.metadata_mut() = match metadata {
                 Cow::Borrowed(v) => v.clone(),
                 Cow::Owned(v) => v,
             };
         } else {
-            let current_table = &mut out.metadata_mut().table;
-            if current_table.name != metadata.table.name {
-                current_table.name = Default::default();
+            let current = out.metadata_mut();
+            if current.table.name != metadata.table.name {
+                current.table.name = Default::default();
             }
-            if current_table.schema != metadata.table.schema {
-                current_table.schema = Default::default();
+            if current.table.schema != metadata.table.schema {
+                current.table.schema = Default::default();
             }
-            if current_table.alias != metadata.table.alias {
-                current_table.alias = Default::default();
+            if current.table.alias != metadata.table.alias {
+                current.table.alias = Default::default();
             }
-            out.metadata_mut().query_type = None;
+            current.query_type = Some(QueryType::Batch);
+            current.count = None;
         }
     }
 
@@ -183,18 +216,18 @@ pub trait SqlWriter: Send {
         match value {
             v if v.is_null() => self.write_value_none(context, out),
             Value::Boolean(Some(v), ..) => self.write_value_bool(context, out, *v),
-            Value::Int8(Some(v), ..) => write_integer!(out, *v, delimiter),
-            Value::Int16(Some(v), ..) => write_integer!(out, *v, delimiter),
-            Value::Int32(Some(v), ..) => write_integer!(out, *v, delimiter),
-            Value::Int64(Some(v), ..) => write_integer!(out, *v, delimiter),
-            Value::Int128(Some(v), ..) => write_integer!(out, *v, delimiter),
-            Value::UInt8(Some(v), ..) => write_integer!(out, *v, delimiter),
-            Value::UInt16(Some(v), ..) => write_integer!(out, *v, delimiter),
-            Value::UInt32(Some(v), ..) => write_integer!(out, *v, delimiter),
-            Value::UInt64(Some(v), ..) => write_integer!(out, *v, delimiter),
-            Value::UInt128(Some(v), ..) => write_integer!(out, *v, delimiter),
-            Value::Float32(Some(v), ..) => write_float!(self, context, out, *v, delimiter),
-            Value::Float64(Some(v), ..) => write_float!(self, context, out, *v, delimiter),
+            Value::Int8(Some(v), ..) => self.write_value_i8(context, out, *v),
+            Value::Int16(Some(v), ..) => self.write_value_i16(context, out, *v),
+            Value::Int32(Some(v), ..) => self.write_value_i32(context, out, *v),
+            Value::Int64(Some(v), ..) => self.write_value_i64(context, out, *v),
+            Value::Int128(Some(v), ..) => self.write_value_i128(context, out, *v),
+            Value::UInt8(Some(v), ..) => self.write_value_u8(context, out, *v),
+            Value::UInt16(Some(v), ..) => self.write_value_u16(context, out, *v),
+            Value::UInt32(Some(v), ..) => self.write_value_u32(context, out, *v),
+            Value::UInt64(Some(v), ..) => self.write_value_u64(context, out, *v),
+            Value::UInt128(Some(v), ..) => self.write_value_u128(context, out, *v),
+            Value::Float32(Some(v), ..) => self.write_value_f32(context, out, *v),
+            Value::Float64(Some(v), ..) => self.write_value_f64(context, out, *v),
             Value::Decimal(Some(v), ..) => drop(write!(out, "{delimiter}{v}{delimiter}")),
             Value::Char(Some(v), ..) => {
                 let mut buf = [0u8; 4];
@@ -248,37 +281,19 @@ pub trait SqlWriter: Send {
         }
     }
 
-    /// Render +/- INF via CAST for dialect portability.
-    fn write_value_infinity(&self, context: &mut Context, out: &mut DynQuery, negative: bool) {
-        let mut buffer = ryu::Buffer::new();
-        self.write_expression_binary_op(
-            context,
-            out,
-            &BinaryOp {
-                op: BinaryOpType::Cast,
-                lhs: &Operand::LitStr(buffer.format(if negative {
-                    f64::NEG_INFINITY
-                } else {
-                    f64::INFINITY
-                })),
-                rhs: &Operand::Type(Value::Float64(None)),
-            },
-        );
-    }
+    write_integer_fn!(write_value_i8, i8);
+    write_integer_fn!(write_value_i16, i16);
+    write_integer_fn!(write_value_i32, i32);
+    write_integer_fn!(write_value_i64, i64);
+    write_integer_fn!(write_value_i128, i128);
+    write_integer_fn!(write_value_u8, u8);
+    write_integer_fn!(write_value_u16, u16);
+    write_integer_fn!(write_value_u32, u32);
+    write_integer_fn!(write_value_u64, u64);
+    write_integer_fn!(write_value_u128, u128);
 
-    /// Render NaN via CAST for dialect portability.
-    fn write_value_nan(&self, context: &mut Context, out: &mut DynQuery) {
-        let mut buffer = ryu::Buffer::new();
-        self.write_expression_binary_op(
-            context,
-            out,
-            &BinaryOp {
-                op: BinaryOpType::Cast,
-                lhs: &Operand::LitStr(buffer.format(f64::NAN)),
-                rhs: &Operand::Type(Value::Float64(None)),
-            },
-        );
-    }
+    write_float_fn!(write_value_f32, f32);
+    write_float_fn!(write_value_f64, f64);
 
     /// Render and escape a string literal using single quotes.
     fn write_value_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
@@ -565,14 +580,9 @@ pub trait SqlWriter: Send {
 
     /// Render an operand (literal / variable / nested expression).
     fn write_expression_operand(&self, context: &mut Context, out: &mut DynQuery, value: &Operand) {
-        let delimiter = if context.fragment == Fragment::JsonKey {
-            "\""
-        } else {
-            ""
-        };
         match value {
             Operand::LitBool(v) => self.write_value_bool(context, out, *v),
-            Operand::LitFloat(v) => write_float!(self, context, out, *v, delimiter),
+            Operand::LitFloat(v) => self.write_value_f64(context, out, *v),
             Operand::LitIdent(v) => {
                 if context.fragment == Fragment::Aliasing {
                     self.write_identifier_quoted(context, out, v);
@@ -581,7 +591,7 @@ pub trait SqlWriter: Send {
                 }
             }
             Operand::LitField(v) => separated_by(out, *v, |out, v| out.push_str(v), "."),
-            Operand::LitInt(v) => write_integer!(out, *v, delimiter),
+            Operand::LitInt(v) => self.write_value_i128(context, out, *v),
             Operand::LitStr(v) => self.write_value_string(context, out, v),
             Operand::LitArray(v) => {
                 out.push('[');

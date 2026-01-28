@@ -35,6 +35,11 @@ impl ExpressionMatcher for IsColumn {
 pub struct IsFieldCondition {
     pub condition: Document,
 }
+impl IsFieldCondition {
+    pub fn new() -> Self {
+        IsFieldCondition::default()
+    }
+}
 impl ExpressionMatcher for IsFieldCondition {
     fn match_binary_op(
         &mut self,

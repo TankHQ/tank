@@ -1,6 +1,6 @@
 use crate::{
-    FindOnePayload, FindPayload, InsertManyPayload, InsertOnePayload, IsFieldCondition,
-    MongoDBDriver, MongoDBPrepared, Payload, RowWrap, UpsertManyPayload, UpsertOnePayload,
+    BatchPayload, FindManyPayload, FindOnePayload, InsertManyPayload, InsertOnePayload,
+    IsFieldCondition, MongoDBDriver, MongoDBPrepared, Payload, RowWrap, UpsertPayload,
     value_to_bson,
 };
 use mongodb::{
@@ -8,17 +8,35 @@ use mongodb::{
     bson::{self, Binary, Bson, Document, doc, spec::BinarySubtype},
     options::{
         FindOneOptions, FindOptions, InsertManyOptions, InsertOneOptions, UpdateModifications,
-        UpdateOneModel, UpdateOptions,
+        UpdateOneModel, UpdateOptions, WriteModel,
     },
 };
 use std::{borrow::Cow, collections::HashMap, f64, iter, mem};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, DataSet, DynQuery, Entity, ErrorContext,
-    Expression, Fragment, Interval, IsTrue, QueryMetadata, QueryType, Result, SelectQuery,
+    Expression, Fragment, Interval, IsFalse, IsTrue, QueryMetadata, QueryType, Result, SelectQuery,
     SqlWriter, Value, print_timer,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
+
+macro_rules! write_value_fn {
+    ($fn_name:ident, $ty:ty, $bson:path) => {
+        fn $fn_name(&self, _context: &mut Context, out: &mut DynQuery, value: $ty) {
+            let Some(target) = out
+                .as_prepared::<MongoDBDriver>()
+                .and_then(MongoDBPrepared::current_bson)
+            else {
+                log::error!(
+                    "Failed to get the bson objec in MongoDBSqlWriter::{}",
+                    stringify!($fn_name)
+                );
+                return;
+            };
+            *target = $bson(value as _);
+        }
+    };
+}
 
 #[derive(Default)]
 pub struct MongoDBSqlWriter {}
@@ -28,21 +46,24 @@ impl MongoDBSqlWriter {
         DynQuery::Prepared(Box::new(MongoDBPrepared::default()))
     }
 
-    pub fn switch_to_prepared(query: &mut DynQuery) -> &mut MongoDBPrepared {
+    pub fn make_unmatchable() -> Document {
+        doc! {
+            "_id": { "$exists": false }
+        }
+    }
+
+    pub fn switch_to_prepared(query: &mut DynQuery) {
         if query.as_prepared::<MongoDBDriver>().is_none() {
             if !query.is_empty() {
                 log::error!(
                     "The query is not empty, MongoDBSqlWriter::switch_to_prepared will drop the content"
                 );
             }
-            let mut prepared = MongoDBPrepared::default();
-            prepared.metadata = mem::take(query.metadata_mut());
-            *query = DynQuery::Prepared(Box::new(prepared));
+            *query = DynQuery::Prepared(Box::new(MongoDBPrepared {
+                metadata: mem::take(query.metadata_mut()),
+                ..Default::default()
+            }));
         }
-        let Some(prepared) = query.as_prepared::<MongoDBDriver>() else {
-            unreachable!("Expected to be the MongoDBPrepared here");
-        };
-        prepared
     }
 
     pub fn expression_binary_op_key(&self, value: BinaryOpType) -> &'static str {
@@ -82,6 +103,33 @@ impl MongoDBSqlWriter {
             log::error!("MongoDB does not support {value} binary operator");
         }
         value
+    }
+
+    pub fn write_matching_expression(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        condition: impl Expression,
+    ) {
+        if condition.matches(&mut IsFalse)
+            && let Some(prepared) = out.as_prepared::<MongoDBDriver>()
+            && let Some(target) = prepared.current_bson()
+        {
+            *target = Bson::Document(Self::make_unmatchable())
+        } else if condition.matches(&mut IsTrue)
+            && let Some(prepared) = out.as_prepared::<MongoDBDriver>()
+            && let Some(target) = prepared.current_bson()
+        {
+            *target = Bson::Document(Default::default());
+        } else if let matcher = &mut IsFieldCondition::new()
+            && condition.matches(matcher)
+            && let Some(prepared) = out.as_prepared::<MongoDBDriver>()
+            && let Some(target) = prepared.current_bson()
+        {
+            *target = Bson::Document(mem::take(&mut matcher.condition))
+        } else {
+            condition.write_query(self, context, out);
+        }
     }
 }
 
@@ -143,41 +191,45 @@ impl SqlWriter for MongoDBSqlWriter {
         *target = Bson::Null;
     }
 
-    fn write_value_bool(&self, _context: &mut Context, out: &mut DynQuery, value: bool) {
-        let Some(target) = out
-            .as_prepared::<MongoDBDriver>()
-            .and_then(MongoDBPrepared::current_bson)
-        else {
-            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_bool");
-            return;
-        };
-        *target = Bson::Boolean(value);
+    write_value_fn!(write_value_bool, bool, Bson::Boolean);
+    write_value_fn!(write_value_i8, i8, Bson::Int32);
+    write_value_fn!(write_value_i16, i16, Bson::Int32);
+    write_value_fn!(write_value_i32, i32, Bson::Int32);
+    write_value_fn!(write_value_i64, i64, Bson::Int64);
+    write_value_fn!(write_value_u8, u8, Bson::Int32);
+    write_value_fn!(write_value_u16, u16, Bson::Int32);
+    write_value_fn!(write_value_u32, u32, Bson::Int64);
+    write_value_fn!(write_value_f32, f32, Bson::Double);
+    write_value_fn!(write_value_f64, f64, Bson::Double);
+
+    fn write_value_i128(&self, context: &mut Context, out: &mut DynQuery, value: i128) {
+        match i64::try_from_value(value.as_value()) {
+            Ok(v) => self.write_value_i64(context, out, v),
+            Err(e) => {
+                log::error!("{e:#}");
+                return;
+            }
+        }
     }
 
-    fn write_value_infinity(&self, _context: &mut Context, out: &mut DynQuery, negative: bool) {
-        let Some(target) = out
-            .as_prepared::<MongoDBDriver>()
-            .and_then(MongoDBPrepared::current_bson)
-        else {
-            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_infinity");
-            return;
-        };
-        *target = Bson::Double(if negative {
-            f64::NEG_INFINITY
-        } else {
-            f64::INFINITY
-        });
+    fn write_value_u64(&self, context: &mut Context, out: &mut DynQuery, value: u64) {
+        match i64::try_from_value(value.as_value()) {
+            Ok(v) => self.write_value_i64(context, out, v),
+            Err(e) => {
+                log::error!("{e:#}");
+                return;
+            }
+        }
     }
 
-    fn write_value_nan(&self, _context: &mut Context, out: &mut DynQuery) {
-        let Some(target) = out
-            .as_prepared::<MongoDBDriver>()
-            .and_then(MongoDBPrepared::current_bson)
-        else {
-            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_value_nan");
-            return;
-        };
-        *target = Bson::Double(f64::NAN);
+    fn write_value_u128(&self, context: &mut Context, out: &mut DynQuery, value: u128) {
+        match i64::try_from_value(value.as_value()) {
+            Ok(v) => self.write_value_i64(context, out, v),
+            Err(e) => {
+                log::error!("{e:#}");
+                return;
+            }
+        }
     }
 
     fn write_value_string(&self, _context: &mut Context, out: &mut DynQuery, value: &str) {
@@ -414,14 +466,6 @@ impl SqlWriter for MongoDBSqlWriter {
             );
             return;
         };
-        if context.fragment == Fragment::SqlSelectWhere
-            && let matcher = &mut IsFieldCondition::default()
-            && value.matches(matcher)
-        {
-            // Specific case for a field condition { "field": condition }
-            *document = mem::take(&mut matcher.condition);
-            return;
-        }
         let lhs = {
             let mut lhs = MongoDBSqlWriter::make_prepared();
             value.lhs.write_query(self, context, &mut lhs);
@@ -523,6 +567,7 @@ impl SqlWriter for MongoDBSqlWriter {
         Self: Sized,
         E: Entity,
     {
+        Self::switch_to_prepared(out);
         self.update_metadata(
             out,
             QueryMetadata {
@@ -532,7 +577,6 @@ impl SqlWriter for MongoDBSqlWriter {
             }
             .into(),
         );
-        Self::switch_to_prepared(out);
     }
 
     fn write_drop_schema<E>(&self, out: &mut DynQuery, _if_exists: bool)
@@ -540,6 +584,7 @@ impl SqlWriter for MongoDBSqlWriter {
         Self: Sized,
         E: Entity,
     {
+        Self::switch_to_prepared(out);
         self.update_metadata(
             out,
             QueryMetadata {
@@ -549,7 +594,6 @@ impl SqlWriter for MongoDBSqlWriter {
             }
             .into(),
         );
-        Self::switch_to_prepared(out);
     }
 
     fn write_create_table<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
@@ -557,6 +601,7 @@ impl SqlWriter for MongoDBSqlWriter {
         Self: Sized,
         E: Entity,
     {
+        Self::switch_to_prepared(out);
         self.update_metadata(
             out,
             QueryMetadata {
@@ -566,7 +611,6 @@ impl SqlWriter for MongoDBSqlWriter {
             }
             .into(),
         );
-        Self::switch_to_prepared(out);
     }
 
     fn write_drop_table<E>(&self, out: &mut DynQuery, _if_exists: bool)
@@ -574,6 +618,7 @@ impl SqlWriter for MongoDBSqlWriter {
         Self: Sized,
         E: Entity,
     {
+        Self::switch_to_prepared(out);
         self.update_metadata(
             out,
             QueryMetadata {
@@ -583,7 +628,6 @@ impl SqlWriter for MongoDBSqlWriter {
             }
             .into(),
         );
-        Self::switch_to_prepared(out);
     }
 
     fn write_select<'a, Data>(&self, out: &mut DynQuery, query: &impl SelectQuery<Data>)
@@ -596,6 +640,7 @@ impl SqlWriter for MongoDBSqlWriter {
             return;
         };
         let limit = query.get_limit();
+        Self::switch_to_prepared(out);
         self.update_metadata(
             out,
             QueryMetadata {
@@ -606,8 +651,7 @@ impl SqlWriter for MongoDBSqlWriter {
             .into(),
         );
         let mut context = Context::fragment(Fragment::SqlSelectWhere);
-        Self::switch_to_prepared(out);
-        condition.write_query(self, &mut context, out);
+        self.write_matching_expression(&mut context, out, condition);
         let Some((Some(matching), prepared)) = out
             .as_prepared::<MongoDBDriver>()
             .map(|v| (v.current_bson().map(mem::take), v))
@@ -628,7 +672,7 @@ impl SqlWriter for MongoDBSqlWriter {
                     .build(),
             })
         } else {
-            Payload::Find(FindPayload {
+            Payload::FindMany(FindManyPayload {
                 matching,
                 options: FindOptions::builder()
                     .comment(Bson::String(format!(
@@ -651,6 +695,7 @@ impl SqlWriter for MongoDBSqlWriter {
         E: Entity + 'b,
     {
         let table = E::table();
+        Self::switch_to_prepared(out);
         self.update_metadata(
             out,
             QueryMetadata {
@@ -671,7 +716,7 @@ impl SqlWriter for MongoDBSqlWriter {
         };
         let metadata = out.metadata_mut();
         let single = entities.peek().is_none();
-        Self::switch_to_prepared(out).payload = match (update, single) {
+        let payload = match (update, single) {
             (false, true) => {
                 metadata.count.get_or_insert(1);
                 Payload::InsertOne(InsertOnePayload {
@@ -704,11 +749,7 @@ impl SqlWriter for MongoDBSqlWriter {
             (true, _) => {
                 let mut values = iter::chain(iter::once(entity), entities).filter_map(|entity| {
                     let mut query = Self::make_prepared();
-                    entity.primary_key_expr().write_query(
-                        self,
-                        &mut Default::default(),
-                        &mut query,
-                    );
+                    self.write_matching_expression(&mut Default::default(), &mut query, entity.primary_key_expr());
                     let Some(Bson::Document(matching)) = query
                         .as_prepared::<MongoDBDriver>()
                         .and_then(MongoDBPrepared::current_bson)
@@ -737,7 +778,7 @@ impl SqlWriter for MongoDBSqlWriter {
                     let Some((_, matching, modifications)) = values.next() else {
                         return;
                     };
-                    Payload::UpsertOne(UpsertOnePayload {
+                    Payload::Upsert(UpsertPayload {
                         matching: Bson::Document(matching),
                         modifications,
                         options: UpdateOptions::builder()
@@ -753,25 +794,31 @@ impl SqlWriter for MongoDBSqlWriter {
                         .into_iter()
                         .map(|(entity, matching, modifications)| {
                             let table = entity.table_ref();
-                            UpdateOneModel::builder()
-                                .namespace(Namespace {
-                                    db: table.schema.into(),
-                                    coll: table.name.into(),
-                                })
-                                .filter(matching)
-                                .update(modifications)
-                                .upsert(true)
-                                .build()
+                            WriteModel::UpdateOne(
+                                UpdateOneModel::builder()
+                                    .namespace(Namespace {
+                                        db: table.schema.into(),
+                                        coll: table.name.into(),
+                                    })
+                                    .filter(matching)
+                                    .update(modifications)
+                                    .upsert(true)
+                                    .build(),
+                            )
                         })
                         .collect::<Vec<_>>();
                     metadata.count.get_or_insert(values.len() as _);
-                    Payload::UpsertMany(UpsertManyPayload {
-                        values,
+                    Payload::Batch(BatchPayload {
+                        batch: values,
                         options: Default::default(),
                     })
                 }
             }
         };
+        let Some(prepared) = out.as_prepared::<MongoDBDriver>() else {
+            return;
+        };
+        prepared.payload = payload;
     }
 
     fn write_delete<E>(&self, out: &mut DynQuery, condition: impl Expression)
@@ -780,6 +827,7 @@ impl SqlWriter for MongoDBSqlWriter {
         E: Entity,
     {
         let table = E::table();
+        Self::switch_to_prepared(out);
         self.update_metadata(
             out,
             QueryMetadata {
@@ -789,15 +837,12 @@ impl SqlWriter for MongoDBSqlWriter {
             }
             .into(),
         );
-        let prepared = Self::switch_to_prepared(out);
+        let Some(prepared) = out.as_prepared::<MongoDBDriver>() else {
+            // Unreachable
+            return;
+        };
         prepared.payload = Payload::Delete(Default::default());
         let mut context: Context = Context::fragment(Fragment::SqlDeleteFromWhere);
-        if condition.matches(&mut IsTrue)
-            && let Some(target) = prepared.current_bson()
-        {
-            *target = Bson::Document(Default::default())
-        } else {
-            condition.write_query(self, &mut context, out);
-        }
+        self.write_matching_expression(&mut context, out, condition);
     }
 }

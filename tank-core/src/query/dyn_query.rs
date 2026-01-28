@@ -14,7 +14,7 @@ pub enum DynQuery {
 
 impl DynQuery {
     pub fn new(value: String) -> Self {
-        DynQuery::Raw(RawQuery {
+        Self::Raw(RawQuery {
             sql: value,
             metadata: Default::default(),
         })
@@ -23,28 +23,25 @@ impl DynQuery {
         Self::new(String::with_capacity(capacity))
     }
     pub fn buffer(&mut self) -> &mut String {
-        if !matches!(self, DynQuery::Raw(..)) {
+        if !matches!(self, Self::Raw(..)) {
             log::error!("DynQuery::buffer changed the query to raw, deleting the previous content");
-            *self = DynQuery::Raw(Default::default())
+            *self = Self::Raw(Default::default())
         }
-        let DynQuery::Raw(RawQuery { sql: value, .. }) = self else {
+        let Self::Raw(RawQuery { sql: value, .. }) = self else {
             unreachable!();
         };
         value
     }
-    pub fn into_buffer(mut self) -> String {
-        mem::take(self.buffer())
-    }
     pub fn as_prepared<D: Driver>(&mut self) -> Option<&mut D::Prepared> {
-        if let DynQuery::Prepared(prepared) = self {
+        if let Self::Prepared(prepared) = self {
             return (&mut **prepared as &mut dyn Any).downcast_mut::<D::Prepared>();
         }
         None
     }
     pub fn as_str<'s>(&'s self) -> Cow<'s, str> {
         match self {
-            DynQuery::Raw(v) => Cow::Borrowed(&v.sql),
-            DynQuery::Prepared(v) => Cow::Owned(format!("{:?}", *v)),
+            Self::Raw(v) => Cow::Borrowed(&v.sql),
+            Self::Prepared(v) => Cow::Owned(format!("{:?}", *v)),
         }
     }
     pub fn push_str(&mut self, s: &str) {
@@ -55,26 +52,26 @@ impl DynQuery {
     }
     pub fn len(&self) -> usize {
         match self {
-            DynQuery::Raw(v) => v.sql.len(),
-            DynQuery::Prepared(..) => 0,
+            Self::Raw(v) => v.sql.len(),
+            Self::Prepared(..) => 0,
         }
     }
     pub fn is_empty(&self) -> bool {
         match self {
-            DynQuery::Raw(v) => v.sql.is_empty(),
-            DynQuery::Prepared(..) => true,
+            Self::Raw(v) => v.sql.is_empty(),
+            Self::Prepared(..) => true,
         }
     }
     pub fn metadata(&self) -> &QueryMetadata {
         match self {
-            DynQuery::Raw(v) => &v.metadata,
-            DynQuery::Prepared(v) => v.metadata(),
+            Self::Raw(v) => &v.metadata,
+            Self::Prepared(v) => v.metadata(),
         }
     }
     pub fn metadata_mut(&mut self) -> &mut QueryMetadata {
         match self {
-            DynQuery::Raw(v) => &mut v.metadata,
-            DynQuery::Prepared(v) => v.metadata_mut(),
+            Self::Raw(v) => &mut v.metadata,
+            Self::Prepared(v) => v.metadata_mut(),
         }
     }
 
@@ -85,7 +82,7 @@ impl DynQuery {
 
 impl Default for DynQuery {
     fn default() -> Self {
-        DynQuery::Raw(Default::default())
+        Self::Raw(Default::default())
     }
 }
 
@@ -118,5 +115,11 @@ impl<D: Driver> From<DynQuery> for Query<D> {
                 Err(..) => Query::raw(Default::default()),
             },
         }
+    }
+}
+
+impl From<DynQuery> for String {
+    fn from(mut value: DynQuery) -> Self {
+        mem::take(value.buffer())
     }
 }

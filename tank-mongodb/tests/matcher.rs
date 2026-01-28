@@ -43,6 +43,8 @@ mod tests {
             assert!(matcher.condition.is_empty());
             assert!(expr!(Table::col_b == 41).matches(&mut matcher));
             assert!(!matcher.condition.is_empty());
+            let mut keys = matcher.condition.keys();
+            assert_eq!(keys.next(), Some(&"col_b".to_string()));
         }
     }
 }

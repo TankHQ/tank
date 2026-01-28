@@ -1,6 +1,6 @@
 use crate::{
-    DeletePayload, FindOnePayload, FindPayload, MongoDBDriver, MongoDBTransaction, Payload,
-    RowWrap, UpsertManyPayload, UpsertOnePayload,
+    BatchPayload, DeletePayload, FindManyPayload, FindOnePayload, MongoDBDriver,
+    MongoDBTransaction, Payload, RowWrap, UpsertPayload,
 };
 use async_stream::try_stream;
 use mongodb::{Client, Database, bson::Bson};
@@ -122,7 +122,7 @@ impl Executor for MongoDBConnection {
                             Err(e) => Err(Error::msg(format!("{e}")))?,
                         }
                     } else {
-                        let Payload::Find(FindPayload {
+                        let Payload::FindMany(FindManyPayload {
                             matching: Bson::Document(matching),
                             options,
                             ..
@@ -185,57 +185,30 @@ impl Executor for MongoDBConnection {
                     }
                 }
                 QueryType::Upsert => {
-                    if count == Some(1) {
-                        let Payload::UpsertOne(UpsertOnePayload {
-                            matching: Bson::Document(matching),
-                            modifications,
-                            options,
-                        }) = &payload
-                        else {
-                            Err(Error::msg(format!(
-                                "Query is a upsert with count 1 but the payload {payload:?} is not the expected Payload::UpsertOne with a Bson::Document matcher"
-                            )))?;
-                            return;
-                        };
-                        let result = collection
-                            .update_one(matching.clone(), modifications.clone())
-                            .with_options(options.clone())
-                            .await?;
-                        let last_affected_id = match result.upserted_id {
-                            Some(Bson::Int32(v)) => Some(v as i64),
-                            Some(Bson::Int64(v)) => Some(v),
-                            _ => None,
-                        };
-                        yield QueryResult::Affected(RowsAffected {
-                            rows_affected: Some(result.modified_count),
-                            last_affected_id,
-                        });
-                    } else {
-                        let Payload::UpsertMany(UpsertManyPayload { values, options }) = &payload
-                        else {
-                            Err(Error::msg(format!(
-                                "Query is a upsert with but the payload {} is not the expected Payload::UpsertMany",
-                                truncate_long!(format!("{payload:?}"), true),
-                            )))?;
-                            return;
-                        };
-                        let result = self
-                            .client
-                            .bulk_write(values.iter().cloned())
-                            .with_options(options.clone())
-                            .await?;
-                        yield QueryResult::Affected(RowsAffected {
-                            rows_affected: Some(
-                                (result.inserted_count
-                                    + result.matched_count
-                                    + result.modified_count
-                                    + result.upserted_count
-                                    + result.deleted_count)
-                                    .clamp(0, i64::MAX as _) as _,
-                            ),
-                            last_affected_id: None,
-                        })
-                    }
+                    let Payload::Upsert(UpsertPayload {
+                        matching: Bson::Document(matching),
+                        modifications,
+                        options,
+                    }) = &payload
+                    else {
+                        Err(Error::msg(format!(
+                            "Query is a upsert with count 1 but the payload {payload:?} is not the expected Payload::UpsertOne with a Bson::Document matcher"
+                        )))?;
+                        return;
+                    };
+                    let result = collection
+                        .update_one(matching.clone(), modifications.clone())
+                        .with_options(options.clone())
+                        .await?;
+                    let last_affected_id = match result.upserted_id {
+                        Some(Bson::Int32(v)) => Some(v as i64),
+                        Some(Bson::Int64(v)) => Some(v),
+                        _ => None,
+                    };
+                    yield QueryResult::Affected(RowsAffected {
+                        rows_affected: Some(result.modified_count),
+                        last_affected_id,
+                    });
                 }
                 QueryType::DeleteFrom => {
                     let Payload::Delete(DeletePayload {
@@ -265,6 +238,31 @@ impl Executor for MongoDBConnection {
                 QueryType::DropTable => {}
                 QueryType::CreateSchema => {}
                 QueryType::DropSchema => {}
+                QueryType::Batch => {
+                    let Payload::Batch(BatchPayload { batch, options }) = &payload else {
+                        Err(Error::msg(format!(
+                            "Query is a batch with but the payload {} is not the expected Payload::Batch",
+                            truncate_long!(format!("{payload:?}"), true),
+                        )))?;
+                        return;
+                    };
+                    let result = self
+                        .client
+                        .bulk_write(batch.iter().cloned())
+                        .with_options(options.clone())
+                        .await?;
+                    yield QueryResult::Affected(RowsAffected {
+                        rows_affected: Some(
+                            (result.inserted_count
+                                + result.matched_count
+                                + result.modified_count
+                                + result.upserted_count
+                                + result.deleted_count)
+                                .clamp(0, i64::MAX as _) as _,
+                        ),
+                        last_affected_id: None,
+                    })
+                }
             }
         }
     }

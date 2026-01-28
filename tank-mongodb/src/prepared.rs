@@ -2,7 +2,7 @@ use mongodb::{
     bson::{Bson, Document},
     options::{
         BulkWriteOptions, DeleteOptions, FindOneOptions, FindOptions, InsertManyOptions,
-        InsertOneOptions, UpdateModifications, UpdateOneModel, UpdateOptions,
+        InsertOneOptions, UpdateModifications, UpdateOptions, WriteModel,
     },
 };
 use std::fmt::{self, Display, Formatter, Write};
@@ -15,7 +15,7 @@ pub struct FindOnePayload {
 }
 
 #[derive(Default, Debug)]
-pub struct FindPayload {
+pub struct FindManyPayload {
     pub(crate) matching: Bson,
     pub(crate) options: FindOptions,
 }
@@ -33,16 +33,10 @@ pub struct InsertManyPayload {
 }
 
 #[derive(Debug)]
-pub struct UpsertOnePayload {
+pub struct UpsertPayload {
     pub(crate) matching: Bson,
     pub(crate) modifications: UpdateModifications,
     pub(crate) options: UpdateOptions,
-}
-
-#[derive(Default, Debug)]
-pub struct UpsertManyPayload {
-    pub(crate) values: Vec<UpdateOneModel>,
-    pub(crate) options: BulkWriteOptions,
 }
 
 #[derive(Default, Debug)]
@@ -51,21 +45,27 @@ pub struct DeletePayload {
     pub(crate) options: DeleteOptions,
 }
 
+#[derive(Default, Debug)]
+pub struct BatchPayload {
+    pub(crate) batch: Vec<WriteModel>,
+    pub(crate) options: BulkWriteOptions,
+}
+
 #[derive(Debug)]
 pub enum Payload {
     Fragment(Bson),
     FindOne(FindOnePayload),
-    Find(FindPayload),
+    FindMany(FindManyPayload),
     InsertOne(InsertOnePayload),
     InsertMany(InsertManyPayload),
-    UpsertOne(UpsertOnePayload),
-    UpsertMany(UpsertManyPayload),
+    Upsert(UpsertPayload),
     Delete(DeletePayload),
+    Batch(BatchPayload),
 }
 
 impl Default for Payload {
     fn default() -> Self {
-        Self::Fragment(Default::default())
+        Self::Fragment(Bson::Document(Default::default()))
     }
 }
 
@@ -85,12 +85,12 @@ impl MongoDBPrepared {
         match &mut self.payload {
             Payload::Fragment(v) => Some(v),
             Payload::FindOne(v) => Some(&mut v.matching),
-            Payload::Find(v) => Some(&mut v.matching),
+            Payload::FindMany(v) => Some(&mut v.matching),
             Payload::InsertOne(..) => None,
             Payload::InsertMany(..) => None,
-            Payload::UpsertOne(v) => Some(&mut v.matching),
-            Payload::UpsertMany(..) => None,
+            Payload::Upsert(v) => Some(&mut v.matching),
             Payload::Delete(v) => Some(&mut v.matching),
+            Payload::Batch(..) => None,
         }
     }
     pub fn switch_to_document(&mut self) -> Option<&mut Document> {
@@ -153,19 +153,19 @@ impl Display for MongoDBPrepared {
         f.write_str(match self.payload {
             Payload::Fragment(..) => "fragment",
             Payload::FindOne(..) => "find one",
-            Payload::Find(..) => "find",
+            Payload::FindMany(..) => "find",
             Payload::InsertOne(..) => "insert one",
             Payload::InsertMany(..) => "insert many",
-            Payload::UpsertOne(..) => "upsert one",
-            Payload::UpsertMany(..) => "upsert many",
+            Payload::Upsert(..) => "upsert",
             Payload::Delete(..) => "delete",
+            Payload::Batch(..) => "batch",
         })?;
         f.write_char(')')?;
         Ok(())
     }
 }
 
-impl Default for UpsertOnePayload {
+impl Default for UpsertPayload {
     fn default() -> Self {
         Self {
             matching: Default::default(),
