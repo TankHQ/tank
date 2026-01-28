@@ -23,8 +23,8 @@ writer.write_create_table::<Two>(&mut query, false);
 writer.write_insert(&mut query, &[One { string: "ddd".into() }, One { string: "ccc".into() }], false);
 writer.write_insert(&mut query, &[Two { a2: 21, string: "aaa".into() }, Two { a2: 22, string: "bbb".into() }], false);
 writer.write_insert(&mut query, &[One { a1: 11, string: "zzz".into(), c1: 512 }], false);
-writer.write_select(&mut query, [One::a1, One::string, One::c1], One::table(), &true, None);
-writer.write_select(&mut query, Two::columns(), Two::table(), &true, None);
+writer.write_select(&mut query, [One::a1, One::string, One::c1], One::table(), true, None);
+writer.write_select(&mut query, Two::columns(), Two::table(), true, None);
 // Fire the batch
 let results = executor.run(query).try_collect::<Vec<_>>().await?;
 ```

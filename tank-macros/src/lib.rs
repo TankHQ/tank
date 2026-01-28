@@ -188,7 +188,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
 ///     .select(
 ///         executor,
 ///         cols!(Book::title, Author::name as author, Book::year),
-///         &true,
+///         true,
 ///         None,
 ///     )
 ///     .and_then(|row| async { Books::from_row(row) })
@@ -252,11 +252,11 @@ pub fn expr(input: TokenStream) -> TokenStream {
 /// *Example*:
 /// ```ignore
 /// use tank::{cols, DataSet};
-/// let names_stream = User::table().select(connection, cols!(User::id, User::name ASC), &true, Some(500));
+/// let names_stream = User::table().select(connection, cols!(User::id, User::name ASC), true, Some(500));
 /// let products_stream = Product::table().select(
 ///     executor,
 ///     cols!(COUNT(*), AVG(Product::price)),
-///     &true,
+///     true,
 ///     None
 /// );
 /// ```

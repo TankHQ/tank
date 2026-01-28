@@ -64,7 +64,7 @@ pub async fn insane<E: Executor>(executor: &mut E) {
         .expect("Failed to create ComplexNullFields table");
 
     // Insane 1
-    InsaneNullFields::delete_many(executor, &true)
+    InsaneNullFields::delete_many(executor, true)
         .await
         .expect("Failed to clear the ComplexNullFields table");
     let entity = InsaneNullFields {
@@ -124,7 +124,7 @@ pub async fn insane<E: Executor>(executor: &mut E) {
         .await
         .expect("Failed to save insane 1");
     #[allow(unused_variables)]
-    let loaded = InsaneNullFields::find_one(executor, &true)
+    let loaded = InsaneNullFields::find_one(executor, true)
         .await
         .expect("Failed to query insane 1")
         .expect("Failed to find insane 1");
@@ -145,7 +145,7 @@ pub async fn insane<E: Executor>(executor: &mut E) {
     assert_eq!(loaded.green, entity.green);
 
     // Insane 2
-    InsaneNullFields::delete_many(executor, &true)
+    InsaneNullFields::delete_many(executor, true)
         .await
         .expect("Failed to clear the ComplexNullFields table");
     let entity = InsaneNullFields {
@@ -201,7 +201,7 @@ pub async fn insane<E: Executor>(executor: &mut E) {
     InsaneNullFields::insert_one(executor, &entity)
         .await
         .expect("Failed to save insane 2");
-    let loaded = InsaneNullFields::find_one(executor, &true)
+    let loaded = InsaneNullFields::find_one(executor, true)
         .await
         .expect("Failed to query insane 2")
         .expect("Failed to find insane 2");

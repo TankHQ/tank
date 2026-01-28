@@ -42,7 +42,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
     )
     .await
     .expect("Insert zero intervals failed");
-    let value = Intervals::find_one(executor, &true)
+    let value = Intervals::find_one(executor, true)
         .await
         .expect("Failed to retrieve zero intervals")
         .expect("Missing zero interval row");
@@ -50,7 +50,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
     assert_eq!(value.first, time::Duration::default());
     assert_eq!(value.second, Interval::default());
     assert_eq!(value.third, Duration::default());
-    Intervals::delete_many(executor, &true)
+    Intervals::delete_many(executor, true)
         .await
         .expect("Could not delete the intervals");
 
@@ -68,7 +68,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
     )
     .await
     .expect("Could not insert the interval");
-    let value = Intervals::find_one(executor, &true)
+    let value = Intervals::find_one(executor, true)
         .await
         .expect("Could not retrieve the intervals row")
         .expect("There was no interval inserted in the table intervals");
@@ -82,7 +82,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
         Interval::from_mins(5) + Interval::from_secs(24) + Interval::from_millis(33)
     );
     assert_eq!(value.third, Duration::from_micros(1 + 6 * 3600 * 1_000_000));
-    Intervals::delete_many(executor, &true)
+    Intervals::delete_many(executor, true)
         .await
         .expect("Could not delete the intervals");
 
@@ -100,7 +100,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
     )
     .await
     .expect("Insert large intervals failed");
-    let mut value = Intervals::find_one(executor, &true)
+    let mut value = Intervals::find_one(executor, true)
         .await
         .expect("Failed to retrieve large intervals")
         .expect("Missing large interval row");
@@ -124,7 +124,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
     {
         let mut query = DynQuery::default();
         let writer = executor.driver().sql_writer();
-        writer.write_delete::<Intervals>(&mut query, &true);
+        writer.write_delete::<Intervals>(&mut query, true);
         writer.write_insert(
             &mut query,
             &[

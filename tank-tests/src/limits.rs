@@ -51,7 +51,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
         .expect("Failed to create SimpleNullFields table");
 
     // Minimals
-    Limits::delete_many(executor, &true)
+    Limits::delete_many(executor, true)
         .await
         .expect("Failed to clear the Limits table");
     let minimals = Limits {
@@ -88,7 +88,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
     Limits::insert_one(executor, &minimals)
         .await
         .expect("Failed to save minimals entity");
-    let loaded = Limits::find_one(executor, &true)
+    let loaded = Limits::find_one(executor, true)
         .await
         .expect("Failed to query simple 2")
         .expect("Failed to find simple 2");
@@ -130,7 +130,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
     assert_eq!(loaded.interval, Interval::from_micros(1));
 
     // Maximals
-    Limits::delete_many(executor, &true)
+    Limits::delete_many(executor, true)
         .await
         .expect("Failed to clear the Limits table");
     let maximals = Limits {
@@ -172,7 +172,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
     Limits::insert_one(executor, &maximals)
         .await
         .expect("Failed to save maximals entity");
-    let loaded = Limits::find_one(executor, &true)
+    let loaded = Limits::find_one(executor, true)
         .await
         .expect("Failed to query simple 2")
         .expect("Failed to find simple 2");
@@ -229,7 +229,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
     {
         let mut query = DynQuery::default();
         let writer = executor.driver().sql_writer();
-        writer.write_delete::<Limits>(&mut query, &true);
+        writer.write_delete::<Limits>(&mut query, true);
         writer.write_insert(&mut query, &[minimals, maximals], false);
         writer.write_select(
             &mut query,

@@ -202,7 +202,7 @@ pub async fn users<E: Executor>(executor: &mut E) {
     assert!(maybe_eve.is_none(), "Eve should have been deleted");
 
     // There must be 5 total users
-    let total_users = UserProfile::find_many(executor, &true, None).count().await;
+    let total_users = UserProfile::find_many(executor, true, None).count().await;
     assert_eq!(total_users, 4, "There should be 4 users remaining");
 
     // Delete all users who never logged in (only Dean)
@@ -214,7 +214,7 @@ pub async fn users<E: Executor>(executor: &mut E) {
     }
 
     // There must be 3 users left (alice, bob, charlie)
-    let final_users = UserProfile::find_many(executor, &true, None)
+    let final_users = UserProfile::find_many(executor, true, None)
         .try_collect::<Vec<_>>()
         .await
         .expect("Expected query to succeed");

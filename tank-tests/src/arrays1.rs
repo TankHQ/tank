@@ -74,7 +74,7 @@ pub async fn arrays1<E: Executor>(executor: &mut E) {
     .await
     .expect("Could not insert Arrays1 values");
     {
-        let mut stream = pin!(Arrays1::find_many(executor, &true, None));
+        let mut stream = pin!(Arrays1::find_many(executor, true, None));
         while let Some(value) = stream
             .try_next()
             .await

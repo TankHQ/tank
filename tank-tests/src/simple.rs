@@ -51,7 +51,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
         .expect("Failed to create SimpleNullFields table");
 
     // Simple 1
-    SimpleFields::delete_many(executor, &true)
+    SimpleFields::delete_many(executor, true)
         .await
         .expect("Failed to clear the SimpleNullFields table");
     let entity = SimpleFields {
@@ -77,7 +77,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
         .save(executor)
         .await
         .expect("Failed to save simple 1");
-    let entity = SimpleFields::find_one(executor, &true)
+    let entity = SimpleFields::find_one(executor, true)
         .await
         .expect("Failed to query simple 1")
         .expect("Failed to find simple 1");
@@ -162,7 +162,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
     }
 
     // Simple 2
-    SimpleFields::delete_many(executor, &true)
+    SimpleFields::delete_many(executor, true)
         .await
         .expect("Failed to clear the SimpleNullFields table");
     let entity = SimpleFields {
@@ -188,7 +188,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
         .save(executor)
         .await
         .expect("Failed to save simple 2");
-    let entity = SimpleFields::find_one(executor, &true)
+    let entity = SimpleFields::find_one(executor, true)
         .await
         .expect("Failed to query simple 2")
         .expect("Failed to find simple 2");
@@ -224,7 +224,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
     {
         let writer = executor.driver().sql_writer();
         let mut query = DynQuery::default();
-        writer.write_delete::<SimpleFields>(&mut query, &true);
+        writer.write_delete::<SimpleFields>(&mut query, true);
         writer.write_insert(&mut query, [&entity], false);
         writer.write_select(
             &mut query,

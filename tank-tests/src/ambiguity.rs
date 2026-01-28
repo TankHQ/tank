@@ -287,7 +287,7 @@ pub async fn ambiguity<E: Executor>(executor: &mut E) {
     assert_eq!(fs.third_col, Some(Arc::new(21)));
 
     // Verify save works for PK-only entities
-    first_schema::FirstTable::delete_many(executor, &true)
+    first_schema::FirstTable::delete_many(executor, true)
         .await
         .expect("Failed to clear first_schema::FirstTable");
     #[allow(unused_mut)]

@@ -77,7 +77,7 @@ pub async fn trade_simple<E: Executor>(executor: &mut E) {
         .await
         .expect("Failed to find trade by primary key");
     assert!(result.is_none(), "Expected no trades at this time");
-    assert_eq!(Trade::find_many(executor, &true, None).count().await, 0);
+    assert_eq!(Trade::find_many(executor, true, None).count().await, 0);
 
     // Save a trade
     trade.save(executor).await.expect("Failed to save trade");
@@ -137,7 +137,7 @@ pub async fn trade_simple<E: Executor>(executor: &mut E) {
         ])
     );
 
-    assert_eq!(Trade::find_many(executor, &true, None).count().await, 1);
+    assert_eq!(Trade::find_many(executor, true, None).count().await, 1);
 }
 
 pub async fn trade_multiple<E: Executor>(executor: &mut E) {
@@ -331,7 +331,7 @@ pub async fn trade_multiple<E: Executor>(executor: &mut E) {
     {
         let writer = executor.driver().sql_writer();
         let mut query = DynQuery::default();
-        writer.write_delete::<Trade>(&mut query, &true);
+        writer.write_delete::<Trade>(&mut query, true);
         writer.write_insert(
             &mut query,
             &[Trade {

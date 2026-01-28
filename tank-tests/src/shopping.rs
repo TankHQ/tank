@@ -101,7 +101,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
     Product::insert_many(executor, &products)
         .await
         .expect("Could not insert the products");
-    let total_products = Product::find_many(executor, &true, None).count().await;
+    let total_products = Product::find_many(executor, true, None).count().await;
     assert_eq!(total_products, 4);
     let ordered_products = executor
         .fetch(
@@ -237,7 +237,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
     Cart::insert_many(executor, &carts)
         .await
         .expect("Could not insert the carts");
-    let cart_count = Cart::find_many(executor, &true, None).count().await;
+    let cart_count = Cart::find_many(executor, true, None).count().await;
     assert_eq!(cart_count, 3);
 
     // Product 4 in cart has different price than current product price
@@ -261,7 +261,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
         .delete(executor)
         .await
         .expect("Failed to delete cart for product 2");
-    let cart_count_after = Cart::find_many(executor, &true, None).count().await;
+    let cart_count_after = Cart::find_many(executor, true, None).count().await;
     assert_eq!(cart_count_after, 2);
 
     // Join

@@ -82,7 +82,7 @@ pub async fn complex<E: Executor>(executor: &mut E) {
         .expect("Failed to create ComplexNullFields table");
 
     // Complex 1
-    ComplexNullFields::delete_many(executor, &true)
+    ComplexNullFields::delete_many(executor, true)
         .await
         .expect("Failed to clear the ComplexNullFields table");
     let entity = ComplexNullFields {
@@ -133,7 +133,7 @@ pub async fn complex<E: Executor>(executor: &mut E) {
     ComplexNullFields::insert_one(executor, &entity)
         .await
         .expect("Failed to save complex 1");
-    let entity = ComplexNullFields::find_one(executor, &true)
+    let entity = ComplexNullFields::find_one(executor, true)
         .await
         .expect("Failed to query complex 1")
         .expect("Failed to find complex 1");
@@ -187,7 +187,7 @@ pub async fn complex<E: Executor>(executor: &mut E) {
     assert_eq!(entity.fifth.len(), 0);
 
     // Complex 2
-    ComplexNullFields::delete_many(executor, &true)
+    ComplexNullFields::delete_many(executor, true)
         .await
         .expect("Failed to clear the ComplexNullFields table");
     let entity = ComplexNullFields {
@@ -249,7 +249,7 @@ pub async fn complex<E: Executor>(executor: &mut E) {
     ComplexNullFields::insert_one(executor, &entity)
         .await
         .expect("Failed to save complex 2");
-    let loaded = ComplexNullFields::find_one(executor, &true)
+    let loaded = ComplexNullFields::find_one(executor, true)
         .await
         .expect("Failed to query complex 2")
         .expect("Failed to find complex 2");

@@ -1100,7 +1100,7 @@ mod tests {
         bt.insert("x".into(), true);
         let bt_v = bt.clone().as_value();
         let bt_rt: BTreeMap<String, bool> = BTreeMap::try_from_value(bt_v).unwrap();
-        assert_eq!(bt_rt.get("x"), Some(&true));
+        assert_eq!(bt_rt.get("x"), Some(true));
     }
 
     #[test]
