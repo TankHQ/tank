@@ -75,6 +75,14 @@ impl Executor for MongoDBConnection {
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
+        macro_rules! make_context {
+            ($query:expr) => {
+                format!(
+                    "While running the query:\n{}",
+                    truncate_long!(format!("{:?}", $query), true)
+                )
+            };
+        }
         let mut query = query.as_query();
         let database = self.database(query.as_mut());
         let metadata = query.as_mut().metadata();
@@ -92,12 +100,12 @@ impl Executor for MongoDBConnection {
                 Err(Error::msg("Query type is missing from the query metadata"))?;
                 return;
             };
-            let payload = &prepared.payload;
+            let payload = &prepared.get_payload();
             match query_type {
                 QueryType::Select => {
                     if count == Some(1) {
                         let Payload::FindOne(FindOnePayload {
-                            matching: Bson::Document(matching),
+                            filter: Bson::Document(filter),
                             options,
                             ..
                         }) = &payload
@@ -108,7 +116,7 @@ impl Executor for MongoDBConnection {
                             return;
                         };
                         match collection
-                            .find_one(matching.clone())
+                            .find_one(filter.clone())
                             .with_options(options.clone())
                             .await
                         {
@@ -119,11 +127,14 @@ impl Executor for MongoDBConnection {
                                 })
                             }
                             Ok(None) => {}
-                            Err(e) => Err(Error::msg(format!("{e}")))?,
+                            Err(e) => {
+                                Err(Error::msg(format!("{e}"))).context(make_context!(payload))?;
+                                return;
+                            }
                         }
                     } else {
                         let Payload::FindMany(FindManyPayload {
-                            matching: Bson::Document(matching),
+                            filter: Bson::Document(filter),
                             options,
                             ..
                         }) = &payload
@@ -134,9 +145,10 @@ impl Executor for MongoDBConnection {
                             return;
                         };
                         let mut stream = collection
-                            .find(matching.clone())
+                            .find(filter.clone())
                             .with_options(options.clone())
-                            .await?;
+                            .await
+                            .with_context(|| make_context!(payload))?;
                         while let Some(result) = stream.try_next().await? {
                             yield QueryResult::Row(match result.0 {
                                 Cow::Borrowed(v) => v.clone(),
@@ -177,7 +189,8 @@ impl Executor for MongoDBConnection {
                         collection
                             .insert_many(payload.rows.iter().map(|v| RowWrap(Cow::Borrowed(v))))
                             .with_options(payload.options.clone())
-                            .await?;
+                            .await
+                            .with_context(|| make_context!(payload))?;
                         yield QueryResult::Affected(RowsAffected {
                             rows_affected: Some(len as _),
                             last_affected_id: None,
@@ -186,9 +199,10 @@ impl Executor for MongoDBConnection {
                 }
                 QueryType::Upsert => {
                     let Payload::Upsert(UpsertPayload {
-                        matching: Bson::Document(matching),
+                        filter: Bson::Document(filter),
                         modifications,
                         options,
+                        ..
                     }) = &payload
                     else {
                         Err(Error::msg(format!(
@@ -197,9 +211,10 @@ impl Executor for MongoDBConnection {
                         return;
                     };
                     let result = collection
-                        .update_one(matching.clone(), modifications.clone())
+                        .update_one(filter.clone(), modifications.clone())
                         .with_options(options.clone())
-                        .await?;
+                        .await
+                        .with_context(|| make_context!(payload))?;
                     let last_affected_id = match result.upserted_id {
                         Some(Bson::Int32(v)) => Some(v as i64),
                         Some(Bson::Int64(v)) => Some(v),
@@ -212,8 +227,9 @@ impl Executor for MongoDBConnection {
                 }
                 QueryType::DeleteFrom => {
                     let Payload::Delete(DeletePayload {
-                        matching: Bson::Document(matching),
+                        filter: Bson::Document(filter),
                         options,
+                        ..
                     }) = &payload
                     else {
                         Err(Error::msg(format!(
@@ -222,12 +238,13 @@ impl Executor for MongoDBConnection {
                         return;
                     };
                     let result = if count == Some(1) {
-                        collection.delete_one(matching.clone())
+                        collection.delete_one(filter.clone())
                     } else {
-                        collection.delete_many(matching.clone())
+                        collection.delete_many(filter.clone())
                     }
                     .with_options(options.clone())
-                    .await?;
+                    .await
+                    .with_context(|| make_context!(payload))?;
                     yield QueryResult::Affected(RowsAffected {
                         rows_affected: Some(result.deleted_count),
                         last_affected_id: None,
@@ -248,9 +265,10 @@ impl Executor for MongoDBConnection {
                     };
                     let result = self
                         .client
-                        .bulk_write(batch.iter().cloned())
+                        .bulk_write(batch.iter().map(|v| v.as_write_models()).flatten())
                         .with_options(options.clone())
-                        .await?;
+                        .await
+                        .with_context(|| make_context!(payload))?;
                     yield QueryResult::Affected(RowsAffected {
                         rows_affected: Some(
                             (result.inserted_count
@@ -265,5 +283,9 @@ impl Executor for MongoDBConnection {
                 }
             }
         }
+        .map_err(move |e: Error| {
+            log::error!("{e:#}");
+            e
+        })
     }
 }

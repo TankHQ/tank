@@ -1,16 +1,18 @@
 mod connection;
 mod driver;
+mod matcher;
+mod payload;
 mod prepared;
 mod row_wrap;
 mod sql_writer;
 mod transaction;
 mod util;
 mod value_wrap;
-mod matcher;
 
-pub use matcher::*;
 pub use connection::*;
 pub use driver::*;
+pub use matcher::*;
+pub(crate) use payload::*;
 pub use prepared::*;
 pub(crate) use row_wrap::*;
 pub use sql_writer::*;
