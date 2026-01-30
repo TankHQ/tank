@@ -164,7 +164,8 @@ impl Executor for MongoDBConnection {
                     let result = collection
                         .insert_one(RowWrap(Cow::Borrowed(row)))
                         .with_options(options.clone())
-                        .await?;
+                        .await
+                        .with_context(|| make_context!(payload))?;
                     let last_affected_id = match result.inserted_id {
                         Bson::Int32(v) => Some(v as i64),
                         Bson::Int64(v) => Some(v),
@@ -258,7 +259,7 @@ impl Executor for MongoDBConnection {
                 Payload::CreateCollection(CreateCollectionPayload { table, options, .. }) => {
                     let database = self.database(table);
                     database
-                        .create_collection(database.name())
+                        .create_collection(table.name.to_string())
                         .with_options(options.clone())
                         .await
                         .with_context(|| make_context!(payload))?;
