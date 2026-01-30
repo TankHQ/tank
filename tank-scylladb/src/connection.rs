@@ -9,8 +9,8 @@ use scylla::{
 };
 use std::{borrow::Cow, num::NonZeroUsize, ops::ControlFlow, pin::pin, sync::Arc, time::Duration};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowLabeled,
-    impl_executor_transaction,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result,
+    RowLabeled, impl_executor_transaction,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
@@ -77,10 +77,9 @@ impl Executor for ScyllaDBConnection {
             let mut paging_state = PagingState::start();
             loop {
                 let (query_result, paging_state_response) = match query.as_mut() {
-                    Query::Raw(raw) => {
-                        let sql = raw.sql.as_str();
+                    Query::Raw(RawQuery(sql)) => {
                         self.session
-                            .query_single_page(sql, &[], paging_state)
+                            .query_single_page(sql.as_str(), &[], paging_state)
                             .await?
                     }
                     Query::Prepared(prepared) => {
@@ -125,7 +124,7 @@ impl Executor for ScyllaDBConnection {
         stream! {
             let stream = match query.as_mut() {
                 Query::Raw(raw) => {
-                    let sql = raw.sql.as_str();
+                    let sql = raw.0.as_str();
                     self.session
                         .query_iter(sql, [])
                         .await?

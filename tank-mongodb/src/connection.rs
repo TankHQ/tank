@@ -1,13 +1,14 @@
 use crate::{
-    BatchPayload, DeletePayload, FindManyPayload, FindOnePayload, MongoDBDriver,
-    MongoDBTransaction, Payload, RowWrap, UpsertPayload,
+    BatchPayload, CreateCollectionPayload, DeletePayload, DropCollectionPayload,
+    DropDatabasePayload, FindManyPayload, FindOnePayload, InsertManyPayload, InsertOnePayload,
+    MongoDBDriver, MongoDBTransaction, Payload, RowWrap, UpsertPayload,
 };
 use async_stream::try_stream;
-use mongodb::{Client, Database, bson::Bson};
+use mongodb::{Client, Collection, Database, bson::Bson};
 use std::{borrow::Cow, future, i64};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, QueryType, Result,
-    RowsAffected,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowsAffected,
+    TableRef,
     stream::{Stream, TryStreamExt},
     truncate_long,
 };
@@ -25,13 +26,19 @@ impl MongoDBConnection {
             default_database,
         }
     }
-    pub(crate) fn database(&self, query: &Query<MongoDBDriver>) -> Database {
-        let schema = &query.metadata().table.schema;
+    pub fn database(&self, table: &TableRef) -> Database {
+        let schema = &table.schema;
         if !schema.is_empty() {
             self.client.database(&schema)
         } else {
             self.default_database.clone()
         }
+    }
+    pub(crate) fn collection(&self, table: &TableRef) -> Collection<RowWrap<'_>> {
+        if table.name.is_empty() {
+            log::error!("Tried to get a collection from a empty table");
+        }
+        self.database(table).collection(&table.name)
     }
 }
 
@@ -84,132 +91,115 @@ impl Executor for MongoDBConnection {
             };
         }
         let mut query = query.as_query();
-        let database = self.database(query.as_mut());
-        let metadata = query.as_mut().metadata();
-        let query_type = metadata.query_type;
-        let count = metadata.count;
-        let collection = database.collection::<RowWrap>(&metadata.table.name);
         try_stream! {
             let Query::Prepared(prepared) = query.as_mut() else {
                 Err(Error::msg(
-                    "Query is not the expected tank::Query::Prepared variant (MongoDB driver uses only the Prepared query object)",
+                    "Query is not the expected tank::Query::Prepared variant (MongoDB driver uses prepared)",
                 ))?;
                 return;
             };
-            let Some(query_type) = query_type else {
-                Err(Error::msg("Query type is missing from the query metadata"))?;
-                return;
-            };
             let payload = &prepared.get_payload();
-            match query_type {
-                QueryType::Select => {
-                    if count == Some(1) {
-                        let Payload::FindOne(FindOnePayload {
-                            filter: Bson::Document(filter),
-                            options,
-                            ..
-                        }) = &payload
-                        else {
-                            Err(Error::msg(format!(
-                                "Query is a select with count 1 but the payload {payload:?} is not a FindOne with a Bson::Document matcher"
-                            )))?;
-                            return;
-                        };
-                        match collection
-                            .find_one(filter.clone())
-                            .with_options(options.clone())
-                            .await
-                        {
-                            Ok(Some(v)) => {
-                                yield QueryResult::Row(match v.0 {
-                                    Cow::Borrowed(v) => v.clone(),
-                                    Cow::Owned(v) => v,
-                                })
-                            }
-                            Ok(None) => {}
-                            Err(e) => {
-                                Err(Error::msg(format!("{e}"))).context(make_context!(payload))?;
-                                return;
-                            }
-                        }
-                    } else {
-                        let Payload::FindMany(FindManyPayload {
-                            filter: Bson::Document(filter),
-                            options,
-                            ..
-                        }) = &payload
-                        else {
-                            Err(Error::msg(format!(
-                                "Query is a select with but the payload {payload:?} is not a Payload::Find with a Bson::Document matcher"
-                            )))?;
-                            return;
-                        };
-                        let mut stream = collection
-                            .find(filter.clone())
-                            .with_options(options.clone())
-                            .await
-                            .with_context(|| make_context!(payload))?;
-                        while let Some(result) = stream.try_next().await? {
-                            yield QueryResult::Row(match result.0 {
+            match payload {
+                Payload::Fragment(..) => {
+                    Err(Error::msg(format!(
+                        "Cannot run a query with fragment variant {payload:?}"
+                    )))?;
+                    return;
+                }
+                Payload::FindOne(FindOnePayload {
+                    table,
+                    filter: Bson::Document(filter),
+                    options,
+                    ..
+                }) => {
+                    let collection = self.collection(table);
+                    match collection
+                        .find_one(filter.clone())
+                        .with_options(options.clone())
+                        .await
+                    {
+                        Ok(Some(v)) => {
+                            yield QueryResult::Row(match v.0 {
                                 Cow::Borrowed(v) => v.clone(),
                                 Cow::Owned(v) => v,
-                            });
+                            })
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            Err(Error::msg(format!("{e}"))).context(make_context!(payload))?;
+                            return;
                         }
                     }
                 }
-                QueryType::InsertInto => {
-                    if count == Some(1) {
-                        let Payload::InsertOne(payload) = &payload else {
-                            Err(Error::msg(format!(
-                                "Query is a insert with count 1 but the payload {payload:?} is not the expected Payload::InsertOne variant"
-                            )))?;
-                            return;
-                        };
-                        let result = collection
-                            .insert_one(RowWrap(Cow::Borrowed(&payload.row)))
-                            .with_options(payload.options.clone())
-                            .await?;
-                        let last_affected_id = match result.inserted_id {
-                            Bson::Int32(v) => Some(v as i64),
-                            Bson::Int64(v) => Some(v),
-                            _ => None,
-                        };
-                        yield QueryResult::Affected(RowsAffected {
-                            rows_affected: Some(1),
-                            last_affected_id,
-                        });
-                    } else {
-                        let Payload::InsertMany(payload) = &payload else {
-                            Err(Error::msg(format!(
-                                "Query is a insert but the payload {payload:?} is not the expected Payload::InsertMany variant"
-                            )))?;
-                            return;
-                        };
-                        let len = payload.rows.len();
-                        collection
-                            .insert_many(payload.rows.iter().map(|v| RowWrap(Cow::Borrowed(v))))
-                            .with_options(payload.options.clone())
-                            .await
-                            .with_context(|| make_context!(payload))?;
-                        yield QueryResult::Affected(RowsAffected {
-                            rows_affected: Some(len as _),
-                            last_affected_id: None,
+                Payload::FindMany(FindManyPayload {
+                    table,
+                    filter: Bson::Document(filter),
+                    options,
+                    ..
+                }) => {
+                    let collection = self.collection(table);
+                    let mut stream = collection
+                        .find(filter.clone())
+                        .with_options(options.clone())
+                        .await
+                        .with_context(|| make_context!(payload))?;
+                    while let Some(result) = stream
+                        .try_next()
+                        .await
+                        .with_context(|| make_context!(payload))?
+                    {
+                        yield QueryResult::Row(match result.0 {
+                            Cow::Borrowed(v) => v.clone(),
+                            Cow::Owned(v) => v,
                         });
                     }
                 }
-                QueryType::Upsert => {
-                    let Payload::Upsert(UpsertPayload {
-                        filter: Bson::Document(filter),
-                        modifications,
-                        options,
-                        ..
-                    }) = &payload
-                    else {
-                        Err(Error::msg(format!(
-                            "Query is a upsert with count 1 but the payload {payload:?} is not the expected Payload::UpsertOne with a Bson::Document matcher"
-                        )))?;
-                        return;
+                Payload::InsertOne(InsertOnePayload {
+                    table,
+                    row,
+                    options,
+                    ..
+                }) => {
+                    let collection = self.collection(table);
+                    let result = collection
+                        .insert_one(RowWrap(Cow::Borrowed(row)))
+                        .with_options(options.clone())
+                        .await?;
+                    let last_affected_id = match result.inserted_id {
+                        Bson::Int32(v) => Some(v as i64),
+                        Bson::Int64(v) => Some(v),
+                        _ => None,
                     };
+                    yield QueryResult::Affected(RowsAffected {
+                        rows_affected: Some(1),
+                        last_affected_id,
+                    });
+                }
+                Payload::InsertMany(InsertManyPayload {
+                    table,
+                    rows,
+                    options,
+                    ..
+                }) => {
+                    let collection = self.collection(table);
+                    collection
+                        .insert_many(rows.iter().map(|v| RowWrap(Cow::Borrowed(v))))
+                        .with_options(options.clone())
+                        .await
+                        .with_context(|| make_context!(payload))?;
+                    yield QueryResult::Affected(RowsAffected {
+                        rows_affected: Some(rows.len() as _),
+                        last_affected_id: None,
+                    });
+                }
+                Payload::Upsert(UpsertPayload {
+                    table,
+                    filter: Bson::Document(filter),
+                    modifications,
+                    options,
+                    ..
+                }) => {
+                    let collection = self.collection(table);
                     let result = collection
                         .update_one(filter.clone(), modifications.clone())
                         .with_options(options.clone())
@@ -225,19 +215,15 @@ impl Executor for MongoDBConnection {
                         last_affected_id,
                     });
                 }
-                QueryType::DeleteFrom => {
-                    let Payload::Delete(DeletePayload {
-                        filter: Bson::Document(filter),
-                        options,
-                        ..
-                    }) = &payload
-                    else {
-                        Err(Error::msg(format!(
-                            "Query is a delete but the payload {payload:?} is not the expected Payload::Delete with a Bson::Document matcher"
-                        )))?;
-                        return;
-                    };
-                    let result = if count == Some(1) {
+                Payload::Delete(DeletePayload {
+                    table,
+                    filter: Bson::Document(filter),
+                    options,
+                    single,
+                    ..
+                }) => {
+                    let collection = self.collection(table);
+                    let result = if *single {
                         collection.delete_one(filter.clone())
                     } else {
                         collection.delete_many(filter.clone())
@@ -250,23 +236,7 @@ impl Executor for MongoDBConnection {
                         last_affected_id: None,
                     });
                 }
-                // There is no need for the following queries in MongoDB
-                QueryType::CreateTable => {}
-                QueryType::DropTable => {
-                    collection.drop().await.with_context(|| make_context!(payload))?;
-                }
-                QueryType::CreateSchema => {}
-                QueryType::DropSchema => {
-                    database.drop().await.with_context(|| make_context!(payload))?;
-                }
-                QueryType::Batch => {
-                    let Payload::Batch(BatchPayload { batch, options }) = &payload else {
-                        Err(Error::msg(format!(
-                            "Query is a batch with but the payload {} is not the expected Payload::Batch",
-                            truncate_long!(format!("{payload:?}"), true),
-                        )))?;
-                        return;
-                    };
+                Payload::Batch(BatchPayload { batch, options }) => {
                     let result = self
                         .client
                         .bulk_write(batch.iter().map(|v| v.as_write_models()).flatten())
@@ -284,6 +254,37 @@ impl Executor for MongoDBConnection {
                         ),
                         last_affected_id: None,
                     })
+                }
+                Payload::CreateCollection(CreateCollectionPayload { table, options, .. }) => {
+                    let database = self.database(table);
+                    database
+                        .create_collection(database.name())
+                        .with_options(options.clone())
+                        .await
+                        .with_context(|| make_context!(payload))?;
+                }
+                Payload::DropCollection(DropCollectionPayload { table }) => {
+                    let collection = self.collection(table);
+                    collection
+                        .drop()
+                        .await
+                        .with_context(|| make_context!(payload))?;
+                }
+                Payload::CreateDatabase(..) => {
+                    // No database creating needed (it is created automatically)
+                }
+                Payload::DropDatabase(DropDatabasePayload { table }) => {
+                    let database = self.database(table);
+                    database
+                        .drop()
+                        .await
+                        .with_context(|| make_context!(payload))?;
+                }
+                _ => {
+                    Err(Error::msg(format!(
+                        "Unexpected payload in the query {payload:?}"
+                    )))?;
+                    return;
                 }
             }
         }

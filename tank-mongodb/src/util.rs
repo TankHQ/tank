@@ -157,3 +157,11 @@ pub fn bson_to_value(bson: &Bson) -> Result<Value> {
         }
     })
 }
+
+pub fn bson_is_empty(bson: &Bson) -> bool {
+    match bson {
+        Bson::Document(document) => document.is_empty(),
+        Bson::Null => true,
+        _ => false,
+    }
+}

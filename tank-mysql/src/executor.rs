@@ -2,7 +2,7 @@ use crate::{MySQLDriver, MySQLPrepared, RowWrap};
 use async_stream::try_stream;
 use std::sync::Arc;
 use tank_core::{
-    AsQuery, Error, Executor, Query, Result,
+    AsQuery, Error, Executor, Query, RawQuery, Result,
     stream::{Stream, StreamExt, TryStreamExt},
 };
 
@@ -25,8 +25,8 @@ impl<T: mysql_async::prelude::Queryable> Executor for MySQLQueryable<T> {
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         try_stream! {
             match query.as_mut() {
-                Query::Raw(raw) => {
-                    let mut result = self.executor.query_iter(&raw.sql).await?;
+                Query::Raw(RawQuery(sql)) => {
+                    let mut result = self.executor.query_iter(sql.as_str()).await?;
                     let mut rows = 0;
                     while let Some(mut stream) = result.stream::<RowWrap>().await? {
                         while let Some(row) = stream.next().await.transpose()? {

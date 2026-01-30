@@ -4,7 +4,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     mem,
 };
-use tank_core::{AsValue, Error, Prepared, QueryMetadata, Result};
+use tank_core::{AsValue, Error, Prepared, Result};
 
 /// Prepared statement wrapper for ScyllaDB.
 ///
@@ -13,7 +13,6 @@ pub struct ScyllaDBPrepared {
     pub(crate) statement: PreparedStatement,
     pub(crate) params: Vec<ValueWrap>,
     pub(crate) index: u64,
-    pub(crate) metadata: QueryMetadata,
 }
 
 impl ScyllaDBPrepared {
@@ -22,7 +21,6 @@ impl ScyllaDBPrepared {
             statement,
             params: Vec::new(),
             index: 0,
-            metadata: Default::default(),
         }
     }
     pub(crate) fn take_params(&mut self) -> Result<Vec<ValueWrap>> {
@@ -57,14 +55,6 @@ impl Prepared for ScyllaDBPrepared {
         *target = value.as_value().into();
         self.index = index + 1;
         Ok(self)
-    }
-
-    fn metadata(&self) -> &QueryMetadata {
-        &self.metadata
-    }
-
-    fn metadata_mut(&mut self) -> &mut QueryMetadata {
-        &mut self.metadata
     }
 }
 

@@ -2,8 +2,8 @@ use crate::{ScyllaDBConnection, ScyllaDBDriver, ScyllaDBPrepared, ValueWrap};
 use scylla::statement::batch::Batch;
 use std::future;
 use tank_core::{
-    AsQuery, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query, Result, RowsAffected,
-    SqlWriter, Transaction,
+    AsQuery, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query, RawQuery, Result,
+    RowsAffected, SqlWriter, Transaction,
     future::Either,
     stream::{self, Stream},
     truncate_long,
@@ -58,9 +58,9 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
             query.as_mut()
         );
         match query.as_mut() {
-            Query::Raw(raw) => {
+            Query::Raw(RawQuery(sql)) => {
                 self.params.push(Default::default());
-                self.batch.append_statement(raw.sql.as_str());
+                self.batch.append_statement(sql.as_str());
             }
             Query::Prepared(prepared) => {
                 self.params

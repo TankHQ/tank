@@ -2,9 +2,8 @@ use crate::{
     PostgresConnection, PostgresDriver, PostgresPrepared, ValueWrap,
     util::stream_postgres_row_to_tank_row,
 };
-use std::mem;
 use tank_core::{
-    AsQuery, Error, Executor, Query, QueryResult, Result, Transaction,
+    AsQuery, Error, Executor, Query, QueryResult, RawQuery, Result, Transaction,
     future::{Either, TryFutureExt},
     stream::{Stream, TryStreamExt},
 };
@@ -41,10 +40,12 @@ impl<'c> Executor for PostgresTransaction<'c> {
         query: impl AsQuery<Self::Driver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
-        let mut owned = mem::take(query.as_mut());
-        stream_postgres_row_to_tank_row(async move || match &mut owned {
-            Query::Raw(sql) => {
-                let stream = self.0.query_raw(&sql.sql, Vec::<ValueWrap>::new()).await?;
+        stream_postgres_row_to_tank_row(async move || match query.as_mut() {
+            Query::Raw(RawQuery(sql)) => {
+                let stream = self
+                    .0
+                    .query_raw(sql.as_str(), Vec::<ValueWrap>::new())
+                    .await?;
                 Ok(Either::Left(stream))
             }
             Query::Prepared(prepared) => {

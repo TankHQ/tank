@@ -1,18 +1,14 @@
 use crate::{
-    AsValue, Driver, DynQuery, Error, Prepared, QueryMetadata, Result, RowLabeled, RowsAffected,
-    truncate_long,
+    AsValue, Driver, DynQuery, Error, Prepared, Result, RowLabeled, RowsAffected, truncate_long,
 };
 use std::fmt::{self, Display};
 
 #[derive(Default, Clone, Debug)]
-pub struct RawQuery {
-    pub sql: String,
-    pub metadata: QueryMetadata,
-}
+pub struct RawQuery(pub String);
 
 impl Display for RawQuery {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", truncate_long!(self.sql))
+        write!(f, "{}", truncate_long!(self.0))
     }
 }
 
@@ -28,10 +24,7 @@ pub enum Query<D: Driver> {
 impl<D: Driver> Query<D> {
     /// Create a raw query
     pub fn raw(value: String) -> Self {
-        Query::Raw(RawQuery {
-            sql: value,
-            metadata: Default::default(),
-        })
+        Query::Raw(RawQuery(value))
     }
     /// Create a prepared query
     pub fn prepared(value: D::Prepared) -> Self {
@@ -65,18 +58,6 @@ impl<D: Driver> Query<D> {
         };
         prepared.bind_index(value, index)?;
         Ok(self)
-    }
-    pub fn metadata(&self) -> &QueryMetadata {
-        match self {
-            Self::Raw(v) => &v.metadata,
-            Self::Prepared(v) => v.metadata(),
-        }
-    }
-    pub fn metadata_mut(&mut self) -> &mut QueryMetadata {
-        match self {
-            Self::Raw(v) => &mut v.metadata,
-            Self::Prepared(v) => v.metadata_mut(),
-        }
     }
     pub fn into_dyn(self) -> DynQuery {
         self.into()

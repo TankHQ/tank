@@ -18,7 +18,7 @@ use std::{
 };
 use tank_core::{
     AsQuery, Connection, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, Result, RowsAffected, Transaction,
+    QueryResult, RawQuery, Result, RowsAffected, Transaction,
     future::Either,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
@@ -64,7 +64,7 @@ impl Executor for PostgresConnection {
         let mut owned = mem::take(query.as_mut());
         match owned {
             Query::Raw(raw) => Either::Left(try_stream! {
-                let sql = &raw.sql;
+                let sql = &raw.0;
                 {
                     let stream = stream_postgres_simple_query_message_to_tank_query_result(
                         async move || self.client.simple_query_raw(sql).await.map_err(Into::into),
@@ -104,13 +104,13 @@ impl Executor for PostgresConnection {
         let owned = mem::take(query.as_mut());
         stream_postgres_row_to_tank_row(async move || {
             let row_stream = match owned {
-                Query::Raw(raw) => {
+                Query::Raw(RawQuery(sql)) => {
                     let stream = self
                         .client
-                        .query_raw(&raw.sql, Vec::<ValueWrap>::new())
+                        .query_raw(&sql, Vec::<ValueWrap>::new())
                         .await
                         .map_err(|e| Error::new(e).context(context.clone()))?;
-                    *query.as_mut() = Query::Raw(raw);
+                    *query.as_mut() = Query::raw(sql);
                     stream
                 }
                 Query::Prepared(mut prepared) => {

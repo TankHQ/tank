@@ -264,10 +264,10 @@ impl Executor for DuckDBConnection {
         let mut owned = mem::take(query.as_mut());
         let join = spawn_blocking(move || {
             match &mut owned {
-                Query::Raw(RawQuery { sql: value, .. }) => {
-                    let sql = unsafe { CString::from_vec_unchecked(mem::take(value).into_bytes()) };
-                    Self::do_run_unprepared(connection.load(Ordering::Relaxed), sql.as_c_str(), tx);
-                    *value = unsafe { String::from_utf8_unchecked(sql.into_bytes()) }
+                Query::Raw(RawQuery(sql)) => {
+                    let str = unsafe { CString::from_vec_unchecked(mem::take(sql).into_bytes()) };
+                    Self::do_run_unprepared(connection.load(Ordering::Relaxed), str.as_c_str(), tx);
+                    *sql = unsafe { String::from_utf8_unchecked(str.into_bytes()) }
                 }
                 Query::Prepared(query) => Self::do_run_prepared(query.statement(), tx),
             }

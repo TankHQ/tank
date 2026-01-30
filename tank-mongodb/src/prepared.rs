@@ -1,21 +1,21 @@
 use crate::Payload;
 use mongodb::bson::{Bson, Document};
 use std::fmt::{self, Display, Formatter, Write};
-use tank_core::{AsValue, Error, Prepared, QueryMetadata, Result, Value};
+use tank_core::{AsValue, Error, Prepared, Result, Value};
 
 #[derive(Default, Debug)]
 pub struct MongoDBPrepared {
     payload: Payload,
     pub(crate) params: Vec<Value>,
     pub(crate) index: u64,
-    pub(crate) metadata: QueryMetadata,
 }
 
 impl MongoDBPrepared {
-    pub fn new(metadata: QueryMetadata) -> Self {
-        MongoDBPrepared {
-            metadata,
-            ..Default::default()
+    pub fn new(payload: Payload) -> Self {
+        Self {
+            payload,
+            params: Default::default(),
+            index: Default::default(),
         }
     }
     pub fn get_payload(&self) -> &Payload {
@@ -25,7 +25,7 @@ impl MongoDBPrepared {
         self.payload.add_payload(payload)
     }
     pub fn current_bson(&mut self) -> Option<&mut Bson> {
-        self.payload.current_bson()
+        self.payload.current_bson_mut()
     }
     pub fn switch_to_document(&mut self) -> Option<&mut Document> {
         self.current_bson().map(|v| {
@@ -64,14 +64,8 @@ impl Prepared for MongoDBPrepared {
         self.index = index + 1;
         Ok(self)
     }
-    fn metadata(&self) -> &QueryMetadata {
-        &self.metadata
-    }
-    fn metadata_mut(&mut self) -> &mut QueryMetadata {
-        &mut self.metadata
-    }
     fn is_empty(&self) -> bool {
-        self.metadata.query_type.is_none()
+        self.payload.is_empty()
     }
 }
 
@@ -86,6 +80,10 @@ impl Display for MongoDBPrepared {
             Payload::InsertMany(..) => "insert many",
             Payload::Upsert(..) => "upsert",
             Payload::Delete(..) => "delete",
+            Payload::CreateCollection(..) => "create collection",
+            Payload::DropCollection(..) => "drop collection",
+            Payload::CreateDatabase(..) => "create database",
+            Payload::DropDatabase(..) => "drop database",
             Payload::Batch(..) => "batch",
         })?;
         f.write_char(')')?;

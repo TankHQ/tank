@@ -1,4 +1,4 @@
-use crate::{Driver, Prepared, Query, QueryMetadata, RawQuery};
+use crate::{Driver, Prepared, Query, RawQuery};
 use std::{
     any::Any,
     borrow::Cow,
@@ -14,10 +14,7 @@ pub enum DynQuery {
 
 impl DynQuery {
     pub fn new(value: String) -> Self {
-        Self::Raw(RawQuery {
-            sql: value,
-            metadata: Default::default(),
-        })
+        Self::Raw(RawQuery(value))
     }
     pub fn with_capacity(capacity: usize) -> Self {
         Self::new(String::with_capacity(capacity))
@@ -27,7 +24,7 @@ impl DynQuery {
             log::error!("DynQuery::buffer changed the query to raw, deleting the previous content");
             *self = Self::Raw(Default::default())
         }
-        let Self::Raw(RawQuery { sql: value, .. }) = self else {
+        let Self::Raw(RawQuery(value)) = self else {
             unreachable!();
         };
         value
@@ -40,7 +37,7 @@ impl DynQuery {
     }
     pub fn as_str<'s>(&'s self) -> Cow<'s, str> {
         match self {
-            Self::Raw(v) => Cow::Borrowed(&v.sql),
+            Self::Raw(RawQuery(sql)) => Cow::Borrowed(sql),
             Self::Prepared(v) => Cow::Owned(format!("{:?}", *v)),
         }
     }
@@ -52,26 +49,14 @@ impl DynQuery {
     }
     pub fn len(&self) -> usize {
         match self {
-            Self::Raw(v) => v.sql.len(),
+            Self::Raw(RawQuery(sql)) => sql.len(),
             Self::Prepared(..) => 0,
         }
     }
     pub fn is_empty(&self) -> bool {
         match self {
-            Self::Raw(v) => v.sql.is_empty(),
+            Self::Raw(RawQuery(sql)) => sql.is_empty(),
             Self::Prepared(..) => true,
-        }
-    }
-    pub fn metadata(&self) -> &QueryMetadata {
-        match self {
-            Self::Raw(v) => &v.metadata,
-            Self::Prepared(v) => v.metadata(),
-        }
-    }
-    pub fn metadata_mut(&mut self) -> &mut QueryMetadata {
-        match self {
-            Self::Raw(v) => &mut v.metadata,
-            Self::Prepared(v) => v.metadata_mut(),
         }
     }
 

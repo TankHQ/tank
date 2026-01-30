@@ -1,4 +1,4 @@
-use crate::{AsValue, QueryMetadata, Result};
+use crate::{AsValue, Result};
 use std::{
     any::Any,
     fmt::{Debug, Display},
@@ -31,10 +31,6 @@ pub trait Prepared: Any + Send + Sync + Display + Debug {
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self>
     where
         Self: Sized;
-    /// Get QueryMetadata
-    fn metadata(&self) -> &QueryMetadata;
-    /// Get mutable QueryMetadata
-    fn metadata_mut(&mut self) -> &mut QueryMetadata;
     /// Returns true if self has no meaningfull value. The meaning depends on the driver.
     fn is_empty(&self) -> bool {
         false

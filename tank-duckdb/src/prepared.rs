@@ -8,7 +8,7 @@ use std::{
     ffi::c_void,
     fmt::{self, Display},
 };
-use tank_core::{AsValue, Error, Prepared, QueryMetadata, Result, Value, error_message_from_ptr};
+use tank_core::{AsValue, Error, Prepared, Result, Value, error_message_from_ptr};
 
 /// Prepared statement wrapper for DuckDB.
 ///
@@ -17,14 +17,12 @@ use tank_core::{AsValue, Error, Prepared, QueryMetadata, Result, Value, error_me
 pub struct DuckDBPrepared {
     pub(crate) statement: CBox<duckdb_prepared_statement>,
     pub(crate) index: u64,
-    pub(crate) metadata: QueryMetadata,
 }
 impl DuckDBPrepared {
     pub(crate) fn new(statement: CBox<duckdb_prepared_statement>) -> Self {
         Self {
             statement: statement.into(),
             index: 1,
-            metadata: Default::default(),
         }
     }
     pub(crate) fn statement(&self) -> duckdb_prepared_statement {
@@ -178,14 +176,6 @@ impl Prepared for DuckDBPrepared {
             self.index = index + 1;
             Ok(self)
         }
-    }
-
-    fn metadata(&self) -> &QueryMetadata {
-        &self.metadata
-    }
-
-    fn metadata_mut(&mut self) -> &mut QueryMetadata {
-        &mut self.metadata
     }
 }
 

@@ -7,7 +7,7 @@ use std::{
     os::raw::{c_char, c_void},
 };
 use tank_core::{
-    DynQuery, AsValue, Context, Error, Fragment, Prepared, QueryMetadata, Result, SqlWriter, Value,
+    AsValue, Context, DynQuery, Error, Fragment, Prepared, Result, SqlWriter, Value,
     error_message_from_ptr, truncate_long,
 };
 
@@ -18,7 +18,6 @@ use tank_core::{
 pub struct SQLitePrepared {
     pub(crate) statement: CBox<*mut sqlite3_stmt>,
     pub(crate) index: u64,
-    pub(crate) metadata: QueryMetadata,
 }
 
 impl SQLitePrepared {
@@ -27,7 +26,6 @@ impl SQLitePrepared {
         Self {
             statement: statement.into(),
             index: 1,
-            metadata: Default::default(),
         }
     }
     pub(crate) fn statement(&self) -> *mut sqlite3_stmt {
@@ -265,14 +263,6 @@ impl Prepared for SQLitePrepared {
             self.index = index as u64 + 1;
             Ok(self)
         }
-    }
-
-    fn metadata(&self) -> &QueryMetadata {
-        &self.metadata
-    }
-
-    fn metadata_mut(&mut self) -> &mut QueryMetadata {
-        &mut self.metadata
     }
 }
 

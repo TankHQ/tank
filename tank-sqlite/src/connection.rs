@@ -16,8 +16,9 @@ use std::{
     },
 };
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Prepared, Query, QueryResult, Result,
-    RowLabeled, RowsAffected, error_message_from_ptr, send_value, stream::Stream, truncate_long,
+    AsQuery, Connection, Error, ErrorContext, Executor, Prepared, Query, QueryResult, RawQuery,
+    Result, RowLabeled, RowsAffected, error_message_from_ptr, send_value, stream::Stream,
+    truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -211,8 +212,8 @@ impl Executor for SQLiteConnection {
         let mut owned = mem::take(query.as_mut());
         let join = spawn_blocking(move || {
             match &mut owned {
-                Query::Raw(query) => {
-                    Self::do_run_unprepared(connection.load(Ordering::Relaxed), &query.sql, tx);
+                Query::Raw(RawQuery(sql)) => {
+                    Self::do_run_unprepared(connection.load(Ordering::Relaxed), sql, tx);
                 }
                 Query::Prepared(prepared) => {
                     Self::do_run_prepared(

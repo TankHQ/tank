@@ -81,14 +81,13 @@ pub trait Entity {
             }
             if !executor.accepts_multiple_statements() && !query.is_empty() {
                 let mut q = query.into_query(executor.driver());
-                executor.execute(&mut q).boxed().await?;
+                executor.execute(&mut q).await?;
                 // To reuse the allocated buffer
                 query = q.into();
                 query.buffer().clear();
             }
             writer.write_create_table::<Self>(&mut query, if_not_exists);
-            // TODO: Remove boxed() once https://github.com/rust-lang/rust/issues/100013 is fixed
-            executor.execute(query).boxed().await.map(|_| ())
+            executor.execute(query).await.map(|_| ())
         }
     }
 
@@ -112,15 +111,14 @@ pub trait Entity {
             if drop_schema && !Self::table().schema.is_empty() {
                 if !executor.accepts_multiple_statements() {
                     let mut q = query.into_query(executor.driver());
-                    executor.execute(&mut q).boxed().await?;
+                    executor.execute(&mut q).await?;
                     // To reuse the allocated buffer
                     query = q.into();
                     query.buffer().clear();
                 }
                 writer.write_drop_schema::<Self>(&mut query, true);
             }
-            // TODO: Remove boxed() once https://github.com/rust-lang/rust/issues/100013 is fixed
-            executor.execute(query).boxed().await.map(|_| ())
+            executor.execute(query).await.map(|_| ())
         }
     }
 
