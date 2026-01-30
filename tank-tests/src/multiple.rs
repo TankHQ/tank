@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
-use tank::{DynQuery, AsValue, QueryBuilder};
+use tank::{AsValue, DynQuery, QueryBuilder};
 use tank::{Driver, Entity, Executor, QueryResult, SqlWriter, stream::TryStreamExt};
 use tokio::sync::Mutex;
 
@@ -84,7 +84,7 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
         &QueryBuilder::new()
             .select([Three::string])
             .from(Three::table())
-            .where_condition(true),
+            .where_expr(true),
     );
     // 10
     writer.write_insert(
@@ -102,7 +102,7 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
         &QueryBuilder::new()
             .select([One::a1, One::string, One::c1])
             .from(One::table())
-            .where_condition(true),
+            .where_expr(true),
     );
     // 12
     writer.write_select(
@@ -110,7 +110,7 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
         &QueryBuilder::new()
             .select([Two::a2, Two::string])
             .from(Two::table())
-            .where_condition(true),
+            .where_expr(true),
     );
     query.push_str("            \t    \t\t  \n \n \n \t    \n\n\n ");
     let result = executor

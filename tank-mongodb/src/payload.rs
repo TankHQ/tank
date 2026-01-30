@@ -3,9 +3,9 @@ use mongodb::{
     Namespace,
     bson::{Bson, Document},
     options::{
-        BulkWriteOptions, CreateCollectionOptions, DeleteManyModel, DeleteOptions, FindOneOptions,
-        FindOptions, InsertManyOptions, InsertOneModel, InsertOneOptions, UpdateModifications,
-        UpdateOneModel, UpdateOptions, WriteModel,
+        AggregateOptions, BulkWriteOptions, CreateCollectionOptions, DeleteManyModel,
+        DeleteOptions, FindOneOptions, FindOptions, InsertManyOptions, InsertOneModel,
+        InsertOneOptions, UpdateModifications, UpdateOneModel, UpdateOptions, WriteModel,
     },
 };
 use std::borrow::Cow;
@@ -77,6 +77,13 @@ pub struct DropDatabasePayload {
 }
 
 #[derive(Default, Debug)]
+pub struct AggregatePayload {
+    pub(crate) table: TableRef,
+    pub(crate) pipeline: Bson,
+    pub(crate) options: AggregateOptions,
+}
+
+#[derive(Default, Debug)]
 pub struct BatchPayload {
     pub(crate) batch: Vec<Payload>,
     pub(crate) options: BulkWriteOptions,
@@ -95,6 +102,7 @@ pub enum Payload {
     DropCollection(DropCollectionPayload),
     CreateDatabase(CreateDatabasePayload),
     DropDatabase(DropDatabasePayload),
+    Aggregate(AggregatePayload),
     Batch(BatchPayload),
 }
 impl Payload {
@@ -111,6 +119,7 @@ impl Payload {
             Payload::DropCollection(payload) => &payload.table,
             Payload::CreateDatabase(payload) => &payload.table,
             Payload::DropDatabase(payload) => &payload.table,
+            Payload::Aggregate(payload) => &payload.table,
             Payload::Batch(..) => return Namespace::new("", ""),
         };
         Namespace::new(table.schema.to_string(), table.name.to_string())
@@ -128,6 +137,7 @@ impl Payload {
             Payload::DropCollection(..) => None,
             Payload::CreateDatabase(..) => None,
             Payload::DropDatabase(..) => None,
+            Payload::Aggregate(v) => Some(&v.pipeline),
             Payload::Batch(BatchPayload { batch, .. }) => {
                 batch.last().and_then(Payload::current_bson)
             }
@@ -146,6 +156,7 @@ impl Payload {
             Payload::DropCollection(..) => None,
             Payload::CreateDatabase(..) => None,
             Payload::DropDatabase(..) => None,
+            Payload::Aggregate(v) => Some(&mut v.pipeline),
             Payload::Batch(BatchPayload { batch, .. }) => {
                 batch.last_mut().and_then(Payload::current_bson_mut)
             }
@@ -153,7 +164,7 @@ impl Payload {
     }
     pub fn add_payload(&mut self, payload: Payload) -> Result<()> {
         match self {
-            Payload::Fragment(..) => *self = payload,
+            Payload::Fragment(bson) if !matches!(bson, Bson::Document(..)) => *self = payload,
             Payload::CreateCollection(CreateCollectionPayload { table, .. })
                 if *table.schema == payload.table().schema =>
             {
@@ -257,6 +268,7 @@ impl Payload {
             Payload::DropCollection(..) => None,
             Payload::CreateDatabase(..) => None,
             Payload::DropDatabase(..) => None,
+            Payload::Aggregate(..) => None,
             Payload::Batch(..) => None,
         }
     }
@@ -285,6 +297,7 @@ impl Payload {
             Payload::DropCollection(payload) => payload.table.clone(),
             Payload::CreateDatabase(payload) => payload.table.clone(),
             Payload::DropDatabase(payload) => payload.table.clone(),
+            Payload::Aggregate(payload) => payload.table.clone(),
             Payload::Batch(payload) => payload.batch.last().map(Payload::table).unwrap_or_default(),
         }
     }
@@ -352,6 +365,12 @@ impl From<CreateDatabasePayload> for Payload {
 impl From<DropDatabasePayload> for Payload {
     fn from(value: DropDatabasePayload) -> Self {
         Payload::DropDatabase(value)
+    }
+}
+
+impl From<AggregatePayload> for Payload {
+    fn from(value: AggregatePayload) -> Self {
+        Payload::Aggregate(value)
     }
 }
 

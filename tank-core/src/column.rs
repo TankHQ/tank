@@ -149,9 +149,8 @@ impl Expression for ColumnRef {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         writer.write_column_ref(context, out, self);
     }
-
-    fn matches(&self, matcher: &mut dyn ExpressionMatcher) -> bool {
-        matcher.match_column(self)
+    fn matches(&self, matcher: &mut dyn ExpressionMatcher, writer: &dyn SqlWriter) -> bool {
+        matcher.match_column(writer, self)
     }
 }
 
@@ -166,7 +165,7 @@ impl Expression for ColumnDef {
         writer.write_column_ref(context, out, &self.column_ref);
     }
 
-    fn matches(&self, matcher: &mut dyn ExpressionMatcher) -> bool {
-        matcher.match_column(&self.column_ref)
+    fn matches(&self, matcher: &mut dyn ExpressionMatcher, writer: &dyn SqlWriter) -> bool {
+        matcher.match_column(writer, &self.column_ref)
     }
 }

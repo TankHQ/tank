@@ -45,7 +45,7 @@ mod tests {
             &QueryBuilder::new()
                 .select([TheTable::second_column, TheTable::some_col])
                 .from(TheTable::table())
-                .where_condition(expr!(
+                .where_expr(expr!(
                     TheTable::second_column == "So%" as LIKE
                         || TheTable::some_col >= 0 && TheTable::some_col < 10
                 )),

@@ -1,5 +1,5 @@
 use crate::{
-    BatchPayload, CreateCollectionPayload, DeletePayload, DropCollectionPayload,
+    AggregatePayload, BatchPayload, CreateCollectionPayload, DeletePayload, DropCollectionPayload,
     DropDatabasePayload, FindManyPayload, FindOnePayload, InsertManyPayload, InsertOnePayload,
     MongoDBDriver, MongoDBTransaction, Payload, RowWrap, UpsertPayload,
 };
@@ -237,7 +237,57 @@ impl Executor for MongoDBConnection {
                         last_affected_id: None,
                     });
                 }
-                Payload::Batch(BatchPayload { batch, options }) => {
+                Payload::CreateCollection(CreateCollectionPayload { table, options, .. }) => {
+                    let database = self.database(table);
+                    database
+                        .create_collection(table.name.to_string())
+                        .with_options(options.clone())
+                        .await
+                        .with_context(|| make_context!(payload))?;
+                }
+                Payload::DropCollection(DropCollectionPayload { table, .. }) => {
+                    let collection = self.collection(table);
+                    collection
+                        .drop()
+                        .await
+                        .with_context(|| make_context!(payload))?;
+                }
+                Payload::CreateDatabase(..) => {
+                    // No database creating needed (it is created automatically)
+                }
+                Payload::DropDatabase(DropDatabasePayload { table, .. }) => {
+                    let database = self.database(table);
+                    database
+                        .drop()
+                        .await
+                        .with_context(|| make_context!(payload))?;
+                }
+                Payload::Aggregate(AggregatePayload {
+                    table,
+                    pipeline: Bson::Document(pipeline),
+                    options,
+                    ..
+                }) => {
+                    let database = self.database(table);
+                    let mut stream = database
+                        .aggregate([pipeline.clone()])
+                        .with_options(options.clone())
+                        .await
+                        .with_context(|| make_context!(payload))?;
+                    while let Some(result) = stream
+                        .try_next()
+                        .await
+                        .with_context(|| make_context!(payload))?
+                    {
+                        let row: RowWrap =
+                            result.try_into().with_context(|| make_context!(payload))?;
+                        yield QueryResult::Row(match row.0 {
+                            Cow::Borrowed(v) => v.clone(),
+                            Cow::Owned(v) => v,
+                        });
+                    }
+                }
+                Payload::Batch(BatchPayload { batch, options, .. }) => {
                     let result = self
                         .client
                         .bulk_write(batch.iter().map(|v| v.as_write_models()).flatten())
@@ -255,31 +305,6 @@ impl Executor for MongoDBConnection {
                         ),
                         last_affected_id: None,
                     })
-                }
-                Payload::CreateCollection(CreateCollectionPayload { table, options, .. }) => {
-                    let database = self.database(table);
-                    database
-                        .create_collection(table.name.to_string())
-                        .with_options(options.clone())
-                        .await
-                        .with_context(|| make_context!(payload))?;
-                }
-                Payload::DropCollection(DropCollectionPayload { table }) => {
-                    let collection = self.collection(table);
-                    collection
-                        .drop()
-                        .await
-                        .with_context(|| make_context!(payload))?;
-                }
-                Payload::CreateDatabase(..) => {
-                    // No database creating needed (it is created automatically)
-                }
-                Payload::DropDatabase(DropDatabasePayload { table }) => {
-                    let database = self.database(table);
-                    database
-                        .drop()
-                        .await
-                        .with_context(|| make_context!(payload))?;
                 }
                 _ => {
                     Err(Error::msg(format!(

@@ -188,7 +188,7 @@ pub async fn times<E: Executor>(executor: &mut E) {
             QueryBuilder::new()
                 .select(cols!(Times::timestamp_1 DESC))
                 .from(Times::table())
-                .where_condition(expr!(Times::timestamp_2 > ?))
+                .where_expr(expr!(Times::timestamp_2 > ?))
                 .build(&executor.driver())
                 .into(),
         )
@@ -268,7 +268,7 @@ pub async fn times<E: Executor>(executor: &mut E) {
             QueryBuilder::new()
                 .select(cols!(Times::timestamp_2 ASC))
                 .from(Times::table())
-                .where_condition(expr!(Times::timestamp_1 <= ?))
+                .where_expr(expr!(Times::timestamp_1 <= ?))
                 .build(&executor.driver())
                 .into(),
         )
@@ -311,7 +311,7 @@ pub async fn times<E: Executor>(executor: &mut E) {
             QueryBuilder::new()
                 .select(cols!(Times::time_1 DESC))
                 .from(Times::table())
-                .where_condition(true)
+                .where_expr(true)
                 .build(&executor.driver())
                 .into(),
         )

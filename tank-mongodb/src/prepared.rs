@@ -84,6 +84,7 @@ impl Display for MongoDBPrepared {
             Payload::DropCollection(..) => "drop collection",
             Payload::CreateDatabase(..) => "create database",
             Payload::DropDatabase(..) => "drop database",
+            Payload::Aggregate(..) => "aggregate",
             Payload::Batch(..) => "batch",
         })?;
         f.write_char(')')?;

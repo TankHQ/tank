@@ -108,7 +108,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
             QueryBuilder::new()
                 .select(cols!(Product::id, Product::name, Product::price ASC))
                 .from(Product::table())
-                .where_condition(expr!(Product::stock > 0))
+                .where_expr(expr!(Product::stock > 0))
                 .build(&executor.driver()),
         )
         .map(|r| r.and_then(Product::from_row))
@@ -187,7 +187,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
             QueryBuilder::new()
                 .select(cols!(COUNT(*)))
                 .from(User::table())
-                .where_condition(true)
+                .where_expr(true)
                 .limit(Some(1))
                 .build(&executor.driver())
         )
@@ -279,7 +279,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
                     User INNER JOIN Cart ON User::id == Cart::user
                         JOIN Product ON Cart::product == Product::id
                 ))
-                .where_condition(true)
+                .where_expr(true)
                 .build(&executor.driver()),
         )
         .map_ok(Carts::from_row)

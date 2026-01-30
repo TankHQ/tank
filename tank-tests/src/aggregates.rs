@@ -63,7 +63,7 @@ pub async fn aggregates<E: Executor>(executor: &mut E) {
                 QueryBuilder::new()
                     .select(cols!(COUNT(*), SUM(Values::value)))
                     .from(Values::table())
-                    .where_condition(true)
+                    .where_expr(true)
                     .build(&executor.driver())
             )
         );
@@ -101,7 +101,7 @@ pub async fn aggregates<E: Executor>(executor: &mut E) {
                     QueryBuilder::new()
                         .select(cols!(*))
                         .from(Values::table())
-                        .where_condition(true)
+                        .where_expr(true)
                         .build(&executor.driver())
                 )
             );

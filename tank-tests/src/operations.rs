@@ -141,7 +141,7 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
         &QueryBuilder::new()
             .select(RadioLog::columns())
             .from(RadioLog::table())
-            .where_condition(true)
+            .where_expr(true)
             .limit(Some(50)),
     );
     {
@@ -281,7 +281,7 @@ pub async fn advanced_operations<E: Executor>(executor: &mut E) -> Result<()> {
                     RadioLog::message,
                 ))
                 .from(join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operator))
-                .where_condition(expr!(
+                .where_expr(expr!(
                     // X != Y as LIKE => X NOT LIKE Y
                     Operator::is_certified && RadioLog::message != "Radio check%" as LIKE
                 ))

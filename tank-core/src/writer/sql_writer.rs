@@ -1093,7 +1093,7 @@ pub trait SqlWriter: Send {
             columns.clone(),
             |out, col| {
                 col.write_query(self, &mut context, out);
-                has_order_by = has_order_by || col.matches(&mut IsOrdered);
+                has_order_by = has_order_by || col.matches(&mut IsOrdered, self);
             },
             ", ",
         );
@@ -1103,8 +1103,8 @@ pub trait SqlWriter: Send {
             &mut context.switch_fragment(Fragment::SqlSelectFrom).current,
             out,
         );
-        if let Some(condition) = query.get_where_condition()
-            && !condition.matches(&mut IsTrue)
+        if let Some(condition) = query.get_where()
+            && !condition.matches(&mut IsTrue, self)
         {
             out.push_str("\nWHERE ");
             condition.write_query(
@@ -1113,14 +1113,37 @@ pub trait SqlWriter: Send {
                 out,
             );
         }
-        if has_order_by {
-            out.push_str("\nORDER BY ");
-            let mut order_context = context.switch_fragment(Fragment::SqlSelectOrderBy);
+        let mut group_by = query.get_group_by().peekable();
+        if !group_by.peek().is_some() {
+            out.push_str("\nGROUP BY ");
+            let mut context = context.switch_fragment(Fragment::SqlSelectGroupBy);
             separated_by(
                 out,
-                columns.into_iter().filter(|v| v.matches(&mut IsOrdered)),
+                group_by,
                 |out, col| {
-                    col.write_query(self, &mut order_context.current, out);
+                    col.write_query(self, &mut context.current, out);
+                },
+                ", ",
+            );
+        }
+        if let Some(having) = query.get_having() {
+            out.push_str("\nHAVING ");
+            having.write_query(
+                self,
+                &mut context.switch_fragment(Fragment::SqlSelectWhere).current,
+                out,
+            );
+        }
+        if has_order_by {
+            out.push_str("\nORDER BY ");
+            let mut context = context.switch_fragment(Fragment::SqlSelectOrderBy);
+            separated_by(
+                out,
+                columns
+                    .into_iter()
+                    .filter(|v| v.matches(&mut IsOrdered, self)),
+                |out, col| {
+                    col.write_query(self, &mut context.current, out);
                 },
                 ", ",
             );

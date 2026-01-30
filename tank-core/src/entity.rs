@@ -163,7 +163,7 @@ pub trait Entity {
         let builder = QueryBuilder::new()
             .select(Self::columns())
             .from(Self::table())
-            .where_condition(condition)
+            .where_expr(condition)
             .limit(limit);
         let writer = executor.driver().sql_writer();
         let mut query = DynQuery::default();
@@ -200,7 +200,7 @@ pub trait Entity {
         let builder = QueryBuilder::new()
             .select(Self::columns())
             .from(Self::table())
-            .where_condition(condition)
+            .where_expr(condition)
             .limit(limit);
         executor
             .fetch(builder.build(&executor.driver()))

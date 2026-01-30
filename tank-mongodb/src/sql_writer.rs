@@ -1,5 +1,5 @@
 use crate::{
-    BatchPayload, CreateCollectionPayload, CreateDatabasePayload, DeletePayload,
+    AggregatePayload, BatchPayload, CreateCollectionPayload, CreateDatabasePayload, DeletePayload,
     DropCollectionPayload, DropDatabasePayload, FindManyPayload, FindOnePayload, InsertManyPayload,
     InsertOnePayload, IsFieldCondition, MongoDBDriver, MongoDBPrepared, Payload, RowWrap,
     UpsertPayload, value_to_bson,
@@ -8,15 +8,15 @@ use mongodb::{
     Namespace,
     bson::{self, Binary, Bson, Document, doc, spec::BinarySubtype},
     options::{
-        CreateCollectionOptions, DeleteOptions, FindOneOptions, FindOptions, InsertManyOptions,
-        InsertOneOptions, UpdateModifications, UpdateOptions,
+        AggregateOptions, CreateCollectionOptions, DeleteOptions, FindOneOptions, FindOptions,
+        InsertManyOptions, InsertOneOptions, UpdateModifications, UpdateOptions,
     },
 };
 use std::{borrow::Cow, collections::HashMap, f64, iter, mem};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, DataSet, DynQuery, Entity, ErrorContext,
-    Expression, Fragment, Interval, IsFalse, IsTrue, Result, SelectQuery, SqlWriter, TableRef,
-    Value, print_timer,
+    Expression, Fragment, Interval, IsAggregateFunction, IsFalse, IsTrue, Result, SelectQuery,
+    SqlWriter, TableRef, Value, print_timer, truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -103,8 +103,8 @@ impl MongoDBSqlWriter {
             BinaryOpType::NotEqual => "$ne",
             BinaryOpType::Less => "$lt",
             BinaryOpType::Greater => "$gt",
-            BinaryOpType::LessEqual => "$lte",
-            BinaryOpType::GreaterEqual => "$gte",
+            BinaryOpType::LessEqual => "$le",
+            BinaryOpType::GreaterEqual => "$ge",
             BinaryOpType::And => "$and",
             BinaryOpType::Or => "$or",
             BinaryOpType::Alias => "",
@@ -121,18 +121,18 @@ impl MongoDBSqlWriter {
         out: &mut DynQuery,
         condition: impl Expression,
     ) {
-        if condition.matches(&mut IsFalse)
+        if condition.matches(&mut IsFalse, self)
             && let Some(prepared) = out.as_prepared::<MongoDBDriver>()
             && let Some(target) = prepared.current_bson()
         {
             *target = Bson::Document(Self::make_unmatchable())
-        } else if condition.matches(&mut IsTrue)
+        } else if condition.matches(&mut IsTrue, self)
             && let Some(prepared) = out.as_prepared::<MongoDBDriver>()
             && let Some(target) = prepared.current_bson()
         {
             *target = Bson::Document(Default::default());
         } else if let matcher = &mut IsFieldCondition::new()
-            && condition.matches(matcher)
+            && condition.matches(matcher, self)
             && let Some(prepared) = out.as_prepared::<MongoDBDriver>()
             && let Some(target) = prepared.current_bson()
         {
@@ -503,7 +503,7 @@ impl SqlWriter for MongoDBSqlWriter {
             else {
                 // Unreachable
                 log::error!(
-                    "Unexpected error while rendering the lhs of the binary expression, the query does not have a current bson"
+                    "Unexpected error while rendering the lhs of the binary expression, failed to get the bson object"
                 );
                 return;
             };
@@ -519,7 +519,7 @@ impl SqlWriter for MongoDBSqlWriter {
             else {
                 // Unreachable
                 log::error!(
-                    "Unexpected error while rendering the rhs of the binary expression, the query does not have a current bson"
+                    "Unexpected error while rendering the rhs of the binary expression, failed to get the bson object"
                 );
                 return;
             };
@@ -566,25 +566,26 @@ impl SqlWriter for MongoDBSqlWriter {
             return;
         };
         match function {
-            "ABS" => document.insert("$abs", arg),
-            "ACOS" => document.insert("$acos", arg),
-            "ASIN" => document.insert("$asin", arg),
-            "ATAN" => document.insert("$atan", arg),
-            "ATAN2" => document.insert("$atan2", arg),
-            "AVG" => document.insert("$atan2", arg),
-            "CEIL" => document.insert("$ceil", arg),
-            "COS" => document.insert("$cos", arg),
-            "EXP" => document.insert("$exp", arg),
-            "FLOOR" => document.insert("$floor", arg),
-            "LOG" => document.insert("$ln", arg),
-            "LOG10" => document.insert("$log", arg),
-            "MAX" => document.insert("$max", arg),
-            "MIN" => document.insert("$min", arg),
-            "POW" => document.insert("$pow", arg),
-            "ROUND" => document.insert("$round", arg),
-            "SIN" => document.insert("$sin", arg),
-            "SQRT" => document.insert("$sqrt", arg),
-            "TAN" => document.insert("$tan", arg),
+            s if s.eq_ignore_ascii_case("abs") => document.insert("$abs", arg),
+            s if s.eq_ignore_ascii_case("acos") => document.insert("$acos", arg),
+            s if s.eq_ignore_ascii_case("asin") => document.insert("$asin", arg),
+            s if s.eq_ignore_ascii_case("atan") => document.insert("$atan", arg),
+            s if s.eq_ignore_ascii_case("atan2") => document.insert("$atan2", arg),
+            s if s.eq_ignore_ascii_case("avg") => document.insert("$avg", arg),
+            s if s.eq_ignore_ascii_case("ceil") => document.insert("$ceil", arg),
+            s if s.eq_ignore_ascii_case("cos") => document.insert("$cos", arg),
+            s if s.eq_ignore_ascii_case("count") => document.insert("$count", arg),
+            s if s.eq_ignore_ascii_case("exp") => document.insert("$exp", arg),
+            s if s.eq_ignore_ascii_case("floor") => document.insert("$floor", arg),
+            s if s.eq_ignore_ascii_case("log") => document.insert("$ln", arg),
+            s if s.eq_ignore_ascii_case("log10") => document.insert("$log", arg),
+            s if s.eq_ignore_ascii_case("max") => document.insert("$max", arg),
+            s if s.eq_ignore_ascii_case("min") => document.insert("$min", arg),
+            s if s.eq_ignore_ascii_case("pow") => document.insert("$pow", arg),
+            s if s.eq_ignore_ascii_case("round") => document.insert("$round", arg),
+            s if s.eq_ignore_ascii_case("sin") => document.insert("$sin", arg),
+            s if s.eq_ignore_ascii_case("sqrt") => document.insert("$sqrt", arg),
+            s if s.eq_ignore_ascii_case("tan") => document.insert("$tan", arg),
             _ => None,
         };
     }
@@ -655,38 +656,80 @@ impl SqlWriter for MongoDBSqlWriter {
         Self: Sized,
         Data: DataSet + 'a,
     {
-        let (Some(table), Some(condition)) = (query.get_from(), query.get_where_condition()) else {
+        let (Some(table), Some(condition)) = (query.get_from(), query.get_where()) else {
             log::error!("The query does not have the FROM or WHERE part");
             return;
         };
         let table = table.table_ref();
         let name = table.full_name();
         let limit = query.get_limit();
-        Self::prepare_query(
-            out,
-            if limit == Some(1) {
-                FindOnePayload {
-                    table,
-                    filter: Default::default(),
-                    options: FindOneOptions::builder()
-                        .comment(Bson::String(format!("Tank: select one entity from {name}")))
-                        .build(),
-                }
-                .into()
-            } else {
-                FindManyPayload {
-                    table,
-                    filter: Default::default(),
-                    options: FindOptions::builder()
-                        .comment(Bson::String(format!("Tank: select entities from {name}")))
-                        .limit(limit.map(|v| v as _))
-                        .build(),
-                }
-                .into()
-            },
-        );
-        let mut context = Context::fragment(Fragment::SqlSelectWhere);
-        self.write_filter_expression(&mut context, out, condition);
+        let mut group_by = query.get_group_by().peekable();
+        let mut is_aggregate = group_by.peek().is_some();
+        let mut projection = Document::new();
+        let mut context = Context::fragment(Fragment::SqlSelect);
+        let mut group = Document::new();
+        for column in query.get_select() {
+            let mut query = Self::make_prepared();
+            column.write_query(self, &mut context, &mut query);
+            let column_name = column.as_written();
+            let Some(bson) = query
+                .as_prepared::<MongoDBDriver>()
+                .and_then(MongoDBPrepared::current_bson)
+                .map(mem::take)
+            else {
+                // Unreachable
+                log::error!(
+                    "Unexpected error while rendering the column {} in select query, failed to get the bson object",
+                    truncate_long!(&column_name, true)
+                );
+                return;
+            };
+            if column.matches(&mut IsAggregateFunction, self) {
+                group.insert(column_name.clone(), bson.clone());
+                is_aggregate = true;
+            } else if is_aggregate {
+                group
+                    .entry("_id".into())
+                    .or_insert(Document::new().into())
+                    .as_document_mut()
+                    .expect("Field _id should be a document")
+                    .insert(column_name.clone(), bson.clone());
+            }
+            projection.insert(column_name, bson);
+        }
+        let payload: Payload = if is_aggregate {
+            AggregatePayload {
+                table,
+                pipeline: Default::default(),
+                options: AggregateOptions::builder()
+                    .comment(Bson::String(format!("Tank: aggregate on {name}")))
+                    .build(),
+            }
+            .into()
+        } else if limit == Some(1) {
+            FindOnePayload {
+                table,
+                filter: Default::default(),
+                options: FindOneOptions::builder()
+                    .comment(Bson::String(format!("Tank: select one entity from {name}")))
+                    .projection(Some(projection))
+                    .build(),
+            }
+            .into()
+        } else {
+            FindManyPayload {
+                table,
+                filter: Default::default(),
+                options: FindOptions::builder()
+                    .comment(Bson::String(format!("Tank: select entities from {name}")))
+                    .limit(limit.map(|v| v as _))
+                    .build(),
+            }
+            .into()
+        };
+        Self::prepare_query(out, payload);
+        let mut context = context.switch_fragment(Fragment::SqlSelectWhere);
+        self.write_filter_expression(&mut context.current, out, condition);
     }
 
     fn write_insert<'b, E>(
@@ -741,7 +784,7 @@ impl SqlWriter for MongoDBSqlWriter {
                     else {
                         // Unreachable
                         log::error!(
-                            "Unexpected error while rendering the primary key expression for upsert, the query does not have a current bson"
+                            "Unexpected error while rendering the primary key expression for upsert, failed to get the bson object"
                         );
                         return None;
                     };

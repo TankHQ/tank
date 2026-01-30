@@ -110,7 +110,7 @@ pub async fn orders<E: Executor>(executor: &mut E) {
                     Order::created_at
                 ))
                 .from(Order::table())
-                .where_condition(expr!(
+                .where_expr(expr!(
                     Order::status == (?, ?) as IN
                         && Order::created_at >= ?
                         && Order::total >= ?

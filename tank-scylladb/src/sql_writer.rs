@@ -400,7 +400,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
     {
         let table = E::table();
         out.buffer().reserve(128);
-        let is_true = condition.matches(&mut IsTrue);
+        let is_true = condition.matches(&mut IsTrue, self);
         if is_true {
             out.push_str("TRUNCATE ");
         } else {

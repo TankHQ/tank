@@ -1,18 +1,18 @@
 use crate::{MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter};
-use mongodb::bson::Document;
+use mongodb::bson::{self, Bson, Document, doc};
 use std::{borrow::Cow, mem};
-use tank_core::{BinaryOpType, ColumnRef, Expression, ExpressionMatcher, Operand};
+use tank_core::{BinaryOpType, ColumnRef, Expression, ExpressionMatcher, Operand, SqlWriter};
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct IsColumn {
     pub column: Option<ColumnRef>,
 }
 impl ExpressionMatcher for IsColumn {
-    fn match_column(&mut self, column: &ColumnRef) -> bool {
+    fn match_column(&mut self, _writer: &dyn SqlWriter, column: &ColumnRef) -> bool {
         self.column = Some(column.clone());
         true
     }
-    fn match_operand(&mut self, operand: &Operand) -> bool {
+    fn match_operand(&mut self, _writer: &dyn SqlWriter, operand: &Operand) -> bool {
         match operand {
             Operand::LitIdent(v) => {
                 self.column = Some(ColumnRef {
@@ -39,7 +39,7 @@ impl ExpressionMatcher for IsColumn {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct IsFieldCondition {
     pub condition: Document,
 }
@@ -51,16 +51,58 @@ impl IsFieldCondition {
 impl ExpressionMatcher for IsFieldCondition {
     fn match_binary_op(
         &mut self,
+        writer: &dyn SqlWriter,
         op: &BinaryOpType,
         lhs: &dyn Expression,
         rhs: &dyn Expression,
     ) -> bool {
-        if *op == BinaryOpType::And {
+        if matches!(*op, BinaryOpType::And | BinaryOpType::Or) {
             let mut left = IsFieldCondition::default();
             let mut right = IsFieldCondition::default();
-            if lhs.matches(&mut left) && rhs.matches(&mut right) {
-                self.condition.extend(left.condition);
-                self.condition.extend(right.condition);
+            let left_matches = lhs.matches(&mut left, writer);
+            let right_matches = rhs.matches(&mut right, writer);
+            if left_matches || right_matches {
+                let op = MongoDBSqlWriter::default()
+                    .expression_binary_op_key(*op)
+                    .to_string();
+                macro_rules! write_query {
+                    ($matcher:ident) => {
+                        if !$matcher.condition.is_empty() {
+                            $matcher.condition.into()
+                        } else {
+                            let mut query = MongoDBSqlWriter::make_prepared();
+                            lhs.write_query(writer, &mut Default::default(), &mut query);
+                            let Some(bson) = query
+                                .as_prepared::<MongoDBDriver>()
+                                .and_then(MongoDBPrepared::current_bson)
+                            else {
+                                log::error!("Failed to get the bson object from write_query");
+                                return false;
+                            };
+                            mem::take(bson)
+                        }
+                    };
+                }
+                let mut left = write_query!(left);
+                let mut right = write_query!(right);
+                let mut args = bson::Array::new();
+                if let Some(left) = left.as_document_mut()
+                    && left.len() == 1
+                    && let Ok(left) = left.get_array_mut(&op)
+                {
+                    args.append(left);
+                } else {
+                    args.push(left);
+                };
+                if let Some(right) = right.as_document_mut()
+                    && right.len() == 1
+                    && let Ok(right) = right.get_array_mut(&op)
+                {
+                    args.append(right);
+                } else {
+                    args.push(right);
+                };
+                self.condition = doc! { op: Bson::Array(args) };
                 return true;
             }
         }
@@ -81,8 +123,8 @@ impl ExpressionMatcher for IsFieldCondition {
         }
         let mut l_column = IsColumn::default();
         let mut r_column = IsColumn::default();
-        let lhs_is_col = lhs.matches(&mut l_column);
-        let rhs_is_col = rhs.matches(&mut r_column);
+        let lhs_is_col = lhs.matches(&mut l_column, writer);
+        let rhs_is_col = rhs.matches(&mut r_column, writer);
         if lhs_is_col == rhs_is_col {
             return false;
         }
@@ -121,9 +163,15 @@ impl ExpressionMatcher for IsFieldCondition {
             );
             return false;
         };
-        let op = writer.expression_binary_op_key(op);
-        self.condition
-            .insert(field.name, Document::from_iter([(op.into(), fragment)]));
+        self.condition.insert(
+            field.name,
+            if op == BinaryOpType::Equal {
+                fragment
+            } else {
+                let op = writer.expression_binary_op_key(op).to_string();
+                doc! { op: fragment }.into()
+            },
+        );
         true
     }
 }

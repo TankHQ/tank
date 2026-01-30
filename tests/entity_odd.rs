@@ -156,7 +156,7 @@ mod tests {
             &QueryBuilder::new()
                 .select(MyEntity::columns())
                 .from(MyEntity::table())
-                .where_condition(expr!(MyEntity::_bravo < 0))
+                .where_expr(expr!(MyEntity::_bravo < 0))
                 .limit(Some(300)),
         );
         assert_eq!(

@@ -4,9 +4,8 @@ use crate::{
 };
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
-use std::fmt::{self, Display, Formatter};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BinaryOpType {
     Indexing,
     Cast,
@@ -71,51 +70,14 @@ impl<L: Expression, R: Expression> Expression for BinaryOp<L, R> {
             },
         )
     }
-    fn matches(&self, matcher: &mut dyn ExpressionMatcher) -> bool {
-        matcher.match_binary_op(&self.op, &self.lhs, &self.rhs)
-    }
-}
-
-impl Display for BinaryOpType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            BinaryOpType::Indexing => "Indexing",
-            BinaryOpType::Cast => "Cast",
-            BinaryOpType::Multiplication => "Multiplication",
-            BinaryOpType::Division => "Division",
-            BinaryOpType::Remainder => "Remainder",
-            BinaryOpType::Addition => "Addition",
-            BinaryOpType::Subtraction => "Subtraction",
-            BinaryOpType::ShiftLeft => "ShiftLeft",
-            BinaryOpType::ShiftRight => "ShiftRight",
-            BinaryOpType::BitwiseAnd => "BitwiseAnd",
-            BinaryOpType::BitwiseOr => "BitwiseOr",
-            BinaryOpType::In => "In",
-            BinaryOpType::NotIn => "NotIn",
-            BinaryOpType::Is => "Is",
-            BinaryOpType::IsNot => "IsNot",
-            BinaryOpType::Like => "Like",
-            BinaryOpType::NotLike => "NotLike",
-            BinaryOpType::Regexp => "Regexp",
-            BinaryOpType::NotRegexp => "NotRegexp",
-            BinaryOpType::Glob => "Glob",
-            BinaryOpType::NotGlob => "NotGlob",
-            BinaryOpType::Equal => "Equal",
-            BinaryOpType::NotEqual => "NotEqual",
-            BinaryOpType::Less => "Less",
-            BinaryOpType::Greater => "Greater",
-            BinaryOpType::LessEqual => "LessEqual",
-            BinaryOpType::GreaterEqual => "GreaterEqual",
-            BinaryOpType::And => "And",
-            BinaryOpType::Or => "Or",
-            BinaryOpType::Alias => "Alias",
-        })
+    fn matches(&self, matcher: &mut dyn ExpressionMatcher, writer: &dyn SqlWriter) -> bool {
+        matcher.match_binary_op(writer, &self.op, &self.lhs, &self.rhs)
     }
 }
 
 impl ToTokens for BinaryOpType {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let v = self.to_string();
+        let v = format!("{self:?}");
         tokens.append_all(quote!(::tank::BinaryOpType::#v));
     }
 }

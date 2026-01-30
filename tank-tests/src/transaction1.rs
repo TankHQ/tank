@@ -98,7 +98,7 @@ pub async fn transaction1<C: Connection>(connection: &mut C) {
             QueryBuilder::new()
                 .select(cols!(*))
                 .from(EntityA::table())
-                .where_condition(true)
+                .where_expr(true)
                 .build(&connection.driver()),
         )
         .try_collect::<Vec<_>>()
@@ -111,7 +111,7 @@ pub async fn transaction1<C: Connection>(connection: &mut C) {
             QueryBuilder::new()
                 .select(cols!(*))
                 .from(EntityB::table())
-                .where_condition(true)
+                .where_expr(true)
                 .build(&connection.driver()),
         )
         .try_collect::<Vec<_>>()

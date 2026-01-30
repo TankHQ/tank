@@ -25,7 +25,7 @@ impl QueryBuilder {
         SelectQueryBuilder {
             select,
             from: Default::default(),
-            where_condition: Default::default(),
+            where_expr: Default::default(),
             group_by: Default::default(),
             having: Default::default(),
             order_by: Default::default(),
@@ -68,7 +68,7 @@ impl OpPrecedence for NA {
 
 impl Expression for NA {
     fn write_query(&self, _writer: &dyn SqlWriter, _context: &mut Context, _out: &mut DynQuery) {}
-    fn matches(&self, _matcher: &mut dyn ExpressionMatcher) -> bool {
+    fn matches(&self, _matcher: &mut dyn ExpressionMatcher, _writer: &dyn SqlWriter) -> bool {
         false
     }
 }

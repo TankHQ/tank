@@ -116,7 +116,7 @@ mod tests {
             &QueryBuilder::new()
                 .select(SomeSimpleEntity::columns())
                 .from(SomeSimpleEntity::table())
-                .where_condition(expr!(SomeSimpleEntity::a > 100))
+                .where_expr(expr!(SomeSimpleEntity::a > 100))
                 .limit(Some(1000)),
         );
         assert_eq!(

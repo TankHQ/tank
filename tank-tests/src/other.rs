@@ -38,7 +38,7 @@ pub async fn other<E: Executor>(executor: &mut E) {
             QueryBuilder::new()
                 .select(cols!(NULL))
                 .from(ATable::table())
-                .where_condition(true)
+                .where_expr(true)
                 .build(&executor.driver()),
         )
         .map_ok(|v| v.values.into_iter().nth(0).unwrap());

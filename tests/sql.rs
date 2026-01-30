@@ -55,7 +55,7 @@ mod tests {
                 &QueryBuilder::new()
                     .select(Table::columns())
                     .from(Table::table())
-                    .where_condition(expr!(
+                    .where_expr(expr!(
                         Table::_second_column < 100 && Table::_first_column == "OK"
                     )),
             );
@@ -149,7 +149,7 @@ mod tests {
                 &QueryBuilder::new()
                     .select(Cart::columns())
                     .from(Cart::table())
-                    .where_condition(expr!(Cart::is_active == true && Cart::total_price > 100))
+                    .where_expr(expr!(Cart::is_active == true && Cart::total_price > 100))
                     .limit(Some(1000)),
             );
             assert_eq!(

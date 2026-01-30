@@ -38,7 +38,7 @@ impl<E: Expression> Expression for UnaryOp<E> {
         )
     }
 
-    fn matches(&self, matcher: &mut dyn ExpressionMatcher) -> bool {
-        matcher.match_unary_op(&self.op, &self.arg)
+    fn matches(&self, matcher: &mut dyn ExpressionMatcher, writer: &dyn SqlWriter) -> bool {
+        matcher.match_unary_op(writer, &self.op, &self.arg)
     }
 }

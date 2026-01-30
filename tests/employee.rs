@@ -203,7 +203,7 @@ mod tests {
             &QueryBuilder::new()
                 .select(Employee::columns())
                 .from(Employee::table())
-                .where_condition(expr!(Employee::salary > 50000))
+                .where_expr(expr!(Employee::salary > 50000))
                 .limit(Some(10)),
         );
         assert_eq!(

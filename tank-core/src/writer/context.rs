@@ -22,6 +22,8 @@ pub enum Fragment {
     SqlJoin,
     SqlSelect,
     SqlSelectFrom,
+    SqlSelectGroupBy,
+    SqlSelectHaving,
     SqlSelectOrderBy,
     SqlSelectWhere,
 }

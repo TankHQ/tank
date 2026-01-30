@@ -162,7 +162,7 @@ mod tests {
             &QueryBuilder::new()
                 .select(Customer::columns())
                 .from(Customer::table())
-                .where_condition(expr!(len(Customer::_values) > 10))
+                .where_expr(expr!(len(Customer::_values) > 10))
                 .limit(Some(10)),
         );
         assert_eq!(

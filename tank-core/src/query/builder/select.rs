@@ -6,7 +6,7 @@ use std::{iter, marker::PhantomData};
 pub struct SelectQueryBuilder<Select, From, Where, GroupBy, Having, OrderBy, Limit> {
     pub(crate) select: Select,
     pub(crate) from: Option<From>,
-    pub(crate) where_condition: Option<Where>,
+    pub(crate) where_expr: Option<Where>,
     pub(crate) group_by: Option<GroupBy>,
     pub(crate) having: Option<Having>,
     pub(crate) order_by: Option<OrderBy>,
@@ -22,7 +22,7 @@ impl<S> SelectQueryBuilder<S, NA, NA, NA, NA, NA, NA> {
         SelectQueryBuilder {
             select: self.select,
             from: Some(from),
-            where_condition: Default::default(),
+            where_expr: Default::default(),
             group_by: Default::default(),
             having: Default::default(),
             order_by: Default::default(),
@@ -33,7 +33,7 @@ impl<S> SelectQueryBuilder<S, NA, NA, NA, NA, NA, NA> {
 }
 
 impl<S, F> SelectQueryBuilder<S, F, NA, NA, NA, NA, NA> {
-    pub fn where_condition<Where>(
+    pub fn where_expr<Where>(
         self,
         condition: Where,
     ) -> SelectQueryBuilder<S, F, Where, NA, NA, NA, NA>
@@ -43,7 +43,7 @@ impl<S, F> SelectQueryBuilder<S, F, NA, NA, NA, NA, NA> {
         SelectQueryBuilder {
             select: self.select,
             from: self.from,
-            where_condition: Some(condition),
+            where_expr: Some(condition),
             group_by: Default::default(),
             having: Default::default(),
             order_by: Default::default(),
@@ -64,7 +64,7 @@ impl<S, F, W> SelectQueryBuilder<S, F, W, NA, NA, NA, NA> {
         SelectQueryBuilder {
             select: self.select,
             from: self.from,
-            where_condition: self.where_condition,
+            where_expr: self.where_expr,
             group_by: Some(group_by),
             having: Default::default(),
             order_by: Default::default(),
@@ -82,7 +82,7 @@ impl<S, F, W, G> SelectQueryBuilder<S, F, W, G, NA, NA, NA> {
         SelectQueryBuilder {
             select: self.select,
             from: self.from,
-            where_condition: self.where_condition,
+            where_expr: self.where_expr,
             group_by: self.group_by,
             having: Some(having),
             order_by: Default::default(),
@@ -100,7 +100,7 @@ impl<S, F, W, G, H> SelectQueryBuilder<S, F, W, G, H, NA, NA> {
         SelectQueryBuilder {
             select: self.select,
             from: self.from,
-            where_condition: self.where_condition,
+            where_expr: self.where_expr,
             group_by: self.group_by,
             having: self.having,
             order_by: Some(order_by),
@@ -115,7 +115,7 @@ impl<S, F, W, G, H, O> SelectQueryBuilder<S, F, W, G, H, O, NA> {
         SelectQueryBuilder {
             select: self.select,
             from: self.from,
-            where_condition: self.where_condition,
+            where_expr: self.where_expr,
             group_by: self.group_by,
             having: self.having,
             order_by: self.order_by,
@@ -142,8 +142,8 @@ where
         &self.from
     }
 
-    pub fn get_where_condition(&self) -> &Option<impl Expression> {
-        &self.where_condition
+    pub fn get_where(&self) -> &Option<impl Expression> {
+        &self.where_expr
     }
 
     pub fn get_group_by(&self) -> impl Iterator<Item = impl Expression> + Clone {
@@ -188,7 +188,7 @@ where
 {
     fn get_select(&self) -> impl Iterator<Item = impl Expression> + Clone;
     fn get_from<'s>(&'s self) -> &'s Option<From>;
-    fn get_where_condition<'s>(&'s self) -> &'s Option<impl Expression>;
+    fn get_where<'s>(&'s self) -> &'s Option<impl Expression>;
     fn get_group_by(&self) -> impl Iterator<Item = impl Expression> + Clone;
     fn get_having(&self) -> &Option<impl Expression>;
     fn get_order_by(&self) -> impl Iterator<Item = impl Expression> + Clone;
@@ -214,8 +214,8 @@ where
         self.get_from()
     }
 
-    fn get_where_condition(&self) -> &Option<impl Expression> {
-        self.get_where_condition()
+    fn get_where(&self) -> &Option<impl Expression> {
+        self.get_where()
     }
 
     fn get_group_by(&self) -> impl Iterator<Item = impl Expression> + Clone {

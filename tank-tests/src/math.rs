@@ -34,7 +34,7 @@ pub async fn math<E: Executor>(executor: &mut E) {
             QueryBuilder::new()
                 .select(cols!(MathTable::id, ((42 * 6 + 56) / 7) as read))
                 .from(MathTable::table())
-                .where_condition(expr!(MathTable::id == 0))
+                .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
         .map_ok(MathTable::from_row)
@@ -49,7 +49,7 @@ pub async fn math<E: Executor>(executor: &mut E) {
             QueryBuilder::new()
                 .select(cols!(MathTable::id, ((5 - (1 << 2)) * 9 % 6) as read))
                 .from(MathTable::table())
-                .where_condition(expr!(MathTable::id == 0))
+                .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
         .map_ok(MathTable::from_row)
@@ -64,7 +64,7 @@ pub async fn math<E: Executor>(executor: &mut E) {
             QueryBuilder::new()
                 .select(cols!(MathTable::id, ((1 | 2 | 4) + 1) as read))
                 .from(MathTable::table())
-                .where_condition(expr!(MathTable::id == 0))
+                .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
         .map_ok(MathTable::from_row)
@@ -79,7 +79,7 @@ pub async fn math<E: Executor>(executor: &mut E) {
             QueryBuilder::new()
                 .select(cols!(MathTable::id, (90 > 89 && (10 & 6) == 2) as read))
                 .from(MathTable::table())
-                .where_condition(expr!(MathTable::id == 0))
+                .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
         .map_ok(|v| bool::try_from_value(v.values.into_iter().nth(1).unwrap()))
@@ -94,7 +94,7 @@ pub async fn math<E: Executor>(executor: &mut E) {
             QueryBuilder::new()
                 .select(cols!(MathTable::id, (4 == (2, 3, 4, 5) as IN) as read))
                 .from(MathTable::table())
-                .where_condition(expr!(MathTable::id == 0))
+                .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
         .map_ok(|v| bool::try_from_value(v.values.into_iter().nth(1).unwrap()))

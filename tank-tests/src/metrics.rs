@@ -279,7 +279,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
             QueryBuilder::new()
                 .select(cols!(Metric::value DESC, Metric::date DESC))
                 .from(Metric::table())
-                .where_condition(expr!(
+                .where_expr(expr!(
                     Metric::name == "height_cm"
                         && Metric::country == "IT"
                         && Metric::value >= #height
@@ -298,7 +298,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
             QueryBuilder::new()
                 .select(cols!(Metric::value ASC))
                 .from(Metric::table())
-                .where_condition(expr!(
+                .where_expr(expr!(
                     Metric::name == "income_eur" && Metric::country == "IT"
                 ))
                 .build(&executor.driver()),
@@ -315,7 +315,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
             QueryBuilder::new()
                 .select(cols!(MAX(Metric::value) as value))
                 .from(Metric::table())
-                .where_condition(expr!(
+                .where_expr(expr!(
                     Metric::name == "income_gbp" && Metric::country == "UK"
                 ))
                 .build(&executor.driver()),
@@ -332,7 +332,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
             QueryBuilder::new()
                 .select(cols!(Metric::value DESC, Metric::date DESC))
                 .from(Metric::table())
-                .where_condition(expr!(Metric::country == ? && Metric::name == ?))
+                .where_expr(expr!(Metric::country == ? && Metric::name == ?))
                 .build(&executor.driver())
                 .into(),
         )

@@ -286,7 +286,7 @@ mod tests {
             &QueryBuilder::new()
                 .select(Trade::columns())
                 .from(Trade::table())
-                .where_condition(expr!(Trade::quantity >= 100 && Trade::price > 1000)),
+                .where_expr(expr!(Trade::quantity >= 100 && Trade::price > 1000)),
         );
         assert_eq!(
             query.as_str(),
