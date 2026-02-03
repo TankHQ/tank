@@ -13,80 +13,80 @@ use tank_core::{Error, Result, RowLabeled, TableRef, truncate_long};
 
 #[derive(Default, Debug)]
 pub struct FindOnePayload {
-    pub(crate) table: TableRef,
-    pub(crate) filter: Bson,
-    pub(crate) options: FindOneOptions,
+    pub table: TableRef,
+    pub filter: Bson,
+    pub options: FindOneOptions,
 }
 
 #[derive(Default, Debug)]
 pub struct FindManyPayload {
-    pub(crate) table: TableRef,
-    pub(crate) filter: Bson,
-    pub(crate) options: FindOptions,
+    pub table: TableRef,
+    pub filter: Bson,
+    pub options: FindOptions,
 }
 
 #[derive(Debug)]
 pub struct InsertOnePayload {
-    pub(crate) table: TableRef,
-    pub(crate) row: RowLabeled,
-    pub(crate) options: InsertOneOptions,
+    pub table: TableRef,
+    pub row: RowLabeled,
+    pub options: InsertOneOptions,
 }
 
 #[derive(Debug)]
 pub struct InsertManyPayload {
-    pub(crate) table: TableRef,
-    pub(crate) rows: Vec<RowLabeled>,
-    pub(crate) options: InsertManyOptions,
+    pub table: TableRef,
+    pub rows: Vec<RowLabeled>,
+    pub options: InsertManyOptions,
 }
 
 #[derive(Debug)]
 pub struct UpsertPayload {
-    pub(crate) table: TableRef,
-    pub(crate) filter: Bson,
-    pub(crate) modifications: UpdateModifications,
-    pub(crate) options: UpdateOptions,
+    pub table: TableRef,
+    pub filter: Bson,
+    pub modifications: UpdateModifications,
+    pub options: UpdateOptions,
 }
 
 #[derive(Default, Debug)]
 pub struct DeletePayload {
-    pub(crate) table: TableRef,
-    pub(crate) filter: Bson,
-    pub(crate) options: DeleteOptions,
-    pub(crate) single: bool,
+    pub table: TableRef,
+    pub filter: Bson,
+    pub options: DeleteOptions,
+    pub single: bool,
 }
 
 #[derive(Default, Debug)]
 pub struct CreateCollectionPayload {
-    pub(crate) table: TableRef,
-    pub(crate) options: CreateCollectionOptions,
+    pub table: TableRef,
+    pub options: CreateCollectionOptions,
 }
 
 #[derive(Default, Debug)]
 pub struct DropCollectionPayload {
-    pub(crate) table: TableRef,
+    pub table: TableRef,
 }
 
 #[derive(Default, Debug)]
 pub struct CreateDatabasePayload {
-    pub(crate) table: TableRef,
+    pub table: TableRef,
 }
 
 #[derive(Default, Debug)]
 pub struct DropDatabasePayload {
-    pub(crate) table: TableRef,
+    pub table: TableRef,
 }
 
 #[derive(Default, Debug)]
 pub struct AggregatePayload {
-    pub(crate) table: TableRef,
-    pub(crate) pipeline: Bson,
-    pub(crate) options: AggregateOptions,
+    pub table: TableRef,
+    pub pipeline: Vec<Document>,
+    pub options: AggregateOptions,
 }
 
 #[derive(Default, Debug)]
 pub struct BatchPayload {
-    pub(crate) batch: Vec<Payload>,
-    pub(crate) options: BulkWriteOptions,
+    pub batch: Vec<Payload>,
+    pub options: BulkWriteOptions,
 }
 
 #[derive(Debug)]
@@ -137,7 +137,7 @@ impl Payload {
             Payload::DropCollection(..) => None,
             Payload::CreateDatabase(..) => None,
             Payload::DropDatabase(..) => None,
-            Payload::Aggregate(v) => Some(&v.pipeline),
+            Payload::Aggregate(..) => None,
             Payload::Batch(BatchPayload { batch, .. }) => {
                 batch.last().and_then(Payload::current_bson)
             }
@@ -156,7 +156,7 @@ impl Payload {
             Payload::DropCollection(..) => None,
             Payload::CreateDatabase(..) => None,
             Payload::DropDatabase(..) => None,
-            Payload::Aggregate(v) => Some(&mut v.pipeline),
+            Payload::Aggregate(..) => None,
             Payload::Batch(BatchPayload { batch, .. }) => {
                 batch.last_mut().and_then(Payload::current_bson_mut)
             }

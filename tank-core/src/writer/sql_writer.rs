@@ -1,8 +1,8 @@
 use crate::{
     Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, DataSet, DynQuery, EitherIterator,
-    Entity, Expression, Fragment, Interval, IsOrdered, IsTrue, Join, JoinType, Operand, Order,
-    Ordered, PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value,
-    possibly_parenthesized, print_date, print_timer, separated_by, write_escaped, writer::Context,
+    Entity, Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
+    PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized,
+    print_date, print_timer, separated_by, write_escaped, writer::Context,
 };
 use core::f64;
 use std::{
@@ -101,10 +101,10 @@ pub trait SqlWriter: Send {
     fn write_table_ref(&self, context: &mut Context, out: &mut DynQuery, value: &TableRef) {
         if self.alias_declaration(context) || value.alias.is_empty() {
             if !value.schema.is_empty() {
-                self.write_identifier(context, out, &value.schema, true);
+                self.write_identifier(context, out, &value.schema, context.quote_identifiers);
                 out.push('.');
             }
-            self.write_identifier(context, out, &value.name, true);
+            self.write_identifier(context, out, &value.name, context.quote_identifiers);
         }
         if !value.alias.is_empty() {
             let _ = write!(out, " {}", value.alias);
@@ -115,13 +115,13 @@ pub trait SqlWriter: Send {
     fn write_column_ref(&self, context: &mut Context, out: &mut DynQuery, value: &ColumnRef) {
         if context.qualify_columns && !value.table.is_empty() {
             if !value.schema.is_empty() {
-                self.write_identifier(context, out, &value.schema, true);
+                self.write_identifier(context, out, &value.schema, context.quote_identifiers);
                 out.push('.');
             }
-            self.write_identifier(context, out, &value.table, true);
+            self.write_identifier(context, out, &value.table, context.quote_identifiers);
             out.push('.');
         }
-        self.write_identifier(context, out, &value.name, true);
+        self.write_identifier(context, out, &value.name, context.quote_identifiers);
     }
 
     /// Render the SQL overridden type.
@@ -1086,14 +1086,12 @@ pub trait SqlWriter: Send {
             out.push('\n');
         }
         out.push_str("SELECT ");
-        let mut has_order_by = false;
         let mut context = Context::new(Fragment::SqlSelect, Data::qualified_columns());
         separated_by(
             out,
             columns.clone(),
             |out, col| {
                 col.write_query(self, &mut context, out);
-                has_order_by = has_order_by || col.matches(&mut IsOrdered, self);
             },
             ", ",
         );
@@ -1134,14 +1132,13 @@ pub trait SqlWriter: Send {
                 out,
             );
         }
-        if has_order_by {
+        let mut order_by = query.get_order_by().peekable();
+        if order_by.peek().is_some() {
             out.push_str("\nORDER BY ");
             let mut context = context.switch_fragment(Fragment::SqlSelectOrderBy);
             separated_by(
                 out,
-                columns
-                    .into_iter()
-                    .filter(|v| v.matches(&mut IsOrdered, self)),
+                order_by,
                 |out, col| {
                     col.write_query(self, &mut context.current, out);
                 },

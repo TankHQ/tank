@@ -1,51 +1,22 @@
 use crate::{MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter};
 use mongodb::bson::{self, Bson, Document, doc};
 use std::{borrow::Cow, mem};
-use tank_core::{BinaryOpType, ColumnRef, Expression, ExpressionMatcher, Operand, SqlWriter};
-
-#[derive(Default, Debug)]
-pub struct IsColumn {
-    pub column: Option<ColumnRef>,
-}
-impl ExpressionMatcher for IsColumn {
-    fn match_column(&mut self, _writer: &dyn SqlWriter, column: &ColumnRef) -> bool {
-        self.column = Some(column.clone());
-        true
-    }
-    fn match_operand(&mut self, _writer: &dyn SqlWriter, operand: &Operand) -> bool {
-        match operand {
-            Operand::LitIdent(v) => {
-                self.column = Some(ColumnRef {
-                    name: Cow::Owned(v.to_string()),
-                    table: "".into(),
-                    schema: "".into(),
-                });
-                true
-            }
-            Operand::LitField(v) => {
-                let mut it = v.into_iter().rev();
-                let name = it.next().map(ToString::to_string).unwrap_or_default();
-                let table = it.next().map(ToString::to_string).unwrap_or_default();
-                let schema = it.next().map(ToString::to_string).unwrap_or_default();
-                self.column = Some(ColumnRef {
-                    name: name.into(),
-                    table: table.into(),
-                    schema: schema.into(),
-                });
-                true
-            }
-            _ => false,
-        }
-    }
-}
+use tank_core::{BinaryOpType, Expression, ExpressionMatcher, IsColumn, Operand, SqlWriter};
 
 #[derive(Default, Debug)]
 pub struct IsFieldCondition {
+    pub table: Cow<'static, str>,
     pub condition: Document,
 }
 impl IsFieldCondition {
     pub fn new() -> Self {
         IsFieldCondition::default()
+    }
+    pub fn with_table(table: Cow<'static, str>) -> Self {
+        IsFieldCondition {
+            table,
+            condition: Default::default(),
+        }
     }
 }
 impl ExpressionMatcher for IsFieldCondition {
@@ -163,8 +134,12 @@ impl ExpressionMatcher for IsFieldCondition {
             );
             return false;
         };
+        let mut name = field.name;
+        if !self.table.is_empty() {
+            name = format!("{}.{}", self.table, name).into();
+        }
         self.condition.insert(
-            field.name,
+            name,
             if op == BinaryOpType::Equal {
                 fragment
             } else {
@@ -173,5 +148,31 @@ impl ExpressionMatcher for IsFieldCondition {
             },
         );
         true
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct IsCount;
+impl ExpressionMatcher for IsCount {
+    fn match_operand(&mut self, writer: &dyn SqlWriter, operand: &Operand) -> bool {
+        struct IsAsterisk;
+        impl ExpressionMatcher for IsAsterisk {
+            fn match_operand(&mut self, _writer: &dyn SqlWriter, operand: &Operand) -> bool {
+                matches!(operand, Operand::Asterisk)
+            }
+        }
+        match operand {
+            Operand::Call(function, args) => {
+                if function.eq_ignore_ascii_case("count")
+                    && let [arg] = args
+                    && arg.matches(&mut IsAsterisk, writer)
+                {
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
     }
 }

@@ -11,10 +11,10 @@ pub trait Expression: OpPrecedence + Send + Sync + Debug {
     /// Check if the matcher matching this expression
     fn matches(&self, matcher: &mut dyn ExpressionMatcher, writer: &dyn SqlWriter) -> bool;
     /// Converts the given value to a `String` representing the expression
-    fn as_written(&self) -> String {
+    fn as_written(&self, context: &mut Context) -> String {
         let mut out = DynQuery::new(String::new());
         let writer = GenericSqlWriter::new();
-        self.write_query(&writer, &mut Default::default(), &mut out);
+        self.write_query(&writer, context, &mut out);
         mem::take(out.buffer())
     }
 }

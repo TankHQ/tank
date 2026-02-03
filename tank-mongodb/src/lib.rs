@@ -12,7 +12,7 @@ mod value_wrap;
 pub use connection::*;
 pub use driver::*;
 pub use matcher::*;
-pub(crate) use payload::*;
+pub use payload::*;
 pub use prepared::*;
 pub(crate) use row_wrap::*;
 pub use sql_writer::*;

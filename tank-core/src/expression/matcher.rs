@@ -1,4 +1,8 @@
-use crate::{BinaryOpType, ColumnRef, Expression, Operand, Ordered, SqlWriter, UnaryOpType, Value};
+use std::borrow::Cow;
+
+use crate::{
+    BinaryOpType, ColumnRef, Expression, Operand, Order, Ordered, SqlWriter, UnaryOpType, Value,
+};
 
 pub trait ExpressionMatcher {
     fn match_column(&mut self, _writer: &dyn SqlWriter, _column: &ColumnRef) -> bool {
@@ -33,14 +37,76 @@ pub trait ExpressionMatcher {
     }
 }
 
+#[derive(Default, Debug)]
+pub struct IsColumn {
+    pub column: Option<ColumnRef>,
+}
+impl ExpressionMatcher for IsColumn {
+    fn match_column(&mut self, _writer: &dyn SqlWriter, column: &ColumnRef) -> bool {
+        self.column = Some(column.clone());
+        true
+    }
+    fn match_operand(&mut self, _writer: &dyn SqlWriter, operand: &Operand) -> bool {
+        match operand {
+            Operand::LitIdent(v) => {
+                self.column = Some(ColumnRef {
+                    name: Cow::Owned(v.to_string()),
+                    table: "".into(),
+                    schema: "".into(),
+                });
+                true
+            }
+            Operand::LitField(v) => {
+                let mut it = v.into_iter().rev();
+                let name = it.next().map(ToString::to_string).unwrap_or_default();
+                let table = it.next().map(ToString::to_string).unwrap_or_default();
+                let schema = it.next().map(ToString::to_string).unwrap_or_default();
+                self.column = Some(ColumnRef {
+                    name: name.into(),
+                    table: table.into(),
+                    schema: schema.into(),
+                });
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
 #[derive(Default, Debug, Copy, Clone)]
-pub struct IsOrdered;
-impl ExpressionMatcher for IsOrdered {
+pub struct FindOrder {
+    pub order: Order,
+}
+impl ExpressionMatcher for FindOrder {
+    fn match_column(&mut self, _writer: &dyn SqlWriter, _column: &ColumnRef) -> bool {
+        true
+    }
+    fn match_operand(&mut self, _writer: &dyn SqlWriter, _operand: &Operand) -> bool {
+        true
+    }
+    fn match_unary_op(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        _ty: &UnaryOpType,
+        _arg: &dyn Expression,
+    ) -> bool {
+        true
+    }
+    fn match_binary_op(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        _ty: &BinaryOpType,
+        _lhs: &dyn Expression,
+        _rhs: &dyn Expression,
+    ) -> bool {
+        true
+    }
     fn match_ordered(
         &mut self,
         _writer: &dyn SqlWriter,
-        _ordered: &Ordered<&dyn Expression>,
+        ordered: &Ordered<&dyn Expression>,
     ) -> bool {
+        self.order = ordered.order;
         true
     }
 }

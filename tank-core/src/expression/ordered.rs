@@ -5,8 +5,9 @@ use crate::{
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Order {
+    #[default]
     ASC,
     DESC,
 }

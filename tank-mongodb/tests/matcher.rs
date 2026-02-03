@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use mongodb::bson::{Bson, doc};
-    use tank::{ColumnRef, Entity, Expression, expr};
-    use tank_mongodb::{IsColumn, IsFieldCondition, MongoDBSqlWriter};
+    use tank::{Entity, Expression, expr};
+    use tank_mongodb::{IsCount, IsFieldCondition, MongoDBSqlWriter};
     use tank_tests::init_logs;
 
     #[derive(Entity)]
@@ -13,31 +13,6 @@ mod tests {
         pub str_column: String,
     }
     const WRITER: MongoDBSqlWriter = MongoDBSqlWriter {};
-
-    #[test]
-    fn is_column() {
-        init_logs();
-        {
-            let mut matcher = IsColumn::default();
-            assert!(matcher.column.is_none());
-            assert!(Table::col_a.matches(&mut matcher, &WRITER));
-            assert_eq!(matcher.column, Some(Table::col_a));
-            assert_ne!(matcher.column, Some(Table::col_b));
-        }
-        {
-            let mut matcher = IsColumn::default();
-            assert!(expr!(table.col_a).matches(&mut matcher, &WRITER));
-            assert_eq!(
-                matcher.column,
-                Some(ColumnRef {
-                    name: "col_a".into(),
-                    table: "table".into(),
-                    schema: "".into()
-                })
-            );
-        }
-        assert!(!true.matches(&mut IsColumn::default(), &WRITER));
-    }
 
     #[test]
     fn is_field_condition() {
@@ -105,5 +80,37 @@ mod tests {
                 }
             );
         }
+        {
+            let mut matcher = IsFieldCondition::default();
+            assert!(
+                expr!(
+                    0 <= Table::col_a
+                        && Table::col_a <= 999
+                        && Table::str_column == "hello"
+                        && Table::col_a != 777
+                )
+                .matches(&mut matcher, &WRITER)
+            );
+            assert_eq!(
+                matcher.condition,
+                doc! {
+                    "$and": [
+                        { "col_a": { "$ge": Bson::Int64(0) } },
+                        { "col_a": { "$le": Bson::Int64(999) } },
+                        { "str_column": "hello" },
+                        { "col_a": { "$ne": Bson::Int64(777) } },
+                    ]
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn is_count() {
+        init_logs();
+        let mut matcher = IsCount::default();
+        assert!(expr!(COUNT(*)).matches(&mut matcher, &WRITER));
+        assert!(!expr!(COUNT(hello)).matches(&mut matcher, &WRITER));
+        assert!(!expr!(25 == 1).matches(&mut matcher, &WRITER));
     }
 }

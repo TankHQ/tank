@@ -264,13 +264,13 @@ impl Executor for MongoDBConnection {
                 }
                 Payload::Aggregate(AggregatePayload {
                     table,
-                    pipeline: Bson::Document(pipeline),
+                    pipeline,
                     options,
                     ..
                 }) => {
-                    let database = self.database(table);
-                    let mut stream = database
-                        .aggregate([pipeline.clone()])
+                    let collection = self.collection(table);
+                    let mut stream = collection
+                        .aggregate(pipeline.iter().cloned())
                         .with_options(options.clone())
                         .await
                         .with_context(|| make_context!(payload))?;

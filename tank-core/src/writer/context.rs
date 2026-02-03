@@ -33,6 +33,7 @@ pub struct Context {
     pub counter: u32,
     pub fragment: Fragment,
     pub qualify_columns: bool,
+    pub quote_identifiers: bool,
 }
 
 impl Context {
@@ -41,6 +42,7 @@ impl Context {
             counter: 0,
             fragment,
             qualify_columns,
+            quote_identifiers: true,
         }
     }
     pub const fn fragment(fragment: Fragment) -> Self {
@@ -48,6 +50,7 @@ impl Context {
             counter: 0,
             fragment,
             qualify_columns: false,
+            quote_identifiers: true,
         }
     }
     pub const fn qualify(qualify_columns: bool) -> Self {
@@ -55,6 +58,7 @@ impl Context {
             counter: 0,
             fragment: Fragment::None,
             qualify_columns,
+            quote_identifiers: true,
         }
     }
     pub const fn update_from(&mut self, context: &Context) {
