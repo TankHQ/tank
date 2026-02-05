@@ -186,9 +186,10 @@ pub async fn times<E: Executor>(executor: &mut E) {
     let mut query_timestamp_1 = executor
         .prepare(
             QueryBuilder::new()
-                .select(cols!(Times::timestamp_1 DESC))
+                .select([Times::timestamp_1])
                 .from(Times::table())
                 .where_expr(expr!(Times::timestamp_2 > ?))
+                .order_by(cols!(Times::timestamp_1 DESC))
                 .build(&executor.driver())
                 .into(),
         )
@@ -266,9 +267,10 @@ pub async fn times<E: Executor>(executor: &mut E) {
     let mut query_timestamp_2 = executor
         .prepare(
             QueryBuilder::new()
-                .select(cols!(Times::timestamp_2 ASC))
+                .select([Times::timestamp_2])
                 .from(Times::table())
                 .where_expr(expr!(Times::timestamp_1 <= ?))
+                .order_by(cols!(Times::timestamp_2 ASC))
                 .build(&executor.driver())
                 .into(),
         )
@@ -309,9 +311,10 @@ pub async fn times<E: Executor>(executor: &mut E) {
     let mut query_time_1 = executor
         .prepare(
             QueryBuilder::new()
-                .select(cols!(Times::time_1 DESC))
+                .select([Times::time_1])
                 .from(Times::table())
                 .where_expr(true)
+                .order_by(cols!(Times::time_1 DESC))
                 .build(&executor.driver())
                 .into(),
         )

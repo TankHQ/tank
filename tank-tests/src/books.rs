@@ -187,7 +187,7 @@ pub async fn books<E: Executor>(executor: &mut E) {
     let result = executor
         .fetch(
             QueryBuilder::new()
-                .select(&[expr!(B.title), expr!(A.name)])
+                .select(cols!(B.title, A.name))
                 .from(join!(Book B JOIN Author A ON B.author == A.author_id))
                 .where_expr(expr!(B.year < 2000))
                 .build(&executor.driver()),
@@ -354,9 +354,10 @@ pub async fn books<E: Executor>(executor: &mut E) {
         // Authors names alphabetical order
         let authors = executor.fetch(
             QueryBuilder::new()
-                .select(cols!(Author::name ASC))
+                .select([Author::name])
                 .from(Author::table())
                 .where_expr(true)
+                .order_by(cols!(Author::name ASC))
                 .build(&executor.driver())
             )
             .and_then(|row| async move { AsValue::try_from_value((*row.values)[0].clone()) })
@@ -384,7 +385,7 @@ pub async fn books<E: Executor>(executor: &mut E) {
             &QueryBuilder::new()
                 .select(Book::columns())
                 .from(Book::table())
-                .where_condition(expr!(Book::title == "Metro 2033"))
+                .where_expr(expr!(Book::title == "Metro 2033"))
                 .limit(Some(1))
         );
         writer.write_select(
@@ -392,7 +393,7 @@ pub async fn books<E: Executor>(executor: &mut E) {
             &QueryBuilder::new()
                 .select(Book::columns())
                 .from(Book::table())
-                .where_condition(expr!(Book::title == "Harry Potter and the Deathly Hallows"))
+                .where_expr(expr!(Book::title == "Harry Potter and the Deathly Hallows"))
                 .limit(Some(1))
         );
         let mut stream = pin!(executor.run(query));

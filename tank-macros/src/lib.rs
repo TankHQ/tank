@@ -248,18 +248,6 @@ pub fn expr(input: TokenStream) -> TokenStream {
 ///
 /// Returns `&[&dyn Expression]` allowing direct passing to APIs expecting a
 /// heterogeneous list of column expressions.
-///
-/// *Example*:
-/// ```ignore
-/// use tank::{cols, DataSet};
-/// let names_stream = User::table().select(connection, cols!(User::id, User::name ASC), true, Some(500));
-/// let products_stream = Product::table().select(
-///     executor,
-///     cols!(COUNT(*), AVG(Product::price)),
-///     true,
-///     None
-/// );
-/// ```
 pub fn cols(input: TokenStream) -> TokenStream {
     let input = flag_evaluated(input.into());
     let Ok(ColList { cols: items }) = parse2(input) else {

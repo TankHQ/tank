@@ -101,14 +101,14 @@ pub async fn orders<E: Executor>(executor: &mut E) {
     let mut query = executor
         .prepare(
             QueryBuilder::new()
-                .select(cols!(
+                .select([
                     Order::id,
                     Order::customer_id,
                     Order::country,
-                    Order::total DESC,
+                    Order::total,
                     Order::status,
-                    Order::created_at
-                ))
+                    Order::created_at,
+                ])
                 .from(Order::table())
                 .where_expr(expr!(
                     Order::status == (?, ?) as IN
@@ -116,6 +116,7 @@ pub async fn orders<E: Executor>(executor: &mut E) {
                         && Order::total >= ?
                         && Order::country == (?, ?) as IN
                 ))
+                .order_by(cols!(Order::total DESC))
                 .build(&executor.driver())
                 .into(),
         )

@@ -367,7 +367,7 @@ pub async fn trade_multiple<E: Executor>(executor: &mut E) {
             &QueryBuilder::new()
                 .select(Trade::columns())
                 .from(Trade::table())
-                .where_condition(true),
+                .where_expr(true),
         );
         let mut stream = pin!(executor.run(query));
         let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =

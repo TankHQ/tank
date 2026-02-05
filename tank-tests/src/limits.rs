@@ -236,14 +236,14 @@ pub async fn limits<E: Executor>(executor: &mut E) {
             &QueryBuilder::new()
                 .select(Limits::columns())
                 .from(Limits::table())
-                .where_condition(expr!(!Limits::boolean)),
+                .where_expr(expr!(!Limits::boolean)),
         );
         writer.write_select(
             &mut query,
             &QueryBuilder::new()
                 .select(Limits::columns())
                 .from(Limits::table())
-                .where_condition(expr!(Limits::boolean)),
+                .where_expr(expr!(Limits::boolean)),
         );
         let mut stream = pin!(executor.run(query));
         let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =

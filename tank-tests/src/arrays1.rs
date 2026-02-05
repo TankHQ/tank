@@ -144,7 +144,7 @@ pub async fn arrays1<E: Executor>(executor: &mut E) {
             &QueryBuilder::new()
                 .select(cols!(*))
                 .from(Arrays1::table())
-                .where_condition(true),
+                .where_expr(true),
         );
         let value = Arrays2 {
             alpha: [1, 2, 3, 4, 5],
@@ -162,14 +162,14 @@ pub async fn arrays1<E: Executor>(executor: &mut E) {
             &QueryBuilder::new()
                 .select([Arrays2::alpha, Arrays2::bravo, Arrays2::charlie])
                 .from(Arrays2::table())
-                .where_condition(true),
+                .where_expr(true),
         );
         writer.write_select(
             &mut query,
             &QueryBuilder::new()
                 .select([Arrays2::delta, Arrays2::echo])
                 .from(Arrays2::table())
-                .where_condition(true),
+                .where_expr(true),
         );
         let rows = pin!(executor.run(query).try_filter_map(|v| async move {
             Ok(match v {

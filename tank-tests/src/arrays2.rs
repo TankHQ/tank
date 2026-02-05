@@ -44,7 +44,7 @@ pub async fn arrays2<E: Executor>(executor: &mut E) {
             &QueryBuilder::new()
                 .select(Container::columns())
                 .from(Container::table())
-                .where_condition(true)
+                .where_expr(true)
                 .limit(Some(1)),
         );
         let rows = pin!(executor.run(query).try_filter_map(|v| async move {

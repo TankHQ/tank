@@ -574,7 +574,7 @@ pub trait SqlWriter: Send {
             Operand::LitIdent(v) => {
                 self.write_identifier(context, out, v, context.fragment == Fragment::Aliasing)
             }
-            Operand::LitField(v) => separated_by(out, *v, |out, v| out.push_str(v), "."),
+            Operand::LitField(v) => self.write_identifier(context, out, &v.join("."), false),
             Operand::LitArray(v) => self.write_expression_list(
                 context,
                 out,
@@ -1113,7 +1113,7 @@ pub trait SqlWriter: Send {
             );
         }
         let mut group_by = query.get_group_by().peekable();
-        if !group_by.peek().is_some() {
+        if group_by.peek().is_some() {
             out.push_str("\nGROUP BY ");
             let mut context = context.switch_fragment(Fragment::SqlSelectGroupBy);
             separated_by(

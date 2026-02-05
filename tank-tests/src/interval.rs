@@ -151,7 +151,7 @@ pub async fn interval<E: Executor>(executor: &mut E) {
             &QueryBuilder::new()
                 .select(Intervals::columns())
                 .from(Intervals::table())
-                .where_condition(true),
+                .where_expr(true),
         );
         let mut stream = pin!(executor.run(query));
 

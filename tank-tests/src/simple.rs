@@ -113,7 +113,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
             &QueryBuilder::new()
                 .select(SimpleFields::columns())
                 .from(SimpleFields::table())
-                .where_condition(true),
+                .where_expr(true),
         );
         {
             let mut stream = pin!(executor.run(query));
@@ -231,7 +231,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
             &QueryBuilder::new()
                 .select(SimpleFields::columns())
                 .from(SimpleFields::table())
-                .where_condition(true),
+                .where_expr(true),
         );
         {
             let mut stream = pin!(executor.run(query));

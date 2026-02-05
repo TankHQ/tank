@@ -277,13 +277,14 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
     let heights = executor
         .fetch(
             QueryBuilder::new()
-                .select(cols!(Metric::value DESC, Metric::date DESC))
+                .select([Metric::value, Metric::date])
                 .from(Metric::table())
                 .where_expr(expr!(
                     Metric::name == "height_cm"
                         && Metric::country == "IT"
                         && Metric::value >= #height
                 ))
+                .order_by(cols!(Metric::value DESC, Metric::date DESC))
                 .build(&executor.driver()),
         )
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
@@ -296,11 +297,12 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
     let italy_incomes = executor
         .fetch(
             QueryBuilder::new()
-                .select(cols!(Metric::value ASC))
+                .select([Metric::value])
                 .from(Metric::table())
                 .where_expr(expr!(
                     Metric::name == "income_eur" && Metric::country == "IT"
                 ))
+                .order_by(cols!(Metric::value ASC))
                 .build(&executor.driver()),
         )
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
@@ -330,9 +332,10 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
     let mut prepared = executor
         .prepare(
             QueryBuilder::new()
-                .select(cols!(Metric::value DESC, Metric::date DESC))
+                .select([Metric::value, Metric::date])
                 .from(Metric::table())
                 .where_expr(expr!(Metric::country == ? && Metric::name == ?))
+                .order_by(cols!(Metric::value DESC, Metric::date DESC))
                 .build(&executor.driver())
                 .into(),
         )

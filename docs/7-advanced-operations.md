@@ -77,17 +77,22 @@ The [`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) supports
 
 Objective: strongest certified transmissions excluding routine radio checks.
 ```rust
-let messages = join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operator)
-    .select(
-        executor,
-        cols!(
-            RadioLog::signal_strength as strength DESC,
-            Operator::callsign ASC,
-            RadioLog::message,
-        ),
-        // X != Y as LIKE => X NOT LIKE Y
-        expr!(Operator::is_certified && RadioLog::message != "Radio check%" as LIKE),
-        Some(100),
+let messages = executor
+    .fetch(
+        QueryBuilder::new()
+            .select(cols!(
+                RadioLog::signal_strength as strength,
+                Operator::callsign,
+                RadioLog::message,
+            ))
+            .from(join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operator))
+            .where_expr(expr!(
+                // X != Y as LIKE => X NOT LIKE Y
+                Operator::is_certified && RadioLog::message != "Radio check%" as LIKE
+            ))
+            .order_by(cols!(RadioLog::signal_strength DESC, Operator::callsign ASC))
+            .limit(Some(100))
+            .build(&executor.driver()),
     )
     .map(|row| {
         row.and_then(|row| {

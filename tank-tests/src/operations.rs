@@ -276,8 +276,8 @@ pub async fn advanced_operations<E: Executor>(executor: &mut E) -> Result<()> {
         .fetch(
             QueryBuilder::new()
                 .select(cols!(
-                    RadioLog::signal_strength as strength DESC,
-                    Operator::callsign ASC,
+                    RadioLog::signal_strength as strength,
+                    Operator::callsign,
                     RadioLog::message,
                 ))
                 .from(join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operator))
@@ -285,6 +285,7 @@ pub async fn advanced_operations<E: Executor>(executor: &mut E) -> Result<()> {
                     // X != Y as LIKE => X NOT LIKE Y
                     Operator::is_certified && RadioLog::message != "Radio check%" as LIKE
                 ))
+                .order_by(cols!(RadioLog::signal_strength DESC, Operator::callsign ASC))
                 .limit(Some(100))
                 .build(&executor.driver()),
         )

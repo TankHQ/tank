@@ -106,9 +106,10 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
     let ordered_products = executor
         .fetch(
             QueryBuilder::new()
-                .select(cols!(Product::id, Product::name, Product::price ASC))
+                .select([Product::id, Product::name, Product::price])
                 .from(Product::table())
                 .where_expr(expr!(Product::stock > 0))
+                .order_by(cols!(Product::price ASC))
                 .build(&executor.driver()),
         )
         .map(|r| r.and_then(Product::from_row))
@@ -274,12 +275,17 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
     let carts: Vec<Carts> = executor
         .fetch(
             QueryBuilder::new()
-                .select(cols!(Product::name as product ASC, User::name as user ASC, Cart::price))
+                .select(cols!(
+                    Product::name as product,
+                    User::name as user,
+                    Cart::price
+                ))
                 .from(join!(
                     User INNER JOIN Cart ON User::id == Cart::user
                         JOIN Product ON Cart::product == Product::id
                 ))
                 .where_expr(true)
+                .order_by(cols!(Product::name ASC, User::name ASC))
                 .build(&executor.driver()),
         )
         .map_ok(Carts::from_row)
