@@ -196,11 +196,11 @@ pub fn decode_expression(expr: &Expr) -> TokenStream {
         }
         Expr::Lit(ExprLit { lit: v, .. }) => {
             let v = match v {
-                syn::Lit::Str(v) => quote! { ::tank::Operand::LitStr(#v) },
-                syn::Lit::Char(v) => quote! { ::tank::Operand::LitStr(#v) },
+                syn::Lit::Bool(v) => quote! { ::tank::Operand::LitBool(#v) },
                 syn::Lit::Int(v) => quote! { ::tank::Operand::LitInt(#v) },
                 syn::Lit::Float(v) => quote! { ::tank::Operand::LitFloat(#v) },
-                syn::Lit::Bool(v) => quote! { ::tank::Operand::LitBool(#v) },
+                syn::Lit::Str(v) => quote! { ::tank::Operand::LitStr(#v) },
+                syn::Lit::Char(v) => quote! { ::tank::Operand::LitStr(#v) },
                 _ => panic!(
                     "Unexpected value {:?} in a sql expression",
                     v.into_token_stream()

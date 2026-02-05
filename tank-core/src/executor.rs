@@ -36,10 +36,7 @@ pub trait Executor: Send + Sized {
     }
 
     /// Prepare a query for later execution.
-    fn prepare(
-        &mut self,
-        query: String,
-    ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send;
+    fn prepare(&mut self, sql: String) -> impl Future<Output = Result<Query<Self::Driver>>> + Send;
 
     /// Run a query, streaming `QueryResult` items.
     fn run<'s>(

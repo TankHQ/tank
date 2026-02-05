@@ -68,7 +68,12 @@ impl OpPrecedence for NA {
 
 impl Expression for NA {
     fn write_query(&self, _writer: &dyn SqlWriter, _context: &mut Context, _out: &mut DynQuery) {}
-    fn matches(&self, _matcher: &mut dyn ExpressionMatcher, _writer: &dyn SqlWriter) -> bool {
+    fn matches(
+        &self,
+        _matcher: &mut dyn ExpressionMatcher,
+        _writer: &dyn SqlWriter,
+        _context: &mut Context,
+    ) -> bool {
         false
     }
 }

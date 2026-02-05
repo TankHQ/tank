@@ -508,10 +508,10 @@ macro_rules! impl_executor_transaction {
 
             fn prepare(
                 &mut self,
-                query: String,
+                sql: String,
             ) -> impl Future<Output = ::tank_core::Result<::tank_core::Query<Self::Driver>>> + Send
             {
-                self.$connection.prepare(query)
+                self.$connection.prepare(sql)
             }
 
             fn run<'s>(

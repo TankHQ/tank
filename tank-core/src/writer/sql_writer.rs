@@ -566,14 +566,15 @@ pub trait SqlWriter: Send {
     /// Render an operand (literal / variable / nested expression).
     fn write_expression_operand(&self, context: &mut Context, out: &mut DynQuery, value: &Operand) {
         match value {
+            Operand::Null => self.write_value_none(context, out),
             Operand::LitBool(v) => self.write_value_bool(context, out, *v),
+            Operand::LitInt(v) => self.write_value_i128(context, out, *v),
             Operand::LitFloat(v) => self.write_value_f64(context, out, *v),
+            Operand::LitStr(v) => self.write_value_string(context, out, v),
             Operand::LitIdent(v) => {
                 self.write_identifier(context, out, v, context.fragment == Fragment::Aliasing)
             }
             Operand::LitField(v) => separated_by(out, *v, |out, v| out.push_str(v), "."),
-            Operand::LitInt(v) => self.write_value_i128(context, out, *v),
-            Operand::LitStr(v) => self.write_value_string(context, out, v),
             Operand::LitArray(v) => self.write_expression_list(
                 context,
                 out,
@@ -591,7 +592,6 @@ pub trait SqlWriter: Send {
                 );
                 out.push(')');
             }
-            Operand::Null => self.write_value_none(context, out),
             Operand::Type(v) => self.write_column_type(context, out, v),
             Operand::Variable(v) => self.write_value(context, out, v),
             Operand::Value(v) => self.write_value(context, out, v),
@@ -602,7 +602,8 @@ pub trait SqlWriter: Send {
     }
 
     /// Render parameter placeholder (dialect may override).
-    fn write_expression_operand_question_mark(&self, _context: &mut Context, out: &mut DynQuery) {
+    fn write_expression_operand_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
+        context.counter += 1;
         out.push('?');
     }
 
@@ -1102,7 +1103,7 @@ pub trait SqlWriter: Send {
             out,
         );
         if let Some(condition) = query.get_where()
-            && !condition.matches(&mut IsTrue, self)
+            && !condition.matches(&mut IsTrue, self, &mut context)
         {
             out.push_str("\nWHERE ");
             condition.write_query(

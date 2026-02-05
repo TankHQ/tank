@@ -1,6 +1,6 @@
 use crate::{
     ColumnDef, Context, DataSet, Driver, DynQuery, Error, Executor, Expression, Query,
-    QueryBuilder, Result, Row, RowLabeled, RowsAffected, TableRef, Value, future::Either,
+    QueryBuilder, RawQuery, Result, Row, RowLabeled, RowsAffected, TableRef, Value, future::Either,
     stream::Stream, truncate_long, writer::SqlWriter,
 };
 use futures::{FutureExt, StreamExt};
@@ -168,7 +168,13 @@ pub trait Entity {
         let writer = executor.driver().sql_writer();
         let mut query = DynQuery::default();
         writer.write_select(&mut query, &builder);
-        executor.prepare(query.into())
+        async {
+            if let DynQuery::Raw(RawQuery(sql)) = query {
+                executor.prepare(sql).await
+            } else {
+                Ok(query.into())
+            }
+        }
     }
 
     /// Finds the first entity matching a condition expression.

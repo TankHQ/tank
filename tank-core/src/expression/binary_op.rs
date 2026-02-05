@@ -70,8 +70,13 @@ impl<L: Expression, R: Expression> Expression for BinaryOp<L, R> {
             },
         )
     }
-    fn matches(&self, matcher: &mut dyn ExpressionMatcher, writer: &dyn SqlWriter) -> bool {
-        matcher.match_binary_op(writer, &self.op, &self.lhs, &self.rhs)
+    fn matches(
+        &self,
+        matcher: &mut dyn ExpressionMatcher,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+    ) -> bool {
+        matcher.match_binary_op(writer, context, &self.op, &self.lhs, &self.rhs)
     }
 }
 

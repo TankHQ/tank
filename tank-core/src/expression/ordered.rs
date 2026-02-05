@@ -45,9 +45,15 @@ impl<E: Expression> Expression for Ordered<E> {
         );
     }
 
-    fn matches(&self, matcher: &mut dyn ExpressionMatcher, writer: &dyn SqlWriter) -> bool {
+    fn matches(
+        &self,
+        matcher: &mut dyn ExpressionMatcher,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+    ) -> bool {
         matcher.match_ordered(
             writer,
+            context,
             &Ordered {
                 expression: self as &dyn Expression,
                 order: self.order,

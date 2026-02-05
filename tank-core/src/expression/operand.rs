@@ -5,15 +5,15 @@ use crate::{
 
 #[derive(Debug)]
 pub enum Operand<'a> {
+    Null,
     LitBool(bool),
+    LitInt(i128),
     LitFloat(f64),
+    LitStr(&'a str),
     LitIdent(&'a str),
     LitField(&'a [&'a str]),
-    LitInt(i128),
-    LitStr(&'a str),
     LitArray(&'a [Operand<'a>]),
     LitTuple(&'a [Operand<'a>]),
-    Null,
     Type(Value),
     Variable(Value),
     Value(&'a Value),
@@ -33,8 +33,13 @@ impl Expression for Operand<'_> {
         writer.write_expression_operand(context, out, self)
     }
 
-    fn matches(&self, matcher: &mut dyn ExpressionMatcher, writer: &dyn SqlWriter) -> bool {
-        matcher.match_operand(writer, self)
+    fn matches(
+        &self,
+        matcher: &mut dyn ExpressionMatcher,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+    ) -> bool {
+        matcher.match_operand(writer, context, self)
     }
 }
 

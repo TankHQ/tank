@@ -13,12 +13,20 @@ pub(crate) struct RowWrap<'a>(pub(crate) Cow<'a, RowLabeled>);
 impl<'a> TryFrom<Document> for RowWrap<'a> {
     type Error = tank_core::Error;
     fn try_from(value: Document) -> tank_core::Result<Self> {
-        let (labels, values): (Vec<_>, Vec<_>) = value
-            .into_iter()
-            .map(|(k, v)| Ok((k, bson_to_value(&v)?)))
-            .collect::<tank_core::Result<Vec<_>>>()?
-            .into_iter()
-            .unzip();
+        let mut pairs = Vec::with_capacity(value.len());
+        let mut id_pair = None;
+        for (k, v) in value {
+            let val = bson_to_value(&v)?;
+            if k == "_id" {
+                id_pair = Some((k, val));
+            } else {
+                pairs.push((k, val));
+            }
+        }
+        if let Some(pair) = id_pair {
+            pairs.push(pair);
+        }
+        let (labels, values): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
         Ok(RowWrap(Cow::Owned(RowLabeled {
             labels: labels.into(),
             values: values.into(),

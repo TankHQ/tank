@@ -400,7 +400,8 @@ impl SqlWriter for ScyllaDBSqlWriter {
     {
         let table = E::table();
         out.buffer().reserve(128);
-        let is_true = condition.matches(&mut IsTrue, self);
+        let mut context = Context::new(Fragment::SqlDeleteFrom, E::qualified_columns());
+        let is_true = condition.matches(&mut IsTrue, self, &mut context);
         if is_true {
             out.push_str("TRUNCATE ");
         } else {
@@ -411,7 +412,6 @@ impl SqlWriter for ScyllaDBSqlWriter {
             }
             out.push_str("DELETE FROM ");
         }
-        let mut context = Context::new(Fragment::SqlDeleteFrom, E::qualified_columns());
         self.write_table_ref(&mut context, out, table);
         if !is_true {
             out.push_str("\nWHERE ");

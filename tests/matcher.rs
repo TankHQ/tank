@@ -17,13 +17,13 @@ mod tests {
         {
             let mut matcher = IsColumn::default();
             assert!(matcher.column.is_none());
-            assert!(Table::col_a.matches(&mut matcher, &WRITER));
+            assert!(Table::col_a.matches(&mut matcher, &WRITER, &mut Default::default()));
             assert_eq!(matcher.column, Some(Table::col_a));
             assert_ne!(matcher.column, Some(Table::col_b));
         }
         {
             let mut matcher = IsColumn::default();
-            assert!(expr!(table.col_a).matches(&mut matcher, &WRITER));
+            assert!(expr!(table.col_a).matches(&mut matcher, &WRITER, &mut Default::default()));
             assert_eq!(
                 matcher.column,
                 Some(ColumnRef {
@@ -33,6 +33,6 @@ mod tests {
                 })
             );
         }
-        assert!(!true.matches(&mut IsColumn::default(), &WRITER));
+        assert!(!true.matches(&mut IsColumn::default(), &WRITER, &mut Default::default()));
     }
 }

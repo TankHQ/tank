@@ -10,7 +10,7 @@ pub struct YourDBConnection {}
 impl Executor for YourDBConnection {
     type Driver = YourDBDriver;
 
-    async fn prepare(&mut self, query: String) -> Result<Query<Self::Driver>> {
+    async fn prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
         // Return Err if not supported
         Ok(Query::Prepared(YourDBPrepared::new()))
     }

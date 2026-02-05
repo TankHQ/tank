@@ -15,8 +15,8 @@ use mongodb::{
 use std::{borrow::Cow, collections::HashMap, f64, iter, mem};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, DataSet, DynQuery, Entity, ErrorContext,
-    Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsFalse, IsTrue, Operand,
-    Order, Result, SelectQuery, SqlWriter, TableRef, Value, print_timer, truncate_long,
+    Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk, IsFalse, IsTrue,
+    Operand, Order, Result, SelectQuery, SqlWriter, TableRef, Value, print_timer, truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -60,19 +60,20 @@ impl MongoDBSqlWriter {
         }
     }
 
-    pub(crate) fn prepare_query(query: &mut DynQuery, payload: Payload) {
+    pub(crate) fn prepare_query(query: &mut DynQuery, context: &mut Context, payload: Payload) {
         if let Some(prepared) = query.as_prepared::<MongoDBDriver>() {
             if let Err(e) = prepared.add_payload(payload) {
                 let e = e.context("While preparing the query (adding payload)");
                 log::error!("{e:#}",);
             };
+            prepared.count = context.counter;
         } else {
             if !query.is_empty() {
                 log::error!(
                     "The query is not empty, MongoDBSqlWriter::switch_to_prepared will drop the content",
                 );
             }
-            *query = DynQuery::Prepared(Box::new(MongoDBPrepared::new(payload)));
+            *query = DynQuery::Prepared(Box::new(MongoDBPrepared::new(payload, context.counter)));
         }
     }
 
@@ -122,24 +123,34 @@ impl MongoDBSqlWriter {
         condition: impl Expression,
         table: Cow<'static, str>,
     ) {
-        if condition.matches(&mut IsFalse, self)
+        if condition.matches(&mut IsFalse, self, context)
             && let Some(prepared) = out.as_prepared::<MongoDBDriver>()
             && let Some(target) = prepared.current_bson()
         {
             *target = Bson::Document(Self::make_unmatchable())
-        } else if condition.matches(&mut IsTrue, self)
+        } else if condition.matches(&mut IsTrue, self, context)
             && let Some(prepared) = out.as_prepared::<MongoDBDriver>()
             && let Some(target) = prepared.current_bson()
         {
             *target = Bson::Document(Default::default());
         } else if let matcher = &mut IsFieldCondition::with_table(table)
-            && condition.matches(matcher, self)
+            && condition.matches(matcher, self, context)
             && let Some(prepared) = out.as_prepared::<MongoDBDriver>()
             && let Some(target) = prepared.current_bson()
         {
             *target = Bson::Document(mem::take(&mut matcher.condition))
         } else {
             condition.write_query(self, context, out);
+            let Some(bson) = out
+                .as_prepared::<MongoDBDriver>()
+                .and_then(MongoDBPrepared::current_bson)
+            else {
+                log::error!(
+                    "Failed to get the bson objec in MongoDBSqlWriter::write_match_expression"
+                );
+                return;
+            };
+            *bson = doc! { "$expr": mem::take(bson) }.into();
         }
     }
 }
@@ -585,6 +596,20 @@ impl SqlWriter for MongoDBSqlWriter {
         document.insert(function, arg);
     }
 
+    fn write_expression_operand_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
+        let Some(bson) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!(
+                "Failed to get the bson objec in MongoDBSqlWriter::write_expression_operand_question_mark"
+            );
+            return;
+        };
+        *bson = Bson::String(format!("$$param_{}", context.counter));
+        context.counter += 1;
+    }
+
     fn write_create_schema<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
     where
         Self: Sized,
@@ -592,6 +617,7 @@ impl SqlWriter for MongoDBSqlWriter {
     {
         Self::prepare_query(
             out,
+            &mut Default::default(),
             CreateDatabasePayload {
                 table: E::table().clone(),
             }
@@ -606,6 +632,7 @@ impl SqlWriter for MongoDBSqlWriter {
     {
         Self::prepare_query(
             out,
+            &mut Default::default(),
             DropDatabasePayload {
                 table: E::table().clone(),
             }
@@ -622,6 +649,7 @@ impl SqlWriter for MongoDBSqlWriter {
         let name = table.full_name();
         Self::prepare_query(
             out,
+            &mut Default::default(),
             CreateCollectionPayload {
                 table: E::table().clone(),
                 options: CreateCollectionOptions::builder()
@@ -639,6 +667,7 @@ impl SqlWriter for MongoDBSqlWriter {
     {
         Self::prepare_query(
             out,
+            &mut Default::default(),
             DropCollectionPayload {
                 table: E::table().clone(),
             }
@@ -652,7 +681,7 @@ impl SqlWriter for MongoDBSqlWriter {
         Data: DataSet + 'a,
     {
         let (Some(table), Some(condition)) = (query.get_from(), query.get_where()) else {
-            log::error!("The query does not have the FROM or WHERE part");
+            log::error!("The query does not have the FROM or WHERE clause");
             return;
         };
         let mut context = Context::fragment(Fragment::SqlSelect);
@@ -660,11 +689,11 @@ impl SqlWriter for MongoDBSqlWriter {
         let name = table.full_name();
         let limit = query.get_limit();
         let mut group_by = query.get_group_by().peekable();
-        let mut group: Document = Document::new();
+        let mut group = Document::new();
         let mut is_aggregate = group_by.peek().is_some();
         macro_rules! update_group {
-            ($column:expr, $name:expr, $bson:expr) => {
-                if $column.matches(&mut IsAggregateFunction, self) {
+            ($column:expr, $name:expr, $bson:expr, $context:expr) => {
+                if $column.matches(&mut IsAggregateFunction, self, $context) {
                     group.insert($name, $bson);
                     is_aggregate = true;
                 } else if is_aggregate {
@@ -684,11 +713,15 @@ impl SqlWriter for MongoDBSqlWriter {
                 ..Default::default()
             })
         }
-        let mut project = Document::new();
+        let mut project = Some(Document::new());
         for column in query.get_select() {
+            if column.matches(&mut IsAsterisk, self, &mut context) {
+                project = None;
+                continue;
+            }
+            let name = get_name(&column, false);
             let mut query = Self::make_prepared();
             column.write_query(self, &mut context, &mut query);
-            let name = get_name(&column, false);
             let Some(bson) = query
                 .as_prepared::<MongoDBDriver>()
                 .and_then(MongoDBPrepared::current_bson)
@@ -701,8 +734,10 @@ impl SqlWriter for MongoDBSqlWriter {
                 );
                 return;
             };
-            update_group!(column, name.clone(), bson.clone());
-            project.insert(name, bson);
+            update_group!(column, name.clone(), bson.clone(), &mut context);
+            if let Some(project) = &mut project {
+                project.insert(name, bson);
+            }
         }
         let filter = {
             let mut context = context.switch_fragment(Fragment::SqlSelectWhere);
@@ -727,10 +762,10 @@ impl SqlWriter for MongoDBSqlWriter {
             document
         };
         for column in group_by {
+            let name = get_name(&column, false);
             let mut context = context.switch_fragment(Fragment::SqlSelectGroupBy);
             let mut query = Self::make_prepared();
             column.write_query(self, &mut context.current, &mut query);
-            let name = get_name(&column, false);
             let Some(bson) = query
                 .as_prepared::<MongoDBDriver>()
                 .and_then(MongoDBPrepared::current_bson)
@@ -743,7 +778,7 @@ impl SqlWriter for MongoDBSqlWriter {
                 );
                 return;
             };
-            update_group!(column, name, bson);
+            update_group!(column, name, bson, &mut context.current);
         }
         let mut having = Bson::Null;
         if let Some(condition) = query.get_having() {
@@ -769,7 +804,7 @@ impl SqlWriter for MongoDBSqlWriter {
         {
             for order in query.get_order_by() {
                 let find_order = &mut FindOrder::default();
-                order.matches(find_order, self);
+                order.matches(find_order, self, &mut context);
                 sort.insert(
                     get_name(&order, false),
                     Bson::Int32(if find_order.order == Order::DESC {
@@ -786,6 +821,10 @@ impl SqlWriter for MongoDBSqlWriter {
                 pipeline.push(doc! { "$match": filter });
             }
             if !group.is_empty() {
+                group.entry("_id".into()).or_insert_with(|| {
+                    project = None;
+                    Bson::Null.into()
+                });
                 pipeline.push(doc! { "$group": group });
             }
             if !matches!(having, Bson::Null) {
@@ -797,7 +836,11 @@ impl SqlWriter for MongoDBSqlWriter {
             if let Some(limit) = limit {
                 pipeline.push(doc! { "$limit": limit });
             }
-            pipeline.push(doc! { "$project": project });
+            if let Some(project) = project
+                && !project.is_empty()
+            {
+                pipeline.push(doc! { "$project": project })
+            }
             AggregatePayload {
                 table,
                 pipeline: pipeline.into(),
@@ -812,7 +855,7 @@ impl SqlWriter for MongoDBSqlWriter {
                 filter: filter.into(),
                 options: FindOneOptions::builder()
                     .comment(Bson::String(format!("Tank: select one entity from {name}")))
-                    .projection(Some(project))
+                    .projection(project)
                     .build(),
             }
             .into()
@@ -827,7 +870,7 @@ impl SqlWriter for MongoDBSqlWriter {
             }
             .into()
         };
-        Self::prepare_query(out, payload);
+        Self::prepare_query(out, &mut context, payload);
     }
 
     fn write_insert<'b, E>(
@@ -846,6 +889,7 @@ impl SqlWriter for MongoDBSqlWriter {
             return;
         };
         let single = entities.peek().is_none();
+        let mut context = Context::fragment(Fragment::SqlInsertInto);
         let payload: Payload = match (update, single) {
             (false, true) => InsertOnePayload {
                 table,
@@ -873,7 +917,6 @@ impl SqlWriter for MongoDBSqlWriter {
             (true, _) => {
                 let mut values = iter::chain(iter::once(entity), entities).filter_map(|entity| {
                     let mut query = Self::make_prepared();
-                    let mut context = Context::fragment(Fragment::SqlInsertInto);
                     self.write_match_expression(&mut context, &mut query, entity.primary_key_expr(), Default::default());
                     let Some(Bson::Document(filter)) = query
                         .as_prepared::<MongoDBDriver>()
@@ -939,7 +982,7 @@ impl SqlWriter for MongoDBSqlWriter {
                 }
             }
         };
-        Self::prepare_query(out, payload);
+        Self::prepare_query(out, &mut context, payload);
     }
 
     fn write_delete<E>(&self, out: &mut DynQuery, condition: impl Expression)
@@ -949,8 +992,10 @@ impl SqlWriter for MongoDBSqlWriter {
     {
         let table = E::table().clone();
         let name = table.full_name();
+        let mut context = Context::fragment(Fragment::SqlDeleteFromWhere);
         Self::prepare_query(
             out,
+            &mut context,
             DeletePayload {
                 table,
                 filter: Default::default(),
@@ -961,7 +1006,10 @@ impl SqlWriter for MongoDBSqlWriter {
             }
             .into(),
         );
-        let mut context = Context::fragment(Fragment::SqlDeleteFromWhere);
         self.write_match_expression(&mut context, out, condition, Default::default());
+        let Some(prepared) = out.as_prepared::<MongoDBDriver>() else {
+            return;
+        };
+        prepared.count = context.counter;
     }
 }

@@ -35,11 +35,16 @@ impl Expression for DefaultValueType {
             DefaultValueType::Expression(v) => v.write_query(writer, context, out),
         }
     }
-    fn matches(&self, matcher: &mut dyn ExpressionMatcher, writer: &dyn SqlWriter) -> bool {
+    fn matches(
+        &self,
+        matcher: &mut dyn ExpressionMatcher,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+    ) -> bool {
         match self {
-            DefaultValueType::None => ().matches(matcher, writer),
-            DefaultValueType::Value(v) => v.matches(matcher, writer),
-            DefaultValueType::Expression(v) => v.matches(matcher, writer),
+            DefaultValueType::None => ().matches(matcher, writer, context),
+            DefaultValueType::Value(v) => v.matches(matcher, writer, context),
+            DefaultValueType::Expression(v) => v.matches(matcher, writer, context),
         }
     }
 }

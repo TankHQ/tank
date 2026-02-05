@@ -113,9 +113,11 @@ impl Executor for MongoDBConnection {
                     ..
                 }) => {
                     let collection = self.collection(table);
+                    let mut options = options.clone();
+                    options.let_vars = prepared.make_let_vars();
                     match collection
                         .find_one(filter.clone())
-                        .with_options(options.clone())
+                        .with_options(options)
                         .await
                     {
                         Ok(Some(v)) => {
@@ -138,9 +140,11 @@ impl Executor for MongoDBConnection {
                     ..
                 }) => {
                     let collection = self.collection(table);
+                    let mut options = options.clone();
+                    options.let_vars = prepared.make_let_vars();
                     let mut stream = collection
                         .find(filter.clone())
-                        .with_options(options.clone())
+                        .with_options(options)
                         .await
                         .with_context(|| make_context!(payload))?;
                     while let Some(result) = stream
@@ -201,9 +205,11 @@ impl Executor for MongoDBConnection {
                     ..
                 }) => {
                     let collection = self.collection(table);
+                    let mut options = options.clone();
+                    options.let_vars = prepared.make_let_vars();
                     let result = collection
                         .update_one(filter.clone(), modifications.clone())
-                        .with_options(options.clone())
+                        .with_options(options)
                         .await
                         .with_context(|| make_context!(payload))?;
                     let last_affected_id = match result.upserted_id {
@@ -224,12 +230,14 @@ impl Executor for MongoDBConnection {
                     ..
                 }) => {
                     let collection = self.collection(table);
+                    let mut options = options.clone();
+                    options.let_vars = prepared.make_let_vars();
                     let result = if *single {
                         collection.delete_one(filter.clone())
                     } else {
                         collection.delete_many(filter.clone())
                     }
-                    .with_options(options.clone())
+                    .with_options(options)
                     .await
                     .with_context(|| make_context!(payload))?;
                     yield QueryResult::Affected(RowsAffected {
@@ -269,9 +277,11 @@ impl Executor for MongoDBConnection {
                     ..
                 }) => {
                     let collection = self.collection(table);
+                    let mut options = options.clone();
+                    options.let_vars = prepared.make_let_vars();
                     let mut stream = collection
                         .aggregate(pipeline.iter().cloned())
-                        .with_options(options.clone())
+                        .with_options(options)
                         .await
                         .with_context(|| make_context!(payload))?;
                     while let Some(result) = stream
@@ -288,10 +298,12 @@ impl Executor for MongoDBConnection {
                     }
                 }
                 Payload::Batch(BatchPayload { batch, options, .. }) => {
+                    let mut options = options.clone();
+                    options.let_vars = prepared.make_let_vars();
                     let result = self
                         .client
                         .bulk_write(batch.iter().map(|v| v.as_write_models()).flatten())
-                        .with_options(options.clone())
+                        .with_options(options)
                         .await
                         .with_context(|| make_context!(payload))?;
                     yield QueryResult::Affected(RowsAffected {
