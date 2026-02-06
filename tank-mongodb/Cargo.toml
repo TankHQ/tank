@@ -22,6 +22,9 @@ uuid.workspace = true
 
 [dev-dependencies]
 tank-tests = { path = "../tank-tests", features = [
+    "disable-intervals",
+    "disable-joins",
+    "disable-large-integers",
     "disable-large-integers",
     "disable-multiple-statements",
 ] }

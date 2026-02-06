@@ -27,6 +27,7 @@ struct ComplexNullFields {
     third: Option<Box<[u8]>>,
     #[cfg(all(
         not(feature = "disable-arrays"),
+        not(feature = "disable-large-integers"),
         not(feature = "disable-maps"),
         not(feature = "disable-nested-collections"),
     ))]
@@ -55,6 +56,7 @@ impl Default for ComplexNullFields {
             third: None,
             #[cfg(all(
                 not(feature = "disable-arrays"),
+                not(feature = "disable-large-integers"),
                 not(feature = "disable-maps"),
                 not(feature = "disable-nested-collections"),
             ))]
@@ -109,6 +111,7 @@ pub async fn complex<E: Executor>(executor: &mut E) {
         third: Some(Box::new([0x75, 0xAA, 0x30, 0x77])),
         #[cfg(all(
             not(feature = "disable-arrays"),
+            not(feature = "disable-large-integers"),
             not(feature = "disable-maps"),
             not(feature = "disable-nested-collections"),
         ))]
@@ -163,6 +166,7 @@ pub async fn complex<E: Executor>(executor: &mut E) {
     assert_eq!(*entity.third.unwrap(), [0x75, 0xAA, 0x30, 0x77]);
     #[cfg(all(
         not(feature = "disable-arrays"),
+        not(feature = "disable-large-integers"),
         not(feature = "disable-maps"),
         not(feature = "disable-nested-collections"),
     ))]
@@ -214,6 +218,7 @@ pub async fn complex<E: Executor>(executor: &mut E) {
         third: None,
         #[cfg(all(
             not(feature = "disable-arrays"),
+            not(feature = "disable-large-integers"),
             not(feature = "disable-maps"),
             not(feature = "disable-nested-collections"),
         ))]
@@ -264,6 +269,7 @@ pub async fn complex<E: Executor>(executor: &mut E) {
     assert_eq!(loaded.third, None);
     #[cfg(all(
         not(feature = "disable-arrays"),
+        not(feature = "disable-large-integers"),
         not(feature = "disable-maps"),
         not(feature = "disable-nested-collections"),
     ))]

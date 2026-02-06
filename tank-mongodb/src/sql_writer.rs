@@ -807,8 +807,8 @@ impl SqlWriter for MongoDBSqlWriter {
                 order.matches(find_order, self, &mut context);
                 sort.insert(
                     get_name(&order, false),
-                    Bson::Int32(if find_order.order == Order::DESC {
-                        -1
+                    Bson::Int32(if find_order.order == Order::ASC {
+                        1
                     } else {
                         -1
                     }),
@@ -865,6 +865,8 @@ impl SqlWriter for MongoDBSqlWriter {
                 filter: filter.into(),
                 options: FindOptions::builder()
                     .comment(Bson::String(format!("Tank: select entities from {name}")))
+                    .projection(project)
+                    .sort(if !sort.is_empty() { Some(sort) } else { None })
                     .limit(limit.map(|v| v as _))
                     .build(),
             }
