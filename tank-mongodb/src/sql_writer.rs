@@ -484,6 +484,9 @@ impl SqlWriter for MongoDBSqlWriter {
         out: &mut DynQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) {
+        if value.op == BinaryOpType::Alias {
+            return value.lhs.write_query(self, context, out);
+        }
         let Some(document) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::switch_to_document)
@@ -596,6 +599,72 @@ impl SqlWriter for MongoDBSqlWriter {
         document.insert(function, arg);
     }
 
+    fn write_expression_list(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &mut dyn Iterator<Item = &dyn Expression>,
+    ) {
+        let Some(bson) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_expression_list");
+            return;
+        };
+        let Some(values) = value
+            .map(|v| {
+                let mut q = Self::make_prepared();
+                v.write_query(self, context, &mut q);
+                let Some(bson) = q
+                    .as_prepared::<MongoDBDriver>()
+                    .and_then(MongoDBPrepared::current_bson)
+                else {
+                    return None;
+                };
+                Some(mem::take(bson))
+            })
+            .collect::<Option<_>>()
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_expression_list");
+            return;
+        };
+        *bson = Bson::Array(values);
+    }
+
+    fn write_expression_tuple(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &mut dyn Iterator<Item = &dyn Expression>,
+    ) {
+        let Some(bson) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_expression_tuple");
+            return;
+        };
+        let Some(values) = value
+            .map(|v| {
+                let mut q = Self::make_prepared();
+                v.write_query(self, context, &mut q);
+                let Some(bson) = q
+                    .as_prepared::<MongoDBDriver>()
+                    .and_then(MongoDBPrepared::current_bson)
+                else {
+                    return None;
+                };
+                Some(mem::take(bson))
+            })
+            .collect::<Option<_>>()
+        else {
+            log::error!("Failed to get the bson objec in MongoDBSqlWriter::write_expression_tuple");
+            return;
+        };
+        *bson = Bson::Array(values);
+    }
+
     fn write_expression_operand_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
         let Some(bson) = out
             .as_prepared::<MongoDBDriver>()
@@ -684,8 +753,14 @@ impl SqlWriter for MongoDBSqlWriter {
             log::error!("The query does not have the FROM or WHERE clause");
             return;
         };
-        let mut context = Context::fragment(Fragment::SqlSelect);
         let table = table.table_ref();
+        if table.name.is_empty() {
+            log::error!(
+                "The table is not specified in the dataset (if it is a JOIN, MongoDB does not support it)"
+            );
+            return;
+        }
+        let mut context = Context::fragment(Fragment::SqlSelect);
         let name = table.full_name();
         let limit = query.get_limit();
         let mut group_by = query.get_group_by().peekable();

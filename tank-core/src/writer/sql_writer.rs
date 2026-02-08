@@ -580,18 +580,11 @@ pub trait SqlWriter: Send {
                 out,
                 &mut v.iter().map(|v| v as &dyn Expression),
             ),
-            Operand::LitTuple(v) => {
-                out.push('(');
-                separated_by(
-                    out,
-                    *v,
-                    |out, op| {
-                        op.write_query(self.as_dyn(), context, out);
-                    },
-                    ", ",
-                );
-                out.push(')');
-            }
+            Operand::LitTuple(v) => self.write_expression_tuple(
+                context,
+                out,
+                &mut v.iter().map(|v| v as &dyn Expression),
+            ),
             Operand::Type(v) => self.write_column_type(context, out, v),
             Operand::Variable(v) => self.write_value(context, out, v),
             Operand::Value(v) => self.write_value(context, out, v),
@@ -752,6 +745,24 @@ pub trait SqlWriter: Send {
     }
 
     fn write_expression_list(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &mut dyn Iterator<Item = &dyn Expression>,
+    ) {
+        out.push('[');
+        separated_by(
+            out,
+            value,
+            |out, v| {
+                v.write_query(self.as_dyn(), context, out);
+            },
+            ",",
+        );
+        out.push(']');
+    }
+
+    fn write_expression_tuple(
         &self,
         context: &mut Context,
         out: &mut DynQuery,

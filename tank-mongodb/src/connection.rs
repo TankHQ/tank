@@ -4,7 +4,7 @@ use crate::{
     MongoDBDriver, MongoDBTransaction, Payload, RowWrap, UpsertPayload,
 };
 use async_stream::try_stream;
-use mongodb::{Client, Collection, Database, bson::Bson};
+use mongodb::{Client, ClientSession, Collection, Database, bson::Bson};
 use std::{borrow::Cow, future, i64};
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowsAffected,
@@ -15,16 +15,29 @@ use tank_core::{
 
 /// Minimal MongoDB connection wrapper used by the driver.
 pub struct MongoDBConnection {
-    client: Client,
-    default_database: Database,
+    pub(crate) client: Client,
+    pub(crate) session: Option<ClientSession>,
+    pub(crate) default_database: Database,
 }
 
 impl MongoDBConnection {
     pub fn new(client: Client, default_database: Database) -> Self {
         MongoDBConnection {
             client,
+            session: None,
             default_database,
         }
+    }
+    pub fn is_session(&self) -> bool {
+        self.session.is_some()
+    }
+    pub async fn start_session(&mut self) -> Result<&mut Self> {
+        self.session = Some(self.client.start_session().await?);
+        Ok(self)
+    }
+    pub async fn stop_session(&mut self) -> Result<&mut Self> {
+        self.session = None;
+        Ok(self)
     }
     pub fn database(&self, table: &TableRef) -> Database {
         let schema = &table.schema;
@@ -34,9 +47,9 @@ impl MongoDBConnection {
             self.default_database.clone()
         }
     }
-    pub(crate) fn collection(&self, table: &TableRef) -> Collection<RowWrap<'_>> {
+    pub(crate) fn collection<'t>(&self, table: &'t TableRef) -> Collection<RowWrap<'t>> {
         if table.name.is_empty() {
-            log::error!("Tried to get a collection from a empty table");
+            log::error!("Cannot get collection, no table name {table:?}");
         }
         self.database(table).collection(&table.name)
     }
@@ -60,11 +73,17 @@ impl Connection for MongoDBConnection {
         Ok(MongoDBConnection::new(client, database))
     }
 
-    #[allow(refining_impl_trait)]
     async fn begin(&mut self) -> Result<MongoDBTransaction<'_>> {
-        Err(Error::msg(
-            "Transactions are not supported by this MongoDB driver",
-        ))
+        let mut end_connection_session = false;
+        if !self.is_session() {
+            self.start_session().await?;
+            end_connection_session = true;
+        }
+        let Some(session) = &mut self.session else {
+            return Err(Error::msg("Expected the connection to be a session by now"));
+        };
+        session.start_transaction().await?;
+        Ok(MongoDBTransaction::new(self, end_connection_session))
     }
 }
 
@@ -115,11 +134,11 @@ impl Executor for MongoDBConnection {
                     let collection = self.collection(table);
                     let mut options = options.clone();
                     options.let_vars = prepared.make_let_vars();
-                    match collection
-                        .find_one(filter.clone())
-                        .with_options(options)
-                        .await
-                    {
+                    let mut operation = collection.find_one(filter.clone()).with_options(options);
+                    if let Some(session) = &mut self.session {
+                        operation = operation.session(session);
+                    }
+                    match operation.await {
                         Ok(Some(v)) => {
                             yield QueryResult::Row(match v.0 {
                                 Cow::Borrowed(v) => v.clone(),
@@ -131,6 +150,34 @@ impl Executor for MongoDBConnection {
                             Err(Error::msg(format!("{e}"))).context(make_context!(payload))?;
                             return;
                         }
+                    }
+                }
+                Payload::FindMany(FindManyPayload {
+                    table,
+                    filter: Bson::Document(filter),
+                    options,
+                    ..
+                }) if self.session.is_some() => {
+                    let collection = self.collection(table);
+                    let mut options = options.clone();
+                    options.let_vars = prepared.make_let_vars();
+                    let session = self.session.as_mut().unwrap();
+                    let mut stream = collection
+                        .find(filter.clone())
+                        .session(&mut *session)
+                        .with_options(options)
+                        .await
+                        .with_context(|| make_context!(payload))?;
+                    while let Some(result) = stream
+                        .next(session)
+                        .await
+                        .transpose()
+                        .with_context(|| make_context!(payload))?
+                    {
+                        yield QueryResult::Row(match result.0 {
+                            Cow::Borrowed(v) => v.clone(),
+                            Cow::Owned(v) => v,
+                        });
                     }
                 }
                 Payload::FindMany(FindManyPayload {
@@ -165,11 +212,13 @@ impl Executor for MongoDBConnection {
                     ..
                 }) => {
                     let collection = self.collection(table);
-                    let result = collection
+                    let mut operation = collection
                         .insert_one(RowWrap(Cow::Borrowed(row)))
-                        .with_options(options.clone())
-                        .await
-                        .with_context(|| make_context!(payload))?;
+                        .with_options(options.clone());
+                    if let Some(session) = &mut self.session {
+                        operation = operation.session(session);
+                    }
+                    let result = operation.await.with_context(|| make_context!(payload))?;
                     let last_affected_id = match result.inserted_id {
                         Bson::Int32(v) => Some(v as i64),
                         Bson::Int64(v) => Some(v),
@@ -187,13 +236,15 @@ impl Executor for MongoDBConnection {
                     ..
                 }) => {
                     let collection = self.collection(table);
-                    collection
+                    let mut operation = collection
                         .insert_many(rows.iter().map(|v| RowWrap(Cow::Borrowed(v))))
-                        .with_options(options.clone())
-                        .await
-                        .with_context(|| make_context!(payload))?;
+                        .with_options(options.clone());
+                    if let Some(session) = &mut self.session {
+                        operation = operation.session(session);
+                    }
+                    let result = operation.await.with_context(|| make_context!(payload))?;
                     yield QueryResult::Affected(RowsAffected {
-                        rows_affected: Some(rows.len() as _),
+                        rows_affected: Some(result.inserted_ids.len() as _),
                         last_affected_id: None,
                     });
                 }
@@ -207,11 +258,13 @@ impl Executor for MongoDBConnection {
                     let collection = self.collection(table);
                     let mut options = options.clone();
                     options.let_vars = prepared.make_let_vars();
-                    let result = collection
+                    let mut operation = collection
                         .update_one(filter.clone(), modifications.clone())
-                        .with_options(options)
-                        .await
-                        .with_context(|| make_context!(payload))?;
+                        .with_options(options);
+                    if let Some(session) = &mut self.session {
+                        operation = operation.session(session);
+                    }
+                    let result = operation.await.with_context(|| make_context!(payload))?;
                     let last_affected_id = match result.upserted_id {
                         Some(Bson::Int32(v)) => Some(v as i64),
                         Some(Bson::Int64(v)) => Some(v),
@@ -232,14 +285,16 @@ impl Executor for MongoDBConnection {
                     let collection = self.collection(table);
                     let mut options = options.clone();
                     options.let_vars = prepared.make_let_vars();
-                    let result = if *single {
+                    let mut operation = if *single {
                         collection.delete_one(filter.clone())
                     } else {
                         collection.delete_many(filter.clone())
                     }
-                    .with_options(options)
-                    .await
-                    .with_context(|| make_context!(payload))?;
+                    .with_options(options);
+                    if let Some(session) = &mut self.session {
+                        operation = operation.session(session);
+                    }
+                    let result = operation.await.with_context(|| make_context!(payload))?;
                     yield QueryResult::Affected(RowsAffected {
                         rows_affected: Some(result.deleted_count),
                         last_affected_id: None,
@@ -247,28 +302,62 @@ impl Executor for MongoDBConnection {
                 }
                 Payload::CreateCollection(CreateCollectionPayload { table, options, .. }) => {
                     let database = self.database(table);
-                    database
+                    let mut operation = database
                         .create_collection(table.name.to_string())
-                        .with_options(options.clone())
-                        .await
-                        .with_context(|| make_context!(payload))?;
+                        .with_options(options.clone());
+                    if let Some(session) = &mut self.session {
+                        operation = operation.session(session);
+                    }
+                    operation.await.with_context(|| make_context!(payload))?;
                 }
                 Payload::DropCollection(DropCollectionPayload { table, .. }) => {
                     let collection = self.collection(table);
-                    collection
-                        .drop()
-                        .await
-                        .with_context(|| make_context!(payload))?;
+                    let mut operation = collection.drop();
+                    if let Some(session) = &mut self.session {
+                        operation = operation.session(session);
+                    }
+                    operation.await.with_context(|| make_context!(payload))?;
                 }
                 Payload::CreateDatabase(..) => {
                     // No database creating needed (it is created automatically)
                 }
                 Payload::DropDatabase(DropDatabasePayload { table, .. }) => {
                     let database = self.database(table);
-                    database
-                        .drop()
+                    let mut operation = database.drop();
+                    if let Some(session) = &mut self.session {
+                        operation = operation.session(session);
+                    }
+                    operation.await.with_context(|| make_context!(payload))?;
+                }
+                Payload::Aggregate(AggregatePayload {
+                    table,
+                    pipeline,
+                    options,
+                    ..
+                }) if self.session.is_some() => {
+                    let collection = self.collection(table);
+                    let mut options = options.clone();
+                    options.let_vars = prepared.make_let_vars();
+                    let session = self.session.as_mut().unwrap();
+                    let mut stream = collection
+                        .aggregate(pipeline.iter().cloned())
+                        .session(&mut *session)
+                        .with_options(options)
                         .await
                         .with_context(|| make_context!(payload))?;
+                    while let Some(result) = stream
+                        .next(session)
+                        .await
+                        .transpose()
+                        .with_context(|| make_context!(payload))?
+                    {
+                        let row: RowWrap =
+                            result.try_into().with_context(|| make_context!(payload))?;
+                        yield QueryResult::Row(match row.0 {
+                            Cow::Borrowed(v) => v.clone(),
+                            Cow::Owned(v) => v,
+                        });
+                    }
                 }
                 Payload::Aggregate(AggregatePayload {
                     table,
@@ -300,12 +389,14 @@ impl Executor for MongoDBConnection {
                 Payload::Batch(BatchPayload { batch, options, .. }) => {
                     let mut options = options.clone();
                     options.let_vars = prepared.make_let_vars();
-                    let result = self
+                    let mut operation = self
                         .client
                         .bulk_write(batch.iter().map(|v| v.as_write_models()).flatten())
-                        .with_options(options)
-                        .await
-                        .with_context(|| make_context!(payload))?;
+                        .with_options(options);
+                    if let Some(session) = &mut self.session {
+                        operation = operation.session(session);
+                    }
+                    let result = operation.await.with_context(|| make_context!(payload))?;
                     yield QueryResult::Affected(RowsAffected {
                         rows_affected: Some(
                             (result.inserted_count

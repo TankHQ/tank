@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, DataSet, Expression, TableRef,
+    DataSet, DynQuery, Expression, TableRef,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::{TokenStream, TokenTree};
@@ -59,15 +59,11 @@ impl<L: DataSet, R: DataSet, E: Expression> DataSet for Join<L, R, E> {
     fn table_ref(&self) -> TableRef {
         let mut result = self.lhs.table_ref();
         let other = self.rhs.table_ref();
-        if result.name != other.name {
-            result.name = Default::default();
-        }
+        result.name = Default::default();
         if result.schema != other.schema {
             result.schema = Default::default();
         }
-        if result.alias != other.alias {
-            result.alias = Default::default();
-        }
+        result.alias = Default::default();
         result
     }
 }

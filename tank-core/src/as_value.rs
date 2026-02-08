@@ -113,6 +113,8 @@ macro_rules! impl_as_value {
                         }
                         Err(Error::msg(format!("Value {v}: f64 does not fit into a integer")))
                     },
+                    // This is needed to allow integer keys in maps, in some drivers the maps keys are strings only
+                    Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v),
                     Value::Json(Some(serde_json::Value::Number(v)), ..) => {
                         let integer = v.as_i128().or_else(|| {
                             if let Some(v) = v.as_f64() && v.fract() == 0.0 {

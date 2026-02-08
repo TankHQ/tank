@@ -265,47 +265,49 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
     let cart_count_after = Cart::find_many(executor, true, None).count().await;
     assert_eq!(cart_count_after, 2);
 
-    // Join
-    #[derive(Debug, Entity, PartialEq)]
-    struct Carts {
-        user: String,
-        product: String,
-        price: Decimal,
-    }
-    let carts: Vec<Carts> = executor
-        .fetch(
-            QueryBuilder::new()
-                .select(cols!(
-                    Product::name as product,
-                    User::name as user,
-                    Cart::price
-                ))
-                .from(join!(
-                    User INNER JOIN Cart ON User::id == Cart::user
-                        JOIN Product ON Cart::product == Product::id
-                ))
-                .where_expr(true)
-                .order_by(cols!(Product::name ASC, User::name ASC))
-                .build(&executor.driver()),
+    #[cfg(not(feature = "disable-joins"))]
+    {
+        #[derive(Debug, Entity, PartialEq)]
+        struct Carts {
+            user: String,
+            product: String,
+            price: Decimal,
+        }
+        let carts: Vec<Carts> = executor
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(
+                        Product::name as product,
+                        User::name as user,
+                        Cart::price
+                    ))
+                    .from(join!(
+                        User INNER JOIN Cart ON User::id == Cart::user
+                            JOIN Product ON Cart::product == Product::id
+                    ))
+                    .where_expr(true)
+                    .order_by(cols!(Product::name ASC, User::name ASC))
+                    .build(&executor.driver()),
+            )
+            .map_ok(Carts::from_row)
+            .map(Result::flatten)
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Could not get the products ordered by increasing price");
+        assert_eq!(
+            carts,
+            &[
+                Carts {
+                    user: "Bob Segfault".into(),
+                    product: "Async Teapot".into(),
+                    price: Decimal::new(23_50, 2),
+                },
+                Carts {
+                    user: "Alice Compiler".into(),
+                    product: "Rust-Proof Coffee Mug".into(),
+                    price: Decimal::new(12_99, 2),
+                },
+            ]
         )
-        .map_ok(Carts::from_row)
-        .map(Result::flatten)
-        .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not get the products ordered by increasing price");
-    assert_eq!(
-        carts,
-        &[
-            Carts {
-                user: "Bob Segfault".into(),
-                product: "Async Teapot".into(),
-                price: Decimal::new(23_50, 2),
-            },
-            Carts {
-                user: "Alice Compiler".into(),
-                product: "Rust-Proof Coffee Mug".into(),
-                price: Decimal::new(12_99, 2),
-            },
-        ]
-    )
+    }
 }
