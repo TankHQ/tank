@@ -768,7 +768,7 @@ pub trait SqlWriter: Send {
         out: &mut DynQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
     ) {
-        out.push('[');
+        out.push('(');
         separated_by(
             out,
             value,
@@ -777,7 +777,7 @@ pub trait SqlWriter: Send {
             },
             ",",
         );
-        out.push(']');
+        out.push(')');
     }
 
     /// Render join keyword(s) for the given join type.

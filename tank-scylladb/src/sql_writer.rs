@@ -94,6 +94,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
                 out.push('-');
             }
             out.push_str("Infinity");
+            return;
         }
         GenericSqlWriter::new().write_value_f32(context, out, value);
     }
@@ -104,6 +105,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
                 out.push('-');
             }
             out.push_str("Infinity");
+            return;
         }
         GenericSqlWriter::new().write_value_f64(context, out, value);
     }
