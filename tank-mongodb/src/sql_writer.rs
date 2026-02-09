@@ -104,8 +104,8 @@ impl MongoDBSqlWriter {
             BinaryOpType::NotEqual => "$ne",
             BinaryOpType::Less => "$lt",
             BinaryOpType::Greater => "$gt",
-            BinaryOpType::LessEqual => "$le",
-            BinaryOpType::GreaterEqual => "$ge",
+            BinaryOpType::LessEqual => "$lte",
+            BinaryOpType::GreaterEqual => "$gte",
             BinaryOpType::And => "$and",
             BinaryOpType::Or => "$or",
             BinaryOpType::Alias => "",
@@ -484,8 +484,28 @@ impl SqlWriter for MongoDBSqlWriter {
         out: &mut DynQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) {
-        if value.op == BinaryOpType::Alias {
-            return value.lhs.write_query(self, context, out);
+        match value.op {
+            BinaryOpType::Alias => return value.lhs.write_query(self, context, out),
+            BinaryOpType::ShiftLeft => {
+                return BinaryOp {
+                    op: BinaryOpType::Multiplication,
+                    lhs: value.lhs,
+                    rhs: Operand::Call("POW", &[&Operand::LitInt(2), value.rhs]),
+                }
+                .write_query(self, context, out);
+            }
+            BinaryOpType::ShiftRight => {
+                return Operand::Call(
+                    "FLOOR",
+                    &[&BinaryOp {
+                        op: BinaryOpType::Division,
+                        lhs: value.lhs,
+                        rhs: Operand::Call("POW", &[&Operand::LitInt(2), value.rhs]),
+                    }],
+                )
+                .write_query(self, context, out);
+            }
+            _ => {}
         }
         let Some(document) = out
             .as_prepared::<MongoDBDriver>()
@@ -782,7 +802,7 @@ impl SqlWriter for MongoDBSqlWriter {
             };
         }
         fn get_name(expression: impl Expression, qualify: bool) -> String {
-            expression.as_written(&mut Context {
+            expression.as_identifier(&mut Context {
                 qualify_columns: qualify,
                 quote_identifiers: false,
                 ..Default::default()

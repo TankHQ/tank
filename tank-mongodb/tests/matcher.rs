@@ -73,7 +73,7 @@ mod tests {
                 matcher.condition,
                 doc! {
                     "$and": [
-                        { "col_a": { "$le": Bson::Int64(5) } },
+                        { "col_a": { "$lte": Bson::Int64(5) } },
                         { "str_column": "hello" },
                         { "second_column": Bson::Int64(42) },
                     ]
@@ -114,8 +114,8 @@ mod tests {
                 matcher.condition,
                 doc! {
                     "$and": [
-                        { "col_a": { "$ge": Bson::Int64(0) } },
-                        { "col_a": { "$le": Bson::Int64(999) } },
+                        { "col_a": { "$gte": Bson::Int64(0) } },
+                        { "col_a": { "$lte": Bson::Int64(999) } },
                         { "str_column": "hello" },
                         { "col_a": { "$ne": Bson::Int64(777) } },
                     ]

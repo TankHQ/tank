@@ -117,8 +117,7 @@ pub async fn orders<E: Executor>(executor: &mut E) {
                         && Order::country == (?, ?) as IN
                 ))
                 .order_by(cols!(Order::total DESC))
-                .build(&executor.driver())
-                .into(),
+                .build(&executor.driver()),
         )
         .await
         .expect("Failed to prepare the query");

@@ -205,6 +205,20 @@ impl ExpressionMatcher for IsAggregateFunction {
             _ => false,
         }
     }
+    fn match_binary_op(
+        &mut self,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        ty: &BinaryOpType,
+        lhs: &dyn Expression,
+        _rhs: &dyn Expression,
+    ) -> bool {
+        if *ty == BinaryOpType::Alias {
+            lhs.matches(self, writer, context)
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(Default, Debug)]
@@ -230,5 +244,26 @@ impl ExpressionMatcher for IsQuestionMark {
         operand: &Operand,
     ) -> bool {
         matches!(operand, Operand::QuestionMark)
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct IsAlias {
+    pub name: String,
+}
+impl ExpressionMatcher for IsAlias {
+    fn match_binary_op(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        context: &mut Context,
+        ty: &BinaryOpType,
+        _lhs: &dyn Expression,
+        rhs: &dyn Expression,
+    ) -> bool {
+        if *ty != BinaryOpType::Alias {
+            return false;
+        }
+        self.name = rhs.as_identifier(context);
+        true
     }
 }

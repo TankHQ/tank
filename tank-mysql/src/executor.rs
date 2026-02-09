@@ -13,7 +13,7 @@ pub(crate) struct MySQLQueryable<T: mysql_async::prelude::Queryable> {
 impl<T: mysql_async::prelude::Queryable> Executor for MySQLQueryable<T> {
     type Driver = MySQLDriver;
 
-    async fn prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
+    async fn do_prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
         Ok(MySQLPrepared::new(self.executor.prep(sql.as_str()).await?).into())
     }
 

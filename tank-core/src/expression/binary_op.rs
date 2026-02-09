@@ -1,9 +1,10 @@
 use crate::{
-    DynQuery, Expression, ExpressionMatcher, OpPrecedence,
+    DynQuery, Expression, ExpressionMatcher, GenericSqlWriter, OpPrecedence,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
+use std::mem;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BinaryOpType {
@@ -77,6 +78,16 @@ impl<L: Expression, R: Expression> Expression for BinaryOp<L, R> {
         context: &mut Context,
     ) -> bool {
         matcher.match_binary_op(writer, context, &self.op, &self.lhs, &self.rhs)
+    }
+    fn as_identifier(&self, context: &mut Context) -> String {
+        if self.op == BinaryOpType::Alias {
+            self.rhs.as_identifier(context)
+        } else {
+            let mut out = DynQuery::new(String::new());
+            let writer = GenericSqlWriter::new();
+            self.write_query(&writer, context, &mut out);
+            mem::take(out.buffer())
+        }
     }
 }
 

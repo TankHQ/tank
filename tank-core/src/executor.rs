@@ -1,9 +1,10 @@
 use crate::{
-    AsQuery, Driver, DynQuery, Entity, Query, QueryResult, Result, RowLabeled, RowsAffected,
+    AsQuery, Driver, DynQuery, Entity, Query, QueryResult, RawQuery, Result, RowLabeled,
+    RowsAffected,
     stream::{Stream, StreamExt, TryStreamExt},
     writer::SqlWriter,
 };
-use std::future::Future;
+use std::{future::Future, mem};
 
 /// Async query executor bound to a concrete `Driver`.
 ///
@@ -36,7 +37,25 @@ pub trait Executor: Send + Sized {
     }
 
     /// Prepare a query for later execution.
-    fn prepare(&mut self, sql: String) -> impl Future<Output = Result<Query<Self::Driver>>> + Send;
+    fn prepare<'s>(
+        &'s mut self,
+        query: impl AsQuery<Self::Driver> + 's,
+    ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
+        let mut query = query.as_query();
+        let query = mem::take(query.as_mut());
+        async {
+            match query {
+                Query::Raw(RawQuery(sql)) => self.do_prepare(sql).await,
+                Query::Prepared(..) => Ok(query),
+            }
+        }
+    }
+
+    /// Prepare a query for later execution.
+    fn do_prepare(
+        &mut self,
+        sql: String,
+    ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send;
 
     /// Run a query, streaming `QueryResult` items.
     fn run<'s>(

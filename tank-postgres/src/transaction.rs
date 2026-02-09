@@ -25,7 +25,7 @@ impl<'c> PostgresTransaction<'c> {
 impl<'c> Executor for PostgresTransaction<'c> {
     type Driver = PostgresDriver;
 
-    async fn prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
+    async fn do_prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
         Ok(
             PostgresPrepared::new(self.0.prepare(&sql).await.map_err(|e| {
                 let error = Error::new(e);

@@ -119,38 +119,41 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
         .try_collect()
         .await?;
 
-    // Multi-Statement
-    let writer = executor.driver().sql_writer();
-    let mut query = DynQuery::default();
-    writer.write_delete::<RadioLog>(&mut query, expr!(RadioLog::signal_strength < 10));
-    writer.write_insert(&mut query, [&operator], false);
-    writer.write_insert(
-        &mut query,
-        [&RadioLog {
-            id: Uuid::new_v4(),
-            operator: operator.id,
-            message: "Status report".into(),
-            unit_callsign: "Alpha-1".into(),
-            transmission_time: OffsetDateTime::now_utc(),
-            signal_strength: 55,
-        }],
-        false,
-    );
-    writer.write_select(
-        &mut query,
-        &QueryBuilder::new()
-            .select(RadioLog::columns())
-            .from(RadioLog::table())
-            .where_expr(true)
-            .limit(Some(50)),
-    );
+    // Multiple statements
+    #[cfg(not(feature = "disable-multiple-statements"))]
     {
-        let mut stream = pin!(executor.run(query));
-        while let Some(result) = stream.try_next().await? {
-            match result {
-                QueryResult::Row(row) => log::debug!("Row: {row:?}"),
-                QueryResult::Affected(RowsAffected { rows_affected, .. }) => {
-                    log::debug!("Affected rows: {rows_affected:?}")
+        let writer = executor.driver().sql_writer();
+        let mut query = DynQuery::default();
+        writer.write_delete::<RadioLog>(&mut query, expr!(RadioLog::signal_strength < 10));
+        writer.write_insert(&mut query, [&operator], false);
+        writer.write_insert(
+            &mut query,
+            [&RadioLog {
+                id: Uuid::new_v4(),
+                operator: operator.id,
+                message: "Status report".into(),
+                unit_callsign: "Alpha-1".into(),
+                transmission_time: OffsetDateTime::now_utc(),
+                signal_strength: 55,
+            }],
+            false,
+        );
+        writer.write_select(
+            &mut query,
+            &QueryBuilder::new()
+                .select(RadioLog::columns())
+                .from(RadioLog::table())
+                .where_expr(true)
+                .limit(Some(50)),
+        );
+        {
+            let mut stream = pin!(executor.run(query));
+            while let Some(result) = stream.try_next().await? {
+                match result {
+                    QueryResult::Row(row) => log::debug!("Row: {row:?}"),
+                    QueryResult::Affected(RowsAffected { rows_affected, .. }) => {
+                        log::debug!("Affected rows: {rows_affected:?}")
+                    }
                 }
             }
         }
@@ -272,43 +275,46 @@ pub async fn advanced_operations<E: Executor>(executor: &mut E) -> Result<()> {
         .await
         .expect("Could not insert radio logs");
 
-    let messages = executor
-        .fetch(
-            QueryBuilder::new()
-                .select(cols!(
-                    RadioLog::signal_strength as strength,
-                    Operator::callsign,
-                    RadioLog::message,
-                ))
-                .from(join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operator))
-                .where_expr(expr!(
-                    // X != Y as LIKE => X NOT LIKE Y
-                    Operator::is_certified && RadioLog::message != "Radio check%" as LIKE
-                ))
-                .order_by(cols!(RadioLog::signal_strength DESC, Operator::callsign ASC))
-                .limit(Some(100))
-                .build(&executor.driver()),
-        )
-        .map(|row| {
-            row.and_then(|row| {
-                #[derive(Entity)]
-                struct Row {
-                    message: String,
-                    callsign: String,
-                }
-                Row::from_row(row).and_then(|row| Ok((row.message, row.callsign)))
+    #[cfg(not(feature = "disable-joins"))]
+    {
+        let messages = executor
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(
+                        RadioLog::signal_strength as strength,
+                        Operator::callsign,
+                        RadioLog::message,
+                    ))
+                    .from(join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operator))
+                    .where_expr(expr!(
+                        // X != Y as LIKE => X NOT LIKE Y
+                        Operator::is_certified && RadioLog::message != "Radio check%" as LIKE
+                    ))
+                    .order_by(cols!(RadioLog::signal_strength DESC, Operator::callsign ASC))
+                    .limit(Some(100))
+                    .build(&executor.driver()),
+            )
+            .map(|row| {
+                row.and_then(|row| {
+                    #[derive(Entity)]
+                    struct Row {
+                        message: String,
+                        callsign: String,
+                    }
+                    Row::from_row(row).and_then(|row| Ok((row.message, row.callsign)))
+                })
             })
-        })
-        .try_collect::<Vec<_>>()
-        .await?;
-    assert!(
-        messages.iter().map(|(a, b)| (a.as_str(), b.as_str())).eq([
-            ("Heavy armor spotted, grid 4C.", "SteelHammer"),
-            ("Affirmative, engaging.", "SteelHammer"),
-            ("Target acquired. Requesting coordinates.", "SteelHammer"),
-            ("Perimeter secure. All clear.", "Viper"),
-        ]
-        .into_iter())
-    );
+            .try_collect::<Vec<_>>()
+            .await?;
+        assert!(
+            messages.iter().map(|(a, b)| (a.as_str(), b.as_str())).eq([
+                ("Heavy armor spotted, grid 4C.", "SteelHammer"),
+                ("Affirmative, engaging.", "SteelHammer"),
+                ("Target acquired. Requesting coordinates.", "SteelHammer"),
+                ("Perimeter secure. All clear.", "Viper"),
+            ]
+            .into_iter())
+        );
+    }
     Ok(())
 }

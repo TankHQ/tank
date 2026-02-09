@@ -1,6 +1,9 @@
 use crate::{Payload, value_to_bson};
 use mongodb::bson::{Bson, Document};
-use std::fmt::{self, Display, Formatter, Write};
+use std::{
+    fmt::{self, Display, Formatter, Write},
+    mem,
+};
 use tank_core::{AsValue, Error, Prepared, Result, Value};
 
 #[derive(Default, Debug)]
@@ -40,15 +43,16 @@ impl MongoDBPrepared {
             document
         })
     }
-    pub(crate) fn make_let_vars(&self) -> Option<Document> {
+    pub(crate) fn take_params(&mut self) -> Option<Document> {
+        self.index = 0;
         if self.count == 0 {
             None
         } else {
             let mut doc = Document::new();
-            for (i, v) in self.params.iter().enumerate() {
+            for (i, v) in mem::take(&mut self.params).into_iter().enumerate() {
                 doc.insert(
                     format!("param_{i}"),
-                    value_to_bson(v).map_err(|e| log::error!("{e:#}")).ok()?,
+                    value_to_bson(&v).map_err(|e| log::error!("{e:#}")).ok()?,
                 );
             }
             Some(doc)

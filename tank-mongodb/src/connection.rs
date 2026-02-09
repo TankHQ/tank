@@ -90,7 +90,7 @@ impl Connection for MongoDBConnection {
 impl Executor for MongoDBConnection {
     type Driver = MongoDBDriver;
 
-    fn prepare(
+    fn do_prepare(
         &mut self,
         _query: String,
     ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
@@ -117,6 +117,7 @@ impl Executor for MongoDBConnection {
                 ))?;
                 return;
             };
+            let params = prepared.take_params();
             let payload = &prepared.get_payload();
             match payload {
                 Payload::Fragment(..) => {
@@ -133,7 +134,7 @@ impl Executor for MongoDBConnection {
                 }) => {
                     let collection = self.collection(table);
                     let mut options = options.clone();
-                    options.let_vars = prepared.make_let_vars();
+                    options.let_vars = params;
                     let mut operation = collection.find_one(filter.clone()).with_options(options);
                     if let Some(session) = &mut self.session {
                         operation = operation.session(session);
@@ -160,7 +161,7 @@ impl Executor for MongoDBConnection {
                 }) if self.session.is_some() => {
                     let collection = self.collection(table);
                     let mut options = options.clone();
-                    options.let_vars = prepared.make_let_vars();
+                    options.let_vars = params;
                     let session = self.session.as_mut().unwrap();
                     let mut stream = collection
                         .find(filter.clone())
@@ -188,7 +189,7 @@ impl Executor for MongoDBConnection {
                 }) => {
                     let collection = self.collection(table);
                     let mut options = options.clone();
-                    options.let_vars = prepared.make_let_vars();
+                    options.let_vars = params;
                     let mut stream = collection
                         .find(filter.clone())
                         .with_options(options)
@@ -257,7 +258,7 @@ impl Executor for MongoDBConnection {
                 }) => {
                     let collection = self.collection(table);
                     let mut options = options.clone();
-                    options.let_vars = prepared.make_let_vars();
+                    options.let_vars = params;
                     let mut operation = collection
                         .update_one(filter.clone(), modifications.clone())
                         .with_options(options);
@@ -284,7 +285,7 @@ impl Executor for MongoDBConnection {
                 }) => {
                     let collection = self.collection(table);
                     let mut options = options.clone();
-                    options.let_vars = prepared.make_let_vars();
+                    options.let_vars = params;
                     let mut operation = if *single {
                         collection.delete_one(filter.clone())
                     } else {
@@ -337,7 +338,7 @@ impl Executor for MongoDBConnection {
                 }) if self.session.is_some() => {
                     let collection = self.collection(table);
                     let mut options = options.clone();
-                    options.let_vars = prepared.make_let_vars();
+                    options.let_vars = params;
                     let session = self.session.as_mut().unwrap();
                     let mut stream = collection
                         .aggregate(pipeline.iter().cloned())
@@ -367,7 +368,7 @@ impl Executor for MongoDBConnection {
                 }) => {
                     let collection = self.collection(table);
                     let mut options = options.clone();
-                    options.let_vars = prepared.make_let_vars();
+                    options.let_vars = params;
                     let mut stream = collection
                         .aggregate(pipeline.iter().cloned())
                         .with_options(options)
@@ -388,7 +389,7 @@ impl Executor for MongoDBConnection {
                 }
                 Payload::Batch(BatchPayload { batch, options, .. }) => {
                     let mut options = options.clone();
-                    options.let_vars = prepared.make_let_vars();
+                    options.let_vars = params;
                     let mut operation = self
                         .client
                         .bulk_write(batch.iter().map(|v| v.as_write_models()).flatten())

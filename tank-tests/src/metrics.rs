@@ -308,7 +308,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
         .await
-        .expect("Could not get alice incomes");
+        .expect("Could not get IT incomes");
     assert_eq!(italy_incomes, [56000.0, 61000.0, 68000.0, 72000.0]);
 
     // Highest income in the UK
@@ -325,7 +325,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
         .await
-        .expect("Could not get latest alice income");
+        .expect("Could not get latest UK income");
     assert_eq!(latest_income, [93000.0]);
 
     // Prepared queries
@@ -336,8 +336,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
                 .from(Metric::table())
                 .where_expr(expr!(Metric::country == ? && Metric::name == ?))
                 .order_by(cols!(Metric::value DESC, Metric::date DESC))
-                .build(&executor.driver())
-                .into(),
+                .build(&executor.driver()),
         )
         .await
         .expect("Failed to prepare metric query");

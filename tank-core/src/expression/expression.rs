@@ -16,7 +16,7 @@ pub trait Expression: OpPrecedence + Send + Sync + Debug {
         context: &mut Context,
     ) -> bool;
     /// Converts the given value to a `String` representing the expression
-    fn as_written(&self, context: &mut Context) -> String {
+    fn as_identifier(&self, context: &mut Context) -> String {
         let mut out = DynQuery::new(String::new());
         let writer = GenericSqlWriter::new();
         self.write_query(&writer, context, &mut out);
@@ -36,6 +36,9 @@ impl<T: Expression> Expression for &T {
     ) -> bool {
         (*self).matches(matcher, writer, context)
     }
+    fn as_identifier(&self, context: &mut Context) -> String {
+        (*self).as_identifier(context)
+    }
 }
 
 impl Expression for &dyn Expression {
@@ -49,6 +52,9 @@ impl Expression for &dyn Expression {
         context: &mut Context,
     ) -> bool {
         (*self).matches(matcher, writer, context)
+    }
+    fn as_identifier(&self, context: &mut Context) -> String {
+        (*self).as_identifier(context)
     }
 }
 

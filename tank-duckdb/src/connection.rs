@@ -219,7 +219,7 @@ impl Debug for DuckDBConnection {
 impl Executor for DuckDBConnection {
     type Driver = DuckDBDriver;
 
-    async fn prepare(&mut self, sql: String) -> Result<Query<DuckDBDriver>> {
+    async fn do_prepare(&mut self, sql: String) -> Result<Query<DuckDBDriver>> {
         let connection = AtomicPtr::new(*self.connection);
         let context = format!("While preparing the query:\n{}", truncate_long!(sql));
         let prepared = spawn_blocking(move || unsafe {

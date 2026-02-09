@@ -190,8 +190,7 @@ pub async fn times<E: Executor>(executor: &mut E) {
                 .from(Times::table())
                 .where_expr(expr!(Times::timestamp_2 > ?))
                 .order_by(cols!(Times::timestamp_1 DESC))
-                .build(&executor.driver())
-                .into(),
+                .build(&executor.driver()),
         )
         .await
         .expect("Could not prepare the query timestamp 1");
@@ -271,8 +270,7 @@ pub async fn times<E: Executor>(executor: &mut E) {
                 .from(Times::table())
                 .where_expr(expr!(Times::timestamp_1 <= ?))
                 .order_by(cols!(Times::timestamp_2 ASC))
-                .build(&executor.driver())
-                .into(),
+                .build(&executor.driver()),
         )
         .await
         .expect("Could not prepare the query timestamp 1");
@@ -315,8 +313,7 @@ pub async fn times<E: Executor>(executor: &mut E) {
                 .from(Times::table())
                 .where_expr(true)
                 .order_by(cols!(Times::time_1 DESC))
-                .build(&executor.driver())
-                .into(),
+                .build(&executor.driver()),
         )
         .await
         .expect("Could not prepare the query timestamp 1");

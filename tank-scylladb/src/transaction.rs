@@ -37,7 +37,7 @@ impl ScyllaDBTransaction<'_> {
 impl<'c> Executor for ScyllaDBTransaction<'c> {
     type Driver = ScyllaDBDriver;
 
-    async fn prepare(&mut self, sql: String) -> Result<tank_core::Query<Self::Driver>> {
+    async fn do_prepare(&mut self, sql: String) -> Result<tank_core::Query<Self::Driver>> {
         let context = format!("While preparing the query:\n{}", truncate_long!(sql));
         let statement = self
             .connection

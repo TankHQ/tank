@@ -506,12 +506,12 @@ macro_rules! impl_executor_transaction {
                 self.$connection.accepts_multiple_statements()
             }
 
-            fn prepare(
+            fn do_prepare(
                 &mut self,
                 sql: String,
             ) -> impl Future<Output = ::tank_core::Result<::tank_core::Query<Self::Driver>>> + Send
             {
-                self.$connection.prepare(sql)
+                self.$connection.do_prepare(sql)
             }
 
             fn run<'s>(

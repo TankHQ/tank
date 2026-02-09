@@ -19,7 +19,7 @@ https://crates.io/crates/tank
 - PostgreSQL
 - MySQL / MariaDB
 - Cassandra / ScyllaDB
-- MongoDB WIP
+- MongoDB
 - More to be decided...
 
 ## Mission objectives

@@ -194,7 +194,7 @@ impl Payload {
                 }
                 _ => {
                     return Err(Error::msg(format!(
-                        "Cannot add into a batch {}",
+                        "Batches can only contain write operations, cannot add {}",
                         truncate_long!(format!("{payload:?}"), true)
                     )));
                 }
