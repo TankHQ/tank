@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, Expression, ExpressionMatcher, OpPrecedence,
+    DynQuery, Expression, ExpressionVisitor, OpPrecedence,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::TokenStream;
@@ -45,15 +45,17 @@ impl<E: Expression> Expression for Ordered<E> {
         );
     }
 
-    fn matches(
+    fn accept_visitor(
         &self,
-        matcher: &mut dyn ExpressionMatcher,
+        matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
+        out: &mut DynQuery,
     ) -> bool {
-        matcher.match_ordered(
+        matcher.visit_ordered(
             writer,
             context,
+            out,
             &Ordered {
                 expression: self as &dyn Expression,
                 order: self.order,

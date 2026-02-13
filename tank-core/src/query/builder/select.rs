@@ -1,5 +1,5 @@
 use crate::{
-    DataSet, Driver, DynQuery, EitherIterator, Expression, ExpressionCollection, NA, SqlWriter,
+    Dataset, Driver, DynQuery, EitherIterator, Expression, ExpressionCollection, NA, SqlWriter,
 };
 use std::{iter, marker::PhantomData};
 
@@ -15,7 +15,7 @@ pub struct SelectQueryBuilder<Select, From, Where, GroupBy, Having, OrderBy, Lim
 }
 
 impl<S> SelectQueryBuilder<S, NA, NA, NA, NA, NA, NA> {
-    pub fn from<From: DataSet>(
+    pub fn from<From: Dataset>(
         self,
         from: From,
     ) -> SelectQueryBuilder<S, From, NA, NA, NA, NA, NA> {
@@ -128,7 +128,7 @@ impl<S, F, W, G, H, O> SelectQueryBuilder<S, F, W, G, H, O, NA> {
 impl<S, From, W, G, H, O, L> SelectQueryBuilder<S, From, W, G, H, O, L>
 where
     S: ExpressionCollection,
-    From: DataSet,
+    From: Dataset,
     W: Expression,
     G: ExpressionCollection,
     H: Expression,
@@ -184,7 +184,7 @@ where
 pub trait SelectQuery<From>
 where
     // Self: 's,
-    From: DataSet,
+    From: Dataset,
 {
     fn get_select(&self) -> impl Iterator<Item = impl Expression> + Clone;
     fn get_from<'s>(&'s self) -> &'s Option<From>;
@@ -200,7 +200,7 @@ where
 impl<S, From, W, G, H, O, L> SelectQuery<From> for SelectQueryBuilder<S, From, W, G, H, O, L>
 where
     S: ExpressionCollection,
-    From: DataSet,
+    From: Dataset,
     W: Expression,
     G: ExpressionCollection,
     H: Expression,

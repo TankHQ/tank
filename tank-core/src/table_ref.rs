@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, DataSet, quote_cow,
+    Dataset, DynQuery, quote_cow,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::TokenStream;
@@ -19,11 +19,11 @@ pub struct TableRef {
 
 impl TableRef {
     /// Create a new `TableRef` with an empty schema and alias.
-    pub fn new(name: impl Into<Cow<'static, str>>) -> Self {
+    pub const fn new(name: Cow<'static, str>) -> Self {
         Self {
-            name: name.into(),
-            schema: "".into(),
-            alias: "".into(),
+            name,
+            schema: Cow::Borrowed(""),
+            alias: Cow::Borrowed(""),
         }
     }
     /// Return the display name: alias when present, otherwise `schema.name` or `name`.
@@ -48,7 +48,7 @@ impl TableRef {
     }
 }
 
-impl DataSet for TableRef {
+impl Dataset for TableRef {
     fn qualified_columns() -> bool
     where
         Self: Sized,
@@ -63,7 +63,7 @@ impl DataSet for TableRef {
     }
 }
 
-impl DataSet for &TableRef {
+impl Dataset for &TableRef {
     fn qualified_columns() -> bool
     where
         Self: Sized,
@@ -97,7 +97,7 @@ impl ToTokens for TableRef {
 #[derive(Default, Clone, PartialEq, Eq, Debug)]
 pub struct DeclareTableRef(pub TableRef);
 
-impl DataSet for DeclareTableRef {
+impl Dataset for DeclareTableRef {
     fn qualified_columns() -> bool
     where
         Self: Sized,

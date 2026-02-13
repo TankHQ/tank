@@ -1,5 +1,5 @@
 use crate::{
-    ColumnDef, Context, DataSet, Driver, DynQuery, Error, Executor, Expression, Query,
+    ColumnDef, Context, Dataset, Driver, DynQuery, Error, Executor, Expression, Query,
     QueryBuilder, RawQuery, Result, Row, RowLabeled, RowsAffected, TableRef, Value, future::Either,
     stream::Stream, truncate_long, writer::SqlWriter,
 };
@@ -317,7 +317,7 @@ pub trait Entity {
     }
 }
 
-impl<E: Entity> DataSet for E {
+impl<E: Entity> Dataset for E {
     /// Indicates whether column names should be fully qualified with schema and table name.
     ///
     /// For entities this returns `false` to keep queries concise, for joins it returns `true`.

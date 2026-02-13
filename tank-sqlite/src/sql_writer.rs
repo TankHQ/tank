@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fmt::Write};
+use std::{collections::BTreeMap, fmt::Write, mem};
 use tank_core::{
     ColumnDef, ColumnRef, Context, DynQuery, Entity, GenericSqlWriter, SqlWriter, TableRef, Value,
     write_escaped,
@@ -30,14 +30,29 @@ impl SqlWriter for SQLiteSqlWriter {
     }
 
     fn write_column_ref(&self, context: &mut Context, out: &mut DynQuery, value: &ColumnRef) {
-        if context.qualify_columns && !value.table.is_empty() {
-            out.push('"');
-            if !value.schema.is_empty() {
-                write_escaped(out, &value.schema, '"', "\"\"");
-                out.push('.');
+        if context.qualify_columns {
+            let table_ref = mem::take(&mut context.table_ref);
+            let mut schema = &table_ref.schema;
+            if schema.is_empty() {
+                schema = &value.schema;
             }
-            write_escaped(out, &value.table, '"', "\"\"");
-            out.push_str("\".");
+            let mut table = &table_ref.alias;
+            if table.is_empty() {
+                table = &table_ref.name;
+            }
+            if table.is_empty() {
+                table = &value.table;
+            }
+            if !table.is_empty() {
+                out.push('"');
+                if !schema.is_empty() {
+                    write_escaped(out, schema, '"', "\"\"");
+                    out.push('.');
+                }
+                write_escaped(out, table, '"', "\"\"");
+                out.push_str("\".");
+            }
+            context.table_ref = table_ref;
         }
         self.write_identifier(context, out, &value.name, true);
     }

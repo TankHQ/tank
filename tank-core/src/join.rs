@@ -1,5 +1,5 @@
 use crate::{
-    DataSet, DynQuery, Expression, TableRef,
+    Dataset, DynQuery, Expression, TableRef,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::{TokenStream, TokenTree};
@@ -11,7 +11,7 @@ use syn::{
 
 /// Binary join with optional ON predicate.
 #[derive(Debug)]
-pub struct Join<L: DataSet, R: DataSet, E: Expression> {
+pub struct Join<L: Dataset, R: Dataset, E: Expression> {
     /// Join kind.
     pub join: JoinType,
     /// Left-hand data set.
@@ -36,7 +36,7 @@ pub enum JoinType {
     Natural,
 }
 
-impl<L: DataSet, R: DataSet, E: Expression> DataSet for Join<L, R, E> {
+impl<L: Dataset, R: Dataset, E: Expression> Dataset for Join<L, R, E> {
     fn qualified_columns() -> bool
     where
         Self: Sized,

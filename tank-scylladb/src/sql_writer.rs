@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use tank_core::{
-    ColumnDef, Context, DataSet, DynQuery, Entity, Error, Expression, Fragment, GenericSqlWriter,
+    ColumnDef, Context, Dataset, DynQuery, Entity, Error, Expression, Fragment, GenericSqlWriter,
     Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, indoc::indoc, print_timer,
     separated_by,
 };
@@ -403,7 +403,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         let table = E::table();
         out.buffer().reserve(128);
         let mut context = Context::new(Fragment::SqlDeleteFrom, E::qualified_columns());
-        let is_true = condition.matches(&mut IsTrue, self, &mut context);
+        let is_true = condition.accept_visitor(&mut IsTrue, self, &mut context, out);
         if is_true {
             out.push_str("TRUNCATE ");
         } else {

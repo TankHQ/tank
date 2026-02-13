@@ -7,7 +7,7 @@ use crate::{
 ///
 /// Implementors know how to render themselves inside a FROM clause and whether
 /// column references should be qualified with schema and table.
-pub trait DataSet {
+pub trait Dataset {
     /// Should columns be qualified (`schema.table.col`)?
     fn qualified_columns() -> bool
     where
@@ -18,7 +18,7 @@ pub trait DataSet {
     fn table_ref(&self) -> TableRef;
 }
 
-impl DataSet for &dyn DataSet {
+impl Dataset for &dyn Dataset {
     fn qualified_columns() -> bool
     where
         Self: Sized,

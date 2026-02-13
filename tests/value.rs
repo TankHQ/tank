@@ -1108,12 +1108,12 @@ mod tests {
         let s = Value::Struct(
             Some(vec![("id".into(), 1_i32.as_value())]),
             vec![("id".into(), i32::as_empty_value())],
-            TableRef::new("special_type_t"),
+            TableRef::new("special_type_t".into()),
         );
         let s_diff = Value::Struct(
             Some(vec![("id".into(), 2_i32.as_value())]),
             vec![("id".into(), i32::as_empty_value())],
-            TableRef::new("special_type_t"),
+            TableRef::new("special_type_t".into()),
         );
         assert_ne!(s, s_diff);
     }

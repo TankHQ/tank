@@ -1,5 +1,5 @@
 use crate::{
-    DefaultValueType, DynQuery, Expression, ExpressionMatcher, OpPrecedence, SqlWriter, TableRef,
+    DefaultValueType, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, TableRef,
     Value, writer::Context,
 };
 use proc_macro2::TokenStream;
@@ -149,13 +149,14 @@ impl Expression for ColumnRef {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         writer.write_column_ref(context, out, self);
     }
-    fn matches(
+    fn accept_visitor(
         &self,
-        matcher: &mut dyn ExpressionMatcher,
+        matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
+        out: &mut DynQuery,
     ) -> bool {
-        matcher.match_column(writer, context, self)
+        matcher.visit_column(writer, context, out, self)
     }
 }
 
@@ -170,12 +171,13 @@ impl Expression for ColumnDef {
         writer.write_column_ref(context, out, &self.column_ref);
     }
 
-    fn matches(
+    fn accept_visitor(
         &self,
-        matcher: &mut dyn ExpressionMatcher,
+        matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
+        out: &mut DynQuery,
     ) -> bool {
-        matcher.match_column(writer, context, &self.column_ref)
+        matcher.visit_column(writer, context, out, &self.column_ref)
     }
 }

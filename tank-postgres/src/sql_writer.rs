@@ -1,5 +1,5 @@
 use std::{collections::BTreeMap, fmt::Write};
-use tank_core::{ColumnDef, Context, DataSet, DynQuery, Entity, SqlWriter, Value, separated_by};
+use tank_core::{ColumnDef, Context, Dataset, DynQuery, Entity, SqlWriter, Value, separated_by};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 
 /// SQL writer for Postgres dialect.

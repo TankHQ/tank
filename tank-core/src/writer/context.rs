@@ -1,3 +1,6 @@
+use crate::TableRef;
+use std::borrow::Cow;
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fragment {
     #[default]
@@ -28,10 +31,11 @@ pub enum Fragment {
     SqlSelectWhere,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Context {
     pub counter: u32,
     pub fragment: Fragment,
+    pub table_ref: TableRef,
     pub qualify_columns: bool,
     pub quote_identifiers: bool,
 }
@@ -41,14 +45,25 @@ impl Context {
         Self {
             counter: 0,
             fragment,
+            table_ref: TableRef::new(Cow::Borrowed("")),
             qualify_columns,
             quote_identifiers: true,
+        }
+    }
+    pub const fn empty() -> Self {
+        Self {
+            counter: 0,
+            fragment: Fragment::None,
+            table_ref: TableRef::new(Cow::Borrowed("")),
+            qualify_columns: false,
+            quote_identifiers: false,
         }
     }
     pub const fn fragment(fragment: Fragment) -> Self {
         Self {
             counter: 0,
             fragment,
+            table_ref: TableRef::new(Cow::Borrowed("")),
             qualify_columns: false,
             quote_identifiers: true,
         }
@@ -57,16 +72,36 @@ impl Context {
         Self {
             counter: 0,
             fragment: Fragment::None,
+            table_ref: TableRef::new(Cow::Borrowed("")),
             qualify_columns,
+            quote_identifiers: true,
+        }
+    }
+    pub const fn qualify_with(table: Cow<'static, str>) -> Self {
+        Self {
+            counter: 0,
+            fragment: Fragment::None,
+            table_ref: TableRef::new(table),
+            qualify_columns: true,
             quote_identifiers: true,
         }
     }
     pub const fn update_from(&mut self, context: &Context) {
         self.counter = context.counter;
     }
-    pub const fn switch_fragment<'s>(&'s mut self, fragment: Fragment) -> ContextUpdater<'s> {
+    pub fn switch_fragment<'s>(&'s mut self, fragment: Fragment) -> ContextUpdater<'s> {
         ContextUpdater {
-            current: Context { fragment, ..*self },
+            current: Context {
+                fragment,
+                table_ref: self.table_ref.clone(),
+                ..*self
+            },
+            previous: self,
+        }
+    }
+    pub const fn switch_table<'s>(&'s mut self, table_ref: TableRef) -> ContextUpdater<'s> {
+        ContextUpdater {
+            current: Context { table_ref, ..*self },
             previous: self,
         }
     }

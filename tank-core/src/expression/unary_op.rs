@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, Expression, ExpressionMatcher, OpPrecedence,
+    DynQuery, Expression, ExpressionVisitor, OpPrecedence,
     writer::{Context, SqlWriter},
 };
 
@@ -38,12 +38,21 @@ impl<E: Expression> Expression for UnaryOp<E> {
         )
     }
 
-    fn matches(
+    fn accept_visitor(
         &self,
-        matcher: &mut dyn ExpressionMatcher,
+        matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
+        out: &mut DynQuery,
     ) -> bool {
-        matcher.match_unary_op(writer, context, &self.op, &self.arg)
+        matcher.visit_unary_op(
+            writer,
+            context,
+            out,
+            &UnaryOp {
+                op: self.op,
+                arg: &self.arg,
+            },
+        )
     }
 }

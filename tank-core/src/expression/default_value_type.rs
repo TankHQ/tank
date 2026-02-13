@@ -1,4 +1,4 @@
-use crate::{Context, DynQuery, Expression, ExpressionMatcher, OpPrecedence, SqlWriter, Value};
+use crate::{Context, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, Value};
 
 #[derive(Default, Debug)]
 pub enum DefaultValueType {
@@ -35,16 +35,17 @@ impl Expression for DefaultValueType {
             DefaultValueType::Expression(v) => v.write_query(writer, context, out),
         }
     }
-    fn matches(
+    fn accept_visitor(
         &self,
-        matcher: &mut dyn ExpressionMatcher,
+        matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
+        out: &mut DynQuery,
     ) -> bool {
         match self {
-            DefaultValueType::None => ().matches(matcher, writer, context),
-            DefaultValueType::Value(v) => v.matches(matcher, writer, context),
-            DefaultValueType::Expression(v) => v.matches(matcher, writer, context),
+            DefaultValueType::None => ().accept_visitor(matcher, writer, context, out),
+            DefaultValueType::Value(v) => v.accept_visitor(matcher, writer, context, out),
+            DefaultValueType::Expression(v) => v.accept_visitor(matcher, writer, context, out),
         }
     }
 }

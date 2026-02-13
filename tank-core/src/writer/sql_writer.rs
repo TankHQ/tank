@@ -1,5 +1,5 @@
 use crate::{
-    Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, DataSet, DynQuery, EitherIterator,
+    Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, EitherIterator,
     Entity, Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
     PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized,
     print_date, print_timer, separated_by, write_escaped, writer::Context,
@@ -8,6 +8,7 @@ use core::f64;
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
+    mem,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -113,13 +114,28 @@ pub trait SqlWriter: Send {
 
     /// Render a column reference optionally qualifying with schema/table.
     fn write_column_ref(&self, context: &mut Context, out: &mut DynQuery, value: &ColumnRef) {
-        if context.qualify_columns && !value.table.is_empty() {
-            if !value.schema.is_empty() {
-                self.write_identifier(context, out, &value.schema, context.quote_identifiers);
+        if context.qualify_columns {
+            let table_ref = mem::take(&mut context.table_ref);
+            let mut schema = &table_ref.schema;
+            if schema.is_empty() {
+                schema = &value.schema;
+            }
+            let mut table = &table_ref.alias;
+            if table.is_empty() {
+                table = &table_ref.name;
+            }
+            if table.is_empty() {
+                table = &value.table;
+            }
+            if !table.is_empty() {
+                if !schema.is_empty() {
+                    self.write_identifier(context, out, schema, context.quote_identifiers);
+                    out.push('.');
+                }
+                self.write_identifier(context, out, table, context.quote_identifiers);
                 out.push('.');
             }
-            self.write_identifier(context, out, &value.table, context.quote_identifiers);
-            out.push('.');
+            context.table_ref = table_ref
         }
         self.write_identifier(context, out, &value.name, context.quote_identifiers);
     }
@@ -798,7 +814,7 @@ pub trait SqlWriter: Send {
         &self,
         context: &mut Context,
         out: &mut DynQuery,
-        join: &Join<&dyn DataSet, &dyn DataSet, &dyn Expression>,
+        join: &Join<&dyn Dataset, &dyn Dataset, &dyn Expression>,
     ) {
         let mut context = context.switch_fragment(Fragment::SqlJoin);
         context.current.qualify_columns = true;
@@ -1084,11 +1100,11 @@ pub trait SqlWriter: Send {
     fn write_select<'a, Data>(&self, out: &mut DynQuery, query: &impl SelectQuery<Data>)
     where
         Self: Sized,
-        Data: DataSet + 'a,
+        Data: Dataset + 'a,
     {
         let columns = query.get_select();
         let Some(from) = query.get_from() else {
-            log::error!("The query does not have the FROM part");
+            log::error!("The query does not have the FROM clause");
             return;
         };
         let limit = query.get_limit();
@@ -1114,7 +1130,7 @@ pub trait SqlWriter: Send {
             out,
         );
         if let Some(condition) = query.get_where()
-            && !condition.matches(&mut IsTrue, self, &mut context)
+            && !condition.accept_visitor(&mut IsTrue, self, &mut context, out)
         {
             out.push_str("\nWHERE ");
             condition.write_query(

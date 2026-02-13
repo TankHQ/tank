@@ -1,7 +1,7 @@
 mod as_value;
 mod column;
 mod connection;
-mod data_set;
+mod dataset;
 mod decode_type;
 mod driver;
 mod entity;
@@ -22,7 +22,7 @@ pub use ::anyhow::Context as ErrorContext;
 pub use as_value::*;
 pub use column::*;
 pub use connection::*;
-pub use data_set::*;
+pub use dataset::*;
 pub use decode_type::*;
 pub use driver::*;
 pub use entity::*;

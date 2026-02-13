@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, Expression, ExpressionMatcher, OpPrecedence, Value,
+    DynQuery, Expression, ExpressionVisitor, OpPrecedence, Value,
     writer::{Context, SqlWriter},
 };
 
@@ -33,13 +33,14 @@ impl Expression for Operand<'_> {
         writer.write_expression_operand(context, out, self)
     }
 
-    fn matches(
+    fn accept_visitor(
         &self,
-        matcher: &mut dyn ExpressionMatcher,
+        matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
+        out: &mut DynQuery,
     ) -> bool {
-        matcher.match_operand(writer, context, self)
+        matcher.visit_operand(writer, context, out, self)
     }
 }
 

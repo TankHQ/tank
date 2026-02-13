@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
 use tank::{
-    DynQuery, AsValue, DataSet, Driver, Entity, Executor, Passive, Query, QueryBuilder, QueryResult,
+    DynQuery, AsValue, Dataset, Driver, Entity, Executor, Passive, Query, QueryBuilder, QueryResult,
     RowLabeled, SqlWriter, Value, cols, expr, join, stream::{StreamExt, TryStreamExt}
 };
 use tokio::sync::Mutex;

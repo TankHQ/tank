@@ -1,25 +1,23 @@
 #[cfg(test)]
 mod tests {
-    use std::borrow::Cow;
-
     use mongodb::bson::{Bson, doc};
+    use std::borrow::Cow;
     use tank::{Entity, QueryBuilder, cols, expr};
     use tank_mongodb::{AggregatePayload, MongoDBDriver, Payload};
     use tank_tests::init_logs;
 
     const DRIVER: MongoDBDriver = MongoDBDriver {};
 
-    #[derive(Entity)]
-    #[tank(name = "the table")]
-    struct MyType {
-        #[tank(name = "first col")]
-        pub first_column: Cow<'static, str>,
-        pub second_column: Option<f64>,
-        pub third_column: String,
-    }
-
     #[test]
     fn pipeline_1() {
+        #[derive(Entity)]
+        #[tank(name = "the table")]
+        struct MyType {
+            #[tank(name = "first col")]
+            pub first_column: Cow<'static, str>,
+            pub second_column: Option<f64>,
+            pub third_column: String,
+        }
         init_logs();
         let mut query = QueryBuilder::new()
             .select(cols!(
@@ -53,34 +51,162 @@ mod tests {
                             { "second_column": { "$lt": Bson::Int64(100) } },
                         ]
                     }
-                }
-                .into(),
+                },
                 doc! {
                     "$group": {
                         "_id": {
-                            "first column": "$first_column",
+                            "first col": "$first col",
                             "third_column": "$third_column",
                         },
                         "MAX(second_column)": { "$max": "$second_column" },
                         "AVG(second_column)": { "$avg": "$second_column" },
                     }
-                }
-                .into(),
+                },
                 doc! {
                     "$match": {
-                        "_id.first column": { "$gte": "a" },
+                        "_id.first col": { "$gte": "a" },
                     }
-                }
-                .into(),
+                },
                 doc! {
                     "$project": {
-                        "_id": 0,
-                        "first column": "$_id.first column",
+                        "first col": 1,
                         "MAX(second_column)": 1,
                         "AVG(second_column)": 1,
                     }
-                }
-                .into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn pipeline_2() {
+        #[derive(Entity)]
+        #[tank(name = "shopping carts")]
+        struct Cart {
+            #[tank(name = "_id")]
+            pub id: i64,
+            #[tank(name = "user id")]
+            pub user_id: i64,
+            #[tank(name = "is active")]
+            pub is_active: bool,
+            #[tank(name = "total price")]
+            pub total_price: f64,
+            pub discounts: Vec<f64>,
+            pub country: Cow<'static, str>,
+        }
+        let mut query = QueryBuilder::new()
+            .select(cols!(
+                Cart::user_id,
+                COUNT(Cart::id),
+                SUM(Cart::total_price),
+                AVG(Cart::total_price),
+                MAX(expr!(ABS(Cart::total_price - 100.0))),
+            ))
+            .from(Cart::table())
+            .where_expr(expr!(
+                Cart::is_active == true
+                    && Cart::total_price > 0
+                    && Cart::total_price < 10_000
+                    && (Cart::country == "US" || Cart::country == "FR" || Cart::country == "DE")
+                    && expr!([10, 20, 30, 40][2]) == 30
+                    && (90.5 - -0.54 * 2 < 7 / 2)
+            ))
+            .group_by([Cart::user_id, Cart::country])
+            .having(expr!(
+                COUNT(Cart::id) > 2
+                    && AVG(Cart::total_price) >= 50
+                    && SUM(Cart::total_price) < 50_000
+                    && MAX(expr!(ABS(Cart::total_price - 100.0))) > 10
+            ))
+            .limit(Some(1000))
+            .build(&DRIVER);
+
+        let Some(Payload::Aggregate(AggregatePayload { pipeline, .. })) = query
+            .as_prepared::<MongoDBDriver>()
+            .map(|v| v.get_payload())
+        else {
+            panic!("Expected aggregate pipeline");
+        };
+
+        assert_eq!(
+            *pipeline,
+            [
+                doc! {
+                    "$match": {
+                        "$and": [
+                            { "is active": true },
+                            { "total price": { "$gt": Bson::Int64(0) } },
+                            { "total price": { "$lt": Bson::Int64(10_000) } },
+                            {
+                                "$or": [
+                                    { "country": "US" },
+                                    { "country": "FR" },
+                                    { "country": "DE" },
+                                ]
+                            },
+                            {
+                                "$expr": {
+                                    "$eq": [
+                                        { "$arrayElemAt": [[10, 20, 30, 40], 2] },
+                                        30
+                                    ]
+                                }
+                            },
+                            {
+                                "$expr": {
+                                    "$lt": [
+                                        {
+                                            "$subtract": [
+                                                90.5,
+                                                { "$multiply": [-0.54, 2] }
+                                            ]
+                                        },
+                                        { "$divide": [7, 2] }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                },
+                doc! {
+                    "$group": {
+                        "_id": {
+                            "user id": "$user id",
+                            "country": "$country",
+                        },
+                        "COUNT(id)": { "$sum": 1 },
+                        "SUM(total_price)": { "$sum": "$total price" },
+                        "AVG(total_price)": { "$avg": "$total price" },
+                        "MAX(ABS(total_price - 100))": {
+                            "$max": {
+                                "$abs": {
+                                    "$subtract": ["$total price", 100.0]
+                                }
+                            }
+                        }
+                    }
+                },
+                doc! {
+                    "$match": {
+                        "$and": [
+                            { "COUNT(id)": { "$gt": 2 } },
+                            { "AVG(total_price)": { "$gte": 50 } },
+                            { "SUM(total_price)": { "$lt": 50000 } },
+                            { "MAX(ABS(total_price - 100))": { "$gt": 10 } },
+                        ]
+                    }
+                },
+                doc! {"$limit": 1000},
+                doc! {
+                    "$project": {
+                        "user id": "$_id.user id",
+                        "country": "$_id.country",
+                        "COUNT(id)": 1,
+                        "SUM(total_price)": 1,
+                        "AVG(total_price)": 1,
+                        "MAX(ABS(total_price - 100))": 1,
+                    }
+                },
             ]
         );
     }

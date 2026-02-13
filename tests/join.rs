@@ -2,7 +2,7 @@
 mod tests {
     use std::borrow::Cow;
     use tank::{
-        BinaryOp, BinaryOpType, ColumnRef, DataSet, DeclareTableRef, DynQuery, Entity, Join,
+        BinaryOp, BinaryOpType, ColumnRef, Dataset, DeclareTableRef, DynQuery, Entity, Join,
         JoinType, Operand, SqlWriter, TableRef, join,
     };
 

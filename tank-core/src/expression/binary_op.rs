@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, Expression, ExpressionMatcher, GenericSqlWriter, OpPrecedence,
+    DynQuery, Expression, ExpressionVisitor, GenericSqlWriter, OpPrecedence,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::TokenStream;
@@ -71,13 +71,23 @@ impl<L: Expression, R: Expression> Expression for BinaryOp<L, R> {
             },
         )
     }
-    fn matches(
+    fn accept_visitor(
         &self,
-        matcher: &mut dyn ExpressionMatcher,
+        matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
+        out: &mut DynQuery,
     ) -> bool {
-        matcher.match_binary_op(writer, context, &self.op, &self.lhs, &self.rhs)
+        matcher.visit_binary_op(
+            writer,
+            context,
+            out,
+            &BinaryOp {
+                op: self.op,
+                lhs: &self.lhs,
+                rhs: &self.rhs,
+            },
+        )
     }
     fn as_identifier(&self, context: &mut Context) -> String {
         if self.op == BinaryOpType::Alias {

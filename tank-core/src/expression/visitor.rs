@@ -1,50 +1,52 @@
 use crate::{
-    BinaryOpType, ColumnRef, Context, Expression, Operand, Order, Ordered, SqlWriter, UnaryOpType,
-    Value,
+    BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, Operand, Order, Ordered,
+    SqlWriter, TableRef, UnaryOp, Value,
 };
 use std::borrow::Cow;
 
-pub trait ExpressionMatcher {
-    fn match_column(
+pub trait ExpressionVisitor {
+    fn visit_column(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _column: &ColumnRef,
+        _out: &mut DynQuery,
+        _value: &ColumnRef,
     ) -> bool {
         false
     }
-    fn match_operand(
+    fn visit_operand(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _operand: &Operand,
+        _out: &mut DynQuery,
+        _value: &Operand,
     ) -> bool {
         false
     }
-    fn match_unary_op(
+    fn visit_unary_op(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _ty: &UnaryOpType,
-        _arg: &dyn Expression,
+        _out: &mut DynQuery,
+        _value: &UnaryOp<&dyn Expression>,
     ) -> bool {
         false
     }
-    fn match_binary_op(
+    fn visit_binary_op(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _ty: &BinaryOpType,
-        _lhs: &dyn Expression,
-        _rhs: &dyn Expression,
+        _out: &mut DynQuery,
+        _value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         false
     }
-    fn match_ordered(
+    fn visit_ordered(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _ordered: &Ordered<&dyn Expression>,
+        _out: &mut DynQuery,
+        _value: &Ordered<&dyn Expression>,
     ) -> bool {
         false
     }
@@ -53,24 +55,27 @@ pub trait ExpressionMatcher {
 #[derive(Default, Debug)]
 pub struct IsColumn {
     pub column: Option<ColumnRef>,
+    pub qualify_column: TableRef,
 }
-impl ExpressionMatcher for IsColumn {
-    fn match_column(
+impl ExpressionVisitor for IsColumn {
+    fn visit_column(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        column: &ColumnRef,
+        _out: &mut DynQuery,
+        value: &ColumnRef,
     ) -> bool {
-        self.column = Some(column.clone());
+        self.column = Some(value.clone());
         true
     }
-    fn match_operand(
+    fn visit_operand(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        operand: &Operand,
+        _out: &mut DynQuery,
+        value: &Operand,
     ) -> bool {
-        match operand {
+        match value {
             Operand::LitIdent(v) => {
                 self.column = Some(ColumnRef {
                     name: Cow::Owned(v.to_string()),
@@ -100,63 +105,66 @@ impl ExpressionMatcher for IsColumn {
 pub struct FindOrder {
     pub order: Order,
 }
-impl ExpressionMatcher for FindOrder {
-    fn match_column(
+impl ExpressionVisitor for FindOrder {
+    fn visit_column(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _column: &ColumnRef,
+        _out: &mut DynQuery,
+        _value: &ColumnRef,
     ) -> bool {
         true
     }
-    fn match_operand(
+    fn visit_operand(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _operand: &Operand,
+        _out: &mut DynQuery,
+        _value: &Operand,
     ) -> bool {
         true
     }
-    fn match_unary_op(
+    fn visit_unary_op(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _ty: &UnaryOpType,
-        _arg: &dyn Expression,
+        _out: &mut DynQuery,
+        _value: &UnaryOp<&dyn Expression>,
     ) -> bool {
         true
     }
-    fn match_binary_op(
+    fn visit_binary_op(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _ty: &BinaryOpType,
-        _lhs: &dyn Expression,
-        _rhs: &dyn Expression,
+        _out: &mut DynQuery,
+        _value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         true
     }
-    fn match_ordered(
+    fn visit_ordered(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        ordered: &Ordered<&dyn Expression>,
+        _out: &mut DynQuery,
+        value: &Ordered<&dyn Expression>,
     ) -> bool {
-        self.order = ordered.order;
+        self.order = value.order;
         true
     }
 }
 
 #[derive(Default, Debug, Copy, Clone)]
 pub struct IsTrue;
-impl ExpressionMatcher for IsTrue {
-    fn match_operand(
+impl ExpressionVisitor for IsTrue {
+    fn visit_operand(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        operand: &Operand,
+        _out: &mut DynQuery,
+        value: &Operand,
     ) -> bool {
-        match operand {
+        match value {
             Operand::LitBool(true)
             | Operand::Variable(Value::Boolean(Some(true), ..))
             | Operand::Value(Value::Boolean(Some(true), ..)) => true,
@@ -167,14 +175,15 @@ impl ExpressionMatcher for IsTrue {
 
 #[derive(Default, Debug, Copy, Clone)]
 pub struct IsFalse;
-impl ExpressionMatcher for IsFalse {
-    fn match_operand(
+impl ExpressionVisitor for IsFalse {
+    fn visit_operand(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        operand: &Operand,
+        _out: &mut DynQuery,
+        value: &Operand,
     ) -> bool {
-        match operand {
+        match value {
             Operand::LitBool(false)
             | Operand::Variable(Value::Boolean(Some(false), ..))
             | Operand::Value(Value::Boolean(Some(false), ..)) => true,
@@ -185,14 +194,15 @@ impl ExpressionMatcher for IsFalse {
 
 #[derive(Default, Debug)]
 pub struct IsAggregateFunction;
-impl ExpressionMatcher for IsAggregateFunction {
-    fn match_operand(
+impl ExpressionVisitor for IsAggregateFunction {
+    fn visit_operand(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        operand: &Operand,
+        _out: &mut DynQuery,
+        value: &Operand,
     ) -> bool {
-        match operand {
+        match value {
             Operand::Call(function, ..) => match function {
                 s if s.eq_ignore_ascii_case("abs") => true,
                 s if s.eq_ignore_ascii_case("avg") => true,
@@ -205,16 +215,15 @@ impl ExpressionMatcher for IsAggregateFunction {
             _ => false,
         }
     }
-    fn match_binary_op(
+    fn visit_binary_op(
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        ty: &BinaryOpType,
-        lhs: &dyn Expression,
-        _rhs: &dyn Expression,
+        out: &mut DynQuery,
+        value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
-        if *ty == BinaryOpType::Alias {
-            lhs.matches(self, writer, context)
+        if value.op == BinaryOpType::Alias {
+            value.lhs.accept_visitor(self, writer, context, out)
         } else {
             false
         }
@@ -223,27 +232,29 @@ impl ExpressionMatcher for IsAggregateFunction {
 
 #[derive(Default, Debug)]
 pub struct IsAsterisk;
-impl ExpressionMatcher for IsAsterisk {
-    fn match_operand(
+impl ExpressionVisitor for IsAsterisk {
+    fn visit_operand(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        operand: &Operand,
+        _out: &mut DynQuery,
+        value: &Operand,
     ) -> bool {
-        matches!(operand, Operand::Asterisk)
+        matches!(value, Operand::Asterisk)
     }
 }
 
 #[derive(Default, Debug)]
 pub struct IsQuestionMark;
-impl ExpressionMatcher for IsQuestionMark {
-    fn match_operand(
+impl ExpressionVisitor for IsQuestionMark {
+    fn visit_operand(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        operand: &Operand,
+        _out: &mut DynQuery,
+        value: &Operand,
     ) -> bool {
-        matches!(operand, Operand::QuestionMark)
+        matches!(value, Operand::QuestionMark)
     }
 }
 
@@ -251,19 +262,18 @@ impl ExpressionMatcher for IsQuestionMark {
 pub struct IsAlias {
     pub name: String,
 }
-impl ExpressionMatcher for IsAlias {
-    fn match_binary_op(
+impl ExpressionVisitor for IsAlias {
+    fn visit_binary_op(
         &mut self,
         _writer: &dyn SqlWriter,
         context: &mut Context,
-        ty: &BinaryOpType,
-        _lhs: &dyn Expression,
-        rhs: &dyn Expression,
+        _out: &mut DynQuery,
+        value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
-        if *ty != BinaryOpType::Alias {
+        if value.op != BinaryOpType::Alias {
             return false;
         }
-        self.name = rhs.as_identifier(context);
+        self.name = value.rhs.as_identifier(context);
         true
     }
 }
