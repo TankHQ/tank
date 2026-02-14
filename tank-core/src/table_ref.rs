@@ -78,6 +78,12 @@ impl Dataset for &TableRef {
     }
 }
 
+impl From<&'static str> for TableRef {
+    fn from(value: &'static str) -> Self {
+        TableRef::new(value.into())
+    }
+}
+
 impl ToTokens for TableRef {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let name = &self.name;

@@ -69,7 +69,7 @@ mod tests {
                 },
                 doc! {
                     "$project": {
-                        "first col": 1,
+                        "first col": "$_id.first col",
                         "MAX(second_column)": 1,
                         "AVG(second_column)": 1,
                     }
@@ -147,8 +147,18 @@ mod tests {
                             {
                                 "$expr": {
                                     "$eq": [
-                                        { "$arrayElemAt": [[10, 20, 30, 40], 2] },
-                                        30
+                                        {
+                                            "$arrayElemAt": [
+                                                [
+                                                    Bson::Int64(10),
+                                                    Bson::Int64(20),
+                                                    Bson::Int64(30),
+                                                    Bson::Int64(40),
+                                                ],
+                                                Bson::Int64(2)
+                                            ]
+                                        },
+                                        Bson::Int64(30)
                                     ]
                                 }
                             },
@@ -158,10 +168,10 @@ mod tests {
                                         {
                                             "$subtract": [
                                                 90.5,
-                                                { "$multiply": [-0.54, 2] }
+                                                { "$multiply": [-0.54, Bson::Int64(2)] }
                                             ]
                                         },
-                                        { "$divide": [7, 2] }
+                                        { "$divide": [Bson::Int64(7), Bson::Int64(2)] }
                                     ]
                                 }
                             }
@@ -174,10 +184,10 @@ mod tests {
                             "user id": "$user id",
                             "country": "$country",
                         },
-                        "COUNT(id)": { "$sum": 1 },
-                        "SUM(total_price)": { "$sum": "$total price" },
-                        "AVG(total_price)": { "$avg": "$total price" },
-                        "MAX(ABS(total_price - 100))": {
+                        "COUNT(_id)": { "$sum": Bson::Int64(1) },
+                        "SUM(total price)": { "$sum": "$total price" },
+                        "AVG(total price)": { "$avg": "$total price" },
+                        "MAX(ABS(total price - 100.0))": {
                             "$max": {
                                 "$abs": {
                                     "$subtract": ["$total price", 100.0]
@@ -189,10 +199,10 @@ mod tests {
                 doc! {
                     "$match": {
                         "$and": [
-                            { "COUNT(id)": { "$gt": 2 } },
-                            { "AVG(total_price)": { "$gte": 50 } },
-                            { "SUM(total_price)": { "$lt": 50000 } },
-                            { "MAX(ABS(total_price - 100))": { "$gt": 10 } },
+                            { "COUNT(_id)": { "$gt": 2 } },
+                            { "AVG(total price)": { "$gte": Bson::Int64(50) } },
+                            { "SUM(total price)": { "$lt": Bson::Int64(50000) } },
+                            { "MAX(ABS(total price - 100.0))": { "$gt": Bson::Int64(10) } },
                         ]
                     }
                 },
@@ -201,10 +211,10 @@ mod tests {
                     "$project": {
                         "user id": "$_id.user id",
                         "country": "$_id.country",
-                        "COUNT(id)": 1,
-                        "SUM(total_price)": 1,
-                        "AVG(total_price)": 1,
-                        "MAX(ABS(total_price - 100))": 1,
+                        "COUNT(_id)": 1,
+                        "SUM(total price)": 1,
+                        "AVG(total price)": 1,
+                        "MAX(ABS(total price - 100.0))": 1,
                     }
                 },
             ]

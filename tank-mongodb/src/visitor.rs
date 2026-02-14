@@ -2,8 +2,8 @@ use crate::{MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter};
 use mongodb::bson::{Bson, Document, doc};
 use std::mem;
 use tank_core::{
-    BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
-    IsAsterisk, IsColumn, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp,
+    AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
+    IsAsterisk, IsColumn, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp, Value,
 };
 
 #[derive(Default, Debug)]
@@ -137,25 +137,25 @@ impl ExpressionVisitor for WriteMatchExpression {
                 BinaryOpType::Or => Some("$or"),
                 _ => None,
             } {
-                let mut values = [Bson::default(), Bson::default()];
-                for (i, side) in [value.lhs, value.rhs].iter().enumerate() {
+                let mut args = Vec::new();
+                let mut all_expr = true;
+                for side in [value.lhs, value.rhs] {
                     let mut query = MongoDBSqlWriter::make_prepared();
-                    if side.accept_visitor(self, writer, context, &mut query) {
-                        is_expr = true;
-                    }
-                    let Some(target) = query
+                    let expr_arg = side.accept_visitor(self, writer, context, &mut query);
+                    all_expr = all_expr && expr_arg;
+                    let Some(mut bson) = query
                         .as_prepared::<MongoDBDriver>()
                         .and_then(MongoDBPrepared::current_bson)
+                        .map(mem::take)
                     else {
                         log::error!(
-                            "Failed to get the bson in WriteMatchExpression::visit_binary_op after writing arg {i}"
+                            "Failed to get the bson in WriteMatchExpression::visit_binary_op"
                         );
                         return false;
                     };
-                    values[i] = mem::take(target);
-                }
-                let mut args = Vec::new();
-                for mut bson in values {
+                    if expr_arg {
+                        bson = doc! { "$expr": bson }.into();
+                    }
                     if let Some(doc) = bson.as_document_mut()
                         && doc.keys().eq([root])
                         && let Ok(v) = doc.get_array_mut(root)
@@ -164,6 +164,14 @@ impl ExpressionVisitor for WriteMatchExpression {
                     } else {
                         args.push(bson);
                     }
+                }
+                if all_expr {
+                    for arg in &mut args {
+                        *arg = mem::take(arg.as_document_mut().unwrap().get_mut("$expr").unwrap());
+                    }
+                    is_expr = true;
+                } else {
+                    is_expr = false;
                 }
                 let Some(target) = out
                     .as_prepared::<MongoDBDriver>()
@@ -175,7 +183,6 @@ impl ExpressionVisitor for WriteMatchExpression {
                 *target = doc! { root: Bson::Array(args) }.into();
                 break 'wrote;
             }
-            is_expr = true;
             if matches!(
                 value.op,
                 BinaryOpType::In
@@ -213,7 +220,6 @@ impl ExpressionVisitor for WriteMatchExpression {
                             field,
                             value.lhs,
                             match value.op {
-                                // Mirror the operator if the field is on the right side
                                 BinaryOpType::Less => BinaryOpType::Greater,
                                 BinaryOpType::Greater => BinaryOpType::Less,
                                 BinaryOpType::LessEqual => BinaryOpType::GreaterEqual,
@@ -222,7 +228,6 @@ impl ExpressionVisitor for WriteMatchExpression {
                             },
                         )
                     } else {
-                        // Unreachable
                         log::error!(
                             "Unexpected error, the matcher conditions succeeded but the field was not found"
                         );
@@ -240,29 +245,29 @@ impl ExpressionVisitor for WriteMatchExpression {
                     let field = field.as_identifier(context);
                     let mut query = MongoDBSqlWriter::make_prepared();
                     value.write_query(writer, context, &mut query);
-                    let Some(value) = query
+                    let Some(val_bson) = query
                         .as_prepared::<MongoDBDriver>()
                         .and_then(MongoDBPrepared::current_bson)
                         .map(mem::take)
                     else {
-                        // Unreachable
                         log::error!(
                             "Unexpected error, for some reason the rendered value does not have a current bson"
                         );
                         return false;
                     };
-                    let value = if op == BinaryOpType::Equal {
-                        value
+                    let val_bson = if op == BinaryOpType::Equal {
+                        val_bson
                     } else {
-                        let op = MongoDBSqlWriter::expression_binary_op_key(op).to_string();
-                        doc! { op: value }.into()
+                        let op_key = MongoDBSqlWriter::expression_binary_op_key(op).to_string();
+                        doc! { op_key: val_bson }.into()
                     };
-                    *target = doc! { field: value }.into();
+                    *target = doc! { field: val_bson }.into();
                     is_expr = false;
                     break 'wrote;
                 }
             }
             writer.write_expression_binary_op(context, out, value);
+            is_expr = true;
         }
         if top && is_expr {
             let Some(target) = out
@@ -314,5 +319,102 @@ impl ExpressionVisitor for IsCount {
             }
             _ => false,
         }
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct NegateNumber {
+    pub value: Value,
+}
+impl ExpressionVisitor for NegateNumber {
+    fn visit_operand(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        value: &Operand,
+    ) -> bool {
+        match value {
+            Operand::LitInt(v) => {
+                self.value = (-v).as_value();
+                return true;
+            }
+            Operand::LitFloat(v) => {
+                self.value = (-v).as_value();
+                return true;
+            }
+            Operand::Variable(v) => match v {
+                Value::Int8(Some(v)) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                Value::Int16(Some(v)) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                Value::Int32(Some(v)) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                Value::Int64(Some(v)) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                Value::Int128(Some(v)) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                Value::Float32(Some(v)) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                Value::Float64(Some(v)) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                Value::Decimal(Some(v), ..) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                _ => {}
+            },
+            Operand::Value(v) => match v {
+                Value::Int8(Some(v)) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                Value::Int16(Some(v)) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                Value::Int32(Some(v)) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                Value::Int64(Some(v)) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                Value::Int128(Some(v)) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                Value::Float32(Some(v)) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                Value::Float64(Some(v)) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                Value::Decimal(Some(v), ..) => {
+                    self.value = (-v).as_value();
+                    return true;
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+        false
     }
 }

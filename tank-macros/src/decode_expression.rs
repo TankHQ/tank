@@ -197,8 +197,8 @@ pub fn decode_expression(expr: &Expr) -> TokenStream {
         Expr::Lit(ExprLit { lit: v, .. }) => {
             let v = match v {
                 syn::Lit::Bool(v) => quote! { ::tank::Operand::LitBool(#v) },
-                syn::Lit::Int(v) => quote! { ::tank::Operand::LitInt(#v) },
-                syn::Lit::Float(v) => quote! { ::tank::Operand::LitFloat(#v) },
+                syn::Lit::Int(v) => quote! { ::tank::Operand::LitInt(#v as _) },
+                syn::Lit::Float(v) => quote! { ::tank::Operand::LitFloat(#v as _) },
                 syn::Lit::Str(v) => quote! { ::tank::Operand::LitStr(#v) },
                 syn::Lit::Char(v) => quote! { ::tank::Operand::LitStr(#v) },
                 _ => panic!(

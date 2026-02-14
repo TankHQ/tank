@@ -101,7 +101,11 @@ impl Context {
     }
     pub const fn switch_table<'s>(&'s mut self, table_ref: TableRef) -> ContextUpdater<'s> {
         ContextUpdater {
-            current: Context { table_ref, ..*self },
+            current: Context {
+                table_ref,
+                qualify_columns: true,
+                ..*self
+            },
             previous: self,
         }
     }

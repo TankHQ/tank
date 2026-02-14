@@ -220,6 +220,34 @@ mod tests {
                 }
             );
         }
+        {
+            let mut out = MongoDBSqlWriter::make_prepared();
+            expr!(90.5 - -0.54 * 2 < 7 / 2).accept_visitor(
+                &mut WriteMatchExpression::new(),
+                &WRITER,
+                &mut Context::empty(),
+                &mut out,
+            );
+            assert_eq!(
+                *out.as_prepared::<MongoDBDriver>()
+                    .and_then(MongoDBPrepared::current_bson)
+                    .and_then(Bson::as_document_mut)
+                    .expect("Wrong result type"),
+                doc! {
+                    "$expr": {
+                        "$lt": [
+                            {
+                                "$subtract": [
+                                    90.5,
+                                    { "$multiply": [-0.54, Bson::Int64(2)] }
+                                ]
+                            },
+                            { "$divide": [Bson::Int64(7), Bson::Int64(2)] }
+                        ]
+                    }
+                }
+            );
+        }
     }
 
     #[test]

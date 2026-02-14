@@ -1,8 +1,8 @@
 use crate::{
     AggregatePayload, BatchPayload, CreateCollectionPayload, CreateDatabasePayload, DeletePayload,
     DropCollectionPayload, DropDatabasePayload, FindManyPayload, FindOnePayload, InsertManyPayload,
-    InsertOnePayload, MongoDBDriver, MongoDBPrepared, Payload, RowWrap, UpsertPayload,
-    WriteMatchExpression, value_to_bson,
+    InsertOnePayload, MongoDBDriver, MongoDBPrepared, NegateNumber, Payload, RowWrap,
+    UpsertPayload, WriteMatchExpression, value_to_bson,
 };
 use mongodb::{
     Namespace,
@@ -16,7 +16,8 @@ use std::{borrow::Cow, collections::HashMap, f64, iter, mem};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, Dataset, DynQuery, Entity, ErrorContext,
     Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk, IsColumn, Operand,
-    Order, Result, SelectQuery, SqlWriter, TableRef, Value, print_timer, truncate_long,
+    Order, Result, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, print_timer,
+    truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -438,6 +439,43 @@ impl SqlWriter for MongoDBSqlWriter {
         *target = Bson::Document(doc);
     }
 
+    fn write_expression_unary_op(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &UnaryOp<&dyn Expression>,
+    ) {
+        match value.op {
+            UnaryOpType::Negative => {
+                let mut matcher = NegateNumber::default();
+                if value.arg.accept_visitor(&mut matcher, self, context, out) {
+                    self.write_value(context, out, &matcher.value);
+                } else {
+                    // TODO: Change when MongoDB introduces a better way to handle negative
+                    BinaryOp {
+                        op: BinaryOpType::Multiplication,
+                        lhs: Operand::LitInt(-1),
+                        rhs: value.arg,
+                    }
+                    .write_query(self, context, out);
+                }
+            }
+            UnaryOpType::Not => {
+                value.arg.write_query(self, context, out);
+                let Some(target) = out
+                    .as_prepared::<MongoDBDriver>()
+                    .and_then(MongoDBPrepared::current_bson)
+                else {
+                    log::error!(
+                        "Failed to get the bson in MongoDBSqlWriter::write_expression_unary_op after writing the argument"
+                    );
+                    return;
+                };
+                *target = doc! { "$not": mem::take(target) }.into();
+            }
+        }
+    }
+
     fn write_expression_binary_op(
         &self,
         context: &mut Context,
@@ -484,7 +522,6 @@ impl SqlWriter for MongoDBSqlWriter {
                 .and_then(MongoDBPrepared::current_bson)
                 .map(mem::take)
             else {
-                // Unreachable
                 log::error!(
                     "Unexpected error while rendering the lhs of the binary expression, failed to get the bson object"
                 );
@@ -500,7 +537,6 @@ impl SqlWriter for MongoDBSqlWriter {
                 .and_then(MongoDBPrepared::current_bson)
                 .map(mem::take)
             else {
-                // Unreachable
                 log::error!(
                     "Unexpected error while rendering the rhs of the binary expression, failed to get the bson object"
                 );
@@ -748,8 +784,8 @@ impl SqlWriter for MongoDBSqlWriter {
         let mut group = Document::new();
         let mut is_aggregate = group_by.peek().is_some();
         macro_rules! update_group {
-            ($column:expr, $name:expr, $bson:expr, $context:expr) => {
-                if $column.accept_visitor(&mut IsAggregateFunction, self, $context, out) {
+            ($column:expr, $name:expr, $bson:expr, $is_aggregate:expr) => {
+                if $is_aggregate {
                     group.insert($name, $bson);
                     is_aggregate = true;
                 } else if is_aggregate {
@@ -787,7 +823,7 @@ impl SqlWriter for MongoDBSqlWriter {
             let name = get_name(&column, false);
             let mut query = Self::make_prepared();
             column.write_query(self, &mut context, &mut query);
-            let Some(bson) = query
+            let Some(mut bson) = query
                 .as_prepared::<MongoDBDriver>()
                 .and_then(MongoDBPrepared::current_bson)
                 .map(mem::take)
@@ -798,17 +834,17 @@ impl SqlWriter for MongoDBSqlWriter {
                 );
                 return;
             };
-            if let Some(project) = &mut project {
-                project.insert(
-                    &name,
-                    if column.accept_visitor(&mut IsColumn::default(), self, &mut context, out) {
-                        Bson::Int32(1)
-                    } else {
-                        bson.clone()
-                    },
-                );
+            let aggregate_function =
+                column.accept_visitor(&mut IsAggregateFunction, self, &mut context, out);
+            update_group!(column, name.clone(), bson.clone(), aggregate_function);
+            if aggregate_function {
+                bson = Bson::Int32(1);
+            } else if column.accept_visitor(&mut IsColumn::default(), self, &mut context, out) {
+                bson = Bson::String(format!("$_id.{name}"))
             }
-            update_group!(column, name.clone(), bson, &mut context);
+            if let Some(project) = &mut project {
+                project.insert(name, bson);
+            }
         }
         if is_asterisk {
             project = None;
@@ -850,11 +886,17 @@ impl SqlWriter for MongoDBSqlWriter {
                 );
                 return;
             };
-            update_group!(column, name, bson, &mut context.current);
+            update_group!(
+                column,
+                name,
+                bson,
+                column.accept_visitor(&mut IsAggregateFunction, self, &mut context.current, out)
+            );
         }
         let mut having = Bson::Null;
         if let Some(condition) = query.get_having() {
             let mut context = context.switch_fragment(Fragment::SqlSelectHaving);
+            let mut context = context.current.switch_table("_id".into());
             let mut query = Self::make_prepared();
             condition.accept_visitor(
                 &mut WriteMatchExpression::default(),
@@ -887,6 +929,15 @@ impl SqlWriter for MongoDBSqlWriter {
                         -1
                     }),
                 );
+            }
+        }
+        if !is_aggregate && let Some(project) = &mut project {
+            for (_k, v) in project.iter_mut() {
+                if let Bson::String(value) = v
+                    && value.starts_with("$_id.")
+                {
+                    *v = Bson::Int32(1);
+                }
             }
         }
         let payload: Payload = if is_aggregate {
@@ -994,13 +1045,13 @@ impl SqlWriter for MongoDBSqlWriter {
             (true, _) => {
                 let mut values = iter::chain(iter::once(entity), entities).filter_map(|entity| {
                     let mut query = Self::make_prepared();
-                    let is_expr = entity.primary_key_expr().accept_visitor(
+                    entity.primary_key_expr().accept_visitor(
                         &mut WriteMatchExpression::new(),
                         self,
                         &mut context,
                         &mut query,
                     );
-                    let Some(Bson::Document(mut filter)) = query
+                    let Some(Bson::Document(filter)) = query
                         .as_prepared::<MongoDBDriver>()
                         .and_then(MongoDBPrepared::current_bson)
                         .map(mem::take)
@@ -1010,9 +1061,6 @@ impl SqlWriter for MongoDBSqlWriter {
                         );
                         return None;
                     };
-                    if is_expr {
-                        filter = doc! { "$expr": filter }.into();
-                    }
                     let modifications: Document = match RowWrap(Cow::Owned(entity.row_labeled()))
                         .try_into()
                         .with_context(|| "While rendering the entity to create a upsert query")
