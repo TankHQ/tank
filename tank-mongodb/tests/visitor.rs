@@ -1,9 +1,10 @@
 #[cfg(test)]
 mod tests {
     use mongodb::bson::{Bson, doc};
-    use tank::{Context, Entity, Expression, TableRef, expr};
+    use tank::{ColumnRef, Context, Entity, Expression, TableRef, expr};
     use tank_mongodb::{
-        IsCount, MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter, WriteMatchExpression,
+        FieldType, IsCount, IsField, MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter,
+        WriteMatchExpression,
     };
     use tank_tests::init_logs;
 
@@ -15,6 +16,45 @@ mod tests {
         pub str_column: String,
     }
     const WRITER: MongoDBSqlWriter = MongoDBSqlWriter {};
+
+    #[test]
+    fn is_field() {
+        {
+            let mut matcher = IsField::default();
+            assert_eq!(matcher.field, FieldType::None);
+            assert!(Table::col_a.accept_visitor(
+                &mut matcher,
+                &WRITER,
+                &mut Default::default(),
+                &mut Default::default()
+            ));
+            assert_eq!(matcher.field, FieldType::Column(Table::col_a));
+            assert_ne!(matcher.field, FieldType::Column(Table::col_b));
+        }
+        {
+            let mut matcher = IsField::default();
+            assert!(expr!(table.col_a).accept_visitor(
+                &mut matcher,
+                &WRITER,
+                &mut Default::default(),
+                &mut Default::default()
+            ));
+            assert_eq!(
+                matcher.field,
+                FieldType::Column(ColumnRef {
+                    name: "col_a".into(),
+                    table: "table".into(),
+                    schema: "".into()
+                })
+            );
+        }
+        assert!(!true.accept_visitor(
+            &mut IsField::default(),
+            &WRITER,
+            &mut Default::default(),
+            &mut Default::default()
+        ));
+    }
 
     #[test]
     fn write_match_expression() {

@@ -26,6 +26,12 @@ pub struct ColumnRef {
 }
 
 impl ColumnRef {
+    pub fn new(name: Cow<'static, str>) -> Self {
+        Self {
+            name,
+            ..Default::default()
+        }
+    }
     /// Return a `TableRef` referencing the column's table and schema.
     pub fn table(&self) -> TableRef {
         TableRef {

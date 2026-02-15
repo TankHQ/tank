@@ -1,8 +1,7 @@
 use crate::{
     BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, Operand, Order, Ordered,
-    SqlWriter, TableRef, UnaryOp, Value,
+    SqlWriter, UnaryOp, Value,
 };
-use std::borrow::Cow;
 
 pub trait ExpressionVisitor {
     fn visit_column(
@@ -49,55 +48,6 @@ pub trait ExpressionVisitor {
         _value: &Ordered<&dyn Expression>,
     ) -> bool {
         false
-    }
-}
-
-#[derive(Default, Debug)]
-pub struct IsColumn {
-    pub column: Option<ColumnRef>,
-    pub qualify_column: TableRef,
-}
-impl ExpressionVisitor for IsColumn {
-    fn visit_column(
-        &mut self,
-        _writer: &dyn SqlWriter,
-        _context: &mut Context,
-        _out: &mut DynQuery,
-        value: &ColumnRef,
-    ) -> bool {
-        self.column = Some(value.clone());
-        true
-    }
-    fn visit_operand(
-        &mut self,
-        _writer: &dyn SqlWriter,
-        _context: &mut Context,
-        _out: &mut DynQuery,
-        value: &Operand,
-    ) -> bool {
-        match value {
-            Operand::LitIdent(v) => {
-                self.column = Some(ColumnRef {
-                    name: Cow::Owned(v.to_string()),
-                    table: "".into(),
-                    schema: "".into(),
-                });
-                true
-            }
-            Operand::LitField(v) => {
-                let mut it = v.into_iter().rev();
-                let name = it.next().map(ToString::to_string).unwrap_or_default();
-                let table = it.next().map(ToString::to_string).unwrap_or_default();
-                let schema = it.next().map(ToString::to_string).unwrap_or_default();
-                self.column = Some(ColumnRef {
-                    name: name.into(),
-                    table: table.into(),
-                    schema: schema.into(),
-                });
-                true
-            }
-            _ => false,
-        }
     }
 }
 

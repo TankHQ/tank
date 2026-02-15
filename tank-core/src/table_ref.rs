@@ -46,6 +46,10 @@ impl TableRef {
         result.alias = alias.into();
         result
     }
+    /// Returns `true` if name and schema and alias are empty
+    pub fn is_empty(&self) -> bool {
+        self.name.is_empty() && self.schema.is_empty() && self.alias.is_empty()
+    }
 }
 
 impl Dataset for TableRef {

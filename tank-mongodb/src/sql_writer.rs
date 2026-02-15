@@ -1,7 +1,7 @@
 use crate::{
     AggregatePayload, BatchPayload, CreateCollectionPayload, CreateDatabasePayload, DeletePayload,
     DropCollectionPayload, DropDatabasePayload, FindManyPayload, FindOnePayload, InsertManyPayload,
-    InsertOnePayload, MongoDBDriver, MongoDBPrepared, NegateNumber, Payload, RowWrap,
+    InsertOnePayload, IsField, MongoDBDriver, MongoDBPrepared, NegateNumber, Payload, RowWrap,
     UpsertPayload, WriteMatchExpression, value_to_bson,
 };
 use mongodb::{
@@ -12,11 +12,11 @@ use mongodb::{
         InsertManyOptions, InsertOneOptions, UpdateModifications, UpdateOptions,
     },
 };
-use std::{borrow::Cow, collections::HashMap, f64, iter, mem};
+use std::{borrow::Cow, collections::HashMap, f64, iter, mem, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, Dataset, DynQuery, Entity, ErrorContext,
-    Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk, IsColumn, Operand,
-    Order, Result, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, print_timer,
+    Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk, Operand, Order,
+    Result, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, print_timer,
     truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
@@ -839,7 +839,7 @@ impl SqlWriter for MongoDBSqlWriter {
             update_group!(column, name.clone(), bson.clone(), aggregate_function);
             if aggregate_function {
                 bson = Bson::Int32(1);
-            } else if column.accept_visitor(&mut IsColumn::default(), self, &mut context, out) {
+            } else if column.accept_visitor(&mut IsField::default(), self, &mut context, out) {
                 bson = Bson::String(format!("$_id.{name}"))
             }
             if let Some(project) = &mut project {
@@ -898,12 +898,11 @@ impl SqlWriter for MongoDBSqlWriter {
             let mut context = context.switch_fragment(Fragment::SqlSelectHaving);
             let mut context = context.current.switch_table("_id".into());
             let mut query = Self::make_prepared();
-            condition.accept_visitor(
-                &mut WriteMatchExpression::default(),
-                self,
-                &mut context.current,
-                &mut query,
-            );
+            let mut matcher = WriteMatchExpression {
+                known_columns: Arc::new(group.keys().collect()),
+                ..Default::default()
+            };
+            condition.accept_visitor(&mut matcher, self, &mut context.current, &mut query);
             let Some(bson) = query
                 .as_prepared::<MongoDBDriver>()
                 .and_then(MongoDBPrepared::current_bson)

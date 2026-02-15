@@ -1,10 +1,132 @@
 use crate::{MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter};
 use mongodb::bson::{Bson, Document, doc};
-use std::mem;
+use std::{borrow::Cow, iter, mem, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
-    IsAsterisk, IsColumn, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp, Value,
+    IsAsterisk, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp, Value,
 };
+
+#[derive(Default, PartialEq, Eq, Debug)]
+pub enum FieldType {
+    #[default]
+    None,
+    Identifier(String),
+    Column(ColumnRef),
+}
+
+#[derive(Default, Debug)]
+pub struct IsField<'a> {
+    pub field: FieldType,
+    pub known_columns: Arc<Vec<&'a String>>,
+}
+impl<'a> ExpressionVisitor for IsField<'a> {
+    fn visit_column(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        value: &ColumnRef,
+    ) -> bool {
+        self.field = FieldType::Column(value.clone());
+        true
+    }
+    fn visit_operand(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        context: &mut Context,
+        _out: &mut DynQuery,
+        value: &Operand,
+    ) -> bool {
+        match value {
+            Operand::LitIdent(v) => {
+                self.field = FieldType::Column(ColumnRef {
+                    name: Cow::Owned(v.to_string()),
+                    table: "".into(),
+                    schema: "".into(),
+                });
+                true
+            }
+            Operand::LitField(v) => {
+                let mut it = v.into_iter().rev();
+                let name = it.next().map(ToString::to_string).unwrap_or_default();
+                let table = it.next().map(ToString::to_string).unwrap_or_default();
+                let schema = it.next().map(ToString::to_string).unwrap_or_default();
+                self.field = FieldType::Column(ColumnRef {
+                    name: name.into(),
+                    table: table.into(),
+                    schema: schema.into(),
+                });
+                true
+            }
+            _ => {
+                if self.known_columns.is_empty() {
+                    return false;
+                }
+                let identifier = value.as_identifier(&mut context.switch_table("".into()).current);
+                if self.known_columns.contains(&&identifier) {
+                    self.field = FieldType::Identifier(identifier);
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+    fn visit_unary_op(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        context: &mut Context,
+        _out: &mut DynQuery,
+        value: &UnaryOp<&dyn Expression>,
+    ) -> bool {
+        if self.known_columns.is_empty() {
+            return false;
+        }
+        let identifier = value.as_identifier(&mut context.switch_table("".into()).current);
+        if self.known_columns.contains(&&identifier) {
+            self.field = FieldType::Identifier(identifier);
+            true
+        } else {
+            false
+        }
+    }
+    fn visit_binary_op(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        context: &mut Context,
+        _out: &mut DynQuery,
+        value: &BinaryOp<&dyn Expression, &dyn Expression>,
+    ) -> bool {
+        if self.known_columns.is_empty() {
+            return false;
+        }
+        let identifier = value.as_identifier(&mut context.switch_table("".into()).current);
+        if self.known_columns.contains(&&identifier) {
+            self.field = FieldType::Identifier(identifier);
+            true
+        } else {
+            false
+        }
+    }
+    fn visit_ordered(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        context: &mut Context,
+        _out: &mut DynQuery,
+        value: &Ordered<&dyn Expression>,
+    ) -> bool {
+        if self.known_columns.is_empty() {
+            return false;
+        }
+        let identifier = value.as_identifier(&mut context.switch_table("".into()).current);
+        if self.known_columns.contains(&&identifier) {
+            self.field = FieldType::Identifier(identifier);
+            true
+        } else {
+            false
+        }
+    }
+}
 
 #[derive(Default, Debug)]
 pub struct IsConstant;
@@ -34,10 +156,11 @@ impl ExpressionVisitor for IsConstant {
 }
 
 #[derive(Default, Debug)]
-pub struct WriteMatchExpression {
+pub struct WriteMatchExpression<'a> {
     pub started: bool,
+    pub known_columns: Arc<Vec<&'a String>>,
 }
-impl WriteMatchExpression {
+impl<'a> WriteMatchExpression<'a> {
     pub fn new() -> Self {
         WriteMatchExpression::default()
     }
@@ -47,7 +170,7 @@ impl WriteMatchExpression {
         }
     }
 }
-impl ExpressionVisitor for WriteMatchExpression {
+impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
     fn visit_column(
         &mut self,
         writer: &dyn SqlWriter,
@@ -138,6 +261,7 @@ impl ExpressionVisitor for WriteMatchExpression {
                 _ => None,
             } {
                 let mut args = Vec::new();
+                let mut arg_is_expr = Vec::new();
                 let mut all_expr = true;
                 for side in [value.lhs, value.rhs] {
                     let mut query = MongoDBSqlWriter::make_prepared();
@@ -153,24 +277,23 @@ impl ExpressionVisitor for WriteMatchExpression {
                         );
                         return false;
                     };
-                    if expr_arg {
-                        bson = doc! { "$expr": bson }.into();
-                    }
                     if let Some(doc) = bson.as_document_mut()
                         && doc.keys().eq([root])
                         && let Ok(v) = doc.get_array_mut(root)
                     {
+                        arg_is_expr.extend(iter::repeat(expr_arg).take(v.len()));
                         args.append(v);
                     } else {
+                        arg_is_expr.push(expr_arg);
                         args.push(bson);
                     }
                 }
                 if all_expr {
-                    for arg in &mut args {
-                        *arg = mem::take(arg.as_document_mut().unwrap().get_mut("$expr").unwrap());
-                    }
                     is_expr = true;
                 } else {
+                    for (i, _) in arg_is_expr.iter().enumerate().filter(|(_, v)| **v) {
+                        args[i] = doc! { "$expr": mem::take(&mut args[i]) }.into();
+                    }
                     is_expr = false;
                 }
                 let Some(target) = out
@@ -196,8 +319,14 @@ impl ExpressionVisitor for WriteMatchExpression {
                     | BinaryOpType::LessEqual
                     | BinaryOpType::GreaterEqual
             ) {
-                let mut l_column = IsColumn::default();
-                let mut r_column = IsColumn::default();
+                let mut l_column = IsField {
+                    known_columns: self.known_columns.clone(),
+                    ..Default::default()
+                };
+                let mut r_column = IsField {
+                    known_columns: self.known_columns.clone(),
+                    ..Default::default()
+                };
                 let l_constant = value
                     .lhs
                     .accept_visitor(&mut IsConstant, writer, context, out);
@@ -213,11 +342,11 @@ impl ExpressionVisitor for WriteMatchExpression {
                         .accept_visitor(&mut r_column, writer, context, out)
                         && l_constant)
                 {
-                    let (field, value, op) = if let Some(field) = l_column.column {
-                        (field, value.rhs, value.op)
-                    } else if let Some(field) = mem::take(&mut r_column.column) {
+                    let (field, value, op) = if l_column.field != FieldType::None {
+                        (l_column, value.rhs, value.op)
+                    } else if r_column.field != FieldType::None {
                         (
-                            field,
+                            r_column,
                             value.lhs,
                             match value.op {
                                 BinaryOpType::Less => BinaryOpType::Greater,
@@ -242,7 +371,11 @@ impl ExpressionVisitor for WriteMatchExpression {
                         );
                         return false;
                     };
-                    let field = field.as_identifier(context);
+                    let field = match field.field {
+                        FieldType::None => unreachable!(),
+                        FieldType::Identifier(v) => v,
+                        FieldType::Column(v) => v.as_identifier(context),
+                    };
                     let mut query = MongoDBSqlWriter::make_prepared();
                     value.write_query(writer, context, &mut query);
                     let Some(val_bson) = query

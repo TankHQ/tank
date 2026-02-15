@@ -100,7 +100,7 @@ mod tests {
                 COUNT(Cart::id),
                 SUM(Cart::total_price),
                 AVG(Cart::total_price),
-                MAX(expr!(ABS(Cart::total_price - 100.0))),
+                MAX(ABS(Cart::total_price - 100.0)),
             ))
             .from(Cart::table())
             .where_expr(expr!(
@@ -116,7 +116,7 @@ mod tests {
                 COUNT(Cart::id) > 2
                     && AVG(Cart::total_price) >= 50
                     && SUM(Cart::total_price) < 50_000
-                    && MAX(expr!(ABS(Cart::total_price - 100.0))) > 10
+                    && MAX(ABS(Cart::total_price - 100.0)) > 10
             ))
             .limit(Some(1000))
             .build(&DRIVER);
@@ -199,7 +199,7 @@ mod tests {
                 doc! {
                     "$match": {
                         "$and": [
-                            { "COUNT(_id)": { "$gt": 2 } },
+                            { "COUNT(_id)": { "$gt": Bson::Int64(2) } },
                             { "AVG(total price)": { "$gte": Bson::Int64(50) } },
                             { "SUM(total price)": { "$lt": Bson::Int64(50000) } },
                             { "MAX(ABS(total price - 100.0))": { "$gt": Bson::Int64(10) } },
@@ -210,7 +210,6 @@ mod tests {
                 doc! {
                     "$project": {
                         "user id": "$_id.user id",
-                        "country": "$_id.country",
                         "COUNT(_id)": 1,
                         "SUM(total price)": 1,
                         "AVG(total price)": 1,
