@@ -534,4 +534,114 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
             ]
         );
     }
+
+    #[cfg(not(feature = "disable-groups"))]
+    {
+        #[derive(Debug, Entity, PartialEq)]
+        struct CountryMaxIncome {
+            country: String,
+            max_income: f64,
+        }
+
+        let max_incomes = executor
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(Metric::country, MAX(value) as max_income,))
+                    .from(Metric::table())
+                    .where_expr(expr!(name == "income_eur"))
+                    .group_by([Metric::country])
+                    .order_by(cols!(max_income DESC, Metric::country ASC))
+                    .build(&executor.driver()),
+            )
+            .map_ok(CountryMaxIncome::from_row)
+            .map(Result::flatten)
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Could not get max incomes per country");
+
+        assert_eq!(
+            max_incomes,
+            [
+                CountryMaxIncome {
+                    country: "NL".into(),
+                    max_income: 130000.0,
+                },
+                CountryMaxIncome {
+                    country: "UK".into(),
+                    max_income: 102000.0,
+                },
+                CountryMaxIncome {
+                    country: "CA".into(),
+                    max_income: 77000.0,
+                },
+                CountryMaxIncome {
+                    country: "DE".into(),
+                    max_income: 72000.0,
+                },
+                CountryMaxIncome {
+                    country: "IT".into(),
+                    max_income: 72000.0,
+                },
+                CountryMaxIncome {
+                    country: "ES".into(),
+                    max_income: 47000.0,
+                },
+            ]
+        );
+    }
+
+    #[cfg(not(feature = "disable-groups"))]
+    {
+        #[derive(Debug, Entity, PartialEq)]
+        struct MetricGlobalStats {
+            name: String,
+            min_val: f64,
+            max_val: f64,
+            total_val: f64,
+        }
+
+        let global_stats = executor
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(
+                        Metric::name,
+                        MIN(Metric::value) as min_val,
+                        MAX(Metric::value) as max_val,
+                        SUM(Metric::value) as total_val,
+                    ))
+                    .from(Metric::table())
+                    .group_by([Metric::name])
+                    .order_by(cols!(name ASC))
+                    .build(&executor.driver()),
+            )
+            .map_ok(MetricGlobalStats::from_row)
+            .map(Result::flatten)
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Could not get global metric stats");
+
+        assert_eq!(
+            global_stats,
+            [
+                MetricGlobalStats {
+                    name: "height_cm".into(),
+                    min_val: 162.0,
+                    max_val: 188.0,
+                    total_val: 1213.0,
+                },
+                MetricGlobalStats {
+                    name: "income_eur".into(),
+                    min_val: 42000.0,
+                    max_val: 130000.0,
+                    total_val: 1128000.0,
+                },
+                MetricGlobalStats {
+                    name: "weight_kg".into(),
+                    min_val: 58.0,
+                    max_val: 88.5,
+                    total_val: 869.7, // Note: watch out for f64 epsilon precision issues here depending on the DB engine!
+                },
+            ]
+        );
+    }
 }
