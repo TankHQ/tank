@@ -54,6 +54,7 @@ edition.workspace = true
 repository.workspace = true
 
 [dependencies]
+serde.workspace = true
 tank-core = { workspace = true, default-features = false }
 tank-macros.workspace = true
 

@@ -38,8 +38,8 @@ pub struct Tank {
 
 4) Fire for effect
 ```rust
-use std::collections::HashSet;
-use tank::Driver;
+use std::{borrow::Cow, collections::HashSet, sync::LazyLock};
+use tank::{Entity, Executor, Result, expr, stream::TryStreamExt};
 use tank_duckdb::DuckDBDriver;
 
 async fn data() -> Result<()> {
@@ -56,11 +56,6 @@ async fn data() -> Result<()> {
         is_operational: false,
         units_produced: Some(1_347),
     };
-
-    /*
-     * DROP TABLE IF EXISTS "army"."tank";
-     */
-    Tank::drop_table(connection, true, false).await?;
 
     /*
      * CREATE SCHEMA IF NOT EXISTS "army";
@@ -121,13 +116,9 @@ async fn data() -> Result<()> {
      * WHERE "is_operational" = false
      * LIMIT 1000;
      */
-    let tanks = Tank::find_many(
-        connection,
-        expr!(Tank::is_operational == false),
-        Some(1000),
-    )
-    .try_collect::<Vec<_>>()
-    .await?;
+    let tanks = Tank::find_many(connection, expr!(Tank::is_operational == false), Some(1000))
+        .try_collect::<Vec<_>>()
+        .await?;
 
     assert_eq!(
         tanks

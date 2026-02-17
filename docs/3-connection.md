@@ -34,62 +34,6 @@ Every database connection abstraction implements the [`Connection`](https://docs
 
 Once the line is open, the connection exposes both the [`Connection`](https://docs.rs/tank/latest/tank/trait.Connection.html) and [`Executor`](https://docs.rs/tank/latest/tank/trait.Executor.html) interfaces, enabling you to prepare statements, run multiple queries, execute commands, fetch rows and orchestrate transactions.
 
-### DuckDB
-DuckDB is your embedded artillery piece: fast, local, and always ready. Perfect for rapid deployment scenarios and testing under fire.
-
-```rust
-use tank::Driver;
-use tank_duckdb::{DuckDBConnection, DuckDBDriver};
-
-async fn establish_duckdb_connection() -> Result<DuckDBConnection> {
-    let driver = DuckDBDriver::new();
-    let connection = driver
-        .connect("duckdb://../target/debug/combat.duckdb?mode=rw".into())
-        .await?;
-    Ok(connection)
-}
-```
-
-**URL Format**:
-- File: `duckdb://path/to/database.duckdb?mode=rw`
-- Memory: `duckdb://:memory:` or `duckdb://database?mode=memory`
-
-Modes:
-- `mode=ro`: read-only access (fails if the file doesn’t exist)
-- `mode=rw`: read-write access (creates the file if it doesn’t exist)
-- `mode=rwc`: alias for `rw`
-- `mode=memory`: in-memory access (temporary database that lives only for the duration of the connection)
-
-The `mode` parameter provides a common syntax for specifying connection access, similar to SQLite. The values map respectively to `access_mode=READ_ONLY`, `access_mode=READ_WRITE`, `access_mode=READ_WRITE` and the special `duckdb://:memory:` path. Additional URL parameters are passed directly to the DuckDB C API. See the full list of supported options on the [DuckDB website](https://duckdb.org/docs/stable/configuration/overview#global-configuration-options).
-
-### SQLite
-SQLite is the lone wolf operative, deep behind enemy lines: lightweight, reliable, zero configuration. Deploy anywhere, anytime.
-
-```rust
-use tank::Driver;
-use tank_sqlite::{SQLiteConnection, SQLiteDriver};
-
-async fn establish_sqlite_connection() -> Result<SQLiteConnection> {
-    let driver = SQLiteDriver::new();
-    let connection = driver
-        .connect("sqlite://../target/debug/operations.sqlite?mode=rwc".into())
-        .await?;
-    Ok(connection)
-}
-```
-
-**URL Format**:
-- File: `sqlite://path/to/database.sqlite?mode=rwc`
-- Memory: `sqlite://:memory:` or `sqlite://database?mode=memory`
-
-Modes:
-- `mode=ro`: read-only access (fails if the file doesn’t exist)
-- `mode=rw`: read-write access (fails if the file doesn’t exist)
-- `mode=rwc`: read-write access (creates the file if it doesn’t exist)
-- `mode=memory`: in-memory access (temporary database that lives only for the duration of the connection)
-
-Additional URL parameters are passed directly to the SQLite API. See the full list of supported options on the [SQLite website](https://sqlite.org/uri.html#recognized_query_parameters).
-
 ### Postgres
 Postgres is your heavy artillery: powerful, networked, built for sustained campaigns with multiple units coordinating strikes.
 
@@ -118,6 +62,34 @@ Parameters:
 - `sslcert`: Client certificate path (falls back to environment variable `PGSSLCERT` or `~/.postgresql/postgresql.crt`).
 - `sslkey`: Client private key path (falls back to environment variable `PGSSLKEY` or `~/.postgresql/postgresql.key`).
 
+### SQLite
+SQLite is the lone wolf operative, deep behind enemy lines: lightweight, reliable, zero configuration. Deploy anywhere, anytime.
+
+```rust
+use tank::Driver;
+use tank_sqlite::{SQLiteConnection, SQLiteDriver};
+
+async fn establish_sqlite_connection() -> Result<SQLiteConnection> {
+    let driver = SQLiteDriver::new();
+    let connection = driver
+        .connect("sqlite://../target/database.sqlite?mode=rwc".into())
+        .await?;
+    Ok(connection)
+}
+```
+
+**URL Format**:
+- File: `sqlite://path/to/database.sqlite?mode=rwc`
+- Memory: `sqlite://:memory:` or `sqlite://database?mode=memory`
+
+Modes:
+- `mode=ro`: read-only access (fails if the file doesn’t exist)
+- `mode=rw`: read-write access (fails if the file doesn’t exist)
+- `mode=rwc`: read-write access (creates the file if it doesn’t exist)
+- `mode=memory`: in-memory access (temporary database that lives only for the duration of the connection)
+
+Additional URL parameters are passed directly to the SQLite API. See the full list of supported options on the [SQLite website](https://sqlite.org/uri.html#recognized_query_parameters).
+
 ### MySQL / MariaDB
 MySQL is the battle-hardened workhorse of the digital front: widely deployed, solid transactional engine, broad tooling ecosystem.
 
@@ -144,17 +116,61 @@ Parameters:
 
 Additional URL parameters are passed directly to the mysql_async API. See the full list of supported options from options structure [Opts](https://docs.rs/mysql_async/latest/mysql_async/struct.Opts.html).
 
+### DuckDB
+DuckDB is your embedded artillery piece: fast, local, and always ready. Perfect for rapid deployment scenarios and testing under fire.
+
+```rust
+use tank::Driver;
+use tank_duckdb::{DuckDBConnection, DuckDBDriver};
+
+async fn establish_duckdb_connection() -> Result<DuckDBConnection> {
+    let driver = DuckDBDriver::new();
+    let connection = driver
+        .connect("duckdb://../target/debug/database.duckdb?mode=rw".into())
+        .await?;
+    Ok(connection)
+}
+```
+
+**URL Format**:
+- File: `duckdb://path/to/database.duckdb?mode=rw`
+- Memory: `duckdb://:memory:` or `duckdb://database?mode=memory`
+
+Modes:
+- `mode=ro`: read-only access (fails if the file doesn’t exist)
+- `mode=rw`: read-write access (creates the file if it doesn’t exist)
+- `mode=rwc`: alias for `rw`
+- `mode=memory`: in-memory access (temporary database that lives only for the duration of the connection)
+
+The `mode` parameter provides a common syntax for specifying connection access, similar to SQLite. The values map respectively to `access_mode=READ_ONLY`, `access_mode=READ_WRITE`, `access_mode=READ_WRITE` and the special `duckdb://:memory:` path. Additional URL parameters are passed directly to the DuckDB C API. See the full list of supported options on the [DuckDB website](https://duckdb.org/docs/stable/configuration/overview#global-configuration-options).
+
+### MongoDB
+MongoDB is your Guerrilla special forces unit operating in the "fog of war" gathering intel in whatever format it arrives.
+
+```rust
+use tank::Driver;
+use tank_mongodb::{MongoDBConnection, MongoDBDriver};
+
+async fn establish_mongodb_connection() -> Result<MongoDBConnection> {
+  let driver = MongoDBDriver::new();
+  let connection = driver
+    .connect("mongodb://127.0.0.1:27017/database".into())
+    .await?;
+  Ok(connection)
+}
+```
+
 ### ScyllaDB / Cassandra
 ScyllaDB is the rapid‑response strike force: distributed, built to swarm data with relentless, low‑latency fire.
 
 ```rust
 use tank::Driver;
-use tank_scylladb::{ScyllaConnection, ScyllaDriver};
+use tank_scylladb::{ScyllaDBConnection, ScyllaDBDriver};
 
-async fn establish_scylla_connection() -> Result<ScyllaConnection> {
-  let driver = ScyllaDriver::new();
+async fn establish_scylla_connection() -> Result<ScyllaDBConnection> {
+  let driver = ScyllaDBDriver::new();
   let connection = driver
-    .connect("scylladb://127.0.0.1:9042/keyspace_name".into())
+    .connect("scylladb://127.0.0.1:9042/keyspace".into())
     .await?;
   Ok(connection)
 }

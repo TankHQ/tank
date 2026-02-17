@@ -14,12 +14,12 @@ https://github.com/TankHQ/tank ⭐
 https://crates.io/crates/tank
 
 **Known battlefields**:
-- DuckDB
+- Postgres
 - SQLite
-- PostgreSQL
 - MySQL / MariaDB
-- Cassandra / ScyllaDB
+- DuckDB
 - MongoDB
+- Cassandra / ScyllaDB
 - More to be decided...
 
 ## Mission objectives
@@ -38,6 +38,7 @@ Tank exists to implement the best possible design for a ORM written in Rust. A a
 
 ## No-fly zone
 - No schema migrations (just table creation and destroy for fast setup).
+- No implicit joins (no entities as fields, joins are explicit, every alliance is signed).
 
 ## Getting started
 1) Arm your cargo
@@ -150,13 +151,9 @@ async fn data() -> Result<()> {
      * WHERE "is_operational" = false
      * LIMIT 1000;
      */
-    let tanks = Tank::find_many(
-        connection,
-        expr!(Tank::is_operational == false),
-        Some(1000),
-    )
-    .try_collect::<Vec<_>>()
-    .await?;
+    let tanks = Tank::find_many(connection, expr!(Tank::is_operational == false), Some(1000))
+        .try_collect::<Vec<_>>()
+        .await?;
 
     assert_eq!(
         tanks

@@ -247,7 +247,7 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
     ) -> bool {
         let top = !self.started;
         self.started = true;
-        let mut is_expr = false;
+        let is_expr;
         'wrote: {
             if let Some(root) = match value.op {
                 BinaryOpType::And => Some("$and"),

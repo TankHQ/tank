@@ -31,11 +31,6 @@ pub async fn readme<E: Executor>(connection: &mut E) -> Result<()> {
     };
 
     /*
-     * DROP TABLE IF EXISTS "army"."tank";
-     */
-    Tank::drop_table(connection, true, false).await?;
-
-    /*
      * CREATE SCHEMA IF NOT EXISTS "army";
      * CREATE TABLE IF NOT EXISTS "army"."tank" (
      *     "name" VARCHAR PRIMARY KEY,
@@ -60,7 +55,7 @@ pub async fn readme<E: Executor>(connection: &mut E) -> Result<()> {
     my_tank.save(connection).await?;
 
     /*
-     * In the case of DuckDB, it uses the appender API, in other cases the resulting query is:
+     * DuckDB uses the appender API. Other drivers generate a INSERT:
      * INSERT INTO "army"."tank" ("name", "country", "caliber", "speed", "is_operational", "units_produced") VALUES
      *     ('T-34/85', 'Soviet Union', 85, 53.0, false, 49200),
      *     ('M1 Abrams', 'USA', 120, 72.0, true, NULL);

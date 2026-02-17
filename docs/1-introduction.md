@@ -19,7 +19,6 @@ In plain terms: Tank is a lightweight, multi-database SQL toolkit. Define entiti
 ## No-fly zone
 - No schema migrations (just table creation and destroy for fast setup).
 - No implicit joins (no entities as fields, joins are explicit, every alliance is signed).
-- No complex query builder (write raw SQL and take full credit).
 
 ## Equipment
 ###### Core Arsenal
@@ -29,10 +28,12 @@ In plain terms: Tank is a lightweight, multi-database SQL toolkit. Define entiti
 - [**tank-tests**](https://crates.io/crates/tank-tests): Shared integration tests for drivers.
 
 ###### Drivers
-- [**tank-duckdb**](https://crates.io/crates/tank-duckdb): DuckDB.
-- [**tank-sqlite**](https://crates.io/crates/tank-sqlite): SQLite.
-- [**tank-postgres**](https://crates.io/crates/tank-postgres): Postgres.
-- [**tank-mysql**](https://crates.io/crates/tank-mysql): MySQL and MariaDB.
+- [**tank-postgres**](https://crates.io/crates/tank-postgres)
+- [**tank-sqlite**](https://crates.io/crates/tank-sqlite)
+- [**tank-mysql**](https://crates.io/crates/tank-mysql): MySQL an
+- [**tank-duckdb**](https://crates.io/crates/tank-duckdb)
+- [**tank-mongodb**](https://crates.io/crates/tank-mongodb)
+- [**tank-scylladb**](https://crates.io/crates/tank-scylladb)
 
 All the crates in this workspace share the same version.
 
