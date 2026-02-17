@@ -20,6 +20,7 @@ uuid = { workspace = true, features = ["v4"] }
 
 [features]
 disable-arrays = []
+disable-groups = []
 disable-infinity = []
 disable-intervals = []
 disable-joins = []

@@ -74,7 +74,7 @@ pub trait SqlWriter: Send {
     fn as_dyn(&self) -> &dyn SqlWriter;
 
     /// Whether the current fragment context allows alias declaration.
-    fn alias_declaration(&self, context: &mut Context) -> bool {
+    fn is_alias_declaration(&self, context: &mut Context) -> bool {
         match context.fragment {
             Fragment::SqlSelectFrom | Fragment::SqlJoin => true,
             _ => false,
@@ -100,7 +100,7 @@ pub trait SqlWriter: Send {
 
     /// Render a table reference with optional alias.
     fn write_table_ref(&self, context: &mut Context, out: &mut DynQuery, value: &TableRef) {
-        if self.alias_declaration(context) || value.alias.is_empty() {
+        if self.is_alias_declaration(context) || value.alias.is_empty() {
             if !value.schema.is_empty() {
                 self.write_identifier(context, out, &value.schema, context.quote_identifiers);
                 out.push('.');

@@ -58,7 +58,7 @@ impl SqlWriter for SQLiteSqlWriter {
     }
 
     fn write_table_ref(&self, context: &mut Context, out: &mut DynQuery, value: &TableRef) {
-        if self.alias_declaration(context) || value.alias.is_empty() {
+        if self.is_alias_declaration(context) || value.alias.is_empty() {
             out.push('"');
             if !value.schema.is_empty() {
                 write_escaped(out, &value.schema, '"', "\"\"");

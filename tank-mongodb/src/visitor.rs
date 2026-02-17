@@ -110,21 +110,15 @@ impl<'a> ExpressionVisitor for IsField<'a> {
     }
     fn visit_ordered(
         &mut self,
-        _writer: &dyn SqlWriter,
+        writer: &dyn SqlWriter,
         context: &mut Context,
-        _out: &mut DynQuery,
+        out: &mut DynQuery,
         value: &Ordered<&dyn Expression>,
     ) -> bool {
         if self.known_columns.is_empty() {
             return false;
         }
-        let identifier = value.as_identifier(&mut context.switch_table("".into()).current);
-        if self.known_columns.contains(&&identifier) {
-            self.field = FieldType::Identifier(identifier);
-            true
-        } else {
-            false
-        }
+        value.expression.accept_visitor(self, writer, context, out)
     }
 }
 
@@ -376,7 +370,7 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                         FieldType::Identifier(v) => v,
                         FieldType::Column(v) => v.as_identifier(context),
                     };
-                    let mut query = MongoDBSqlWriter::make_prepared();
+                    let mut query: DynQuery = MongoDBSqlWriter::make_prepared();
                     value.write_query(writer, context, &mut query);
                     let Some(val_bson) = query
                         .as_prepared::<MongoDBDriver>()

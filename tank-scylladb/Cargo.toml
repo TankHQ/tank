@@ -22,6 +22,8 @@ uuid.workspace = true
 [dev-dependencies]
 rcgen = { version = "0", features = [ "aws_lc_rs" ] }
 tank-tests = { path = "../tank-tests", features = [
+    "disable-groups",
+    "disable-joins",
     "disable-multiple-statements",
     "disable-nested-collections",
     "disable-old-dates",

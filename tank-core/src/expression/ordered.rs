@@ -57,7 +57,7 @@ impl<E: Expression> Expression for Ordered<E> {
             context,
             out,
             &Ordered {
-                expression: self as &dyn Expression,
+                expression: &self.expression,
                 order: self.order,
             },
         )

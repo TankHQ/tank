@@ -1,8 +1,8 @@
 use crate::{
     AggregatePayload, BatchPayload, CreateCollectionPayload, CreateDatabasePayload, DeletePayload,
-    DropCollectionPayload, DropDatabasePayload, FindManyPayload, FindOnePayload, InsertManyPayload,
-    InsertOnePayload, IsField, MongoDBDriver, MongoDBPrepared, NegateNumber, Payload, RowWrap,
-    UpsertPayload, WriteMatchExpression, value_to_bson,
+    DropCollectionPayload, DropDatabasePayload, FieldType, FindManyPayload, FindOnePayload,
+    InsertManyPayload, InsertOnePayload, IsField, MongoDBDriver, MongoDBPrepared, NegateNumber,
+    Payload, RowWrap, UpsertPayload, WriteMatchExpression, value_to_bson,
 };
 use mongodb::{
     Namespace,
@@ -765,8 +765,8 @@ impl SqlWriter for MongoDBSqlWriter {
         Self: Sized,
         Data: Dataset + 'a,
     {
-        let (Some(table), Some(where_expr)) = (query.get_from(), query.get_where()) else {
-            log::error!("The query does not have the FROM or WHERE clause");
+        let (Some(table), where_expr) = (query.get_from(), query.get_where()) else {
+            log::error!("The query does not have the FROM clause");
             return;
         };
         let table = table.table_ref();
@@ -788,7 +788,7 @@ impl SqlWriter for MongoDBSqlWriter {
                 if $is_aggregate {
                     group.insert($name, $bson);
                     is_aggregate = true;
-                } else if is_aggregate {
+                } else {
                     group
                         .entry("_id".into())
                         .or_insert(Document::new().into())
@@ -849,7 +849,7 @@ impl SqlWriter for MongoDBSqlWriter {
         if is_asterisk {
             project = None;
         }
-        let where_expr = {
+        let where_expr = if let Some(where_expr) = where_expr {
             let mut context = context.switch_fragment(Fragment::SqlSelectWhere);
             let mut query = Self::make_prepared();
             where_expr.accept_visitor(
@@ -869,6 +869,8 @@ impl SqlWriter for MongoDBSqlWriter {
                 return;
             };
             document
+        } else {
+            Default::default()
         };
         for column in group_by {
             let name = get_name(&column, false);
@@ -893,13 +895,14 @@ impl SqlWriter for MongoDBSqlWriter {
                 column.accept_visitor(&mut IsAggregateFunction, self, &mut context.current, out)
             );
         }
+        let known_columns = Arc::new(group.keys().collect::<Vec<_>>());
         let mut having = Bson::Null;
         if let Some(condition) = query.get_having() {
             let mut context = context.switch_fragment(Fragment::SqlSelectHaving);
             let mut context = context.current.switch_table("_id".into());
             let mut query = Self::make_prepared();
             let mut matcher = WriteMatchExpression {
-                known_columns: Arc::new(group.keys().collect()),
+                known_columns: known_columns.clone(),
                 ..Default::default()
             };
             condition.accept_visitor(&mut matcher, self, &mut context.current, &mut query);
@@ -918,16 +921,43 @@ impl SqlWriter for MongoDBSqlWriter {
         let mut sort = Document::new();
         {
             for order in query.get_order_by() {
-                let find_order = &mut FindOrder::default();
-                order.accept_visitor(find_order, self, &mut context, out);
-                sort.insert(
-                    get_name(&order, false),
-                    Bson::Int32(if find_order.order == Order::ASC {
-                        1
-                    } else {
-                        -1
-                    }),
-                );
+                let mut context = context.switch_fragment(Fragment::SqlSelectOrderBy);
+                let is_asc = {
+                    let find_order = &mut FindOrder::default();
+                    order.accept_visitor(find_order, self, &mut context.current, out);
+                    find_order.order == Order::ASC
+                };
+                let mut is_field = IsField {
+                    known_columns: known_columns.clone(),
+                    ..Default::default()
+                };
+                order.accept_visitor(&mut is_field, self, &mut context.current, out);
+                let is_column = |c| {
+                    group
+                        .get_document("_id")
+                        .map(|v| v.keys().find(|v| *v == c).is_some())
+                        .unwrap_or_default()
+                };
+                let field = match is_field.field {
+                    FieldType::None => {
+                        log::error!(
+                            "Unexpected ordering on {:?}, {:?}",
+                            order,
+                            known_columns.clone()
+                        );
+                        return;
+                    }
+                    FieldType::Identifier(v) => v,
+                    FieldType::Column(v) => {
+                        let mut context = if is_aggregate && is_column(&v.name) {
+                            context.current.switch_table("_id".into())
+                        } else {
+                            context
+                        };
+                        v.as_identifier(&mut context.current)
+                    }
+                };
+                sort.insert(field, Bson::Int32(if is_asc { 1 } else { -1 }));
             }
         }
         if !is_aggregate && let Some(project) = &mut project {

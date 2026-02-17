@@ -64,7 +64,7 @@ mod tests {
                 },
                 doc! {
                     "$match": {
-                        "_id.first col": { "$gte": "a" },
+                        "_id.first col": { "$gte": "a" }
                     }
                 },
                 doc! {
@@ -155,10 +155,10 @@ mod tests {
                                                     Bson::Int64(30),
                                                     Bson::Int64(40),
                                                 ],
-                                                Bson::Int64(2)
+                                                Bson::Int64(2),
                                             ]
                                         },
-                                        Bson::Int64(30)
+                                        Bson::Int64(30),
                                     ]
                                 }
                             },
@@ -168,10 +168,10 @@ mod tests {
                                         {
                                             "$subtract": [
                                                 90.5,
-                                                { "$multiply": [-0.54, Bson::Int64(2)] }
+                                                { "$multiply": [-0.54, Bson::Int64(2)] },
                                             ]
                                         },
-                                        { "$divide": [Bson::Int64(7), Bson::Int64(2)] }
+                                        { "$divide": [Bson::Int64(7), Bson::Int64(2)] },
                                     ]
                                 }
                             }
@@ -190,10 +190,10 @@ mod tests {
                         "MAX(ABS(total price - 100.0))": {
                             "$max": {
                                 "$abs": {
-                                    "$subtract": ["$total price", 100.0]
+                                    "$subtract": ["$total price", 100.0],
                                 }
                             }
-                        }
+                        },
                     }
                 },
                 doc! {
@@ -206,7 +206,7 @@ mod tests {
                         ]
                     }
                 },
-                doc! {"$limit": 1000},
+                doc! { "$limit": 1000 },
                 doc! {
                     "$project": {
                         "user id": "$_id.user id",
