@@ -607,15 +607,6 @@ dependencies = [
 
 [[package]]
 name = "convert_case"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb402b8d4c85569410425650ce3eddc7d698ed96d39a73f941b08fb63082f1e7"
-dependencies = [
- "unicode-segmentation",
-]
-
-[[package]]
-name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "633458d4ef8c78b72454de2d54fd6ab2e60f9e02be22f3c6104cdc8a4e0fceb9"
@@ -859,7 +850,7 @@ version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "799a97264921d8623a957f6c3b9011f3b5492f557bbb7a5a19b7fa6d06ba8dcb"
 dependencies = [
- "convert_case 0.10.0",
+ "convert_case",
  "proc-macro2",
  "quote",
  "rustc_version",
@@ -966,7 +957,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1474,7 +1465,7 @@ dependencies = [
  "hyper",
  "libc",
  "pin-project-lite",
- "socket2 0.6.1",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -2917,7 +2908,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3457,7 +3448,7 @@ checksum = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"
 
 [[package]]
 name = "tank"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "indoc",
  "rust_decimal",
@@ -3469,7 +3460,7 @@ dependencies = [
 
 [[package]]
 name = "tank-core"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -3493,7 +3484,7 @@ dependencies = [
 
 [[package]]
 name = "tank-duckdb"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-stream",
  "flume",
@@ -3510,9 +3501,9 @@ dependencies = [
 
 [[package]]
 name = "tank-macros"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
- "convert_case 0.7.1",
+ "convert_case",
  "proc-macro2",
  "quote",
  "syn 2.0.109",
@@ -3521,7 +3512,7 @@ dependencies = [
 
 [[package]]
 name = "tank-mongodb"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-stream",
  "log",
@@ -3540,7 +3531,7 @@ dependencies = [
 
 [[package]]
 name = "tank-mysql"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-stream",
  "log",
@@ -3558,7 +3549,7 @@ dependencies = [
 
 [[package]]
 name = "tank-postgres"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-stream",
  "byteorder",
@@ -3584,7 +3575,7 @@ dependencies = [
 
 [[package]]
 name = "tank-scylladb"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-stream",
  "log",
@@ -3603,7 +3594,7 @@ dependencies = [
 
 [[package]]
 name = "tank-sqlite"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-stream",
  "flume",
@@ -3620,7 +3611,7 @@ dependencies = [
 
 [[package]]
 name = "tank-tests"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "chrono",
  "env_logger",
@@ -3659,7 +3650,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4360,7 +4351,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
