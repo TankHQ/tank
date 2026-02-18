@@ -7,12 +7,12 @@ use std::{borrow::Cow, collections::HashMap, hash::Hash, mem::discriminant};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
 
-/// SQL value representation used across Tank.
+/// SQL value representation.
 ///
-/// Variants hold `Option<T>` to store the actual value (`None` means SQL NULL) and additional needed type information.
+/// Variants correspond to database column types.
 #[derive(Default, Debug, Clone)]
 pub enum Value {
-    /// Untyped NULL.
+    /// SQL NULL.
     #[default]
     Null,
     Boolean(Option<bool>),
@@ -28,8 +28,8 @@ pub enum Value {
     UInt128(Option<u128>),
     Float32(Option<f32>),
     Float64(Option<f64>),
-    /// Decimal with width and scale information.
-    Decimal(Option<Decimal>, /* width: */ u8, /* scale: */ u8),
+    /// Decimal (value, precision, scale).
+    Decimal(Option<Decimal>, u8, u8),
     Char(Option<char>),
     Varchar(Option<Cow<'static, str>>),
     Blob(Option<Box<[u8]>>),
@@ -39,28 +39,16 @@ pub enum Value {
     TimestampWithTimezone(Option<OffsetDateTime>),
     Interval(Option<Interval>),
     Uuid(Option<Uuid>),
-    /// Fixed-size homogeneous array.
-    Array(
-        Option<Box<[Value]>>,
-        /* type: */ Box<Value>,
-        /* len: */ u32,
-    ),
-    /// Variable-length homogeneous list.
-    List(Option<Vec<Value>>, /* type: */ Box<Value>),
-    /// Map with homogeneous key/value types.
-    Map(
-        Option<HashMap<Value, Value>>,
-        /* key: */ Box<Value>,
-        /* value: */ Box<Value>,
-    ),
+    /// Homogeneous array (values, inner type, length).
+    Array(Option<Box<[Value]>>, Box<Value>, u32),
+    /// Variable-length list (values, inner type).
+    List(Option<Vec<Value>>, Box<Value>),
+    /// Map (entries, key type, value type).
+    Map(Option<HashMap<Value, Value>>, Box<Value>, Box<Value>),
     Json(Option<JsonValue>),
-    /// Struct with named fields and types.
-    Struct(
-        Option<Vec<(String, Value)>>,
-        /* type: */ Vec<(String, Value)>,
-        /* name: */ TableRef,
-    ),
-    /// Unknown value type (usually the driver cannot provide type information).
+    /// Named struct (fields, field types, type name).
+    Struct(Option<Vec<(String, Value)>>, Vec<(String, Value)>, TableRef),
+    /// Unknown type (usually used when no further information is available).
     Unknown(Option<String>),
 }
 

@@ -8,18 +8,13 @@ use url::Url;
 
 /// A live database handle capable of executing queries and spawning transactions.
 ///
-/// This trait extends [`Executor`] adding functionality to acquire a connection
-/// and to begin transactional scopes.
-///
-/// Drivers implement concrete `Connection` types to expose backend-specific
-/// behavior (timeouts, pooling strategies, prepared statement caching, etc.).
+/// Extends [`Executor`] with connection and transaction management.
 ///
 /// # Lifecycle
 /// - `connect` creates (or fetches) an underlying connection. It may eagerly
-///   establish network I/O for validation; always await it.
-/// - `begin` starts a transaction returning an object implementing
-///   [`Transaction`]. Commit / rollback MUST be awaited to guarantee resource
-///   release.
+///   establish network I/O; always await it.
+/// - `begin` starts a transaction scope. Commit/rollback MUST be awaited to
+///   guarantee resource release.
 pub trait Connection: Executor {
     fn sanitize_url(mut url: Cow<'static, str>) -> Result<Url>
     where
@@ -56,28 +51,22 @@ pub trait Connection: Executor {
         Ok(result)
     }
 
-    /// Create a connection (or pool) with at least one underlying session
-    /// established to the given URL.
+    /// Create a connection (or pool) to the given URL.
     ///
-    /// The returned future must be awaited to obtain the connection object
-    /// (type `Self::Driver::Connection`). Implementations may  perform I/O or validation
-    /// during `connect`; callers should treat this as a potentially expensive operation.
+    /// Implementations may perform I/O or validation during `connect`.
+    /// Callers should treat this as a potentially expensive operation.
     fn connect(
         url: Cow<'static, str>,
     ) -> impl Future<Output = Result<<Self::Driver as Driver>::Connection>>
     where
         Self: Sized;
 
-    /// Begin a transaction scope tied to the current connection.
+    /// Begin a transaction scope tied to this connection.
     ///
-    /// The returned value implements [`Transaction`] for the underlying driver.
-    /// `commit` / `rollback` MUST be awaited to ensure resources are released and the scope is finalized.
+    /// Must await `commit` or `rollback` to finalize the scope and release resources.
     fn begin(&mut self) -> impl Future<Output = Result<<Self::Driver as Driver>::Transaction<'_>>>;
 
     /// Disconnect and release the underlying session(s).
-    ///
-    /// Default implementation is a no-op; drivers may override to close sockets
-    /// or return the connection to a pool asynchronously.
     fn disconnect(self) -> impl Future<Output = Result<()>>
     where
         Self: Sized,

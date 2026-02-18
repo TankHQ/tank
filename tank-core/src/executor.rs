@@ -10,25 +10,23 @@ use std::{future::Future, mem};
 ///
 /// Responsibilities:
 /// - Translate high-level operations into driver queries
-/// - Stream results without buffering the entire result set (if possible)
-/// - Provide ergonomic helpers for common patterns
+/// - Stream results without buffering (when possible)
+/// - Provide ergonomic helpers for fetching, execution, and batching
 ///
 /// Implementors typically wrap a connection or pooled handle.
 pub trait Executor: Send + Sized {
-    /// Associated driver.
+    /// Associated driver type.
     type Driver: Driver;
 
-    /// Returns true if the executor accepts multiple SQL statements in a single
-    /// request (e.g. `CREATE; INSERT; SELECT`). Defaults to `true`.
+    /// Whether the executor accepts multiple SQL statements in a single request.
+    /// Defaults to `true`.
     fn accepts_multiple_statements(&self) -> bool {
         true
     }
 
-    /// Driver instance.
+    /// Returns a driver instance.
     ///
-    /// Default implementation returns `Default::default()` for the associated
-    /// `Driver`. Executors that carry per-connection or pooled driver state
-    /// should override this method to return the appropriate driver instance.
+    /// Override if the executor carries specific driver state.
     fn driver(&self) -> Self::Driver
     where
         Self: Sized,
@@ -51,19 +49,19 @@ pub trait Executor: Send + Sized {
         }
     }
 
-    /// Prepare a query for later execution.
+    /// Actual implementation for `prepare`.
     fn do_prepare(
         &mut self,
         sql: String,
     ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send;
 
-    /// Run a query, streaming `QueryResult` items.
+    /// Execute a query, streaming `QueryResult` (rows or affected counts).
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send;
 
-    /// Stream only labeled rows (filters non-row results).
+    /// Execute a query yielding `RowLabeled` from the resulting stream (filtering out `RowsAffected`).
     fn fetch<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
@@ -77,7 +75,7 @@ pub trait Executor: Send + Sized {
         })
     }
 
-    /// Execute and aggregate affected rows.
+    /// Execute and aggregate affected rows counter.
     fn execute<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,

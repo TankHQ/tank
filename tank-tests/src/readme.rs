@@ -55,7 +55,7 @@ pub async fn readme<E: Executor>(connection: &mut E) -> Result<()> {
     my_tank.save(connection).await?;
 
     /*
-     * DuckDB uses the appender API. Other drivers generate a INSERT:
+     * DuckDB uses the appender API. Other drivers generate an INSERT:
      * INSERT INTO "army"."tank" ("name", "country", "caliber", "speed", "is_operational", "units_produced") VALUES
      *     ('T-34/85', 'Soviet Union', 85, 53.0, false, 49200),
      *     ('M1 Abrams', 'USA', 120, 72.0, true, NULL);

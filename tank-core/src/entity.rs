@@ -11,38 +11,41 @@ use std::{
     sync::Arc,
 };
 
-/// A table-mapped record with schema and CRUD helpers.
+/// A database-mapped record with schema and CRUD helpers.
+///
+/// Derive `Entity` to implement this trait.
 pub trait Entity {
-    /// Primary key type. Tuple of the types of the fields forming the primary key.
+    /// Primary key type. A tuple of field types (or single type) forming the PK.
     type PrimaryKey<'a>
     where
         Self: 'a;
 
-    /// Returns the table reference backing this entity.
+    /// Table reference matching the `#[tank(...)]` attributes.
     fn table() -> &'static TableRef;
 
-    /// Returns all declared column definitions in declaration order.
+    /// All column definitions in declaration order.
     fn columns() -> &'static [ColumnDef];
 
-    /// Iterator over columns forming the primary key. Empty iterator means no PK.
+    /// Primary key column definitions. Empty if no PK defined.
     fn primary_key_def() -> &'static [&'static ColumnDef];
 
-    /// Extracts the primary key value(s) from `self`.
+    /// Extract PK value(s) from `self`.
     fn primary_key(&self) -> Self::PrimaryKey<'_>;
 
+    /// Build an expression matching the PK of `self`.
     fn primary_key_expr(&self) -> impl Expression;
 
-    /// Returns an iterator over unique constraint definitions.
+    /// Unique constraint definitions.
     fn unique_defs()
     -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = &'static ColumnDef>>;
 
-    /// Returns a filtered mapping of column name to value, typically excluding
-    /// auto-generated or default-only columns.
+    /// Column name-value pairs for persistence (excludes ignored/default fields).
     fn row_filtered(&self) -> Box<[(&'static str, Value)]>;
 
-    /// Returns a full `Row` representation including all persisted columns.
+    /// Full row representation including all persisted columns.
     fn row_full(&self) -> Row;
 
+    /// Full row representation with column labels.
     fn row_labeled(&self) -> RowLabeled {
         RowLabeled {
             labels: Self::columns()
@@ -53,18 +56,17 @@ pub trait Entity {
         }
     }
 
-    /// Constructs `Self` from a labeled database row.
+    /// Reconstruct `Self` from a labeled row.
     ///
-    /// Error if mandatory columns are missing or type conversion fails.
+    /// Fails if columns are missing or type conversion fails.
     fn from_row(row: RowLabeled) -> Result<Self>
     where
         Self: Sized;
 
-    /// Creates the underlying table (and optionally schema) if requested.
+    /// Create table (and optional schema).
     ///
-    /// Parameters:
-    /// - `if_not_exists`: guards against existing table (if drivers support it, otherwise just create table).
-    /// - `create_schema`: attempt to create schema prior to table creation (if drivers support it).
+    /// - `if_not_exists`: Emits `IF NOT EXISTS` if supported.
+    /// - `create_schema`: Attempts schema creation first.
     fn create_table(
         executor: &mut impl Executor,
         if_not_exists: bool,
@@ -91,11 +93,10 @@ pub trait Entity {
         }
     }
 
-    /// Drops the underlying table (and optionally schema) if requested.
+    /// Drop the table (and optional schema).
     ///
-    /// Parameters:
-    /// - `if_exists`: guards against missing table (if drivers support it, otherwise just drop table).
-    /// - `drop_schema`: attempt to drop schema after table removal (if drivers support it).
+    /// - `if_exists`: Emits `IF EXISTS` if supported.
+    /// - `drop_schema`: Drops schema *after* table removal (if empty).
     fn drop_table(
         executor: &mut impl Executor,
         if_exists: bool,
@@ -122,9 +123,7 @@ pub trait Entity {
         }
     }
 
-    /// Inserts a single entity row.
-    ///
-    /// Returns rows affected (expected: 1 on success).
+    /// Insert a single entity.
     fn insert_one(
         executor: &mut impl Executor,
         entity: &impl Entity,
@@ -137,9 +136,7 @@ pub trait Entity {
         executor.execute(query)
     }
 
-    /// Multiple insert for a homogeneous iterator of entities.
-    ///
-    /// Returns the number of rows inserted.
+    /// Bulk insert entities.
     fn insert_many<'a, It>(
         executor: &mut impl Executor,
         items: It,

@@ -3,13 +3,13 @@ use std::{borrow::Cow, fmt::Debug, future::Future};
 
 /// Backend connector and SQL dialect provider.
 pub trait Driver: Default + Debug {
-    /// Concrete connection.
+    /// Concrete connection type.
     type Connection: Connection<Driver = Self>;
-    /// SQL dialect writer.
+    /// Dialect-specific SQL writer.
     type SqlWriter: SqlWriter;
-    /// Prepared statement handle.
+    /// Prepared statement implementation.
     type Prepared: Prepared;
-    /// Transaction type.
+    /// Transaction implementation.
     type Transaction<'c>: Transaction<'c>;
 
     /// Human-readable backend name.

@@ -5,28 +5,26 @@ use std::{
     sync::Arc,
 };
 
-/// Metadata about modifying operations (INSERT/UPDATE/DELETE).
+/// Result of a modifying operation (INSERT/UPDATE/DELETE).
 #[derive(Default, Clone, Copy, Debug)]
 pub struct RowsAffected {
-    /// Optional count of affected rows reported by the backend.
-    /// `None` means the backend did not provide a count.
+    /// Number of rows modified (if supported by backend).
     pub rows_affected: Option<u64>,
-    /// Optional last affected identifier (driver-dependent meaning).
-    /// For many drivers this is the last inserted id.
+    /// Last inserted ID (driver-dependent).
     pub last_affected_id: Option<i64>,
 }
 
-/// Shared reference-counted column name list.
+/// Shared column names.
 pub type RowNames = Arc<[String]>;
-/// Owned row value slice matching `RowNames` length.
+/// Row values matching `RowNames`.
 pub type Row = Box<[Value]>;
 
 /// Row with column labels.
 #[derive(Default, Clone, Debug)]
 pub struct RowLabeled {
-    /// Column names
+    /// Column names.
     pub labels: RowNames,
-    /// Values aligned with labels
+    /// Column values.
     pub values: Row,
 }
 
@@ -37,22 +35,22 @@ impl RowLabeled {
             values,
         }
     }
-    /// Returns the column labels for this row.
+    /// Column labels.
     pub fn names(&self) -> &[String] {
         &self.labels
     }
-    /// Returns the values associated with `names()`.
+    /// Row values.
     pub fn values(&self) -> &[Value] {
         &self.values
     }
-    /// Look up a column value by its label name.
+    /// Get value by column name.
     pub fn get_column(&self, name: &str) -> Option<&Value> {
         self.labels
             .iter()
             .position(|v| v == name)
             .map(|i| &self.values()[i])
     }
-    /// Values count inside this row
+    /// Column count.
     pub fn len(&self) -> usize {
         self.values.len()
     }
