@@ -54,7 +54,7 @@ async fn establish_postgres_connection() -> Result<PostgresConnection> {
 - `postgres://user:pass@host:5432/database`
 
 Parameters:
-- `sslmode`: How a secure SSL TCP/IP connection will be negotiated with the server. Falls back to the environment variable `PGSSLMODE`, otherwise `disable`. This parameter is passed to `tokio_postgres`, for this reason only the following alternatives are supported (even tough Postgres supports more modes):
+- `sslmode`: How a secure SSL TCP/IP connection will be negotiated with the server. Falls back to the environment variable `PGSSLMODE`, otherwise `disable`. This parameter is passed to `tokio_postgres`, for this reason only the following alternatives are supported (even though Postgres supports more modes):
     - `disable`
     - `prefer`
     - `require`

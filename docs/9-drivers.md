@@ -64,8 +64,8 @@ Tip: Start from `tank-core`'s `GenericSqlWriter` implementation; copy then trim.
 
 ### 5. Transactions
 - Implement a `YourDBTransaction<'c>` type holding a mutable borrow of the connection.
-- Provide `commit()` and `rollback()` on methods, ensure resource release.
-- Expose via `Driver` associated `Transaction<'c>` type
+- Provide `commit()` and `rollback()` methods, ensure resource release.
+- Expose via the `Driver`'s associated `Transaction<'c>` type
 
 If not supported, return relevant error messages in related functions and enable `disable-transactions` in `tank-tests`.
 

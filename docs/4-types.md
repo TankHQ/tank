@@ -13,12 +13,12 @@ Tank maps ordinary Rust types (numbers, strings, times, collections) to the clos
 | `i16`                      | `SMALLINT`     | `INTEGER` | `SMALLINT`                | `SMALLINT`     | `Int32`     | `SMALLINT`         |
 | `i32`                      | `INTEGER`      | `INTEGER` | `INTEGER`                 | `INTEGER`      | `Int32`     | `INT`              |
 | `i64`                      | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`       | `Int64`     | `BIGINT`           |
-| `i128`                     | ❌             | ❌        | `NUMERIC(39)`             | `HUGEINT`      | ❌          | `VARINT`           |
+| `i128`                     | `NUMERIC(39)`  | ❌        | `NUMERIC(39)`             | `HUGEINT`      | ❌          | `VARINT`           |
 | `u8`                       | `SMALLINT`     | `INTEGER` | `TINYINT UNSIGNED`        | `UTINYINT`     | `Int32`     | `SMALLINT`         |
 | `u16`                      | `INTEGER`      | `INTEGER` | `SMALLINT UNSIGNED`       | `USMALLINT`    | `Int32`     | `INT`              |
 | `u32`                      | `BIGINT`       | `INTEGER` | `INTEGER UNSIGNED`        | `UINTEGER`     | `Int64`     | `BIGINT`           |
 | `u64`                      | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`     | `VARINT`           |
-| `u128`                     | ❌             | ❌        | `NUMERIC(39) UNSIGNED`    | `UHUGEINT`     | ❌          | `VARINT`           |
+| `u128`                     | `NUMERIC(39)`  | ❌        | `NUMERIC(39) UNSIGNED`    | `UHUGEINT`     | ❌          | `VARINT`           |
 | `isize`                    | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`       | `Int64`     | `BIGINT`           |
 | `usize`                    | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`     | `VARINT`           |
 | `f32`                      | `REAL`         | `REAL`    | `FLOAT`                   | `FLOAT`        | `Double`    | `FLOAT`            |

@@ -12,7 +12,7 @@ Three firing modes:
 Anything implementing [`AsQuery`](https://docs.rs/tank/latest/tank/trait.AsQuery.html) works: `String`, `&str`, `Query<D>`, or `&mut Query<D>`.
 
 ## Composing SQL With `SqlWriter`
-Every driver exposes a `SqlWriter` for dialect‑correct sql fragments. Concatenate multiple statements into one `String`. Writers add separators (`;`) automatically.
+Every driver exposes a `SqlWriter` for dialect‑correct sql fragments. Use the writer to buffer multiple statements into one `DynQuery`.
 
 Example building 8 statements (1 *CREATE SCHEMA* included by the first *CREATE TABLE*, 2 *CREATE TABLE*, 3 *INSERT INTO* and 2 *SELECT*):
 ```rust

@@ -8,13 +8,13 @@ Core operations on `Entity`:
 * [`Entity::create_table()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.create_table): create table and optionally schema
 * [`Entity::drop_table()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.drop_table): drop table and optionally schema
 * [`Entity::insert_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.insert_one): insert one row
-* [`Entity::insert_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.insert_many): insert many rows (possibly in a optimized way)
+* [`Entity::insert_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.insert_many): insert many rows (possibly in an optimized way)
 * [`Entity::prepare_find()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.prepare_find): prepare a SELECT query against this table
 * [`Entity::find_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.find_one): first matching row
 * [`Entity::find_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.find_many): stream matching entities
 * [`Entity::delete_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.delete_many): delete by condition
-* [`entity.save()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.save): insert or update (works only for entities defining a primary key)
-* [`entity.delete()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.delete): delete this entity (works only for entities defining a primary key)
+* [`entity.save()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.save): insert or update (works only for entities with a primary key)
+* [`entity.delete()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.delete): delete this entity (works only for entities with a primary key)
 
 ## Operations Schema
 This is the schema we will use for every operation example that follows. All CRUD, streaming, prepared, and batching demonstrations below act on these two tables so you can focus on behavior instead of switching contexts. `Operator` is the identity table, `RadioLog` references an operator (foreign key) to record transmissions.
@@ -79,7 +79,7 @@ RadioLog::create_table(executor, false, false).await?;
 Key points:
 - `if_not_exists` / `if_exists` guard repeated ops.
 - Schema creation runs before the table when requested.
-- `RadioLog.operator` has a foreign key to `Operator.id`.
+- `RadioLog` references an operator (foreign key) to record transmissions.
 
 ## Insert
 Single unit insertion:

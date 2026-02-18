@@ -5,7 +5,7 @@ In the field, isolated units rarely win the battle. Coordination is key. Joins l
 In Tank, a join is a first class `Dataset`, just like a `TableRef`. That means you can call `select()` and then, filter, map, reduce, etc, using the same composable [Stream API](https://docs.rs/futures/latest/futures/prelude/trait.Stream.html) you already know.
 
 ## Schema In Play
-Continuing with the `Operator` and `RadioLog` schema introduced earlier. The following examples show more advanced query capabilities-operations that go beyond simple CRUD while still avoiding resorting to raw SQL.
+Continuing with the `Operator` and `RadioLog` schema introduced earlier. The following examples show more advanced query capabilities-operations that go beyond simple CRUD while still avoiding raw SQL.
 ::: code-group
 ```rust [Rust]
 #[derive(Entity)]
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS operations.radio_log (
 | Affirmative, engaging.                   | Alpha-1       | 2025-11-03T23:11:54+00 | −54  |
 
 ## Selecting & Ordering
-The [`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) supports aliasing and ordering. When you only need raw columns prefer the terse array `[Operator::callsign, Operator::service_rank, Operator::enlisted]` or `Operator::columns()` syntax.
+The [`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) supports aliasing and ordering. When you only need raw columns, prefer the terse array `[Operator::callsign, Operator::service_rank, Operator::enlisted]` or `Operator::columns()` syntax.
 
 Objective: strongest certified transmissions excluding routine radio checks.
 ```rust

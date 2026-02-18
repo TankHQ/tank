@@ -17,7 +17,7 @@ In plain terms: Tank is a lightweight, multi-database SQL toolkit. Define entiti
 - **Raw SQL** - You're never limited by the abstractions provided.
 
 ## No-fly zone
-- No schema migrations (just table creation and destroy for fast setup).
+- No schema migrations (just table creation and destruction for fast setup).
 - No implicit joins (no entities as fields, joins are explicit, every alliance is signed).
 
 ## Equipment
@@ -30,7 +30,7 @@ In plain terms: Tank is a lightweight, multi-database SQL toolkit. Define entiti
 ###### Drivers
 - [**tank-postgres**](https://crates.io/crates/tank-postgres)
 - [**tank-sqlite**](https://crates.io/crates/tank-sqlite)
-- [**tank-mysql**](https://crates.io/crates/tank-mysql): MySQL an
+- [**tank-mysql**](https://crates.io/crates/tank-mysql)
 - [**tank-duckdb**](https://crates.io/crates/tank-duckdb)
 - [**tank-mongodb**](https://crates.io/crates/tank-mongodb)
 - [**tank-scylladb**](https://crates.io/crates/tank-scylladb)
@@ -39,7 +39,7 @@ All the crates in this workspace share the same version.
 
 ## Why Tank?
 Tank is a thin, battle-ready layer over your database workflow.
-It keeps the learning curve low, just a handful of clear concepts. It stays deliberately lean and essential, few moving parts, fast maneuvers.
+It keeps the learning curve low, just a handful of clear concepts. It stays deliberately lean and essential: few moving parts, fast maneuvers.
 
 Because its scope is tight, Tank can deploy on many fronts, from classic SQL databases to non-SQL theaters. At the same time, it doesn't limit your capabilities: Tank never tries to hide SQL behind a heavy query builder: you can write plain SQL whenever you need and still benefit from its rich type-conversion features. In this way, it's similar in spirit to [SQLx](https://crates.io/crates/sqlx) but unlike SQLx, Tank does not perform compile-time SQL validation. It prioritizes runtime flexibility and multi-database support over static checking.
 
