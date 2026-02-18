@@ -2,7 +2,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
 };
-use tank_core::{DynQuery, ColumnDef, Context, Interval, SqlWriter, Value, separated_by};
+use tank_core::{ColumnDef, Context, DynQuery, Interval, SqlWriter, Value, separated_by};
 
 /// SQL writer for the DuckDB dialect.
 ///
@@ -67,5 +67,13 @@ impl SqlWriter for DuckDBSqlWriter {
             ",",
         );
         out.push('}');
+    }
+
+    fn write_expression_operand_current_timestamp_ms(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+    ) {
+        out.push_str("epoch_ms(current_timestamp)");
     }
 }

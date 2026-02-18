@@ -1,6 +1,12 @@
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
-use std::sync::LazyLock;
-use tank::{AsValue, Entity, Executor, QueryBuilder, cols, expr, stream::TryStreamExt};
+use std::{
+    sync::LazyLock,
+    time::{SystemTime, UNIX_EPOCH},
+};
+use tank::{
+    AsValue, Entity, Executor, Operand, QueryBuilder, Result, cols, expr,
+    stream::{StreamExt, TryStreamExt},
+};
 use time::{Date, Month, PrimitiveDateTime, Time};
 use tokio::sync::Mutex;
 
@@ -338,4 +344,33 @@ pub async fn times<E: Executor>(executor: &mut E) {
             "00:00:00", "00:00:00",
         ]
     );
+
+    // Current timestamp ms
+    let before = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+        - 2;
+    let timestamp_ms = executor
+        .fetch(
+            QueryBuilder::new()
+                .select([&Operand::CurrentTimestampMs])
+                .from(Times::table())
+                .where_expr(true)
+                .limit(Some(1))
+                .build(&executor.driver()),
+        )
+        .map_ok(|v| u128::try_from_value(v.values.into_iter().nth(0).expect("There is no column")))
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Could not get the current timestamp");
+    let after = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+        + 2;
+    let timestamp_ms = timestamp_ms.into_iter().next().unwrap();
+    assert!(before <= timestamp_ms, "{before} <= {timestamp_ms}");
+    assert!(timestamp_ms <= after, "{timestamp_ms} <= {after}");
 }

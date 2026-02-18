@@ -695,6 +695,23 @@ impl SqlWriter for MongoDBSqlWriter {
         context.counter += 1;
     }
 
+    fn write_expression_operand_current_timestamp_ms(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+    ) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!(
+                "Failed to get the bson in MongoDBSqlWriter::write_expression_operand_current_timestamp_ms"
+            );
+            return;
+        };
+        *target = doc! { "$toLong": "$$NOW" }.into();
+    }
+
     fn write_create_schema<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
     where
         Self: Sized,

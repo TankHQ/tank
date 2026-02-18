@@ -230,6 +230,14 @@ impl SqlWriter for ScyllaDBSqlWriter {
         out.push(']');
     }
 
+    fn write_expression_operand_current_timestamp_ms(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+    ) {
+        out.push_str("toUnixTimestamp(currentTimestamp())");
+    }
+
     fn write_create_schema<E>(&self, out: &mut DynQuery, if_not_exists: bool)
     where
         Self: Sized,

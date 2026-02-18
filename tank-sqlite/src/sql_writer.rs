@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt::Write, mem};
 use tank_core::{
-    ColumnDef, ColumnRef, Context, DynQuery, Entity, GenericSqlWriter, SqlWriter, TableRef, Value,
-    write_escaped,
+    ColumnDef, ColumnRef, Context, DynQuery, Entity, GenericSqlWriter, Operand, SqlWriter,
+    TableRef, Value, write_escaped,
 };
 
 /// SQL writer for SQLite dialect.
@@ -141,6 +141,14 @@ impl SqlWriter for SQLiteSqlWriter {
             let _ = write!(out, "{:02X}", b);
         }
         out.push('\'');
+    }
+
+    fn write_expression_operand_current_timestamp_ms(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+    ) {
+        out.push_str("(unixepoch('subsec') * 1000)");
     }
 
     fn write_create_schema<E>(&self, _out: &mut DynQuery, _if_not_exists: bool)

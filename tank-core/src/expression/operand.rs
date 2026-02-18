@@ -20,6 +20,7 @@ pub enum Operand<'a> {
     Call(&'static str, &'a [&'a dyn Expression]),
     Asterisk,
     QuestionMark,
+    CurrentTimestampMs,
 }
 
 impl OpPrecedence for Operand<'_> {
@@ -59,6 +60,7 @@ impl PartialEq for Operand<'_> {
             (Self::Variable(l), Self::Variable(r)) => l == r,
             (Self::Asterisk, Self::Asterisk) => true,
             (Self::QuestionMark, Self::QuestionMark) => true,
+            (Self::CurrentTimestampMs, Self::CurrentTimestampMs) => true,
             _ => false,
         }
     }

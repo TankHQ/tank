@@ -25,6 +25,7 @@ categories = ["database"]
 anyhow = { version = "1", features = ["backtrace"] }
 async-stream = "0"
 chrono = "0"
+convert_case = "0"
 env_logger = "0"
 futures = "0"
 indoc = "2"

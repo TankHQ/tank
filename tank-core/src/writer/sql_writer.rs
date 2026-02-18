@@ -611,6 +611,9 @@ pub trait SqlWriter: Send {
             Operand::Call(f, args) => self.write_expression_call(context, out, f, args),
             Operand::Asterisk => drop(out.push('*')),
             Operand::QuestionMark => self.write_expression_operand_question_mark(context, out),
+            Operand::CurrentTimestampMs => {
+                self.write_expression_operand_current_timestamp_ms(context, out)
+            }
         };
     }
 
@@ -618,6 +621,14 @@ pub trait SqlWriter: Send {
     fn write_expression_operand_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
         context.counter += 1;
         out.push('?');
+    }
+
+    fn write_expression_operand_current_timestamp_ms(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+    ) {
+        out.push_str("NOW()");
     }
 
     /// Render unary operator expression.

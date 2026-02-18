@@ -89,7 +89,11 @@ macro_rules! impl_as_value {
                     #[allow(unreachable_patterns)]
                     // SQL INTEGER becomes i64
                     Value::Int64(Some(v), ..) => {
-                        if (v as i128).clamp(<$source>::MIN as _, <$source>::MAX as _) != v as i128 {
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
+                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
                             return Err(Error::msg(format!(
                                 "Value {v}: i64 is out of range for {}",
                                 any::type_name::<Self>(),
@@ -122,8 +126,12 @@ macro_rules! impl_as_value {
                             }
                             None
                         });
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
                         if let Some(v) = integer
-                            && v.clamp(<$source>::MIN as _, <$source>::MAX as _) == v as i128 {
+                            && v.clamp(<$source>::MIN as _, max) == v as i128 {
                             return Ok(v as $source);
                         }
                         Err(Error::msg(format!(

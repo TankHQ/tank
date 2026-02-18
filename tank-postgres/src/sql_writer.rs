@@ -221,4 +221,12 @@ impl SqlWriter for PostgresSqlWriter {
         context.counter += 1;
         let _ = write!(out, "${}", context.counter);
     }
+
+    fn write_expression_operand_current_timestamp_ms(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+    ) {
+        out.push_str("CAST(EXTRACT(EPOCH FROM NOW()) * 1000 AS BIGINT)");
+    }
 }

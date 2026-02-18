@@ -223,6 +223,14 @@ impl SqlWriter for MySQLSqlWriter {
         }
     }
 
+    fn write_expression_operand_current_timestamp_ms(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+    ) {
+        out.push_str("CAST(UNIX_TIMESTAMP(NOW(3)) * 1000 AS UNSIGNED)");
+    }
+
     fn write_column_comment_inline(
         &self,
         mut context: &mut Context,
