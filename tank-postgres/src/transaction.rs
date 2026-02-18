@@ -8,9 +8,7 @@ use tank_core::{
     stream::{Stream, TryStreamExt},
 };
 
-/// Transaction wrapper for Postgres databases.
-///
-/// Implements `Executor` and `Transaction` to allow using a Postgres transaction via the `tank_core` abstractions.
+/// Postgres transaction.
 pub struct PostgresTransaction<'c>(pub(crate) tokio_postgres::Transaction<'c>);
 
 impl<'c> PostgresTransaction<'c> {

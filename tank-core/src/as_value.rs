@@ -19,17 +19,17 @@ use std::{
 use time::{Month, PrimitiveDateTime, Time, format_description::parse_borrowed};
 use uuid::Uuid;
 
-/// Convert both ways between Rust types and `Value` (plus simple parsing).
+/// Bidirectional conversion between Rust types and `Value`.
 pub trait AsValue {
-    /// Return a NULL equivalent variant for this type.
+    /// Return NULL variant.
     fn as_empty_value() -> Value;
-    /// Convert into owned `Value`.
+    /// Convert to `Value`.
     fn as_value(self) -> Value;
-    /// Try to convert a dynamic `Value` into `Self`.
+    /// Convert from `Value`.
     fn try_from_value(value: Value) -> Result<Self>
     where
         Self: Sized;
-    /// Parse a full string into `Self`.
+    /// Parse string.
     fn parse(input: impl AsRef<str>) -> Result<Self>
     where
         Self: Sized,

@@ -44,9 +44,9 @@ pub mod stream {
 pub use ::futures::future;
 pub use ::futures::sink;
 
-/// Crate-wide result alias using `anyhow` for flexible error context.
+/// Result type.
 pub type Result<T> = anyhow::Result<T>;
-/// Crate-wide error alias using `anyhow`.
+/// Error type.
 pub type Error = anyhow::Error;
 
 pub use ::indoc;

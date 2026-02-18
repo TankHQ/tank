@@ -5,16 +5,15 @@ use crate::{
 
 /// Queryable data source (table or join tree).
 ///
-/// Implementors know how to render themselves inside a FROM clause and whether
-/// column references should be qualified with schema and table.
+/// Implementors know how to render themselves inside a FROM clause.
 pub trait Dataset {
     /// Should columns be qualified (`schema.table.col`)?
     fn qualified_columns() -> bool
     where
         Self: Sized;
-    /// Render the sql bits representing this data set into `out`.
+    /// Render this dataset into SQL.
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery);
-    /// TableRef representing this data set
+    /// Table reference for this dataset.
     fn table_ref(&self) -> TableRef;
 }
 

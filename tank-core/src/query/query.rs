@@ -15,34 +15,35 @@ impl Display for RawQuery {
 /// Executable query: raw SQL or prepared statement.
 #[derive(Debug)]
 pub enum Query<D: Driver> {
-    /// Unprepared SQL text.
+    /// Raw SQL text.
     Raw(RawQuery),
-    /// Driver prepared statement.
+    /// Prepared statement.
     Prepared(D::Prepared),
 }
 
 impl<D: Driver> Query<D> {
-    /// Create a raw query
+    /// New raw query.
     pub fn raw(value: String) -> Self {
         Query::Raw(RawQuery(value))
     }
-    /// Create a prepared query
+    /// New prepared query.
     pub fn prepared(value: D::Prepared) -> Self {
         Query::Prepared(value)
     }
-    /// Returns `true` when this `Query` contains a backend-prepared statement.
+    /// True if it is the prepared variant.
     pub fn is_prepared(&self) -> bool {
         matches!(self, Query::Prepared(..))
     }
-    /// Clear all bound values.
+    /// Clear bound values.
     pub fn clear_bindings(&mut self) -> Result<&mut Self> {
         if let Self::Prepared(prepared) = self {
             prepared.clear_bindings()?;
         };
         Ok(self)
     }
-    /// Append a bound value.
-    /// It results in an error if the query is not prepared.
+    /// Bind value to next placeholder.
+    ///
+    /// Error if not prepared.
     pub fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         let Self::Prepared(prepared) = self else {
             return Err(Error::msg("Cannot bind a raw query"));
@@ -50,8 +51,9 @@ impl<D: Driver> Query<D> {
         prepared.bind(value)?;
         Ok(self)
     }
-    /// Bind a value at a specific index.
-    /// It results in an error if the query is not prepared.
+    /// Bind value at index.
+    ///
+    /// Error if not prepared.
     pub fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
         let Self::Prepared(prepared) = self else {
             return Err(Error::msg("Cannot bind index of a raw query"));

@@ -10,22 +10,24 @@ use syn::{
 };
 
 /// Binary join with optional ON predicate.
+///
+/// Represents an intermediate node in a join tree.
 #[derive(Debug)]
 pub struct Join<L: Dataset, R: Dataset, E: Expression> {
-    /// Join kind.
+    /// Join type (INNER, LEFT, etc.).
     pub join: JoinType,
-    /// Left-hand data set.
+    /// Left-hand dataset.
     pub lhs: L,
-    /// Right-hand data set.
+    /// Right-hand dataset.
     pub rhs: R,
-    /// Optional ON expression.
+    /// Join condition.
     pub on: Option<E>,
 }
 
-/// SQL join variants.
+/// SQL join type variants.
 #[derive(Default, Clone, Copy, Debug)]
 pub enum JoinType {
-    /// Plain `JOIN` (backend default semantics, often INNER).
+    /// Standard JOIN (usually INNER).
     #[default]
     Default,
     Inner,

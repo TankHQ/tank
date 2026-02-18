@@ -6,22 +6,22 @@ use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
 use std::{borrow::Cow, collections::BTreeMap};
 
-/// Helper trait for types that expose an underlying column definition and reference.
+/// Trait exposing column definition and reference.
 pub trait ColumnTrait {
     /// Logical definition (column metadata).
     fn column_def(&self) -> &ColumnDef;
-    /// Column reference to be used in expressions.
+    /// Column reference.
     fn column_ref(&self) -> &ColumnRef;
 }
 
-/// Reference to a table column.
+/// Reference to a column.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct ColumnRef {
-    /// Column name.
+    /// Name of the column.
     pub name: Cow<'static, str>,
-    /// Table name.
+    /// Name of the table.
     pub table: Cow<'static, str>,
-    /// Schema name (may be empty).
+    /// Name of the schema.
     pub schema: Cow<'static, str>,
 }
 
@@ -32,7 +32,7 @@ impl ColumnRef {
             ..Default::default()
         }
     }
-    /// Return a `TableRef` referencing the column's table and schema.
+    /// Get the table reference for this column.
     pub fn table(&self) -> TableRef {
         TableRef {
             name: self.table.clone(),
@@ -42,14 +42,14 @@ impl ColumnRef {
     }
 }
 
-/// Indicates if and how a column participates in the primary key.
+/// Primary key participation.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum PrimaryKeyType {
-    /// Single-column primary key.
+    /// Full primary key.
     PrimaryKey,
-    /// Member of a composite primary key.
+    /// Part of a composite key.
     PartOfPrimaryKey,
-    /// Not part of the primary key.
+    /// Not in primary key.
     #[default]
     None,
 }
@@ -68,16 +68,16 @@ impl ToTokens for PrimaryKeyType {
 /// Referential action for foreign key updates or deletes.
 #[derive(Default, Debug, PartialEq, Eq)]
 pub enum Action {
-    /// No special action.
+    /// No action.
     #[default]
     NoAction,
-    /// Reject the operation.
+    /// Reject operation.
     Restrict,
-    /// Propagate delete, update...
+    /// Propagate change.
     Cascade,
-    /// Set referencing columns to NULL.
+    /// Set to NULL.
     SetNull,
-    /// Apply column DEFAULT.
+    /// Set to DEFAULT.
     SetDefault,
 }
 
@@ -98,42 +98,42 @@ impl ToTokens for Action {
 pub struct ColumnDef {
     /// Column identity.
     pub column_ref: ColumnRef,
-    /// Explicit SQL type override (empty means infer from `value`).
+    /// Explicit SQL types.
     pub column_type: BTreeMap<&'static str, &'static str>,
-    /// `Value` describing column type and parameters.
+    /// Type descriptor.
     pub value: Value,
-    /// Nullability flag.
+    /// Is nullable.
     pub nullable: bool,
-    /// Default value (expression rendered by `SqlWriter`).
+    /// Default expression.
     pub default: DefaultValueType,
-    /// Primary key participation.
+    /// Primary key role.
     pub primary_key: PrimaryKeyType,
-    /// Defines the ordering of the rows.
+    /// Clustering key (relevant for ScyllaDB / Cassandra).
     pub clustering_key: bool,
-    /// Unique constraint (single column only, composite handled in the `TableDef`).
+    /// Single-column unique constraint.
     pub unique: bool,
-    /// Foreign key target column.
+    /// Foreign key target.
     pub references: Option<ColumnRef>,
-    /// Action for deletes.
+    /// On delete action.
     pub on_delete: Option<Action>,
-    /// Action for updates.
+    /// On update action.
     pub on_update: Option<Action>,
-    /// Passive columns are skipped when generating `INSERT` value lists (DEFAULT used).
+    /// Exclude from INSERTs.
     pub passive: bool,
-    /// Optional human-readable comment.
+    /// Comment.
     pub comment: &'static str,
 }
 
 impl ColumnDef {
-    /// Column name (as declared in the table definition).
+    /// Column name.
     pub fn name(&self) -> &str {
         &self.column_ref.name
     }
-    /// Table name owning this column.
+    /// Table name.
     pub fn table(&self) -> &str {
         &self.column_ref.table
     }
-    /// Schema name owning this column (may be empty).
+    /// Schema name.
     pub fn schema(&self) -> &str {
         &self.column_ref.schema
     }

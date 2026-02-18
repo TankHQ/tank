@@ -7,9 +7,7 @@ use std::{
 use tank_core::{AsValue, Error, Prepared, Result, Value};
 use tokio_postgres::Statement;
 
-/// Prepared statement wrapper for Postgres.
-///
-/// Holds the `tokio_postgres::Statement` and collected parameter `Value`s for binding/execution through the `Executor` APIs.
+/// Postgres prepared statement.
 #[derive(Debug)]
 pub struct PostgresPrepared {
     pub(crate) statement: Statement,

@@ -181,19 +181,30 @@ where
     }
 }
 
+/// SELECT query builder.
+///
+/// Use `QueryBuilder::new().select(..)` to start.
 pub trait SelectQuery<From>
 where
-    // Self: 's,
     From: Dataset,
 {
+    /// Get SELECT expressions.
     fn get_select(&self) -> impl Iterator<Item = impl Expression> + Clone;
+    /// Get FROM clause dataset.
     fn get_from<'s>(&'s self) -> &'s Option<From>;
+    /// Get WHERE clause expression.
     fn get_where<'s>(&'s self) -> &'s Option<impl Expression>;
+    /// Get GROUP BY expressions.
     fn get_group_by(&self) -> impl Iterator<Item = impl Expression> + Clone;
+    /// Get HAVING clause expression.
     fn get_having(&self) -> &Option<impl Expression>;
+    /// Get ORDER BY expressions.
     fn get_order_by(&self) -> impl Iterator<Item = impl Expression> + Clone;
+    /// Get LIMIT value.
     fn get_limit(&self) -> Option<u32>;
+    /// Build query.
     fn build<D: Driver>(&self, driver: &D) -> DynQuery;
+    /// Build query into existing buffer.
     fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery);
 }
 

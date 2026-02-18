@@ -6,19 +6,19 @@ use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
 use std::borrow::Cow;
 
-/// Schema-qualified table reference (optional alias).
+/// Table reference.
 #[derive(Default, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct TableRef {
     /// Table name.
     pub name: Cow<'static, str>,
     /// Schema name.
     pub schema: Cow<'static, str>,
-    /// Optional alias used when rendering.
+    /// Alias.
     pub alias: Cow<'static, str>,
 }
 
 impl TableRef {
-    /// Create a new `TableRef` with an empty schema and alias.
+    /// New table reference.
     pub const fn new(name: Cow<'static, str>) -> Self {
         Self {
             name,
@@ -26,7 +26,7 @@ impl TableRef {
             alias: Cow::Borrowed(""),
         }
     }
-    /// Return the display name: alias when present, otherwise `schema.name` or `name`.
+    /// Get the display name.
     pub fn full_name(&self) -> String {
         let mut result = String::new();
         if !self.alias.is_empty() {
@@ -40,13 +40,13 @@ impl TableRef {
         }
         result
     }
-    /// Return a clone of this `TableRef` with the given alias set.
+    /// Set the alias.
     pub fn with_alias(&self, alias: Cow<'static, str>) -> Self {
         let mut result = self.clone();
         result.alias = alias.into();
         result
     }
-    /// Returns `true` if name and schema and alias are empty
+    /// True if empty.
     pub fn is_empty(&self) -> bool {
         self.name.is_empty() && self.schema.is_empty() && self.alias.is_empty()
     }

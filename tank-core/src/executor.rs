@@ -6,27 +6,19 @@ use crate::{
 };
 use std::{future::Future, mem};
 
-/// Async query executor bound to a concrete `Driver`.
+/// Async query execution.
 ///
-/// Responsibilities:
-/// - Translate high-level operations into driver queries
-/// - Stream results without buffering (when possible)
-/// - Provide ergonomic helpers for fetching, execution, and batching
-///
-/// Implementors typically wrap a connection or pooled handle.
+/// Implemented by connections.
 pub trait Executor: Send + Sized {
-    /// Associated driver type.
+    /// Associated driver.
     type Driver: Driver;
 
-    /// Whether the executor accepts multiple SQL statements in a single request.
-    /// Defaults to `true`.
+    /// Supports multiple statements per request.
     fn accepts_multiple_statements(&self) -> bool {
         true
     }
 
-    /// Returns a driver instance.
-    ///
-    /// Override if the executor carries specific driver state.
+    /// Get the driver instance.
     fn driver(&self) -> Self::Driver
     where
         Self: Sized,
@@ -34,7 +26,7 @@ pub trait Executor: Send + Sized {
         Default::default()
     }
 
-    /// Prepare a query for later execution.
+    /// Prepare query.
     fn prepare<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,

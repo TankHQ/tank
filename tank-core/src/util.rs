@@ -15,7 +15,7 @@ use syn::Path;
 use time::{Date, Time};
 
 #[derive(Clone)]
-/// Polymorphic iterator adapter returning items from either variant.
+/// Iterator adapter for two types.
 pub enum EitherIterator<A, B>
 where
     A: Iterator,

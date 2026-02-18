@@ -11,9 +11,9 @@ use std::{
     sync::Arc,
 };
 
-/// A database-mapped record with schema and CRUD helpers.
+/// Database entity mapping.
 ///
-/// Derive `Entity` to implement this trait.
+/// Use `#[derive(Entity)]` to implement this trait.
 pub trait Entity {
     /// Primary key type. A tuple of field types (or single type) forming the PK.
     type PrimaryKey<'a>

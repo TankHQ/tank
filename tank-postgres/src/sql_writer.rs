@@ -2,13 +2,11 @@ use std::{collections::BTreeMap, fmt::Write};
 use tank_core::{ColumnDef, Context, Dataset, DynQuery, Entity, SqlWriter, Value, separated_by};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 
-/// SQL writer for Postgres dialect.
-///
-/// Emits Postgres specific SQL syntax to mantain compatibility with tank operations.
+/// Postgres SQL writer.
 pub struct PostgresSqlWriter {}
 
 impl PostgresSqlWriter {
-    /// Emit COPY FROM STDIN BINARY
+    /// Write COPY FROM STDIN BINARY.
     pub fn write_copy<'b, E>(&self, out: &mut DynQuery)
     where
         Self: Sized,

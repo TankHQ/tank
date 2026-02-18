@@ -6,9 +6,9 @@ use std::{fmt::Debug, mem};
 
 /// Renderable SQL expression.
 pub trait Expression: OpPrecedence + Send + Sync + Debug {
-    /// Serialize the expression into `out` using `writer`.
+    /// Render the expression into SQL.
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery);
-    /// Check if the matcher matching this expression
+    /// Match the expression.
     fn accept_visitor(
         &self,
         matcher: &mut dyn ExpressionVisitor,
@@ -16,7 +16,7 @@ pub trait Expression: OpPrecedence + Send + Sync + Debug {
         context: &mut Context,
         _out: &mut DynQuery,
     ) -> bool;
-    /// Converts the given value to a `String` representing the expression
+    /// Convert expression to an identifier string.
     fn as_identifier(&self, context: &mut Context) -> String {
         let mut out = DynQuery::new(String::new());
         let writer = GenericSqlWriter::new();

@@ -4,34 +4,28 @@ use std::{
     fmt::{Debug, Display},
 };
 
-/// A parameterized, backend-prepared query handle.
+/// Parameterized, backend-prepared query handle.
 ///
-/// `Prepared` enables drivers to pre-parse / optimize SQL statements and later
-/// bind positional parameters. Values are converted via the `AsValue` trait.
+/// Enables pre-parsing and parameter binding.
 ///
-/// # Binding Semantics
-/// * `bind` appends a value (driver chooses actual placeholder numbering).
-/// * `bind_index` sets the parameter at `index` (zero-based).
-///
-/// Methods return `&mut Self` for fluent chaining:
-/// ```ignore
-/// prepared.bind(42)?.bind("hello")?;
-/// ```
+/// # Semantics
+/// * `bind`: Append value.
+/// * `bind_index`: Set value at 0-based index.
 pub trait Prepared: Any + Send + Sync + Display + Debug {
     fn as_any(self: Box<Self>) -> Box<dyn Any>;
-    /// Clear all bound values.
+    /// Clear all bindings.
     fn clear_bindings(&mut self) -> Result<&mut Self>
     where
         Self: Sized;
-    /// Append a bound value.
+    /// Bind next value.
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self>
     where
         Self: Sized;
-    /// Bind a value at a specific index.
+    /// Bind value at index.
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self>
     where
         Self: Sized;
-    /// Returns true if self has no meaningfull value. The meaning depends on the driver.
+    /// True if the query has no meaningful value (the meaning depends on the driver).
     fn is_empty(&self) -> bool {
         false
     }

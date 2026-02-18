@@ -4,11 +4,10 @@ use std::{
     ops::{Add, AddAssign, Neg, Sub, SubAssign},
 };
 
-/// Units used to represent different parts of an `Interval` value.
+/// Time interval units.
 ///
-/// Used when converting or formatting `Interval` values into specific
-/// units (years, months, days, time components, etc.).
-#[derive(PartialEq, Eq)]
+/// Used for conversion and formatting.
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum IntervalUnit {
     Year,
     Month,
@@ -36,11 +35,9 @@ impl IntervalUnit {
     }
 }
 
-/// A time interval supporting months, days and nanoseconds.
+/// Calendar-aware time interval.
 ///
-/// This type represents durations with separate month/day components to preserve calendar-aware semantics.
-/// Months are not a fixed number of days but often converted to 30 days for conversion purpose.
-/// It provides helpers to convert to/from common durations and to extract unit values.
+/// Stores months, days, and nanoseconds separately to preserve semantics.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Interval {
     pub months: i64,
@@ -164,6 +161,7 @@ impl Interval {
         }
     }
 
+    /// Deconstruct into (hours, minutes, seconds, nanoseconds).
     pub const fn as_hmsns(&self) -> (i128, u8, u8, u32) {
         let mut nanos = self.nanos;
         let mut hours = self.nanos / Self::NANOS_IN_HOUR;
@@ -176,10 +174,13 @@ impl Interval {
         (hours, m as _, s as _, nanos as _)
     }
 
-    pub const fn is_zero(&self) -> bool {
+        pub const fn is_zero(&self) -> bool {
         self.months == 0 && self.days == 0 && self.nanos == 0
     }
 
+    /// Convert to `std::time::Duration` (approximate).
+    ///
+    /// Uses `days_in_month` for conversion.
     pub const fn as_duration(&self, days_in_month: f64) -> std::time::Duration {
         let nanos = (self.months as f64) * days_in_month * (Interval::NANOS_IN_DAY as f64); // months
         let nanos = nanos as i128 + self.days as i128 * Interval::NANOS_IN_DAY; // days
@@ -203,6 +204,7 @@ impl Interval {
         UNITS
     }
 
+    /// Identify non-zero components (year, month, etc.).
     pub fn units_mask(&self) -> u8 {
         let mut mask = 0_u8;
         if self.months != 0 {
@@ -225,6 +227,7 @@ impl Interval {
         mask
     }
 
+    /// Extract value for a specific unit (e.g. number of full years).
     pub fn unit_value(&self, unit: IntervalUnit) -> i128 {
         if unit == IntervalUnit::Year {
             self.months as i128 / 12

@@ -6,8 +6,10 @@ use std::{
     mem,
 };
 
-/// Decimal wrapper enforcing compile-time width/scale.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Decimal wrapper enforcing static precision/scale.
+///
+/// `WIDTH` = total digits, `SCALE` = fractional digits.
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct FixedDecimal<const WIDTH: u8, const SCALE: u8>(pub Decimal);
 
 impl<const W: u8, const S: u8> From<Decimal> for FixedDecimal<W, S> {
@@ -22,12 +24,15 @@ impl<const W: u8, const S: u8> From<FixedDecimal<W, S>> for Decimal {
     }
 }
 
-/// Wrapper marking whether a column should be considered set or skipped (passive) on INSERT.
+/// Value wrapper for optional persistence.
+///
+/// - `Set(T)`: Value is actively written.
+/// - `NotSet`: Value is omitted (DB default used).
 #[derive(Debug, Default)]
 pub enum Passive<T: AsValue> {
     /// Active value.
     Set(T),
-    /// Skip during value emission (DEFAULT used by `SqlWriter`).
+    /// Omitted value.
     #[default]
     NotSet,
 }
@@ -88,7 +93,7 @@ impl<T: Hash + AsValue> Hash for Passive<T> {
     }
 }
 
-/// Foreign key reference to another Entity's columns.
+/// Represents a foreign key constraint to another entity.
 pub struct References<T: Entity> {
     entity: PhantomData<T>,
     columns: Box<[ColumnDef]>,
