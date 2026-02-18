@@ -4,6 +4,7 @@ mod arrays1;
 mod arrays2;
 mod books;
 mod complex;
+mod enums;
 mod insane;
 mod interval;
 mod limits;
@@ -14,6 +15,7 @@ mod operations;
 mod orders;
 mod other;
 mod readme;
+mod requests;
 mod shopping;
 mod simple;
 mod time;
@@ -28,6 +30,7 @@ pub use arrays1::*;
 pub use arrays2::*;
 pub use books::*;
 pub use complex::*;
+pub use enums::*;
 pub use insane::*;
 pub use interval::*;
 pub use limits::*;
@@ -39,6 +42,7 @@ pub use operations::*;
 pub use orders::*;
 pub use other::*;
 pub use readme::*;
+pub use requests::*;
 pub use shopping::*;
 pub use simple::*;
 use std::env;
@@ -98,6 +102,7 @@ pub async fn execute_tests<C: Connection>(mut connection: C) {
     math(&mut connection).await;
     ambiguity(&mut connection).await;
     other(&mut connection).await;
+    enums(&mut connection).await;
 }
 
 #[macro_export]

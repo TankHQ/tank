@@ -201,7 +201,7 @@ pub fn decode_type(ty: &Type) -> (TypeDecoded, Option<CheckPassive>) {
                     }
                 }
             }
-            panic!("Unknown type `{}`", path.to_token_stream());
+            Value::Unknown(None)
         } else if let Type::Array(TypeArray {
             elem,
             len:

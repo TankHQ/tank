@@ -115,9 +115,6 @@ impl<'a> ExpressionVisitor for IsField<'a> {
         out: &mut DynQuery,
         value: &Ordered<&dyn Expression>,
     ) -> bool {
-        if self.known_columns.is_empty() {
-            return false;
-        }
         value.expression.accept_visitor(self, writer, context, out)
     }
 }
