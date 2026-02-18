@@ -4,7 +4,9 @@
 
 # tank-tests
 
-Reusable integration test suite for the for [Tank](https://crates.io/crates/tank): the Rust data layer. Instead of duplicating many nearly identical tests inside every driver crate, `tank-tests` centralizes them with feature flags so each driver can opt out gracefully skipping unsupported features.
+Reusable integration test suite for [Tank](https://crates.io/crates/tank): the Rust data layer.
+
+Instead of duplicating many nearly identical tests inside every driver crate, `tank-tests` centralizes them with feature flags so each driver can opt out gracefully skipping unsupported features.
 
 ## Purpose
 - Ensures consistency: all drivers pass the same baseline CRUD, query, join, multi‑statement and type coverage.
@@ -59,6 +61,6 @@ mod tests {
 }
 ```
 
-## Logging control
+## Logging Control
 - `init_logs()` sets a test-friendly format and default WARN level (override via `RUST_LOG`).
 - `silent_logs! { ... }` macro temporarily mutes logging for false positive error logs when they are expected.

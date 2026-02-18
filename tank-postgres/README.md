@@ -6,7 +6,7 @@
 
 Postgres driver implementation for [Tank](https://crates.io/crates/tank): the Rust data layer.
 
-Implements Tank’s `Driver` and related traits for Postgres, mapping Tank operations and queries into direct Postgres commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. you still use it to define entities, manage schemas, and build queries.
+Implements Tank’s `Driver` and related traits for Postgres, mapping Tank operations and queries into direct Postgres commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. You still need it to define entities, manage schemas, and build queries.
 
 https://tankhq.github.io/tank/
 
@@ -50,7 +50,7 @@ sudo usermod -aG docker $USER
 
 > [!CAUTION]
 > Avoid aborting tests mid‑run (e.g. killing the process at a breakpoint). Containers might be left running and consume resources.
-> 
+>
 > List containers:
 > ```sh
 > docker ps

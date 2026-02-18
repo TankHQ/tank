@@ -6,7 +6,7 @@
 
 SQLite driver implementation for [Tank](https://crates.io/crates/tank): the Rust data layer.
 
-Implements Tank’s `Driver` and related traits for SQLite, mapping Tank operations and queries into direct SQLite commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. you still use it to define entities, manage schemas, and build queries.
+Implements Tank’s `Driver` and related traits for SQLite, mapping Tank operations and queries into direct SQLite commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. You still need it to define entities, manage schemas, and build queries.
 
 https://tankhq.github.io/tank/
 
@@ -24,7 +24,7 @@ cargo add tank
 cargo add tank-sqlite
 ```
 
-## Connect
+## Quick Start
 ```rust
 use tank::{Connection, Driver, Executor};
 use tank_sqlite::SQLiteDriver;

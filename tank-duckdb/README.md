@@ -33,7 +33,7 @@ Disable it if you want a system DuckDB:
 cargo add tank-duckdb --no-default-features
 ```
 
-## Connect
+## Quick Start
 ```rust
 use tank::{Connection, Driver, Executor};
 use tank_duckdb::DuckDBDriver;
