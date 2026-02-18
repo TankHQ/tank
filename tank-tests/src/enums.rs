@@ -1,6 +1,5 @@
 #![allow(unused_imports)]
 use rust_decimal::{Decimal, prelude::FromPrimitive};
-use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
