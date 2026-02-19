@@ -493,6 +493,13 @@ impl Executor for DuckDBConnection {
                 }
                 duckdb_appender_end_row(*appender);
             }
+            let rc = duckdb_appender_close(*appender);
+            if rc != duckdb_state_DuckDBSuccess {
+                return Err(Error::msg(
+                    error_message_from_ptr(&duckdb_appender_error(*appender)).to_string(),
+                )
+                .context("While closing the `duckdb_appender` object"));
+            }
             Ok(RowsAffected {
                 rows_affected: Some(rows_affected),
                 last_affected_id: None,

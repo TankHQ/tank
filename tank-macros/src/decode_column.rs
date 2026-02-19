@@ -266,6 +266,10 @@ pub fn decode_column(field: &Field) -> ColumnMetadata {
             decode_type(&field.ty)
         } else if let Type::Array(..) = &field.ty {
             decode_type(&field.ty)
+        } else if let Type::Reference(v) = &field.ty {
+            decode_type(&v.elem)
+        } else if let Type::Ptr(v) = &field.ty {
+            decode_type(&v.elem)
         } else {
             Default::default()
         };

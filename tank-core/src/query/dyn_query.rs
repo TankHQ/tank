@@ -7,6 +7,7 @@ use std::{
 };
 
 /// Dyn compatible version of `Query`
+#[derive(Debug)]
 pub enum DynQuery {
     Raw(RawQuery),
     Prepared(Box<dyn Prepared>),

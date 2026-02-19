@@ -4,7 +4,7 @@ mod tests {
     use rust_decimal::{Decimal, prelude::FromPrimitive};
     use std::{borrow::Cow, sync::Arc, time::Duration};
     use tank::{
-        DynQuery, DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
+        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
         SqlWriter, TableRef, Value, expr,
     };
 
@@ -17,6 +17,7 @@ mod tests {
         #[tank(name = "delta")]
         _delta_duration: Duration,
         _echo: Option<Arc<rust_decimal::Decimal>>,
+        _foxtrot: &'static str,
     }
     impl MyEntity {
         pub fn sample() -> Self {
@@ -30,6 +31,7 @@ mod tests {
                 )))))))),
                 _delta_duration: Duration::from_secs(1),
                 _echo: Some(Arc::new(Decimal::from_f64(23.44).unwrap())),
+                _foxtrot: "Target acquired",
             }
         }
     }
@@ -54,72 +56,85 @@ mod tests {
         assert_eq!(pk[1].primary_key, PrimaryKeyType::PartOfPrimaryKey);
 
         let columns = MyEntity::columns();
-        assert_eq!(columns.len(), 5);
+        assert_eq!(columns.len(), 6);
         assert_eq!(columns[0].column_ref.name, "alpha");
         assert_eq!(columns[1].column_ref.name, "bravo");
         assert_eq!(columns[2].column_ref.name, "charlie");
         assert_eq!(columns[3].column_ref.name, "delta");
         assert_eq!(columns[4].column_ref.name, "echo");
+        assert_eq!(columns[5].column_ref.name, "foxtrot");
         assert_eq!(columns[0].column_ref.table, "a_table");
         assert_eq!(columns[1].column_ref.table, "a_table");
         assert_eq!(columns[2].column_ref.table, "a_table");
         assert_eq!(columns[3].column_ref.table, "a_table");
         assert_eq!(columns[4].column_ref.table, "a_table");
+        assert_eq!(columns[5].column_ref.table, "a_table");
         assert_eq!(columns[0].column_ref.schema, "");
         assert_eq!(columns[1].column_ref.schema, "");
         assert_eq!(columns[2].column_ref.schema, "");
         assert_eq!(columns[3].column_ref.schema, "");
         assert_eq!(columns[4].column_ref.schema, "");
+        assert_eq!(columns[5].column_ref.schema, "");
         assert!(matches!(columns[0].default, DefaultValueType::None));
         assert!(matches!(columns[1].default, DefaultValueType::None));
         assert!(matches!(columns[2].default, DefaultValueType::None));
         assert!(matches!(columns[3].default, DefaultValueType::None));
         assert!(matches!(columns[4].default, DefaultValueType::None));
-        assert!(matches!(columns[0].value, Value::Float64(..)));
-        assert!(matches!(columns[1].value, Value::Int16(..)));
-        assert!(matches!(columns[2].value, Value::Decimal(..)));
-        assert!(matches!(columns[3].value, Value::Interval(..)));
-        assert!(matches!(columns[4].value, Value::Decimal(..)));
+        assert!(matches!(columns[5].default, DefaultValueType::None));
+        assert_eq!(columns[0].value, Value::Float64(None));
+        assert_eq!(columns[1].value, Value::Int16(None));
+        assert_eq!(columns[2].value, Value::Decimal(None, 0, 0));
+        assert_eq!(columns[3].value, Value::Interval(None));
+        assert_eq!(columns[4].value, Value::Decimal(None, 0, 0));
+        assert_eq!(columns[5].value, Value::Varchar(None));
         assert_eq!(columns[0].nullable, false);
         assert_eq!(columns[1].nullable, false);
         assert_eq!(columns[2].nullable, true);
         assert_eq!(columns[3].nullable, false);
         assert_eq!(columns[4].nullable, true);
+        assert_eq!(columns[5].nullable, false);
         assert!(matches!(columns[0].default, DefaultValueType::None));
         assert!(matches!(columns[1].default, DefaultValueType::None));
         assert!(matches!(columns[2].default, DefaultValueType::None));
         assert!(matches!(columns[3].default, DefaultValueType::None));
         assert!(matches!(columns[4].default, DefaultValueType::None));
+        assert!(matches!(columns[5].default, DefaultValueType::None));
         assert_eq!(columns[0].primary_key, PrimaryKeyType::None);
         assert_eq!(columns[1].primary_key, PrimaryKeyType::PartOfPrimaryKey);
         assert_eq!(columns[2].primary_key, PrimaryKeyType::None);
         assert_eq!(columns[3].primary_key, PrimaryKeyType::PartOfPrimaryKey);
         assert_eq!(columns[4].primary_key, PrimaryKeyType::None);
+        assert_eq!(columns[5].primary_key, PrimaryKeyType::None);
         assert_eq!(columns[0].unique, false);
         assert_eq!(columns[1].unique, false);
         assert_eq!(columns[2].unique, false);
         assert_eq!(columns[3].unique, false);
         assert_eq!(columns[4].unique, false);
+        assert_eq!(columns[5].unique, false);
         assert_eq!(columns[0].references, None);
         assert_eq!(columns[1].references, None);
         assert_eq!(columns[2].references, None);
         assert_eq!(columns[3].references, None);
         assert_eq!(columns[4].references, None);
+        assert_eq!(columns[5].references, None);
         assert_eq!(columns[0].on_delete, None);
         assert_eq!(columns[1].on_delete, None);
         assert_eq!(columns[2].on_delete, None);
         assert_eq!(columns[3].on_delete, None);
         assert_eq!(columns[4].on_delete, None);
         assert_eq!(columns[0].on_update, None);
+        assert_eq!(columns[5].on_update, None);
         assert_eq!(columns[1].on_update, None);
         assert_eq!(columns[2].on_update, None);
         assert_eq!(columns[3].on_update, None);
         assert_eq!(columns[4].on_update, None);
+        assert_eq!(columns[5].on_update, None);
         assert_eq!(columns[0].passive, false);
         assert_eq!(columns[1].passive, false);
         assert_eq!(columns[2].passive, false);
         assert_eq!(columns[3].passive, false);
         assert_eq!(columns[4].passive, false);
+        assert_eq!(columns[5].passive, false);
     }
 
     #[test]
@@ -135,6 +150,7 @@ mod tests {
                 "charlie" DECIMAL,
                 "delta" INTERVAL,
                 "echo" DECIMAL,
+                "foxtrot" VARCHAR,
                 PRIMARY KEY ("bravo", "delta"));
             "#}
             .trim()
@@ -162,7 +178,7 @@ mod tests {
         assert_eq!(
             query.as_str(),
             indoc! {r#"
-                SELECT "alpha", "bravo", "charlie", "delta", "echo"
+                SELECT "alpha", "bravo", "charlie", "delta", "echo", "foxtrot"
                 FROM "a_table"
                 WHERE "bravo" < 0
                 LIMIT 300;
@@ -178,8 +194,8 @@ mod tests {
         assert_eq!(
             query.as_str(),
             indoc! {r#"
-                INSERT INTO "a_table" ("alpha", "bravo", "charlie", "delta", "echo") VALUES
-                (0.0, 2, 10.2, INTERVAL '1 SECOND', 23.44)
+                INSERT INTO "a_table" ("alpha", "bravo", "charlie", "delta", "echo", "foxtrot") VALUES
+                (0.0, 2, 10.2, INTERVAL '1 SECOND', 23.44, 'Target acquired')
                 ON CONFLICT ("bravo", "delta") DO UPDATE SET
                 "alpha" = EXCLUDED."alpha",
                 "charlie" = EXCLUDED."charlie",

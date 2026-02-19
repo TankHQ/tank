@@ -61,34 +61,7 @@ impl Prepared for DuckDBPrepared {
             let prepared = self.statement();
             let value = v.as_value();
             let state = match value {
-                Value::Null
-                | Value::Boolean(None, ..)
-                | Value::Int8(None, ..)
-                | Value::Int16(None, ..)
-                | Value::Int32(None, ..)
-                | Value::Int64(None, ..)
-                | Value::Int128(None, ..)
-                | Value::UInt8(None, ..)
-                | Value::UInt16(None, ..)
-                | Value::UInt32(None, ..)
-                | Value::UInt64(None, ..)
-                | Value::UInt128(None, ..)
-                | Value::Float32(None, ..)
-                | Value::Float64(None, ..)
-                | Value::Decimal(None, ..)
-                | Value::Char(None, ..)
-                | Value::Varchar(None, ..)
-                | Value::Blob(None, ..)
-                | Value::Date(None, ..)
-                | Value::Time(None, ..)
-                | Value::Timestamp(None, ..)
-                | Value::TimestampWithTimezone(None, ..)
-                | Value::Interval(None, ..)
-                | Value::Uuid(None, ..)
-                | Value::Array(None, ..)
-                | Value::List(None, ..)
-                | Value::Map(None, ..)
-                | Value::Struct(None, ..) => duckdb_bind_null(prepared, index),
+                _ if value.is_null() => duckdb_bind_null(prepared, index),
                 Value::Boolean(Some(v), ..) => duckdb_bind_boolean(prepared, index, v),
                 Value::Int8(Some(v), ..) => duckdb_bind_int8(prepared, index, v),
                 Value::Int16(Some(v), ..) => duckdb_bind_int16(prepared, index, v),

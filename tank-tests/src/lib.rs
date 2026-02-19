@@ -103,6 +103,7 @@ pub async fn execute_tests<C: Connection>(mut connection: C) {
     ambiguity(&mut connection).await;
     other(&mut connection).await;
     enums(&mut connection).await;
+    requests(&mut connection).await;
 }
 
 #[macro_export]

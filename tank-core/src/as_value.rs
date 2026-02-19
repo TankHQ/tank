@@ -1242,13 +1242,16 @@ impl AsValue for &'static str {
     fn as_value(self) -> Value {
         Value::Varchar(Some(self.into()))
     }
-    fn try_from_value(_value: Value) -> Result<Self>
+    fn try_from_value(value: Value) -> Result<Self>
     where
         Self: Sized,
     {
-        Err(Error::msg(
-            "Cannot get a string reference from a owned value",
-        ))
+        let Value::Varchar(Some(Cow::Borrowed(v))) = value.try_as(&Value::Varchar(None))? else {
+            return Err(Error::msg(format!(
+                "Cannot assign a `&'static str` with data fetched from the database. Please consider `Cow<'static, str>` instead, can still use `&'static str` for data insertion purpose.",
+            )));
+        };
+        Ok(v)
     }
 }
 

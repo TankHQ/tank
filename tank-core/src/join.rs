@@ -86,7 +86,6 @@ impl Parse for JoinType {
             (&["RIGHT", "OUTER", "JOIN"], JoinType::Right),
             (&["RIGHT", "JOIN"], JoinType::Right),
             (&["CROSS", "JOIN"], JoinType::Cross),
-            (&["CROSS"], JoinType::Cross),
             (&["NATURAL", "JOIN"], JoinType::Natural),
         ];
         for (keywords, join_type) in patterns {

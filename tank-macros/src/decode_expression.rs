@@ -233,6 +233,13 @@ pub fn decode_expression(expr: &Expr) -> TokenStream {
             .into_iter())
             {
                 quote! { ::tank::Operand::QuestionMark }
+            } else if path.segments.iter().map(|v| v.ident.to_string()).eq([
+                "tank",
+                "current_timestamp_ms",
+            ]
+            .into_iter())
+            {
+                quote! { ::tank::Operand::CurrentTimestampMs }
             } else {
                 quote! { #path!(#tokens) }
             }

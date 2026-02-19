@@ -554,3 +554,8 @@ macro_rules! impl_executor_transaction {
         }
     }
 }
+
+#[macro_export]
+macro_rules! current_timestamp_ms {
+    () => {{}};
+}

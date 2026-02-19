@@ -174,7 +174,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
 ///
 /// The grammar supports standard join variants (`JOIN`, `INNER JOIN`, `LEFT
 /// JOIN`, `LEFT OUTER JOIN`, `RIGHT JOIN`, `RIGHT OUTER JOIN`, `FULL OUTER
-/// JOIN`, `OUTER JOIN`, `CROSS`, `NATURAL JOIN`) plus nesting via parentheses
+/// JOIN`, `OUTER JOIN`, `CROSS JOIN`, `NATURAL JOIN`) plus nesting via parentheses
 /// and chaining multiple joins in sequence. Optional `ON <expr>` clauses are
 /// parsed into expressions using the same rules as [`expr!`].
 ///

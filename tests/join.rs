@@ -167,7 +167,7 @@ mod tests {
             r#""my_data"."alpha" RIGHT JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."first""#
         );
 
-        let join = join!(Alpha CROSS Bravo);
+        let join = join!(Alpha CROSS JOIN Bravo);
         assert!(matches!(
             join,
             Join {
@@ -178,7 +178,7 @@ mod tests {
         ));
         let mut query = DynQuery::default();
         join.write_query(&WRITER, &mut Default::default(), &mut query);
-        assert_eq!(query.as_str(), r#""my_data"."alpha" CROSS "bravo""#);
+        assert_eq!(query.as_str(), r#""my_data"."alpha" CROSS JOIN "bravo""#);
 
         let join = join!(Alpha NATURAL JOIN Bravo);
         assert!(matches!(
@@ -420,9 +420,9 @@ mod tests {
 
         let join = join!(
             Alpha NATURAL JOIN Charlie
-                CROSS Bravo
+                CROSS JOIN Bravo
                     LEFT JOIN Bravo ON Bravo::_second == Alpha::_b
-                        CROSS Delta
+                        CROSS JOIN Delta
         );
         assert!(matches!(
             join,
@@ -480,7 +480,7 @@ mod tests {
         join.write_query(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
-            r#""my_data"."alpha" NATURAL JOIN "ccc" CROSS "bravo" LEFT JOIN "bravo" ON "bravo"."second" = "my_data"."alpha"."b" CROSS "delta""#
+            r#""my_data"."alpha" NATURAL JOIN "ccc" CROSS JOIN "bravo" LEFT JOIN "bravo" ON "bravo"."second" = "my_data"."alpha"."b" CROSS JOIN "delta""#
         );
     }
 

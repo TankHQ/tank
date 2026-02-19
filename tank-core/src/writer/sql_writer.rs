@@ -819,7 +819,7 @@ pub trait SqlWriter: Send {
             JoinType::Outer => "OUTER JOIN",
             JoinType::Left => "LEFT JOIN",
             JoinType::Right => "RIGHT JOIN",
-            JoinType::Cross => "CROSS",
+            JoinType::Cross => "CROSS JOIN",
             JoinType::Natural => "NATURAL JOIN",
         });
     }
