@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt::Write, mem};
 use tank_core::{
-    ColumnDef, ColumnRef, Context, DynQuery, Entity, GenericSqlWriter, Operand, SqlWriter,
-    TableRef, Value, write_escaped,
+    ColumnDef, ColumnRef, Context, DynQuery, Entity, GenericSqlWriter, SqlWriter, TableRef, Value,
+    write_escaped,
 };
 
 /// SQL writer for SQLite dialect.

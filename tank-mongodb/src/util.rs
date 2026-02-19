@@ -135,8 +135,12 @@ pub fn bson_to_value(bson: &Bson) -> Result<Value> {
                 let k = k.clone().as_value();
                 let v = bson_to_value(v)?;
                 if k_type.get().is_none() {
-                    k_type.set(k.as_null());
-                    v_type.set(v.as_null());
+                    k_type
+                        .set(k.as_null())
+                        .map_err(|_| Error::msg("Could not set the key"))?;
+                    v_type
+                        .set(v.as_null())
+                        .map_err(|_| Error::msg("Could not set the value"))?;
                 }
                 map.insert(k, v);
             }

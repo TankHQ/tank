@@ -150,7 +150,7 @@ mod tests {
                 "charlie" DECIMAL,
                 "delta" INTERVAL,
                 "echo" DECIMAL,
-                "foxtrot" VARCHAR,
+                "foxtrot" VARCHAR NOT NULL,
                 PRIMARY KEY ("bravo", "delta"));
             "#}
             .trim()
@@ -199,7 +199,8 @@ mod tests {
                 ON CONFLICT ("bravo", "delta") DO UPDATE SET
                 "alpha" = EXCLUDED."alpha",
                 "charlie" = EXCLUDED."charlie",
-                "echo" = EXCLUDED."echo";
+                "echo" = EXCLUDED."echo",
+                "foxtrot" = EXCLUDED."foxtrot";
             "#}
             .trim()
         );
