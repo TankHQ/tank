@@ -94,7 +94,7 @@ impl MongoDBSqlWriter {
             BinaryOpType::In => "$in",
             BinaryOpType::NotIn => "$nin",
             BinaryOpType::Is => "$eq",
-            BinaryOpType::IsNot => "",
+            BinaryOpType::IsNot => "$ne",
             BinaryOpType::Like => "",
             BinaryOpType::NotLike => "",
             BinaryOpType::Regexp => "$regex",
@@ -471,7 +471,7 @@ impl SqlWriter for MongoDBSqlWriter {
                     );
                     return;
                 };
-                *target = doc! { "$not": mem::take(target) }.into();
+                *target = doc! { "$not": [mem::take(target)] }.into();
             }
         }
     }

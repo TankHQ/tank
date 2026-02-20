@@ -112,24 +112,28 @@ pub async fn ambiguity<E: Executor>(executor: &mut E) {
     );
     assert_eq!(
         first_schema::FirstTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         1
     );
     assert_eq!(
         first_schema::SecondTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         0
     );
     assert_eq!(
         second_schema::FirstTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         0
     );
     assert_eq!(
         second_schema::SecondTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         0
@@ -166,24 +170,28 @@ pub async fn ambiguity<E: Executor>(executor: &mut E) {
     );
     assert_eq!(
         first_schema::FirstTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         1
     );
     assert_eq!(
         first_schema::SecondTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         0
     );
     assert_eq!(
         second_schema::FirstTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         0
     );
     assert_eq!(
         second_schema::SecondTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         1
@@ -213,24 +221,28 @@ pub async fn ambiguity<E: Executor>(executor: &mut E) {
     assert_eq!(fetched2.third_col, Some(Arc::new(20)));
     assert_eq!(
         first_schema::FirstTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         1
     );
     assert_eq!(
         first_schema::SecondTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         0
     );
     assert_eq!(
         second_schema::FirstTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         0
     );
     assert_eq!(
         second_schema::SecondTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         1
@@ -253,24 +265,28 @@ pub async fn ambiguity<E: Executor>(executor: &mut E) {
     // Ensure both tables now report one row each
     assert_eq!(
         first_schema::FirstTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         1
     );
     assert_eq!(
         first_schema::SecondTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         1
     );
     assert_eq!(
         second_schema::FirstTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         0
     );
     assert_eq!(
         second_schema::SecondTable::find_many(executor, true, None)
+            .map_err(|e| panic!("{e:#}"))
             .count()
             .await,
         1

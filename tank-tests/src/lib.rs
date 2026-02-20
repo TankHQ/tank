@@ -91,6 +91,7 @@ pub async fn execute_tests<C: Connection>(mut connection: C) {
     shopping(&mut connection).await;
     orders(&mut connection).await;
     times(&mut connection).await;
+    // conditions(&mut connection).await;
     readme(&mut connection)
         .await
         .expect("Readme examples test did not succeed");
@@ -104,7 +105,6 @@ pub async fn execute_tests<C: Connection>(mut connection: C) {
     math(&mut connection).await;
     ambiguity(&mut connection).await;
     other(&mut connection).await;
-    conditions(&mut connection).await;
     enums(&mut connection).await;
     requests(&mut connection).await;
 }

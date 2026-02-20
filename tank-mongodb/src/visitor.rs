@@ -3,7 +3,7 @@ use mongodb::bson::{Bson, Document, doc};
 use std::{borrow::Cow, iter, mem, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
-    IsAsterisk, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp, Value,
+    IsAsterisk, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp, UnaryOpType, Value,
 };
 
 #[derive(Default, PartialEq, Eq, Debug)]
@@ -231,8 +231,26 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
         out: &mut DynQuery,
         value: &UnaryOp<&dyn Expression>,
     ) -> bool {
+        // let top = !self.started;
+        // self.started = true;
+        // let mut negate_number = NegateNumber::default();
+        // let is_expr = !(value.op == UnaryOpType::Negative
+        //     && value
+        //         .arg
+        //         .accept_visitor(&mut negate_number, writer, context, out));
         value.write_query(writer, context, out);
         true
+        // if top && is_expr {
+        //     let Some(target) = out
+        //         .as_prepared::<MongoDBDriver>()
+        //         .and_then(MongoDBPrepared::current_bson)
+        //     else {
+        //         log::error!("Failed to get the bson in WriteMatchExpression::visit_operand");
+        //         return false;
+        //     };
+        //     *target = doc! { "$expr": &*target }.into();
+        // }
+        // is_expr
     }
 
     fn visit_binary_op(

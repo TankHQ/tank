@@ -178,9 +178,15 @@ pub async fn transaction1<C: Connection>(connection: &mut C) {
         .await
         .expect("Could not commit the transaction");
 
-    let entity_a_entries = EntityA::find_many(connection, true, None).count().await;
+    let entity_a_entries = EntityA::find_many(connection, true, None)
+        .map_err(|e| panic!("{e:#}"))
+        .count()
+        .await;
     assert_eq!(entity_a_entries, 2);
 
-    let entity_b_entries = EntityB::find_many(connection, true, None).count().await;
+    let entity_b_entries = EntityB::find_many(connection, true, None)
+        .map_err(|e| panic!("{e:#}"))
+        .count()
+        .await;
     assert_eq!(entity_b_entries, 3);
 }

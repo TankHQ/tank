@@ -8,7 +8,8 @@ use std::{
 };
 use tank::{
     AsValue, Entity, Error, Executor, QueryBuilder, Result, Value, current_timestamp_ms, expr,
-    join, stream::StreamExt,
+    join,
+    stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
 
@@ -161,7 +162,7 @@ pub async fn requests<E: Executor>(executor: &mut E) {
     .await
     .expect("Could not insert the limits");
     let limits = RequestLimit::find_many(executor, true, None)
-        .map(|v| v.expect("Found error"))
+        .map_err(|e| panic!("{e:#}"))
         .count()
         .await;
     assert_eq!(limits, 5);
@@ -202,8 +203,8 @@ pub async fn requests<E: Executor>(executor: &mut E) {
 
         let mut r1 = Request::new("v1/server/user/new/1".into(), Method::PUT.into());
         let mut r2 = Request::new("v1/server/user/new/2".into(), Method::PUT.into());
-        let r3 = Request::new("v1/server/user/new/3".into(), Method::PUT.into());
-        let r4 = Request::new("v1/server/articles/new/4".into(), Method::PUT.into());
+        let mut r3 = Request::new("v1/server/user/new/3".into(), Method::PUT.into());
+        let mut r4 = Request::new("v1/server/articles/new/4".into(), Method::PUT.into());
         let r5 = Request::new("v1/server/user/new/5".into(), Method::PUT.into());
 
         violated_limits.bind(r1.target.clone()).unwrap();
@@ -278,6 +279,11 @@ pub async fn requests<E: Executor>(executor: &mut E) {
             .unwrap();
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
 
+        r3.end();
+        r3.save(executor).await.expect("Could not terminate r3");
+        r4.end();
+        r4.save(executor).await.expect("Could not terminate r4");
+
         // Check [4]
 
         let mut d1 = Request::new("v1/server/user/del/1".into(), Method::DELETE.into());
@@ -288,7 +294,7 @@ pub async fn requests<E: Executor>(executor: &mut E) {
         d1.save(executor).await.expect("Failed to save d1");
 
         violated_limits.bind(d2.target.clone()).unwrap();
-        assert_eq!(executor.fetch(&mut violated_limits).count().await, 1); // Violates [4]
+        assert_eq!(executor.fetch(&mut violated_limits).count().await, 1); // Violates [4] // Problem here
 
         d1.end();
         d1.save(executor).await.expect("Failed to end d1");
