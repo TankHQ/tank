@@ -68,45 +68,44 @@ pub fn init_logs() {
 }
 
 pub async fn execute_tests<C: Connection>(mut connection: C) {
-    simple(&mut connection).await;
-    trade_simple(&mut connection).await;
-    trade_multiple(&mut connection).await;
-    users(&mut connection).await;
-    aggregates(&mut connection).await;
-    books(&mut connection).await;
-    complex(&mut connection).await;
-    insane(&mut connection).await;
-    limits(&mut connection).await;
+    macro_rules! do_test {
+        ($test_function:ident) => {
+            Box::pin($test_function(&mut connection)).await
+        };
+    }
+    do_test!(simple);
+    do_test!(trade_simple);
+    do_test!(trade_multiple);
+    do_test!(users);
+    do_test!(aggregates);
+    do_test!(books);
+    do_test!(complex);
+    do_test!(insane);
+    do_test!(limits);
     #[cfg(not(feature = "disable-multiple-statements"))]
-    multiple(&mut connection).await;
+    do_test!(multiple);
     #[cfg(not(feature = "disable-intervals"))]
-    interval(&mut connection).await;
+    do_test!(interval);
     #[cfg(not(feature = "disable-arrays"))]
-    arrays1(&mut connection).await;
+    do_test!(arrays1);
     #[cfg(not(feature = "disable-arrays"))]
-    arrays2(&mut connection).await;
+    do_test!(arrays2);
     #[cfg(not(feature = "disable-transactions"))]
-    transaction1(&mut connection).await;
-    transaction2(&mut connection).await;
-    shopping(&mut connection).await;
-    orders(&mut connection).await;
-    times(&mut connection).await;
-    // conditions(&mut connection).await;
-    readme(&mut connection)
-        .await
-        .expect("Readme examples test did not succeed");
-    operations(&mut connection)
-        .await
-        .expect("Operations examples test did not succeed");
-    advanced_operations(&mut connection)
-        .await
-        .expect("Advanced operations examples test did not succeed");
-    metrics(&mut connection).await;
-    math(&mut connection).await;
-    ambiguity(&mut connection).await;
-    other(&mut connection).await;
-    enums(&mut connection).await;
-    requests(&mut connection).await;
+    do_test!(transaction1);
+    do_test!(transaction2);
+    do_test!(shopping);
+    do_test!(orders);
+    do_test!(times);
+    do_test!(conditions);
+    do_test!(readme).expect("Readme examples test did not succeed");
+    do_test!(operations).expect("Operations examples test did not succeed");
+    do_test!(advanced_operations).expect("Advanced operations examples test did not succeed");
+    do_test!(metrics);
+    do_test!(math);
+    do_test!(ambiguity);
+    do_test!(other);
+    do_test!(enums);
+    do_test!(requests);
 }
 
 #[macro_export]
