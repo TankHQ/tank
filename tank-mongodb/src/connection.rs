@@ -117,7 +117,7 @@ impl Executor for MongoDBConnection {
                 ))?;
                 return;
             };
-            let params = prepared.take_params();
+            let params = prepared.take_params()?;
             let payload = &prepared.get_payload();
             match payload {
                 Payload::Fragment(..) => {
@@ -271,8 +271,12 @@ impl Executor for MongoDBConnection {
                         Some(Bson::Int64(v)) => Some(v),
                         _ => None,
                     };
+                    let mut rows_affected = result.modified_count;
+                    if last_affected_id.is_some() {
+                        rows_affected += 1;
+                    }
                     yield QueryResult::Affected(RowsAffected {
-                        rows_affected: Some(result.modified_count),
+                        rows_affected: Some(rows_affected),
                         last_affected_id,
                     });
                 }

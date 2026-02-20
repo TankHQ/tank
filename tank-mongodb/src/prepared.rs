@@ -43,19 +43,16 @@ impl MongoDBPrepared {
             document
         })
     }
-    pub(crate) fn take_params(&mut self) -> Option<Document> {
+    pub(crate) fn take_params(&mut self) -> Result<Option<Document>> {
         self.index = 0;
         if self.count == 0 {
-            None
+            Ok(None)
         } else {
             let mut doc = Document::new();
             for (i, v) in mem::take(&mut self.params).into_iter().enumerate() {
-                doc.insert(
-                    format!("param_{i}"),
-                    value_to_bson(&v).map_err(|e| log::error!("{e:#}")).ok()?,
-                );
+                doc.insert(format!("param_{i}"), value_to_bson(&v)?);
             }
-            Some(doc)
+            Ok(Some(doc))
         }
     }
 }
