@@ -4,6 +4,7 @@ mod arrays1;
 mod arrays2;
 mod books;
 mod complex;
+mod conditions;
 mod enums;
 mod insane;
 mod interval;
@@ -30,6 +31,7 @@ pub use arrays1::*;
 pub use arrays2::*;
 pub use books::*;
 pub use complex::*;
+pub use conditions::*;
 pub use enums::*;
 pub use insane::*;
 pub use interval::*;
@@ -102,6 +104,7 @@ pub async fn execute_tests<C: Connection>(mut connection: C) {
     math(&mut connection).await;
     ambiguity(&mut connection).await;
     other(&mut connection).await;
+    conditions(&mut connection).await;
     enums(&mut connection).await;
     requests(&mut connection).await;
 }

@@ -277,5 +277,35 @@ pub async fn requests<E: Executor>(executor: &mut E) {
             .bind("v1/server/data/item/999".to_string())
             .unwrap();
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
+
+        // Check [4]
+
+        let mut d1 = Request::new("v1/server/user/del/1".into(), Method::DELETE.into());
+        let d2 = Request::new("v1/server/user/del/2".into(), Method::DELETE.into());
+
+        violated_limits.bind(d1.target.clone()).unwrap();
+        assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
+        d1.save(executor).await.expect("Failed to save d1");
+
+        violated_limits.bind(d2.target.clone()).unwrap();
+        assert_eq!(executor.fetch(&mut violated_limits).count().await, 1); // Violates [4]
+
+        d1.end();
+        d1.save(executor).await.expect("Failed to end d1");
+
+        violated_limits.bind(d2.target.clone()).unwrap();
+        assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
+
+        let mut v2_reqs = vec![];
+        for i in 0..5 {
+            let mut req = Request::new(format!("v2/resource/{}", i), Method::GET.into());
+            req.save(executor).await.expect("Failed to save v2 req");
+            req.end(); // Must end them to be counted by the interval logic
+            req.save(executor).await.expect("Failed to end v2 req");
+            v2_reqs.push(req);
+        }
+
+        violated_limits.bind("v2/resource/new".to_string()).unwrap();
+        assert_eq!(executor.fetch(&mut violated_limits).count().await, 1); // Violates [5]
     }
 }
