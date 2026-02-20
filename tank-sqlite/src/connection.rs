@@ -122,7 +122,14 @@ impl SQLiteConnection {
             loop {
                 let (statement, tail) = {
                     let mut statement = SQLitePrepared::new(CBox::new(ptr::null_mut(), |p| {
-                        sqlite3_finalize(p);
+                        let db = sqlite3_db_handle(p);
+                        let rc = sqlite3_finalize(p);
+                        if rc != SQLITE_OK {
+                            let error =
+                                Error::msg(error_message_from_ptr(&sqlite3_errmsg(db)).to_string())
+                                    .context("While finalizing a dynamic statement");
+                            log::error!("{error:#}");
+                        }
                     }));
                     let mut sql_tail = ptr::null();
                     let rc = sqlite3_prepare_v2(
@@ -169,7 +176,13 @@ impl Executor for SQLiteConnection {
             let len = sql.len();
             let sql = CString::new(sql.into_bytes())?;
             let mut statement = CBox::new(ptr::null_mut(), |p| {
-                sqlite3_finalize(p);
+                let db = sqlite3_db_handle(p);
+                let rc = sqlite3_finalize(p);
+                if rc != SQLITE_OK {
+                    let error = Error::msg(error_message_from_ptr(&sqlite3_errmsg(db)).to_string())
+                        .context("While finalizing a prepared statement");
+                    log::error!("{error:#}");
+                }
             });
             let mut tail = ptr::null();
             let rc = sqlite3_prepare_v2(
@@ -249,7 +262,9 @@ impl Connection for SQLiteConnection {
         unsafe {
             connection = CBox::new(ptr::null_mut(), |p| {
                 if sqlite3_close(p) != SQLITE_OK {
-                    log::error!("Could not close sqlite connection")
+                    let error = Error::msg(error_message_from_ptr(&sqlite3_errmsg(p)).to_string())
+                        .context("While closing the sqlite connection");
+                    log::error!("{error:#}");
                 }
             });
             let rc = sqlite3_open_v2(

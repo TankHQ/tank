@@ -326,7 +326,14 @@ impl Executor for DuckDBConnection {
                 .context("While creating the `duckdb_appender` object"));
             }
             for column in E::columns() {
-                duckdb_appender_add_column(*appender, as_c_string(column.name()).as_ptr());
+                let rc = duckdb_appender_add_column(*appender, as_c_string(column.name()).as_ptr());
+                if rc != duckdb_state_DuckDBSuccess {
+                    let error = Error::msg(
+                        error_message_from_ptr(&duckdb_appender_error(*appender)).to_string(),
+                    );
+                    log::error!("{:#}", error);
+                    return Err(error);
+                }
             }
             let rows_affected = rows.len() as u64;
             for row in rows {
@@ -491,7 +498,14 @@ impl Executor for DuckDBConnection {
                         return Err(error);
                     }
                 }
-                duckdb_appender_end_row(*appender);
+                let rc = duckdb_appender_end_row(*appender);
+                if rc != duckdb_state_DuckDBSuccess {
+                    let error = Error::msg(
+                        error_message_from_ptr(&duckdb_appender_error(*appender)).to_string(),
+                    );
+                    log::error!("{:#}", error);
+                    return Err(error);
+                }
             }
             let rc = duckdb_appender_close(*appender);
             if rc != duckdb_state_DuckDBSuccess {
