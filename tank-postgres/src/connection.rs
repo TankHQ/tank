@@ -144,18 +144,21 @@ impl Executor for PostgresConnection {
         <It as IntoIterator>::IntoIter: Send,
     {
         let context = || format!("While appending to the table `{}`", E::table().full_name());
-        let mut result = RowsAffected {
-            rows_affected: Some(0),
-            last_affected_id: None,
-        };
         let writer = self.driver().sql_writer();
         let mut query = DynQuery::default();
         writer.write_copy::<E>(&mut query);
-        let sink = self
+        let sink = match self
             .client
             .copy_in(&query.as_str() as &str)
             .await
-            .with_context(context)?;
+            .with_context(context)
+        {
+            Ok(v) => v,
+            Err(e) => {
+                log::error!("{e:#}");
+                return Err(e);
+            }
+        };
         let types: Vec<_> = E::columns()
             .into_iter()
             .map(|c| value_to_postgres_type(&c.value))
@@ -177,16 +180,30 @@ impl Executor for PostgresConnection {
                     .iter()
                     .map(|v| unsafe { &*(v as &(dyn ToSql + Sync) as *const _) }),
             );
-            Pin::as_mut(&mut writer)
+            match Pin::as_mut(&mut writer)
                 .write(&refs)
                 .await
-                .with_context(context)?;
+                .with_context(context)
+            {
+                Ok(_) => {}
+                Err(e) => {
+                    log::error!("{e:#}");
+                    return Err(e);
+                }
+            };
             refs.clear();
             values.clear();
-            *result.rows_affected.as_mut().unwrap() += 1;
         }
-        writer.finish().await.with_context(context)?;
-        Ok(result)
+        match writer.finish().await.with_context(context) {
+            Ok(v) => Ok(RowsAffected {
+                rows_affected: Some(v),
+                last_affected_id: None,
+            }),
+            Err(e) => {
+                log::error!("{e:#}");
+                return Err(e);
+            }
+        }
     }
 }
 

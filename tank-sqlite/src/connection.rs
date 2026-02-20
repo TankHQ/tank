@@ -122,13 +122,9 @@ impl SQLiteConnection {
             loop {
                 let (statement, tail) = {
                     let mut statement = SQLitePrepared::new(CBox::new(ptr::null_mut(), |p| {
-                        let db = sqlite3_db_handle(p);
                         let rc = sqlite3_finalize(p);
                         if rc != SQLITE_OK {
-                            let error =
-                                Error::msg(error_message_from_ptr(&sqlite3_errmsg(db)).to_string())
-                                    .context("While finalizing a dynamic statement");
-                            log::error!("{error:#}");
+                            return;
                         }
                     }));
                     let mut sql_tail = ptr::null();

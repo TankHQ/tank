@@ -264,7 +264,6 @@ pub trait Entity {
                 Ok(_) => Ok(()),
                 Err(e) => {
                     let e = e.context(context);
-                    log::error!("{e:#}");
                     Err(e)
                 }
             }
