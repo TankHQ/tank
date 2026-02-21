@@ -7,6 +7,7 @@ mod tests {
         Decimal,
         prelude::{FromPrimitive, Zero},
     };
+    use serde_json::Number;
     use std::{
         borrow::Cow,
         collections::{LinkedList, VecDeque},
@@ -67,9 +68,43 @@ mod tests {
         assert_eq!(i8::try_from_value(99_u8.as_value()).unwrap(), 99);
         assert_eq!(i8::try_from_value((-128_i64).as_value()).unwrap(), -128);
         assert_eq!(i8::try_from_value(12_i64.as_value()).unwrap(), 12);
+        assert_eq!(i8::try_from_value(127_i32.as_value()).unwrap(), 127);
         assert_eq!(i8::try_from_value(127_i64.as_value()).unwrap(), 127);
+        assert_eq!(i8::try_from_value(127_i128.as_value()).unwrap(), 127);
+        assert_eq!(i8::try_from_value(127.0.as_value()).unwrap(), 127);
+        assert_eq!(i8::try_from_value("127".as_value()).unwrap(), 127);
+        assert_eq!(
+            i8::try_from_value(Value::Unknown(Some("127".into()))).unwrap(),
+            127
+        );
+        assert_eq!(
+            i8::try_from_value(serde_json::Value::Number(127_i32.into()).as_value()).unwrap(),
+            127
+        );
+        assert!(i8::try_from_value(128_i32.as_value()).is_err());
         assert!(i8::try_from_value(128_i64.as_value()).is_err());
+        assert!(i8::try_from_value(128_i128.as_value()).is_err());
+        assert!(i8::try_from_value(127.1.as_value()).is_err());
+        assert!(i8::try_from_value(127.1.as_value()).is_err());
+        assert!(i8::try_from_value("128".as_value()).is_err());
+        assert!(
+            i8::try_from_value(
+                serde_json::Value::Number(Number::from_f64(127.1).unwrap()).as_value()
+            )
+            .is_err()
+        );
+        assert!(
+            i8::try_from_value(
+                serde_json::Value::Number(Number::from_f64(128.0).unwrap()).as_value()
+            )
+            .is_err()
+        );
         assert!(i8::try_from_value(256_i64.as_value()).is_err());
+        assert_eq!(i8::try_from_value((-128_i32).as_value()).unwrap(), -128);
+        assert_eq!(i8::try_from_value((-128_i64).as_value()).unwrap(), -128);
+        assert_eq!(i8::try_from_value((-128_i128).as_value()).unwrap(), -128);
+        assert_eq!(i8::try_from_value((-128.0).as_value()).unwrap(), -128);
+        assert_eq!(i8::try_from_value("-128".as_value()).unwrap(), -128);
         assert_eq!(i8::parse("127").expect("Could not parse i8"), 127);
         assert_eq!(i8::parse("-128").expect("Could not parse i8"), -128);
         assert!(i8::parse("128").is_err());
@@ -91,6 +126,31 @@ mod tests {
         assert_eq!(i16::try_from_value(29_i8.as_value()).unwrap(), 29);
         assert_eq!(i16::try_from_value(100_u8.as_value()).unwrap(), 100);
         assert_eq!(i16::try_from_value(5000_u16.as_value()).unwrap(), 5000);
+        assert_eq!(i16::try_from_value(32767_i32.as_value()).unwrap(), 32767);
+        assert_eq!(i16::try_from_value(32767_i64.as_value()).unwrap(), 32767);
+        assert_eq!(i16::try_from_value(32767_i128.as_value()).unwrap(), 32767);
+        assert_eq!(i16::try_from_value("32767".as_value()).unwrap(), 32767);
+        assert!(i16::try_from_value(32768_i32.as_value()).is_err());
+        assert!(i16::try_from_value(32768_i64.as_value()).is_err());
+        assert!(i16::try_from_value(32768_i128.as_value()).is_err());
+        assert!(i16::try_from_value("32768".as_value()).is_err());
+        assert_eq!(
+            i16::try_from_value((-32768_i32).as_value()).unwrap(),
+            -32768
+        );
+        assert_eq!(
+            i16::try_from_value((-32768_i64).as_value()).unwrap(),
+            -32768
+        );
+        assert_eq!(
+            i16::try_from_value((-32768_i128).as_value()).unwrap(),
+            -32768
+        );
+        assert!(i16::try_from_value((-32769_i32).as_value()).is_err());
+        assert!(i16::try_from_value((-32769_i64).as_value()).is_err());
+        assert!(i16::try_from_value((-32769_i128).as_value()).is_err());
+        assert!(i16::try_from_value("-32769".as_value()).is_err());
+        assert_eq!(i16::try_from_value("-32768".as_value()).unwrap(), -32768);
         assert!(i16::parse("hello").is_err());
         assert_eq!(i16::parse("32767").expect("Could not parse i16"), 32767);
         assert_eq!(i16::parse("-32768").expect("Could not parse i16"), -32768);
@@ -305,12 +365,16 @@ mod tests {
         assert_eq!(u128::try_from_value((11_u8).as_value()).unwrap(), 11);
         assert_eq!(u128::try_from_value((222_u16).as_value()).unwrap(), 222);
         assert_eq!(
-            u128::try_from_value((333_333_u32).as_value()).unwrap(),
+            u128::try_from_value(333_333_u32.as_value()).unwrap(),
             333_333
         );
         assert_eq!(
-            u128::try_from_value((444_444_444_444_u64).as_value()).unwrap(),
+            u128::try_from_value(444_444_444_444_u64.as_value()).unwrap(),
             444_444_444_444
+        );
+        assert_eq!(
+            u128::try_from_value(1771684556600_i64.as_value()).unwrap(),
+            1771684556600,
         );
         let u128_max = "340282366920938463463374607431768211455";
         assert_eq!(

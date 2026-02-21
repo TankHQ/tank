@@ -12,13 +12,18 @@ mod tests {
         }
 
         let column = &Entity::columns()[0];
+        assert_eq!(column.name(), "solo_column");
         assert_eq!(column.table(), "my_table");
         assert_eq!(column.schema(), "the_schema");
-        assert_eq!(column.name(), "solo_column");
 
         let col_ref: &ColumnRef = column.into();
+        assert_eq!(col_ref.name, "solo_column");
         assert_eq!(col_ref.table, "my_table");
         assert_eq!(col_ref.schema, "the_schema");
-        assert_eq!(col_ref.name, "solo_column");
+
+        let my_column = ColumnRef::new("my_column".into());
+        assert_eq!(my_column.name, "my_column");
+        assert_eq!(my_column.table, "");
+        assert_eq!(my_column.schema, "");
     }
 }
