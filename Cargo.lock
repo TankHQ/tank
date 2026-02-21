@@ -980,7 +980,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2762,7 +2762,7 @@ dependencies = [
  "once_cell",
  "socket2 0.5.10",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3101,7 +3101,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3632,7 +3632,7 @@ checksum = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"
 
 [[package]]
 name = "tank"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "indoc",
  "rust_decimal",
@@ -3645,7 +3645,7 @@ dependencies = [
 
 [[package]]
 name = "tank-core"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -3669,7 +3669,7 @@ dependencies = [
 
 [[package]]
 name = "tank-duckdb"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "async-stream",
  "flume",
@@ -3686,7 +3686,7 @@ dependencies = [
 
 [[package]]
 name = "tank-macros"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -3697,7 +3697,7 @@ dependencies = [
 
 [[package]]
 name = "tank-mongodb"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "async-stream",
  "log",
@@ -3717,7 +3717,7 @@ dependencies = [
 
 [[package]]
 name = "tank-mysql"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "async-stream",
  "log",
@@ -3735,7 +3735,7 @@ dependencies = [
 
 [[package]]
 name = "tank-postgres"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "async-stream",
  "byteorder",
@@ -3761,7 +3761,7 @@ dependencies = [
 
 [[package]]
 name = "tank-scylladb"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "async-stream",
  "log",
@@ -3780,7 +3780,7 @@ dependencies = [
 
 [[package]]
 name = "tank-sqlite"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "async-stream",
  "flume",
@@ -3797,7 +3797,7 @@ dependencies = [
 
 [[package]]
 name = "tank-tests"
-version = "0.19.0"
+version = "0.20.0"
 dependencies = [
  "chrono",
  "env_logger",
@@ -3836,7 +3836,7 @@ dependencies = [
  "getrandom 0.4.1",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
