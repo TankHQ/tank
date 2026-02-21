@@ -180,4 +180,127 @@ async fn data() -> Result<()> {
 }
 ```
 
+## Examples
+
+### Books
+```rust
+#[derive(Entity, Clone, PartialEq, Debug)]
+#[tank(schema = "testing", name = "authors")]
+pub struct Author {
+    #[tank(primary_key, name = "author_id")]
+    pub id: Passive<Uuid>,
+    pub name: String,
+    ...
+}
+#[derive(Entity, Clone, PartialEq, Debug)]
+#[tank(schema = "testing", name = "books", primary_key = (Self::title, Self::author))]
+pub struct Book {
+    #[tank(column_type = (mysql = "VARCHAR(255)"))]
+    pub title: String,
+    #[tank(references = Author::id)]
+    pub author: Uuid,
+    ...
+}
+#[derive(Entity, PartialEq, Debug)]
+struct BookAuthorResult {
+    #[tank(name = "title")]
+    book: String,
+    #[tank(name = "name")]
+    author: String,
+}
+let result = executor
+    .fetch(
+        QueryBuilder::new()
+            .select(cols!(B.title, A.name))
+            .from(join!(Book B JOIN Author A ON B.author == A.author_id))
+            .where_expr(expr!(B.year < 2000))
+            .order_by(cols!(B.title DESC))
+            .build(&executor.driver()),
+    )
+    .map_ok(BookAuthorResult::from_row)
+    .map(Result::flatten)
+    .try_collect::<Vec<_>>()
+    .await
+    .expect("Failed to query books and authors joined");
+assert_eq!(
+    result,
+    [
+        BookAuthorResult{
+            book: "The Hobbit".into(),
+            author: "J.R.R. Tolkien".into()
+        },
+        BookAuthorResult{
+            book: "Harry Potter and the Philosopher's Stone".into(),
+            author: "J.K. Rowling".into(),
+        },
+    ]
+);
+```
+
+### Radio Logs
+```rust
+#[derive(Entity)]
+#[tank(schema = "operations", name = "radio_operator")]
+pub struct Operator {
+    #[tank(primary_key)]
+    pub id: Uuid,
+    pub callsign: String,
+    #[tank(name = "rank")]
+    pub service_rank: String,
+    #[tank(name = "enlistment_date")]
+    pub enlisted: Date,
+    pub is_certified: bool,
+}
+#[derive(Entity)]
+#[tank(schema = "operations")]
+pub struct RadioLog {
+    #[tank(primary_key)]
+    pub id: Uuid,
+    #[tank(references = Operator::id)]
+    pub operator: Uuid,
+    pub message: String,
+    pub unit_callsign: String,
+    #[tank(name = "tx_time")]
+    pub transmission_time: OffsetDateTime,
+    #[tank(name = "rssi")]
+    pub signal_strength: i8,
+}
+let operator = Operator {
+    id: Uuid::parse_str("21c90df5-00db-4062-9f5a-bcfa2e759e78").unwrap(),
+    callsign: "SteelHammer".into(),
+    service_rank: "Major".into(),
+    enlisted: date!(2015 - 06 - 20),
+    is_certified: true,
+};
+Operator::insert_one(executor, &operator).await?;
+let op_id = operator.id;
+let logs: Vec<RadioLog> = (0..5)
+    .map(|i| RadioLog {
+        id: Uuid::new_v4(),
+        operator: op_id,
+        message: format!("Ping #{i}"),
+        unit_callsign: "Alpha-1".into(),
+        transmission_time: OffsetDateTime::now_utc(),
+        signal_strength: 42,
+    })
+    .collect();
+RadioLog::insert_many(executor, &logs).await?;
+if let Some(radio_log) = RadioLog::find_one(
+    executor,
+    expr!(RadioLog::unit_callsign == "Alpha-%" as LIKE),
+)
+.await?
+{
+    log::debug!("Found radio log: {:?}", radio_log.id);
+}
+let mut query =
+    RadioLog::prepare_find(executor, expr!(RadioLog::signal_strength > ?), None).await?;
+query.bind(40)?;
+let _messages: Vec<_> = executor
+    .fetch(query)
+    .map_ok(|row| row.values[0].clone())
+    .try_collect()
+    .await?;
+```
+
 *Rustaceans don't hide behind ORMs, they drive Tanks.*

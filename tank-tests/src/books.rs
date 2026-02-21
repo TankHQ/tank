@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
-#[derive(Entity, Debug, Clone, PartialEq)]
+#[derive(Entity, Clone, PartialEq, Debug)]
 #[tank(schema = "testing", name = "authors")]
 pub struct Author {
     #[tank(primary_key, name = "author_id")]
@@ -19,7 +19,7 @@ pub struct Author {
     pub books_published: Option<u16>,
 }
 
-#[derive(Entity, Debug, Clone, PartialEq)]
+#[derive(Entity, Clone, PartialEq, Debug)]
 #[tank(schema = "testing", name = "books", primary_key = (Self::title, Self::author))]
 pub struct Book {
     #[cfg(not(feature = "disable-arrays"))]
@@ -184,171 +184,164 @@ pub async fn books<E: Executor>(executor: &mut E) {
     );
 
     // Get books before 2000
-    #[cfg(not(feature = "disable-multiple-statements"))]
+    #[derive(Entity, PartialEq, Debug)]
+    struct BookAuthorResult {
+        #[tank(name = "title")]
+        book: String,
+        #[tank(name = "name")]
+        author: String,
+    }
+    let result = executor
+        .fetch(
+            QueryBuilder::new()
+                .select(cols!(B.title, A.name))
+                .from(join!(Book B JOIN Author A ON B.author == A.author_id))
+                .where_expr(expr!(B.year < 2000))
+                .order_by(cols!(B.title DESC))
+                .build(&executor.driver()),
+        )
+        .map_ok(BookAuthorResult::from_row)
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Failed to query books and authors joined");
+    assert_eq!(
+        result,
+        [
+            BookAuthorResult{
+                book: "The Hobbit".into(),
+                author: "J.R.R. Tolkien".into()
+            },
+            BookAuthorResult{
+                book: "Harry Potter and the Philosopher's Stone".into(),
+                author: "J.K. Rowling".into(),
+            },
+        ]
+    );
+
+    // Get all books with their authors
+    let dataset = join!(
+        Book B LEFT JOIN Author A1 ON B.author == A1.author_id
+            LEFT JOIN Author A2 ON B.co_author == A2.author_id
+    );
+    let result = executor.fetch(
+            QueryBuilder::new()
+                .select(cols!(B.title, A1.name as author, A2.name as co_author))
+                .from(dataset)
+                .where_expr(true)
+                .build(&executor.driver())
+        ) 
+        .try_collect::<Vec<RowLabeled>>()
+        .await
+        .expect("Failed to query books and authors joined")
+        .into_iter()
+        .map(|row| {
+            let mut iter = row.values.into_iter();
+            (
+                match iter.next().unwrap() {
+                    Value::Varchar(Some(v)) => v,
+                    Value::Unknown(Some(v)) => v.into(),
+                    v => panic!("Expected 1st value to be non null varchar, found {v:?}"),
+                },
+                match iter.next().unwrap() {
+                    Value::Varchar(Some(v)) => v,
+                    Value::Unknown(Some(v)) => v.into(),
+                    v => panic!("Expected 2nd value to be non null varchar, found {v:?}"),
+                },
+                match iter.next().unwrap() {
+                    Value::Varchar(Some(v)) => Some(v),
+                    Value::Unknown(Some(v)) => Some(v.into()),
+                    Value::Varchar(None) | Value::Null => None,
+                    v => panic!(
+                        "Expected 3rd value to be a Some(Value::Varchar(..)) | Value::Unknown(Some(..)) | Some(Value::Null)), found {v:?}",
+                    ),
+                },
+            )
+        })
+        .collect::<HashSet<_>>();
+    assert_eq!(
+        result,
+        HashSet::from_iter([
+            (
+                "Harry Potter and the Philosopher's Stone".into(),
+                "J.K. Rowling".into(),
+                None
+            ),
+            (
+                "Harry Potter and the Deathly Hallows".into(),
+                "J.K. Rowling".into(),
+                None
+            ),
+            ("The Hobbit".into(), "J.R.R. Tolkien".into(), None),
+            ("Metro 2033".into(), "Dmitrij Gluchovskij".into(), None),
+            (
+                "Hogwarts 2033".into(),
+                "J.K. Rowling".into(),
+                Some("Dmitrij Gluchovskij".into())
+            ),
+        ])
+    );
+
+    // Get book and author pairs
+    #[derive(Debug, Entity, PartialEq, Eq, Hash)]
+    struct Books {
+        pub title: Option<String>,
+        pub author: Option<String>,
+    }
+    let books = executor.fetch(
+            QueryBuilder::new()
+                .select(cols!(Book::title, Author::name as author, Book::year))
+                .from(join!(Book JOIN Author ON Book::author == Author::id))
+                .where_expr(true)
+                .build(&executor.driver())
+        )
+        .and_then(|row| async { Books::from_row(row) })
+        .try_collect::<HashSet<_>>()
+        .await
+        .expect("Could not return the books");
+    assert_eq!(
+        books,
+        HashSet::from_iter([
+            Books {
+                title: Some("Harry Potter and the Philosopher's Stone".into()),
+                author: Some("J.K. Rowling".into())
+            },
+            Books {
+                title: Some("Harry Potter and the Deathly Hallows".into()),
+                author: Some("J.K. Rowling".into())
+            },
+            Books {
+                title: Some("The Hobbit".into()),
+                author: Some("J.R.R. Tolkien".into())
+            },
+            Books {
+                title: Some("Metro 2033".into()),
+                author: Some("Dmitrij Gluchovskij".into())
+            },
+            Books {
+                title: Some("Hogwarts 2033".into()),
+                author: Some("J.K. Rowling".into())
+            },
+        ])
+    );
+
+    #[cfg(not(feature = "disable-references"))]
     {
-        let result = executor
-            .fetch(
-                QueryBuilder::new()
-                    .select(cols!(B.title, A.name))
-                    .from(join!(Book B JOIN Author A ON B.author == A.author_id))
-                    .where_expr(expr!(B.year < 2000))
-                    .build(&executor.driver()),
-            )
-            .try_collect::<Vec<RowLabeled>>()
-            .await
-            .expect("Failed to query books and authors joined")
-            .into_iter()
-            .map(|row| {
-                let mut iter = row.values.into_iter();
-                (
-                    match iter.next().unwrap() {
-                        Value::Varchar(Some(v)) => v,
-                        Value::Unknown(Some(v)) => v.into(),
-                        v => panic!("Expected first value to be non null varchar, found {v:?}"),
-                    },
-                    match iter.next().unwrap() {
-                        Value::Varchar(Some(v)) => v,
-                        Value::Unknown(Some(v)) => v.into(),
-                        v => panic!("Expected second value to be non null varchar, found {v:?}"),
-                    },
-                )
-            })
-            .collect::<HashSet<_>>();
-        assert_eq!(
-            result,
-            HashSet::from_iter([
-                (
-                    "Harry Potter and the Philosopher's Stone".into(),
-                    "J.K. Rowling".into()
-                ),
-                ("The Hobbit".into(), "J.R.R. Tolkien".into()),
-            ])
-        );
-
-        // Get all books with their authors
-        let dataset = join!(
-            Book B LEFT JOIN Author A1 ON B.author == A1.author_id
-                LEFT JOIN Author A2 ON B.co_author == A2.author_id
-        );
-        let result = executor.fetch(
-                QueryBuilder::new()
-                    .select(cols!(B.title, A1.name as author, A2.name as co_author))
-                    .from(dataset)
-                    .where_expr(true)
-                    .build(&executor.driver())
-            ) 
-            .try_collect::<Vec<RowLabeled>>()
-            .await
-            .expect("Failed to query books and authors joined")
-            .into_iter()
-            .map(|row| {
-                let mut iter = row.values.into_iter();
-                (
-                    match iter.next().unwrap() {
-                        Value::Varchar(Some(v)) => v,
-                        Value::Unknown(Some(v)) => v.into(),
-                        v => panic!("Expected 1st value to be non null varchar, found {v:?}"),
-                    },
-                    match iter.next().unwrap() {
-                        Value::Varchar(Some(v)) => v,
-                        Value::Unknown(Some(v)) => v.into(),
-                        v => panic!("Expected 2nd value to be non null varchar, found {v:?}"),
-                    },
-                    match iter.next().unwrap() {
-                        Value::Varchar(Some(v)) => Some(v),
-                        Value::Unknown(Some(v)) => Some(v.into()),
-                        Value::Varchar(None) | Value::Null => None,
-                        v => panic!(
-                            "Expected 3rd value to be a Some(Value::Varchar(..)) | Value::Unknown(Some(..)) | Some(Value::Null)), found {v:?}",
-                        ),
-                    },
-                )
-            })
-            .collect::<HashSet<_>>();
-        assert_eq!(
-            result,
-            HashSet::from_iter([
-                (
-                    "Harry Potter and the Philosopher's Stone".into(),
-                    "J.K. Rowling".into(),
-                    None
-                ),
-                (
-                    "Harry Potter and the Deathly Hallows".into(),
-                    "J.K. Rowling".into(),
-                    None
-                ),
-                ("The Hobbit".into(), "J.R.R. Tolkien".into(), None),
-                ("Metro 2033".into(), "Dmitrij Gluchovskij".into(), None),
-                (
-                    "Hogwarts 2033".into(),
-                    "J.K. Rowling".into(),
-                    Some("Dmitrij Gluchovskij".into())
-                ),
-            ])
-        );
-
-        // Get book and author pairs
-        #[derive(Debug, Entity, PartialEq, Eq, Hash)]
-        struct Books {
-            pub title: Option<String>,
-            pub author: Option<String>,
-        }
-        let books = executor.fetch(
-                QueryBuilder::new()
-                    .select(cols!(Book::title, Author::name as author, Book::year))
-                    .from(join!(Book JOIN Author ON Book::author == Author::id))
-                    .where_expr(true)
-                    .build(&executor.driver())
-            )
-            .and_then(|row| async { Books::from_row(row) })
-            .try_collect::<HashSet<_>>()
-            .await
-            .expect("Could not return the books");
-        assert_eq!(
-            books,
-            HashSet::from_iter([
-                Books {
-                    title: Some("Harry Potter and the Philosopher's Stone".into()),
-                    author: Some("J.K. Rowling".into())
-                },
-                Books {
-                    title: Some("Harry Potter and the Deathly Hallows".into()),
-                    author: Some("J.K. Rowling".into())
-                },
-                Books {
-                    title: Some("The Hobbit".into()),
-                    author: Some("J.R.R. Tolkien".into())
-                },
-                Books {
-                    title: Some("Metro 2033".into()),
-                    author: Some("Dmitrij Gluchovskij".into())
-                },
-                Books {
-                    title: Some("Hogwarts 2033".into()),
-                    author: Some("J.K. Rowling".into())
-                },
-            ])
-        );
-
-        #[cfg(not(feature = "disable-references"))]
-        {
-            // Insert book violating referential integrity
-            use crate::silent_logs;
-            let book = Book {
-                #[cfg(not(feature = "disable-arrays"))]
-                isbn: [9, 7, 8, 1, 7, 3, 3, 5, 6, 1, 0, 8, 0],
-                title: "My book".into(),
-                author: Uuid::parse_str("c18c04b4-1aae-48a3-9814-9b70f7a38315").unwrap(),
-                co_author: None,
-                year: 2025,
-            };
-            silent_logs! {
-                assert!(
-                    book.save(executor).await.is_err(),
-                    "Must fail to save book violating referential integrity"
-                );
-            }
+        // Insert book violating referential integrity
+        use crate::silent_logs;
+        let book = Book {
+            #[cfg(not(feature = "disable-arrays"))]
+            isbn: [9, 7, 8, 1, 7, 3, 3, 5, 6, 1, 0, 8, 0],
+            title: "My book".into(),
+            author: Uuid::parse_str("c18c04b4-1aae-48a3-9814-9b70f7a38315").unwrap(),
+            co_author: None,
+            year: 2025,
+        };
+        silent_logs! {
+            assert!(
+                book.save(executor).await.is_err(),
+                "Must fail to save book violating referential integrity"
+            );
         }
     }
 

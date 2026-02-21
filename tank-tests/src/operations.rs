@@ -72,8 +72,11 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
     RadioLog::insert_many(executor, &logs).await?;
 
     // Find
-    if let Some(radio_log) =
-        RadioLog::find_one(executor, expr!(RadioLog::unit_callsign == "Alpha-1")).await?
+    if let Some(radio_log) = RadioLog::find_one(
+        executor,
+        expr!(RadioLog::unit_callsign == "Alpha-%" as LIKE),
+    )
+    .await?
     {
         log::debug!("Found radio log: {:?}", radio_log.id);
     }
