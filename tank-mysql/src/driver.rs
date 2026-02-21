@@ -2,7 +2,7 @@ use crate::{MySQLConnection, MySQLPrepared, MySQLSqlWriter, MySQLTransaction};
 use tank_core::Driver;
 
 /// MySQL/MariaDB driver.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct MySQLDriver;
 impl MySQLDriver {
     pub const fn new() -> Self {

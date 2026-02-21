@@ -6,20 +6,20 @@ use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
-#[derive(Debug, Entity, PartialEq)]
+#[derive(Entity, PartialEq, Debug)]
 struct One {
     a1: u32,
     string: String,
     c1: u64,
 }
 
-#[derive(Debug, Entity, PartialEq)]
+#[derive(Entity, PartialEq, Debug)]
 struct Two {
     a2: u32,
     string: String,
 }
 
-#[derive(Debug, Entity, PartialEq)]
+#[derive(Entity, PartialEq, Debug)]
 struct Three {
     string: String,
 }

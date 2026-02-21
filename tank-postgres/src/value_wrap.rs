@@ -9,7 +9,7 @@ use rust_decimal::{Decimal, prelude::FromPrimitive};
 use std::{borrow::Cow, error::Error};
 use tank_core::Value;
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, Value>);
 
 impl<'a> ValueWrap<'a> {

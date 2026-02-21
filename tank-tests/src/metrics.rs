@@ -424,7 +424,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
 
     #[cfg(not(feature = "disable-groups"))]
     {
-        #[derive(Debug, Entity, PartialEq)]
+        #[derive(Entity, PartialEq, Debug)]
         struct AverageMetrics {
             name: String,
             country: String,
@@ -537,7 +537,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
 
     #[cfg(not(feature = "disable-groups"))]
     {
-        #[derive(Debug, Entity, PartialEq)]
+        #[derive(Entity, PartialEq, Debug)]
         struct CountryMaxIncome {
             country: String,
             max_income: f64,
@@ -592,7 +592,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
 
     #[cfg(not(feature = "disable-groups"))]
     {
-        #[derive(Debug, Entity, PartialEq)]
+        #[derive(Entity, PartialEq, Debug)]
         struct MetricGlobalStats {
             name: String,
             min_val: f64,

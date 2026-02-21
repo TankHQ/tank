@@ -31,7 +31,7 @@ pub enum Fragment {
     SqlSelectWhere,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Context {
     pub counter: u32,
     pub fragment: Fragment,

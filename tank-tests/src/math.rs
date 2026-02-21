@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
-#[derive(Debug, Default, Entity, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Entity, PartialEq, Eq, PartialOrd, Ord, Debug)]
 struct MathTable {
     #[tank(primary_key)]
     id: u64,

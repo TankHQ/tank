@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
-#[derive(Debug, Entity, PartialEq)]
+#[derive(Entity, PartialEq, Debug)]
 pub struct SimpleFields {
     #[tank(primary_key)]
     alpha: u8,

@@ -15,7 +15,7 @@ mod first_schema {
     use std::sync::Arc;
     use tank::Entity;
 
-    #[derive(Debug, Entity, PartialEq)]
+    #[derive(Entity, PartialEq, Debug)]
     #[tank(schema = "first_schema")]
     pub struct FirstTable {
         #[tank(primary_key)]
@@ -24,7 +24,7 @@ mod first_schema {
         pub second_col: Option<u128>,
     }
 
-    #[derive(Debug, Entity, PartialEq)]
+    #[derive(Entity, PartialEq, Debug)]
     #[tank(schema = "first_schema")]
     pub struct SecondTable {
         #[tank(primary_key)]
@@ -37,7 +37,7 @@ mod second_schema {
     use std::sync::Arc;
     use tank::Entity;
 
-    #[derive(Debug, Entity, PartialEq)]
+    #[derive(Entity, PartialEq, Debug)]
     #[tank(schema = "second_schema")]
     pub struct FirstTable {
         #[tank(primary_key)]
@@ -46,7 +46,7 @@ mod second_schema {
         pub second_col: Option<u128>,
     }
 
-    #[derive(Debug, Entity, PartialEq)]
+    #[derive(Entity, PartialEq, Debug)]
     #[tank(schema = "second_schema")]
     pub struct SecondTable {
         #[tank(primary_key)]

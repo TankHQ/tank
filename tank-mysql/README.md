@@ -6,7 +6,7 @@
 
 MySQL and MariaDB driver implementation for [Tank](https://crates.io/crates/tank): the Rust data layer.
 
-Implements Tank’s `Driver` and related traits for MySQL, mapping Tank operations and queries into direct MySQL commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. You still need it to define entities, manage schemas, and build queries.
+Implements Tank’s `Driver` and related traits for MySQL and MariaDB, mapping Tank operations and queries into direct MySQL commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. You still need it to define entities, manage schemas, and build queries.
 
 📘 https://tankhq.github.io/tank
 

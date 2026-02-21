@@ -43,7 +43,7 @@ impl ColumnRef {
 }
 
 /// Primary key participation.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PrimaryKeyType {
     /// Full primary key.
     PrimaryKey,

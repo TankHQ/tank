@@ -1,6 +1,6 @@
 [package]
 name = "tank-mysql"
-description = "MySQL driver implementation for Tank: the Rust data layer"
+description = "MySQL and MaridDB driver implementation for Tank: the Rust data layer"
 version.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -9,8 +9,6 @@ repository.workspace = true
 categories.workspace = true
 
 [features]
-# Example: default = ["bundled"]
-# Add backend-specific toggles; keep minimal.
 
 [dependencies]
 async-stream.workspace = true

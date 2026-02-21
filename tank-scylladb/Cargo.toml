@@ -1,6 +1,6 @@
 [package]
 name = "tank-scylladb"
-description = "ScyllaDB driver implementation for Tank: the Rust data layer"
+description = "ScyllaDB and Cassandra driver implementation for Tank: the Rust data layer"
 version.workspace = true
 authors.workspace = true
 license.workspace = true

@@ -283,7 +283,7 @@ pub async fn books<E: Executor>(executor: &mut E) {
     );
 
     // Get book and author pairs
-    #[derive(Debug, Entity, PartialEq, Eq, Hash)]
+    #[derive(Entity, PartialEq, Eq, Hash, Debug)]
     struct Books {
         pub title: Option<String>,
         pub author: Option<String>,

@@ -6,7 +6,7 @@
 
 ScyllaDB and Cassandra driver implementation for [Tank](https://crates.io/crates/tank): the Rust data layer.
 
-Implements Tank’s `Driver` and related traits for ScyllaDB, mapping Tank operations and queries into direct ScyllaDB commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. You still need it to define entities, manage schemas, and build queries.
+Implements Tank’s `Driver` and related traits for ScyllaDB and Cassandra, mapping Tank operations and queries into direct ScyllaDB commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. You still need it to define entities, manage schemas, and build queries.
 
 📘 https://tankhq.github.io/tank
 

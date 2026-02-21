@@ -2,7 +2,7 @@ use crate::{MongoDBConnection, MongoDBPrepared, MongoDBSqlWriter, MongoDBTransac
 use tank_core::Driver;
 
 /// MongoDB driver.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug)]
 pub struct MongoDBDriver {}
 
 impl MongoDBDriver {

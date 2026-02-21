@@ -28,7 +28,7 @@ impl<const W: u8, const S: u8> From<FixedDecimal<W, S>> for Decimal {
 ///
 /// - `Set(T)`: Value is actively written.
 /// - `NotSet`: Value is omitted (DB default used).
-#[derive(Debug, Default)]
+#[derive(Default, Debug)]
 pub enum Passive<T: AsValue> {
     /// Active value.
     Set(T),

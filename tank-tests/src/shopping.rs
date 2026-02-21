@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
-#[derive(Default, Debug, Entity)]
+#[derive(Default, Entity, Debug)]
 #[tank(schema = "shopping", primary_key = Self::id)]
 struct Product {
     id: usize,
@@ -26,7 +26,7 @@ struct Product {
     tags: Vec<String>,
 }
 
-#[derive(Debug, Entity)]
+#[derive(Entity, Debug)]
 #[tank(schema = "shopping", primary_key = Self::id)]
 struct User {
     id: Uuid,
@@ -38,7 +38,7 @@ struct User {
     registered: PrimitiveDateTime,
 }
 
-#[derive(Debug, Entity)]
+#[derive(Entity, Debug)]
 #[tank(schema = "shopping", primary_key = (user, product))]
 struct Cart {
     #[tank(references = User::id)]
@@ -276,7 +276,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
 
     #[cfg(not(feature = "disable-joins"))]
     {
-        #[derive(Debug, Entity, PartialEq)]
+        #[derive(Entity, PartialEq, Debug)]
         struct Carts {
             user: String,
             product: String,

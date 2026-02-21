@@ -85,7 +85,7 @@ impl AsValue for AnotherEnum {
     }
 }
 
-#[derive(Debug, Entity, PartialEq)]
+#[derive(Entity, PartialEq, Debug)]
 #[tank(primary_key = (id, another_enum))]
 struct Entry {
     id: i32,
