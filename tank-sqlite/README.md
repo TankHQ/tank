@@ -8,11 +8,11 @@ SQLite driver implementation for [Tank](https://crates.io/crates/tank): the Rust
 
 Implements Tank’s `Driver` and related traits for SQLite, mapping Tank operations and queries into direct SQLite commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. You still need it to define entities, manage schemas, and build queries.
 
-https://tankhq.github.io/tank/
+📘 https://tankhq.github.io/tank
 
-https://github.com/TankHQ/tank ⭐
+⭐ https://github.com/TankHQ/tank
 
-https://crates.io/crates/tank
+📦 https://crates.io/crates/tank
 
 ## Features
 - SQLite C API (FFI) using [libsqlite3-sys](https://crates.io/crates/libsqlite3-sys)

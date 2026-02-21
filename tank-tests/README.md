@@ -8,6 +8,12 @@ Reusable integration test suite for [Tank](https://crates.io/crates/tank): the R
 
 Instead of duplicating many nearly identical tests inside every driver crate, `tank-tests` centralizes them with feature flags so each driver can opt out gracefully skipping unsupported features.
 
+📘 https://tankhq.github.io/tank
+
+⭐ https://github.com/TankHQ/tank
+
+📦 https://crates.io/crates/tank
+
 ## Purpose
 - Ensures consistency: all drivers pass the same baseline CRUD, query, join, multi‑statement and type coverage.
 - Reduces maintenance: add a new scenario once, every driver benefits.

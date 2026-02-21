@@ -8,11 +8,11 @@ Template driver implementation for [Tank](https://crates.io/crates/tank): the Ru
 
 Use this crate as a starting point when implementing a new driver for Tank.
 
-https://tankhq.github.io/tank/
+📘 https://tankhq.github.io/tank
 
-https://github.com/TankHQ/tank ⭐
+⭐ https://github.com/TankHQ/tank
 
-https://crates.io/crates/tank
+📦 https://crates.io/crates/tank
 
 ## Checklist
 1. Rename `tank-yourdb` to `tank-backendname`

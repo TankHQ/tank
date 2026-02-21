@@ -8,11 +8,11 @@ DuckDB driver implementation for [Tank](https://crates.io/crates/tank): the Rust
 
 Implements Tank’s `Driver` and related traits for DuckDB, mapping Tank operations and queries into direct DuckDB commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. you still use it to define entities, manage schemas, and build queries.
 
-https://tankhq.github.io/tank/
+📘 https://tankhq.github.io/tank
 
-https://github.com/TankHQ/tank ⭐
+⭐ https://github.com/TankHQ/tank
 
-https://crates.io/crates/tank
+📦 https://crates.io/crates/tank
 
 ## Features
 - DuckDB C API (FFI) using [libduckdb-sys](https://crates.io/crates/libduckdb-sys)

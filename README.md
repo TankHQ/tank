@@ -7,11 +7,11 @@ Tank (Table Abstraction & Navigation Kit): the Rust data layer.
 
 **One platform. Any terrain.**
 
-https://tankhq.github.io/tank/
+📘 https://tankhq.github.io/tank
 
-https://github.com/TankHQ/tank ⭐
+⭐ https://github.com/TankHQ/tank
 
-https://crates.io/crates/tank
+📦 https://crates.io/crates/tank
 
 ## Mission Briefing
 Tank is a thin, battle-ready layer over your database workflow, designed for the Rust operator who needs to deploy across multiple environments without changing the kit.

@@ -8,8 +8,8 @@ Core logic and traits for [Tank](https://crates.io/crates/tank): the Rust data l
 
 This crate defines the types that form the foundation of the library. It is intended to be used by driver implementors. For application development, depend on `tank` instead.
 
-https://tankhq.github.io/tank/
+📘 https://tankhq.github.io/tank
 
-https://github.com/TankHQ/tank ⭐
+⭐ https://github.com/TankHQ/tank
 
-https://crates.io/crates/tank
+📦 https://crates.io/crates/tank
