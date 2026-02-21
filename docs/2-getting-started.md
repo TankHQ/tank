@@ -3,7 +3,7 @@
 
 What follows is just a visit to the shooting range, not the full campaign. This minimal example shows Tank in action: connecting, defining a unit, and executing basic maneuvers. Just enough to get mud on your boots and feel the recoil.
 
-Plain brief: install Tank and a driver, define an entity, create the table, insert a few rows, then query them. For full tactical exercises including transactions, complex queries, and multi-driver deployments, proceed to the [*Field Manual Section 3* - Supply Lines](3-connection.md).
+Mission brief: install Tank and a driver, define an entity, create the table, insert a few rows, then fire a query. For full tactical exercises including transactions, complex queries, and multi-driver deployments, proceed to the [*Field Manual Section 3* - Supply Lines](3-connection.md).
 1) Arm your cargo
 ```sh
 cargo add tank
