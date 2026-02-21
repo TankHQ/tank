@@ -12,6 +12,7 @@ categories.workspace = true
 async-stream = { workspace = true }
 log.workspace = true
 mongodb = "3"
+regex.workspace = true
 serde_json = { workspace = true }
 serde.workspace = true
 tank-core.workspace = true

@@ -58,19 +58,19 @@ pub async fn conditions<E: Executor>(executor: &mut E) {
         .map_err(|e| panic!("{e:#}"))
         .count()
         .await;
-    assert_eq!(count, 3, "Should find 3 entries where name IS NOT NULL");
+    assert_eq!(count, 3, "Should find 3 entries where `name IS NOT NULL`");
 
     let count = ConditionEntry::find_many(executor, expr!(name == NULL), None)
         .map_err(|e| panic!("{e:#}"))
         .count()
         .await;
-    assert_eq!(count, 1, "Should find 1 entry where name IS NULL");
+    assert_eq!(count, 1, "Should find 1 entry where `name IS NULL`");
 
     let count = ConditionEntry::find_many(executor, expr!(id == (1, 3, 5) as IN), None)
         .map_err(|e| panic!("{e:#}"))
         .count()
         .await;
-    assert_eq!(count, 2, "Should find 2 entries with ID in (1, 3, 5)");
+    assert_eq!(count, 2, "Should find 2 entries with `id IN (1, 3, 5)`");
 
     let count = ConditionEntry::find_many(executor, expr!(!active), None)
         .map_err(|e| panic!("{e:#}"))
@@ -82,5 +82,12 @@ pub async fn conditions<E: Executor>(executor: &mut E) {
         .map_err(|e| panic!("{e:#}"))
         .count()
         .await;
-    assert_eq!(count, 1, "Should find 1 entry with id > 3 and active");
+    assert_eq!(count, 1, "Should find 1 entry with `id > 3` and active");
+
+    let count =
+        ConditionEntry::find_many(executor, expr!(ConditionEntry::name == "%e" as LIKE), None)
+            .map_err(|e| panic!("{e:#}"))
+            .count()
+            .await;
+    assert_eq!(count, 2, "Should find 2 entry with `name LIKE '%e'`");
 }

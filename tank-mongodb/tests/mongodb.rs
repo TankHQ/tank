@@ -5,7 +5,7 @@ mod tests {
     use super::init::init;
     use std::sync::Mutex;
     use tank_core::Driver;
-    use tank_mongodb::MongoDBDriver;
+    use tank_mongodb::{MongoDBDriver, like_to_regex};
     use tank_tests::{execute_tests, init_logs};
 
     static MUTEX: Mutex<()> = Mutex::new(());
@@ -23,5 +23,16 @@ mod tests {
         let connection = driver.connect(url.into()).await.expect(&error_msg);
         execute_tests(connection).await;
         drop(container);
+    }
+
+    #[test]
+    fn regex_transform() {
+        assert_eq!(like_to_regex("_"), r"^.$");
+        assert_eq!(like_to_regex("%"), r"^.*$");
+        assert_eq!(like_to_regex("AB%"), "^AB.*$");
+        assert_eq!(like_to_regex("A%B"), r"^A.*B$");
+        assert_eq!(like_to_regex("X_Y"), r"^X.Y$");
+        assert_eq!(like_to_regex(r"a\b\c"), r"^a\\b\\c$");
+        assert_eq!(like_to_regex("%[test]%"), r"^.*\[test\].*$");
     }
 }

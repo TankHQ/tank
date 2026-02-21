@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use mongodb::bson::{Bson, doc};
+    use mongodb::bson::{Bson, Regex, doc};
     use std::borrow::Cow;
     use tank::{Entity, QueryBuilder, cols, expr};
     use tank_mongodb::{AggregatePayload, MongoDBDriver, Payload};
@@ -27,7 +27,7 @@ mod tests {
             ))
             .from(MyType::table())
             .where_expr(expr!(
-                MyType::third_column != "empty"
+                (MyType::first_column == "A%" as LIKE || MyType::third_column != "empty")
                     && MyType::second_column > 0
                     && MyType::second_column < 100
             ))
@@ -46,7 +46,19 @@ mod tests {
                 doc! {
                     "$match": {
                         "$and": [
-                            { "third_column": { "$ne": "empty" } },
+                            {
+                                "$or": [
+                                    {
+                                        "first col": {
+                                            "$regex": Bson::RegularExpression(Regex {
+                                                pattern: "^A.*$".into(),
+                                                options: Default::default(),
+                                            })
+                                        }
+                                    },
+                                    { "third_column": { "$ne": "empty" } }
+                                ]
+                            },
                             { "second_column": { "$gt": Bson::Int64(0) } },
                             { "second_column": { "$lt": Bson::Int64(100) } },
                         ]
@@ -117,6 +129,7 @@ mod tests {
                     && AVG(Cart::total_price) >= 50
                     && SUM(Cart::total_price) < 50_000
                     && MAX(ABS(Cart::total_price - 100.0)) > 10
+                    && country != "FR%" as LIKE
             ))
             .limit(Some(1000))
             .build(&DRIVER);
@@ -203,6 +216,19 @@ mod tests {
                             { "AVG(total price)": { "$gte": Bson::Int64(50) } },
                             { "SUM(total price)": { "$lt": Bson::Int64(50000) } },
                             { "MAX(ABS(total price - 100.0))": { "$gt": Bson::Int64(10) } },
+                            {
+                                "$expr": {
+                                    "$not": [{
+                                        "$regexMatch": {
+                                            "input": "$country",
+                                            "regex": Bson::RegularExpression(Regex {
+                                                pattern: "^FR.*$".into(),
+                                                options: Default::default(),
+                                            })
+                                        }
+                                    }]
+                                }
+                            },
                         ]
                     }
                 },

@@ -169,3 +169,27 @@ pub fn bson_is_empty(bson: &Bson) -> bool {
         _ => false,
     }
 }
+
+pub fn like_to_regex(like_pattern: &str) -> String {
+    let mut regex = String::with_capacity(like_pattern.len() * 2 + 2);
+    regex.push('^');
+    let mut literal_start = 0;
+    for (i, ch) in like_pattern.char_indices() {
+        if ch == '%' {
+            if i > literal_start {
+                regex.push_str(&regex::escape(&like_pattern[literal_start..i]));
+            }
+            regex.push_str(".*");
+            literal_start = i + 1;
+        } else if ch == '_' {
+            if i > literal_start {
+                regex.push_str(&regex::escape(&like_pattern[literal_start..i]));
+            }
+            regex.push('.');
+            literal_start = i + 1;
+        }
+    }
+    regex.push_str(&regex::escape(&like_pattern[literal_start..]));
+    regex.push('$');
+    regex
+}

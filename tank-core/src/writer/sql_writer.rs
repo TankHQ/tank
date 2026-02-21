@@ -336,7 +336,6 @@ pub trait SqlWriter: Send {
     }
 
     /// Write date literal.
-    ///
     /// - `timestamp`: the date is part of a timestamp literal.
     fn write_value_date(
         &self,
@@ -354,7 +353,6 @@ pub trait SqlWriter: Send {
     }
 
     /// Write time literal.
-    ///
     /// - `timestamp`: the time is part of a timestamp literal.
     fn write_value_time(
         &self,

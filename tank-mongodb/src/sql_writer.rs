@@ -2,11 +2,11 @@ use crate::{
     AggregatePayload, BatchPayload, CreateCollectionPayload, CreateDatabasePayload, DeletePayload,
     DropCollectionPayload, DropDatabasePayload, FieldType, FindManyPayload, FindOnePayload,
     InsertManyPayload, InsertOnePayload, IsField, MongoDBDriver, MongoDBPrepared, NegateNumber,
-    Payload, RowWrap, UpsertPayload, WriteMatchExpression, value_to_bson,
+    Payload, RowWrap, UpsertPayload, WriteMatchExpression, like_to_regex, value_to_bson,
 };
 use mongodb::{
     Namespace,
-    bson::{self, Binary, Bson, Document, doc, spec::BinarySubtype},
+    bson::{self, Binary, Bson, Document, Regex, doc, spec::BinarySubtype},
     options::{
         AggregateOptions, CreateCollectionOptions, DeleteOptions, FindOneOptions, FindOptions,
         InsertManyOptions, InsertOneOptions, UpdateModifications, UpdateOptions,
@@ -97,8 +97,8 @@ impl MongoDBSqlWriter {
             BinaryOpType::IsNot => "$ne",
             BinaryOpType::Like => "",
             BinaryOpType::NotLike => "",
-            BinaryOpType::Regexp => "$regex",
-            BinaryOpType::NotRegexp => "$regex",
+            BinaryOpType::Regexp => "$regexMatch",
+            BinaryOpType::NotRegexp => "",
             BinaryOpType::Glob => "",
             BinaryOpType::NotGlob => "",
             BinaryOpType::Equal => "$eq",
@@ -483,7 +483,6 @@ impl SqlWriter for MongoDBSqlWriter {
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) {
         match value.op {
-            BinaryOpType::Alias => return value.lhs.write_query(self, context, out),
             BinaryOpType::ShiftLeft => {
                 return BinaryOp {
                     op: BinaryOpType::Multiplication,
@@ -503,6 +502,23 @@ impl SqlWriter for MongoDBSqlWriter {
                 )
                 .write_query(self, context, out);
             }
+            BinaryOpType::NotLike | BinaryOpType::NotRegexp | BinaryOpType::NotGlob => {
+                return UnaryOp {
+                    op: UnaryOpType::Not,
+                    arg: BinaryOp {
+                        op: match value.op {
+                            BinaryOpType::NotLike => BinaryOpType::Like,
+                            BinaryOpType::NotRegexp => BinaryOpType::Regexp,
+                            BinaryOpType::NotGlob => BinaryOpType::Glob,
+                            _ => unreachable!(),
+                        },
+                        lhs: value.lhs,
+                        rhs: value.rhs,
+                    },
+                }
+                .write_query(self, context, out);
+            }
+            BinaryOpType::Alias => return value.lhs.write_query(self, context, out),
             _ => {}
         }
         let Some(document) = out
@@ -529,7 +545,7 @@ impl SqlWriter for MongoDBSqlWriter {
             };
             lhs
         };
-        let rhs = {
+        let mut rhs = {
             let mut rhs = MongoDBSqlWriter::make_prepared();
             value.rhs.write_query(self, context, &mut rhs);
             let Some(rhs) = rhs
@@ -544,8 +560,31 @@ impl SqlWriter for MongoDBSqlWriter {
             };
             rhs
         };
-        let key = Self::expression_binary_op_key(value.op).to_string();
-        document.insert(key, Bson::Array(vec![lhs, rhs]));
+        let mut op = value.op;
+        if value.op == BinaryOpType::Like {
+            let Bson::String(pattern) = rhs else {
+                log::error!(
+                    "MongoDB can handle LIKE operations but only if the pattern is a string literal (to transform it in $regexMatch)"
+                );
+                return;
+            };
+            op = BinaryOpType::Regexp;
+            rhs = Bson::RegularExpression(Regex {
+                pattern: like_to_regex(&pattern).into(),
+                options: Default::default(),
+            });
+        }
+        let key = Self::expression_binary_op_key(op).to_string();
+        document.insert(
+            key,
+            match op {
+                BinaryOpType::Regexp => Bson::Document(doc! {
+                    "input": lhs,
+                    "regex": rhs,
+                }),
+                _ => Bson::Array(vec![lhs, rhs]),
+            },
+        );
     }
 
     fn write_expression_call(

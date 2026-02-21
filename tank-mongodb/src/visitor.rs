@@ -1,5 +1,5 @@
-use crate::{MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter};
-use mongodb::bson::{Bson, Document, doc};
+use crate::{MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter, like_to_regex};
+use mongodb::bson::{Bson, Document, Regex, doc};
 use std::{borrow::Cow, iter, mem, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
@@ -322,6 +322,8 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                     | BinaryOpType::IsNot
                     | BinaryOpType::Equal
                     | BinaryOpType::NotEqual
+                    | BinaryOpType::Like
+                    | BinaryOpType::Regexp
                     | BinaryOpType::Less
                     | BinaryOpType::Greater
                     | BinaryOpType::LessEqual
@@ -398,6 +400,22 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                     };
                     let val_bson = if op == BinaryOpType::Equal {
                         val_bson
+                    } else if op == BinaryOpType::Like || op == BinaryOpType::Regexp {
+                        let mut pattern = val_bson;
+                        if op == BinaryOpType::Like {
+                            pattern = if let Bson::String(p) = pattern {
+                                Bson::RegularExpression(Regex {
+                                    pattern: like_to_regex(&p),
+                                    options: Default::default(),
+                                })
+                            } else {
+                                log::error!(
+                                    "MongoDB can handle LIKE operations but only if the pattern is a string literal (to transform it in $regex)"
+                                );
+                                return false;
+                            };
+                        }
+                        doc! { "$regex": pattern }.into()
                     } else {
                         let op_key = MongoDBSqlWriter::expression_binary_op_key(op).to_string();
                         doc! { op_key: val_bson }.into()
