@@ -3,7 +3,7 @@ mod tests {
     use indoc::indoc;
     use std::borrow::Cow;
     use tank::{
-        DynQuery, AsValue, DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType,
+        AsValue, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType,
         QueryBuilder, SqlWriter, TableRef, Value, expr,
     };
 

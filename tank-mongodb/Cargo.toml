@@ -28,6 +28,7 @@ tank-tests = { path = "../tank-tests", features = [
     "disable-large-integers",
     "disable-large-integers",
     "disable-multiple-statements",
+    "disable-references",
 ] }
 tank.workspace = true
 testcontainers-modules = { version = "0", features = ["mongo"] }

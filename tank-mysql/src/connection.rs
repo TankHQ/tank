@@ -17,7 +17,7 @@ pub type MariaDBConnection = MySQLConnection;
 impl_executor_transaction!(MySQLDriver, MySQLConnection, conn);
 
 impl Connection for MySQLConnection {
-    async fn connect(url: Cow<'static, str>) -> Result<MySQLConnection> {
+    async fn connect(url: Cow<'static, str>) -> Result<Self> {
         let context = format!("While trying to connect to `{}`", truncate_long!(&url));
         let mut url = Self::sanitize_url(url)?;
         let mut take_url_param = |key: &str, env_var: &str, remove: bool| {
