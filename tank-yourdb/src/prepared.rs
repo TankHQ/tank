@@ -1,18 +1,14 @@
 use std::fmt::{self, Display, Formatter};
-use tank_core::{AsValue, Prepared, QueryMetadata, Result};
+use tank_core::{AsValue, Prepared, Result};
 
 #[derive(Debug)]
 pub struct YourDBPrepared {
     pub(crate) index: u64,
-    pub(crate) metadata: QueryMetadata,
 }
 
 impl YourDBPrepared {
     pub(crate) fn new() -> Self {
-        Self {
-            index: 1,
-            metadata: Default::default(),
-        }
+        Self { index: 0 }
     }
 }
 
@@ -30,12 +26,6 @@ impl Prepared for YourDBPrepared {
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
         self.index = index + 1;
         Ok(self)
-    }
-    fn metadata(&self) -> &QueryMetadata {
-        &self.metadata
-    }
-    fn metadata_mut(&mut self) -> &mut QueryMetadata {
-        &mut self.metadata
     }
 }
 
