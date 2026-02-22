@@ -208,7 +208,7 @@ impl Executor for PostgresConnection {
 }
 
 impl Connection for PostgresConnection {
-    async fn connect(url: Cow<'static, str>) -> Result<PostgresConnection> {
+    async fn connect(url: Cow<'static, str>) -> Result<Self> {
         let context = format!("While trying to connect to `{}`", truncate_long!(url));
         let mut url = Self::sanitize_url(url)?;
         let mut take_url_param = |key: &str, env_var: &str, remove: bool| {

@@ -249,7 +249,7 @@ impl Executor for SQLiteConnection {
 }
 
 impl Connection for SQLiteConnection {
-    async fn connect(url: Cow<'static, str>) -> Result<SQLiteConnection> {
+    async fn connect(url: Cow<'static, str>) -> Result<Self> {
         let context = format!("While trying to connect to `{}`", truncate_long!(url));
         let url = Self::sanitize_url(url)?;
         let url = CString::from_str(&url.as_str().replacen("sqlite://", "file:", 1))

@@ -2,15 +2,16 @@
 members = [
     ".",
     "tank-core",
-    "tank-duckdb",
     "tank-macros",
+    "tank-duckdb",
+    "tank-mongodb",
     "tank-mysql",
     "tank-postgres",
     "tank-scylladb",
     "tank-sqlite",
     "tank-tests",
-    "tank-mongodb",
-    # "tank-yourdb",
+    #"tank-valkey",
+    #"tank-yourdb",
 ]
 
 [workspace.package]

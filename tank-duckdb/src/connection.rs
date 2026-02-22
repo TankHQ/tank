@@ -526,7 +526,7 @@ impl Executor for DuckDBConnection {
 }
 
 impl Connection for DuckDBConnection {
-    async fn connect(url: Cow<'static, str>) -> Result<DuckDBConnection> {
+    async fn connect(url: Cow<'static, str>) -> Result<Self> {
         let context = format!("While trying to connect to `{}`", truncate_long!(url));
         let url = Self::sanitize_url(url)?;
         let mut config: CBox<duckdb_config> = CBox::new(ptr::null_mut(), |mut p| unsafe {
