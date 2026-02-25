@@ -54,7 +54,7 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
     ) -> impl Stream<Item = Result<tank_core::QueryResult>> + Send {
         let mut query = query.as_query();
         let context = format!(
-            "While running the query (appending a statement to a ScyllaDB/Cassandra batch):\n{:?}",
+            "While running the query (appending a statement to a ScyllaDB / Cassandra batch):\n{:?}",
             query.as_mut()
         );
         match query.as_mut() {

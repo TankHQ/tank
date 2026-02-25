@@ -2,7 +2,7 @@ use crate::{MySQLConnection, MySQLDriver, MySQLQueryable};
 use mysql_async::TxOpts;
 use tank_core::{Result, Transaction, impl_executor_transaction};
 
-/// Transaction adaptor for MySQL/MariaDB.
+/// Transaction adaptor for MySQL / MariaDB.
 ///
 /// Wraps a `mysql_async::Transaction` and implements the `Transaction`/`Executor`
 /// behavior expected by the `tank_core` abstractions.

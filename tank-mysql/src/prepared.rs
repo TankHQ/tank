@@ -8,7 +8,7 @@ use std::{
 use tank_core::{AsValue, Error, Prepared, Result, Value};
 
 #[derive(Debug)]
-/// Prepared statement wrapper for MySQL/MariaDB.
+/// Prepared statement wrapper for MySQL / MariaDB.
 ///
 /// Stores the underlying `mysql_async::Statement`, accumulated parameter `Value`s and the next bind index.
 /// Implements `Prepared` for use by the `Executor` implementations.

@@ -42,7 +42,7 @@ Tank's `#[tank(...)]` attributes configure tables and columns.
 - <Badge type="tip" text="field" /> `references = OtherEntity::column`: Foreign key reference.
 - <Badge type="tip" text="field" /> `on_delete = no_action|restrict|cascade|set_null|set_default`: Action for foreign key when referenced row is deleted.
 - <Badge type="tip" text="field" /> `on_update = no_action|restrict|cascade|set_null|set_default`: Action for foreign key when referenced row is updated.
-- <Badge type="tip" text="field" /> `clustering_key`: Marks field as a clustering key (relevant for ScyllaDB/Cassandra; affects clustering/order in table layout).
+- <Badge type="tip" text="field" /> `clustering_key`: Marks field as a clustering key (relevant for ScyllaDB / Cassandra; affects clustering/order in table layout).
 - <Badge type="tip" text="field" /> `column_type = (postgres = "TEXT", mysql = "VARCHAR(128)")`: Override column type in DDL (support depends on the driver).
 ### Examples
 ```rust

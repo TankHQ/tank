@@ -126,6 +126,7 @@ impl Executor for MongoDBConnection {
                     )))?;
                     return;
                 }
+
                 Payload::FindOne(FindOnePayload {
                     table,
                     filter: Bson::Document(filter),
@@ -153,6 +154,7 @@ impl Executor for MongoDBConnection {
                         }
                     }
                 }
+
                 Payload::FindMany(FindManyPayload {
                     table,
                     filter: Bson::Document(filter),
@@ -181,6 +183,7 @@ impl Executor for MongoDBConnection {
                         });
                     }
                 }
+
                 Payload::FindMany(FindManyPayload {
                     table,
                     filter: Bson::Document(filter),
@@ -206,6 +209,7 @@ impl Executor for MongoDBConnection {
                         });
                     }
                 }
+
                 Payload::InsertOne(InsertOnePayload {
                     table,
                     row,
@@ -230,6 +234,7 @@ impl Executor for MongoDBConnection {
                         last_affected_id,
                     });
                 }
+
                 Payload::InsertMany(InsertManyPayload {
                     table,
                     rows,
@@ -249,6 +254,7 @@ impl Executor for MongoDBConnection {
                         last_affected_id: None,
                     });
                 }
+
                 Payload::Upsert(UpsertPayload {
                     table,
                     filter: Bson::Document(filter),
@@ -280,6 +286,7 @@ impl Executor for MongoDBConnection {
                         last_affected_id,
                     });
                 }
+
                 Payload::Delete(DeletePayload {
                     table,
                     filter: Bson::Document(filter),
@@ -305,6 +312,7 @@ impl Executor for MongoDBConnection {
                         last_affected_id: None,
                     });
                 }
+
                 Payload::CreateCollection(CreateCollectionPayload { table, options, .. }) => {
                     let database = self.database(table);
                     let mut operation = database
@@ -315,6 +323,7 @@ impl Executor for MongoDBConnection {
                     }
                     operation.await.with_context(|| make_context!(payload))?;
                 }
+
                 Payload::DropCollection(DropCollectionPayload { table, .. }) => {
                     let collection = self.collection(table);
                     let mut operation = collection.drop();
@@ -323,9 +332,11 @@ impl Executor for MongoDBConnection {
                     }
                     operation.await.with_context(|| make_context!(payload))?;
                 }
+
                 Payload::CreateDatabase(..) => {
                     // No database creating needed (it is created automatically)
                 }
+
                 Payload::DropDatabase(DropDatabasePayload { table, .. }) => {
                     let database = self.database(table);
                     let mut operation = database.drop();
@@ -334,6 +345,7 @@ impl Executor for MongoDBConnection {
                     }
                     operation.await.with_context(|| make_context!(payload))?;
                 }
+
                 Payload::Aggregate(AggregatePayload {
                     table,
                     pipeline,
@@ -364,6 +376,7 @@ impl Executor for MongoDBConnection {
                         });
                     }
                 }
+
                 Payload::Aggregate(AggregatePayload {
                     table,
                     pipeline,
@@ -391,6 +404,7 @@ impl Executor for MongoDBConnection {
                         });
                     }
                 }
+
                 Payload::Batch(BatchPayload { batch, options, .. }) => {
                     let mut options = options.clone();
                     options.let_vars = params;
@@ -414,6 +428,7 @@ impl Executor for MongoDBConnection {
                         last_affected_id: None,
                     })
                 }
+
                 _ => {
                     Err(Error::msg(format!(
                         "Unexpected payload in the query {payload:?}"

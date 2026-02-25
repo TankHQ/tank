@@ -12,6 +12,7 @@ categories.workspace = true
 anyhow.workspace = true
 async-stream.workspace = true
 chrono = { workspace = true, optional = true }
+convert_case.workspace = true
 futures.workspace = true
 hex = "0"
 indoc.workspace = true

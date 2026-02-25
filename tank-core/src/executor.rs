@@ -1,10 +1,14 @@
 use crate::{
-    AsQuery, Driver, DynQuery, Entity, Query, QueryResult, RawQuery, Result, RowLabeled,
+    AsQuery, Driver, DynQuery, Entity, Error, Query, QueryResult, RawQuery, Result, RowLabeled,
     RowsAffected,
     stream::{Stream, StreamExt, TryStreamExt},
     writer::SqlWriter,
 };
-use std::{future::Future, mem};
+use convert_case::{Case, Casing};
+use std::{
+    future::{self, Future},
+    mem,
+};
 
 /// Async query execution.
 ///
@@ -44,8 +48,13 @@ pub trait Executor: Send + Sized {
     /// Actual implementation for `prepare`.
     fn do_prepare(
         &mut self,
-        sql: String,
-    ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send;
+        _sql: String,
+    ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
+        future::ready(Err(Error::msg(format!(
+            "{} does not support prepare",
+            self.driver().name().to_case(Case::Pascal)
+        ))))
+    }
 
     /// Execute a query, streaming `QueryResult` (rows or affected counts).
     fn run<'s>(
