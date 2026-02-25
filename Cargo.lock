@@ -3599,6 +3599,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "chrono",
+ "convert_case 0.10.0",
  "futures",
  "hex",
  "indoc",

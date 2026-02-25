@@ -1,0 +1,22 @@
+[package]
+name = "tank-valkey"
+description = "Valkey and Valkey driver implementation for Tank: the Rust data layer"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+categories.workspace = true
+
+[dependencies]
+async-stream = { workspace = true }
+log.workspace = true
+redis = { version = "1.0.4", features = ["aio", "tokio-comp"] }
+tank-core.workspace = true
+
+[dev-dependencies]
+rcgen = "0"
+tank-tests = { path = "../tank-tests", features = [] }
+testcontainers-modules = { version = "0", features = ["redis"] }
+tokio.workspace = true
+urlencoding.workspace = true
