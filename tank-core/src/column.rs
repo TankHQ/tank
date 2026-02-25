@@ -4,7 +4,7 @@ use crate::{
 };
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
-use std::{borrow::Cow, collections::BTreeMap};
+use std::{borrow::Cow, collections::BTreeMap, hash::Hash};
 
 /// Trait exposing column definition and reference.
 pub trait ColumnTrait {
@@ -15,7 +15,7 @@ pub trait ColumnTrait {
 }
 
 /// Reference to a column.
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ColumnRef {
     /// Name of the column.
     pub name: Cow<'static, str>,
@@ -185,5 +185,19 @@ impl Expression for ColumnDef {
         out: &mut DynQuery,
     ) -> bool {
         matcher.visit_column(writer, context, out, &self.column_ref)
+    }
+}
+
+impl PartialEq for ColumnDef {
+    fn eq(&self, other: &Self) -> bool {
+        self.column_ref == other.column_ref
+    }
+}
+
+impl Eq for ColumnDef {}
+
+impl Hash for ColumnDef {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.column_ref.hash(state)
     }
 }

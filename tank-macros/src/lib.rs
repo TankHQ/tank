@@ -107,12 +107,18 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
             type PrimaryKey<'a> = (#(&'a #primary_key_types,)*);
 
             fn table() -> &'static ::tank::TableRef {
-                static TABLE: ::tank::TableRef = ::tank::TableRef {
-                    name: ::std::borrow::Cow::Borrowed(#name),
-                    schema: ::std::borrow::Cow::Borrowed(#schema),
-                    alias: ::std::borrow::Cow::Borrowed(""),
-                };
-                &TABLE
+                static RESULT: ::std::sync::LazyLock<Box<::tank::TableRef>> =
+                    ::std::sync::LazyLock::new(||
+                        Box::new(
+                            ::tank::TableRef {
+                                name: ::std::borrow::Cow::Borrowed(#name),
+                                schema: ::std::borrow::Cow::Borrowed(#schema),
+                                alias: ::std::borrow::Cow::Borrowed(""),
+                                columns: #ident::columns(),
+                            }
+                        )
+                    );
+                RESULT.as_ref()
             }
 
             fn columns() -> &'static [::tank::ColumnDef] {

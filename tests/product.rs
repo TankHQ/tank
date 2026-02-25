@@ -46,6 +46,7 @@ mod tests {
                 name: Cow::Borrowed("products"),
                 schema: Cow::Borrowed(""),
                 alias: Cow::Borrowed(""),
+                ..
             }
         ));
         assert_eq!(

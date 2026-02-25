@@ -68,6 +68,7 @@ mod tests {
                 name: Cow::Borrowed("trade_execution"),
                 schema: Cow::Borrowed("trading.company"),
                 alias: Cow::Borrowed(""),
+                ..
             }
         ));
         assert_eq!(

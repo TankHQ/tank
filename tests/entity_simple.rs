@@ -3,7 +3,7 @@ mod tests {
     use indoc::indoc;
     use std::{borrow::Cow, sync::Mutex};
     use tank::{
-        DynQuery, DefaultValueType, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
+        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
         SqlWriter, TableRef, Value, expr,
     };
 
@@ -38,6 +38,7 @@ mod tests {
                 name: Cow::Borrowed("simple_entity"),
                 schema: Cow::Borrowed(""),
                 alias: Cow::Borrowed(""),
+                ..
             }
         ));
 

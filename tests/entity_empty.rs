@@ -18,6 +18,7 @@ mod tests {
                 name: Cow::Borrowed("empty_entity"),
                 schema: Cow::Borrowed("the_schema"),
                 alias: Cow::Borrowed(""),
+                ..
             }
         ));
 

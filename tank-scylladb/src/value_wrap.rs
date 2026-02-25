@@ -330,6 +330,7 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                     schema: definition.keyspace.to_string().into(),
                     name: definition.name.to_string().into(),
                     alias: "".into(),
+                    columns: &[],
                 };
                 let fields = UdtIterator::deserialize(ty, v)?
                     .map(|((name, ty), res)| {

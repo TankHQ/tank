@@ -1,5 +1,5 @@
 use crate::{
-    Dataset, DynQuery, quote_cow,
+    ColumnDef, Dataset, DynQuery, quote_cow,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::TokenStream;
@@ -15,6 +15,8 @@ pub struct TableRef {
     pub schema: Cow<'static, str>,
     /// Alias.
     pub alias: Cow<'static, str>,
+    /// Columns
+    pub columns: &'static [ColumnDef],
 }
 
 impl TableRef {
@@ -24,6 +26,7 @@ impl TableRef {
             name,
             schema: Cow::Borrowed(""),
             alias: Cow::Borrowed(""),
+            columns: &[],
         }
     }
     /// Get the display name.

@@ -59,6 +59,7 @@ mod tests {
                 name: Cow::Borrowed("employee"),
                 schema: Cow::Borrowed("company"),
                 alias: Cow::Borrowed(""),
+                ..
             }
         ));
 

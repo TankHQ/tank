@@ -31,6 +31,7 @@ mod tests {
                 name: Cow::Borrowed("customers"),
                 schema: Cow::Borrowed(""),
                 alias: Cow::Borrowed(""),
+                ..
             }
         ));
 

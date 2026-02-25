@@ -45,6 +45,7 @@ mod tests {
                 name: Cow::Borrowed("a_table"),
                 schema: Cow::Borrowed(""),
                 alias: Cow::Borrowed(""),
+                ..
             }
         ));
 
