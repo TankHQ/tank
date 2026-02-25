@@ -1128,14 +1128,18 @@ pub trait SqlWriter: Send {
         }
         out.push_str("SELECT ");
         let mut context = Context::new(Fragment::SqlSelect, Data::qualified_columns());
-        separated_by(
-            out,
-            columns.clone(),
-            |out, col| {
-                col.write_query(self, &mut context, out);
-            },
-            ", ",
-        );
+        if cols != 0 {
+            separated_by(
+                out,
+                columns.clone(),
+                |out, col| {
+                    col.write_query(self, &mut context, out);
+                },
+                ", ",
+            );
+        } else {
+            out.push('*');
+        }
         out.push_str("\nFROM ");
         from.write_query(
             self,
