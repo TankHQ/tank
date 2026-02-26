@@ -1,24 +1,66 @@
 use redis::Cmd;
-use std::fmt::{self, Debug, Display};
-use tank_core::{AsValue, Error, Prepared, Result, Value};
+use std::{fmt::{self, Debug, Display}, borrow::Cow};
+use tank_core::{AsValue, Error, Prepared, Result, Value, TableRef};
+
+#[derive(Clone, Debug)]
+pub enum Payload {
+    Command(Cmd),
+    Select(Box<SelectPayload>),
+    Empty
+}
+
+#[derive(Clone, Debug)]
+pub struct SelectPayload {
+    pub table: TableRef,
+    pub columns: Vec<ProjectedColumn>,
+    pub key_prefix: String,
+    pub key_suffix: Option<String>,
+    pub exact_key: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct ProjectedColumn {
+    pub name: String,
+    pub is_vector: bool,
+    pub original_name: String,
+}
 
 #[derive(Debug)]
 pub struct ValkeyPrepared {
-    command: Cmd,
+    pub(crate) payload: Payload,
     pub(crate) params: Vec<Value>,
     pub(crate) index: u64,
 }
 
 impl ValkeyPrepared {
-    pub fn new(command: Cmd) -> Self {
+    pub fn new() -> Self {
         Self {
-            command,
+            payload: Payload::Empty,
             params: Default::default(),
             index: 0,
         }
     }
-    pub fn get_command(&self) -> &Cmd {
-        &self.command
+
+    pub fn with_command(command: Cmd) -> Self {
+        Self {
+            payload: Payload::Command(command),
+            params: Default::default(),
+            index: 0,
+        }
+    }
+
+    pub fn with_select(select: SelectPayload) -> Self {
+        Self {
+            payload: Payload::Select(Box::new(select)),
+            params: Default::default(),
+            index: 0,
+        }
+    }
+}
+
+impl Default for ValkeyPrepared {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -48,23 +90,16 @@ impl Prepared for ValkeyPrepared {
         Self: Sized,
     {
         if self.params.len() <= index as _ {
-            self.params.resize_with((index + 1) as _, Default::default);
+            self.params.resize(index as usize + 1, Value::Null);
         }
-        let target = self
-            .params
-            .get_mut(index as usize)
-            .ok_or(Error::msg(format!(
-                "Index {index} it out of bounds for parameters",
-            )))?;
-        *target = value.as_value();
+        self.params[index as usize] = value.as_value();
         self.index = index + 1;
         Ok(self)
     }
 }
 
 impl Display for ValkeyPrepared {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("ValkeyPrepared: ")?;
-        self.command.fmt(f)
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.payload)
     }
 }
