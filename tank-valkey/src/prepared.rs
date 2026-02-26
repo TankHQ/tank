@@ -12,17 +12,10 @@ pub enum Payload {
 #[derive(Clone, Debug)]
 pub struct SelectPayload {
     pub table: TableRef,
-    pub columns: Vec<ProjectedColumn>,
+    pub columns: Vec<String>,
     pub key_prefix: String,
     pub key_suffix: Option<String>,
     pub exact_key: bool,
-}
-
-#[derive(Clone, Debug)]
-pub struct ProjectedColumn {
-    pub name: String,
-    pub is_vector: bool,
-    pub original_name: String,
 }
 
 #[derive(Debug)]

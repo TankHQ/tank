@@ -1,4 +1,4 @@
-use crate::prepared::{ProjectedColumn, SelectPayload, ValkeyPrepared, Payload};
+use crate::prepared::{SelectPayload, ValkeyPrepared, Payload};
 use crate::visitor::KeyValueVisitor;
 use std::mem;
 use tank_core::{
@@ -37,21 +37,7 @@ impl SqlWriter for ValkeySqlWriter {
         for column in query.get_select() {
              let mut ctx = Context::default();
              let name = column.as_identifier(&mut ctx);
-             
-             let mut is_vector = false;
-             let mut original_name = name.clone();
-             
-             if let Some(col_def) = table.columns.iter().find(|c| c.name() == name) {
-                 if matches!(col_def.value, Value::List(_, _) | Value::Array(_, _, _) | Value::Map(_, _, _)) {
-                     is_vector = true;
-                 }
-             }
-             
-             columns.push(ProjectedColumn {
-                 name: name.clone(),
-                 is_vector,
-                 original_name,
-             });
+             columns.push(name);
         }
 
         // Extract Primary Keys
@@ -67,7 +53,7 @@ impl SqlWriter for ValkeySqlWriter {
         }
 
         let mut exact_key = true;
-        let mut built_key = format!("{}:{}", table.schema, table.name); 
+        let mut built_key = format!("{}:{}", table.schema, table.name);
 
         // Check if we have all PK parts
         if pk_columns.is_empty() {
@@ -88,7 +74,7 @@ impl SqlWriter for ValkeySqlWriter {
                 }
             }
         }
-        
+
         let select_payload = SelectPayload {
             table,
             columns,
@@ -96,14 +82,14 @@ impl SqlWriter for ValkeySqlWriter {
             key_suffix: None,
             exact_key,
         };
-        
+
         if let Some(prepared) = out.as_prepared::<crate::ValkeyDriver>() {
              prepared.payload = Payload::Select(Box::new(select_payload));
         } else {
              log::error!("ValkeySqlWriter: Output query is not a ValkeyPrepared");
         }
     }
-    
+
     fn write_value(&self, _context: &mut Context, _out: &mut DynQuery, _value: &Value) {}
     fn write_column_ref(&self, _context: &mut Context, _out: &mut DynQuery, _value: &tank_core::column::ColumnRef) {}
     fn write_identifier(&self, _context: &mut Context, _out: &mut DynQuery, _name: &str, _quoted: bool) {}
@@ -121,7 +107,7 @@ fn value_to_key_component(v: &Value) -> String {
         Value::UInt16(Some(i)) => i.to_string(),
         Value::UInt32(Some(i)) => i.to_string(),
         Value::UInt64(Some(i)) => i.to_string(),
-        Value::Float32(Some(f)) => f.to_string(), 
+        Value::Float32(Some(f)) => f.to_string(),
         Value::Float64(Some(f)) => f.to_string(),
         Value::Varchar(Some(s)) => s.to_string(),
         Value::Char(Some(c)) => c.to_string(),
