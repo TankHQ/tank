@@ -47,7 +47,7 @@ Tank exists to implement the best possible design for a ORM written in Rust. A a
 
 ## Why Tank?
 **Intelligence Report**
-A quick recon of the battlefield revealed that while existing heavy weaponry is effective, there was a critical need for a more adaptable, cleaner design capable of true multi-theater dominance. Tank was designed from scratch to address these weaknesses.
+A quick recon of the battlefield revealed that while existing heavy weaponry is effective, there was a critical need for a more adaptable, cleaner design. Tank was designed from scratch to address these weaknesses.
 
 **1. Modular Architecture**
 Some systems rely on hardcoded enums for database support, which limits flexibility. If a backend isn't in the core list, it cannot be used. Tank uses a extensible design pattern. A driver can be implemented for *any* database (SQL or NoSQL) without touching the core library. If it can hold data, Tank can likely target it.
