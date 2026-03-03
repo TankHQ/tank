@@ -142,10 +142,7 @@ impl Executor for MongoDBConnection {
                     }
                     match operation.await {
                         Ok(Some(v)) => {
-                            yield QueryResult::Row(match v.0 {
-                                Cow::Borrowed(v) => v.clone(),
-                                Cow::Owned(v) => v,
-                            })
+                            yield QueryResult::Row(v.0.into_owned())
                         }
                         Ok(None) => {}
                         Err(e) => {
@@ -177,10 +174,7 @@ impl Executor for MongoDBConnection {
                         .transpose()
                         .with_context(|| make_context!(payload))?
                     {
-                        yield QueryResult::Row(match result.0 {
-                            Cow::Borrowed(v) => v.clone(),
-                            Cow::Owned(v) => v,
-                        });
+                        yield QueryResult::Row(result.0.into_owned());
                     }
                 }
 
@@ -203,10 +197,7 @@ impl Executor for MongoDBConnection {
                         .await
                         .with_context(|| make_context!(payload))?
                     {
-                        yield QueryResult::Row(match result.0 {
-                            Cow::Borrowed(v) => v.clone(),
-                            Cow::Owned(v) => v,
-                        });
+                        yield QueryResult::Row(result.0.into_owned());
                     }
                 }
 
@@ -370,10 +361,7 @@ impl Executor for MongoDBConnection {
                     {
                         let row: RowWrap =
                             result.try_into().with_context(|| make_context!(payload))?;
-                        yield QueryResult::Row(match row.0 {
-                            Cow::Borrowed(v) => v.clone(),
-                            Cow::Owned(v) => v,
-                        });
+                        yield QueryResult::Row(row.0.into_owned());
                     }
                 }
 
@@ -398,10 +386,7 @@ impl Executor for MongoDBConnection {
                     {
                         let row: RowWrap =
                             result.try_into().with_context(|| make_context!(payload))?;
-                        yield QueryResult::Row(match row.0 {
-                            Cow::Borrowed(v) => v.clone(),
-                            Cow::Owned(v) => v,
-                        });
+                        yield QueryResult::Row(row.0.into_owned());
                     }
                 }
 

@@ -3,7 +3,8 @@ use mongodb::bson::{Bson, Document, Regex, doc};
 use std::{borrow::Cow, iter, mem, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
-    IsAsterisk, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp, UnaryOpType, Value,
+    IsAsterisk, IsConstant, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp, UnaryOpType,
+    Value,
 };
 
 #[derive(Default, PartialEq, Eq, Debug)]
@@ -116,33 +117,6 @@ impl<'a> ExpressionVisitor for IsField<'a> {
         value: &Ordered<&dyn Expression>,
     ) -> bool {
         value.expression.accept_visitor(self, writer, context, out)
-    }
-}
-
-#[derive(Default, Debug)]
-pub struct IsConstant;
-impl ExpressionVisitor for IsConstant {
-    fn visit_operand(
-        &mut self,
-        writer: &dyn SqlWriter,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &Operand,
-    ) -> bool {
-        match value {
-            Operand::Null
-            | Operand::LitBool(..)
-            | Operand::LitInt(..)
-            | Operand::LitFloat(..)
-            | Operand::LitStr(..)
-            | Operand::Type(..)
-            | Operand::Variable(..)
-            | Operand::Value(..) => true,
-            Operand::LitArray(operands) | Operand::LitTuple(operands) => operands
-                .iter()
-                .all(|v| v.accept_visitor(&mut IsConstant, writer, context, out)),
-            _ => false,
-        }
     }
 }
 

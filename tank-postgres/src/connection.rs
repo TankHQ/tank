@@ -117,7 +117,8 @@ impl Executor for PostgresConnection {
                     for (i, param) in params.iter_mut().enumerate() {
                         *param = ValueWrap(Cow::Owned(
                             mem::take(param)
-                                .take_value()
+                                .0
+                                .into_owned()
                                 .try_as(&postgres_type_to_value(&types[i]))?,
                         ));
                     }
