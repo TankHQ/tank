@@ -185,6 +185,35 @@ impl Value {
             }
         }
     }
+
+    pub fn is_scalar(&self) -> bool {
+        match self {
+            Value::Boolean(..)
+            | Value::Int8(..)
+            | Value::Int16(..)
+            | Value::Int32(..)
+            | Value::Int64(..)
+            | Value::Int128(..)
+            | Value::UInt8(..)
+            | Value::UInt16(..)
+            | Value::UInt32(..)
+            | Value::UInt64(..)
+            | Value::UInt128(..)
+            | Value::Float32(..)
+            | Value::Float64(..)
+            | Value::Decimal(..)
+            | Value::Char(..)
+            | Value::Varchar(..)
+            | Value::Blob(..)
+            | Value::Date(..)
+            | Value::Time(..)
+            | Value::Timestamp(..)
+            | Value::TimestampWithTimezone(..)
+            | Value::Interval(..)
+            | Value::Uuid(..) => true,
+            _ => false,
+        }
+    }
 }
 
 impl PartialEq for Value {

@@ -52,59 +52,6 @@ pub trait ExpressionVisitor {
 }
 
 #[derive(Default, Debug, Copy, Clone)]
-pub struct FindOrder {
-    pub order: Order,
-}
-impl ExpressionVisitor for FindOrder {
-    fn visit_column(
-        &mut self,
-        _writer: &dyn SqlWriter,
-        _context: &mut Context,
-        _out: &mut DynQuery,
-        _value: &ColumnRef,
-    ) -> bool {
-        true
-    }
-    fn visit_operand(
-        &mut self,
-        _writer: &dyn SqlWriter,
-        _context: &mut Context,
-        _out: &mut DynQuery,
-        _value: &Operand,
-    ) -> bool {
-        true
-    }
-    fn visit_unary_op(
-        &mut self,
-        _writer: &dyn SqlWriter,
-        _context: &mut Context,
-        _out: &mut DynQuery,
-        _value: &UnaryOp<&dyn Expression>,
-    ) -> bool {
-        true
-    }
-    fn visit_binary_op(
-        &mut self,
-        _writer: &dyn SqlWriter,
-        _context: &mut Context,
-        _out: &mut DynQuery,
-        _value: &BinaryOp<&dyn Expression, &dyn Expression>,
-    ) -> bool {
-        true
-    }
-    fn visit_ordered(
-        &mut self,
-        _writer: &dyn SqlWriter,
-        _context: &mut Context,
-        _out: &mut DynQuery,
-        value: &Ordered<&dyn Expression>,
-    ) -> bool {
-        self.order = value.order;
-        true
-    }
-}
-
-#[derive(Default, Debug, Copy, Clone)]
 pub struct IsTrue;
 impl ExpressionVisitor for IsTrue {
     fn visit_operand(
@@ -137,6 +84,33 @@ impl ExpressionVisitor for IsFalse {
             Operand::LitBool(false)
             | Operand::Variable(Value::Boolean(Some(false), ..))
             | Operand::Value(Value::Boolean(Some(false), ..)) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct IsConstant;
+impl ExpressionVisitor for IsConstant {
+    fn visit_operand(
+        &mut self,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &Operand,
+    ) -> bool {
+        match value {
+            Operand::Null
+            | Operand::LitBool(..)
+            | Operand::LitInt(..)
+            | Operand::LitFloat(..)
+            | Operand::LitStr(..)
+            | Operand::Type(..)
+            | Operand::Variable(..)
+            | Operand::Value(..) => true,
+            Operand::LitArray(operands) | Operand::LitTuple(operands) => operands
+                .iter()
+                .all(|v| v.accept_visitor(&mut IsConstant, writer, context, out)),
             _ => false,
         }
     }
@@ -224,6 +198,59 @@ impl ExpressionVisitor for IsAlias {
             return false;
         }
         self.name = value.rhs.as_identifier(context);
+        true
+    }
+}
+
+#[derive(Default, Debug, Copy, Clone)]
+pub struct FindOrder {
+    pub order: Order,
+}
+impl ExpressionVisitor for FindOrder {
+    fn visit_column(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        _value: &ColumnRef,
+    ) -> bool {
+        true
+    }
+    fn visit_operand(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        _value: &Operand,
+    ) -> bool {
+        true
+    }
+    fn visit_unary_op(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        _value: &UnaryOp<&dyn Expression>,
+    ) -> bool {
+        true
+    }
+    fn visit_binary_op(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        _value: &BinaryOp<&dyn Expression, &dyn Expression>,
+    ) -> bool {
+        true
+    }
+    fn visit_ordered(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        value: &Ordered<&dyn Expression>,
+    ) -> bool {
+        self.order = value.order;
         true
     }
 }

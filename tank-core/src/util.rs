@@ -1,4 +1,4 @@
-use crate::{AsValue, DynQuery, Value};
+use crate::{AsValue, ColumnDef, DynQuery, TableRef, Value};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
 use rust_decimal::prelude::ToPrimitive;
@@ -314,6 +314,10 @@ pub fn print_timer(out: &mut impl Write, quote: &str, h: i64, m: u8, s: u8, ns: 
         out,
         "{quote}{h:02}:{m:02}:{s:02}.{subsecond:0width$}{quote}",
     );
+}
+
+pub fn column_def(name: &str, table: &TableRef) -> Option<&'static ColumnDef> {
+    table.columns.iter().find(|v| v.name() == name)
 }
 
 #[macro_export]

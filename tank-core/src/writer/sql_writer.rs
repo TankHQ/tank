@@ -1115,20 +1115,19 @@ pub trait SqlWriter: Send {
         Self: Sized,
         Data: Dataset + 'a,
     {
-        let columns = query.get_select();
         let Some(from) = query.get_from() else {
             log::error!("The query does not have the FROM clause");
             return;
         };
-        let limit = query.get_limit();
-        let cols = columns.clone().into_iter().count();
-        out.buffer().reserve(128 + cols * 32);
+        let columns = query.get_select();
+        let columns_count = columns.clone().into_iter().count();
+        out.buffer().reserve(128 + columns_count * 32);
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("SELECT ");
         let mut context = Context::new(Fragment::SqlSelect, Data::qualified_columns());
-        if cols != 0 {
+        if columns_count != 0 {
             separated_by(
                 out,
                 columns.clone(),
@@ -1190,7 +1189,7 @@ pub trait SqlWriter: Send {
                 ", ",
             );
         }
-        if let Some(limit) = limit {
+        if let Some(limit) = query.get_limit() {
             let _ = write!(out, "\nLIMIT {limit}");
         }
         out.push(';');

@@ -17,7 +17,7 @@ impl mysql_async::prelude::FromRow for RowWrap {
             .map(|i| {
                 row.take_opt::<ValueWrap, _>(i)
                     .expect("Unexpected error: the column does not exist")
-                    .map(|v| v.take_value())
+                    .map(|v| v.0.into_owned())
             })
             .collect::<Result<_, _>>()
             .map_err(|_| FromRowError(row))?;

@@ -30,18 +30,15 @@ impl TableRef {
         }
     }
     /// Get the display name.
-    pub fn full_name(&self) -> String {
-        let mut result = String::new();
+    pub fn full_name(&self) -> Cow<'static, str> {
         if !self.alias.is_empty() {
-            result.push_str(&self.alias);
-        } else {
-            if !self.schema.is_empty() {
-                result.push_str(&self.schema);
-                result.push('.');
-            }
-            result.push_str(&self.name);
+            return self.alias.clone();
         }
-        result
+        let mut key = self.name.clone();
+        if !self.schema.is_empty() {
+            key = format!("{}.{}", self.schema, key).into();
+        }
+        key
     }
     /// Set the alias.
     pub fn with_alias(&self, alias: Cow<'static, str>) -> Self {
