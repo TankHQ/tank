@@ -6,7 +6,6 @@ use tank_core::Driver;
 /// DuckDB driver.
 #[derive(Default, Clone, Copy, Debug)]
 pub struct DuckDBDriver {}
-
 impl DuckDBDriver {
     pub const fn new() -> Self {
         Self {}

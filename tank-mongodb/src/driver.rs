@@ -4,7 +4,6 @@ use tank_core::Driver;
 /// MongoDB driver.
 #[derive(Default, Clone, Copy, Debug)]
 pub struct MongoDBDriver {}
-
 impl MongoDBDriver {
     pub const fn new() -> Self {
         Self {}

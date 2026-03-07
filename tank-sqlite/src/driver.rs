@@ -4,7 +4,6 @@ use tank_core::Driver;
 /// SQLite driver.
 #[derive(Default, Debug)]
 pub struct SQLiteDriver {}
-
 impl SQLiteDriver {
     pub const fn new() -> Self {
         Self {}

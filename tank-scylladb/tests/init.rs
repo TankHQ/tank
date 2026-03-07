@@ -132,7 +132,7 @@ pub async fn init_cassandra(ssl: bool) -> (String, Option<ContainerAsync<Generic
     if let Ok(url) = env::var("TANK_CASSANDRA_TEST") {
         return (url, None);
     };
-    let mut image = GenericImage::new("cassandra", "5")
+    let mut image = GenericImage::new("cassandra", "5.0.6")
         .with_startup_timeout(Duration::from_secs(120))
         .with_log_consumer(TestcontainersLogConsumer)
         .with_mapped_port(9042, ContainerPort::Tcp(9042))
