@@ -37,7 +37,7 @@ pub struct PostgresConnection {
 impl Executor for PostgresConnection {
     type Driver = PostgresDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
+    async fn do_prepare(&mut self, sql: String) -> Result<Query<PostgresDriver>> {
         let sql = sql.as_str().trim_end().trim_end_matches(';');
         Ok(
             PostgresPrepared::new(self.client.prepare(&sql).await.map_err(|e| {
@@ -54,7 +54,7 @@ impl Executor for PostgresConnection {
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
+        query: impl AsQuery<PostgresDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
         let context = format!("While running the query:\n{}", query.as_mut());
@@ -94,7 +94,7 @@ impl Executor for PostgresConnection {
 
     fn fetch<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
+        query: impl AsQuery<PostgresDriver> + 's,
     ) -> impl Stream<Item = Result<tank_core::RowLabeled>> + Send {
         let mut query = query.as_query();
         let context = format!("While fetching the query:\n{}", query.as_mut());

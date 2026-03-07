@@ -61,7 +61,7 @@ impl Executor for ScyllaDBConnection {
         false
     }
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
+    async fn do_prepare(&mut self, sql: String) -> Result<Query<ScyllaDBDriver>> {
         let context = format!("While preparing the query:\n{}", truncate_long!(sql));
         let statement = self.session.prepare(sql).await.with_context(|| context)?;
         Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
@@ -69,7 +69,7 @@ impl Executor for ScyllaDBConnection {
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
+        query: impl AsQuery<ScyllaDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
@@ -117,7 +117,7 @@ impl Executor for ScyllaDBConnection {
 
     fn fetch<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
+        query: impl AsQuery<ScyllaDBDriver> + 's,
     ) -> impl Stream<Item = Result<RowLabeled>> + Send {
         let mut query = query.as_query();
         let context = Arc::new(format!("While fetching the query:\n{}", query.as_mut()));

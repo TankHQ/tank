@@ -2,8 +2,8 @@ use crate::{ScyllaDBConnection, ScyllaDBDriver, ScyllaDBPrepared, ValueWrap};
 use scylla::statement::batch::Batch;
 use std::future;
 use tank_core::{
-    AsQuery, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query, RawQuery, Result,
-    RowsAffected, SqlWriter, Transaction,
+    AsQuery, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query, QueryResult, RawQuery,
+    Result, RowsAffected, SqlWriter, Transaction,
     future::Either,
     stream::{self, Stream},
     truncate_long,
@@ -37,7 +37,7 @@ impl ScyllaDBTransaction<'_> {
 impl<'c> Executor for ScyllaDBTransaction<'c> {
     type Driver = ScyllaDBDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<tank_core::Query<Self::Driver>> {
+    async fn do_prepare(&mut self, sql: String) -> Result<Query<ScyllaDBDriver>> {
         let context = format!("While preparing the query:\n{}", truncate_long!(sql));
         let statement = self
             .connection
@@ -50,8 +50,8 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
-    ) -> impl Stream<Item = Result<tank_core::QueryResult>> + Send {
+        query: impl AsQuery<ScyllaDBDriver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
         let context = format!(
             "While running the query (appending a statement to a ScyllaDB / Cassandra batch):\n{:?}",

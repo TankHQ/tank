@@ -210,7 +210,8 @@ impl Value {
             | Value::Timestamp(..)
             | Value::TimestampWithTimezone(..)
             | Value::Interval(..)
-            | Value::Uuid(..) => true,
+            | Value::Uuid(..)
+            | Value::Unknown(..) => true,
             _ => false,
         }
     }

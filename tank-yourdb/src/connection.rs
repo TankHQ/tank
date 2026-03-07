@@ -10,14 +10,14 @@ pub struct YourDBConnection {}
 impl Executor for YourDBConnection {
     type Driver = YourDBDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
+    async fn do_prepare(&mut self, sql: String) -> Result<Query<YourDBDriver>> {
         // Return Err if not supported
         Ok(Query::Prepared(YourDBPrepared::new()))
     }
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
+        query: impl AsQuery<YourDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         stream::iter([])
     }

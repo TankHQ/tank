@@ -93,13 +93,13 @@ impl Executor for MongoDBConnection {
     fn do_prepare(
         &mut self,
         _query: String,
-    ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
+    ) -> impl Future<Output = Result<Query<MongoDBDriver>>> + Send {
         future::ready(Err(Error::msg("MongoDB does not support prepare")))
     }
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
+        query: impl AsQuery<MongoDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         macro_rules! make_context {
             ($query:expr) => {
