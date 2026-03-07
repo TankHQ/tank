@@ -1,4 +1,4 @@
-use crate::{ValkeyConnection, ValkeyPrepared, ValkeySqlWriter};
+use crate::{ValkeyConnection, ValkeyPrepared, ValkeySqlWriter, ValkeyTransaction};
 use tank_core::Driver;
 
 /// Valkey driver.
@@ -12,7 +12,7 @@ impl Driver for ValkeyDriver {
 
     type Prepared = ValkeyPrepared;
 
-    type Transaction<'c>;
+    type Transaction<'c> = ValkeyTransaction<'c>;
 
     const NAME: &'static [&'static str] = &["valkey", "redis"];
 

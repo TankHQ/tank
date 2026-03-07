@@ -11,7 +11,7 @@ categories.workspace = true
 [dependencies]
 async-stream = { workspace = true }
 log.workspace = true
-redis = { version = "1.0.4", features = ["aio", "tokio-comp"] }
+redis = { version = "1.0.4", features = ["aio", "rust_decimal", "tokio-comp"] }
 tank-core.workspace = true
 
 [dev-dependencies]
