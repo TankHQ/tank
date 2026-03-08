@@ -32,6 +32,39 @@ impl SqlWriter for ValkeySqlWriter {
         self
     }
 
+    fn write_create_schema<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
+    where
+        Self: Sized,
+        E: Entity,
+    {
+        Self::prepare_query(out, &mut Default::default());
+    }
+
+    fn write_drop_schema<E>(&self, out: &mut DynQuery, _if_exists: bool)
+    where
+        Self: Sized,
+        E: Entity,
+    {
+        Self::prepare_query(out, &mut Default::default());
+    }
+
+    fn write_create_table<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
+    where
+        Self: Sized,
+        E: Entity,
+    {
+        Self::prepare_query(out, &mut Default::default());
+    }
+
+    fn write_drop_table<E>(&self, out: &mut DynQuery, _if_exists: bool)
+    where
+        Self: Sized,
+        E: Entity,
+    {
+        log::error!("Valkey/Redis does not implement drop table, it must be done separately");
+        Self::prepare_query(out, &mut Default::default());
+    }
+
     fn write_select<'a, Data>(&self, out: &mut DynQuery, query: &impl SelectQuery<Data>)
     where
         Self: Sized,
@@ -96,7 +129,7 @@ impl SqlWriter for ValkeySqlWriter {
                 let ty = &column_def.value;
                 match ty {
                     v if v.is_scalar() => prepared.commands.push(Cmd::hget(key, id)),
-                    Value::List(.., ty) => {
+                    Value::Array(.., ty, _) | Value::List(.., ty) => {
                         if !ty.is_scalar() {
                             log::error!(
                                 "Valkey/Redis can only query lists with scalar values, found {ty:?}"

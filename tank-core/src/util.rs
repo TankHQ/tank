@@ -375,6 +375,8 @@ macro_rules! possibly_parenthesized {
     };
 }
 
+pub const TRUNCATE_LONG_LIMIT: usize = 10497;
+
 #[macro_export]
 /// Truncate long strings for logging and error messages purpose.
 ///
@@ -397,16 +399,24 @@ macro_rules! truncate_long {
     ($query:expr) => {
         format_args!(
             "{}{}",
-            &$query[..::std::cmp::min($query.len(), 497)].trim(),
-            if $query.len() > 497 { "...\n" } else { "" },
+            &$query[..::std::cmp::min($query.len(), $crate::TRUNCATE_LONG_LIMIT)].trim(),
+            if $query.len() > $crate::TRUNCATE_LONG_LIMIT {
+                "...\n"
+            } else {
+                ""
+            },
         )
     };
     ($query:expr,true) => {{
         let query = $query;
         format!(
             "{}{}",
-            &query[..::std::cmp::min(query.len(), 497)].trim(),
-            if query.len() > 497 { "...\n" } else { "" },
+            &query[..::std::cmp::min(query.len(), $crate::TRUNCATE_LONG_LIMIT)].trim(),
+            if query.len() > $crate::TRUNCATE_LONG_LIMIT {
+                "...\n"
+            } else {
+                ""
+            },
         )
     }};
 }

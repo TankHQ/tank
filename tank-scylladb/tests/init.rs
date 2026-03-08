@@ -17,7 +17,8 @@ use tank_core::{
 };
 use tank_scylladb::{CassandraDriver, ScyllaDBDriver};
 use tank_tests::{
-    ambiguity, enums, interval, limits, metrics, simple, trade_multiple, trade_simple, transaction1,
+    ambiguity, enums, interval, kv_storage, limits, metrics, simple, trade_multiple, trade_simple,
+    transaction1,
 };
 use testcontainers_modules::{
     scylladb::ScyllaDB,
@@ -35,6 +36,7 @@ use url::Url;
 
 pub(crate) async fn execute_tests<C: Connection>(mut connection: C) {
     simple(&mut connection).await;
+    kv_storage(&mut connection).await;
     trade_simple(&mut connection).await;
     trade_multiple(&mut connection).await;
     limits(&mut connection).await;
@@ -66,6 +68,7 @@ pub async fn init_scylladb(ssl: bool) -> (String, Option<ContainerAsync<ScyllaDB
         return (url, None);
     };
     let mut image = ScyllaDB::default()
+        .with_tag("2025.3.8")
         .with_startup_timeout(Duration::from_secs(120))
         .with_log_consumer(TestcontainersLogConsumer);
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

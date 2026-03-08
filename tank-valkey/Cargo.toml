@@ -1,6 +1,6 @@
 [package]
 name = "tank-valkey"
-description = "Valkey and Valkey driver implementation for Tank: the Rust data layer"
+description = "Valkey and Redis driver implementation for Tank: the Rust data layer"
 version.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -17,6 +17,6 @@ tank-core.workspace = true
 [dev-dependencies]
 rcgen = "0"
 tank-tests = { path = "../tank-tests", features = [] }
-testcontainers-modules = { version = "0", features = ["redis"] }
+testcontainers-modules = { version = "0", features = ["valkey"] }
 tokio.workspace = true
 urlencoding.workspace = true

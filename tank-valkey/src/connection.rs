@@ -3,8 +3,8 @@ use async_stream::try_stream;
 use redis::{Client, aio::MultiplexedConnection};
 use std::{borrow::Cow, future, sync::Arc};
 use tank_core::{
-    AsQuery, Connection, Error, Executor, Query, QueryResult, Result, Row, RowLabeled,
-    stream::Stream,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Row,
+    RowLabeled, RowsAffected, stream::Stream, truncate_long,
 };
 
 pub struct ValkeyConnection {
@@ -48,8 +48,17 @@ impl Executor for ValkeyConnection {
                 ))?;
                 return;
             };
-            let raw_result = prepared
-                .make_pipeline()
+            if prepared.is_empty() {
+                return;
+            }
+            let pipeline = prepared.make_pipeline();
+            let context = || {
+                format!(
+                    "While executing the query: {}",
+                    truncate_long!(format!("{pipeline:?}"))
+                )
+            };
+            let raw_result = pipeline
                 .query_async::<redis::Value>(&mut self.connection)
                 .await
                 .map_err(Error::new)?;
@@ -68,35 +77,39 @@ impl Executor for ValkeyConnection {
                     return;
                 }
             };
-            let is_single_hgetall = results.len() == 1 && prepared.columns.is_empty();
-            if is_single_hgetall {
-            } else {
-                if results.len() != prepared.columns.len() {
-                    Err(Error::msg(format!(
-                        "Pipeline returned {} results but {} columns were selected",
-                        results.len(),
-                        prepared.columns.len()
-                    )))?;
-                    return;
-                }
-                let mut row_names = Arc::new_zeroed_slice(prepared.columns.len());
-                let mut values: Row = Vec::with_capacity(prepared.columns.len()).into_boxed_slice();
-                {
-                    let row_names = Arc::get_mut(&mut row_names).unwrap();
-                    for (i, (col_def, redis_val)) in
-                        prepared.columns.iter().zip(results).enumerate()
-                    {
-                        row_names.get_mut(i).unwrap().write(col_def.name().into());
-                        let converted: ValueWrap = redis_val.try_into()?;
-                        *values.get_mut(i).unwrap() = converted.0.into_owned();
-                    }
-                }
-                let row = QueryResult::Row(RowLabeled {
-                    labels: unsafe { row_names.assume_init() },
-                    values,
+            if prepared.columns.is_empty() {
+                yield QueryResult::Affected(RowsAffected {
+                    rows_affected: None,
+                    last_affected_id: None,
                 });
-                yield row;
+                return;
             }
+            if results.len() != prepared.columns.len() {
+                Err(Error::msg(format!(
+                    "Column/result mismatch: {} columns but {} redis results",
+                    prepared.columns.len(),
+                    results.len()
+                )))
+                .with_context(context)?;
+                return;
+            }
+            let mut labels = Arc::new_zeroed_slice(prepared.columns.len());
+            let mut values = Vec::with_capacity(prepared.columns.len());
+            {
+                let labels_mut = Arc::get_mut(&mut labels).unwrap();
+                for (i, (col, redis_val)) in
+                    prepared.columns.iter().zip(results.into_iter()).enumerate()
+                {
+                    labels_mut[i].write(col.name().into());
+                    let converted: ValueWrap = redis_val.try_into()?;
+                    values.push(converted.0.into_owned());
+                }
+            }
+            let row = QueryResult::Row(RowLabeled {
+                labels: unsafe { labels.assume_init() },
+                values: values.into(),
+            });
+            yield row;
         }
     }
 }
