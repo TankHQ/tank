@@ -9,7 +9,7 @@ Tank (Table Abstraction & Navigation Kit): the Rust data layer.
 
 📘 https://tankhq.github.io/tank
 
-⭐ https://github.com/TankHQ/tank
+🖥️ https://github.com/TankHQ/tank
 
 📦 https://crates.io/crates/tank
 

@@ -15,12 +15,22 @@ hero:
       link: /2-getting-started
 
 features:
-  - title: Async operations
+  - icon: ⚡
+    title: Async operations
     details: Your queries run async like artillery, load fast, return fire later.
-  - title: Tactical simplicity
+  - icon: ⚔️
+    title: Tactical simplicity
     details: Fire raw queries when you need precision strikes, use the abstractions for standard sorties.
-  - title: Battlefield adaptability
+  - icon: 🧩
+    title: Battlefield adaptability
     details: Plug new backends in like changing magazines. Designed from day one to be extensible.
-  - title: Rich type arsenal
+  - icon: 🎖️
+    title: Rich type arsenal
     details: Map Rust types to SQL with automatic conversions.
 ---
+
+<script setup>
+  import TankJoke from "./components/TankJoke.vue"
+</script>
+
+<TankJoke />

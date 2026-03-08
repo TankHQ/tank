@@ -156,4 +156,39 @@ h1 .text {
 
 .VPFeature {
     box-shadow: 0 0 10px 5px var(--vp-c-bg-alt);
+    border: 1px solid #373634 !important;
+}
+
+.box {
+    display: block !important;
+    padding: 1em !important;
+}
+
+.box .icon {
+    float: left;
+    background: none;
+    width: 1.2em;
+    height: 1.2em;
+    margin-right: 8px;
+    margin-bottom: 0;
+    font-size: 2em;
+}
+
+.box .details {
+    padding-top: 0;
+}
+
+.step-number {
+    float: left;
+    width: 1.1em;
+    height: 1.1em;
+    margin-right: 1rem;
+    border-radius: 1em;
+    font-size: 1.8rem;
+    font-weight: 900;
+    background-color: var(--vp-c-brand-2);
+    text-align: center;
+    line-height: 100%;
+    color: var(--vp-c-bg-alt);
+    border: 1px solid var(--vp-c-brand-3);
 }
