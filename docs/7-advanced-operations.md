@@ -133,7 +133,7 @@ It accepts a subset of Rust syntax with additional sentinel tokens for SQL seman
 - `COUNT(*)`, `SUM(RadioLog::signal_strength)` function calls and aggregates
 - `Operator::id as op_id` aliasing (column renaming)
 - `PI` identifiers
-- `col == NULL`, `col != NULL` null check, it becomes `IS NULL` / `IS NOT NULL`
+- `col == NULL`, `col != NULL` null check, it becomes `IS NULL`/`IS NOT NULL`
 - `value != "ab%" as LIKE` pattern matching, it becomes `value NOT LIKE 'ab%'` in sql, it also supports `IN`, `REGEXP` and `GLOB` (actual supports depends on the driver)
 - `-(-PI) + 2 * (5 % (2 + 1)) == 7 && !(4 < 2)` combination of the previous
 - `CAST((2 > 1) as i32)` casting expression (mind the parentheses), the type names are automatically converted by the driver

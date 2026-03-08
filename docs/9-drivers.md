@@ -35,8 +35,8 @@ Create `tank-yourdb` in your favorite source repository.
 
 ### 2. Connection + Executor
 Responsibilities:
-- Validate / parse URL (enforce `yourdb://` prefix)
-- Open / pool backend session(s)
+- Validate and parse URL (enforce `yourdb://` prefix)
+- Open pool backend session(s)
 - Implement `prepare` (compile statement) & `run` (stream `QueryResult::{Row,Affected}`)
 - Optionally implement fast-path bulk `append` (DuckDB style)
 
@@ -89,7 +89,7 @@ Enable feature flags to disable specific functionality until green.
 - URL prefix enforced (`yourdb://`)
 - `Driver::NAME` correct and used consistently
 - `prepare` handles multiple statements (or rejects cleanly)
-- Streams drop promptly (no leaked locks / file handles)
+- Streams drop promptly (no leaked locks or file handles)
 - `SqlWriter` prints multi‑statement sequences with proper separators and terminal `;`
 - Upsert path (`save()`) works if PK exists; documented fallback if not supported
 

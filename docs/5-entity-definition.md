@@ -31,7 +31,7 @@ You now have a view of your table. Use a connection or transaction to run operat
 
 ## Attributes
 Tank's `#[tank(...)]` attributes configure tables and columns.
-- <Badge type="tip" text="struct" /><Badge type="tip" text="field" /> `name = "the_name"`: Table name on a struct / column name on a field. **Default**: snake_case of identifier.
+- <Badge type="tip" text="struct" /><Badge type="tip" text="field" /> `name = "the_name"`: Table name on a struct or column name on a field. **Default**: snake_case of identifier.
 - <Badge type="tip" text="struct" /> `schema = "your_schema"`: Database schema. Default: none.
 - <Badge type="tip" text="struct" /> `primary_key = "some_field"` or `primary_key = ("column_1", Self::column_2, ..)`: Table primary key.
 - <Badge type="tip" text="field" /> `primary_key`: Marks field as part of primary key. Cannot be combined with struct-level `primary_key`.
@@ -42,7 +42,7 @@ Tank's `#[tank(...)]` attributes configure tables and columns.
 - <Badge type="tip" text="field" /> `references = OtherEntity::column`: Foreign key reference.
 - <Badge type="tip" text="field" /> `on_delete = no_action|restrict|cascade|set_null|set_default`: Action for foreign key when referenced row is deleted.
 - <Badge type="tip" text="field" /> `on_update = no_action|restrict|cascade|set_null|set_default`: Action for foreign key when referenced row is updated.
-- <Badge type="tip" text="field" /> `clustering_key`: Marks field as a clustering key (relevant for ScyllaDB / Cassandra; affects clustering/order in table layout).
+- <Badge type="tip" text="field" /> `clustering_key`: Marks field as a clustering key (relevant for ScyllaDB/Cassandra; affects clustering/order in table layout).
 - <Badge type="tip" text="field" /> `column_type = (postgres = "TEXT", mysql = "VARCHAR(128)")`: Override column type in DDL (support depends on the driver).
 ### Examples
 ```rust

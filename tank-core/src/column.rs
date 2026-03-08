@@ -108,7 +108,7 @@ pub struct ColumnDef {
     pub default: DefaultValueType,
     /// Primary key role.
     pub primary_key: PrimaryKeyType,
-    /// Clustering key (relevant for ScyllaDB / Cassandra).
+    /// Clustering key (relevant for ScyllaDB/Cassandra).
     pub clustering_key: bool,
     /// Single-column unique constraint.
     pub unique: bool,

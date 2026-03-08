@@ -647,7 +647,7 @@ pub trait SqlWriter: Send {
         );
     }
 
-    /// Render binary operator expression handling precedence / parenthesis.
+    /// Render binary operator expression handling precedence and parenthesis.
     fn write_expression_binary_op(
         &self,
         context: &mut Context,

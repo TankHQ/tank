@@ -77,7 +77,7 @@ RadioLog::create_table(executor, false, false).await?;
 ```
 
 Key points:
-- `if_not_exists` / `if_exists` guard repeated ops.
+- `if_not_exists`/`if_exists` guard repeated ops.
 - Schema creation runs before the table when requested.
 - `RadioLog` references an operator (foreign key) to record transmissions.
 
@@ -223,7 +223,7 @@ writer.write_select(
 While the stream is alive, the executor is borrowed by it and cannot service other queries. Enclose the pinned stream in a scoping or drop it after execution.
 
 ## Errors & Edge Cases
-- `save()` / `delete()` on entities without PK result in immediate error.
+- `save()`/`delete()` on entities without PK result in immediate error.
 - `delete()` with affected rows not exactly one results in error.
 - Prepared binds validate conversion, failure returns `Result::Err`.
 

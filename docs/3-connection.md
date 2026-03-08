@@ -90,7 +90,7 @@ Modes:
 
 Additional URL parameters are passed directly to the SQLite API. See the full list of supported options on the [SQLite website](https://sqlite.org/uri.html#recognized_query_parameters).
 
-### MySQL / MariaDB
+### MySQL/MariaDB
 MySQL is the battle-hardened workhorse of the digital front: widely deployed, solid transactional engine, broad tooling ecosystem.
 
 ```rust
@@ -160,7 +160,7 @@ async fn establish_mongodb_connection() -> Result<MongoDBConnection> {
 }
 ```
 
-### ScyllaDB / Cassandra
+### ScyllaDB/Cassandra
 ScyllaDB is the rapid‑response strike force: distributed, built to swarm data with relentless, low‑latency fire.
 
 ```rust

@@ -9,10 +9,10 @@ use tank_core::{
     truncate_long,
 };
 
-/// Transaction abstraction for ScyllaDB / Cassandra batches.
+/// Transaction abstraction for ScyllaDB/Cassandra batches.
 ///
 /// Collects batch statements and parameters and executes them on commit. Please note this is a different behavior
-/// compared to traditional transactions as ScyllaDB / Cassandra do not support multi-statement transactions natively.
+/// compared to traditional transactions as ScyllaDB/Cassandra do not support multi-statement transactions natively.
 pub struct ScyllaDBTransaction<'c> {
     pub(crate) connection: &'c mut ScyllaDBConnection,
     pub(crate) batch: Batch,
@@ -54,7 +54,7 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
         let context = format!(
-            "While running the query (appending a statement to a ScyllaDB / Cassandra batch):\n{:?}",
+            "While running the query (appending a statement to a ScyllaDB/Cassandra batch):\n{:?}",
             query.as_mut()
         );
         match query.as_mut() {
@@ -106,7 +106,7 @@ impl<'c> Transaction<'c> for ScyllaDBTransaction<'c> {
     }
 
     async fn rollback(self) -> Result<()> {
-        // Nothing to do, the batch is executed on commit in ScyllaDB / Cassandra which means nothing was sent so far
+        // Nothing to do, the batch is executed on commit in ScyllaDB/Cassandra which means nothing was sent so far
         Ok(())
     }
 }

@@ -9,7 +9,7 @@ Tank maps ordinary Rust types (numbers, strings, times, collections) to the clos
 | Rust                       | Postgres       | SQLite    | MySQL/MariaDB             | DuckDB         | MongoDB     | ScyllaDB/Cassandra |
 | -------------------------- | -------------- | --------- | ------------------------- | -------------- | ---------   | ------------------ |
 | `bool`                     | `BOOLEAN`      | `INTEGER` | `BOOLEAN`                 | `BOOLEAN`      | `Boolean`   | `BOOLEAN`          |
-| `i8`                       | `SMALLINT`     | `INTEGER` | `TINYINT`                 | `TINYINT`      | `Int32`     | `TINYINT`          |
+| `i8`                       | `SMALLINT`     | `INTEGER` | `TINYINT`                 | `TINYINT`      | `Int32`     | `TINYINT`          | 
 | `i16`                      | `SMALLINT`     | `INTEGER` | `SMALLINT`                | `SMALLINT`     | `Int32`     | `SMALLINT`         |
 | `i32`                      | `INTEGER`      | `INTEGER` | `INTEGER`                 | `INTEGER`      | `Int32`     | `INT`              |
 | `i64`                      | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`       | `Int64`     | `BIGINT`           |
@@ -44,15 +44,15 @@ Tank maps ordinary Rust types (numbers, strings, times, collections) to the clos
 | `BTreeMap<K, V>`           | ❌             | ❌        | `JSON` ⚠️                 | `MAP(K,V)`     | `Document`  | `MAP<K,V>`         |
 
 > [!WARNING]
-> When a type falls back to a generic representation (e.g. `TEXT` or `JSON`), Tank encodes it predictably so equality / ordering comparisons (where meaningful) behave as expected. Advanced indexing or operator support may vary by driver.
+> When a type falls back to a generic representation (e.g. `TEXT` or `JSON`), Tank encodes it predictably so equality and ordering comparisons (where meaningful) behave as expected. Advanced indexing or operator support may vary by driver.
 >
-> The special `isize` / `usize` types map to the native pointer-width integer (64‑bit on 64‑bit targets, 32‑bit on 32‑bit targets). For cross‑database portability prefer explicit `i64` / `u64` unless you truly need platform width.
+> The special `isize`/`usize` types map to the native pointer-width integer (64‑bit on 64‑bit targets, 32‑bit on 32‑bit targets). For cross‑database portability prefer explicit `i64`/`u64` unless you truly need platform width.
 
 ## Wrapper Types
 Built‑in wrappers you can use directly in entities. SQL type is inferred from the inner type.
 
 Supported wrappers:
-- `tank::Passive<T>`: Omit on update / allow default generation on insert.
+- `tank::Passive<T>`: Omit on update or allow default generation on insert.
 - `Option<T>`: Nullable column.
 - `Box<T>`
 - `Cell<T>`
