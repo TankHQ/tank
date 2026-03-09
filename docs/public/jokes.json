@@ -9,10 +9,6 @@
             "body": "...but I might go off track"
         },
         {
-            "title": "Tank you!",
-            "body": ""
-        },
-        {
             "title": "Knock knock!",
             "body": "Who's there? Tank. Tank who? You're welcome!"
         },
@@ -41,12 +37,8 @@
             "body": "They have excellent track records."
         },
         {
-            "title": "Why don't tanks play hide and seek",
+            "title": "Why don't tanks play hide and seek?",
             "body": "They always stand out in the field."
-        },
-        {
-            "title": "The tank was originally invented to clear a way for the infantry in the teeth of machine-gun fire. Now it is the infantry who will have to clear a way for the tanks.",
-            "body": "Winston Churchill"
         },
         {
             "title": "Why did the tank get promoted?",
@@ -55,6 +47,38 @@
         {
             "title": "What's a tank's favorite exercise?",
             "body": "Running on tracks."
+        },
+        {
+            "title": "Two goldfish are in a tank.",
+            "body": "One looks to the other and says, 'Do you know how to drive this thing?'"
+        },
+        {
+            "title": "How do tanks show gratitude?",
+            "body": "Tank you very much!"
+        },
+        {
+            "title": "Historical Fact: Code Name 'Tank'",
+            "body": "The name 'tank' was introduced in 1915 as a security measure to conceal their true purpose. British workers were told they were building mobile water tanks for the Mesopotamian front."
+        },
+        {
+            "title": "Historical Fact: Leonardo da Vinci's Design",
+            "body": "In the 15th century, Leonardo da Vinci designed a cone-shaped fighting vehicle powered by men turning cranks, often considered a proto-tank."
+        },
+        {
+            "title": "Historical Fact: Little Willie",
+            "body": "The first completed prototype tank, 'Little Willie', was built in 1915. It weighed 14 tons and could only move at about 2 mph."
+        },
+        {
+            "title": "Historical Fact: First Battle Usage",
+            "body": "Tanks were first used in combat by the British Army on September 15, 1916, at the Battle of the Somme."
+        },
+        {
+            "title": "Historical Fact: The Renault FT",
+            "body": "The French Renault FT (1918) was the first operational tank to feature a fully rotating turret, setting the standard layout for modern tanks."
+        },
+        {
+            "title": "Winston Churchill on Tanks",
+            "body": "\"The tank was originally invented to clear a way for the infantry in the teeth of machine-gun fire. Now it is the infantry who will have to clear a way for the tanks.\" -- Winston Churchill"
         }
     ]
 }
