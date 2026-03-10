@@ -1,5 +1,5 @@
 # Simple Operations
-###### *Field Manual Section 6* - Front-Line Extraction
+###### *Field Manual Section 7* - Front-Line Extraction
 
 The Entity maps one-to-one with a database table. This section trains you on the basic maneuvers every unit must master: insertions, deletions, and extractions.
 

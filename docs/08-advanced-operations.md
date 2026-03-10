@@ -1,5 +1,5 @@
 # Advanced Operations
-###### *Field Manual Section 7* - Tactical Coordination
+###### *Field Manual Section 8* - Tactical Coordination
 
 In the field, isolated units rarely win the battle. Coordination is key. Joins let you link data across tables like synchronized squads advancing under fire.
 In Tank, a join is a first class `Dataset`, just like a `TableRef`. That means you can call `select()` and then, filter, map, reduce, etc, using the same composable [Stream API](https://docs.rs/futures/latest/futures/prelude/trait.Stream.html) you already know.
@@ -149,7 +149,7 @@ Parentheses obey standard Rust precedence. Empty invocation (`expr!()`) yields `
 >     3. Gives a name to the resulting column (when used in a SELECT for example)
 
 ## Cols
-[`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) builds a slice of projection expressions (optionally ordered). Each item is an expression (parsed via [`expr!`](7-advanced-operations.html#expr)) or an ordered expression when followed by `ASC` or `DESC`.
+[`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) builds a slice of projection expressions (optionally ordered). Each item is an expression (parsed via [`expr!`](08-advanced-operations.html#expr)) or an ordered expression when followed by `ASC` or `DESC`.
 
 Example of valid syntax
 - `RadioLog::transmission_time`

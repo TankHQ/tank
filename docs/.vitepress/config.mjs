@@ -17,7 +17,7 @@ export default defineConfig({
 
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'Docs', link: '/1-introduction' },
+      { text: 'Docs', link: '/01-introduction' },
       { text: 'API', link: 'https://docs.rs/tank/' },
     ],
 
@@ -25,15 +25,16 @@ export default defineConfig({
       {
         text: 'Docs',
         items: [
-          { text: 'Introduction', link: '/1-introduction' },
-          { text: 'Getting started', link: '/2-getting-started' },
-          { text: 'Connection', link: '/3-connection' },
-          { text: 'Types', link: '/4-types' },
-          { text: 'Entity definition', link: '/5-entity-definition' },
-          { text: 'Simple operations', link: '/6-simple-operations' },
-          { text: 'Advanced operations', link: '/7-advanced-operations' },
-          { text: 'Raw SQL', link: '/8-raw-sql' },
-          { text: 'Drivers', link: '/9-drivers' },
+          { text: 'Introduction', link: '/01-introduction' },
+          { text: 'Getting started', link: '/02-getting-started' },
+          { text: 'Connection', link: '/03-connection' },
+          { text: 'Capabilities', link: '/04-capabilities' },
+          { text: 'Types', link: '/05-types' },
+          { text: 'Entity definition', link: '/06-entity-definition' },
+          { text: 'Simple operations', link: '/07-simple-operations' },
+          { text: 'Advanced operations', link: '/08-advanced-operations' },
+          { text: 'Raw SQL', link: '/09-raw-sql' },
+          { text: 'Drivers', link: '/10-drivers' },
         ],
       },
 

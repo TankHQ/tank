@@ -12,7 +12,7 @@ hero:
   actions:
     - theme: brand
       text: Getting started
-      link: /2-getting-started
+      link: /02-getting-started
 
 features:
   - icon: ⚡
