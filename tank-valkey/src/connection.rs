@@ -3,8 +3,8 @@ use async_stream::try_stream;
 use redis::{Client, aio::MultiplexedConnection};
 use std::{borrow::Cow, future, sync::Arc};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Row,
-    RowLabeled, RowsAffected, stream::Stream, truncate_long,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowLabeled,
+    RowsAffected, stream::Stream, truncate_long,
 };
 
 pub struct ValkeyConnection {
@@ -21,7 +21,8 @@ impl Connection for ValkeyConnection {
         let connection = client
             .get_multiplexed_async_connection()
             .await
-            .map_err(|e| Error::msg(e.to_string()))?;
+            .map_err(Error::new)
+            .context(context)?;
         Ok(Self { connection })
     }
 
@@ -52,6 +53,7 @@ impl Executor for ValkeyConnection {
                 return;
             }
             let pipeline = prepared.make_pipeline();
+            dbg!(&pipeline);
             let context = || {
                 format!(
                     "While executing the query: {}",
@@ -62,6 +64,7 @@ impl Executor for ValkeyConnection {
                 .query_async::<redis::Value>(&mut self.connection)
                 .await
                 .map_err(Error::new)?;
+            dbg!(&raw_result);
             let results = match raw_result {
                 redis::Value::Array(arr) => arr,
                 redis::Value::Nil => vec![],

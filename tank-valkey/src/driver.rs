@@ -22,6 +22,6 @@ impl Driver for ValkeyDriver {
     const NAME: &'static [&'static str] = &["valkey", "redis"];
 
     fn sql_writer(&self) -> Self::SqlWriter {
-        ValkeySqlWriter {}
+        ValkeySqlWriter::default()
     }
 }

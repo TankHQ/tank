@@ -261,7 +261,7 @@ impl<'a> ToRedisArgs for ValueWrap<'a> {
                 .collect::<HashMap<_, _>>()
                 .write_redis_args(out),
             tank_core::Value::Unknown(Some(v), ..) => v.write_redis_args(out),
-            v if v.is_null() => {}
+            v if v.is_null() => None::<i32>.write_redis_args(out), // This writes nothing
             _ => {
                 log::error!(
                     "tank::Value variant `{:?}` is not supported by Valkey/Redis",

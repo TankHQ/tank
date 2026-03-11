@@ -129,7 +129,9 @@ macro_rules! impl_as_value {
                         Err(Error::msg(format!("Value {v}: f64 does not fit into a integer")))
                     },
                     // This is needed to allow integer keys in maps, in some drivers the maps keys are strings only
-                    Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v),
+                    Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v).with_context(|| {
+                        format!("While parsing a {} from `{}`", any::type_name::<Self>(), v)
+                    }),
                     Value::Json(Some(serde_json::Value::Number(v)), ..) => {
                         let integer = v.as_i128().or_else(|| {
                             if let Some(v) = v.as_f64() && v.fract() == 0.0 {
@@ -152,7 +154,9 @@ macro_rules! impl_as_value {
                     }
                     // This is needed to allow integer keys in maps, in some drivers the maps are json objects
                     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
-                    Value::Unknown(Some(ref v), ..) => Self::parse(v),
+                    Value::Unknown(Some(ref v), ..) => Self::parse(v).with_context(|| {
+                        format!("While parsing a {} from `{}`", any::type_name::<Self>(), v)
+                    }),
                     _ => Err(Error::msg(format!(
                         "Cannot convert {value:?} to {}",
                         any::type_name::<Self>(),
@@ -350,14 +354,24 @@ macro_rules! impl_as_value {
                 match value {
                     $destination(Some(v), ..) => Ok(v.into()),
                     $($pat_rest => $expr_rest,)*
-                    Value::Unknown(Some(ref v), ..) => <Self as AsValue>::parse(v),
+                    #[allow(unreachable_patterns)]
+                    Value::Varchar(Some(ref v), ..) => {
+                        <Self as AsValue>::parse(v).with_context(|| {
+                            format!("While parsing a {} from `{}`", any::type_name::<Self>(), v)
+                        })
+                    }
+                    Value::Unknown(Some(ref v), ..) => {
+                        <Self as AsValue>::parse(v).with_context(|| {
+                            format!("While parsing a {} from `{}`", any::type_name::<Self>(), v)
+                        })
+                    }
                     _ => Err(Error::msg(format!(
                         "Cannot convert {value:?} to {}",
                         any::type_name::<Self>(),
                     ))),
                 }
             }
-            fn parse(input: impl AsRef<str>)  -> Result<Self> {
+            fn parse(input: impl AsRef<str>) -> Result<Self> {
                 $extract(input.as_ref())
             }
         }

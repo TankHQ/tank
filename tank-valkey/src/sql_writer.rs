@@ -1,16 +1,32 @@
 use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap, table_to_key};
 use redis::Cmd;
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt::Write};
 use tank_core::{
     Context, Dataset, DynQuery, Entity, Expression, Fragment, IsAsterisk, SelectQuery, SqlWriter,
-    Value, column_def,
+    TableRef, Value, column_def,
 };
 
-pub struct ValkeySqlWriter {}
+pub struct ValkeySqlWriter {
+    pub separator: Cow<'static, str>,
+}
 
 impl ValkeySqlWriter {
+    pub fn new(separator: Cow<'static, str>) -> Self {
+        Self { separator }
+    }
+
     pub fn make_prepared() -> DynQuery {
         DynQuery::Prepared(Box::new(ValkeyPrepared::default()))
+    }
+
+    pub fn make_context(fragment: Fragment) -> Context {
+        Context {
+            counter: 0,
+            fragment,
+            table_ref: Default::default(),
+            qualify_columns: false,
+            quote_identifiers: false,
+        }
     }
 
     pub(crate) fn prepare_query<'a>(
@@ -27,9 +43,31 @@ impl ValkeySqlWriter {
     }
 }
 
+impl Default for ValkeySqlWriter {
+    fn default() -> Self {
+        Self::new(":".into())
+    }
+}
+
 impl SqlWriter for ValkeySqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
+    }
+
+    fn write_table_ref(&self, context: &mut Context, out: &mut DynQuery, value: &TableRef) {
+        if self.is_alias_declaration(context) || value.alias.is_empty() {
+            if !value.schema.is_empty() {
+                self.write_identifier(context, out, &value.schema, context.quote_identifiers);
+                out.push_str(&self.separator);
+            }
+            self.write_identifier(context, out, &value.name, context.quote_identifiers);
+        }
+        if !value.alias.is_empty() {
+            let _ = write!(out, " {}", value.alias);
+        }
+    }
+    fn write_value_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
+        out.push_str(value);
     }
 
     fn write_create_schema<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
@@ -81,8 +119,8 @@ impl SqlWriter for ValkeySqlWriter {
             );
             return;
         }
-        let mut context = Context::new(Fragment::SqlSelect, true);
-        let mut is_pk_condition = IsPKCondition::new(table.full_name().into_owned());
+        let mut context = Self::make_context(Fragment::SqlSelect);
+        let mut is_pk_condition = IsPKCondition::new(table.full_name(&self.separator).into_owned());
         if !where_expr.accept_visitor(
             &mut is_pk_condition,
             self,
@@ -169,17 +207,25 @@ impl SqlWriter for ValkeySqlWriter {
     {
         let table = E::table();
         let name = table_to_key(table);
-        let mut context = Context::fragment(Fragment::SqlInsertInto);
+        let mut context = Self::make_context(Fragment::SqlInsertInto);
         let prepared = Self::prepare_query(out, &mut context);
         let fields = Vec::<(Cow<'static, str>, Value)>::new();
         for entity in entities.into_iter() {
             let row = entity.row_filtered();
-            let key = table.full_name();
+            let mut is_pk_condition =
+                IsPKCondition::new(table.full_name(&self.separator).into_owned());
+            entity.primary_key_expr().accept_visitor(
+                &mut is_pk_condition,
+                self,
+                &mut context,
+                &mut Default::default(),
+            );
+            let key = is_pk_condition.key;
             prepared.commands.push(Cmd::hset_multiple(
                 &key,
                 row.iter()
                     .filter_map(|(k, v)| {
-                        if v.is_scalar() {
+                        if v.is_scalar() && !v.is_null() {
                             (k, ValueWrap(Cow::Borrowed(v))).into()
                         } else {
                             None

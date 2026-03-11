@@ -5,14 +5,13 @@ Not all tanks are built for every terrain. While Tank provides a unified API, th
 
 ## Feature Matrix
 
-| Feature              | Postgres   | SQLite    | MySQL/MariaDB   | DuckDB | MongoDB          | ScyllaDB/Cassandra     | Valkey/Redis       |
-| -------------------- | :--------: | :-------: | :-------------: | :----: | :--------------: | :--------------------: | :----------------: |
-| **Transactions**     | ✅         | ✅        | ✅              | ✅     | ✅ (Replica Set)  | ❌ (Logged Batch Only) | ❌ (Pipeline Only) |
-| **Joins**            | ✅         | ✅        | ✅              | ✅     | ❌               | ❌                     | ❌                 |
-| **Returning Clause** | ✅         | ✅        | ❌ LastInsertId | ✅     | ✅               | ❌                     | ❌                 |
-| **Bulk Insert**      | ✅         | ✅        | ✅              | ✅     | ✅               | ✅ (Batch)             | ✅ (Pipeline)      |
-| **Filters (WHERE)**  | ✅         | ✅        | ✅              | ✅     | ✅               | ⚠️ (PK/Index Only)     | ❌ (PK Only)       |
-| **Aggregations**     | ✅         | ✅        | ✅              | ✅     | ✅               | ❌                     | ❌                 |
+| Feature              | Postgres   | SQLite    | MySQL/MariaDB   | DuckDB | MongoDB  | ScyllaDB/Cassandra  | Valkey/Redis  |
+| -------------------- | :--------: | :-------: | :-------------: | :----: | :------: | :-----------------: | :-----------: |
+| **Transactions**     | ✅         | ✅        | ✅              | ✅     | ✅       | ❌                  | ❌            |
+| **Joins**            | ✅         | ✅        | ✅              | ✅     | ❌       | ❌                  | ❌            |
+| **Bulk Insert**      | ✅         | ✅        | ✅              | ✅     | ✅       | ✅                  | ✅            |
+| **Filters (WHERE)**  | ✅         | ✅        | ✅              | ✅     | ✅       | ⚠️                  | ❌            |
+| **Aggregations**     | ✅         | ✅        | ✅              | ✅     | ✅       | ❌                  | ❌            |
 
 ## Semantic Differences
 

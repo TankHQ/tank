@@ -30,13 +30,13 @@ impl TableRef {
         }
     }
     /// Get the display name.
-    pub fn full_name(&self) -> Cow<'static, str> {
+    pub fn full_name(&self, separator: &str) -> Cow<'static, str> {
         if !self.alias.is_empty() {
             return self.alias.clone();
         }
         let mut key = self.name.clone();
         if !self.schema.is_empty() {
-            key = format!("{}.{}", self.schema, key).into();
+            key = format!("{}{}{}", self.schema, separator, key).into();
         }
         key
     }

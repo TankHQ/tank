@@ -104,8 +104,7 @@ impl ExpressionVisitor for IsPKCondition {
                 self.key.push_str(&is_column.field);
                 self.key.push(':');
                 let mut out = DynQuery::new(mem::take(&mut self.key));
-                let writer = GenericSqlWriter::new();
-                value.write_query(&writer, context, &mut out);
+                value.write_query(writer, context, &mut out);
                 self.key = mem::take(out.buffer());
                 true
             }
