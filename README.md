@@ -25,6 +25,7 @@ It doesn't matter if you are digging into a local SQLite trench, coordinating a 
 - DuckDB
 - MongoDB
 - ScyllaDB/Cassandra
+- Valkey/Redis
 
 ## Mission objectives
 Tank exists to implement the best possible design for a ORM written in Rust. A a clean-slate design focused on ergonomics, flexibility and broad database support.
