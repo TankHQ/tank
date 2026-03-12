@@ -6,15 +6,10 @@ use tank_core::{
     TableRef, Value, column_def,
 };
 
-pub struct ValkeySqlWriter {
-    pub separator: Cow<'static, str>,
-}
+#[derive(Default)]
+pub struct ValkeySqlWriter {}
 
 impl ValkeySqlWriter {
-    pub fn new(separator: Cow<'static, str>) -> Self {
-        Self { separator }
-    }
-
     pub fn make_prepared() -> DynQuery {
         DynQuery::Prepared(Box::new(ValkeyPrepared::default()))
     }
@@ -43,22 +38,20 @@ impl ValkeySqlWriter {
     }
 }
 
-impl Default for ValkeySqlWriter {
-    fn default() -> Self {
-        Self::new(":".into())
-    }
-}
-
 impl SqlWriter for ValkeySqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
+    }
+
+    fn separator(&self) -> &str {
+        ":"
     }
 
     fn write_table_ref(&self, context: &mut Context, out: &mut DynQuery, value: &TableRef) {
         if self.is_alias_declaration(context) || value.alias.is_empty() {
             if !value.schema.is_empty() {
                 self.write_identifier(context, out, &value.schema, context.quote_identifiers);
-                out.push_str(&self.separator);
+                out.push_str(self.separator());
             }
             self.write_identifier(context, out, &value.name, context.quote_identifiers);
         }
@@ -120,7 +113,8 @@ impl SqlWriter for ValkeySqlWriter {
             return;
         }
         let mut context = Self::make_context(Fragment::SqlSelect);
-        let mut is_pk_condition = IsPKCondition::new(table.full_name(&self.separator).into_owned());
+        let mut is_pk_condition =
+            IsPKCondition::new(table.full_name(self.separator()).into_owned());
         if !where_expr.accept_visitor(
             &mut is_pk_condition,
             self,
@@ -144,55 +138,52 @@ impl SqlWriter for ValkeySqlWriter {
                 )
         {
             prepared.commands.push(Cmd::hgetall(key));
-        } else {
-            let mut is_field = IsField::default();
-            for column in columns {
-                let id = column.as_identifier(&mut context);
-                if !column.accept_visitor(
-                    &mut is_field,
-                    self,
-                    &mut context,
-                    &mut Default::default(),
-                ) {
-                    log::error!("Valkey/Redis can only query columns, found: {id}",);
-                    return;
-                }
-                let Some(column_def) = column_def(&is_field.field, &table) else {
-                    log::error!(
-                        "Valkey/Redis can only query known columns, {id} was not defined in the entity",
-                    );
-                    return;
-                };
-                prepared.columns.push(column_def);
-                let ty = &column_def.value;
-                match ty {
-                    v if v.is_scalar() => prepared.commands.push(Cmd::hget(key, id)),
-                    Value::Array(.., ty, _) | Value::List(.., ty) => {
-                        if !ty.is_scalar() {
-                            log::error!(
-                                "Valkey/Redis can only query lists with scalar values, found {ty:?}"
-                            );
-                            return;
-                        }
-                        prepared
-                            .commands
-                            .push(Cmd::lrange(format!("{key}:{id}"), 0, -1))
-                    }
-                    Value::Map(.., k_ty, v_ty) => {
-                        if !k_ty.is_scalar() || !v_ty.is_scalar() {
-                            log::error!(
-                                "Valkey/Redis can only query maps with scalar key and value (they are encoded as HSET), found {ty:?}"
-                            );
-                            return;
-                        }
-                        prepared.commands.push(Cmd::hgetall(format!("{key}:{id}")))
-                    }
-                    _ => {
-                        log::error!("Valkey/Redis cannot query columns of type {ty:?}");
+            return;
+        }
+        let mut is_field = IsField::default();
+        for column in columns {
+            let id = column.as_identifier(&mut context);
+            if !column.accept_visitor(&mut is_field, self, &mut context, &mut Default::default()) {
+                log::error!("Valkey/Redis can only query columns, found: {id}",);
+                return;
+            }
+            let Some(column_def) = column_def(&is_field.field, &table) else {
+                log::error!(
+                    "Valkey/Redis can only query known columns, {id} was not defined in the entity",
+                );
+                return;
+            };
+            prepared.columns.push(column_def);
+            let ty = &column_def.value;
+            match ty {
+                v if v.is_scalar() => prepared.commands.push(Cmd::hget(key, id)),
+                Value::Array(.., ty, _) | Value::List(.., ty) => {
+                    if !ty.is_scalar() {
+                        log::error!(
+                            "Valkey/Redis can only query lists with scalar values, found: {ty:?}"
+                        );
                         return;
                     }
-                };
-            }
+                    prepared
+                        .commands
+                        .push(Cmd::lrange(format!("{key}:{id}"), 0, -1));
+                }
+                Value::Map(.., k_ty, v_ty) => {
+                    if !k_ty.is_scalar() || !v_ty.is_scalar() {
+                        log::error!(
+                            "Valkey/Redis can only query maps with scalar key and value (they are encoded as HSET), found: {ty:?}"
+                        );
+                        return;
+                    }
+                    prepared
+                        .commands
+                        .push(Cmd::hgetall(format!("{key}{}{id}", self.separator())));
+                }
+                _ => {
+                    log::error!("Valkey/Redis cannot query columns of type {ty:?}");
+                    return;
+                }
+            };
         }
     }
 
@@ -213,7 +204,7 @@ impl SqlWriter for ValkeySqlWriter {
         for entity in entities.into_iter() {
             let row = entity.row_filtered();
             let mut is_pk_condition =
-                IsPKCondition::new(table.full_name(&self.separator).into_owned());
+                IsPKCondition::new(table.full_name(self.separator()).into_owned());
             entity.primary_key_expr().accept_visitor(
                 &mut is_pk_condition,
                 self,

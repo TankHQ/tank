@@ -20,9 +20,9 @@ use std::{
     },
 };
 use tank_core::{
-    AsQuery, Connection, Entity, Error, ErrorContext, Executor, Query, QueryResult, RawQuery,
-    Result, RowLabeled, RowsAffected, Value, as_c_string, error_message_from_ptr, send_value,
-    stream::Stream, truncate_long,
+    AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query, QueryResult,
+    RawQuery, Result, RowLabeled, RowsAffected, SqlWriter, Value, as_c_string,
+    error_message_from_ptr, send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -297,13 +297,20 @@ impl Executor for DuckDBConnection {
         if rows.is_empty() {
             return Ok(Default::default());
         }
+        let delimiter = self
+            .driver()
+            .sql_writer()
+            .separator()
+            .chars()
+            .next()
+            .unwrap();
         spawn_blocking(move || unsafe {
             let table_ref = E::table();
             let mut appender = CBox::new(ptr::null_mut(), |mut p| {
                 duckdb_appender_destroy(&mut p);
             });
             let connection = connection.load(Ordering::Relaxed);
-            let rc = if let Some((catalog, schema)) = table_ref.schema.rsplit_once('.') {
+            let rc = if let Some((catalog, schema)) = table_ref.schema.rsplit_once(delimiter) {
                 duckdb_appender_create_ext(
                     connection,
                     as_c_string(catalog).as_ptr(),

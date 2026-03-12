@@ -71,6 +71,7 @@ impl<'a> TryFrom<redis::Value> for ValueWrap<'a> {
                     .as_ref()
                     .map(|(k, v)| (k.as_null(), v.as_null()))
                     .unwrap_or((tank_core::Value::Null, tank_core::Value::Null));
+                let it = first.map(|v| Ok(v)).into_iter().chain(it);
                 tank_core::Value::Map(
                     Some(it.collect::<Result<HashMap<_, _>, _>>()?),
                     Box::new(k_ty),

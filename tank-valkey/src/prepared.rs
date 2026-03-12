@@ -1,11 +1,10 @@
 use redis::{Cmd, Pipeline};
 use std::fmt::{self, Debug, Display};
-use tank_core::{AsValue, ColumnDef, Prepared, Result, TableRef};
+use tank_core::{AsValue, ColumnDef, Prepared, Result};
 
 #[derive(Default, Debug)]
 pub struct ValkeyPrepared {
     pub(crate) commands: Vec<Cmd>,
-    pub(crate) table: TableRef,
     pub(crate) columns: Vec<&'static ColumnDef>,
 }
 

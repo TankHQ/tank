@@ -18,7 +18,7 @@ use std::{
 };
 use tank_core::{
     AsQuery, Connection, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, RawQuery, Result, RowsAffected, Transaction,
+    QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Transaction,
     future::Either,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
@@ -144,8 +144,13 @@ impl Executor for PostgresConnection {
         It: IntoIterator<Item = &'a E> + Send,
         <It as IntoIterator>::IntoIter: Send,
     {
-        let context = || format!("While appending to the table `{}`", E::table().full_name());
         let writer = self.driver().sql_writer();
+        let context = || {
+            format!(
+                "While appending to the table `{}`",
+                E::table().full_name(writer.separator())
+            )
+        };
         let mut query = DynQuery::default();
         writer.write_copy::<E>(&mut query);
         let sink = match self

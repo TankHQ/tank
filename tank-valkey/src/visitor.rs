@@ -1,7 +1,7 @@
 use std::{borrow::Cow, mem};
 use tank_core::{
     BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
-    GenericSqlWriter, IsConstant, Operand, Ordered, SqlWriter,
+    IsConstant, Operand, Ordered, SqlWriter,
 };
 
 #[derive(Default, Debug)]
@@ -99,10 +99,10 @@ impl ExpressionVisitor for IsPKCondition {
                     return false;
                 };
                 if !self.key.is_empty() {
-                    self.key.push(':');
+                    self.key.push_str(writer.separator());
                 }
                 self.key.push_str(&is_column.field);
-                self.key.push(':');
+                self.key.push_str(writer.separator());
                 let mut out = DynQuery::new(mem::take(&mut self.key));
                 value.write_query(writer, context, &mut out);
                 self.key = mem::take(out.buffer());
@@ -120,9 +120,4 @@ impl ExpressionVisitor for IsPKCondition {
     ) -> bool {
         value.expression.accept_visitor(self, writer, context, out)
     }
-}
-
-#[derive(Default)]
-struct ExtractColumn {
-    name: Option<String>,
 }

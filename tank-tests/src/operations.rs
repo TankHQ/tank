@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use std::{pin::pin, sync::LazyLock};
 use tank::{
     Driver, DynQuery, Entity, Executor, QueryBuilder, QueryResult, Result, RowsAffected, SqlWriter,

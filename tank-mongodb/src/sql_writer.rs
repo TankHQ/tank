@@ -787,7 +787,7 @@ impl SqlWriter for MongoDBSqlWriter {
         E: Entity,
     {
         let table = E::table().clone();
-        let name = table.full_name();
+        let name = table.full_name(self.separator());
         Self::prepare_query(
             out,
             &mut Context::empty(),
@@ -834,7 +834,7 @@ impl SqlWriter for MongoDBSqlWriter {
         }
         let mut context = Context::fragment(Fragment::SqlSelect);
         context.quote_identifiers = false;
-        let name = table.full_name();
+        let name = table.full_name(self.separator());
         let mut group_by = query.get_group_by().peekable();
         let mut group = Document::new();
         let mut is_aggregate = group_by.peek().is_some();
@@ -1095,7 +1095,7 @@ impl SqlWriter for MongoDBSqlWriter {
         E: Entity + 'b,
     {
         let table = E::table().clone();
-        let name = table.full_name();
+        let name = table.full_name(self.separator());
         let mut entities = entities.into_iter().peekable();
         let Some(entity) = entities.next() else {
             return;
@@ -1212,7 +1212,7 @@ impl SqlWriter for MongoDBSqlWriter {
         E: Entity,
     {
         let table = E::table().clone();
-        let name = table.full_name();
+        let name = table.full_name(self.separator());
         let mut context = Context::fragment(Fragment::SqlDeleteFromWhere);
         context.quote_identifiers = false;
         Self::prepare_query(

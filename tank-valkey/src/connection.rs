@@ -1,7 +1,7 @@
 use crate::{ValkeyDriver, ValkeyTransaction, ValueWrap};
 use async_stream::try_stream;
 use redis::{Client, aio::MultiplexedConnection};
-use std::{borrow::Cow, future, sync::Arc};
+use std::{borrow::Cow, future, mem, sync::Arc};
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowLabeled,
     RowsAffected, stream::Stream, truncate_long,
@@ -53,7 +53,6 @@ impl Executor for ValkeyConnection {
                 return;
             }
             let pipeline = prepared.make_pipeline();
-            dbg!(&pipeline);
             let context = || {
                 format!(
                     "While executing the query: {}",
@@ -64,7 +63,6 @@ impl Executor for ValkeyConnection {
                 .query_async::<redis::Value>(&mut self.connection)
                 .await
                 .map_err(Error::new)?;
-            dbg!(&raw_result);
             let results = match raw_result {
                 redis::Value::Array(arr) => arr,
                 redis::Value::Nil => vec![],
@@ -100,10 +98,20 @@ impl Executor for ValkeyConnection {
             let mut values = Vec::with_capacity(prepared.columns.len());
             {
                 let labels_mut = Arc::get_mut(&mut labels).unwrap();
-                for (i, (col, redis_val)) in
+                for (i, (col, mut redis_val)) in
                     prepared.columns.iter().zip(results.into_iter()).enumerate()
                 {
                     labels_mut[i].write(col.name().into());
+                    if let (tank_core::Value::Map(..), redis::Value::Array(array)) =
+                        (&col.value, &mut redis_val)
+                    {
+                        redis_val = redis::Value::Map(
+                            array
+                                .chunks_mut(2)
+                                .map(|v| (mem::take(&mut v[0]), mem::take(&mut v[1])))
+                                .collect(),
+                        )
+                    }
                     let converted: ValueWrap = redis_val.try_into()?;
                     values.push(converted.0.into_owned());
                 }
