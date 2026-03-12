@@ -4,7 +4,6 @@ use tank_core::Driver;
 /// Postgres driver.
 #[derive(Default, Debug)]
 pub struct PostgresDriver {}
-
 impl PostgresDriver {
     pub const fn new() -> Self {
         Self {}

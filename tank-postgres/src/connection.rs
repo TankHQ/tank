@@ -18,7 +18,7 @@ use std::{
 };
 use tank_core::{
     AsQuery, Connection, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, RawQuery, Result, RowsAffected, Transaction,
+    QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Transaction,
     future::Either,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
@@ -37,7 +37,7 @@ pub struct PostgresConnection {
 impl Executor for PostgresConnection {
     type Driver = PostgresDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
+    async fn do_prepare(&mut self, sql: String) -> Result<Query<PostgresDriver>> {
         let sql = sql.as_str().trim_end().trim_end_matches(';');
         Ok(
             PostgresPrepared::new(self.client.prepare(&sql).await.map_err(|e| {
@@ -54,7 +54,7 @@ impl Executor for PostgresConnection {
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
+        query: impl AsQuery<PostgresDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
         let context = format!("While running the query:\n{}", query.as_mut());
@@ -94,7 +94,7 @@ impl Executor for PostgresConnection {
 
     fn fetch<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
+        query: impl AsQuery<PostgresDriver> + 's,
     ) -> impl Stream<Item = Result<tank_core::RowLabeled>> + Send {
         let mut query = query.as_query();
         let context = format!("While fetching the query:\n{}", query.as_mut());
@@ -117,7 +117,8 @@ impl Executor for PostgresConnection {
                     for (i, param) in params.iter_mut().enumerate() {
                         *param = ValueWrap(Cow::Owned(
                             mem::take(param)
-                                .take_value()
+                                .0
+                                .into_owned()
                                 .try_as(&postgres_type_to_value(&types[i]))?,
                         ));
                     }
@@ -143,8 +144,13 @@ impl Executor for PostgresConnection {
         It: IntoIterator<Item = &'a E> + Send,
         <It as IntoIterator>::IntoIter: Send,
     {
-        let context = || format!("While appending to the table `{}`", E::table().full_name());
         let writer = self.driver().sql_writer();
+        let context = || {
+            format!(
+                "While appending to the table `{}`",
+                E::table().full_name(writer.separator())
+            )
+        };
         let mut query = DynQuery::default();
         writer.write_copy::<E>(&mut query);
         let sink = match self

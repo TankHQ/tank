@@ -14,7 +14,7 @@ use uuid::Uuid;
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Entity, Debug, Clone)]
-// follower_count is PK to allow ordering for ScyllaDB / Cassandra
+// follower_count is PK to allow ordering for ScyllaDB/Cassandra
 #[tank(schema = "testing", name = "user_profiles", primary_key = (id, follower_count))]
 pub struct UserProfile {
     #[tank(name = "user_id")]

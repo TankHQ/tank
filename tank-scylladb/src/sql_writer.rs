@@ -8,9 +8,9 @@ use tank_core::{
 use time::Time;
 use uuid::Uuid;
 
-/// SQL writer for ScyllaDB / Cassandra dialect.
+/// SQL writer for ScyllaDB/Cassandra dialect.
 ///
-/// Emits ScyllaDB / Cassandra specific SQL syntax to mantain compatibility with tank operations.
+/// Emits ScyllaDB/Cassandra specific SQL syntax to mantain compatibility with tank operations.
 #[derive(Default)]
 pub struct ScyllaDBSqlWriter {}
 

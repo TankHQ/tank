@@ -71,7 +71,7 @@ impl MongoDBSqlWriter {
         } else {
             if !query.is_empty() {
                 log::error!(
-                    "The query is not empty, MongoDBSqlWriter::switch_to_prepared will drop the content",
+                    "The query is not empty, MongoDBSqlWriter::prepare_query will drop the content",
                 );
             }
             *query = DynQuery::Prepared(Box::new(MongoDBPrepared::new(payload, context.counter)));
@@ -787,7 +787,7 @@ impl SqlWriter for MongoDBSqlWriter {
         E: Entity,
     {
         let table = E::table().clone();
-        let name = table.full_name();
+        let name = table.full_name(self.separator());
         Self::prepare_query(
             out,
             &mut Context::empty(),
@@ -821,7 +821,7 @@ impl SqlWriter for MongoDBSqlWriter {
         Self: Sized,
         Data: Dataset + 'a,
     {
-        let (Some(table), where_expr) = (query.get_from(), query.get_where()) else {
+        let Some(table) = query.get_from() else {
             log::error!("The query does not have the FROM clause");
             return;
         };
@@ -834,8 +834,7 @@ impl SqlWriter for MongoDBSqlWriter {
         }
         let mut context = Context::fragment(Fragment::SqlSelect);
         context.quote_identifiers = false;
-        let name = table.full_name();
-        let limit = query.get_limit();
+        let name = table.full_name(self.separator());
         let mut group_by = query.get_group_by().peekable();
         let mut group = Document::new();
         let mut is_aggregate = group_by.peek().is_some();
@@ -905,7 +904,7 @@ impl SqlWriter for MongoDBSqlWriter {
         if is_asterisk {
             project = None;
         }
-        let where_expr = if let Some(where_expr) = where_expr {
+        let where_expr = if let Some(where_expr) = query.get_where() {
             let mut context = context.switch_fragment(Fragment::SqlSelectWhere);
             let mut query = Self::make_prepared();
             where_expr.accept_visitor(
@@ -1025,6 +1024,7 @@ impl SqlWriter for MongoDBSqlWriter {
                 }
             }
         }
+        let limit = query.get_limit();
         let payload: Payload = if is_aggregate {
             let mut pipeline = Vec::new();
             if !where_expr.is_empty() {
@@ -1095,7 +1095,7 @@ impl SqlWriter for MongoDBSqlWriter {
         E: Entity + 'b,
     {
         let table = E::table().clone();
-        let name = table.full_name();
+        let name = table.full_name(self.separator());
         let mut entities = entities.into_iter().peekable();
         let Some(entity) = entities.next() else {
             return;
@@ -1212,7 +1212,7 @@ impl SqlWriter for MongoDBSqlWriter {
         E: Entity,
     {
         let table = E::table().clone();
-        let name = table.full_name();
+        let name = table.full_name(self.separator());
         let mut context = Context::fragment(Fragment::SqlDeleteFromWhere);
         context.quote_identifiers = false;
         Self::prepare_query(

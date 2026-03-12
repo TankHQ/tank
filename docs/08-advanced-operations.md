@@ -1,5 +1,5 @@
 # Advanced Operations
-###### *Field Manual Section 7* - Tactical Coordination
+###### *Field Manual Section 8* - Tactical Coordination
 
 In the field, isolated units rarely win the battle. Coordination is key. Joins let you link data across tables like synchronized squads advancing under fire.
 In Tank, a join is a first class `Dataset`, just like a `TableRef`. That means you can call `select()` and then, filter, map, reduce, etc, using the same composable [Stream API](https://docs.rs/futures/latest/futures/prelude/trait.Stream.html) you already know.
@@ -133,7 +133,7 @@ It accepts a subset of Rust syntax with additional sentinel tokens for SQL seman
 - `COUNT(*)`, `SUM(RadioLog::signal_strength)` function calls and aggregates
 - `Operator::id as op_id` aliasing (column renaming)
 - `PI` identifiers
-- `col == NULL`, `col != NULL` null check, it becomes `IS NULL` / `IS NOT NULL`
+- `col == NULL`, `col != NULL` null check, it becomes `IS NULL`/`IS NOT NULL`
 - `value != "ab%" as LIKE` pattern matching, it becomes `value NOT LIKE 'ab%'` in sql, it also supports `IN`, `REGEXP` and `GLOB` (actual supports depends on the driver)
 - `-(-PI) + 2 * (5 % (2 + 1)) == 7 && !(4 < 2)` combination of the previous
 - `CAST((2 > 1) as i32)` casting expression (mind the parentheses), the type names are automatically converted by the driver
@@ -149,7 +149,7 @@ Parentheses obey standard Rust precedence. Empty invocation (`expr!()`) yields `
 >     3. Gives a name to the resulting column (when used in a SELECT for example)
 
 ## Cols
-[`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) builds a slice of projection expressions (optionally ordered). Each item is an expression (parsed via [`expr!`](7-advanced-operations.html#expr)) or an ordered expression when followed by `ASC` or `DESC`.
+[`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) builds a slice of projection expressions (optionally ordered). Each item is an expression (parsed via [`expr!`](08-advanced-operations.html#expr)) or an ordered expression when followed by `ASC` or `DESC`.
 
 Example of valid syntax
 - `RadioLog::transmission_time`

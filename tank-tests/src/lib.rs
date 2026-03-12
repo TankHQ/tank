@@ -8,6 +8,7 @@ mod conditions;
 mod enums;
 mod insane;
 mod interval;
+mod kv_storage;
 mod limits;
 mod math;
 mod metrics;
@@ -35,6 +36,7 @@ pub use conditions::*;
 pub use enums::*;
 pub use insane::*;
 pub use interval::*;
+pub use kv_storage::*;
 pub use limits::*;
 use log::LevelFilter;
 pub use math::*;
@@ -74,6 +76,7 @@ pub async fn execute_tests<C: Connection>(mut connection: C) {
         };
     }
     do_test!(simple);
+    do_test!(kv_storage);
     do_test!(trade_simple);
     do_test!(trade_multiple);
     do_test!(users);

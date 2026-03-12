@@ -14,7 +14,7 @@ pub trait Expression: OpPrecedence + Send + Sync + Debug {
         matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        _out: &mut DynQuery,
+        out: &mut DynQuery,
     ) -> bool;
     /// Convert expression to an identifier string.
     fn as_identifier(&self, context: &mut Context) -> String {

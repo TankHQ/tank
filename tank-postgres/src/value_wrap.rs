@@ -12,15 +12,6 @@ use tank_core::Value;
 #[derive(Clone, Debug)]
 pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, Value>);
 
-impl<'a> ValueWrap<'a> {
-    pub fn take_value(self) -> Value {
-        match self.0 {
-            Cow::Borrowed(v) => v.clone(),
-            Cow::Owned(v) => v,
-        }
-    }
-}
-
 impl<'a> Default for ValueWrap<'a> {
     fn default() -> Self {
         Self(Cow::Borrowed(&Value::Null))

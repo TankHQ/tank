@@ -1,4 +1,4 @@
-use crate::{AsValue, DynQuery, Value};
+use crate::{AsValue, ColumnDef, DynQuery, TableRef, Value};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
 use rust_decimal::prelude::ToPrimitive;
@@ -316,6 +316,10 @@ pub fn print_timer(out: &mut impl Write, quote: &str, h: i64, m: u8, s: u8, ns: 
     );
 }
 
+pub fn column_def(name: &str, table: &TableRef) -> Option<&'static ColumnDef> {
+    table.columns.iter().find(|v| v.name() == name)
+}
+
 #[macro_export]
 macro_rules! number_to_month {
     ($month:expr, $throw:expr $(,)?) => {
@@ -371,6 +375,8 @@ macro_rules! possibly_parenthesized {
     };
 }
 
+pub const TRUNCATE_LONG_LIMIT: usize = 10497;
+
 #[macro_export]
 /// Truncate long strings for logging and error messages purpose.
 ///
@@ -393,16 +399,24 @@ macro_rules! truncate_long {
     ($query:expr) => {
         format_args!(
             "{}{}",
-            &$query[..::std::cmp::min($query.len(), 497)].trim(),
-            if $query.len() > 497 { "...\n" } else { "" },
+            &$query[..::std::cmp::min($query.len(), $crate::TRUNCATE_LONG_LIMIT)].trim(),
+            if $query.len() > $crate::TRUNCATE_LONG_LIMIT {
+                "...\n"
+            } else {
+                ""
+            },
         )
     };
     ($query:expr,true) => {{
         let query = $query;
         format!(
             "{}{}",
-            &query[..::std::cmp::min(query.len(), 497)].trim(),
-            if query.len() > 497 { "...\n" } else { "" },
+            &query[..::std::cmp::min(query.len(), $crate::TRUNCATE_LONG_LIMIT)].trim(),
+            if query.len() > $crate::TRUNCATE_LONG_LIMIT {
+                "...\n"
+            } else {
+                ""
+            },
         )
     }};
 }

@@ -7,9 +7,9 @@ use tank_core::{
     PrimaryKeyType, SqlWriter, Value, print_timer, separated_by, write_escaped,
 };
 
-/// SQL writer for MySQL / MariaDB dialect.
+/// SQL writer for MySQL/MariaDB dialect.
 ///
-/// Emits MySQL / MariaDB specific SQL syntax to mantain compatibility with tank operations.
+/// Emits MySQL/MariaDB specific SQL syntax to mantain compatibility with tank operations.
 #[derive(Default)]
 pub struct MySQLSqlWriter {}
 

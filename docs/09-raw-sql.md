@@ -1,5 +1,5 @@
 # Raw SQL
-###### *Field Manual Section 8* - Precision Fire
+###### *Field Manual Section 9* - Precision Fire
 
 Sometimes you need to drop the abstractions and put steel directly on target. Tank lets you fire raw SQL or multi‑statement batches (where supported) while still decoding rows into typed entities. This section covers building raw statements, executing mixed result streams, and converting rows back into your structs.
 

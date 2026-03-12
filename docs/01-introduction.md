@@ -3,7 +3,7 @@
 
 Welcome to the Tank field manual. This is the quick-and-mean guide for developers who want to drive, fight and survive with Tank (Table Abstraction & Navigation Kit): the Rust data layer.
 
-In plain terms: Tank is a thin, battle-ready layer over your database workflow, designed for the Rust operator who needs to deploy across multiple environments without changing the kit.
+In plain terms Tank is a thin, battle-ready layer over your database workflow, designed for the Rust operator who needs to deploy across multiple environments without changing the kit.
 
 It doesn't matter if you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or managing a Postgres stronghold, Tank provides a unified interface. You define your entities once. Tank handles the ballistics.
 

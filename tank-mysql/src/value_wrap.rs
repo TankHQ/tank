@@ -4,15 +4,6 @@ use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
 pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, tank_core::Value>);
 
-impl<'a> ValueWrap<'a> {
-    pub fn take_value(self) -> tank_core::Value {
-        match self.0 {
-            Cow::Borrowed(v) => v.clone(),
-            Cow::Owned(v) => v,
-        }
-    }
-}
-
 impl<'a> From<&'a tank_core::Value> for ValueWrap<'a> {
     fn from(value: &'a tank_core::Value) -> Self {
         Self(Cow::Borrowed(value))
@@ -123,7 +114,7 @@ impl<'a> TryFrom<ValueWrap<'a>> for mysql_async::Value {
                 }
             }};
         }
-        Ok(match value.take_value() {
+        Ok(match value.0.into_owned() {
             v if v.is_null() => MySQLValue::NULL,
             TankValue::Boolean(Some(v)) => MySQLValue::from(v),
             TankValue::Int8(Some(v), ..) => MySQLValue::from(v),

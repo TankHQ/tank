@@ -73,6 +73,11 @@ macro_rules! write_float_fn {
 pub trait SqlWriter: Send {
     fn as_dyn(&self) -> &dyn SqlWriter;
 
+    /// Separator used for qualified names (e.g., schema.table.column)
+    fn separator(&self) -> &str {
+        "."
+    }
+
     /// True if the current fragment context allows alias declaration.
     fn is_alias_declaration(&self, context: &mut Context) -> bool {
         match context.fragment {
@@ -103,7 +108,7 @@ pub trait SqlWriter: Send {
         if self.is_alias_declaration(context) || value.alias.is_empty() {
             if !value.schema.is_empty() {
                 self.write_identifier(context, out, &value.schema, context.quote_identifiers);
-                out.push('.');
+                out.push_str(self.separator());
             }
             self.write_identifier(context, out, &value.name, context.quote_identifiers);
         }
@@ -130,10 +135,10 @@ pub trait SqlWriter: Send {
             if !table.is_empty() {
                 if !schema.is_empty() {
                     self.write_identifier(context, out, schema, context.quote_identifiers);
-                    out.push('.');
+                    out.push_str(self.separator());
                 }
                 self.write_identifier(context, out, table, context.quote_identifiers);
-                out.push('.');
+                out.push_str(self.separator());
             }
             context.table_ref = table_ref
         }
@@ -592,7 +597,9 @@ pub trait SqlWriter: Send {
             Operand::LitIdent(v) => {
                 self.write_identifier(context, out, v, context.fragment == Fragment::Aliasing)
             }
-            Operand::LitField(v) => self.write_identifier(context, out, &v.join("."), false),
+            Operand::LitField(v) => {
+                self.write_identifier(context, out, &v.join(self.separator()), false)
+            }
             Operand::LitArray(v) => self.write_expression_list(
                 context,
                 out,
@@ -647,7 +654,7 @@ pub trait SqlWriter: Send {
         );
     }
 
-    /// Render binary operator expression handling precedence / parenthesis.
+    /// Render binary operator expression handling precedence and parenthesis.
     fn write_expression_binary_op(
         &self,
         context: &mut Context,
@@ -1115,20 +1122,19 @@ pub trait SqlWriter: Send {
         Self: Sized,
         Data: Dataset + 'a,
     {
-        let columns = query.get_select();
         let Some(from) = query.get_from() else {
             log::error!("The query does not have the FROM clause");
             return;
         };
-        let limit = query.get_limit();
-        let cols = columns.clone().into_iter().count();
-        out.buffer().reserve(128 + cols * 32);
+        let columns = query.get_select();
+        let columns_count = columns.clone().into_iter().count();
+        out.buffer().reserve(128 + columns_count * 32);
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("SELECT ");
         let mut context = Context::new(Fragment::SqlSelect, Data::qualified_columns());
-        if cols != 0 {
+        if columns_count != 0 {
             separated_by(
                 out,
                 columns.clone(),
@@ -1190,7 +1196,7 @@ pub trait SqlWriter: Send {
                 ", ",
             );
         }
-        if let Some(limit) = limit {
+        if let Some(limit) = query.get_limit() {
             let _ = write!(out, "\nLIMIT {limit}");
         }
         out.push(';');

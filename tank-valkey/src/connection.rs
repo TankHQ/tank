@@ -1,11 +1,10 @@
-use crate::{ValkeyDriver, value_wrap::ValueWrap};
+use crate::{ValkeyDriver, ValkeyTransaction, ValueWrap};
 use async_stream::try_stream;
 use redis::{Client, aio::MultiplexedConnection};
-use std::{borrow::Cow, sync::Arc};
+use std::{borrow::Cow, future, mem, sync::Arc};
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowLabeled,
-    Value,
-    stream::{Stream, TryStreamExt},
+    RowsAffected, stream::Stream, truncate_long,
 };
 
 pub struct ValkeyConnection {
@@ -18,18 +17,20 @@ impl Connection for ValkeyConnection {
         Self: Sized,
     {
         let context = Arc::new(format!("While trying to connect to `{}`", url));
-        let client = Client::open(&*url).with_context(|| context.clone())?;
+        let client = Client::open(&*url).map_err(|e| Error::msg(e.to_string()))?;
         let connection = client
             .get_multiplexed_async_connection()
             .await
-            .with_context(|| context.clone())?;
+            .map_err(Error::new)
+            .context(context)?;
         Ok(Self { connection })
     }
-    fn begin(
-        &mut self,
-    ) -> impl Future<Output = tank_core::Result<<Self::Driver as tank_core::Driver>::Transaction<'_>>>
-    {
-        todo!()
+
+    fn begin(&mut self) -> impl Future<Output = Result<ValkeyTransaction<'_>>> {
+        future::ready(Ok(ValkeyTransaction {
+            connection: self,
+            commands: Default::default(),
+        }))
     }
 }
 
@@ -38,27 +39,88 @@ impl Executor for ValkeyConnection {
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
+        query: impl AsQuery<ValkeyDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
         try_stream! {
             let Query::Prepared(prepared) = query.as_mut() else {
                 Err(Error::msg(
-                    "Query is not the expected tank::Query::Prepared variant (Valkey driver uses prepared)",
+                    "Query is not the expected tank::Query::Prepared variant (Valkey/Redis driver uses prepared)",
                 ))?;
                 return;
             };
-            let command = prepared.get_command();
-            let (labels, values): (Vec<String>, Vec<Value>) = command
-                .query_async::<Vec<(String, ValueWrap)>>(&mut self.connection)
+            if prepared.is_empty() {
+                return;
+            }
+            let pipeline = prepared.make_pipeline();
+            let context = || {
+                format!(
+                    "While executing the query: {}",
+                    truncate_long!(format!("{pipeline:?}"))
+                )
+            };
+            let raw_result = pipeline
+                .query_async::<redis::Value>(&mut self.connection)
                 .await
-                .map_err(|e| Error::msg(e.to_string()))?
-                .into_iter().map(|(k,v)| (k, v.0)).unzip();
-            yield QueryResult::Row(RowLabeled { labels: labels.into(), values: values.into() });
+                .map_err(Error::new)?;
+            let results = match raw_result {
+                redis::Value::Array(arr) => arr,
+                redis::Value::Nil => vec![],
+                redis::Value::ServerError(err) => {
+                    Err(Error::msg(format!("Valkey/Redis server error: {err}")))?;
+                    return;
+                }
+                other => {
+                    Err(Error::msg(format!(
+                        "Unexpected top-level pipeline response: {:?}",
+                        other
+                    )))?;
+                    return;
+                }
+            };
+            if prepared.columns.is_empty() {
+                yield QueryResult::Affected(RowsAffected {
+                    rows_affected: None,
+                    last_affected_id: None,
+                });
+                return;
+            }
+            if results.len() != prepared.columns.len() {
+                Err(Error::msg(format!(
+                    "Column/result mismatch: {} columns but {} redis results",
+                    prepared.columns.len(),
+                    results.len()
+                )))
+                .with_context(context)?;
+                return;
+            }
+            let mut labels = Arc::new_zeroed_slice(prepared.columns.len());
+            let mut values = Vec::with_capacity(prepared.columns.len());
+            {
+                let labels_mut = Arc::get_mut(&mut labels).unwrap();
+                for (i, (col, mut redis_val)) in
+                    prepared.columns.iter().zip(results.into_iter()).enumerate()
+                {
+                    labels_mut[i].write(col.name().into());
+                    if let (tank_core::Value::Map(..), redis::Value::Array(array)) =
+                        (&col.value, &mut redis_val)
+                    {
+                        redis_val = redis::Value::Map(
+                            array
+                                .chunks_mut(2)
+                                .map(|v| (mem::take(&mut v[0]), mem::take(&mut v[1])))
+                                .collect(),
+                        )
+                    }
+                    let converted: ValueWrap = redis_val.try_into()?;
+                    values.push(converted.0.into_owned());
+                }
+            }
+            let row = QueryResult::Row(RowLabeled {
+                labels: unsafe { labels.assume_init() },
+                values: values.into(),
+            });
+            yield row;
         }
-        .map_err(move |e: Error| {
-            log::error!("{e:#}");
-            e
-        })
     }
 }

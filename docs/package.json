@@ -6,5 +6,8 @@
   },
   "devDependencies": {
     "vitepress": "^1.6.4"
+  },
+  "dependencies": {
+    "@headlessui/vue": "^1.7.23"
   }
 }

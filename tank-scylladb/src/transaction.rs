@@ -2,17 +2,17 @@ use crate::{ScyllaDBConnection, ScyllaDBDriver, ScyllaDBPrepared, ValueWrap};
 use scylla::statement::batch::Batch;
 use std::future;
 use tank_core::{
-    AsQuery, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query, RawQuery, Result,
-    RowsAffected, SqlWriter, Transaction,
+    AsQuery, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query, QueryResult, RawQuery,
+    Result, RowsAffected, SqlWriter, Transaction,
     future::Either,
     stream::{self, Stream},
     truncate_long,
 };
 
-/// Transaction abstraction for ScyllaDB / Cassandra batches.
+/// Transaction abstraction for ScyllaDB/Cassandra batches.
 ///
 /// Collects batch statements and parameters and executes them on commit. Please note this is a different behavior
-/// compared to traditional transactions as ScyllaDB / Cassandra do not support multi-statement transactions natively.
+/// compared to traditional transactions as ScyllaDB/Cassandra do not support multi-statement transactions natively.
 pub struct ScyllaDBTransaction<'c> {
     pub(crate) connection: &'c mut ScyllaDBConnection,
     pub(crate) batch: Batch,
@@ -37,7 +37,7 @@ impl ScyllaDBTransaction<'_> {
 impl<'c> Executor for ScyllaDBTransaction<'c> {
     type Driver = ScyllaDBDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<tank_core::Query<Self::Driver>> {
+    async fn do_prepare(&mut self, sql: String) -> Result<Query<ScyllaDBDriver>> {
         let context = format!("While preparing the query:\n{}", truncate_long!(sql));
         let statement = self
             .connection
@@ -50,11 +50,11 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
-    ) -> impl Stream<Item = Result<tank_core::QueryResult>> + Send {
+        query: impl AsQuery<ScyllaDBDriver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
         let context = format!(
-            "While running the query (appending a statement to a ScyllaDB / Cassandra batch):\n{:?}",
+            "While running the query (appending a statement to a ScyllaDB/Cassandra batch):\n{:?}",
             query.as_mut()
         );
         match query.as_mut() {
@@ -106,7 +106,7 @@ impl<'c> Transaction<'c> for ScyllaDBTransaction<'c> {
     }
 
     async fn rollback(self) -> Result<()> {
-        // Nothing to do, the batch is executed on commit in ScyllaDB / Cassandra which means nothing was sent so far
+        // Nothing to do, the batch is executed on commit in ScyllaDB/Cassandra which means nothing was sent so far
         Ok(())
     }
 }

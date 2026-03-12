@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use tank::{ColumnRef, Entity, Expression, GenericSqlWriter};
+    use tank::{Entity, GenericSqlWriter};
 
     #[derive(Entity)]
     struct Table {

@@ -1,24 +1,30 @@
-use redis::Cmd;
+use redis::{Cmd, Pipeline};
 use std::fmt::{self, Debug, Display};
-use tank_core::{AsValue, Error, Prepared, Result, Value};
+use tank_core::{AsValue, ColumnDef, Prepared, Result};
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct ValkeyPrepared {
-    command: Cmd,
-    pub(crate) params: Vec<Value>,
-    pub(crate) index: u64,
+    pub(crate) commands: Vec<Cmd>,
+    pub(crate) columns: Vec<&'static ColumnDef>,
 }
 
 impl ValkeyPrepared {
-    pub fn new(command: Cmd) -> Self {
-        Self {
-            command,
-            params: Default::default(),
-            index: 0,
-        }
+    pub fn is_empty(&self) -> bool {
+        self.commands.is_empty()
     }
-    pub fn get_command(&self) -> &Cmd {
-        &self.command
+    pub fn make_pipeline(&self) -> Pipeline {
+        let mut pipeline = Pipeline::new();
+        for cmd in &self.commands {
+            pipeline.add_command(cmd.clone());
+        }
+        pipeline
+    }
+    pub fn into_pipeline(self) -> Pipeline {
+        let mut pipeline = Pipeline::new();
+        for cmd in self.commands {
+            pipeline.add_command(cmd);
+        }
+        pipeline
     }
 }
 
@@ -31,8 +37,6 @@ impl Prepared for ValkeyPrepared {
     where
         Self: Sized,
     {
-        self.params.clear();
-        self.index = 0;
         Ok(self)
     }
 
@@ -40,31 +44,19 @@ impl Prepared for ValkeyPrepared {
     where
         Self: Sized,
     {
-        self.bind_index(value, self.index)
+        Ok(self)
     }
 
     fn bind_index(&mut self, value: impl tank_core::AsValue, index: u64) -> Result<&mut Self>
     where
         Self: Sized,
     {
-        if self.params.len() <= index as _ {
-            self.params.resize_with((index + 1) as _, Default::default);
-        }
-        let target = self
-            .params
-            .get_mut(index as usize)
-            .ok_or(Error::msg(format!(
-                "Index {index} it out of bounds for parameters",
-            )))?;
-        *target = value.as_value();
-        self.index = index + 1;
         Ok(self)
     }
 }
 
 impl Display for ValkeyPrepared {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("ValkeyPrepared: ")?;
-        self.command.fmt(f)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ValkeyPrepared {:?}", self.commands)
     }
 }

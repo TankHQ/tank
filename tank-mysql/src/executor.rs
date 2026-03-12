@@ -13,13 +13,13 @@ pub(crate) struct MySQLQueryable<T: mysql_async::prelude::Queryable> {
 impl<T: mysql_async::prelude::Queryable> Executor for MySQLQueryable<T> {
     type Driver = MySQLDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<Self::Driver>> {
+    async fn do_prepare(&mut self, sql: String) -> Result<Query<MySQLDriver>> {
         Ok(MySQLPrepared::new(self.executor.prep(sql.as_str()).await?).into())
     }
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
+        query: impl AsQuery<MySQLDriver> + 's,
     ) -> impl Stream<Item = Result<tank_core::QueryResult>> + Send {
         let mut query = query.as_query();
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));

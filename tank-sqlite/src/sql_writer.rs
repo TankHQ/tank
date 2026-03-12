@@ -47,10 +47,11 @@ impl SqlWriter for SQLiteSqlWriter {
                 out.push('"');
                 if !schema.is_empty() {
                     write_escaped(out, schema, '"', "\"\"");
-                    out.push('.');
+                    out.push_str(self.separator());
                 }
                 write_escaped(out, table, '"', "\"\"");
-                out.push_str("\".");
+                out.push('"');
+                out.push_str(self.separator());
             }
             context.table_ref = table_ref;
         }
@@ -62,7 +63,7 @@ impl SqlWriter for SQLiteSqlWriter {
             out.push('"');
             if !value.schema.is_empty() {
                 write_escaped(out, &value.schema, '"', "\"\"");
-                out.push('.');
+                out.push_str(self.separator());
             }
             write_escaped(out, &value.name, '"', "\"\"");
             out.push('"');

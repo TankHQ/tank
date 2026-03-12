@@ -61,12 +61,6 @@ pub struct Mongo {
 }
 
 impl Mongo {
-    pub fn new() -> Self {
-        Self {
-            kind: InstanceKind::Standalone,
-        }
-    }
-
     pub fn repl_set() -> Self {
         Self {
             kind: InstanceKind::ReplSet,

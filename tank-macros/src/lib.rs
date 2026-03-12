@@ -219,7 +219,7 @@ pub fn join(input: TokenStream) -> TokenStream {
 /// - `(flags >> 1) & 3` bitwise operations: `|`, `&`, `<<`, `>>`
 /// - `[1, 2, 3][0]` array or map indexing
 /// - `alpha == ? && beta > ?` prepared statement parameters
-/// - `col == NULL`, `col != NULL` null check, it becomes `IS NULL` / `IS NOT NULL`
+/// - `col == NULL`, `col != NULL` null check, it becomes `IS NULL`/`IS NOT NULL`
 /// - `COUNT(*)`, `SUM(RadioLog::signal_strength)` function calls and aggregates
 /// - `1 as u128` type casting
 /// - `PI` identifiers
