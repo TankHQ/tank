@@ -59,7 +59,7 @@ impl SqlWriter for ValkeySqlWriter {
             let _ = write!(out, " {}", value.alias);
         }
     }
-    fn write_value_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
+    fn write_value_string(&self, _context: &mut Context, out: &mut DynQuery, value: &str) {
         out.push_str(value);
     }
 
@@ -191,16 +191,14 @@ impl SqlWriter for ValkeySqlWriter {
         &self,
         out: &mut DynQuery,
         entities: impl IntoIterator<Item = &'b E>,
-        update: bool,
+        _update: bool,
     ) where
         Self: Sized,
         E: Entity + 'b,
     {
         let table = E::table();
-        let name = table_to_key(table);
         let mut context = Self::make_context(Fragment::SqlInsertInto);
         let prepared = Self::prepare_query(out, &mut context);
-        let fields = Vec::<(Cow<'static, str>, Value)>::new();
         for entity in entities.into_iter() {
             let row = entity.row_filtered();
             let mut is_pk_condition =
@@ -259,6 +257,37 @@ impl SqlWriter for ValkeySqlWriter {
                     _ => {}
                 };
             }
+        }
+    }
+
+    fn write_delete<E>(&self, out: &mut DynQuery, condition: impl Expression)
+    where
+        Self: Sized,
+        E: Entity,
+    {
+        let table = E::table();
+        let mut context = Self::make_context(Fragment::SqlDeleteFrom);
+        let mut is_pk_condition =
+            IsPKCondition::new(table.full_name(self.separator()).into_owned());
+        if !condition.accept_visitor(
+            &mut is_pk_condition,
+            self,
+            &mut context
+                .switch_fragment(Fragment::SqlDeleteFromWhere)
+                .current,
+            &mut Default::default(),
+        ) {
+            log::error!(
+                "Valkey/Redis can only delete using the primary key conditions, found: {condition:?}"
+            );
+            return;
+        }
+        let prepared = Self::prepare_query(out, &mut context);
+        let key = is_pk_condition.key;
+        prepared.commands.push(Cmd::del(&key));
+        for column in E::columns().iter().filter(|c| !c.value.is_scalar()) {
+            let child_key = format!("{key}{}{}", self.separator(), column.name());
+            prepared.commands.push(Cmd::del(child_key));
         }
     }
 }

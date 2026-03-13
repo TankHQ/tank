@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use rust_decimal::{Decimal, prelude::FromPrimitive};
 use std::{
     borrow::Cow,
@@ -9,7 +10,7 @@ use std::{
 };
 use tank::{
     Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult, RawQuery,
-    RowsAffected, SqlWriter, stream::TryStreamExt,
+    RowsAffected, SqlWriter, expr, stream::TryStreamExt,
 };
 use time::{Date, Time, macros::date};
 use tokio::sync::Mutex;
@@ -43,15 +44,18 @@ pub async fn simple<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    SimpleFields::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop SimpleNullFields table");
+    silent_logs! {
+        // Silent logs for Valkey/Redis
+        SimpleFields::drop_table(executor, true, false)
+            .await
+            .expect("Failed to drop SimpleNullFields table");
+    }
     SimpleFields::create_table(executor, true, true)
         .await
         .expect("Failed to create SimpleNullFields table");
 
     // Simple 1
-    SimpleFields::delete_many(executor, true)
+    SimpleFields::delete_many(executor, expr!(SimpleFields::alpha == 1))
         .await
         .expect("Failed to clear the SimpleNullFields table");
     let entity = SimpleFields {
@@ -77,7 +81,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
         .save(executor)
         .await
         .expect("Failed to save simple 1");
-    let entity = SimpleFields::find_one(executor, true)
+    let entity = SimpleFields::find_one(executor, expr!(SimpleFields::alpha == 1))
         .await
         .expect("Failed to query simple 1")
         .expect("Failed to find simple 1");
@@ -162,7 +166,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
     }
 
     // Simple 2
-    SimpleFields::delete_many(executor, true)
+    SimpleFields::delete_many(executor, expr!(simple_fields.alpha == 1))
         .await
         .expect("Failed to clear the SimpleNullFields table");
     let entity = SimpleFields {
@@ -188,7 +192,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
         .save(executor)
         .await
         .expect("Failed to save simple 2");
-    let entity = SimpleFields::find_one(executor, true)
+    let entity = SimpleFields::find_one(executor, expr!(simple_fields.alpha == 255))
         .await
         .expect("Failed to query simple 2")
         .expect("Failed to find simple 2");

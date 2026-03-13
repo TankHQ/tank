@@ -1088,6 +1088,7 @@ impl AsValue for Decimal {
                 )))
             }
             Value::Unknown(Some(v), ..) => Self::parse(&v),
+            Value::Varchar(Some(v)) => Self::parse(&v),
             _ => Err(Error::msg(format!("Cannot convert {value:?} to Decimal"))),
         }
     }

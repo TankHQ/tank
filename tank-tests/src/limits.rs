@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use core::f64;
 use std::{pin::pin, sync::LazyLock};
 use tank::{
@@ -43,15 +44,18 @@ pub async fn limits<E: Executor>(executor: &mut E) {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Limits::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop SimpleNullFields table");
+    silent_logs! {
+        // Silent logs for Valkey/Redis
+        Limits::drop_table(executor, true, false)
+            .await
+            .expect("Failed to drop SimpleNullFields table");
+    }
     Limits::create_table(executor, true, true)
         .await
         .expect("Failed to create SimpleNullFields table");
 
     // Minimals
-    Limits::delete_many(executor, true)
+    Limits::delete_many(executor, expr!(limits.id == 1))
         .await
         .expect("Failed to clear the Limits table");
     let minimals = Limits {
@@ -88,7 +92,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
     Limits::insert_one(executor, &minimals)
         .await
         .expect("Failed to save minimals entity");
-    let loaded = Limits::find_one(executor, true)
+    let loaded = Limits::find_one(executor, expr!(limits.id == 1))
         .await
         .expect("Failed to query simple 2")
         .expect("Failed to find simple 2");
@@ -130,7 +134,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
     assert_eq!(loaded.interval, Interval::from_micros(1));
 
     // Maximals
-    Limits::delete_many(executor, true)
+    Limits::delete_many(executor, expr!(1 == limits.id))
         .await
         .expect("Failed to clear the Limits table");
     let maximals = Limits {
@@ -172,7 +176,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
     Limits::insert_one(executor, &maximals)
         .await
         .expect("Failed to save maximals entity");
-    let loaded = Limits::find_one(executor, true)
+    let loaded = Limits::find_one(executor, expr!(Limits::id == 2))
         .await
         .expect("Failed to query simple 2")
         .expect("Failed to find simple 2");

@@ -40,14 +40,14 @@ impl Prepared for ValkeyPrepared {
         Ok(self)
     }
 
-    fn bind(&mut self, value: impl AsValue) -> Result<&mut Self>
+    fn bind(&mut self, _value: impl AsValue) -> Result<&mut Self>
     where
         Self: Sized,
     {
         Ok(self)
     }
 
-    fn bind_index(&mut self, value: impl tank_core::AsValue, index: u64) -> Result<&mut Self>
+    fn bind_index(&mut self, _value: impl tank_core::AsValue, _index: u64) -> Result<&mut Self>
     where
         Self: Sized,
     {

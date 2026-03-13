@@ -50,13 +50,14 @@ pub async fn kv_storage<E: Executor>(executor: &mut E) {
 
     // Setup
     silent_logs! {
+        // Silent logs for Valkey/Redis
         KV::drop_table(executor, true, false)
             .await
             .expect("Failed to drop KV table");
-        KV::create_table(executor, false, true)
-            .await
-            .expect("Failed to create KV table");
     }
+    KV::create_table(executor, false, true)
+        .await
+        .expect("Failed to create KV table");
 
     // Insert values
     let entries = vec![KV {

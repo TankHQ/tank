@@ -16,7 +16,14 @@ tank-core.workspace = true
 
 [dev-dependencies]
 rcgen = "0"
-tank-tests = { path = "../tank-tests", features = [] }
+tank-tests = { path = "../tank-tests", features = [
+    "disable-groups",
+    "disable-intervals",
+    "disable-joins",
+    "disable-multiple-statements",
+    "disable-ordering",
+    "disable-references",
+] }
 testcontainers-modules = { version = "0", features = ["valkey"] }
 tokio.workspace = true
 urlencoding.workspace = true

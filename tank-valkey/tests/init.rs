@@ -1,13 +1,15 @@
 use std::{borrow::Cow, env, path::PathBuf, process::Command, time::Duration};
 use tank_core::Connection;
-use tank_tests::kv_storage;
+use tank_tests::{kv_storage, limits, simple};
 use testcontainers_modules::{
     testcontainers::{ContainerAsync, ImageExt, runners::AsyncRunner},
     valkey::Valkey,
 };
 
 pub(crate) async fn execute_tests<C: Connection>(mut connection: C) {
+    simple(&mut connection).await;
     kv_storage(&mut connection).await;
+    limits(&mut connection).await;
 }
 
 pub async fn init(ssl: bool) -> (String, Option<ContainerAsync<Valkey>>) {
