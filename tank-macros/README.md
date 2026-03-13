@@ -10,6 +10,6 @@ This crate defines procedural macros used for code generation purposes. It exist
 
 📘 https://tankhq.github.io/tank
 
-⭐ https://github.com/TankHQ/tank
+🖥️ https://github.com/TankHQ/tank
 
 📦 https://crates.io/crates/tank

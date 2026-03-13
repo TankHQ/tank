@@ -10,7 +10,7 @@ Implements Tank’s `Driver` and related traits for ScyllaDB and Cassandra, mapp
 
 📘 https://tankhq.github.io/tank
 
-⭐ https://github.com/TankHQ/tank
+🖥️ https://github.com/TankHQ/tank
 
 📦 https://crates.io/crates/tank
 

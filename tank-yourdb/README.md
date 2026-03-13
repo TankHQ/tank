@@ -10,7 +10,7 @@ Use this crate as a starting point when implementing a new driver for Tank.
 
 📘 https://tankhq.github.io/tank
 
-⭐ https://github.com/TankHQ/tank
+🖥️ https://github.com/TankHQ/tank
 
 📦 https://crates.io/crates/tank
 

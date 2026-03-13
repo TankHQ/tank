@@ -10,7 +10,7 @@ Instead of duplicating many nearly identical tests inside every driver crate, `t
 
 📘 https://tankhq.github.io/tank
 
-⭐ https://github.com/TankHQ/tank
+🖥️ https://github.com/TankHQ/tank
 
 📦 https://crates.io/crates/tank
 

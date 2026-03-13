@@ -10,7 +10,7 @@ Implements Tank’s `Driver` and related traits for MongoDB, mapping Tank operat
 
 📘 https://tankhq.github.io/tank
 
-⭐ https://github.com/TankHQ/tank
+🖥️ https://github.com/TankHQ/tank
 
 📦 https://crates.io/crates/tank
 

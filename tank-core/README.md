@@ -10,6 +10,6 @@ This crate defines the types that form the foundation of the library. It is inte
 
 📘 https://tankhq.github.io/tank
 
-⭐ https://github.com/TankHQ/tank
+🖥️ https://github.com/TankHQ/tank
 
 📦 https://crates.io/crates/tank
