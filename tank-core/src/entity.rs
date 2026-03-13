@@ -79,7 +79,12 @@ pub trait Entity {
             let mut query = DynQuery::with_capacity(2048);
             let writer = executor.driver().sql_writer();
             if create_schema && !Self::table().schema.is_empty() {
-                writer.write_create_schema::<Self>(&mut query, true);
+                writer.write_create_schema(
+                    &mut query,
+                    &QueryBuilder::new()
+                        .create_schema(Self::table().schema.clone())
+                        .if_not_exists(),
+                );
             }
             if !executor.accepts_multiple_statements() && !query.is_empty() {
                 let mut q = query.into_query(executor.driver());
@@ -88,7 +93,11 @@ pub trait Entity {
                 query = q.into();
                 query.buffer().clear();
             }
-            writer.write_create_table::<Self>(&mut query, if_not_exists);
+            let mut builder = QueryBuilder::new().create_table::<Self>();
+            if if_not_exists {
+                builder = builder.if_not_exists();
+            }
+            writer.write_create_table(&mut query, &builder);
             executor.execute(query).await.map(|_| ())
         }
     }
@@ -108,7 +117,11 @@ pub trait Entity {
         async move {
             let mut query = DynQuery::with_capacity(256);
             let writer = executor.driver().sql_writer();
-            writer.write_drop_table::<Self>(&mut query, if_exists);
+            let mut builder = QueryBuilder::new().drop_table::<Self>();
+            if if_exists {
+                builder = builder.if_exists();
+            }
+            writer.write_drop_table(&mut query, &builder);
             if drop_schema && !Self::table().schema.is_empty() {
                 if !executor.accepts_multiple_statements() {
                     let mut q = query.into_query(executor.driver());
@@ -117,7 +130,12 @@ pub trait Entity {
                     query = q.into();
                     query.buffer().clear();
                 }
-                writer.write_drop_schema::<Self>(&mut query, true);
+                writer.write_drop_schema(
+                    &mut query,
+                    &QueryBuilder::new()
+                        .drop_schema(Self::table().schema.clone())
+                        .if_exists(),
+                );
             }
             executor.execute(query).await.map(|_| ())
         }
@@ -129,10 +147,10 @@ pub trait Entity {
         entity: &impl Entity,
     ) -> impl Future<Output = Result<RowsAffected>> + Send {
         let mut query = DynQuery::with_capacity(128);
-        executor
-            .driver()
-            .sql_writer()
-            .write_insert(&mut query, [entity], false);
+        executor.driver().sql_writer().write_insert(
+            &mut query,
+            &QueryBuilder::new().insert_into().values([entity]),
+        );
         executor.execute(query)
     }
 
@@ -206,7 +224,7 @@ pub trait Entity {
             .where_expr(condition)
             .limit(limit);
         executor
-            .fetch(builder.build(&executor.driver()))
+            .fetch(builder.build(&executor.driver().sql_writer()))
             .map(|result| result.and_then(Self::from_row))
     }
 
@@ -245,10 +263,13 @@ pub trait Entity {
             return Either::Left(future::ready(Err(error)));
         }
         let mut query = DynQuery::with_capacity(512);
-        executor
-            .driver()
-            .sql_writer()
-            .write_insert(&mut query, [self], true);
+        executor.driver().sql_writer().write_insert(
+            &mut query,
+            &QueryBuilder::new()
+                .insert_into::<Self>()
+                .values([self])
+                .update(),
+        );
         let sql = query.as_str();
         let context = format!("While saving using the query {}", truncate_long!(sql));
         Either::Right(executor.execute(query).map(|mut v| {

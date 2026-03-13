@@ -2,7 +2,8 @@ use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap, tab
 use redis::Cmd;
 use std::{borrow::Cow, fmt::Write};
 use tank_core::{
-    Context, Dataset, DynQuery, Entity, Expression, Fragment, IsAsterisk, SelectQuery, SqlWriter,
+    Context, CreateSchemaQuery, CreateTableQuery, Dataset, DropSchemaQuery, DropTableQuery,
+    DynQuery, Entity, Expression, Fragment, InsertIntoQuery, IsAsterisk, SelectQuery, SqlWriter,
     TableRef, Value, column_def,
 };
 
@@ -63,7 +64,15 @@ impl SqlWriter for ValkeySqlWriter {
         out.push_str(value);
     }
 
-    fn write_create_schema<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
+    fn write_create_schema(&self, out: &mut DynQuery, _query: &impl CreateSchemaQuery) {
+        Self::prepare_query(out, &mut Default::default());
+    }
+
+    fn write_drop_schema(&self, out: &mut DynQuery, _query: &impl DropSchemaQuery) {
+        Self::prepare_query(out, &mut Default::default());
+    }
+
+    fn write_create_table<E>(&self, out: &mut DynQuery, _query: &impl CreateTableQuery<E>)
     where
         Self: Sized,
         E: Entity,
@@ -71,23 +80,7 @@ impl SqlWriter for ValkeySqlWriter {
         Self::prepare_query(out, &mut Default::default());
     }
 
-    fn write_drop_schema<E>(&self, out: &mut DynQuery, _if_exists: bool)
-    where
-        Self: Sized,
-        E: Entity,
-    {
-        Self::prepare_query(out, &mut Default::default());
-    }
-
-    fn write_create_table<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
-    where
-        Self: Sized,
-        E: Entity,
-    {
-        Self::prepare_query(out, &mut Default::default());
-    }
-
-    fn write_drop_table<E>(&self, out: &mut DynQuery, _if_exists: bool)
+    fn write_drop_table<E>(&self, out: &mut DynQuery, _query: &impl DropTableQuery<E>)
     where
         Self: Sized,
         E: Entity,
@@ -187,15 +180,13 @@ impl SqlWriter for ValkeySqlWriter {
         }
     }
 
-    fn write_insert<'b, E>(
-        &self,
-        out: &mut DynQuery,
-        entities: impl IntoIterator<Item = &'b E>,
-        _update: bool,
-    ) where
+    fn write_insert<'b, E, Q>(&self, out: &mut DynQuery, query: Q)
+    where
         Self: Sized,
         E: Entity + 'b,
+        Q: InsertIntoQuery<'b, E>,
     {
+        let entities = query.into_values();
         let table = E::table();
         let mut context = Self::make_context(Fragment::SqlInsertInto);
         let prepared = Self::prepare_query(out, &mut context);

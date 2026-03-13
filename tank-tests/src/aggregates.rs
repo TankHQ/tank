@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::{pin::pin, sync::LazyLock};
 use tank::{AsValue, Entity, Passive, RowLabeled, expr, stream::StreamExt, stream::TryStreamExt};
-use tank::{Executor, QueryBuilder, cols};
+use tank::{Driver, Executor, QueryBuilder, cols};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -64,7 +64,7 @@ pub async fn aggregates<E: Executor>(executor: &mut E) {
                     .select(cols!(COUNT(*), SUM(Values::value)))
                     .from(Values::table())
                     .where_expr(true)
-                    .build(&executor.driver())
+                    .build(&executor.driver().sql_writer())
             )
         );
         let count = stream.next().await;
@@ -102,7 +102,7 @@ pub async fn aggregates<E: Executor>(executor: &mut E) {
                         .select(cols!(*))
                         .from(Values::table())
                         .where_expr(true)
-                        .build(&executor.driver())
+                        .build(&executor.driver().sql_writer())
                 )
             );
             let values = stream

@@ -31,19 +31,37 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
     let writer = executor.driver().sql_writer();
     query.push_str("    \n\n  \n \n\t\t\n   \n    ");
     // 1
-    writer.write_drop_table::<One>(&mut query, true);
+    writer.write_drop_table::<One>(
+        &mut query,
+        &QueryBuilder::new().drop_table::<One>().if_exists(),
+    );
     query.push_str("\t\t");
     // 2
-    writer.write_drop_table::<Two>(&mut query, true);
+    writer.write_drop_table::<Two>(
+        &mut query,
+        &QueryBuilder::new().drop_table::<Two>().if_exists(),
+    );
     // 3
-    writer.write_drop_table::<Three>(&mut query, true);
+    writer.write_drop_table::<Three>(
+        &mut query,
+        &QueryBuilder::new().drop_table::<Three>().if_exists(),
+    );
     // 4
-    writer.write_create_table::<One>(&mut query, true);
+    writer.write_create_table::<One>(
+        &mut query,
+        &QueryBuilder::new().create_table::<One>().if_not_exists(),
+    );
     query.push('\n');
     // 5
-    writer.write_create_table::<Two>(&mut query, true);
+    writer.write_create_table::<Two>(
+        &mut query,
+        &QueryBuilder::new().create_table::<Two>().if_not_exists(),
+    );
     // 6
-    writer.write_create_table::<Three>(&mut query, true);
+    writer.write_create_table::<Three>(
+        &mut query,
+        &QueryBuilder::new().create_table::<Three>().if_not_exists(),
+    );
     query.push_str(" ");
     // 7
     writer.write_insert(
@@ -62,7 +80,6 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
                 string: "eee".into(),
             },
         ],
-        false,
     );
     query.push_str("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
     // 8
@@ -76,7 +93,6 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
                 string: "ccc".into(),
             },
         ],
-        false,
     );
     // 9
     writer.write_select(
@@ -94,7 +110,6 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
             string: "zzz".into(),
             c1: 512,
         }],
-        false,
     );
     // 11
     writer.write_select(

@@ -241,8 +241,9 @@ mod tests {
 
     #[test]
     fn test_trade_create_table() {
+        QueryBuilder::new().create_table::<Trade>().build(&WRITER);
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<Trade>(&mut query, false);
+        WRITER.write_create_table::<Trade>(&mut query, &false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -271,8 +272,10 @@ mod tests {
 
     #[test]
     fn test_trade_drop_table() {
-        let mut query = DynQuery::default();
-        WRITER.write_drop_table::<Trade>(&mut query, true);
+        let query = QueryBuilder::new()
+            .drop_table::<Trade>()
+            .if_exists()
+            .build(&WRITER);
         assert_eq!(
             query.as_str(),
             r#"DROP TABLE IF EXISTS "trading.company"."trade_execution";"#
@@ -306,7 +309,7 @@ mod tests {
         docs.insert("contract.pdf".to_string(), vec![1, 2, 3, 4]);
         let employee = Trade::sample();
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&employee], false);
+        WRITER.write_insert(&mut query, [&employee]);
         assert!(
             // Last part of the query (the map) is removed becaus order of keys is not defined. Value stores a HashMap
             query.as_str().starts_with(indoc! {r#"

@@ -1,15 +1,19 @@
 use crate::{Driver, DynQuery, Entity, NA, SqlWriter};
 use std::marker::PhantomData;
 
-pub struct InsertIntoQueryBuilder<E: Entity, Values, Update> {
+pub trait InsertIntoQuery<'a, E: Entity + 'a> {
+    fn into_values(self) -> impl IntoIterator<Item = &'a E>;
+    fn get_update(&self) -> bool;
+}
+
+pub struct InsertIntoQueryBuilder<E: Entity, Values> {
     pub(crate) values: Values,
     pub(crate) update: bool,
     pub(crate) _table: PhantomData<E>,
-    pub(crate) _update: PhantomData<Update>,
 }
 
-impl<E: Entity> InsertIntoQueryBuilder<E, NA, NA> {
-    pub fn values<'a, Values>(self, values: Values) -> InsertIntoQueryBuilder<E, Values, NA>
+impl<E: Entity> InsertIntoQueryBuilder<E, NA> {
+    pub fn values<'a, Values>(self, values: Values) -> InsertIntoQueryBuilder<E, Values>
     where
         E: 'a,
         Values: IntoIterator<Item = &'a E>,
@@ -18,33 +22,53 @@ impl<E: Entity> InsertIntoQueryBuilder<E, NA, NA> {
             values,
             update: false,
             _table: Default::default(),
-            _update: Default::default(),
         }
     }
 }
 
-impl<'a, E, V, U> InsertIntoQueryBuilder<E, V, U>
+impl<'a, E: Entity + 'a, V> InsertIntoQueryBuilder<E, V> {
+    pub fn update(self) -> InsertIntoQueryBuilder<E, V> {
+        InsertIntoQueryBuilder {
+            values: self.values,
+            update: true,
+            _table: Default::default(),
+        }
+    }
+
+    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery)
+    where
+        E: 'a,
+        V: IntoIterator<Item = &'a E>,
+    {
+        let writer = driver.sql_writer();
+        writer.write_insert(out, self);
+    }
+}
+
+impl<'a, E, V> InsertIntoQuery<'a, E> for InsertIntoQueryBuilder<E, V>
 where
     E: Entity + 'a,
-    V: IntoIterator<Item = &'a E> + Clone,
+    V: IntoIterator<Item = &'a E>,
 {
-    pub fn get_values(&self) -> V {
-        self.values.clone()
+    fn into_values(self) -> impl IntoIterator<Item = &'a E> {
+        self.values
     }
 
-    pub fn get_update(&self) -> bool {
+    fn get_update(&self) -> bool {
         self.update
     }
+}
 
-    pub fn build<D: Driver>(&self, driver: &D) -> String {
-        let writer = driver.sql_writer();
-        let mut query = DynQuery::default();
-        writer.write_insert::<E>(&mut query, self.values.clone(), self.update);
-        query.into()
+impl<'a, E, I> InsertIntoQuery<'a, E> for I
+where
+    E: Entity + 'a,
+    I: IntoIterator<Item = &'a E>,
+{
+    fn into_values(self) -> impl IntoIterator<Item = &'a E> {
+        self
     }
 
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
-        let writer = driver.sql_writer();
-        writer.write_create_table::<E>(out, self.update);
+    fn get_update(&self) -> bool {
+        false
     }
 }

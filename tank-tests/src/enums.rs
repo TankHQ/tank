@@ -153,7 +153,7 @@ pub async fn enums<E: Executor>(executor: &mut E) {
                 .from(Entry::table())
                 .where_expr(expr!(id == 1))
                 .order_by(cols!(Entry::another_enum ASC))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .map_ok(Entry::from_row)
         .map(Result::flatten)

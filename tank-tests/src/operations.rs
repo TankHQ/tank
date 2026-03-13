@@ -129,7 +129,7 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
         let writer = executor.driver().sql_writer();
         let mut query = DynQuery::default();
         writer.write_delete::<RadioLog>(&mut query, expr!(RadioLog::signal_strength < 10));
-        writer.write_insert(&mut query, [&operator], false);
+        writer.write_insert(&mut query, [&operator]);
         writer.write_insert(
             &mut query,
             [&RadioLog {
@@ -140,7 +140,6 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
                 transmission_time: OffsetDateTime::now_utc(),
                 signal_strength: 55,
             }],
-            false,
         );
         writer.write_select(
             &mut query,
@@ -296,7 +295,7 @@ pub async fn advanced_operations<E: Executor>(executor: &mut E) -> Result<()> {
                     ))
                     .order_by(cols!(RadioLog::signal_strength DESC, Operator::callsign ASC))
                     .limit(Some(100))
-                    .build(&executor.driver()),
+                    .build(&executor.driver().sql_writer()),
             )
             .map(|row| {
                 row.and_then(|row| {

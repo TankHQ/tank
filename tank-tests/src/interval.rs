@@ -144,7 +144,6 @@ pub async fn interval<E: Executor>(executor: &mut E) {
                     third: Duration::from_nanos(5000),
                 },
             ],
-            false,
         );
         writer.write_select(
             &mut query,

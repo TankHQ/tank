@@ -167,7 +167,7 @@ mod tests {
     #[test]
     fn test_employee_create_table() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<Employee>(&mut query, false);
+        WRITER.write_create_table::<Employee>(&mut query, &false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -189,7 +189,7 @@ mod tests {
     #[test]
     fn test_employee_drop_table() {
         let mut query = DynQuery::default();
-        WRITER.write_drop_table::<Employee>(&mut query, true);
+        WRITER.write_drop_table::<Employee>(&mut query, &true);
         assert_eq!(
             query.as_str(),
             r#"DROP TABLE IF EXISTS "company"."employee";"#
@@ -225,7 +225,7 @@ mod tests {
         docs.insert("contract.pdf".to_string(), vec![1, 2, 3, 4]);
         let employee = Employee::sample();
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&employee], false);
+        WRITER.write_insert(&mut query, [&employee]);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -241,7 +241,7 @@ mod tests {
             ..Employee::sample()
         };
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&employee], false);
+        WRITER.write_insert(&mut query, [&employee]);
         assert_eq!(
             query.as_str(),
             indoc! {r#"

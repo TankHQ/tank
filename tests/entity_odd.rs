@@ -141,7 +141,7 @@ mod tests {
     #[test]
     fn test_odd_entity_create_table() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<MyEntity>(&mut query, true);
+        WRITER.write_create_table::<MyEntity>(&mut query, &true);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -161,7 +161,7 @@ mod tests {
     #[test]
     fn test_odd_entity_drop_table() {
         let mut query = DynQuery::default();
-        WRITER.write_drop_table::<MyEntity>(&mut query, false);
+        WRITER.write_drop_table::<MyEntity>(&mut query, &false);
         assert_eq!(query.as_str(), r#"DROP TABLE "a_table";"#);
     }
 
@@ -191,7 +191,10 @@ mod tests {
     #[test]
     fn test_odd_entity_insert() {
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&MyEntity::sample()], true);
+        WRITER.write_insert(
+            &mut query,
+            QueryBuilder::new().insert_into::<MyEntity>().values([&MyEntity::sample()]).update(),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"

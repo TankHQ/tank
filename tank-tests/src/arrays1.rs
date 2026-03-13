@@ -119,10 +119,26 @@ pub async fn arrays1<E: Executor>(executor: &mut E) {
     {
         let mut query = DynQuery::default();
         let writer = executor.driver().sql_writer();
-        writer.write_drop_table::<Arrays1>(&mut query, true);
-        writer.write_create_table::<Arrays1>(&mut query, true);
-        writer.write_drop_table::<Arrays2>(&mut query, true);
-        writer.write_create_table::<Arrays2>(&mut query, true);
+        writer.write_drop_table::<Arrays1>(
+            &mut query,
+            &QueryBuilder::new().drop_table::<Arrays1>().if_exists(),
+        );
+        writer.write_create_table::<Arrays1>(
+            &mut query,
+            &QueryBuilder::new()
+                .create_table::<Arrays1>()
+                .if_not_exists(),
+        );
+        writer.write_drop_table::<Arrays2>(
+            &mut query,
+            &QueryBuilder::new().drop_table::<Arrays2>().if_exists(),
+        );
+        writer.write_create_table::<Arrays2>(
+            &mut query,
+            &QueryBuilder::new()
+                .create_table::<Arrays2>()
+                .if_not_exists(),
+        );
         let value = Arrays1 {
             #[cfg(not(feature = "disable-intervals"))]
             aa: [
@@ -138,7 +154,7 @@ pub async fn arrays1<E: Executor>(executor: &mut E) {
             cc: [[[[1]], [[2]], [[3]]]],
             dd: [[[[[10, 20, 30]]], [[[40, 50, 60]]]]],
         };
-        writer.write_insert(&mut query, &[value], false);
+        writer.write_insert(&mut query, &[value]);
         writer.write_select(
             &mut query,
             &QueryBuilder::new()
@@ -156,7 +172,7 @@ pub async fn arrays1<E: Executor>(executor: &mut E) {
                 [Cow::Owned("foo".to_string()), Cow::Borrowed("bar")],
             ]],
         };
-        writer.write_insert(&mut query, &[value], false);
+        writer.write_insert(&mut query, &[value]);
         writer.write_select(
             &mut query,
             &QueryBuilder::new()

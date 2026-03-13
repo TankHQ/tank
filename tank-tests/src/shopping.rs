@@ -3,11 +3,11 @@ use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::pin::pin;
 use std::{str::FromStr, sync::Arc, sync::LazyLock};
-use tank::QueryBuilder;
 use tank::{
     AsValue, Dataset, Entity, Executor, FixedDecimal, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
+use tank::{Driver, QueryBuilder};
 use time::{Date, Month, PrimitiveDateTime, Time};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -113,7 +113,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
                 .from(Product::table())
                 .where_expr(expr!(Product::stock > 0))
                 .order_by(cols!(Product::price ASC))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .map(|r| r.and_then(Product::from_row))
         .try_collect::<Vec<Product>>()
@@ -193,7 +193,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
                 .from(User::table())
                 .where_expr(true)
                 .limit(Some(1))
-                .build(&executor.driver())
+                .build(&executor.driver().sql_writer())
         )
     )
     .try_next()
@@ -296,7 +296,7 @@ pub async fn shopping<E: Executor>(executor: &mut E) {
                     ))
                     .where_expr(true)
                     .order_by(cols!(Product::name ASC, User::name ASC))
-                    .build(&executor.driver()),
+                    .build(&executor.driver().sql_writer()),
             )
             .map_ok(Carts::from_row)
             .map(Result::flatten)

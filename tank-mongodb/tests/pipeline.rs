@@ -3,10 +3,10 @@ mod tests {
     use mongodb::bson::{Bson, Regex, doc};
     use std::borrow::Cow;
     use tank::{Entity, QueryBuilder, cols, expr};
-    use tank_mongodb::{AggregatePayload, MongoDBDriver, Payload};
+    use tank_mongodb::{AggregatePayload, MongoDBDriver, MongoDBSqlWriter, Payload};
     use tank_tests::init_logs;
 
-    const DRIVER: MongoDBDriver = MongoDBDriver {};
+    const WRITER: MongoDBSqlWriter = MongoDBSqlWriter {};
 
     #[test]
     fn pipeline_1() {
@@ -33,7 +33,7 @@ mod tests {
             ))
             .group_by([MyType::first_column, MyType::third_column])
             .having(expr!(MyType::first_column >= "a"))
-            .build(&DRIVER);
+            .build(&WRITER);
         let Some(Payload::Aggregate(AggregatePayload { pipeline, .. })) = query
             .as_prepared::<MongoDBDriver>()
             .and_then(|v| Some(v.get_payload()))
@@ -132,7 +132,7 @@ mod tests {
                     && country != "FR%" as LIKE
             ))
             .limit(Some(1000))
-            .build(&DRIVER);
+            .build(&WRITER);
 
         let Some(Payload::Aggregate(AggregatePayload { pipeline, .. })) = query
             .as_prepared::<MongoDBDriver>()

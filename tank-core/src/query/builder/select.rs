@@ -1,6 +1,4 @@
-use crate::{
-    Dataset, Driver, DynQuery, EitherIterator, Expression, ExpressionCollection, NA, SqlWriter,
-};
+use crate::{Dataset, DynQuery, EitherIterator, Expression, ExpressionCollection, NA, SqlWriter};
 use std::{iter, marker::PhantomData};
 
 pub struct SelectQueryBuilder<Select, From, Where, GroupBy, Having, OrderBy, Limit> {
@@ -168,15 +166,13 @@ where
         self.limit
     }
 
-    pub fn build<D: Driver>(&self, driver: &D) -> DynQuery {
-        let writer = driver.sql_writer();
+    pub fn build(&self, writer: &impl SqlWriter) -> DynQuery {
         let mut query = DynQuery::default();
         writer.write_select(&mut query, self);
         query.into()
     }
 
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
-        let writer = driver.sql_writer();
+    pub fn build_into(&self, writer: &impl SqlWriter, out: &mut DynQuery) {
         writer.write_select(out, self);
     }
 }
@@ -203,9 +199,9 @@ where
     /// Get LIMIT value.
     fn get_limit(&self) -> Option<u32>;
     /// Build query.
-    fn build<D: Driver>(&self, driver: &D) -> DynQuery;
+    fn build(&self, writer: &impl SqlWriter) -> DynQuery;
     /// Build query into existing buffer.
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery);
+    fn build_into(&self, writer: &impl SqlWriter, out: &mut DynQuery);
 }
 
 impl<S, From, W, G, H, O, L> SelectQuery<From> for SelectQueryBuilder<S, From, W, G, H, O, L>
@@ -245,11 +241,11 @@ where
         self.get_limit()
     }
 
-    fn build<D: Driver>(&self, driver: &D) -> DynQuery {
-        self.build(driver)
+    fn build(&self, writer: &impl SqlWriter) -> DynQuery {
+        self.build(writer)
     }
 
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
-        self.build_into(driver, out);
+    fn build_into(&self, writer: &impl SqlWriter, out: &mut DynQuery) {
+        self.build_into(writer, out)
     }
 }

@@ -4,7 +4,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tank::{
-    AsValue, Entity, Executor, Operand, QueryBuilder, Result, cols, expr,
+    AsValue, Driver, Entity, Executor, Operand, QueryBuilder, Result, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, PrimitiveDateTime, Time};
@@ -196,7 +196,7 @@ pub async fn times<E: Executor>(executor: &mut E) {
                 .from(Times::table())
                 .where_expr(expr!(Times::timestamp_2 > ?))
                 .order_by(cols!(Times::timestamp_1 DESC))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .await
         .expect("Could not prepare the query timestamp 1");
@@ -276,7 +276,7 @@ pub async fn times<E: Executor>(executor: &mut E) {
                 .from(Times::table())
                 .where_expr(expr!(Times::timestamp_1 <= ?))
                 .order_by(cols!(Times::timestamp_2 ASC))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .await
         .expect("Could not prepare the query timestamp 1");
@@ -319,7 +319,7 @@ pub async fn times<E: Executor>(executor: &mut E) {
                 .from(Times::table())
                 .where_expr(true)
                 .order_by(cols!(Times::time_1 DESC))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .await
         .expect("Could not prepare the query timestamp 1");
@@ -358,7 +358,7 @@ pub async fn times<E: Executor>(executor: &mut E) {
                 .from(Times::table())
                 .where_expr(true)
                 .limit(Some(1))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .map_ok(|v| u128::try_from_value(v.values.into_iter().nth(0).expect("There is no column")))
         .map(Result::flatten)

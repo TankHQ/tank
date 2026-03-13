@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 use tank::{
-    AsValue, Entity, Executor, QueryBuilder, Result, cols, expr,
+    AsValue, Driver, Entity, Executor, QueryBuilder, Result, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -35,7 +35,7 @@ pub async fn math<E: Executor>(executor: &mut E) {
                 .select(cols!(MathTable::id, ((42 * 6 + 56) / 7) as read))
                 .from(MathTable::table())
                 .where_expr(expr!(MathTable::id == 0))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .map_ok(MathTable::from_row)
         .map(Result::flatten)
@@ -50,7 +50,7 @@ pub async fn math<E: Executor>(executor: &mut E) {
                 .select(cols!(MathTable::id, ((5 - (1 << 2)) * 9 % 6) as read))
                 .from(MathTable::table())
                 .where_expr(expr!(MathTable::id == 0))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .map_ok(MathTable::from_row)
         .map(Result::flatten)
@@ -65,7 +65,7 @@ pub async fn math<E: Executor>(executor: &mut E) {
                 .select(cols!(MathTable::id, ((1 | 2 | 4) + 1) as read))
                 .from(MathTable::table())
                 .where_expr(expr!(MathTable::id == 0))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .map_ok(MathTable::from_row)
         .map(Result::flatten)
@@ -80,7 +80,7 @@ pub async fn math<E: Executor>(executor: &mut E) {
                 .select(cols!(MathTable::id, (90 > 89 && (10 & 6) == 2) as read))
                 .from(MathTable::table())
                 .where_expr(expr!(MathTable::id == 0))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .map_ok(|v| bool::try_from_value(v.values.into_iter().nth(1).unwrap()))
         .map(Result::flatten)
@@ -95,7 +95,7 @@ pub async fn math<E: Executor>(executor: &mut E) {
                 .select(cols!(MathTable::id, (4 == (2, 3, 4, 5) as IN) as read))
                 .from(MathTable::table())
                 .where_expr(expr!(MathTable::id == 0))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .map_ok(|v| bool::try_from_value(v.values.into_iter().nth(1).unwrap()))
         .map(Result::flatten)

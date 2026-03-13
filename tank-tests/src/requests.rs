@@ -8,8 +8,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tank::{
-    AsValue, Entity, Error, Executor, QueryBuilder, Result, Value, current_timestamp_ms, expr,
-    join,
+    AsValue, Driver, Entity, Error, Executor, QueryBuilder, Result, Value, current_timestamp_ms,
+    expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -197,7 +197,7 @@ pub async fn requests<E: Executor>(executor: &mut E) {
                     RequestLimit::interval_ms,
                 ])
                 .having(expr!(COUNT(Request::id) >= RequestLimit::requests))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .await
         .expect("Failed to prepare the limit query");

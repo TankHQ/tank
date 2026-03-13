@@ -229,7 +229,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
         let writer = executor.driver().sql_writer();
         let mut query = DynQuery::default();
         writer.write_delete::<SimpleFields>(&mut query, true);
-        writer.write_insert(&mut query, [&entity], false);
+        writer.write_insert(&mut query, [&entity]);
         writer.write_select(
             &mut query,
             &QueryBuilder::new()

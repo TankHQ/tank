@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::{future, sync::LazyLock};
 use tank::{
-    Entity, Executor, QueryBuilder, cols, expr,
+    Driver, Entity, Executor, QueryBuilder, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, macros::date};
@@ -339,7 +339,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
                         && Metric::value >= #height
                 ))
                 .order_by(cols!(Metric::value DESC, Metric::date DESC))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
@@ -357,7 +357,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
                     Metric::name == "income_eur" && Metric::country == "IT"
                 ))
                 .order_by(cols!(Metric::value ASC))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
@@ -374,7 +374,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
                 .where_expr(expr!(
                     Metric::name == "income_eur" && Metric::country == "UK"
                 ))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
@@ -390,7 +390,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
                 .from(Metric::table())
                 .where_expr(expr!(Metric::country == ? && Metric::name == ?))
                 .order_by(cols!(Metric::value DESC, Metric::date DESC))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .await
         .expect("Failed to prepare metric query");
@@ -441,7 +441,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
                     .from(Metric::table())
                     .group_by([Metric::name, Metric::country])
                     .order_by(cols!(Metric::name ASC, avg DESC))
-                    .build(&executor.driver()),
+                    .build(&executor.driver().sql_writer()),
             )
             .map_ok(AverageMetrics::from_row)
             .map(Result::flatten)
@@ -551,7 +551,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
                     .where_expr(expr!(name == "income_eur"))
                     .group_by([Metric::country])
                     .order_by(cols!(max_income DESC, Metric::country ASC))
-                    .build(&executor.driver()),
+                    .build(&executor.driver().sql_writer()),
             )
             .map_ok(CountryMaxIncome::from_row)
             .map(Result::flatten)
@@ -612,7 +612,7 @@ pub async fn metrics<E: Executor>(executor: &mut E) {
                     .from(Metric::table())
                     .group_by([Metric::name])
                     .order_by(cols!(name ASC))
-                    .build(&executor.driver()),
+                    .build(&executor.driver().sql_writer()),
             )
             .map_ok(MetricGlobalStats::from_row)
             .map(Result::flatten)

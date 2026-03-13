@@ -1,7 +1,7 @@
 use rust_decimal::Decimal;
 use std::sync::LazyLock;
 use tank::{
-    Entity, Executor, FixedDecimal, Passive, QueryBuilder, cols, expr, stream::TryStreamExt,
+    Driver, Entity, Executor, FixedDecimal, Passive, QueryBuilder, cols, expr, stream::TryStreamExt,
 };
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -117,7 +117,7 @@ pub async fn orders<E: Executor>(executor: &mut E) {
                         && Order::country == (?, ?) as IN
                 ))
                 .order_by(cols!(Order::total DESC))
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .await
         .expect("Failed to prepare the query");

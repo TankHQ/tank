@@ -1,6 +1,7 @@
 use crate::{
-    Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, EitherIterator,
-    Entity, Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
+    Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, CreateSchemaQuery, CreateTableQuery,
+    Dataset, DropSchemaQuery, DropTableQuery, DynQuery, EitherIterator, Entity, Expression,
+    Fragment, InsertIntoQuery, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
     PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized,
     print_date, print_timer, separated_by, write_escaped, writer::Context,
 };
@@ -866,52 +867,47 @@ pub trait SqlWriter: Send {
         out.push_str("ROLLBACK;");
     }
 
-    /// Emit CREATE SCHEMA.
-    fn write_create_schema<E>(&self, out: &mut DynQuery, if_not_exists: bool)
+    /// Emit CREATE SCHEMA
+    fn write_create_schema(&self, out: &mut DynQuery, query: &impl CreateSchemaQuery)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table();
-        out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
         }
+        let mut context = Context::new(Fragment::SqlCreateSchema, false);
         out.push_str("CREATE SCHEMA ");
-        let mut context = Context::new(Fragment::SqlCreateSchema, E::qualified_columns());
-        if if_not_exists {
+        if query.get_if_not_exists() {
             out.push_str("IF NOT EXISTS ");
         }
-        self.write_identifier(&mut context, out, &table.schema, true);
+        self.write_identifier(&mut context, out, query.get_schema(), true);
         out.push(';');
     }
 
     /// Emit DROP SCHEMA.
-    fn write_drop_schema<E>(&self, out: &mut DynQuery, if_exists: bool)
+    fn write_drop_schema(&self, out: &mut DynQuery, query: &impl DropSchemaQuery)
     where
         Self: Sized,
-        E: Entity,
     {
-        let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
-        let table = E::table();
-        out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
         }
+        let mut context = Context::new(Fragment::SqlDropSchema, false);
         out.push_str("DROP SCHEMA ");
-        if if_exists {
+        if query.get_if_exists() {
             out.push_str("IF EXISTS ");
         }
-        self.write_identifier(&mut context, out, &table.schema, true);
+        self.write_identifier(&mut context, out, query.get_schema(), true);
         out.push(';');
     }
 
     /// Emit CREATE TABLE with columns, constraints & comments.
-    fn write_create_table<E>(&self, out: &mut DynQuery, if_not_exists: bool)
+    fn write_create_table<E>(&self, out: &mut DynQuery, query: &impl CreateTableQuery<E>)
     where
         Self: Sized,
         E: Entity,
     {
+        let if_not_exists = query.get_not_exists();
         let mut context = Context::new(Fragment::SqlCreateTable, E::qualified_columns());
         let table = E::table();
         let estimated = 128 + E::columns().len() * 64 + E::primary_key_def().len() * 24;
@@ -1096,11 +1092,12 @@ pub trait SqlWriter: Send {
     }
 
     /// Write DROP TABLE statement.
-    fn write_drop_table<E>(&self, out: &mut DynQuery, if_exists: bool)
+    fn write_drop_table<E>(&self, out: &mut DynQuery, query: &impl DropTableQuery<E>)
     where
         Self: Sized,
         E: Entity,
     {
+        let if_exists = query.get_exists();
         let table = E::table();
         out.buffer()
             .reserve(24 + table.schema.len() + table.name.len());
@@ -1203,15 +1200,13 @@ pub trait SqlWriter: Send {
     }
 
     /// Write INSERT statement.
-    fn write_insert<'b, E>(
-        &self,
-        out: &mut DynQuery,
-        entities: impl IntoIterator<Item = &'b E>,
-        update: bool,
-    ) where
+    fn write_insert<'b, E>(&self, out: &mut DynQuery, query: &impl InsertIntoQuery<'b, E>)
+    where
         Self: Sized,
         E: Entity + 'b,
     {
+        let update = query.get_update();
+        let entities = query.into_values();
         let table = E::table();
         let mut rows = entities.into_iter().map(Entity::row_filtered).peekable();
         let Some(mut row) = rows.next() else {

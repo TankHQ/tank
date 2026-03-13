@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt::Write, mem};
 use tank_core::{
-    ColumnDef, ColumnRef, Context, DynQuery, Entity, GenericSqlWriter, SqlWriter, TableRef, Value,
-    write_escaped,
+    ColumnDef, ColumnRef, Context, CreateSchemaQuery, DropSchemaQuery, DynQuery, Entity,
+    GenericSqlWriter, SqlWriter, TableRef, Value, write_escaped,
 };
 
 /// SQL writer for SQLite dialect.
@@ -152,19 +152,11 @@ impl SqlWriter for SQLiteSqlWriter {
         out.push_str("(unixepoch('subsec') * 1000)");
     }
 
-    fn write_create_schema<E>(&self, _out: &mut DynQuery, _if_not_exists: bool)
-    where
-        Self: Sized,
-        E: Entity,
-    {
+    fn write_create_schema(&self, _out: &mut DynQuery, _query: &impl CreateSchemaQuery) {
         // SQLite does not support schema
     }
 
-    fn write_drop_schema<E>(&self, _out: &mut DynQuery, _if_exists: bool)
-    where
-        Self: Sized,
-        E: Entity,
-    {
+    fn write_drop_schema(&self, _out: &mut DynQuery, _query: &impl DropSchemaQuery) {
         // SQLite does not support schema
     }
 

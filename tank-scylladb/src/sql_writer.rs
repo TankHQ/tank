@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use tank_core::{
-    ColumnDef, Context, Dataset, DynQuery, Entity, Error, Expression, Fragment, GenericSqlWriter,
-    Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, indoc::indoc, print_timer,
-    separated_by,
+    ColumnDef, Context, CreateSchemaQuery, Dataset, DropSchemaQuery, DynQuery, Entity, Error,
+    Expression, Fragment, GenericSqlWriter, InsertIntoQuery, Interval, IsTrue, PrimaryKeyType,
+    Result, SqlWriter, Value, indoc::indoc, print_timer, separated_by,
 };
 use time::Time;
 use uuid::Uuid;
@@ -238,22 +238,16 @@ impl SqlWriter for ScyllaDBSqlWriter {
         out.push_str("toUnixTimestamp(currentTimestamp())");
     }
 
-    fn write_create_schema<E>(&self, out: &mut DynQuery, if_not_exists: bool)
-    where
-        Self: Sized,
-        E: Entity,
-    {
-        let table = E::table();
-        out.buffer().reserve(128 + table.schema.len());
+    fn write_create_schema(&self, out: &mut DynQuery, query: &impl CreateSchemaQuery) {
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("CREATE KEYSPACE ");
-        let mut context = Context::new(Fragment::SqlCreateSchema, E::qualified_columns());
-        if if_not_exists {
+        if query.get_if_not_exists() {
             out.push_str("IF NOT EXISTS ");
         }
-        self.write_identifier(&mut context, out, &table.schema, true);
+        let mut context = Context::new(Fragment::SqlCreateSchema, false);
+        self.write_identifier(&mut context, out, query.get_schema(), true);
         out.push('\n');
         out.push_str(indoc! {r#"
             WITH replication = {
@@ -263,22 +257,16 @@ impl SqlWriter for ScyllaDBSqlWriter {
         "#});
     }
 
-    fn write_drop_schema<E>(&self, out: &mut DynQuery, if_exists: bool)
-    where
-        Self: Sized,
-        E: Entity,
-    {
-        let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
-        let table = E::table();
-        out.buffer().reserve(32 + table.schema.len());
+    fn write_drop_schema(&self, out: &mut DynQuery, query: &impl DropSchemaQuery) {
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("DROP KEYSPACE ");
-        if if_exists {
+        if query.get_if_exists() {
             out.push_str("IF EXISTS ");
         }
-        self.write_identifier(&mut context, out, &table.schema, true);
+        let mut context = Context::new(Fragment::SqlDropSchema, false);
+        self.write_identifier(&mut context, out, query.get_schema(), true);
         out.push(';');
     }
 
@@ -352,15 +340,14 @@ impl SqlWriter for ScyllaDBSqlWriter {
     {
     }
 
-    fn write_insert<'b, E>(
-        &self,
-        out: &mut DynQuery,
-        entities: impl IntoIterator<Item = &'b E>,
-        _update: bool,
-    ) where
+    fn write_insert<'b, E, Q>(&self, out: &mut DynQuery, query: Q)
+    where
         Self: Sized,
         E: Entity + 'b,
+        Q: InsertIntoQuery<'b, E>,
     {
+        let _update = query.get_update();
+        let entities = query.into_values();
         let table = E::table();
         let mut it = entities.into_iter().map(Entity::row_filtered).peekable();
         let mut row = it.next();

@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 use tank::{
-    Connection, Entity, QueryBuilder, Transaction, cols,
+    Connection, Driver, Entity, QueryBuilder, Transaction, cols,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -99,7 +99,7 @@ pub async fn transaction1<C: Connection>(connection: &mut C) {
                 .select(cols!(*))
                 .from(EntityA::table())
                 .where_expr(true)
-                .build(&connection.driver()),
+                .build(&connection.driver().sql_writer()),
         )
         .try_collect::<Vec<_>>()
         .await
@@ -112,7 +112,7 @@ pub async fn transaction1<C: Connection>(connection: &mut C) {
                 .select(cols!(*))
                 .from(EntityB::table())
                 .where_expr(true)
-                .build(&connection.driver()),
+                .build(&connection.driver().sql_writer()),
         )
         .try_collect::<Vec<_>>()
         .await

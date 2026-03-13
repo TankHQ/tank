@@ -1,6 +1,6 @@
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Entity, Executor, QueryBuilder, cols,
+    Driver, Entity, Executor, QueryBuilder, cols,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -39,7 +39,7 @@ pub async fn other<E: Executor>(executor: &mut E) {
                 .select(cols!(NULL))
                 .from(ATable::table())
                 .where_expr(true)
-                .build(&executor.driver()),
+                .build(&executor.driver().sql_writer()),
         )
         .map_ok(|v| v.values.into_iter().nth(0).unwrap());
     let value = pin!(stream)

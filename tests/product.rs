@@ -135,7 +135,7 @@ mod tests {
     #[test]
     fn test_product_create_table() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<Product>(&mut query, false);
+        WRITER.write_create_table::<Product>(&mut query, &false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn test_product_insert() {
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&Product::sample()], false);
+        WRITER.write_insert(&mut query, [&Product::sample()]);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -196,7 +196,6 @@ mod tests {
                 },
             ]
             .iter(),
-            false,
         );
         assert_eq!(
             query.as_str(),

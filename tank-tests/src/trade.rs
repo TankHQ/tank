@@ -366,7 +366,6 @@ pub async fn trade_multiple<E: Executor>(executor: &mut E) {
                     ("risk_limit".into(), "high".into()),
                 ])),
             }],
-            false,
         );
         writer.write_select(
             &mut query,

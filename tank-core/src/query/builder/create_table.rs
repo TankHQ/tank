@@ -1,46 +1,67 @@
-use crate::{Driver, DynQuery, Entity, NA, SqlWriter};
+use crate::{DynQuery, Entity, SqlWriter};
 use std::marker::PhantomData;
 
-pub struct CreateTableQueryBuilder<Table: Entity, Exists> {
+pub struct CreateTableQueryBuilder<Table: Entity> {
     pub(crate) if_not_exists: bool,
-    pub(crate) _table: PhantomData<Table>,
-    pub(crate) _e: PhantomData<Exists>,
+    pub(crate) _table: PhantomData<fn() -> Table>,
 }
 
-impl<T: Entity> CreateTableQueryBuilder<T, NA> {
-    pub fn if_not_exists(self) -> CreateTableQueryBuilder<T, bool> {
+impl<T: Entity> CreateTableQueryBuilder<T> {
+    pub fn if_not_exists(self) -> CreateTableQueryBuilder<T> {
         CreateTableQueryBuilder {
             if_not_exists: true,
             _table: self._table,
-            _e: Default::default(),
         }
     }
 }
 
-impl<T: Entity, E> CreateTableQueryBuilder<T, E> {
+impl<T: Entity> CreateTableQueryBuilder<T> {
     pub fn get_not_exists(&self) -> bool {
         self.if_not_exists
     }
 
-    pub fn build<D: Driver>(&self, driver: &D) -> String {
-        let writer = driver.sql_writer();
+    pub fn build(&self, writer: &impl SqlWriter) -> DynQuery {
         let mut query = DynQuery::default();
-        writer.write_create_table::<T>(&mut query, self.if_not_exists);
-        query.into()
+        self.build_into(writer, &mut query);
+        query
     }
 
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
-        let writer = driver.sql_writer();
-        writer.write_create_table::<T>(out, self.if_not_exists);
+    pub fn build_into(&self, writer: &impl SqlWriter, out: &mut DynQuery) {
+        writer.write_create_table::<T>(out, self);
     }
 }
 
 pub trait CreateTableQuery<Table: Entity> {
     fn get_not_exists(&self) -> bool;
+
+    fn build(&self, writer: &impl SqlWriter) -> DynQuery;
+    fn build_into(&self, writer: &impl SqlWriter, out: &mut DynQuery);
 }
 
-impl<T: Entity, E> CreateTableQuery<T> for CreateTableQueryBuilder<T, E> {
+impl<T: Entity> CreateTableQuery<T> for CreateTableQueryBuilder<T> {
     fn get_not_exists(&self) -> bool {
         self.get_not_exists()
+    }
+
+    fn build(&self, writer: &impl SqlWriter) -> DynQuery {
+        self.build(writer)
+    }
+
+    fn build_into(&self, writer: &impl SqlWriter, out: &mut DynQuery) {
+        self.build_into(writer, out)
+    }
+}
+
+impl<T: Entity> CreateTableQuery<T> for bool {
+    fn get_not_exists(&self) -> bool {
+        *self
+    }
+
+    fn build(&self, writer: &impl SqlWriter) -> DynQuery {
+        DynQuery::default()
+    }
+
+    fn build_into(&self, writer: &impl SqlWriter, out: &mut DynQuery) {
+        writer.write_create_table::<T>(out, self);
     }
 }

@@ -87,7 +87,7 @@ mod tests {
     #[test]
     fn test_simple_entity_create_table() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<SomeSimpleEntity>(&mut query, false);
+        WRITER.write_create_table::<SomeSimpleEntity>(&mut query, &false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -104,22 +104,21 @@ mod tests {
 
     #[test]
     fn test_simple_entity_drop_table() {
-        let mut query = DynQuery::default();
-        WRITER.write_drop_table::<SomeSimpleEntity>(&mut query, true);
+        let query = QueryBuilder::new()
+            .drop_table::<SomeSimpleEntity>()
+            .if_exists()
+            .build(&WRITER);
         assert_eq!(query.as_str(), r#"DROP TABLE IF EXISTS "simple_entity";"#);
     }
 
     #[test]
     fn test_simple_entity_select() {
-        let mut query = DynQuery::default();
-        WRITER.write_select(
-            &mut query,
-            &QueryBuilder::new()
-                .select(SomeSimpleEntity::columns())
-                .from(SomeSimpleEntity::table())
-                .where_expr(expr!(SomeSimpleEntity::a > 100))
-                .limit(Some(1000)),
-        );
+        let query = QueryBuilder::new()
+            .select(SomeSimpleEntity::columns())
+            .from(SomeSimpleEntity::table())
+            .where_expr(expr!(SomeSimpleEntity::a > 100))
+            .limit(Some(1000))
+            .build(&WRITER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -135,7 +134,13 @@ mod tests {
     #[test]
     fn test_simple_entity_insert() {
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&SomeSimpleEntity::make_some()], true);
+        WRITER.write_insert(
+            &mut query,
+            QueryBuilder::new()
+                .insert_into::<SomeSimpleEntity>()
+                .values([&SomeSimpleEntity::make_some()])
+                .update(),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"

@@ -25,8 +25,16 @@ pub async fn arrays2<E: Executor>(executor: &mut E) {
     {
         let mut query = DynQuery::default();
         let writer = executor.driver().sql_writer();
-        writer.write_drop_table::<Container>(&mut query, true);
-        writer.write_create_table::<Container>(&mut query, true);
+        writer.write_drop_table::<Container>(
+            &mut query,
+            &QueryBuilder::new().drop_table::<Container>().if_exists(),
+        );
+        writer.write_create_table::<Container>(
+            &mut query,
+            &QueryBuilder::new()
+                .create_table::<Container>()
+                .if_not_exists(),
+        );
         let value = Container {
             first: [[
                 Interval::from_years(500),
@@ -38,7 +46,7 @@ pub async fn arrays2<E: Executor>(executor: &mut E) {
                 [Uuid::from_str("9d7f0f5b-19d6-4298-a332-214fc85e2652").unwrap()],
             ]],
         };
-        writer.write_insert(&mut query, &[value], false);
+        writer.write_insert(&mut query, &[value]);
         writer.write_select(
             &mut query,
             &QueryBuilder::new()

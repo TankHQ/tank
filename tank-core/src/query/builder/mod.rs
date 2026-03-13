@@ -1,15 +1,19 @@
+mod create_schema;
 mod create_table;
+mod drop_schema;
 mod drop_table;
 mod insert_into;
 mod select;
 
+pub use create_schema::*;
 pub use create_table::*;
+pub use drop_schema::*;
 pub use drop_table::*;
 pub use insert_into::*;
 pub use select::*;
 
 use crate::{Context, DynQuery, Entity, Expression, ExpressionVisitor, OpPrecedence, SqlWriter};
-use std::iter;
+use std::{borrow::Cow, iter};
 
 #[derive(Default, Debug)]
 pub struct QueryBuilder;
@@ -33,27 +37,30 @@ impl QueryBuilder {
             _l: Default::default(),
         }
     }
-    pub fn insert_into<E: Entity>(self) -> InsertIntoQueryBuilder<E, NA, NA> {
+    pub fn insert_into<E: Entity>(self) -> InsertIntoQueryBuilder<E, NA> {
         InsertIntoQueryBuilder {
             values: Default::default(),
             update: Default::default(),
             _table: Default::default(),
-            _update: Default::default(),
         }
     }
-    pub fn create_table<E: Entity>(self) -> CreateTableQueryBuilder<E, NA> {
+    pub fn create_table<E: Entity>(self) -> CreateTableQueryBuilder<E> {
         CreateTableQueryBuilder {
             if_not_exists: Default::default(),
             _table: Default::default(),
-            _e: Default::default(),
         }
     }
-    pub fn drop_table<E: Entity>(self) -> DropTableQueryBuilder<E, NA> {
+    pub fn drop_table<E: Entity>(self) -> DropTableQueryBuilder<E> {
         DropTableQueryBuilder {
             if_exists: Default::default(),
             _table: Default::default(),
-            _e: Default::default(),
         }
+    }
+    pub fn create_schema(self, schema: Cow<'static, str>) -> CreateSchemaQueryBuilder {
+        CreateSchemaQueryBuilder::new(schema)
+    }
+    pub fn drop_schema(self, schema: Cow<'static, str>) -> DropSchemaQueryBuilder {
+        DropSchemaQueryBuilder::new(schema)
     }
 }
 

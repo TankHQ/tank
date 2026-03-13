@@ -1,8 +1,9 @@
 #![allow(unused_imports)]
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
 use tank::{
-    DynQuery, AsValue, Dataset, Driver, Entity, Executor, Passive, Query, QueryBuilder, QueryResult,
-    RowLabeled, SqlWriter, Value, cols, expr, join, stream::{StreamExt, TryStreamExt}
+    AsValue, Dataset, Driver, DynQuery, Entity, Executor, Passive, Query, QueryBuilder,
+    QueryResult, RowLabeled, SqlWriter, Value, cols, expr, join,
+    stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -149,11 +150,10 @@ pub async fn books<E: Executor>(executor: &mut E) {
     }
 
     // Find authors
-    let id = Uuid::parse_str("f938f818-0a40-4ce3-8fbc-259ac252a1b5").unwrap().as_value();
-    let author = Author::find_one(
-        executor,
-        expr!(Author::id == #id)
-    )
+    let id = Uuid::parse_str("f938f818-0a40-4ce3-8fbc-259ac252a1b5")
+        .unwrap()
+        .as_value();
+    let author = Author::find_one(executor, expr!(Author::id == #id))
         .await
         .expect("Failed to query author by pk");
     assert_eq!(
@@ -183,7 +183,6 @@ pub async fn books<E: Executor>(executor: &mut E) {
         })
     );
 
-
     #[cfg(not(feature = "disable-joins"))]
     {
         // Get books before 2000
@@ -201,7 +200,7 @@ pub async fn books<E: Executor>(executor: &mut E) {
                     .from(join!(Book B JOIN Author A ON B.author == A.author_id))
                     .where_expr(expr!(B.year < 2000))
                     .order_by(cols!(B.title DESC))
-                    .build(&executor.driver()),
+                    .build(&executor.driver().sql_writer()),
             )
             .map_ok(BookAuthorResult::from_row)
             .map(Result::flatten)
@@ -211,11 +210,11 @@ pub async fn books<E: Executor>(executor: &mut E) {
         assert_eq!(
             result,
             [
-                BookAuthorResult{
+                BookAuthorResult {
                     book: "The Hobbit".into(),
                     author: "J.R.R. Tolkien".into()
                 },
-                BookAuthorResult{
+                BookAuthorResult {
                     book: "Harry Potter and the Philosopher's Stone".into(),
                     author: "J.K. Rowling".into(),
                 },
@@ -232,8 +231,8 @@ pub async fn books<E: Executor>(executor: &mut E) {
                     .select(cols!(B.title, A1.name as author, A2.name as co_author))
                     .from(dataset)
                     .where_expr(true)
-                    .build(&executor.driver())
-            ) 
+                    .build(&executor.driver().sql_writer())
+            )
             .try_collect::<Vec<RowLabeled>>()
             .await
             .expect("Failed to query books and authors joined")
@@ -291,12 +290,13 @@ pub async fn books<E: Executor>(executor: &mut E) {
             pub title: Option<String>,
             pub author: Option<String>,
         }
-        let books = executor.fetch(
+        let books = executor
+            .fetch(
                 QueryBuilder::new()
                     .select(cols!(Book::title, Author::name as author, Book::year))
                     .from(join!(Book JOIN Author ON Book::author == Author::id))
                     .where_expr(true)
-                    .build(&executor.driver())
+                    .build(&executor.driver().sql_writer()),
             )
             .and_then(|row| async { Books::from_row(row) })
             .try_collect::<HashSet<_>>()
@@ -352,13 +352,14 @@ pub async fn books<E: Executor>(executor: &mut E) {
     #[cfg(not(feature = "disable-ordering"))]
     {
         // Authors names alphabetical order
-        let authors = executor.fetch(
-            QueryBuilder::new()
-                .select([Author::name])
-                .from(Author::table())
-                .where_expr(true)
-                .order_by(cols!(Author::name ASC))
-                .build(&executor.driver())
+        let authors = executor
+            .fetch(
+                QueryBuilder::new()
+                    .select([Author::name])
+                    .from(Author::table())
+                    .where_expr(true)
+                    .order_by(cols!(Author::name ASC))
+                    .build(&executor.driver().sql_writer()),
             )
             .and_then(|row| async move { AsValue::try_from_value((*row.values)[0].clone()) })
             .try_collect::<Vec<String>>()
@@ -386,7 +387,7 @@ pub async fn books<E: Executor>(executor: &mut E) {
                 .select(Book::columns())
                 .from(Book::table())
                 .where_expr(expr!(Book::title == "Metro 2033"))
-                .limit(Some(1))
+                .limit(Some(1)),
         );
         writer.write_select(
             &mut query,
@@ -394,7 +395,7 @@ pub async fn books<E: Executor>(executor: &mut E) {
                 .select(Book::columns())
                 .from(Book::table())
                 .where_expr(expr!(Book::title == "Harry Potter and the Deathly Hallows"))
-                .limit(Some(1))
+                .limit(Some(1)),
         );
         let mut stream = pin!(executor.run(query));
         let Some(Ok(QueryResult::Row(row))) = stream.next().await else {

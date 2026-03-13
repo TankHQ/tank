@@ -85,7 +85,7 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
         let mut query = DynQuery::default();
         let writer = self.driver().sql_writer();
         for entity in entities {
-            writer.write_insert::<E>(&mut query, [entity], false);
+            writer.write_insert::<E, _>(&mut query, [entity]);
             let mut q = query.into_query(self.driver());
             self.execute(&mut q).await?;
             query = q.into();
