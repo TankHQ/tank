@@ -166,7 +166,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
     }
 
     // Simple 2
-    SimpleFields::delete_many(executor, expr!(simple_fields.alpha == 1))
+    SimpleFields::delete_many(executor, expr!(SimpleFields::alpha == 1))
         .await
         .expect("Failed to clear the SimpleNullFields table");
     let entity = SimpleFields {
@@ -192,7 +192,7 @@ pub async fn simple<E: Executor>(executor: &mut E) {
         .save(executor)
         .await
         .expect("Failed to save simple 2");
-    let entity = SimpleFields::find_one(executor, expr!(simple_fields.alpha == 255))
+    let entity = SimpleFields::find_one(executor, expr!(SimpleFields::alpha == 255))
         .await
         .expect("Failed to query simple 2")
         .expect("Failed to find simple 2");

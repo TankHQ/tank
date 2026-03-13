@@ -55,7 +55,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
         .expect("Failed to create SimpleNullFields table");
 
     // Minimals
-    Limits::delete_many(executor, expr!(limits.id == 1))
+    Limits::delete_many(executor, expr!(id == 1))
         .await
         .expect("Failed to clear the Limits table");
     let minimals = Limits {
@@ -92,7 +92,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
     Limits::insert_one(executor, &minimals)
         .await
         .expect("Failed to save minimals entity");
-    let loaded = Limits::find_one(executor, expr!(limits.id == 1))
+    let loaded = Limits::find_one(executor, expr!(id == 1))
         .await
         .expect("Failed to query simple 2")
         .expect("Failed to find simple 2");
@@ -134,7 +134,7 @@ pub async fn limits<E: Executor>(executor: &mut E) {
     assert_eq!(loaded.interval, Interval::from_micros(1));
 
     // Maximals
-    Limits::delete_many(executor, expr!(1 == limits.id))
+    Limits::delete_many(executor, expr!(Limits::id == 1))
         .await
         .expect("Failed to clear the Limits table");
     let maximals = Limits {

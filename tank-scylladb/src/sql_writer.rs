@@ -410,7 +410,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
     {
         let table = E::table();
         out.buffer().reserve(128);
-        let mut context = Context::new(Fragment::SqlDeleteFrom, E::qualified_columns());
+        let mut context = Context::new(Fragment::SqlDeleteFrom, false);
         let is_true = condition.accept_visitor(&mut IsTrue, self, &mut context, out);
         if is_true {
             out.push_str("TRUNCATE ");
