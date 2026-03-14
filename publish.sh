@@ -26,4 +26,7 @@ cargo publish &&
 cd ../ &&
 cd tank-sqlite/ &&
 cargo publish &&
+cd ../ &&
+cd tank-valkey/ &&
+cargo publish &&
 cd ../
