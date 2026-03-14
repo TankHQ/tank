@@ -80,6 +80,7 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
                 string: "eee".into(),
             },
         ],
+        false,
     );
     query.push_str("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
     // 8
@@ -93,6 +94,7 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
                 string: "ccc".into(),
             },
         ],
+        false,
     );
     // 9
     writer.write_select(
@@ -110,6 +112,7 @@ pub async fn multiple<E: Executor>(executor: &mut E) {
             string: "zzz".into(),
             c1: 512,
         }],
+        false,
     );
     // 11
     writer.write_select(

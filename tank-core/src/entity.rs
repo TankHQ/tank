@@ -147,10 +147,10 @@ pub trait Entity {
         entity: &impl Entity,
     ) -> impl Future<Output = Result<RowsAffected>> + Send {
         let mut query = DynQuery::with_capacity(128);
-        executor.driver().sql_writer().write_insert(
-            &mut query,
-            &QueryBuilder::new().insert_into().values([entity]),
-        );
+        executor
+            .driver()
+            .sql_writer()
+            .write_insert(&mut query, [entity], false);
         executor.execute(query)
     }
 
@@ -263,13 +263,10 @@ pub trait Entity {
             return Either::Left(future::ready(Err(error)));
         }
         let mut query = DynQuery::with_capacity(512);
-        executor.driver().sql_writer().write_insert(
-            &mut query,
-            &QueryBuilder::new()
-                .insert_into::<Self>()
-                .values([self])
-                .update(),
-        );
+        executor
+            .driver()
+            .sql_writer()
+            .write_insert(&mut query, [self], true);
         let sql = query.as_str();
         let context = format!("While saving using the query {}", truncate_long!(sql));
         Either::Right(executor.execute(query).map(|mut v| {

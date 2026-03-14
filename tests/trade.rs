@@ -309,7 +309,7 @@ mod tests {
         docs.insert("contract.pdf".to_string(), vec![1, 2, 3, 4]);
         let employee = Trade::sample();
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&employee]);
+        WRITER.write_insert(&mut query, [&employee], false);
         assert!(
             // Last part of the query (the map) is removed becaus order of keys is not defined. Value stores a HashMap
             query.as_str().starts_with(indoc! {r#"

@@ -2,7 +2,7 @@
 mod tests {
     use indoc::indoc;
     use std::borrow::Cow;
-    use tank::{DynQuery, Entity, GenericSqlWriter, Query, QueryBuilder, SqlWriter, TableRef};
+    use tank::{DynQuery, Entity, GenericSqlWriter, QueryBuilder, SqlWriter, TableRef};
 
     #[derive(Entity, Default)]
     #[tank(schema = "the_schema", name = "empty_entity")]
@@ -46,7 +46,6 @@ mod tests {
     fn test_simple_entity_drop_table() {
         let query = QueryBuilder::new()
             .drop_table::<SomeEmptyEntity>()
-            .if_exists()
             .build(&WRITER);
         assert_eq!(query.as_str(), r#"DROP TABLE "the_schema"."empty_entity";"#);
     }
@@ -73,13 +72,7 @@ mod tests {
     #[test]
     fn test_simple_entity_insert() {
         let mut query = DynQuery::default();
-        WRITER.write_insert(
-            &mut query,
-            QueryBuilder::new()
-                .insert_into::<SomeEmptyEntity>()
-                .values([&SomeEmptyEntity::default()])
-                .update(),
-        );
+        WRITER.write_insert(&mut query, [&SomeEmptyEntity::default()], true);
         assert_eq!(
             query.as_str(),
             indoc! {r#"

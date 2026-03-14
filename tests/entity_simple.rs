@@ -134,13 +134,7 @@ mod tests {
     #[test]
     fn test_simple_entity_insert() {
         let mut query = DynQuery::default();
-        WRITER.write_insert(
-            &mut query,
-            QueryBuilder::new()
-                .insert_into::<SomeSimpleEntity>()
-                .values([&SomeSimpleEntity::make_some()])
-                .update(),
-        );
+        WRITER.write_insert(&mut query, [&SomeSimpleEntity::make_some()], true);
         assert_eq!(
             query.as_str(),
             indoc! {r#"

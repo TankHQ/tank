@@ -16,9 +16,8 @@ use std::{borrow::Cow, collections::HashMap, f64, iter, mem, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, CreateSchemaQuery, CreateTableQuery,
     Dataset, DropSchemaQuery, DropTableQuery, DynQuery, Entity, ErrorContext, Expression,
-    FindOrder, Fragment, InsertIntoQuery, Interval, IsAggregateFunction, IsAsterisk, Operand,
-    Order, Result, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, print_timer,
-    truncate_long,
+    FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk, Operand, Order, Result,
+    SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, print_timer, truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -757,12 +756,7 @@ impl SqlWriter for MongoDBSqlWriter {
             out,
             &mut Context::empty(),
             CreateDatabasePayload {
-                table: TableRef {
-                    schema: query.get_schema().to_string().into(),
-                    name: "".into(),
-                    alias: "".into(),
-                    columns: &[],
-                },
+                table: TableRef::new(query.get_schema().to_string().into()),
             }
             .into(),
         );
@@ -773,12 +767,7 @@ impl SqlWriter for MongoDBSqlWriter {
             out,
             &mut Context::empty(),
             DropDatabasePayload {
-                table: TableRef {
-                    schema: query.get_schema().to_string().into(),
-                    name: "".into(),
-                    alias: "".into(),
-                    columns: &[],
-                },
+                table: TableRef::new(query.get_schema().to_string().into()),
             }
             .into(),
         );
@@ -1088,14 +1077,15 @@ impl SqlWriter for MongoDBSqlWriter {
         Self::prepare_query(out, &mut context, payload);
     }
 
-    fn write_insert<'b, E, Q>(&self, out: &mut DynQuery, query: Q)
-    where
+    fn write_insert<'b, E>(
+        &self,
+        out: &mut DynQuery,
+        entities: impl IntoIterator<Item = &'b E>,
+        update: bool,
+    ) where
         Self: Sized,
         E: Entity + 'b,
-        Q: InsertIntoQuery<'b, E>,
     {
-        let update = query.get_update();
-        let entities = query.into_values();
         let table = E::table().clone();
         let name = table.full_name(self.separator());
         let mut entities = entities.into_iter().peekable();

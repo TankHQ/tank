@@ -55,7 +55,7 @@ pub async fn kv_storage<E: Executor>(executor: &mut E) {
             .await
             .expect("Failed to drop KV table");
     }
-    KV::create_table(executor, false, true)
+    KV::create_table(executor, true, true)
         .await
         .expect("Failed to create KV table");
 

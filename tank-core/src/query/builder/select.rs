@@ -1,6 +1,33 @@
 use crate::{Dataset, DynQuery, EitherIterator, Expression, ExpressionCollection, NA, SqlWriter};
 use std::{iter, marker::PhantomData};
 
+/// SELECT query builder.
+///
+/// Use `QueryBuilder::new().select(..)` to start.
+pub trait SelectQuery<From>
+where
+    From: Dataset,
+{
+    /// Get SELECT expressions.
+    fn get_select(&self) -> impl Iterator<Item = impl Expression> + Clone;
+    /// Get FROM clause dataset.
+    fn get_from<'s>(&'s self) -> &'s Option<From>;
+    /// Get WHERE clause expression.
+    fn get_where<'s>(&'s self) -> &'s Option<impl Expression>;
+    /// Get GROUP BY expressions.
+    fn get_group_by(&self) -> impl Iterator<Item = impl Expression> + Clone;
+    /// Get HAVING clause expression.
+    fn get_having(&self) -> &Option<impl Expression>;
+    /// Get ORDER BY expressions.
+    fn get_order_by(&self) -> impl Iterator<Item = impl Expression> + Clone;
+    /// Get LIMIT value.
+    fn get_limit(&self) -> Option<u32>;
+    /// Build query.
+    fn build(&self, writer: &impl SqlWriter) -> DynQuery;
+    /// Build query into existing buffer.
+    fn build_into(&self, writer: &impl SqlWriter, out: &mut DynQuery);
+}
+
 pub struct SelectQueryBuilder<Select, From, Where, GroupBy, Having, OrderBy, Limit> {
     pub(crate) select: Select,
     pub(crate) from: Option<From>,
@@ -175,33 +202,6 @@ where
     pub fn build_into(&self, writer: &impl SqlWriter, out: &mut DynQuery) {
         writer.write_select(out, self);
     }
-}
-
-/// SELECT query builder.
-///
-/// Use `QueryBuilder::new().select(..)` to start.
-pub trait SelectQuery<From>
-where
-    From: Dataset,
-{
-    /// Get SELECT expressions.
-    fn get_select(&self) -> impl Iterator<Item = impl Expression> + Clone;
-    /// Get FROM clause dataset.
-    fn get_from<'s>(&'s self) -> &'s Option<From>;
-    /// Get WHERE clause expression.
-    fn get_where<'s>(&'s self) -> &'s Option<impl Expression>;
-    /// Get GROUP BY expressions.
-    fn get_group_by(&self) -> impl Iterator<Item = impl Expression> + Clone;
-    /// Get HAVING clause expression.
-    fn get_having(&self) -> &Option<impl Expression>;
-    /// Get ORDER BY expressions.
-    fn get_order_by(&self) -> impl Iterator<Item = impl Expression> + Clone;
-    /// Get LIMIT value.
-    fn get_limit(&self) -> Option<u32>;
-    /// Build query.
-    fn build(&self, writer: &impl SqlWriter) -> DynQuery;
-    /// Build query into existing buffer.
-    fn build_into(&self, writer: &impl SqlWriter, out: &mut DynQuery);
 }
 
 impl<S, From, W, G, H, O, L> SelectQuery<From> for SelectQueryBuilder<S, From, W, G, H, O, L>

@@ -188,8 +188,10 @@ mod tests {
 
     #[test]
     fn test_employee_drop_table() {
-        let mut query = DynQuery::default();
-        WRITER.write_drop_table::<Employee>(&mut query, &true);
+        let query = QueryBuilder::new()
+            .drop_table::<Employee>()
+            .if_exists()
+            .build(&WRITER);
         assert_eq!(
             query.as_str(),
             r#"DROP TABLE IF EXISTS "company"."employee";"#
@@ -225,7 +227,7 @@ mod tests {
         docs.insert("contract.pdf".to_string(), vec![1, 2, 3, 4]);
         let employee = Employee::sample();
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&employee]);
+        WRITER.write_insert(&mut query, [&employee], false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -241,7 +243,7 @@ mod tests {
             ..Employee::sample()
         };
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&employee]);
+        WRITER.write_insert(&mut query, [&employee], false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"

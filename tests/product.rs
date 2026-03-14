@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn test_product_insert() {
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&Product::sample()]);
+        WRITER.write_insert(&mut query, [&Product::sample()], false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -170,7 +170,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,
-            [
+            &[
                 Product {
                     id: 74.into(),
                     name: "Headphones".into(),
@@ -194,8 +194,8 @@ mod tests {
                         Time::from_hms(9, 45, 30).unwrap(),
                     ),
                 },
-            ]
-            .iter(),
+            ],
+            false,
         );
         assert_eq!(
             query.as_str(),

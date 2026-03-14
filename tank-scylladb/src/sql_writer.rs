@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 use tank_core::{
     ColumnDef, Context, CreateSchemaQuery, Dataset, DropSchemaQuery, DynQuery, Entity, Error,
-    Expression, Fragment, GenericSqlWriter, InsertIntoQuery, Interval, IsTrue, PrimaryKeyType,
-    Result, SqlWriter, Value, indoc::indoc, print_timer, separated_by,
+    Expression, Fragment, GenericSqlWriter, Interval, IsTrue, PrimaryKeyType, Result, SqlWriter,
+    Value, indoc::indoc, print_timer, separated_by,
 };
 use time::Time;
 use uuid::Uuid;
@@ -340,14 +340,15 @@ impl SqlWriter for ScyllaDBSqlWriter {
     {
     }
 
-    fn write_insert<'b, E, Q>(&self, out: &mut DynQuery, query: Q)
-    where
+    fn write_insert<'b, E>(
+        &self,
+        out: &mut DynQuery,
+        entities: impl IntoIterator<Item = &'b E>,
+        _update: bool,
+    ) where
         Self: Sized,
         E: Entity + 'b,
-        Q: InsertIntoQuery<'b, E>,
     {
-        let _update = query.get_update();
-        let entities = query.into_values();
         let table = E::table();
         let mut it = entities.into_iter().map(Entity::row_filtered).peekable();
         let mut row = it.next();

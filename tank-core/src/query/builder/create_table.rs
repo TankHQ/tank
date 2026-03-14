@@ -57,7 +57,7 @@ impl<T: Entity> CreateTableQuery<T> for bool {
         *self
     }
 
-    fn build(&self, writer: &impl SqlWriter) -> DynQuery {
+    fn build(&self, _writer: &impl SqlWriter) -> DynQuery {
         DynQuery::default()
     }
 

@@ -1,9 +1,9 @@
 use crate::{
     Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, CreateSchemaQuery, CreateTableQuery,
     Dataset, DropSchemaQuery, DropTableQuery, DynQuery, EitherIterator, Entity, Expression,
-    Fragment, InsertIntoQuery, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
-    PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized,
-    print_date, print_timer, separated_by, write_escaped, writer::Context,
+    Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered, PrimaryKeyType,
+    SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized, print_date,
+    print_timer, separated_by, write_escaped, writer::Context,
 };
 use core::f64;
 use std::{
@@ -1200,13 +1200,15 @@ pub trait SqlWriter: Send {
     }
 
     /// Write INSERT statement.
-    fn write_insert<'b, E>(&self, out: &mut DynQuery, query: &impl InsertIntoQuery<'b, E>)
-    where
+    fn write_insert<'b, E>(
+        &self,
+        out: &mut DynQuery,
+        entities: impl IntoIterator<Item = &'b E>,
+        update: bool,
+    ) where
         Self: Sized,
         E: Entity + 'b,
     {
-        let update = query.get_update();
-        let entities = query.into_values();
         let table = E::table();
         let mut rows = entities.into_iter().map(Entity::row_filtered).peekable();
         let Some(mut row) = rows.next() else {

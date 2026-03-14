@@ -2,14 +2,12 @@ mod create_schema;
 mod create_table;
 mod drop_schema;
 mod drop_table;
-mod insert_into;
 mod select;
 
 pub use create_schema::*;
 pub use create_table::*;
 pub use drop_schema::*;
 pub use drop_table::*;
-pub use insert_into::*;
 pub use select::*;
 
 use crate::{Context, DynQuery, Entity, Expression, ExpressionVisitor, OpPrecedence, SqlWriter};
@@ -35,13 +33,6 @@ impl QueryBuilder {
             order_by: Default::default(),
             limit: Default::default(),
             _l: Default::default(),
-        }
-    }
-    pub fn insert_into<E: Entity>(self) -> InsertIntoQueryBuilder<E, NA> {
-        InsertIntoQueryBuilder {
-            values: Default::default(),
-            update: Default::default(),
-            _table: Default::default(),
         }
     }
     pub fn create_table<E: Entity>(self) -> CreateTableQueryBuilder<E> {

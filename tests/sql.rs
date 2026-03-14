@@ -79,7 +79,7 @@ mod tests {
         {
             let mut query = DynQuery::default();
             let table = Table::default();
-            WRITER.write_insert(&mut query, [&table]);
+            WRITER.write_insert(&mut query, [&table], false);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -96,13 +96,7 @@ mod tests {
                 _second_column: 512.5.into(),
                 _third_column: 478,
             };
-            WRITER.write_insert(
-                &mut query,
-                QueryBuilder::new()
-                    .insert_into::<Table>()
-                    .values([&table])
-                    .update(),
-            );
+            WRITER.write_insert(&mut query, [&table], true);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -149,8 +143,7 @@ mod tests {
         }
         // DROP TABLE
         {
-            let mut query = DynQuery::default();
-            WRITER.write_drop_table::<Cart>(&mut query, &false);
+            let query = QueryBuilder::new().drop_table::<Cart>().build(&WRITER);
             assert_eq!(query.as_str(), r#"DROP TABLE "cart";"#);
         }
         // SELECT with LIMIT
@@ -189,7 +182,7 @@ mod tests {
                 is_active: Default::default(),
                 total_price: Default::default(),
             };
-            WRITER.write_insert(&mut query, [&cart]);
+            WRITER.write_insert(&mut query, [&cart], false);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -216,13 +209,7 @@ mod tests {
                 is_active: true,
                 total_price: Decimal::new(2599, 2), // 25.99
             };
-            WRITER.write_insert(
-                &mut query,
-                QueryBuilder::new()
-                    .insert_into::<Cart>()
-                    .values([&cart])
-                    .update(),
-            );
+            WRITER.write_insert(&mut query, [&cart], true);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"

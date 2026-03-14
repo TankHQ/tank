@@ -1,10 +1,10 @@
-use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap, table_to_key};
+use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
 use std::{borrow::Cow, fmt::Write};
 use tank_core::{
     Context, CreateSchemaQuery, CreateTableQuery, Dataset, DropSchemaQuery, DropTableQuery,
-    DynQuery, Entity, Expression, Fragment, InsertIntoQuery, IsAsterisk, SelectQuery, SqlWriter,
-    TableRef, Value, column_def,
+    DynQuery, Entity, Expression, Fragment, IsAsterisk, SelectQuery, SqlWriter, TableRef, Value,
+    column_def,
 };
 
 #[derive(Default)]
@@ -180,13 +180,15 @@ impl SqlWriter for ValkeySqlWriter {
         }
     }
 
-    fn write_insert<'b, E, Q>(&self, out: &mut DynQuery, query: Q)
-    where
+    fn write_insert<'b, E>(
+        &self,
+        out: &mut DynQuery,
+        entities: impl IntoIterator<Item = &'b E>,
+        _update: bool,
+    ) where
         Self: Sized,
         E: Entity + 'b,
-        Q: InsertIntoQuery<'b, E>,
     {
-        let entities = query.into_values();
         let table = E::table();
         let mut context = Self::make_context(Fragment::SqlInsertInto);
         let prepared = Self::prepare_query(out, &mut context);

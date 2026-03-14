@@ -150,8 +150,7 @@ mod tests {
 
     #[test]
     fn test_customer_drop_table() {
-        let mut query = DynQuery::default();
-        WRITER.write_drop_table::<Customer>(&mut query, &false);
+        let query = QueryBuilder::new().drop_table::<Customer>().build(&WRITER);
         assert_eq!(query.as_str(), r#"DROP TABLE "customers";"#);
     }
 
