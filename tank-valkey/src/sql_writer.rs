@@ -1,4 +1,4 @@
-use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap, table_to_key};
+use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
 use std::{borrow::Cow, fmt::Write};
 use tank_core::{
@@ -113,8 +113,10 @@ impl SqlWriter for ValkeySqlWriter {
             return;
         }
         let mut context = Self::make_context(Fragment::SqlSelect);
-        let mut is_pk_condition =
-            IsPKCondition::new(table.full_name(self.separator()).into_owned());
+        let mut is_pk_condition = IsPKCondition::new(
+            table.full_name(self.separator()).into_owned(),
+            table.primary_key,
+        );
         if !where_expr.accept_visitor(
             &mut is_pk_condition,
             self,
@@ -201,8 +203,10 @@ impl SqlWriter for ValkeySqlWriter {
         let prepared = Self::prepare_query(out, &mut context);
         for entity in entities.into_iter() {
             let row = entity.row_filtered();
-            let mut is_pk_condition =
-                IsPKCondition::new(table.full_name(self.separator()).into_owned());
+            let mut is_pk_condition = IsPKCondition::new(
+                table.full_name(self.separator()).into_owned(),
+                table.primary_key,
+            );
             entity.primary_key_expr().accept_visitor(
                 &mut is_pk_condition,
                 self,
@@ -267,8 +271,10 @@ impl SqlWriter for ValkeySqlWriter {
     {
         let table = E::table();
         let mut context = Self::make_context(Fragment::SqlDeleteFrom);
-        let mut is_pk_condition =
-            IsPKCondition::new(table.full_name(self.separator()).into_owned());
+        let mut is_pk_condition = IsPKCondition::new(
+            table.full_name(self.separator()).into_owned(),
+            table.primary_key,
+        );
         if !condition.accept_visitor(
             &mut is_pk_condition,
             self,

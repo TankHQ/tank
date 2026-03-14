@@ -17,6 +17,8 @@ pub struct TableRef {
     pub alias: Cow<'static, str>,
     /// Columns
     pub columns: &'static [ColumnDef],
+    /// Primary key
+    pub primary_key: &'static [&'static ColumnDef],
 }
 
 impl TableRef {
@@ -27,6 +29,7 @@ impl TableRef {
             schema: Cow::Borrowed(""),
             alias: Cow::Borrowed(""),
             columns: &[],
+            primary_key: &[],
         }
     }
     /// Get the display name.
@@ -34,11 +37,11 @@ impl TableRef {
         if !self.alias.is_empty() {
             return self.alias.clone();
         }
-        let mut key = self.name.clone();
+        let mut name = self.name.clone();
         if !self.schema.is_empty() {
-            key = format!("{}{}{}", self.schema, separator, key).into();
+            name = format!("{}{}{}", self.schema, separator, name).into();
         }
-        key
+        name
     }
     /// Set the alias.
     pub fn with_alias(&self, alias: Cow<'static, str>) -> Self {

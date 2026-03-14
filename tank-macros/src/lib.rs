@@ -115,6 +115,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                                 schema: ::std::borrow::Cow::Borrowed(#schema),
                                 alias: ::std::borrow::Cow::Borrowed(""),
                                 columns: #ident::columns(),
+                                primary_key: #ident::primary_key_def(),
                             }
                         )
                     );

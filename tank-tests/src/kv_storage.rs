@@ -11,9 +11,10 @@ use crate::silent_logs;
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Entity, PartialEq, Debug, Clone)]
-#[tank(schema = "testing", primary_key = Self::key)]
+#[tank(schema = "testing", primary_key = (Self::key2, Self::key1))]
 pub struct KV {
-    pub key: String,
+    pub key1: String,
+    pub key2: String,
     pub string_val: String,
     pub int_val: i64,
     pub small_int: i16,
@@ -61,7 +62,8 @@ pub async fn kv_storage<E: Executor>(executor: &mut E) {
 
     // Insert values
     let entries = vec![KV {
-        key: "first".into(),
+        key1: "first".into(),
+        key2: "aa".into(),
         string_val: "hello".into(),
         int_val: 42,
         small_int: -7,
@@ -108,13 +110,14 @@ pub async fn kv_storage<E: Executor>(executor: &mut E) {
     }
 
     // Query
-    let name = KV::find_one(executor, expr!(KV::key == "first"))
+    let name = KV::find_one(executor, expr!(KV::key1 == "first" && KV::key2 == "aa"))
         .await
         .expect("Failed to query KV");
     assert_eq!(
         name,
         Some(KV {
-            key: "first".into(),
+            key1: "first".into(),
+            key2: "aa".into(),
             string_val: "hello".into(),
             int_val: 42,
             small_int: -7,

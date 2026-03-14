@@ -1,6 +1,6 @@
 use std::{borrow::Cow, mem};
 use tank_core::{
-    BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
+    BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
     IsConstant, Operand, Ordered, SqlWriter,
 };
 
@@ -57,10 +57,16 @@ impl ExpressionVisitor for IsField {
 
 pub struct IsPKCondition {
     pub key: String,
+    pk: &'static [&'static ColumnDef],
+    retry: bool,
 }
 impl IsPKCondition {
-    pub fn new(prefix: String) -> Self {
-        IsPKCondition { key: prefix }
+    pub fn new(prefix: String, pk: &'static [&'static ColumnDef]) -> Self {
+        IsPKCondition {
+            key: prefix,
+            pk,
+            retry: false,
+        }
     }
 }
 impl ExpressionVisitor for IsPKCondition {
@@ -73,8 +79,32 @@ impl ExpressionVisitor for IsPKCondition {
     ) -> bool {
         match value.op {
             BinaryOpType::And => {
-                value.lhs.accept_visitor(self, writer, context, out)
-                    && value.rhs.accept_visitor(self, writer, context, out)
+                let mut lhs_done = false;
+                let mut rhs_done = false;
+                loop {
+                    let pk_len_before = self.pk.len();
+                    if !lhs_done {
+                        self.retry = false;
+                        lhs_done = value.lhs.accept_visitor(self, writer, context, out);
+                        if !lhs_done && !self.retry {
+                            return false;
+                        }
+                    }
+                    if !rhs_done {
+                        self.retry = false;
+                        rhs_done = value.rhs.accept_visitor(self, writer, context, out);
+                        if !rhs_done && !self.retry {
+                            return false;
+                        }
+                    }
+                    if lhs_done && rhs_done {
+                        return true;
+                    }
+                    if self.pk.len() == pk_len_before {
+                        self.retry = true;
+                        return false;
+                    }
+                }
             }
             BinaryOpType::Equal => {
                 let mut is_column = IsField::default();
@@ -98,6 +128,13 @@ impl ExpressionVisitor for IsPKCondition {
                 } else {
                     return false;
                 };
+                let Some(first) = self.pk.first() else {
+                    return false;
+                };
+                if is_column.field != first.column_ref.name {
+                    self.retry = true;
+                    return false;
+                }
                 if !self.key.is_empty() {
                     self.key.push_str(writer.separator());
                 }
@@ -106,6 +143,7 @@ impl ExpressionVisitor for IsPKCondition {
                 let mut out = DynQuery::new(mem::take(&mut self.key));
                 value.write_query(writer, context, &mut out);
                 self.key = mem::take(out.buffer());
+                self.pk = &self.pk[1..];
                 true
             }
             _ => false,

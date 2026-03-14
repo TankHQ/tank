@@ -8,8 +8,8 @@ use testcontainers_modules::{
 
 pub(crate) async fn execute_tests<C: Connection>(mut connection: C) {
     simple(&mut connection).await;
-    kv_storage(&mut connection).await;
     limits(&mut connection).await;
+    kv_storage(&mut connection).await;
 }
 
 pub async fn init(ssl: bool) -> (String, Option<ContainerAsync<Valkey>>) {
