@@ -53,8 +53,15 @@ impl<'a> TryFrom<redis::Value> for ValueWrap<'a> {
                     .as_ref()
                     .map(tank_core::Value::as_null)
                     .unwrap_or(tank_core::Value::Null);
-                let it = first.map(|v| Ok(v)).into_iter().chain(it);
-                tank_core::Value::List(Some(it.collect::<Result<Vec<_>, _>>()?), Box::new(ty))
+                let mut it = first.map(|v| Ok(v)).into_iter().chain(it).peekable();
+                tank_core::Value::List(
+                    if it.peek().is_some() {
+                        Some(it.collect::<Result<Vec<_>, _>>()?)
+                    } else {
+                        None
+                    },
+                    Box::new(ty),
+                )
             }
             redis::Value::Map(v) => {
                 let mut it = v
@@ -71,9 +78,13 @@ impl<'a> TryFrom<redis::Value> for ValueWrap<'a> {
                     .as_ref()
                     .map(|(k, v)| (k.as_null(), v.as_null()))
                     .unwrap_or((tank_core::Value::Null, tank_core::Value::Null));
-                let it = first.map(|v| Ok(v)).into_iter().chain(it);
+                let mut it = first.map(|v| Ok(v)).into_iter().chain(it).peekable();
                 tank_core::Value::Map(
-                    Some(it.collect::<Result<HashMap<_, _>, _>>()?),
+                    if it.peek().is_some() {
+                        Some(it.collect::<Result<HashMap<_, _>, _>>()?)
+                    } else {
+                        None
+                    },
                     Box::new(k_ty),
                     Box::new(v_ty),
                 )

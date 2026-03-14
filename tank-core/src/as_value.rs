@@ -1182,11 +1182,11 @@ macro_rules! impl_as_value {
             }
             fn try_from_value(value: Value) -> Result<Self> {
                 match value {
+                    Value::List(None, ..) => Ok(Default::default()),
                     Value::List(Some(v), ..) => Ok(v
                         .into_iter()
                         .map(|v| Ok::<_, Error>(<T as AsValue>::try_from_value(v)?))
                         .collect::<Result<_>>()?),
-                    Value::List(None, ..) => Ok($source::<T>::new()),
                     Value::Array(Some(v), ..) => Ok(v
                         .into_iter()
                         .map(|v| Ok::<_, Error>(<T as AsValue>::try_from_value(v)?))
@@ -1227,6 +1227,7 @@ macro_rules! impl_as_value {
             }
             fn try_from_value(value: Value) -> Result<Self> {
                 match value {
+                    Value::Map(None, ..) => Ok(Default::default()),
                     Value::Map(Some(v), ..) => {
                         Ok(v.into_iter()
                             .map(|(k, v)| {

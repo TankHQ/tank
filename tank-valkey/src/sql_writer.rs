@@ -237,27 +237,32 @@ impl SqlWriter for ValkeySqlWriter {
                 let key = format!("{key}:{k}");
                 let value = v.0.as_ref();
                 match value {
-                    Value::Array(Some(..), ..) | Value::List(Some(..), ..) => prepared
+                    Value::Array(Some(v), ..) if !v.is_empty() => prepared
                         .commands
                         .push(Cmd::rpush(key, ValueWrap(Cow::Borrowed(value)))),
-                    Value::Map(Some(value), ..) => prepared.commands.push(Cmd::hset_multiple(
-                        key,
-                        value
-                            .iter()
-                            .map(|(k, v)| {
-                                (ValueWrap(Cow::Borrowed(k)), ValueWrap(Cow::Borrowed(v)))
-                            })
-                            .collect::<Vec<_>>()
-                            .as_slice(),
-                    )),
-                    Value::Struct(Some(value), ..) => prepared.commands.push(Cmd::hset_multiple(
-                        key,
-                        value
-                            .iter()
-                            .map(|(k, v)| (k, ValueWrap(Cow::Borrowed(v))))
-                            .collect::<Vec<_>>()
-                            .as_slice(),
-                    )),
+                    Value::List(Some(v), ..) if !v.is_empty() => prepared
+                        .commands
+                        .push(Cmd::rpush(key, ValueWrap(Cow::Borrowed(value)))),
+                    Value::Map(Some(v), ..) if !v.is_empty() => {
+                        prepared.commands.push(Cmd::hset_multiple(
+                            key,
+                            v.iter()
+                                .map(|(k, v)| {
+                                    (ValueWrap(Cow::Borrowed(k)), ValueWrap(Cow::Borrowed(v)))
+                                })
+                                .collect::<Vec<_>>()
+                                .as_slice(),
+                        ))
+                    }
+                    Value::Struct(Some(v), ..) if !v.is_empty() => {
+                        prepared.commands.push(Cmd::hset_multiple(
+                            key,
+                            v.iter()
+                                .map(|(k, v)| (k, ValueWrap(Cow::Borrowed(v))))
+                                .collect::<Vec<_>>()
+                                .as_slice(),
+                        ))
+                    }
                     _ => {}
                 };
             }

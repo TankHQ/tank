@@ -61,7 +61,7 @@ pub async fn kv_storage<E: Executor>(executor: &mut E) {
         .expect("Failed to create KV table");
 
     // Insert values
-    let entries = vec![KV {
+    let first = KV {
         key1: "first".into(),
         key2: "aa".into(),
         string_val: "hello".into(),
@@ -99,60 +99,57 @@ pub async fn kv_storage<E: Executor>(executor: &mut E) {
             ("views".into(), 100),
             ("likes".into(), 5),
         ])),
-    }];
-
-    let result = KV::insert_many(executor, entries.iter())
+    };
+    let second = KV {
+        key1: "second".into(),
+        key2: "bb".into(),
+        string_val: "world".into(),
+        int_val: 99,
+        small_int: 16,
+        unsigned_val: 0,
+        float_val: 0.005,
+        double_val: 0.00001,
+        boolean_val: false,
+        opt_string: None,
+        opt_int: 19.into(),
+        opt_float: None,
+        opt_bool: Some(true),
+        uuid: Uuid::from_str("4ba01a6a-e1b5-47c8-8d1b-e38b64a73989").unwrap(),
+        opt_uuid: None,
+        #[cfg(not(feature = "disable-arrays"))]
+        fixed_bytes: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+        #[cfg(not(feature = "disable-arrays"))]
+        numbers: [-10, -20, -30, -40],
+        #[cfg(not(feature = "disable-lists"))]
+        tags: vec![],
+        #[cfg(not(feature = "disable-lists"))]
+        scores: vec![],
+        #[cfg(not(feature = "disable-lists"))]
+        floats: None,
+        #[cfg(not(feature = "disable-lists"))]
+        shared_strings: Arc::new(vec![]),
+        #[cfg(not(feature = "disable-maps"))]
+        metadata: BTreeMap::new(),
+        #[cfg(not(feature = "disable-maps"))]
+        counters: None,
+    };
+    let result = KV::insert_many(executor, [&first, &second])
         .await
         .expect("Failed to insert KV entity");
 
     if let Some(rows) = result.rows_affected {
-        assert_eq!(rows, 1);
+        assert_eq!(rows, 2);
     }
 
-    // Query
-    let name = KV::find_one(executor, expr!(KV::key1 == "first" && KV::key2 == "aa"))
+    // Query (first, aa)
+    let value = KV::find_one(executor, expr!(KV::key1 == "first" && KV::key2 == "aa"))
         .await
         .expect("Failed to query KV");
-    assert_eq!(
-        name,
-        Some(KV {
-            key1: "first".into(),
-            key2: "aa".into(),
-            string_val: "hello".into(),
-            int_val: 42,
-            small_int: -7,
-            unsigned_val: 99,
-            float_val: 3.14,
-            double_val: 9.87654321,
-            boolean_val: true,
-            opt_string: Some("optional".into()),
-            opt_int: None,
-            opt_float: Some(1.5),
-            opt_bool: None,
-            uuid: Uuid::from_str("c41af414-54cf-49cb-96c6-364e9c42f294").unwrap(),
-            opt_uuid: Some(Uuid::from_str("b1cacbcb-b3e0-4502-bbcd-d4ef014d189b").unwrap()),
-            #[cfg(not(feature = "disable-arrays"))]
-            fixed_bytes: *b"abcdefghijklmnop",
-            #[cfg(not(feature = "disable-arrays"))]
-            numbers: [1, 2, 3, 4],
-            #[cfg(not(feature = "disable-lists"))]
-            tags: vec!["kv".into(), "test".into(), "valkey".into()],
-            #[cfg(not(feature = "disable-lists"))]
-            scores: vec![10, 20, 30],
-            #[cfg(not(feature = "disable-lists"))]
-            floats: Some(vec![1.1, 2.2, 3.3]),
-            #[cfg(not(feature = "disable-lists"))]
-            shared_strings: Arc::new(vec!["a".into(), "b".into(), "c".into()]),
-            #[cfg(not(feature = "disable-maps"))]
-            metadata: BTreeMap::from_iter([
-                ("env".into(), "test".into()),
-                ("region".into(), "eu".into()),
-            ]),
-            #[cfg(not(feature = "disable-maps"))]
-            counters: Some(BTreeMap::from_iter([
-                ("views".into(), 100),
-                ("likes".into(), 5),
-            ])),
-        })
-    );
+    assert_eq!(value, Some(first));
+
+    // Query (second, bb)
+    let value = KV::find_one(executor, expr!(KV::key1 == "second" && KV::key2 == "bb"))
+        .await
+        .expect("Failed to query KV");
+    assert_eq!(value, Some(second));
 }

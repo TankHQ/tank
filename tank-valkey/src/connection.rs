@@ -62,7 +62,8 @@ impl Executor for ValkeyConnection {
             let raw_result = pipeline
                 .query_async::<redis::Value>(&mut self.connection)
                 .await
-                .map_err(Error::new)?;
+                .map_err(Error::new)
+                .with_context(context)?;
             let results = match raw_result {
                 redis::Value::Array(arr) => arr,
                 redis::Value::Nil => vec![],
