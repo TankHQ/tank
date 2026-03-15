@@ -11,7 +11,7 @@ mod tests {
     static MUTEX: Mutex<()> = Mutex::new(());
 
     #[tokio::test]
-    async fn valkey() {
+    pub async fn valkey() {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
         let driver = ValkeyDriver::new();

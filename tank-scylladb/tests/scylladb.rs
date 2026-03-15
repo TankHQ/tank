@@ -11,7 +11,7 @@ mod tests {
     static MUTEX: Mutex<()> = Mutex::new(());
 
     #[tokio::test]
-    async fn scylladb() {
+    pub async fn scylladb() {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
 

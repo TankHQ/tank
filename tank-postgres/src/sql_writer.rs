@@ -1,5 +1,7 @@
 use std::{collections::BTreeMap, fmt::Write};
-use tank_core::{ColumnDef, Context, Dataset, DynQuery, Entity, SqlWriter, Value, separated_by};
+use tank_core::{
+    ColumnDef, Context, Dataset, DynQuery, Entity, Fragment, SqlWriter, Value, separated_by,
+};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 
 /// Postgres SQL writer.
@@ -103,59 +105,37 @@ impl SqlWriter for PostgresSqlWriter {
         out.push('\'');
     }
 
-    fn write_value_date(
-        &self,
-        _context: &mut Context,
-        out: &mut DynQuery,
-        value: &Date,
-        timestamp: bool,
-    ) {
-        let (l, r) = if timestamp {
-            ("", "")
-        } else {
-            ("'", "'::DATE")
+    fn write_value_date(&self, context: &mut Context, out: &mut DynQuery, value: &Date) {
+        let (l, r) = match context.fragment {
+            Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => ("", ""),
+            Fragment::Json | Fragment::JsonKey => ("\"", "\""),
+            _ => ("'", "'::DATE"),
         };
-        let (year, suffix) = if !timestamp && value.year() <= 0 {
+        let (year, suffix) = if value.year() <= 0 {
             // Year 0 in Postgres is 1 BC
             (value.year().abs() + 1, " BC")
         } else {
             (value.year(), "")
         };
-        let _ = write!(
-            out,
-            "{l}{:04}-{:02}-{:02}{suffix}{r}",
-            year,
-            value.month() as u8,
-            value.day()
-        );
+        let month = value.month() as u8;
+        let day = value.day();
+        let _ = write!(out, "{l}{year:04}-{month:02}-{day:02}{suffix}{r}");
     }
 
-    fn write_value_time(
-        &self,
-        _context: &mut Context,
-        out: &mut DynQuery,
-        value: &Time,
-        timestamp: bool,
-    ) {
-        let mut subsecond = value.nanosecond();
+    fn write_value_time(&self, context: &mut Context, out: &mut DynQuery, value: &Time) {
+        let (l, r) = match context.fragment {
+            Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => ("", ""),
+            Fragment::Json | Fragment::JsonKey => ("\"", "\""),
+            _ => ("'", "'::TIME"),
+        };
+        let (h, m, s, ns) = value.as_hms_nano();
+        let mut subsecond = ns;
         let mut width = 9;
         while width > 1 && subsecond % 10 == 0 {
             subsecond /= 10;
             width -= 1;
         }
-        let (l, r) = if timestamp {
-            ("", "")
-        } else {
-            ("'", "'::TIME")
-        };
-        let _ = write!(
-            out,
-            "{l}{:02}:{:02}:{:02}.{:0width$}{r}",
-            value.hour(),
-            value.minute(),
-            value.second(),
-            subsecond
-        );
+        let _ = write!(out, "{l}{h:02}:{m:02}:{s:02}.{subsecond:0width$}{r}",);
     }
 
     fn write_value_timestamp(
@@ -164,14 +144,20 @@ impl SqlWriter for PostgresSqlWriter {
         out: &mut DynQuery,
         value: &PrimitiveDateTime,
     ) {
-        out.push('\'');
-        self.write_value_date(context, out, &value.date(), true);
+        let (l, r) = match context.fragment {
+            Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => ("", ""),
+            Fragment::Json | Fragment::JsonKey => ("\"", "\""),
+            _ => ("'", "'::TIMESTAMP"),
+        };
+        let mut context = context.switch_fragment(Fragment::Timestamp);
+        out.push_str(l);
+        self.write_value_date(&mut context.current, out, &value.date());
         out.push('T');
-        self.write_value_time(context, out, &value.time(), true);
+        self.write_value_time(&mut context.current, out, &value.time());
         if value.date().year() <= 0 {
             out.push_str(" BC");
         }
-        out.push_str("'::TIMESTAMP");
+        out.push_str(r);
     }
 
     fn write_value_timestamptz(
@@ -180,10 +166,18 @@ impl SqlWriter for PostgresSqlWriter {
         out: &mut DynQuery,
         value: &OffsetDateTime,
     ) {
-        out.push('\'');
-        self.write_value_date(context, out, &value.date(), true);
-        out.push('T');
-        self.write_value_time(context, out, &value.time(), true);
+        let (l, r) = match context.fragment {
+            Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => ("", ""),
+            Fragment::Json | Fragment::JsonKey => ("\"", "\""),
+            _ => ("'", "'::TIMESTAMPTZ"),
+        };
+        let mut context = context.switch_fragment(Fragment::Timestamp);
+        out.push_str(l);
+        self.write_value_timestamp(
+            &mut context.current,
+            out,
+            &PrimitiveDateTime::new(value.date(), value.time()),
+        );
         let _ = write!(
             out,
             "{:+03}:{:02}",
@@ -193,7 +187,7 @@ impl SqlWriter for PostgresSqlWriter {
         if value.date().year() <= 0 {
             out.push_str(" BC");
         }
-        out.push_str("'::TIMESTAMPTZ");
+        out.push_str(r);
     }
 
     fn write_value_list(

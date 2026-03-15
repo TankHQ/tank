@@ -2,7 +2,7 @@ use crate::{
     Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, EitherIterator,
     Entity, Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
     PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized,
-    print_date, print_timer, separated_by, write_escaped, writer::Context,
+    separated_by, write_escaped, writer::Context,
 };
 use core::f64;
 use std::{
@@ -241,8 +241,8 @@ pub trait SqlWriter: Send {
             }
             Value::Varchar(Some(v), ..) => self.write_value_string(context, out, v),
             Value::Blob(Some(v), ..) => self.write_value_blob(context, out, v.as_ref()),
-            Value::Date(Some(v), ..) => self.write_value_date(context, out, v, false),
-            Value::Time(Some(v), ..) => self.write_value_time(context, out, v, false),
+            Value::Date(Some(v), ..) => self.write_value_date(context, out, v),
+            Value::Time(Some(v), ..) => self.write_value_time(context, out, v),
             Value::Timestamp(Some(v), ..) => self.write_value_timestamp(context, out, v),
             Value::TimestampWithTimezone(Some(v), ..) => {
                 self.write_value_timestamptz(context, out, v)
@@ -260,6 +260,7 @@ pub trait SqlWriter: Send {
                 _ => unreachable!(),
             },
             Value::Map(Some(v), ..) => self.write_value_map(context, out, v),
+            Value::Json(Some(v), ..) => self.write_value_json(context, out, v),
             Value::Struct(Some(v), ..) => self.write_value_struct(context, out, v),
             _ => {
                 log::error!("Cannot write {value:?}");
@@ -303,81 +304,76 @@ pub trait SqlWriter: Send {
 
     /// Write string literal.
     fn write_value_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
-        let (delimiter, escaped) =
-            if context.fragment == Fragment::Json || context.fragment == Fragment::JsonKey {
-                ('"', r#"\""#)
-            } else {
-                ('\'', "''")
-            };
-        out.push(delimiter);
-        let mut pos = 0;
-        for (i, c) in value.char_indices() {
-            if c == delimiter {
-                out.push_str(&value[pos..i]);
-                out.push_str(escaped);
-                pos = i + 1;
-            } else if c == '\n' {
-                out.push_str(&value[pos..i]);
-                out.push_str("\\n");
-                pos = i + 1;
+        let (delimiter, escaped) = match context.fragment {
+            Fragment::None | Fragment::ParameterBinding => (None, ""),
+            Fragment::Json | Fragment::JsonKey => (Some('"'), r#"\""#),
+            _ => (Some('\''), "''"),
+        };
+        if let Some(delimiter) = delimiter {
+            out.push(delimiter);
+            let mut pos = 0;
+            for (i, c) in value.char_indices() {
+                if c == delimiter {
+                    out.push_str(&value[pos..i]);
+                    out.push_str(escaped);
+                    pos = i + 1;
+                } else if c == '\n' {
+                    out.push_str(&value[pos..i]);
+                    out.push_str("\\n");
+                    pos = i + 1;
+                }
             }
+            out.push_str(&value[pos..]);
+            out.push(delimiter);
+        } else {
+            out.push_str(value);
         }
-        out.push_str(&value[pos..]);
-        out.push(delimiter);
     }
 
     /// Write blob literal.
     fn write_value_blob(&self, context: &mut Context, out: &mut DynQuery, value: &[u8]) {
-        let delimiter = if context.fragment == Fragment::Json {
-            '"'
-        } else {
-            '\''
+        let delimiter = match context.fragment {
+            Fragment::None | Fragment::ParameterBinding => "",
+            Fragment::Json | Fragment::JsonKey => "\"",
+            _ => "'",
         };
-        out.push(delimiter);
+        out.push_str(delimiter);
         for v in value {
             let _ = write!(out, "\\x{:02X}", v);
         }
-        out.push(delimiter);
+        out.push_str(delimiter);
     }
 
     /// Write date literal.
     /// - `timestamp`: the date is part of a timestamp literal.
-    fn write_value_date(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &Date,
-        timestamp: bool,
-    ) {
-        let b = match context.fragment {
-            Fragment::Json if !timestamp => "\"",
-            _ if !timestamp => "'",
-            _ => "",
+    fn write_value_date(&self, context: &mut Context, out: &mut DynQuery, value: &Date) {
+        let d = match context.fragment {
+            Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => "",
+            Fragment::Json | Fragment::JsonKey => "\"",
+            _ => "'",
         };
-        print_date(out, b, value);
+        let year = value.year();
+        let month = value.month() as u8;
+        let day = value.day();
+        let _ = write!(out, "{d}{year:04}-{month:02}-{day:02}{d}");
     }
 
     /// Write time literal.
     /// - `timestamp`: the time is part of a timestamp literal.
-    fn write_value_time(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &Time,
-        timestamp: bool,
-    ) {
-        print_timer(
-            out,
-            match context.fragment {
-                Fragment::Json if !timestamp => "\"",
-                _ if !timestamp => "'",
-                _ => "",
-            },
-            value.hour() as _,
-            value.minute(),
-            value.second(),
-            value.nanosecond(),
-        );
+    fn write_value_time(&self, context: &mut Context, out: &mut DynQuery, value: &Time) {
+        let d = match context.fragment {
+            Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => "",
+            Fragment::Json | Fragment::JsonKey => "\"",
+            _ => "'",
+        };
+        let (h, m, s, ns) = value.as_hms_nano();
+        let mut subsecond = ns;
+        let mut width = 9;
+        while width > 1 && subsecond % 10 == 0 {
+            subsecond /= 10;
+            width -= 1;
+        }
+        let _ = write!(out, "{d}{h:02}:{m:02}:{s:02}.{subsecond:0width$}{d}");
     }
 
     /// Write timestamp literal.
@@ -387,16 +383,17 @@ pub trait SqlWriter: Send {
         out: &mut DynQuery,
         value: &PrimitiveDateTime,
     ) {
-        let delimiter = match context.fragment {
-            Fragment::ParameterBinding => "",
-            Fragment::Json => "\"",
+        let d = match context.fragment {
+            Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => "",
+            Fragment::Json | Fragment::JsonKey => "\"",
             _ => "'",
         };
-        out.push_str(delimiter);
-        self.write_value_date(context, out, &value.date(), true);
-        out.push('T');
-        self.write_value_time(context, out, &value.time(), true);
-        out.push_str(delimiter);
+        let mut context = context.switch_fragment(Fragment::Timestamp);
+        out.push_str(d);
+        self.write_value_date(&mut context.current, out, &value.date());
+        out.push(' ');
+        self.write_value_time(&mut context.current, out, &value.time());
+        out.push_str(d);
     }
 
     /// Write timestamptz literal.
@@ -406,12 +403,30 @@ pub trait SqlWriter: Send {
         out: &mut DynQuery,
         value: &OffsetDateTime,
     ) {
-        let date_time = value.to_utc();
+        let d = match context.fragment {
+            Fragment::None | Fragment::ParameterBinding => "",
+            Fragment::Json | Fragment::JsonKey => "\"",
+            _ => "'",
+        };
+        let mut context = context.switch_fragment(Fragment::Timestamp);
+        out.push_str(d);
         self.write_value_timestamp(
-            context,
+            &mut context.current,
             out,
-            &PrimitiveDateTime::new(date_time.date(), date_time.time()),
+            &PrimitiveDateTime::new(value.date(), value.time()),
         );
+        let (h, m, s) = value.offset().as_hms();
+        if h != 0 || m != 0 || s != 0 {
+            out.push(if h >= 0 { '+' } else { '-' });
+            let _ = write!(out, "{h:02}");
+            if m != 0 || s != 0 {
+                let _ = write!(out, ":{m:02}");
+                if s != 0 {
+                    let _ = write!(out, ":{s:02}");
+                }
+            }
+        }
+        out.push_str(d);
     }
 
     /// Units used to decompose intervals (notice the decreasing order).
@@ -430,12 +445,12 @@ pub trait SqlWriter: Send {
     /// Write interval literal.
     fn write_value_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {
         out.push_str("INTERVAL ");
-        let delimiter = if context.fragment == Fragment::Json {
-            '"'
-        } else {
-            '\''
+        let d = match context.fragment {
+            Fragment::None => "",
+            Fragment::Json | Fragment::JsonKey => "\"",
+            _ => "'",
         };
-        out.push(delimiter);
+        out.push_str(d);
         if value.is_zero() {
             out.push_str("0 SECONDS");
         }
@@ -479,13 +494,17 @@ pub trait SqlWriter: Send {
                 }
             }
         }
-        out.push(delimiter);
+        out.push_str(d);
     }
 
     /// Write UUID literal.
     fn write_value_uuid(&self, context: &mut Context, out: &mut DynQuery, value: &Uuid) {
-        let b = if context.is_inside_json() { '"' } else { '\'' };
-        let _ = write!(out, "{b}{value}{b}");
+        let d = match context.fragment {
+            Fragment::None => "",
+            Fragment::Json | Fragment::JsonKey => "\"",
+            _ => "'",
+        };
+        let _ = write!(out, "{d}{value}{d}");
     }
 
     /// Write list literal.
@@ -519,6 +538,16 @@ pub trait SqlWriter: Send {
             ",",
         );
         out.push('}');
+    }
+
+    /// Write json.
+    fn write_value_json(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &serde_json::Value,
+    ) {
+        self.write_value_string(context, out, &value.to_string());
     }
 
     /// Write struct literal.

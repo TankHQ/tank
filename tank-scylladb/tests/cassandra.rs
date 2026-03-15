@@ -11,7 +11,7 @@ mod tests {
     static MUTEX: Mutex<()> = Mutex::new(());
 
     #[tokio::test]
-    async fn cassandra() {
+    pub async fn cassandra() {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
 

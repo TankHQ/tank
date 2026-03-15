@@ -10,7 +10,7 @@ mod tests {
     static MUTEX: Mutex<()> = Mutex::new(());
 
     #[tokio::test]
-    async fn sqlite() {
+    pub async fn sqlite() {
         init_logs();
         const DB_PATH: &'static str = "../target/debug/tests.sqlite";
         let _guard = MUTEX.lock().unwrap();

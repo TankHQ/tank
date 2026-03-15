@@ -10,7 +10,7 @@ mod tests {
     static MUTEX: Mutex<()> = Mutex::new(());
 
     #[tokio::test]
-    async fn duckdb() {
+    pub async fn duckdb() {
         init_logs();
         const DB_PATH: &'static str = "../target/debug/tests.duckdb";
         let _guard = MUTEX.lock().unwrap();

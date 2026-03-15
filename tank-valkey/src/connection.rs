@@ -68,14 +68,16 @@ impl Executor for ValkeyConnection {
                 redis::Value::Array(arr) => arr,
                 redis::Value::Nil => vec![],
                 redis::Value::ServerError(err) => {
-                    Err(Error::msg(format!("Valkey/Redis server error: {err}")))?;
+                    Err(Error::msg(format!("Valkey/Redis server error: {err}")))
+                        .with_context(context)?;
                     return;
                 }
                 other => {
                     Err(Error::msg(format!(
                         "Unexpected top-level pipeline response: {:?}",
                         other
-                    )))?;
+                    )))
+                    .with_context(context)?;
                     return;
                 }
             };
@@ -113,7 +115,7 @@ impl Executor for ValkeyConnection {
                                 .collect(),
                         )
                     }
-                    let converted: ValueWrap = redis_val.try_into()?;
+                    let converted: ValueWrap = redis_val.try_into().with_context(context)?;
                     values.push(converted.0.into_owned());
                 }
             }

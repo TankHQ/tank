@@ -6,10 +6,10 @@ pub enum Fragment {
     #[default]
     None,
     Aliasing,
-    ParameterBinding,
     Casting,
     Json,
     JsonKey,
+    ParameterBinding,
     SqlCommentOnColumn,
     SqlCreateSchema,
     SqlCreateTable,
@@ -28,6 +28,7 @@ pub enum Fragment {
     SqlSelectGroupBy,
     SqlSelectHaving,
     SqlSelectOrderBy,
+    Timestamp,
     SqlSelectWhere,
 }
 
@@ -109,9 +110,6 @@ impl Context {
             },
             previous: self,
         }
-    }
-    pub fn is_inside_json(&self) -> bool {
-        self.fragment == Fragment::Json || self.fragment == Fragment::JsonKey
     }
 }
 

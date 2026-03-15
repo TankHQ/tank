@@ -16,8 +16,7 @@ use std::{borrow::Cow, collections::HashMap, f64, iter, mem, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, Dataset, DynQuery, Entity, ErrorContext,
     Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk, Operand, Order,
-    Result, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, print_timer,
-    truncate_long,
+    Result, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -247,13 +246,7 @@ impl SqlWriter for MongoDBSqlWriter {
         });
     }
 
-    fn write_value_date(
-        &self,
-        _context: &mut Context,
-        out: &mut DynQuery,
-        value: &Date,
-        _timestamp: bool,
-    ) {
+    fn write_value_date(&self, _context: &mut Context, out: &mut DynQuery, value: &Date) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -268,13 +261,7 @@ impl SqlWriter for MongoDBSqlWriter {
         ))
     }
 
-    fn write_value_time(
-        &self,
-        _context: &mut Context,
-        out: &mut DynQuery,
-        value: &Time,
-        _timestamp: bool,
-    ) {
+    fn write_value_time(&self, _context: &mut Context, out: &mut DynQuery, value: &Time) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -282,16 +269,7 @@ impl SqlWriter for MongoDBSqlWriter {
             log::error!("Failed to get the bson in MongoDBSqlWriter::write_value_time");
             return;
         };
-        let mut out = String::new();
-        print_timer(
-            &mut out,
-            "",
-            value.hour() as _,
-            value.minute(),
-            value.second(),
-            value.nanosecond(),
-        );
-        *target = Bson::String(out)
+        *target = Bson::String(Value::Time(Some(*value)).to_string())
     }
 
     fn write_value_timestamp(

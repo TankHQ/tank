@@ -4,8 +4,9 @@ use std::{
 };
 use tank_core::{
     ColumnDef, Context, DynQuery, EitherIterator, Entity, Fragment, GenericSqlWriter, Interval,
-    PrimaryKeyType, SqlWriter, Value, print_timer, separated_by, write_escaped,
+    PrimaryKeyType, SqlWriter, Value, separated_by, write_escaped,
 };
+use time::{OffsetDateTime, PrimitiveDateTime};
 
 /// SQL writer for MySQL/MariaDB dialect.
 ///
@@ -159,10 +160,42 @@ impl SqlWriter for MySQLSqlWriter {
         GenericSqlWriter::new().write_value_f64(context, out, value);
     }
 
+    fn write_value_timestamptz(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &OffsetDateTime,
+    ) {
+        let d = match context.fragment {
+            Fragment::None | Fragment::ParameterBinding => "",
+            Fragment::Json | Fragment::JsonKey => "\"",
+            _ => "'",
+        };
+        let mut context = context.switch_fragment(Fragment::Timestamp);
+        out.push_str(d);
+        let value = value.to_utc();
+        self.write_value_timestamp(
+            &mut context.current,
+            out,
+            &PrimitiveDateTime::new(value.date(), value.time()),
+        );
+        out.push_str(d);
+    }
+
     fn write_value_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {
-        let delimiter = if context.is_inside_json() { "\"" } else { "\'" };
+        let d = match context.fragment {
+            Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => "",
+            Fragment::Json | Fragment::JsonKey => "\"",
+            _ => "'",
+        };
         let (h, m, s, ns) = value.as_hmsns();
-        print_timer(out, delimiter, h as _, m, s, ns);
+        let mut subsecond = ns;
+        let mut width = 9;
+        while width > 1 && subsecond % 10 == 0 {
+            subsecond /= 10;
+            width -= 1;
+        }
+        let _ = write!(out, "{d}{h:02}:{m:02}:{s:02}.{subsecond:0width$}{d}");
     }
 
     fn write_value_list(
@@ -173,7 +206,7 @@ impl SqlWriter for MySQLSqlWriter {
         _ty: &Value,
         _elem_ty: &Value,
     ) {
-        let is_json = context.is_inside_json();
+        let is_json = matches!(context.fragment, Fragment::Json | Fragment::JsonKey);
         let mut context = context.switch_fragment(Fragment::Json);
         if !is_json {
             out.push('\'');

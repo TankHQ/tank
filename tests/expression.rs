@@ -2,11 +2,9 @@
 mod tests {
     use std::borrow::Cow;
     use tank::{
-        BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, OpPrecedence, Operand,
-        SqlWriter, UnaryOp, UnaryOpType, Value,
+        BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Entity, Expression, Fragment,
+        OpPrecedence, Operand, SqlWriter, UnaryOp, UnaryOpType, Value, expr,
     };
-    use tank_core::Entity;
-    use tank_macros::{Entity, expr};
 
     struct Writer;
     impl SqlWriter for Writer {
@@ -22,7 +20,11 @@ mod tests {
         let expr = expr!();
         assert!(matches!(expr, Operand::LitBool(false)));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "false");
 
         let expr = expr!(1 + 2);
@@ -35,7 +37,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "1 + 2");
 
         let expr = expr!(5 * 1.2);
@@ -48,7 +54,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "5 * 1.2");
 
         let expr = expr!(true && false);
@@ -61,7 +71,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "true AND false");
 
         let expr = expr!(45 | -90);
@@ -77,7 +91,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "45 | -90");
 
         let expr = expr!(CAST(true as i32));
@@ -90,7 +108,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "CAST(true AS INTEGER)");
 
         let expr = expr!(CAST("1.5" as f64));
@@ -103,7 +125,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "CAST('1.5' AS DOUBLE)");
 
         let expr = expr!(["a", "b", "c"]);
@@ -116,7 +142,11 @@ mod tests {
             ])
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "['a','b','c']");
 
         let expr = expr!([11, 22, 33][1]);
@@ -133,7 +163,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "[11,22,33][1]");
 
         let expr = expr!("hello" == "hell_" as LIKE);
@@ -146,7 +180,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "'hello' LIKE 'hell_'");
 
         let expr = expr!("abc" != "A%" as LIKE);
@@ -159,7 +197,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "'abc' NOT LIKE 'A%'");
 
         let expr = expr!("log.txt" != "src/**/log.{txt,csv}" as GLOB);
@@ -172,7 +214,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "'log.txt' NOT GLOB 'src/**/log.{txt,csv}'");
 
         let expr = expr!(CAST(true as i32));
@@ -185,7 +231,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "CAST(true AS INTEGER)");
 
         let expr = expr!("value" != NULL);
@@ -198,7 +248,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "'value' IS NOT NULL");
     }
 
@@ -207,7 +261,11 @@ mod tests {
         let expr = expr!(COUNT(*));
         assert!(matches!(expr, Operand::Call("COUNT", _)));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "COUNT(*)");
 
         #[derive(Entity)]
@@ -218,7 +276,11 @@ mod tests {
         let expr = expr!(SUM(ATable::a_column));
         assert!(matches!(expr, Operand::Call("SUM", _)));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), r#"SUM("my_column")"#);
     }
 
@@ -295,7 +357,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "90.5 - -0.54 * 2 < 7 / 2");
 
         let expr = expr!((2 + 3) * (4 - 1) >> 1 & (8 | 3));
@@ -328,7 +394,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "(2 + 3) * (4 - 1) >> 1 & (8 | 3)");
 
         let expr = expr!(-(-PI) + 2 * (5 % (2 + 1)) == 7 && !(4 < 2));
@@ -374,7 +444,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(
             query.as_str(),
             "-(-PI) + 2 * (5 % (2 + 1)) = 7 AND NOT 4 < 2"
@@ -399,7 +473,11 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "1 + 2 = 3");
 
         let vec = vec![-1, -2, -3, -4];
@@ -427,7 +505,11 @@ mod tests {
             ]
         ));
         let mut query = DynQuery::default();
-        expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
         assert_eq!(query.as_str(), "[-1,-2,-3,-4][2 + 1] + 60");
     }
 
@@ -445,7 +527,11 @@ mod tests {
         let expr = expr!(MyEntity::_first + 2);
         {
             let mut query = DynQuery::default();
-            expr.write_query(&WRITER, &mut Context::qualify(false), &mut query);
+            expr.write_query(
+                &WRITER,
+                &mut Context::new(Fragment::SqlSelect, false),
+                &mut query,
+            );
             assert_eq!(query.as_str(), r#""first" + 2"#);
         }
         {

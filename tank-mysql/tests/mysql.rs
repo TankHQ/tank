@@ -12,7 +12,7 @@ mod tests {
     static MUTEX: Mutex<()> = Mutex::new(());
 
     #[tokio::test]
-    async fn mysql() {
+    pub async fn mysql() {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
 

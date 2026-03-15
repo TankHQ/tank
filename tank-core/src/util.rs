@@ -8,11 +8,9 @@ use std::{
     cmp::min,
     collections::BTreeMap,
     ffi::{CStr, CString},
-    fmt::Write,
     ptr,
 };
 use syn::Path;
-use time::{Date, Time};
 
 #[derive(Clone)]
 /// Iterator adapter for two types.
@@ -63,69 +61,10 @@ pub fn value_to_json(v: &Value) -> Option<JsonValue> {
                 .map(|v| Number::from_u128(*v as _).map(JsonValue::Number))
                 .collect::<Option<_>>()?,
         ),
-        Value::Date(Some(v), ..) => {
-            JsonValue::String(format!("{:04}-{:02}-{:02}", v.year(), v.month(), v.day()))
-        }
-        Value::Time(Some(v), ..) => {
-            let mut out = String::new();
-            print_timer(
-                &mut out,
-                "",
-                v.hour() as _,
-                v.minute(),
-                v.second(),
-                v.nanosecond(),
-            );
-            JsonValue::String(out)
-        }
-        Value::Timestamp(Some(v), ..) => {
-            let date = v.date();
-            let time = v.time();
-            let mut out = String::new();
-            print_date(&mut out, "", &date);
-            out.push(' ');
-            print_timer(
-                &mut out,
-                "",
-                time.hour() as _,
-                time.minute(),
-                time.second(),
-                time.nanosecond(),
-            );
-            JsonValue::String(out)
-        }
-        Value::TimestampWithTimezone(Some(v), ..) => {
-            let date = v.date();
-            let time = v.time();
-            let mut out = String::new();
-            print_date(&mut out, "", &date);
-            out.push(' ');
-            print_timer(
-                &mut out,
-                "",
-                time.hour() as _,
-                time.minute(),
-                time.second(),
-                time.nanosecond(),
-            );
-            let (h, m, s) = v.offset().as_hms();
-            out.push(' ');
-            if h >= 0 {
-                out.push('+');
-            } else {
-                out.push('-');
-            }
-            let offset = Time::from_hms(h.abs() as _, m.abs() as _, s.abs() as _).ok()?;
-            print_timer(
-                &mut out,
-                "",
-                offset.hour() as _,
-                offset.minute(),
-                offset.second(),
-                offset.nanosecond(),
-            );
-            JsonValue::String(out)
-        }
+        v @ (Value::Date(Some(..), ..)
+        | Value::Time(Some(..), ..)
+        | Value::Timestamp(Some(..), ..)
+        | Value::TimestampWithTimezone(Some(..), ..)) => JsonValue::String(v.to_string()),
         Value::Interval(Some(_v), ..) => {
             return None;
         }
@@ -293,29 +232,6 @@ pub fn extract_number<'s, const SIGNED: bool>(input: &mut &'s str) -> &'s str {
     result
 }
 
-pub fn print_date(out: &mut impl Write, quote: &str, date: &Date) {
-    let _ = write!(
-        out,
-        "{quote}{:04}-{:02}-{:02}{quote}",
-        date.year(),
-        date.month() as u8,
-        date.day(),
-    );
-}
-
-pub fn print_timer(out: &mut impl Write, quote: &str, h: i64, m: u8, s: u8, ns: u32) {
-    let mut subsecond = ns;
-    let mut width = 9;
-    while width > 1 && subsecond % 10 == 0 {
-        subsecond /= 10;
-        width -= 1;
-    }
-    let _ = write!(
-        out,
-        "{quote}{h:02}:{m:02}:{s:02}.{subsecond:0width$}{quote}",
-    );
-}
-
 pub fn column_def(name: &str, table: &TableRef) -> Option<&'static ColumnDef> {
     table.columns.iter().find(|v| v.name() == name)
 }
@@ -375,7 +291,17 @@ macro_rules! possibly_parenthesized {
     };
 }
 
-pub const TRUNCATE_LONG_LIMIT: usize = 10497;
+pub const TRUNCATE_LONG_LIMIT: usize = {
+    #[cfg(debug_assertions)]
+    {
+        2000
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        497
+    }
+};
 
 #[macro_export]
 /// Truncate long strings for logging and error messages purpose.

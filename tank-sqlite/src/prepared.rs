@@ -149,7 +149,6 @@ impl Prepared for SQLitePrepared {
                         &mut Context::fragment(Fragment::ParameterBinding),
                         &mut out,
                         &v,
-                        false,
                     );
                     sqlite3_bind_text(
                         statement,
@@ -165,7 +164,6 @@ impl Prepared for SQLitePrepared {
                         &mut Context::fragment(Fragment::ParameterBinding),
                         &mut out,
                         &v,
-                        false,
                     );
                     sqlite3_bind_text(
                         statement,

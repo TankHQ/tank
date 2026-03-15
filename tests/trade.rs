@@ -311,7 +311,7 @@ mod tests {
             // Last part of the query (the map) is removed becaus order of keys is not defined. Value stores a HashMap
             query.as_str().starts_with(indoc! {r#"
                 INSERT INTO "trading.company"."trade_execution" ("trade_id", "order_id", "symbol", "isin", "price", "quantity", "execution_time", "currency", "is_internalized", "venue", "child_trade_ids", "metadata", "tags") VALUES
-                (46923, '550e8400-e29b-41d4-a716-446655440000', 'RIVN', ['U','S','7','6','9','5','4','A','1','0','3','4'], 12.26, 500, '2025-06-07T14:32:00.0', 'USD', true, 'NASDAQ', [36209,85320], '\x4D\x65\x74\x61\x64\x61\x74\x61\x20\x42\x79\x74\x65\x73',
+                (46923, '550e8400-e29b-41d4-a716-446655440000', 'RIVN', ['U','S','7','6','9','5','4','A','1','0','3','4'], 12.26, 500, '2025-06-07 14:32:00.0', 'USD', true, 'NASDAQ', [36209,85320], '\x4D\x65\x74\x61\x64\x61\x74\x61\x20\x42\x79\x74\x65\x73',
             "#}.trim())
     );
     }

@@ -2,10 +2,8 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 use tank_core::{
     ColumnDef, Context, Dataset, DynQuery, Entity, Error, Expression, Fragment, GenericSqlWriter,
-    Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, indoc::indoc, print_timer,
-    separated_by,
+    Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, indoc::indoc, separated_by,
 };
-use time::Time;
 use uuid::Uuid;
 
 /// SQL writer for ScyllaDB/Cassandra dialect.
@@ -110,28 +108,6 @@ impl SqlWriter for ScyllaDBSqlWriter {
         GenericSqlWriter::new().write_value_f64(context, out, value);
     }
 
-    fn write_value_time(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &Time,
-        timestamp: bool,
-    ) {
-        let nanos = value.nanosecond();
-        print_timer(
-            out,
-            match context.fragment {
-                Fragment::Json if !timestamp => "\"",
-                _ if !timestamp => "'",
-                _ => "",
-            },
-            value.hour() as _,
-            value.minute(),
-            value.second(),
-            nanos - nanos % 1_000_000,
-        );
-    }
-
     fn write_value_blob(&self, context: &mut Context, out: &mut DynQuery, value: &[u8]) {
         let delimiter = if context.fragment == Fragment::Json {
             "\""
@@ -188,10 +164,9 @@ impl SqlWriter for ScyllaDBSqlWriter {
     }
 
     fn write_value_uuid(&self, context: &mut Context, out: &mut DynQuery, value: &Uuid) {
-        if context.is_inside_json() {
-            let _ = write!(out, "\"{value}\"");
-        } else {
-            let _ = write!(out, "{value}");
+        let _ = match context.fragment {
+            Fragment::Json | Fragment::JsonKey => write!(out, "\"{value}\""),
+            _ => write!(out, "{value}"),
         };
     }
 

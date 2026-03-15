@@ -1,6 +1,6 @@
 use mongodb::bson::{self, Binary, Bson, Document, spec::BinarySubtype};
 use std::{borrow::Cow, cell::OnceCell, collections::HashMap};
-use tank_core::{AsValue, Error, Result, Value, print_timer};
+use tank_core::{AsValue, Error, Result, Value};
 use time::PrimitiveDateTime;
 
 pub fn value_to_bson(v: &Value) -> Result<Bson> {
@@ -31,18 +31,7 @@ pub fn value_to_bson(v: &Value) -> Result<Bson> {
                 (date_time.unix_timestamp_nanos() / 1_000_000) as _,
             ))
         }
-        Value::Time(Some(v), ..) => {
-            let mut out = String::new();
-            print_timer(
-                &mut out,
-                "",
-                v.hour() as _,
-                v.minute(),
-                v.second(),
-                v.nanosecond(),
-            );
-            Bson::String(out)
-        }
+        v @ Value::Time(..) => Bson::String(v.to_string()),
         Value::Timestamp(Some(v), ..) => {
             let ms = v.assume_utc().unix_timestamp_nanos() / 1_000_000;
             Bson::DateTime(bson::DateTime::from_millis(ms as _))

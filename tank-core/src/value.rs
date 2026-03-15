@@ -1,9 +1,17 @@
-use crate::{AsValue, Error, Result, TableRef, interval::Interval};
+use crate::{
+    AsValue, DynQuery, Error, Expression, GenericSqlWriter, Result, TableRef, interval::Interval,
+};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use rust_decimal::Decimal;
 use serde_json::Value as JsonValue;
-use std::{borrow::Cow, collections::HashMap, hash::Hash, mem::discriminant};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    fmt::{self, Display},
+    hash::Hash,
+    mem::discriminant,
+};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
 
@@ -345,6 +353,15 @@ impl Hash for Value {
             }
             Unknown(v) => v.hash(state),
         }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut out = DynQuery::default();
+        self.write_query(&GenericSqlWriter::new(), &mut Default::default(), &mut out);
+        let _ = f.write_str(out.buffer());
+        Ok(())
     }
 }
 
