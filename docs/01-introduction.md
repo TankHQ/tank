@@ -39,6 +39,7 @@ Tank exists to implement the best possible design for a ORM written in Rust. A a
 - [**tank-duckdb**](https://crates.io/crates/tank-duckdb)
 - [**tank-mongodb**](https://crates.io/crates/tank-mongodb)
 - [**tank-scylladb**](https://crates.io/crates/tank-scylladb)
+- [**tank-valkey**](https://crates.io/crates/tank-valkey)
 
 All the crates in this workspace share the same version.
 
