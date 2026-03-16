@@ -1,7 +1,7 @@
 # Simple Operations
 ###### *Field Manual Section 7* - Front-Line Extraction
 
-The Entity maps one-to-one with a database table. This section trains you on the basic maneuvers every unit must master: insertions, deletions, and extractions.
+An entity maps one-to-one with a database table. This section trains you on the basic maneuvers every unit must master: insertions, deletions, and extractions.
 
 ## Mission Scope
 Core operations on `Entity`:
@@ -158,7 +158,7 @@ log.save(executor).await?;
 If a table has no primary key, `save()` returns an error, use `insert_one` instead.
 
 ## Delete
-Delete many entities matching a expression:
+Delete many entities matching an expression:
 ```rust
 let operator_id = operator.id;
 RadioLog::delete_many(executor, expr!(RadioLog::operator == #operator_id)).await?;
@@ -220,12 +220,12 @@ writer.write_select(
     }
 }
 ```
-While the stream is alive, the executor is borrowed by it and cannot service other queries. Enclose the pinned stream in a scoping or drop it after execution.
+While the stream is alive, the executor is borrowed by it and cannot service other queries. Enclose the pinned stream in a scope, or drop it after execution.
 
 ## Errors & Edge Cases
 - `save()`/`delete()` on entities without PK result in immediate error.
 - `delete()` with affected rows not exactly one results in error.
-- Prepared binds validate conversion, failure returns `Result::Err`.
+- Prepared binds validate conversion, failures return `Result::Err`.
 
 ## Performance
 - Use prepared statements for hot paths (changing only parameters).

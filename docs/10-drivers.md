@@ -36,7 +36,7 @@ Create `tank-yourdb` in your favorite source repository.
 ### 2. Connection + Executor
 Responsibilities:
 - Validate and parse URL (enforce `yourdb://` prefix)
-- Open pool backend session(s)
+- Open backend session(s) (pool if applicable)
 - Implement `prepare` (compile statement) & `run` (stream `QueryResult::{Row,Affected}`)
 - Optionally implement fast-path bulk `append` (DuckDB style)
 
@@ -102,7 +102,7 @@ Remove a flag the moment your driver truly supports the capability. Each removed
 
 ## Errors
 Return early with rich context:
-- Wrong URL prefix: immediate `Error::msg("YourDB connection url must start with `yourdb://`")`
+- Wrong URL prefix: immediate `Error::msg("YourDB connection URL must start with yourdb://")`
 - Prepare failure: attach truncated query text (`truncate_long!` style) to context
 - Bind failure: specify parameter index and offending value type
 

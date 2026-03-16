@@ -4,6 +4,10 @@
 What follows is just a visit to the shooting range, not the full campaign. This minimal example shows Tank in action: connecting, defining a unit, and executing basic maneuvers. Just enough to get mud on your boots and feel the recoil.
 
 Mission brief: install Tank and a driver, define an entity, create the table, insert a few rows, then fire a query. For full tactical exercises including transactions, complex queries, and multi-driver deployments, proceed to the [*Field Manual Section 3* - Supply Lines](03-connection.md).
+
+> [!TIP]
+> Tank is async. Run these examples under an async runtime (e.g. Tokio) and `.await` your operations.
+
 1) Arm your cargo
 ```sh
 cargo add tank
@@ -38,7 +42,7 @@ pub struct Tank {
 
 4) Fire for effect
 ```rust
-use std::{borrow::Cow, collections::HashSet, sync::LazyLock};
+use std::{borrow::Cow, collections::HashSet};
 use tank::{Entity, Executor, Result, expr, stream::TryStreamExt};
 use tank_duckdb::DuckDBDriver;
 
@@ -132,6 +136,6 @@ async fn data() -> Result<()> {
 ```
 
 > [!NOTE]
-> The `expr!` macro is explained in the [Field Manual Section 8 - Tactical Coordination](08-advanced-operations.md#expr)
+> The `expr!` macro is explained in the [Field Manual Section 8 - Tactical Coordination](08-advanced-operations.md#expr).
 
 *Rustaceans don't hide behind ORMs, they drive Tanks.*

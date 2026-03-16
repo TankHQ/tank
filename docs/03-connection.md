@@ -17,7 +17,7 @@ Welcome to the armored convoy, commander. Before you can unleash Tank's firepowe
   Aggregates all `QueryResult::Affected` counts into one [`RowsAffected`](https://docs.rs/tank/latest/tank/struct.RowsAffected.html). Rows are ignored.
 
 - [`append(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.append):
-  Bulk insert entities, using driver fast‑path when available.
+  Bulk insert entities, using a driver fast‑path when available.
 
 - [`begin()`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.begin):
   Borrow the connection and start a transaction. Issue any of the above operations against the transactional executor, then `commit` or `rollback`. Uncommitted drop triggers a rollback and gives back the connection.
@@ -25,9 +25,9 @@ Welcome to the armored convoy, commander. Before you can unleash Tank's firepowe
 ## Connection Lifecycle
 1. **Establish**: Call `driver.connect("dbms://...").await?` with your database URL.
 2. **Deploy**: Use the connection for queries, inserts, updates, and deletes.
-3. **Lock (optional)**: Start a transaction with `connection.begin().await?`, this borrows the connection. All operations route through the transactional executor until `commit()` or `rollback()`.
+3. **Lock (optional)**: Start a transaction with `connection.begin().await?`. This borrows the connection; all operations route through the transactional executor until `commit()` or `rollback()`.
 4. **Maintain**: Current drivers expose a single underlying session (DuckDB shares process instance; Postgres spawns one async connection; SQLite opens one handle).
-5. **Terminate**: Connections close automatically when dropped. Disconnection is ensured after a call to `disconnect().await`.
+5. **Terminate**: Connections close automatically when dropped. Call `disconnect().await?` for an explicit shutdown when the driver supports it.
 
 ## Connect
 Every database connection abstraction implements the [`Connection`](https://docs.rs/tank/latest/tank/trait.Connection.html) trait. This is your communication link to the database server. Call [`driver.connect("dbms://...")`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect) with a URL to let Tank establish the line. Every driver is its own crate. Load only what you need for the operation. Check the [drivers](01-introduction.md#drivers) to see the available connections.
@@ -44,8 +44,8 @@ use tank_postgres::{PostgresConnection, PostgresDriver};
 async fn establish_postgres_connection() -> Result<PostgresConnection> {
     let driver = PostgresDriver::new();
     let connection = driver
-		.connect("postgres://tank-user:armored@127.0.0.1:32790/military?sslmode=require&sslrootcert=ROOT_PATH&sslcert=CERT_PATH&sslkey=KEY_PATH".into())
-    	.await?;
+    .connect("postgres://tank-user:armored@127.0.0.1:32790/military?sslmode=require&sslrootcert=ROOT_PATH&sslcert=CERT_PATH&sslkey=KEY_PATH".into())
+    .await?;
     Ok(connection)
 }
 ```
@@ -145,7 +145,7 @@ Modes:
 The `mode` parameter provides a common syntax for specifying connection access, similar to SQLite. The values map respectively to `access_mode=READ_ONLY`, `access_mode=READ_WRITE`, `access_mode=READ_WRITE` and the special `duckdb://:memory:` path. Additional URL parameters are passed directly to the DuckDB C API. See the full list of supported options on the [DuckDB website](https://duckdb.org/docs/stable/configuration/overview#global-configuration-options).
 
 ### MongoDB
-MongoDB is your Guerrilla special forces unit operating in the "fog of war" gathering intel in whatever format it arrives.
+MongoDB is your guerrilla special forces unit operating in the "fog of war", gathering intel in whatever format it arrives.
 
 ```rust
 use tank::Driver;
@@ -177,7 +177,7 @@ async fn establish_scylla_connection() -> Result<ScyllaDBConnection> {
 ```
 
 **URL Format**:
-- `scylla://host1,host2:9042/keyspace?consistency=quorum&compression=Lz4`
+- `scylladb://host1,host2:9042/keyspace?consistency=quorum&compression=Lz4`
 
 Parameters:
 - `consistency`: Query consistency level (examples: `one`, `quorum`, `all`).

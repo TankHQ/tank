@@ -3,6 +3,9 @@
 
 Not all tanks are built for every terrain. While Tank provides a unified API, the underlying engines (Postgres, Redis, Mongo, etc.) have vastly different mechanical limits. This matrix details which operations are natively supported, emulated, or impossible on each driver.
 
+> [!NOTE]
+> This matrix is a tactical overview. Exact behavior can vary by backend and driver version—when you’re on a critical mission, double‑check the driver’s README and test on your target engine.
+
 ## Feature Matrix
 
 | Feature              | Postgres   | SQLite    | MySQL/MariaDB   | DuckDB | MongoDB  | ScyllaDB/Cassandra  | Valkey/Redis  |
