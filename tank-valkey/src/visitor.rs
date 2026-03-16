@@ -57,6 +57,8 @@ impl ExpressionVisitor for IsField {
 
 pub struct IsPKCondition {
     pub key: String,
+    started: bool,
+    original_pk: &'static [&'static ColumnDef],
     pk: &'static [&'static ColumnDef],
     retry: bool,
 }
@@ -64,6 +66,8 @@ impl IsPKCondition {
     pub fn new(prefix: String, pk: &'static [&'static ColumnDef]) -> Self {
         IsPKCondition {
             key: prefix,
+            started: false,
+            original_pk: pk,
             pk,
             retry: false,
         }
@@ -77,6 +81,8 @@ impl ExpressionVisitor for IsPKCondition {
         out: &mut DynQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
+        let top = !self.started;
+        self.started = true;
         match value.op {
             BinaryOpType::And => {
                 let mut lhs_done = false;
@@ -98,6 +104,9 @@ impl ExpressionVisitor for IsPKCondition {
                         }
                     }
                     if lhs_done && rhs_done {
+                        if top && !self.pk.is_empty() {
+                            return false;
+                        }
                         return true;
                     }
                     if self.pk.len() == pk_len_before {
@@ -128,6 +137,13 @@ impl ExpressionVisitor for IsPKCondition {
                 } else {
                     return false;
                 };
+                let matched_count = self.original_pk.len() - self.pk.len();
+                if self.original_pk[..matched_count]
+                    .iter()
+                    .any(|c| c.column_ref.name == is_column.field)
+                {
+                    return true;
+                }
                 let Some(first) = self.pk.first() else {
                     return false;
                 };
@@ -144,6 +160,9 @@ impl ExpressionVisitor for IsPKCondition {
                 value.write_query(writer, context, &mut out);
                 self.key = mem::take(out.buffer());
                 self.pk = &self.pk[1..];
+                if top && !self.pk.is_empty() {
+                    return false;
+                }
                 true
             }
             _ => false,
