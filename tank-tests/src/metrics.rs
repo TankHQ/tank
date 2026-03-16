@@ -26,7 +26,7 @@ struct MetricValue {
     pub value: f64,
 }
 
-pub async fn metrics<E: Executor>(executor: &mut E) {
+pub async fn metrics(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Setup

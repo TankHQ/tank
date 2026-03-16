@@ -37,7 +37,7 @@ pub struct Trade {
     pub tags: Option<BTreeMap<String, String>>,
 }
 
-pub async fn trade_simple<E: Executor>(executor: &mut E) {
+pub async fn trade_simple(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -146,7 +146,7 @@ pub async fn trade_simple<E: Executor>(executor: &mut E) {
     assert_eq!(Trade::find_many(executor, true, None).count().await, 1);
 }
 
-pub async fn trade_multiple<E: Executor>(executor: &mut E) {
+pub async fn trade_multiple(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Setup

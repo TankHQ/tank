@@ -52,7 +52,7 @@ struct InsaneNullFields {
     green: Box<RefCell<Arc<Box<Arc<Arc<Arc<RefCell<time::Time>>>>>>>>,
 }
 
-pub async fn insane<E: Executor>(executor: &mut E) {
+pub async fn insane(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Setup

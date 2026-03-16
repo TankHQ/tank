@@ -22,7 +22,7 @@ struct EntityB {
 }
 
 /// Test the transaction functionality using only inserts and deletes (no select)
-pub async fn transaction1<C: Connection>(connection: &mut C) {
+pub async fn transaction1(connection: &mut impl Connection) {
     let _lock = MUTEX.lock().await;
 
     // Setup

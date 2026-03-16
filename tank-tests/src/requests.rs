@@ -126,7 +126,7 @@ impl Request {
     }
 }
 
-pub async fn requests<E: Executor>(executor: &mut E) {
+pub async fn requests(executor: &mut impl Executor) {
     let _lock = MUTEX.lock();
 
     // Setup

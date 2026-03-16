@@ -39,7 +39,7 @@ pub struct RadioLog {
     pub signal_strength: i8,
 }
 
-pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
+pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -166,7 +166,7 @@ pub async fn operations<E: Executor>(executor: &mut E) -> Result<()> {
     Ok(())
 }
 
-pub async fn advanced_operations<E: Executor>(executor: &mut E) -> Result<()> {
+pub async fn advanced_operations(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     RadioLog::drop_table(executor, true, false).await?;

@@ -17,7 +17,7 @@ struct Container {
     second: [[[Uuid; 1]; 3]; 1],
 }
 
-pub async fn arrays2<E: Executor>(executor: &mut E) {
+pub async fn arrays2(executor: &mut impl Executor) {
     let _ = MUTEX.lock().await;
 
     // Multiple statements

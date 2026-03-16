@@ -27,7 +27,7 @@ struct Arrays2 {
     echo: [[[Cow<'static, str>; 2]; 2]; 1],
 }
 
-pub async fn arrays1<E: Executor>(executor: &mut E) {
+pub async fn arrays1(executor: &mut impl Executor) {
     let _ = MUTEX.lock().await;
 
     // Setup

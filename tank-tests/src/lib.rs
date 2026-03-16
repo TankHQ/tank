@@ -69,7 +69,7 @@ pub fn init_logs() {
     let _ = logger.try_init();
 }
 
-pub async fn execute_tests<C: Connection>(mut connection: C) {
+pub async fn execute_tests(mut connection: impl Connection) {
     macro_rules! do_test {
         ($test_function:ident) => {
             Box::pin($test_function(&mut connection)).await
@@ -109,6 +109,7 @@ pub async fn execute_tests<C: Connection>(mut connection: C) {
     do_test!(other);
     do_test!(enums);
     do_test!(requests);
+    connection.disconnect().await.expect("Failed to disconnect");
 }
 
 #[macro_export]

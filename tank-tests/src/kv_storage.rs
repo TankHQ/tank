@@ -46,7 +46,7 @@ pub struct KV {
     pub counters: Option<BTreeMap<String, i64>>,
 }
 
-pub async fn kv_storage<E: Executor>(executor: &mut E) {
+pub async fn kv_storage(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Setup

@@ -16,7 +16,7 @@ struct Values {
     value: u32,
 }
 
-pub async fn aggregates<E: Executor>(executor: &mut E) {
+pub async fn aggregates(executor: &mut impl Executor) {
     let _lock = MUTEX.lock();
 
     // Setup

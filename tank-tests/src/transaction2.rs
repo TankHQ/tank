@@ -26,7 +26,7 @@ struct Transfer {
     note: Option<String>,
 }
 
-pub async fn transaction2<C: Connection>(connection: &mut C) {
+pub async fn transaction2(connection: &mut impl Connection) {
     let _lock = MUTEX.lock().await;
 
     // Setup

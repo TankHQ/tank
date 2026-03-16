@@ -32,7 +32,7 @@ pub struct UserProfile {
     pub preferences: Option<BTreeMap<String, String>>,
 }
 
-pub async fn users<E: Executor>(executor: &mut E) {
+pub async fn users(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Cleanup

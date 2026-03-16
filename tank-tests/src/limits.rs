@@ -40,7 +40,7 @@ struct Limits {
     interval: Interval,
 }
 
-pub async fn limits<E: Executor>(executor: &mut E) {
+pub async fn limits(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Setup

@@ -72,7 +72,7 @@ impl Default for ComplexNullFields {
     }
 }
 
-pub async fn complex<E: Executor>(executor: &mut E) {
+pub async fn complex(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Setup

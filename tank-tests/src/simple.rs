@@ -40,7 +40,7 @@ pub struct SimpleFields {
     papa: Option<FixedDecimal<20, 1>>,
 }
 
-pub async fn simple<E: Executor>(executor: &mut E) {
+pub async fn simple(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Setup

@@ -20,7 +20,7 @@ struct Intervals {
     third: Duration,
 }
 
-pub async fn interval<E: Executor>(executor: &mut E) {
+pub async fn interval(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Setup

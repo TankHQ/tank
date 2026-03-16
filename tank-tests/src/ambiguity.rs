@@ -56,7 +56,7 @@ mod second_schema {
     }
 }
 
-pub async fn ambiguity<E: Executor>(executor: &mut E) {
+pub async fn ambiguity(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Setup

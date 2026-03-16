@@ -16,7 +16,7 @@ struct ConditionEntry {
     active: bool,
 }
 
-pub async fn conditions<E: Executor>(executor: &mut E) {
+pub async fn conditions(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Setup

@@ -34,7 +34,7 @@ pub struct Book {
     pub year: i32,
 }
 
-pub async fn books<E: Executor>(executor: &mut E) {
+pub async fn books(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Setup

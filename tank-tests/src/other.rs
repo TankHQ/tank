@@ -13,7 +13,7 @@ pub struct ATable {
     a_column: String,
 }
 
-pub async fn other<E: Executor>(executor: &mut E) {
+pub async fn other(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Setup

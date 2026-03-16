@@ -50,7 +50,7 @@ struct Cart {
     timestamp: PrimitiveDateTime,
 }
 
-pub async fn shopping<E: Executor>(executor: &mut E) {
+pub async fn shopping(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Product

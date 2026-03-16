@@ -20,7 +20,7 @@ pub struct Order {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-pub async fn orders<E: Executor>(executor: &mut E) {
+pub async fn orders(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Setup

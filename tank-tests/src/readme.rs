@@ -18,7 +18,7 @@ pub struct Tank {
     pub units_produced: Option<u32>,
 }
 
-pub async fn readme<E: Executor>(connection: &mut E) -> Result<()> {
+pub async fn readme(connection: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock();
 
     let my_tank = Tank {

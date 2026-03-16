@@ -14,7 +14,7 @@ struct MathTable {
     read: u64,
 }
 
-pub async fn math<E: Executor>(executor: &mut E) {
+pub async fn math(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     // Setup

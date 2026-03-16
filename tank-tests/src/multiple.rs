@@ -24,7 +24,7 @@ struct Three {
     string: String,
 }
 
-pub async fn multiple<E: Executor>(executor: &mut E) {
+pub async fn multiple(executor: &mut impl Executor) {
     let _lock = MUTEX.lock().await;
 
     let mut query = DynQuery::default();
