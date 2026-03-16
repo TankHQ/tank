@@ -44,13 +44,10 @@ Tank exists to implement the best possible design for a ORM written in Rust. A a
 All the crates in this workspace share the same version.
 
 ## Why Tank?
-**Intelligence Report**
-A quick recon of the battlefield revealed that while existing heavy weaponry is effective, there was a critical need for a more adaptable, cleaner design capable of true multi-theater dominance. Tank was designed from scratch to address these weaknesses.
+**Intelligence Report**: A quick recon of the battlefield revealed that while existing heavy weaponry is effective, there was a critical need for a more adaptable, cleaner design capable of true multi-theater dominance. Tank was designed from scratch to address these weaknesses.
 
-**1. Modular Architecture**
-Some systems rely on hardcoded enums for database support, which limits flexibility. If a backend isn't in the core list, it cannot be used. Tank uses a extensible design pattern. A driver can be implemented for *any* database (SQL or NoSQL) without touching the core library. If it can hold data, Tank can likely target it.
+**1. Modular Architecture**: Some systems rely on hardcoded enums for database support, which limits flexibility. If a backend isn't in the core list, it cannot be used. Tank uses a extensible design pattern. A driver can be implemented for *any* database (SQL or NoSQL) without touching the core library. If it can hold data, Tank can likely target it.
 
-**2. Zero Boilerplate**
-Field operations shouldn't require filling out forms in triplicate. Some tools force data definition twice: once in a complex DSL and again as a Rust struct. Tank cuts the red tape. **One struct. One definition.** The macros handle table creation, selection, and insertion automatically based on standard Rust structs. You can set up tables and get database communication running in just a few lines of code, all through a unified API that works the same regardless of the backend. Perfect for spinning up tests and prototypes rapidly while still scaling to production backends.
+**2. Zero Boilerplate**: Field operations shouldn't require filling out forms in triplicate. Some tools force data definition twice: once in a complex DSL and again as a Rust struct. Tank cuts the red tape. **One struct. One definition.** The macros handle table creation, selection, and insertion automatically based on standard Rust structs. You can set up tables and get database communication running in just a few lines of code, all through a unified API that works the same regardless of the backend. Perfect for spinning up tests and prototypes rapidly while still scaling to production backends.
 
 *Hold the line. Maintain discipline. Tank out.*
