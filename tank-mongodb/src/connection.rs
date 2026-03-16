@@ -56,9 +56,9 @@ impl MongoDBConnection {
 }
 
 impl Connection for MongoDBConnection {
-    async fn connect(url: Cow<'static, str>) -> Result<Self> {
+    async fn connect(driver: &MongoDBDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = format!("While trying to connect to `{}`", truncate_long!(url));
-        let url = Self::sanitize_url(url)?;
+        let url = Self::sanitize_url(driver, url)?;
         let client = Client::with_uri_str(&url)
             .await
             .with_context(|| context.clone())?;

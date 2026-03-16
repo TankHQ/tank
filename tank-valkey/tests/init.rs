@@ -6,10 +6,10 @@ use testcontainers_modules::{
     valkey::Valkey,
 };
 
-pub(crate) async fn execute_tests<C: Connection>(mut connection: C) {
-    simple(&mut connection).await;
-    limits(&mut connection).await;
-    kv_storage(&mut connection).await;
+pub(crate) async fn execute_tests(connection: &mut impl Connection) {
+    simple(connection).await;
+    limits(connection).await;
+    kv_storage(connection).await;
 }
 
 pub async fn init(ssl: bool) -> (String, Option<ContainerAsync<Valkey>>) {

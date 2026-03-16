@@ -152,9 +152,9 @@ impl Executor for ScyllaDBConnection {
 }
 
 impl Connection for ScyllaDBConnection {
-    async fn connect(url: Cow<'static, str>) -> Result<Self> {
+    async fn connect(driver: &ScyllaDBDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = format!("While trying to connect to `{}`", url);
-        let url = Self::sanitize_url(url)?;
+        let url = Self::sanitize_url(driver, url)?;
         let hostname = url.host_str().with_context(|| context.clone())?;
         let port = url.port();
         let username = url.username();

@@ -8,14 +8,16 @@ use tank_core::{
 };
 
 pub struct ValkeyConnection {
+    driver: ValkeyDriver,
     pub(crate) connection: MultiplexedConnection,
 }
 
 impl Connection for ValkeyConnection {
-    async fn connect(url: Cow<'static, str>) -> Result<Self>
+    async fn connect(driver: &ValkeyDriver, url: Cow<'static, str>) -> Result<Self>
     where
         Self: Sized,
     {
+        let driver = *driver;
         let context = Arc::new(format!("While trying to connect to `{}`", url));
         let client = Client::open(&*url).map_err(|e| Error::msg(e.to_string()))?;
         let connection = client
@@ -23,7 +25,7 @@ impl Connection for ValkeyConnection {
             .await
             .map_err(Error::new)
             .context(context)?;
-        Ok(Self { connection })
+        Ok(Self { driver, connection })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<ValkeyTransaction<'_>>> {
@@ -36,6 +38,13 @@ impl Connection for ValkeyConnection {
 
 impl Executor for ValkeyConnection {
     type Driver = ValkeyDriver;
+
+    fn driver(&self) -> Self::Driver
+    where
+        Self: Sized,
+    {
+        self.driver
+    }
 
     fn run<'s>(
         &'s mut self,

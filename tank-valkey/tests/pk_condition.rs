@@ -1,10 +1,12 @@
 #[cfg(test)]
 mod tests {
     use std::{borrow::Cow, str::FromStr};
-    use tank::{Entity, Expression, Fragment, expr};
-    use tank_valkey::{IsPKCondition, ValkeySqlWriter};
+    use tank::{Driver, Entity, Expression, Fragment, expr};
+    use tank_valkey::{IsPKCondition, ValkeyDriver, ValkeySqlWriter};
     use time::{Date, Month};
     use uuid::Uuid;
+
+    const DRIVER: ValkeyDriver = ValkeyDriver::new(":");
 
     #[tokio::test]
     pub async fn pk_condition_1() {
@@ -27,20 +29,38 @@ mod tests {
                 id: Uuid::from_str("9f875744-eeb8-414a-9dc5-552f1643046d").unwrap(),
                 payload: "database data".as_bytes().into(),
             };
-            let mut is_pk_condition = IsPKCondition::new(
-                format!("{}:{}", TableName::table().schema, TableName::table().name),
-                TableName::primary_key_def(),
-            );
-            assert!(value.primary_key_expr().accept_visitor(
-                &mut is_pk_condition,
-                &ValkeySqlWriter::default(),
-                &mut ValkeySqlWriter::make_context(Fragment::None),
-                &mut Default::default(),
-            ));
-            assert_eq!(
-                is_pk_condition.key,
-                "namespace:table_name:partition:14:name:database:id:9f875744-eeb8-414a-9dc5-552f1643046d:day:2026-03-15"
-            );
+            {
+                let mut is_pk_condition = IsPKCondition::new(
+                    format!("{}:{}", TableName::table().schema, TableName::table().name),
+                    TableName::primary_key_def(),
+                );
+                assert!(value.primary_key_expr().accept_visitor(
+                    &mut is_pk_condition,
+                    &DRIVER.sql_writer(),
+                    &mut ValkeySqlWriter::make_context(Fragment::None),
+                    &mut Default::default(),
+                ));
+                assert_eq!(
+                    is_pk_condition.key,
+                    "namespace:table_name:partition:14:name:database:id:9f875744-eeb8-414a-9dc5-552f1643046d:day:2026-03-15"
+                );
+            }
+            {
+                let mut is_pk_condition = IsPKCondition::new(
+                    format!("{}.{}", TableName::table().schema, TableName::table().name),
+                    TableName::primary_key_def(),
+                );
+                assert!(value.primary_key_expr().accept_visitor(
+                    &mut is_pk_condition,
+                    &ValkeyDriver::new(".").sql_writer(),
+                    &mut ValkeySqlWriter::make_context(Fragment::None),
+                    &mut Default::default(),
+                ));
+                assert_eq!(
+                    is_pk_condition.key,
+                    "namespace.table_name.partition.14.name.database.id.9f875744-eeb8-414a-9dc5-552f1643046d.day.2026-03-15"
+                );
+            }
         }
 
         // name && (id && (partition && day)
@@ -52,7 +72,7 @@ mod tests {
                 expr!(TableName::name == "the name" && (id == #uuid && (partition == 60 && day == #day)))
                     .accept_visitor(
                         &mut is_pk_condition,
-                        &ValkeySqlWriter::default(),
+                        &DRIVER.sql_writer(),
                         &mut ValkeySqlWriter::make_context(Fragment::None),
                         &mut Default::default(),
                     )
@@ -72,7 +92,7 @@ mod tests {
                 expr!(TableName::name == "the name" && ((id == #uuid && partition == 60) && day == #day))
                     .accept_visitor(
                         &mut is_pk_condition,
-                        &ValkeySqlWriter::default(),
+                        &DRIVER.sql_writer(),
                         &mut ValkeySqlWriter::make_context(Fragment::None),
                         &mut Default::default(),
                     )
@@ -92,7 +112,7 @@ mod tests {
                 expr!((TableName::name == "the name" && id == #uuid) && (partition == 60 && day == #day))
                     .accept_visitor(
                         &mut is_pk_condition,
-                        &ValkeySqlWriter::default(),
+                        &DRIVER.sql_writer(),
                         &mut ValkeySqlWriter::make_context(Fragment::None),
                         &mut Default::default(),
                     )
@@ -112,7 +132,7 @@ mod tests {
                 expr!(((TableName::name == "the name" && id == #uuid) && partition == 60) && day == #day)
                     .accept_visitor(
                         &mut is_pk_condition,
-                        &ValkeySqlWriter::default(),
+                        &DRIVER.sql_writer(),
                         &mut ValkeySqlWriter::make_context(Fragment::None),
                         &mut Default::default(),
                     )
@@ -142,7 +162,7 @@ mod tests {
             let mut is_pk_condition = IsPKCondition::new("".into(), UserSession::primary_key_def());
             let is_valid_pk = expr!(UserSession::user_id == #test_user_id).accept_visitor(
                 &mut is_pk_condition,
-                &ValkeySqlWriter::default(),
+                &DRIVER.sql_writer(),
                 &mut ValkeySqlWriter::make_context(Fragment::None),
                 &mut Default::default(),
             );
@@ -157,7 +177,7 @@ mod tests {
             let is_valid_pk = expr!((UserSession::user_id == #test_user_id && token_type == "refresh_token") && expires_at == #test_date)
                 .accept_visitor(
                     &mut is_pk_condition,
-                    &ValkeySqlWriter::default(),
+                    &DRIVER.sql_writer(),
                     &mut ValkeySqlWriter::make_context(Fragment::None),
                     &mut Default::default(),
                 );
@@ -173,7 +193,7 @@ mod tests {
                 expr!(UserSession::user_id == #test_user_id && expires_at == #test_date)
                     .accept_visitor(
                         &mut is_pk_condition,
-                        &ValkeySqlWriter::default(),
+                        &DRIVER.sql_writer(),
                         &mut ValkeySqlWriter::make_context(Fragment::None),
                         &mut Default::default(),
                     );
@@ -189,7 +209,7 @@ mod tests {
                 expr!(UserSession::user_id == #test_user_id && token_type != "refresh_token")
                     .accept_visitor(
                         &mut is_pk_condition,
-                        &ValkeySqlWriter::default(),
+                        &DRIVER.sql_writer(),
                         &mut ValkeySqlWriter::make_context(Fragment::None),
                         &mut Default::default(),
                     );

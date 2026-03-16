@@ -24,9 +24,12 @@ mod tests {
             !Path::new(DB_PATH).exists(),
             "Database file should not exist before test"
         );
-        DuckDBConnection::connect(format!("duckdb://{DB_PATH}?mode=rw").into())
-            .await
-            .expect("Could not open the database");
+        DuckDBConnection::connect(
+            &Default::default(),
+            format!("duckdb://{DB_PATH}?mode=rw").into(),
+        )
+        .await
+        .expect("Could not open the database");
         assert!(
             Path::new(DB_PATH).exists(),
             "Database file should be created after connection"
@@ -38,7 +41,7 @@ mod tests {
         init_logs();
         silent_logs! {
             assert!(
-                DuckDBConnection::connect("postgres://some_value".into())
+                DuckDBConnection::connect(&Default::default(),"postgres://some_value".into())
                     .await
                     .is_err()
             );
@@ -47,10 +50,12 @@ mod tests {
 
     #[tokio::test]
     async fn url_parameters() {
-        let mut connection =
-            DuckDBConnection::connect("duckdb://:memory:?threads=6&max_memory=800MiB".into())
-                .await
-                .expect("Could not open the database");
+        let mut connection = DuckDBConnection::connect(
+            &Default::default(),
+            "duckdb://:memory:?threads=6&max_memory=800MiB".into(),
+        )
+        .await
+        .expect("Could not open the database");
         let parameters = connection
             .run(indoc! {r#"
                 SELECT name, value

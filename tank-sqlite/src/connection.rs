@@ -249,9 +249,9 @@ impl Executor for SQLiteConnection {
 }
 
 impl Connection for SQLiteConnection {
-    async fn connect(url: Cow<'static, str>) -> Result<Self> {
+    async fn connect(driver: &SQLiteDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = format!("While trying to connect to `{}`", truncate_long!(url));
-        let url = Self::sanitize_url(url)?;
+        let url = Self::sanitize_url(driver, url)?;
         let url = CString::from_str(&url.as_str().replacen("sqlite://", "file:", 1))
             .with_context(|| context.clone())?;
         let mut connection;

@@ -533,9 +533,9 @@ impl Executor for DuckDBConnection {
 }
 
 impl Connection for DuckDBConnection {
-    async fn connect(url: Cow<'static, str>) -> Result<Self> {
+    async fn connect(driver: &DuckDBDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = format!("While trying to connect to `{}`", truncate_long!(url));
-        let url = Self::sanitize_url(url)?;
+        let url = Self::sanitize_url(driver, url)?;
         let mut config: CBox<duckdb_config> = CBox::new(ptr::null_mut(), |mut p| unsafe {
             duckdb_destroy_config(&mut p)
         });

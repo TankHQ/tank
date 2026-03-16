@@ -16,7 +16,7 @@ use url::Url;
 /// - `begin` starts a transaction scope. Commit/rollback MUST be awaited to
 ///   guarantee resource release.
 pub trait Connection: Executor {
-    fn sanitize_url(mut url: Cow<'static, str>) -> Result<Url>
+    fn sanitize_url(_driver: &Self::Driver, mut url: Cow<'static, str>) -> Result<Url>
     where
         Self: Sized,
     {
@@ -56,6 +56,7 @@ pub trait Connection: Executor {
     /// Implementations may perform I/O or validation during `connect`.
     /// Callers should treat this as a potentially expensive operation.
     fn connect(
+        driver: &Self::Driver,
         url: Cow<'static, str>,
     ) -> impl Future<Output = Result<<Self::Driver as Driver>::Connection>>
     where

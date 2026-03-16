@@ -6,10 +6,15 @@ use tank_core::{
     TableRef, Value, column_def,
 };
 
-#[derive(Default)]
-pub struct ValkeySqlWriter {}
+pub struct ValkeySqlWriter {
+    pub(crate) separator: &'static str,
+}
 
 impl ValkeySqlWriter {
+    pub fn new(separator: &'static str) -> Self {
+        Self { separator }
+    }
+
     pub fn make_prepared() -> DynQuery {
         DynQuery::Prepared(Box::new(ValkeyPrepared::default()))
     }
@@ -44,7 +49,7 @@ impl SqlWriter for ValkeySqlWriter {
     }
 
     fn separator(&self) -> &str {
-        ":"
+        &self.separator
     }
 
     fn write_table_ref(&self, context: &mut Context, out: &mut DynQuery, value: &TableRef) {
@@ -166,9 +171,11 @@ impl SqlWriter for ValkeySqlWriter {
                         );
                         return;
                     }
-                    prepared
-                        .commands
-                        .push(Cmd::lrange(format!("{key}:{id}"), 0, -1));
+                    prepared.commands.push(Cmd::lrange(
+                        format!("{key}{}{id}", self.separator),
+                        0,
+                        -1,
+                    ));
                 }
                 Value::Map(.., k_ty, v_ty) => {
                     if !k_ty.is_scalar() || !v_ty.is_scalar() {
@@ -234,7 +241,7 @@ impl SqlWriter for ValkeySqlWriter {
                     None
                 }
             }) {
-                let key = format!("{key}:{k}");
+                let key = format!("{key}{}{k}", self.separator);
                 let value = v.0.as_ref();
                 match value {
                     Value::Array(Some(v), ..) if !v.is_empty() => prepared

@@ -22,22 +22,31 @@ mod tests {
             !Path::new(DB_PATH).exists(),
             "Database file should not exist before test"
         );
-        SQLiteConnection::connect(format!("sqlite://{DB_PATH}?mode=rwc").into())
-            .await
-            .expect("Could not open the database");
+        SQLiteConnection::connect(
+            &Default::default(),
+            format!("sqlite://{DB_PATH}?mode=rwc").into(),
+        )
+        .await
+        .expect("Could not open the database");
         assert!(
             Path::new(DB_PATH).exists(),
             "Database file should be created after connection"
         );
-        SQLiteConnection::connect(format!("sqlite://{DB_PATH}?mode=ro").into())
-            .await
-            .expect("Could not open the database");
+        SQLiteConnection::connect(
+            &Default::default(),
+            format!("sqlite://{DB_PATH}?mode=ro").into(),
+        )
+        .await
+        .expect("Could not open the database");
         fs::remove_file(DB_PATH)
             .await
             .expect(format!("Failed to remove existing test database file {DB_PATH}").as_str());
         silent_logs! {
             assert!(
-                SQLiteConnection::connect(format!("sqlite://{DB_PATH}?mode=ro").into())
+                SQLiteConnection::connect(
+                    &Default::default(),
+                    format!("sqlite://{DB_PATH}?mode=ro").into(),
+                )
                     .await
                     .is_err(),
                 "Should not be able to open in read only unexisting database"
@@ -50,7 +59,7 @@ mod tests {
         init_logs();
         silent_logs! {
             assert!(
-                SQLiteConnection::connect("duckdb://some_value".into())
+                SQLiteConnection::connect(&Default::default(), "duckdb://some_value".into())
                     .await
                     .is_err()
             );

@@ -56,14 +56,14 @@ mod tests {
         let mut url_base = url_full.clone();
         url_base.set_query(None);
         let _container = container.expect("Could not launch container");
-        let _ = PostgresConnection::connect(url_full.to_string().into())
+        let _ = PostgresConnection::connect(&Default::default(), url_full.to_string().into())
             .await
             .expect("Connection should succeed");
         let url = url_base
             .query_pairs_mut()
             .extend_pairs(url_full.query_pairs().filter(|(k, _)| k != "sslrootcert"))
             .finish();
-        let _ = PostgresConnection::connect(url.to_string().into())
+        let _ = PostgresConnection::connect(&Default::default(), url.to_string().into())
             .await
             .expect_err("Connection should fail without sslrootcert");
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -73,14 +73,14 @@ mod tests {
                 path.join("tests/assets/root.crt").to_str().unwrap(),
             );
         }
-        let connection = PostgresConnection::connect(url.to_string().into())
+        let connection = PostgresConnection::connect(&Default::default(), url.to_string().into())
             .await
             .expect("Connection should succeed with environment variable replacing sslrootcert");
         connection.disconnect().await.expect("Could not disconnect");
         unsafe {
             env::remove_var("PGSSLROOTCERT");
         }
-        let _ = PostgresConnection::connect(url.to_string().into())
+        let _ = PostgresConnection::connect(&Default::default(), url.to_string().into())
             .await
             .expect_err("Connection should fail again without sslrootcert");
     }

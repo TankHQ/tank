@@ -22,7 +22,7 @@ pub trait Driver: Default + Debug {
 
     /// Connect to database `url`.
     fn connect(&self, url: Cow<'static, str>) -> impl Future<Output = Result<Self::Connection>> {
-        Self::Connection::connect(url)
+        Self::Connection::connect(self, url)
     }
 
     /// Get a SQL writer object.
