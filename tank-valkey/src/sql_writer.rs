@@ -8,11 +8,15 @@ use tank_core::{
 
 pub struct ValkeySqlWriter {
     pub(crate) separator: &'static str,
+    pub(crate) keys_with_names: bool,
 }
 
 impl ValkeySqlWriter {
-    pub fn new(separator: &'static str) -> Self {
-        Self { separator }
+    pub fn new(separator: &'static str, keys_with_names: bool) -> Self {
+        Self {
+            separator,
+            keys_with_names,
+        }
     }
 
     pub fn make_prepared() -> DynQuery {
@@ -119,6 +123,7 @@ impl SqlWriter for ValkeySqlWriter {
         }
         let mut context = Self::make_context(Fragment::SqlSelect);
         let mut is_pk_condition = IsPKCondition::new(
+            self.keys_with_names,
             table.full_name(self.separator()).into_owned(),
             table.primary_key,
         );
@@ -211,6 +216,7 @@ impl SqlWriter for ValkeySqlWriter {
         for entity in entities.into_iter() {
             let row = entity.row_filtered();
             let mut is_pk_condition = IsPKCondition::new(
+                self.keys_with_names,
                 table.full_name(self.separator()).into_owned(),
                 table.primary_key,
             );
@@ -284,6 +290,7 @@ impl SqlWriter for ValkeySqlWriter {
         let table = E::table();
         let mut context = Self::make_context(Fragment::SqlDeleteFrom);
         let mut is_pk_condition = IsPKCondition::new(
+            self.keys_with_names,
             table.full_name(self.separator()).into_owned(),
             table.primary_key,
         );

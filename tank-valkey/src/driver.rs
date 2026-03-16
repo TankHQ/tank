@@ -5,17 +5,24 @@ use tank_core::Driver;
 #[derive(Clone, Copy, Debug)]
 pub struct ValkeyDriver {
     separator: &'static str,
+    keys_with_names: bool,
 }
 
 impl ValkeyDriver {
-    pub const fn new(separator: &'static str) -> Self {
-        Self { separator }
+    pub const fn new(separator: &'static str, keys_with_names: bool) -> Self {
+        Self {
+            separator,
+            keys_with_names,
+        }
     }
 }
 
 impl Default for ValkeyDriver {
     fn default() -> Self {
-        Self { separator: ":" }
+        Self {
+            separator: ":",
+            keys_with_names: false,
+        }
     }
 }
 
@@ -28,6 +35,6 @@ impl Driver for ValkeyDriver {
     const NAME: &'static [&'static str] = &["valkey", "redis"];
 
     fn sql_writer(&self) -> Self::SqlWriter {
-        ValkeySqlWriter::new(self.separator)
+        ValkeySqlWriter::new(self.separator, self.keys_with_names)
     }
 }

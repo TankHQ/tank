@@ -26,7 +26,7 @@ mod tests {
             connection.disconnect().await.expect("Failed to disconnect");
         }
         {
-            let driver = ValkeyDriver::new(".");
+            let driver = ValkeyDriver::new(".", false);
             let error_msg = format!("Could not connect to `{url}`");
             let mut connection = driver.connect(url.clone().into()).await.expect(&error_msg);
             execute_tests(&mut connection).await;

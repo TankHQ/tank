@@ -6,7 +6,7 @@ mod tests {
     use time::{Date, Month};
     use uuid::Uuid;
 
-    const DRIVER: ValkeyDriver = ValkeyDriver::new(":");
+    const DRIVER: ValkeyDriver = ValkeyDriver::new(":", true);
 
     #[tokio::test]
     pub async fn pk_condition_1() {
@@ -31,6 +31,7 @@ mod tests {
             };
             {
                 let mut is_pk_condition = IsPKCondition::new(
+                    true,
                     format!("{}:{}", TableName::table().schema, TableName::table().name),
                     TableName::primary_key_def(),
                 );
@@ -47,12 +48,13 @@ mod tests {
             }
             {
                 let mut is_pk_condition = IsPKCondition::new(
+                    true,
                     format!("{}.{}", TableName::table().schema, TableName::table().name),
                     TableName::primary_key_def(),
                 );
                 assert!(value.primary_key_expr().accept_visitor(
                     &mut is_pk_condition,
-                    &ValkeyDriver::new(".").sql_writer(),
+                    &ValkeyDriver::new(".", true).sql_writer(),
                     &mut ValkeySqlWriter::make_context(Fragment::None),
                     &mut Default::default(),
                 ));
@@ -61,11 +63,29 @@ mod tests {
                     "namespace.table_name.partition.14.name.database.id.9f875744-eeb8-414a-9dc5-552f1643046d.day.2026-03-15"
                 );
             }
+            {
+                let mut is_pk_condition = IsPKCondition::new(
+                    false,
+                    format!("{}|{}", TableName::table().schema, TableName::table().name),
+                    TableName::primary_key_def(),
+                );
+                assert!(value.primary_key_expr().accept_visitor(
+                    &mut is_pk_condition,
+                    &ValkeyDriver::new("|", false).sql_writer(),
+                    &mut ValkeySqlWriter::make_context(Fragment::None),
+                    &mut Default::default(),
+                ));
+                assert_eq!(
+                    is_pk_condition.key,
+                    "namespace|table_name|14|database|9f875744-eeb8-414a-9dc5-552f1643046d|2026-03-15"
+                );
+            }
         }
 
         // name && (id && (partition && day)
         {
-            let mut is_pk_condition = IsPKCondition::new("".into(), TableName::primary_key_def());
+            let mut is_pk_condition =
+                IsPKCondition::new(true, "".into(), TableName::primary_key_def());
             let uuid = Uuid::from_str("00000000-0000-0000-0000-000000000000").unwrap();
             let day = Date::from_calendar_date(2026, Month::March, 10).unwrap();
             assert!( // This failes
@@ -85,7 +105,8 @@ mod tests {
 
         // name && (id && partition) && day
         {
-            let mut is_pk_condition = IsPKCondition::new("".into(), TableName::primary_key_def());
+            let mut is_pk_condition =
+                IsPKCondition::new(false, "".into(), TableName::primary_key_def());
             let uuid = Uuid::from_str("00000000-0000-0000-0000-000000000000").unwrap();
             let day = Date::from_calendar_date(2026, Month::March, 10).unwrap();
             assert!( // This failes
@@ -99,13 +120,14 @@ mod tests {
             );
             assert_eq!(
                 is_pk_condition.key,
-                "partition:60:name:the name:id:00000000-0000-0000-0000-000000000000:day:2026-03-10"
+                "60:the name:00000000-0000-0000-0000-000000000000:2026-03-10"
             );
         }
 
         // (name && id) && (partition && day)
         {
-            let mut is_pk_condition = IsPKCondition::new("".into(), TableName::primary_key_def());
+            let mut is_pk_condition =
+                IsPKCondition::new(true, "".into(), TableName::primary_key_def());
             let uuid = Uuid::from_str("00000000-0000-0000-0000-000000000000").unwrap();
             let day = Date::from_calendar_date(2026, Month::March, 10).unwrap();
             assert!( // This failes
@@ -125,7 +147,8 @@ mod tests {
 
         // ((name && id) && partition) && day
         {
-            let mut is_pk_condition = IsPKCondition::new("".into(), TableName::primary_key_def());
+            let mut is_pk_condition =
+                IsPKCondition::new(false, "".into(), TableName::primary_key_def());
             let uuid = Uuid::from_str("00000000-0000-0000-0000-000000000000").unwrap();
             let day = Date::from_calendar_date(2026, Month::March, 10).unwrap();
             assert!( // This failes
@@ -139,7 +162,7 @@ mod tests {
             );
             assert_eq!(
                 is_pk_condition.key,
-                "partition:60:name:the name:id:00000000-0000-0000-0000-000000000000:day:2026-03-10"
+                "60:the name:00000000-0000-0000-0000-000000000000:2026-03-10"
             );
         }
     }
@@ -159,7 +182,8 @@ mod tests {
         let test_date = Date::from_calendar_date(2026, Month::April, 1).unwrap();
 
         {
-            let mut is_pk_condition = IsPKCondition::new("".into(), UserSession::primary_key_def());
+            let mut is_pk_condition =
+                IsPKCondition::new(true, "".into(), UserSession::primary_key_def());
             let is_valid_pk = expr!(UserSession::user_id == #test_user_id).accept_visitor(
                 &mut is_pk_condition,
                 &DRIVER.sql_writer(),
@@ -173,7 +197,8 @@ mod tests {
         }
 
         {
-            let mut is_pk_condition = IsPKCondition::new("".into(), UserSession::primary_key_def());
+            let mut is_pk_condition =
+                IsPKCondition::new(false, "".into(), UserSession::primary_key_def());
             let is_valid_pk = expr!((UserSession::user_id == #test_user_id && token_type == "refresh_token") && expires_at == #test_date)
                 .accept_visitor(
                     &mut is_pk_condition,
@@ -188,7 +213,8 @@ mod tests {
         }
 
         {
-            let mut is_pk_condition = IsPKCondition::new("".into(), UserSession::primary_key_def());
+            let mut is_pk_condition =
+                IsPKCondition::new(true, "".into(), UserSession::primary_key_def());
             let is_valid_pk =
                 expr!(UserSession::user_id == #test_user_id && expires_at == #test_date)
                     .accept_visitor(
@@ -204,7 +230,8 @@ mod tests {
         }
 
         {
-            let mut is_pk_condition = IsPKCondition::new("".into(), UserSession::primary_key_def());
+            let mut is_pk_condition =
+                IsPKCondition::new(false, "".into(), UserSession::primary_key_def());
             let is_valid_pk =
                 expr!(UserSession::user_id == #test_user_id && token_type != "refresh_token")
                     .accept_visitor(

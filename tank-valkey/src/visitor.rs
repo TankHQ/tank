@@ -56,6 +56,7 @@ impl ExpressionVisitor for IsField {
 }
 
 pub struct IsPKCondition {
+    keys_with_names: bool,
     pub key: String,
     started: bool,
     original_pk: &'static [&'static ColumnDef],
@@ -63,8 +64,9 @@ pub struct IsPKCondition {
     retry: bool,
 }
 impl IsPKCondition {
-    pub fn new(prefix: String, pk: &'static [&'static ColumnDef]) -> Self {
+    pub fn new(keys_with_names: bool, prefix: String, pk: &'static [&'static ColumnDef]) -> Self {
         IsPKCondition {
+            keys_with_names,
             key: prefix,
             started: false,
             original_pk: pk,
@@ -154,8 +156,10 @@ impl ExpressionVisitor for IsPKCondition {
                 if !self.key.is_empty() {
                     self.key.push_str(writer.separator());
                 }
-                self.key.push_str(&is_column.field);
-                self.key.push_str(writer.separator());
+                if self.keys_with_names {
+                    self.key.push_str(&is_column.field);
+                    self.key.push_str(writer.separator());
+                }
                 let mut out = DynQuery::new(mem::take(&mut self.key));
                 value.write_query(writer, context, &mut out);
                 self.key = mem::take(out.buffer());
