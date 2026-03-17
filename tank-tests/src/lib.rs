@@ -8,6 +8,7 @@ mod conditions;
 mod enums;
 mod insane;
 mod interval;
+mod keywords;
 mod kv_storage;
 mod limits;
 mod math;
@@ -36,6 +37,7 @@ pub use conditions::*;
 pub use enums::*;
 pub use insane::*;
 pub use interval::*;
+pub use keywords::*;
 pub use kv_storage::*;
 pub use limits::*;
 use log::LevelFilter;
@@ -109,6 +111,7 @@ pub async fn execute_tests(mut connection: impl Connection) {
     do_test!(other);
     do_test!(enums);
     do_test!(requests);
+    do_test!(keywords);
     connection.disconnect().await.expect("Failed to disconnect");
 }
 
