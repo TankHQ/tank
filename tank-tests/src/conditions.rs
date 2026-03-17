@@ -90,4 +90,36 @@ pub async fn conditions(executor: &mut impl Executor) {
             .count()
             .await;
     assert_eq!(count, 2, "Should find 2 entry with `name LIKE '%e'`");
+
+    let count = ConditionEntry::find_many(
+        executor,
+        {
+            let vals = vec![tank::Value::from("Alice"), tank::Value::Varchar(None)];
+            expr!(name == tank::evaluated!(vals) as IN)
+        },
+        None,
+    )
+    .map_err(|e| panic!("{e:#}"))
+    .count()
+    .await;
+    assert_eq!(
+        count, 1,
+        "Should find 1 entry `name IN ('Alice', NULL)` (NULL should be ignored)"
+    );
+
+    let count = ConditionEntry::find_many(
+        executor,
+        {
+            let vals = vec![tank::Value::from("Bob"), tank::Value::Varchar(None)];
+            expr!(name != tank::evaluated!(vals) as IN)
+        },
+        None,
+    )
+    .map_err(|e| panic!("{e:#}"))
+    .count()
+    .await;
+    assert_eq!(
+        count, 3,
+        "Should find 3 entries `name NOT IN ('Bob', NULL)` (NULL should be ignored)"
+    );
 }

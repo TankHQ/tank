@@ -390,6 +390,19 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                             };
                         }
                         doc! { "$regex": pattern }.into()
+                    } else if op == BinaryOpType::In || op == BinaryOpType::NotIn {
+                        let op_key = if op == BinaryOpType::In {
+                            "$in"
+                        } else {
+                            "$nin"
+                        };
+                        let mut array = if let Bson::Array(array) = val_bson {
+                            array
+                        } else {
+                            vec![val_bson]
+                        };
+                        array.retain(|v| !matches!(v, Bson::Null));
+                        doc! { op_key: array }.into()
                     } else {
                         let op_key = MongoDBSqlWriter::expression_binary_op_key(op).to_string();
                         doc! { op_key: val_bson }.into()
