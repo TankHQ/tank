@@ -871,7 +871,7 @@ impl SqlWriter for MongoDBSqlWriter {
                 column.accept_visitor(&mut IsAggregateFunction, self, &mut context, out);
             update_group!(column, name.clone(), bson.clone(), aggregate_function);
             if aggregate_function {
-                bson = Bson::Int32(1);
+                bson = Bson::String(format!("${name}"));
             } else if column.accept_visitor(&mut IsField::default(), self, &mut context, out) {
                 bson = Bson::String(format!("$_id.{name}"))
             }
