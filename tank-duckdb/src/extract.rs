@@ -36,7 +36,9 @@ pub(crate) fn extract_value(
     validity: *mut u64,
 ) -> Result<Value> {
     unsafe {
-        let has_data = !data.is_null() || type_id == DUCKDB_TYPE_DUCKDB_TYPE_ARRAY;
+        let has_data = !data.is_null()
+            || type_id == DUCKDB_TYPE_DUCKDB_TYPE_ARRAY
+            || type_id == DUCKDB_TYPE_DUCKDB_TYPE_STRUCT;
         let is_valid =
             !vector.is_null() && has_data && duckdb_validity_row_is_valid(validity, row as u64);
         let result = match type_id {

@@ -34,7 +34,7 @@ use testcontainers_modules::{
 use tokio::fs;
 use url::Url;
 
-pub(crate) async fn execute_tests<C: Connection>(mut connection: C) {
+pub(crate) async fn execute_tests(mut connection: impl Connection) {
     simple(&mut connection).await;
     kv_storage(&mut connection).await;
     trade_simple(&mut connection).await;
