@@ -7,7 +7,7 @@ In plain terms, Tank is a thin, battle-ready layer over your database workflow, 
 
 It doesn't matter if you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or managing a Postgres stronghold, Tank provides a unified interface. You define your entities once. Tank handles the ballistics.
 
-## Mission objectives
+## Mission Objectives
 Tank exists to implement the best possible design for an ORM written in Rust. A clean-slate approach focused on ergonomics, flexibility and broad database support.
 
 - **Async operations** - Fire and forget.
@@ -21,7 +21,7 @@ Tank exists to implement the best possible design for an ORM written in Rust. A 
 - **Raw SQL** - You're never limited by the abstractions provided.
 - **Zero setup** - Skip training. Go straight to live fire.
 
-## No-fly zone
+## No-Fly Zone
 - No schema migrations (just table creation and drop for fast setup).
 - No implicit joins (no entities as fields, joins are explicit, every alliance is signed).
 

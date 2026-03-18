@@ -13,7 +13,7 @@ Tank (Table Abstraction & Navigation Kit): the Rust data layer.
 
 📦 https://crates.io/crates/tank
 
-## Mission briefing
+## Mission Briefing
 In plain terms, Tank is a thin, battle-ready layer over your database workflow, designed for the Rust operator who needs to deploy across multiple environments without changing the kit.
 
 It doesn't matter if you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or managing a Postgres stronghold, Tank provides a unified interface. You define your entities once. Tank handles the ballistics.
@@ -27,7 +27,7 @@ It doesn't matter if you are digging into a local SQLite trench, coordinating a 
 - ScyllaDB/Cassandra
 - Valkey/Redis
 
-## Mission objectives
+## Mission Objectives
 Tank exists to implement the best possible design for a ORM written in Rust. A a clean-slate design focused on ergonomics, flexibility and broad database support.
 
 - **Async operations** - Fire and forget.
@@ -41,7 +41,7 @@ Tank exists to implement the best possible design for a ORM written in Rust. A a
 - **Raw SQL** - You're never limited by the abstractions provided.
 - **Zero setup** - Skip training. Go straight to live fire.
 
-## No-fly zone
+## No-Fly Zone
 - No schema migrations (just table creation and destroy for fast setup).
 - No implicit joins (no entities as fields, joins are explicit, every alliance is signed).
 

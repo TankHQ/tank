@@ -163,7 +163,7 @@ Example of valid syntax
 - `Operator::enlisted DESC` ordering
 - `AVG(ABS(Operator::enlisted - operations.radio_log.transmission_time)) as difference DESC` combination of the previous
 
-## Performance notes
+## Performance Notes
 - Request only the necessary columns.
 - Always prefer setting a `limit` on the query when it makes sense.
 

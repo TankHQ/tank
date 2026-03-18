@@ -61,4 +61,93 @@ Supported wrappers:
 - `Arc<T>`
 - `Rc<T>`
 
+## Custom Types
+When standard ammo won’t do, load custom payloads: an enum that must round‑trip cleanly across drivers, or a small struct you want to pack into a single column. In Tank, you do that by implementing [`tank::AsValue`](https://docs.rs/tank/latest/tank/trait.AsValue.html).
+
+`AsValue` is your conversion contract: it turns your Rust type into a [`tank::Value`](https://docs.rs/tank/latest/tank/enum.Value.html) for binding/inserts/updates, and turns a `Value` back into your type when decoding rows. Once implemented, you can use the type directly as an `Entity` field (including `Option<T>`).
+
+### Example: Custom Enum
+String-backed enum :
+
+```rust
+use tank::{AsValue, Error, Result, Value};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Method {
+	GET,
+	POST,
+	PUT,
+	DELETE,
+}
+
+impl AsValue for Method {
+	fn as_empty_value() -> Value {
+		Value::Varchar(None)
+	}
+	fn as_value(self) -> Value {
+		Value::Varchar(Some(
+			match self {
+				Method::GET => "get",
+				Method::POST => "post",
+				Method::PUT => "put",
+				Method::DELETE => "delete",
+			}
+			.into(),
+		))
+	}
+	fn try_from_value(value: Value) -> Result<Self> {
+		if let Value::Varchar(Some(v), ..) = value.try_as(&Value::Varchar(None))? {
+			return match &*v {
+				"get" => Ok(Method::GET),
+				"post" => Ok(Method::POST),
+				"put" => Ok(Method::PUT),
+				"delete" => Ok(Method::DELETE),
+				_ => Err(Error::msg(format!("Unexpected value `{v}` for Method"))),
+			};
+		}
+		Err(Error::msg("Unexpected value for Method"))
+	}
+}
+```
+
+### Example: Custom Struct
+If you want a small struct to live in a single column, encode it into a stable representation (a compact string is often the most portable). Here’s a `host:port` example:
+
+```rust
+use tank::{AsValue, Error, Result, Value};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostPort {
+	pub host: String,
+	pub port: u16,
+}
+
+impl AsValue for HostPort {
+	fn as_empty_value() -> Value {
+		Value::Varchar(None)
+	}
+	fn as_value(self) -> Value {
+		Value::Varchar(Some(format!("{}:{}", self.host, self.port).into()))
+	}
+	fn try_from_value(value: Value) -> Result<Self> {
+		if let Value::Varchar(Some(v), ..) = value.try_as(&Value::Varchar(None))? {
+			let (host, port) = v
+				.split_once(':')
+				.ok_or_else(|| Error::msg(format!("Invalid HostPort `{v}`")))?;
+
+			return Ok(HostPort {
+				host: host.to_string(),
+				port: port
+					.parse::<u16>()
+					.map_err(|_| Error::msg(format!("Invalid port in HostPort `{v}`")))?,
+			});
+		}
+		Err(Error::msg("Unexpected value for HostPort"))
+	}
+}
+```
+
+> [!TIP]
+> Keep the encoding stable and non-lossy. Your `as_value` output becomes the output format for that field.
+
 *With this arsenal, your entities hit every target, every time.*
