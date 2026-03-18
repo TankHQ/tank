@@ -3,7 +3,7 @@
 
 Sometimes you need to drop the abstractions and put steel directly on target. Tank lets you fire raw SQL or multi‑statement batches (where supported) while still decoding rows into typed entities. This section covers building raw statements, executing mixed result streams, and converting rows back into your structs.
 
-## Entry Points
+## Execution Methods
 Three firing modes:
 - `executor.run(query)`: Streams a mix of `QueryResult::{Row, Affected}` for all statements contained in the query. Multiple statements in one batch are only available when the driver supports.
 - `executor.fetch(query)`: Convenience method that yields only rows. Internally calls `Executor::run` and discards `QueryResult::Affected`.

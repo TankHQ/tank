@@ -10,7 +10,7 @@ Opening a new battlefront means forging a fresh **Driver** — the armored bridg
 - Integrate with shared test suite (`tank-tests`), gate unsupported munitions with feature flags
 - Ship a lean, consistent crate aligned with existing armor plating
 
-## Battlefield Topography
+## Architecture
 A driver is a thin composite of five parts:
 | Trait         | Purpose                                                                            |
 | ------------- | ---------------------------------------------------------------------------------- |

@@ -20,7 +20,7 @@ features:
     details: Your queries run async like artillery, load fast, return fire later.
   - icon: ⚔️
     title: Tactical simplicity
-    details: Fire raw queries when you need precision strikes, use the abstractions for standard sorties.
+    details: Fire raw queries when you need precision strikes, use the abstractions for standard deployments.
   - icon: 🧩
     title: Battlefield adaptability
     details: Plug new backends in like changing magazines. Designed from day one to be extensible.

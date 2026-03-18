@@ -5,7 +5,7 @@ Welcome to the Tank field manual. This is the quick-and-mean guide for developer
 
 In plain terms, Tank is a thin, battle-ready layer over your database workflow, designed for the Rust operator who needs to deploy across multiple environments without changing the kit.
 
-It doesn't matter if you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or managing a Postgres stronghold, Tank provides a unified interface. You define your entities once. Tank handles the ballistics.
+It doesn't matter if you are digging into a local SQLite trench, coordinating a distributed ScyllaDB cluster, or managing a Postgres stronghold, Tank provides a unified interface. You define your entities once. Tank handles the logistics.
 
 ## Mission Objectives
 Tank exists to implement the best possible design for an ORM written in Rust. A clean-slate approach focused on ergonomics, flexibility and broad database support.
