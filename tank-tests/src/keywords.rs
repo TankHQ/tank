@@ -1,7 +1,7 @@
 use std::pin::pin;
 use std::sync::LazyLock;
 use tank::stream::StreamExt;
-use tank::{AsValue, Entity, Executor, QueryBuilder, RowLabeled, cols, expr};
+use tank::{AsValue, Entity, Executor, QueryBuilder, Row, cols, expr};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -75,7 +75,7 @@ pub async fn keywords(executor: &mut impl Executor) {
             .await
             .expect("Expected a row")
             .expect("Query failed");
-        let RowLabeled { values, .. } = row;
+        let Row { values, .. } = row;
         let group_val =
             bool::try_from_value(values[0].clone()).expect("Failed to decode group bool");
         let count_val = i64::try_from_value(values[1].clone()).expect("Failed to decode count");
@@ -131,12 +131,12 @@ pub async fn keywords(executor: &mut impl Executor) {
         );
 
         let row1 = stream_group.next().await.unwrap().unwrap();
-        let RowLabeled { values, .. } = row1;
+        let Row { values, .. } = row1;
         let g = bool::try_from_value(values[0].clone()).unwrap();
         assert_eq!(g, false);
 
         let row2 = stream_group.next().await.unwrap().unwrap();
-        let RowLabeled { values, .. } = row2;
+        let Row { values, .. } = row2;
         let g = bool::try_from_value(values[0].clone()).unwrap();
         assert_eq!(g, true);
     }

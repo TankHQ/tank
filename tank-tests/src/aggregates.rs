@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use std::{pin::pin, sync::LazyLock};
-use tank::{AsValue, Entity, Passive, RowLabeled, expr, stream::StreamExt, stream::TryStreamExt};
+use tank::{AsValue, Entity, Passive, Row, expr, stream::StreamExt, stream::TryStreamExt};
 use tank::{Executor, QueryBuilder, cols};
 use tokio::sync::Mutex;
 
@@ -74,7 +74,7 @@ pub async fn aggregates(executor: &mut impl Executor) {
         );
         let expected = (COUNT as i128, EXPECTED_SUM as i128);
         let actual = match count {
-            Some(Ok(RowLabeled { values, .. })) => {
+            Some(Ok(Row { values, .. })) => {
                 let a = i128::try_from_value((*values)[0].clone());
                 let b = i128::try_from_value((*values)[1].clone());
                 match (a, b) {

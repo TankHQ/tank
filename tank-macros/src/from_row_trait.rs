@@ -76,12 +76,12 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
         factory_name.clone(),
         quote! {
             trait #trait_name {
-                fn from_row(row: ::tank::RowLabeled) -> ::tank::Result<#struct_name>;
+                fn from_row(row: ::tank::Row) -> ::tank::Result<#struct_name>;
             }
             struct #factory_name<T>(std::marker::PhantomData<T>);
             impl<T: Default + Into<#struct_name>> #factory_name<T> {
                 // Called when T has Default Trait
-                fn from_row(row: ::tank::RowLabeled) -> ::tank::Result<#struct_name> {
+                fn from_row(row: ::tank::Row) -> ::tank::Result<#struct_name> {
                     let mut result = T::default().into();
                     for (__n__, __v__) in ::std::iter::zip(row.labels.iter(), row.values.into_iter())
                     {
@@ -92,7 +92,7 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
             }
             impl<T> #trait_name for #factory_name<T> {
                 // Called when T doesn't have default trait
-                fn from_row(row: ::tank::RowLabeled) -> ::tank::Result<#struct_name> {
+                fn from_row(row: ::tank::Row) -> ::tank::Result<#struct_name> {
                     #(#fields_holder_declarations)*
                     for (__n__, __v__) in ::std::iter::zip(row.labels.iter(), row.values.into_iter())
                     {

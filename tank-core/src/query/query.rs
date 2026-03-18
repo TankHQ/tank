@@ -1,5 +1,5 @@
 use crate::{
-    AsValue, Driver, DynQuery, Error, Prepared, Result, RowLabeled, RowsAffected, truncate_long,
+    AsValue, Driver, DynQuery, Error, Prepared, Result, Row, RowsAffected, truncate_long,
 };
 use std::fmt::{self, Display};
 
@@ -113,7 +113,7 @@ impl<D: Driver> AsMut<Query<D>> for Query<D> {
 #[derive(Debug)]
 pub enum QueryResult {
     /// A labeled row
-    Row(RowLabeled),
+    Row(Row),
     /// A modify effect aggregation
     Affected(RowsAffected),
 }

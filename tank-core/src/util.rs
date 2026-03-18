@@ -467,7 +467,7 @@ macro_rules! impl_executor_transaction {
                 &'s mut self,
                 query: impl ::tank_core::AsQuery<Self::Driver> + 's,
             ) -> impl ::tank_core::stream::Stream<
-                Item = ::tank_core::Result<::tank_core::RowLabeled>,
+                Item = ::tank_core::Result<::tank_core::Row>,
             > + Send
             + 's {
                 self.$connection.fetch(query)

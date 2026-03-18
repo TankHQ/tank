@@ -9,7 +9,7 @@ use mongodb::{
     },
 };
 use std::borrow::Cow;
-use tank_core::{Error, Result, RowLabeled, TableRef, truncate_long};
+use tank_core::{Error, Result, Row, TableRef, truncate_long};
 
 #[derive(Default, Debug)]
 pub struct FindOnePayload {
@@ -28,14 +28,14 @@ pub struct FindManyPayload {
 #[derive(Debug)]
 pub struct InsertOnePayload {
     pub table: TableRef,
-    pub row: RowLabeled,
+    pub row: Row,
     pub options: InsertOneOptions,
 }
 
 #[derive(Debug)]
 pub struct InsertManyPayload {
     pub table: TableRef,
-    pub rows: Vec<RowLabeled>,
+    pub rows: Vec<Row>,
     pub options: InsertManyOptions,
 }
 

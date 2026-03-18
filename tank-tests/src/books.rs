@@ -2,7 +2,7 @@
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
 use tank::{
     DynQuery, AsValue, Dataset, Driver, Entity, Executor, Passive, Query, QueryBuilder, QueryResult,
-    RowLabeled, SqlWriter, Value, cols, expr, join, stream::{StreamExt, TryStreamExt}
+    Row, SqlWriter, Value, cols, expr, join, stream::{StreamExt, TryStreamExt}
 };
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -234,7 +234,7 @@ pub async fn books(executor: &mut impl Executor) {
                     .where_expr(true)
                     .build(&executor.driver())
             ) 
-            .try_collect::<Vec<RowLabeled>>()
+            .try_collect::<Vec<Row>>()
             .await
             .expect("Failed to query books and authors joined")
             .into_iter()

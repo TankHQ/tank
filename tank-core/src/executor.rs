@@ -1,5 +1,5 @@
 use crate::{
-    AsQuery, Driver, DynQuery, Entity, Error, Query, QueryResult, RawQuery, Result, RowLabeled,
+    AsQuery, Driver, DynQuery, Entity, Error, Query, QueryResult, RawQuery, Result, Row,
     RowsAffected,
     stream::{Stream, StreamExt, TryStreamExt},
     writer::SqlWriter,
@@ -62,11 +62,11 @@ pub trait Executor: Send + Sized {
         query: impl AsQuery<Self::Driver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send;
 
-    /// Execute a query yielding `RowLabeled` from the resulting stream (filtering out `RowsAffected`).
+    /// Execute a query yielding `Row` from the resulting stream (filtering out `RowsAffected`).
     fn fetch<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
-    ) -> impl Stream<Item = Result<RowLabeled>> + Send {
+    ) -> impl Stream<Item = Result<Row>> + Send {
         self.run(query).filter_map(|v| async move {
             match v {
                 Ok(QueryResult::Row(v)) => Some(Ok(v)),

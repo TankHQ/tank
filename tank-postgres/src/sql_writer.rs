@@ -205,7 +205,9 @@ impl SqlWriter for PostgresSqlWriter {
         );
         out.push(']');
         if let Some(ty) = ty {
+            out.push_str("::");
             self.write_column_type(context, out, ty);
+            out.push_str("[]");
         }
     }
 

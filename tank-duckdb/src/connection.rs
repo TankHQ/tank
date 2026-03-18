@@ -21,8 +21,8 @@ use std::{
 };
 use tank_core::{
     AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query, QueryResult,
-    RawQuery, Result, RowLabeled, RowsAffected, SqlWriter, Value, as_c_string,
-    error_message_from_ptr, send_value, stream::Stream, truncate_long,
+    RawQuery, Result, Row, RowsAffected, SqlWriter, Value, as_c_string, error_message_from_ptr,
+    send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -199,8 +199,7 @@ impl DuckDBConnection {
                             info.4,
                         )?)
                     });
-                    let row =
-                        RowLabeled::new(names.clone(), columns.collect::<Result<_>>().unwrap());
+                    let row = Row::new(names.clone(), columns.collect::<Result<_>>().unwrap());
                     send_value!(tx, Ok(QueryResult::Row(row)));
                 }
             }

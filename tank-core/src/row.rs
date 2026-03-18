@@ -14,22 +14,22 @@ pub struct RowsAffected {
     pub last_affected_id: Option<i64>,
 }
 
-/// Shared column names.
-pub type RowNames = Arc<[String]>;
-/// Row values matching `RowNames`.
-pub type Row = Box<[Value]>;
+/// Shared columns labels.
+pub type RowLabels = Arc<[String]>;
+/// Row values matching `RowLabels`.
+pub type RowValues = Box<[Value]>;
 
 /// Row with column labels.
 #[derive(Default, Clone, Debug)]
-pub struct RowLabeled {
+pub struct Row {
     /// Column names.
-    pub labels: RowNames,
+    pub labels: RowLabels,
     /// Column values.
-    pub values: Row,
+    pub values: RowValues,
 }
 
-impl RowLabeled {
-    pub fn new(names: RowNames, values: Row) -> Self {
+impl Row {
+    pub fn new(names: RowLabels, values: RowValues) -> Self {
         Self {
             labels: names,
             values,
@@ -56,7 +56,7 @@ impl RowLabeled {
     }
 }
 
-impl<'s> IntoIterator for &'s RowLabeled {
+impl<'s> IntoIterator for &'s Row {
     type Item = (&'s String, &'s Value);
     type IntoIter = iter::Zip<slice::Iter<'s, String>, slice::Iter<'s, Value>>;
     fn into_iter(self) -> Self::IntoIter {
@@ -64,7 +64,7 @@ impl<'s> IntoIterator for &'s RowLabeled {
     }
 }
 
-impl<'s> IntoIterator for &'s mut RowLabeled {
+impl<'s> IntoIterator for &'s mut Row {
     type Item = (&'s String, &'s mut Value);
     type IntoIter = iter::Zip<slice::Iter<'s, String>, slice::IterMut<'s, Value>>;
     fn into_iter(self) -> Self::IntoIter {
@@ -87,20 +87,20 @@ impl Extend<RowsAffected> for RowsAffected {
     }
 }
 
-impl From<RowLabeled> for Row {
-    fn from(value: RowLabeled) -> Self {
+impl From<Row> for RowValues {
+    fn from(value: Row) -> Self {
         value.values
     }
 }
 
-impl<'a> From<&'a RowLabeled> for &'a Row {
-    fn from(value: &'a RowLabeled) -> Self {
+impl<'a> From<&'a Row> for &'a RowValues {
+    fn from(value: &'a Row) -> Self {
         &value.values
     }
 }
 
-impl From<RowLabeled> for QueryResult {
-    fn from(value: RowLabeled) -> Self {
+impl From<Row> for QueryResult {
+    fn from(value: Row) -> Self {
         QueryResult::Row(value)
     }
 }

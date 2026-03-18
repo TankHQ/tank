@@ -1,7 +1,7 @@
 use crate::{
     ColumnDef, Context, Dataset, Driver, DynQuery, Error, Executor, Expression, Query,
-    QueryBuilder, RawQuery, Result, Row, RowLabeled, RowsAffected, TableRef, Value, future::Either,
-    stream::Stream, truncate_long, writer::SqlWriter,
+    QueryBuilder, RawQuery, Result, Row, RowValues, RowsAffected, TableRef, Value,
+    future::Either, stream::Stream, truncate_long, writer::SqlWriter,
 };
 use futures::{FutureExt, StreamExt};
 use log::Level;
@@ -43,11 +43,11 @@ pub trait Entity {
     fn row_filtered(&self) -> Box<[(&'static str, Value)]>;
 
     /// Full row representation including all persisted columns.
-    fn row_full(&self) -> Row;
+    fn row_full(&self) -> RowValues;
 
     /// Full row representation with column labels.
-    fn row_labeled(&self) -> RowLabeled {
-        RowLabeled {
+    fn row_labeled(&self) -> Row {
+        Row {
             labels: Self::columns()
                 .into_iter()
                 .map(|v| v.name().to_string())
@@ -59,7 +59,7 @@ pub trait Entity {
     /// Reconstruct `Self` from a labeled row.
     ///
     /// Fails if columns are missing or type conversion fails.
-    fn from_row(row: RowLabeled) -> Result<Self>
+    fn from_row(row: Row) -> Result<Self>
     where
         Self: Sized;
 

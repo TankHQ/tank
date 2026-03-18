@@ -9,8 +9,8 @@ use scylla::{
 };
 use std::{borrow::Cow, num::NonZeroUsize, ops::ControlFlow, pin::pin, sync::Arc, time::Duration};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result,
-    RowLabeled, impl_executor_transaction,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, Row,
+    impl_executor_transaction,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
@@ -118,7 +118,7 @@ impl Executor for ScyllaDBConnection {
     fn fetch<'s>(
         &'s mut self,
         query: impl AsQuery<ScyllaDBDriver> + 's,
-    ) -> impl Stream<Item = Result<RowLabeled>> + Send {
+    ) -> impl Stream<Item = Result<Row>> + Send {
         let mut query = query.as_query();
         let context = Arc::new(format!("While fetching the query:\n{}", query.as_mut()));
         stream! {

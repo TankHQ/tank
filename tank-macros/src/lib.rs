@@ -164,11 +164,11 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                     .collect()
             }
 
-            fn row_full(&self) -> ::tank::Row {
+            fn row_full(&self) -> ::tank::RowValues {
                 [#(#row_full),*].into()
             }
 
-            fn from_row(row: ::tank::RowLabeled) -> ::tank::Result<Self> {
+            fn from_row(row: ::tank::Row) -> ::tank::Result<Self> {
                 #from_row_factory::<Self>::from_row(row)
             }
         }

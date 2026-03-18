@@ -95,7 +95,7 @@ impl Executor for PostgresConnection {
     fn fetch<'s>(
         &'s mut self,
         query: impl AsQuery<PostgresDriver> + 's,
-    ) -> impl Stream<Item = Result<tank_core::RowLabeled>> + Send {
+    ) -> impl Stream<Item = Result<tank_core::Row>> + Send {
         let mut query = query.as_query();
         let context = format!("While fetching the query:\n{}", query.as_mut());
         let owned = mem::take(query.as_mut());

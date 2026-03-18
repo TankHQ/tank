@@ -11,7 +11,7 @@ Welcome to the armored convoy, commander. Before you can unleash Tank's firepowe
   Streams [`QueryResult`](https://docs.rs/tank/latest/tank/enum.QueryResult.html) items (`Row` or `Affected`). Useful for multi‑statement batches (if supported by the database driver).
 
 - [`fetch(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.fetch):
-  Streams only [`QueryResult::Row`](https://docs.rs/tank/latest/tank/struct.RowLabeled.html), discarding [`QueryResult::Affected`](https://docs.rs/tank/latest/tank/struct.RowsAffected.html).
+  Streams only [`QueryResult::Row`](https://docs.rs/tank/latest/tank/struct.Row.html), discarding [`QueryResult::Affected`](https://docs.rs/tank/latest/tank/struct.RowsAffected.html).
 
 - [`execute(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.execute):
   Aggregates all `QueryResult::Affected` counts into one [`RowsAffected`](https://docs.rs/tank/latest/tank/struct.RowsAffected.html). Rows are ignored.

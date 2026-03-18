@@ -12,7 +12,7 @@ use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use tokio_postgres::{SimpleQueryMessage, fallible_iterator::FallibleIterator};
 use uuid::Uuid;
 
-pub(crate) fn row_to_tank_row(row: tokio_postgres::Row) -> tank_core::Result<tank_core::Row> {
+pub(crate) fn row_to_tank_row(row: tokio_postgres::Row) -> tank_core::Result<tank_core::RowValues> {
     (0..row.len())
         .map(|i| match row.try_get::<_, ValueWrap>(i) {
             Ok(v) => Ok(v.0.into_owned()),
@@ -26,12 +26,12 @@ pub(crate) fn row_to_tank_row(row: tokio_postgres::Row) -> tank_core::Result<tan
                 ))
             }
         })
-        .collect::<tank_core::Result<tank_core::Row>>()
+        .collect::<tank_core::Result<tank_core::RowValues>>()
 }
 
 pub(crate) fn simple_query_row_to_tank_row(
     row: tokio_postgres::SimpleQueryRow,
-) -> tank_core::Result<tank_core::Row> {
+) -> tank_core::Result<tank_core::RowValues> {
     (0..row.len())
         .map(|i| match row.try_get(i) {
             Ok(Some(v)) => ValueWrap::from_sql(&Type::UNKNOWN, v.as_bytes())
@@ -47,7 +47,7 @@ pub(crate) fn simple_query_row_to_tank_row(
                 )))
             }
         })
-        .collect::<tank_core::Result<tank_core::Row>>()
+        .collect::<tank_core::Result<tank_core::RowValues>>()
 }
 
 pub(crate) fn stream_postgres_row_to_tank_row<V, R>(
@@ -55,17 +55,17 @@ pub(crate) fn stream_postgres_row_to_tank_row<V, R>(
 ) -> impl Stream<Item = tank_core::Result<R>>
 where
     V: Stream<Item = Result<tokio_postgres::Row, tokio_postgres::Error>>,
-    R: From<tank_core::RowLabeled>,
+    R: From<tank_core::Row>,
 {
     try_stream! {
         let stream = stream().await?;
         let mut stream = pin!(stream);
-        let mut labels: Option<tank_core::RowNames> = None;
+        let mut labels: Option<tank_core::RowLabels> = None;
         while let Some(row) = stream.next().await.transpose()? {
             let labels = labels.get_or_insert_with(|| {
                 row.columns().iter().map(|c| c.name().to_string()).collect()
             });
-            yield tank_core::RowLabeled {
+            yield tank_core::Row {
                 labels: labels.clone(),
                 values: row_to_tank_row(row)?,
             }.into();
@@ -83,12 +83,12 @@ where
     try_stream! {
         let stream = stream().await?;
         let mut stream = pin!(stream);
-        let mut labels: Option<tank_core::RowNames> = None;
+        let mut labels: Option<tank_core::RowLabels> = None;
         let mut rows = false;
         while let Some(entry) = stream.next().await.transpose()? {
             match entry {
                 SimpleQueryMessage::Row(row) => {
-                    yield tank_core::QueryResult::Row(tank_core::RowLabeled {
+                    yield tank_core::QueryResult::Row(tank_core::Row {
                         labels: labels
                             .as_ref()
                             .filter(|v| v.len() == row.len())
@@ -120,7 +120,7 @@ where
                         columns
                             .into_iter()
                             .map(|col| col.name().into())
-                            .collect::<tank_core::RowNames>(),
+                            .collect::<tank_core::RowLabels>(),
                     );
                     if columns.is_empty() {
                         log::warn!(

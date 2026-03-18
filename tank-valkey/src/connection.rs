@@ -3,7 +3,7 @@ use async_stream::try_stream;
 use redis::{Client, aio::MultiplexedConnection};
 use std::{borrow::Cow, future, mem, sync::Arc};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowLabeled,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Row,
     RowsAffected, stream::Stream, truncate_long,
 };
 
@@ -128,7 +128,7 @@ impl Executor for ValkeyConnection {
                     values.push(converted.0.into_owned());
                 }
             }
-            let row = QueryResult::Row(RowLabeled {
+            let row = QueryResult::Row(Row {
                 labels: unsafe { labels.assume_init() },
                 values: values.into(),
             });

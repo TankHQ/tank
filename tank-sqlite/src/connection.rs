@@ -17,7 +17,7 @@ use std::{
 };
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Prepared, Query, QueryResult, RawQuery,
-    Result, RowLabeled, RowsAffected, error_message_from_ptr, send_value, stream::Stream,
+    Result, Row, RowsAffected, error_message_from_ptr, send_value, stream::Stream,
     truncate_long,
 };
 use tokio::task::spawn_blocking;
@@ -87,7 +87,7 @@ impl SQLiteConnection {
                         };
                         send_value!(
                             tx,
-                            Ok(QueryResult::Row(RowLabeled {
+                            Ok(QueryResult::Row(Row {
                                 labels: labels.clone(),
                                 values: values,
                             }))
