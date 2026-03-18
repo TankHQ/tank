@@ -178,17 +178,28 @@ h1 .text {
     padding-top: 0;
 }
 
-.step-number {
-    float: left;
-    width: 1.1em;
-    height: 1.1em;
-    margin-right: 1rem;
-    border-radius: 1em;
-    font-size: 1.8rem;
-    font-weight: 900;
-    background-color: var(--vp-c-brand-2);
-    text-align: center;
-    line-height: 100%;
-    color: var(--vp-c-bg-alt);
-    border: 1px solid var(--vp-c-brand-3);
+.sticky-table {
+    overflow-x: auto;
+}
+
+.sticky-table table th:first-child,
+.sticky-table table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    border-left: none;
+    border-right: 1px solid var(--vp-c-divider);
+}
+
+.sticky-table table td:first-child {
+    background-color: var(--vp-c-bg);
+}
+
+.sticky-table table tr:nth-child(2n) td:first-child {
+    background-color: var(--vp-c-bg-soft);
+}
+
+.sticky-table table {
+    display: table;
+    min-width: max-content;
 }

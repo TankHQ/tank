@@ -6,6 +6,8 @@ Tank brings a full type arsenal to the field. The `Entity` derive macro identifi
 Tank maps ordinary Rust types (numbers, strings, times, collections) to the closest column types each driver supports, falling back to generic representations when appropriate. Below is the standard mapping of Rust types to each driver's column type. `:x:` indicates no native support at this time. Collection types may be emulated in some drivers using generic JSON/text representations.
 
 ## Column Types
+<div class="sticky-table">
+
 | Rust                      | Postgres       | SQLite    | MySQL/MariaDB             | DuckDB         | MongoDB     | ScyllaDB/Cassandra | Valkey/Redis |
 | ------------------------- | -------------- | --------- | ------------------------- | -------------- | ----------- | ------------------ | ------------ |
 | `bool`                    | `BOOLEAN`      | `INTEGER` | `BOOLEAN`                 | `BOOLEAN`      | `Boolean`   | `BOOLEAN`          | `String`     |
@@ -42,6 +44,8 @@ Tank maps ordinary Rust types (numbers, strings, times, collections) to the clos
 | `Vec<T>`                  | `T[]`          | ❌        | `JSON` ⚠️                 | `T[]`          | `Array`     | `LIST<T>`          | `List`       |
 | `HashMap<K,V>`            | ❌             | ❌        | `JSON` ⚠️                 | `MAP(K,V)`     | `Document`  | `MAP<K,V>`         | `Hash`       |
 | `BTreeMap<K,V>`           | ❌             | ❌        | `JSON` ⚠️                 | `MAP(K,V)`     | `Document`  | `MAP<K,V>`         | `Hash`       |
+
+</div>
 
 > [!WARNING]
 > When a type falls back to a generic representation (e.g. `TEXT` or `JSON`), Tank encodes it predictably so equality and ordering comparisons (where meaningful) behave as expected. Advanced indexing or operator support may vary by driver.
