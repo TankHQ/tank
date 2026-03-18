@@ -30,7 +30,7 @@ impl SqlWriter for DuckDBSqlWriter {
         }
     }
 
-    fn write_value_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
         out.push('\'');
         for b in value {
             let _ = write!(out, "\\x{:02X}", b);
@@ -49,12 +49,7 @@ impl SqlWriter for DuckDBSqlWriter {
         UNITS
     }
 
-    fn write_value_map(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &HashMap<Value, Value>,
-    ) {
+    fn write_map(&self, context: &mut Context, out: &mut DynQuery, value: &HashMap<Value, Value>) {
         out.push_str("MAP{");
         separated_by(
             out,
@@ -69,11 +64,7 @@ impl SqlWriter for DuckDBSqlWriter {
         out.push('}');
     }
 
-    fn write_expression_operand_current_timestamp_ms(
-        &self,
-        _context: &mut Context,
-        out: &mut DynQuery,
-    ) {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
         out.push_str("epoch_ms(current_timestamp)");
     }
 }

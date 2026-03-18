@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fmt::Write};
 use tank_core::{
-    ColumnDef, Context, Dataset, DynQuery, Entity, Fragment, SqlWriter, Value, separated_by,
+    ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment, SqlWriter, Value,
+    separated_by,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 
@@ -97,7 +98,7 @@ impl SqlWriter for PostgresSqlWriter {
         };
     }
 
-    fn write_value_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
         out.push_str("'\\x");
         for b in value {
             let _ = write!(out, "{:02X}", b);
@@ -105,7 +106,7 @@ impl SqlWriter for PostgresSqlWriter {
         out.push('\'');
     }
 
-    fn write_value_date(&self, context: &mut Context, out: &mut DynQuery, value: &Date) {
+    fn write_date(&self, context: &mut Context, out: &mut DynQuery, value: &Date) {
         let (l, r) = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => ("", ""),
             Fragment::Json | Fragment::JsonKey => ("\"", "\""),
@@ -122,7 +123,7 @@ impl SqlWriter for PostgresSqlWriter {
         let _ = write!(out, "{l}{year:04}-{month:02}-{day:02}{suffix}{r}");
     }
 
-    fn write_value_time(&self, context: &mut Context, out: &mut DynQuery, value: &Time) {
+    fn write_time(&self, context: &mut Context, out: &mut DynQuery, value: &Time) {
         let (l, r) = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => ("", ""),
             Fragment::Json | Fragment::JsonKey => ("\"", "\""),
@@ -138,7 +139,7 @@ impl SqlWriter for PostgresSqlWriter {
         let _ = write!(out, "{l}{h:02}:{m:02}:{s:02}.{subsecond:0width$}{r}",);
     }
 
-    fn write_value_timestamp(
+    fn write_timestamp(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
@@ -151,21 +152,16 @@ impl SqlWriter for PostgresSqlWriter {
         };
         let mut context = context.switch_fragment(Fragment::Timestamp);
         out.push_str(l);
-        self.write_value_date(&mut context.current, out, &value.date());
+        self.write_date(&mut context.current, out, &value.date());
         out.push('T');
-        self.write_value_time(&mut context.current, out, &value.time());
+        self.write_time(&mut context.current, out, &value.time());
         if value.date().year() <= 0 {
             out.push_str(" BC");
         }
         out.push_str(r);
     }
 
-    fn write_value_timestamptz(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &OffsetDateTime,
-    ) {
+    fn write_timestamptz(&self, context: &mut Context, out: &mut DynQuery, value: &OffsetDateTime) {
         let (l, r) = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => ("", ""),
             Fragment::Json | Fragment::JsonKey => ("\"", "\""),
@@ -173,7 +169,7 @@ impl SqlWriter for PostgresSqlWriter {
         };
         let mut context = context.switch_fragment(Fragment::Timestamp);
         out.push_str(l);
-        self.write_value_timestamp(
+        self.write_timestamp(
             &mut context.current,
             out,
             &PrimitiveDateTime::new(value.date(), value.time()),
@@ -190,37 +186,35 @@ impl SqlWriter for PostgresSqlWriter {
         out.push_str(r);
     }
 
-    fn write_value_list(
+    fn write_list(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
-        value: &mut dyn Iterator<Item = &Value>,
-        ty: &Value,
-        _elem_ty: &Value,
+        value: &mut dyn Iterator<Item = &dyn Expression>,
+        ty: Option<&Value>,
+        _is_array: bool,
     ) {
         out.push_str("ARRAY[");
         separated_by(
             out,
             value,
             |out, v| {
-                self.write_value(context, out, v);
+                v.write_query(self, context, out);
             },
             ",",
         );
-        out.push_str("]::");
-        self.write_column_type(context, out, ty);
+        out.push(']');
+        if let Some(ty) = ty {
+            self.write_column_type(context, out, ty);
+        }
     }
 
-    fn write_expression_operand_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
+    fn write_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
         context.counter += 1;
         let _ = write!(out, "${}", context.counter);
     }
 
-    fn write_expression_operand_current_timestamp_ms(
-        &self,
-        _context: &mut Context,
-        out: &mut DynQuery,
-    ) {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
         out.push_str("CAST(EXTRACT(EPOCH FROM NOW()) * 1000 AS BIGINT)");
     }
 }

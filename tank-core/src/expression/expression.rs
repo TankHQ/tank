@@ -76,7 +76,7 @@ impl Expression for () {
 
 impl Expression for bool {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        writer.write_value_bool(context, out, *self);
+        writer.write_bool(context, out, *self);
     }
     fn accept_visitor(
         &self,
@@ -91,7 +91,7 @@ impl Expression for bool {
 
 impl Expression for &'static str {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        writer.write_value_string(context, out, self);
+        writer.write_string(context, out, self);
     }
     fn accept_visitor(
         &self,

@@ -1,4 +1,5 @@
 mod structure;
+
 #[cfg(test)]
 mod tests {
     use crate::structure::structure;

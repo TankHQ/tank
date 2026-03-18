@@ -1,3 +1,4 @@
+use crate::IsChar;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use tank_core::{
@@ -108,7 +109,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         GenericSqlWriter::new().write_value_f64(context, out, value);
     }
 
-    fn write_value_blob(&self, context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, context: &mut Context, out: &mut DynQuery, value: &[u8]) {
         let delimiter = if context.fragment == Fragment::Json {
             "\""
         } else {
@@ -133,7 +134,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         UNITS
     }
 
-    fn write_value_interval(&self, _context: &mut Context, out: &mut DynQuery, value: &Interval) {
+    fn write_interval(&self, _context: &mut Context, out: &mut DynQuery, value: &Interval) {
         if value.is_zero() {
             out.push_str("0s");
         }
@@ -163,34 +164,43 @@ impl SqlWriter for ScyllaDBSqlWriter {
         }
     }
 
-    fn write_value_uuid(&self, context: &mut Context, out: &mut DynQuery, value: &Uuid) {
+    fn write_uuid(&self, context: &mut Context, out: &mut DynQuery, value: &Uuid) {
         let _ = match context.fragment {
             Fragment::Json | Fragment::JsonKey => write!(out, "\"{value}\""),
             _ => write!(out, "{value}"),
         };
     }
 
-    fn write_value_list(
+    fn write_list(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
-        value: &mut dyn Iterator<Item = &Value>,
-        ty: &Value,
-        elem_ty: &Value,
+        value: &mut dyn Iterator<Item = &dyn Expression>,
+        ty: Option<&Value>,
+        is_array: bool,
     ) {
-        if matches!(ty, Value::Array(..)) && matches!(elem_ty, Value::Char(..)) {
+        if is_array && matches!(ty, Some(Value::Char(..))) {
             // Array of characters are stored as ASCII
-            let value = value
+            let value = match value
                 .map(|v| {
-                    if let Value::Char(Some(v)) = v {
-                        Ok(v)
+                    let mut is_char = IsChar::default();
+                    if v.accept_visitor(&mut is_char, self, context, out) {
+                        Ok(is_char.value)
                     } else {
-                        return Err(Error::msg(""));
+                        return Err(Error::msg(
+                            "Unexoected error: non char element in a array of char",
+                        ));
                     }
                 })
                 .collect::<Result<String>>()
-                .unwrap();
-            self.write_value_string(context, out, &value);
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    log::error!("{e:#}");
+                    return;
+                }
+            };
+            self.write_string(context, out, &value);
             return;
         }
         out.push('[');
@@ -198,18 +208,14 @@ impl SqlWriter for ScyllaDBSqlWriter {
             out,
             value,
             |out, v| {
-                self.write_value(context, out, v);
+                v.write_query(self, context, out);
             },
             ",",
         );
         out.push(']');
     }
 
-    fn write_expression_operand_current_timestamp_ms(
-        &self,
-        _context: &mut Context,
-        out: &mut DynQuery,
-    ) {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
         out.push_str("toUnixTimestamp(currentTimestamp())");
     }
 

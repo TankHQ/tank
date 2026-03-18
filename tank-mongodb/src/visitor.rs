@@ -3,8 +3,7 @@ use mongodb::bson::{Bson, Document, Regex, doc};
 use std::{borrow::Cow, iter, mem, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
-    IsAsterisk, IsConstant, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp, UnaryOpType,
-    Value,
+    IsConstant, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp, UnaryOpType, Value,
 };
 
 #[derive(Default, PartialEq, Eq, Debug)]
@@ -399,7 +398,7 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                     break 'wrote;
                 }
             }
-            writer.write_expression_binary_op(context, out, value);
+            writer.write_binary_op(context, out, value);
             is_expr = true;
         }
         if top && is_expr {
@@ -424,34 +423,6 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
     ) -> bool {
         value.write_query(writer, context, out);
         true
-    }
-}
-
-#[derive(Default, Debug)]
-pub struct IsCount;
-impl ExpressionVisitor for IsCount {
-    fn visit_operand(
-        &mut self,
-        writer: &dyn SqlWriter,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &Operand,
-    ) -> bool {
-        match value {
-            Operand::Call(function, args) => {
-                if function.eq_ignore_ascii_case("count")
-                    && let [arg] = args
-                    && let mut c = context.clone()
-                    && arg.accept_visitor(&mut IsAsterisk, writer, &mut c, out)
-                {
-                    *context = c;
-                    true
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        }
     }
 }
 

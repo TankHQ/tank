@@ -1,7 +1,11 @@
-use std::{collections::BTreeMap, fmt::Write, mem};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt::Write,
+    mem,
+};
 use tank_core::{
-    ColumnDef, ColumnRef, Context, DynQuery, Entity, GenericSqlWriter, SqlWriter, TableRef, Value,
-    write_escaped,
+    ColumnDef, ColumnRef, Context, DynQuery, Entity, Expression, GenericSqlWriter, SqlWriter,
+    TableRef, Value, write_escaped,
 };
 
 /// SQL writer for SQLite dialect.
@@ -114,7 +118,7 @@ impl SqlWriter for SQLiteSqlWriter {
         }
         if value.is_nan() {
             log::warn!("SQLite does not support float NaN values, will write NULL instead");
-            self.write_value_none(context, out);
+            self.write_null(context, out);
             return;
         }
         GenericSqlWriter::new().write_value_f32(context, out, value);
@@ -130,13 +134,13 @@ impl SqlWriter for SQLiteSqlWriter {
         }
         if value.is_nan() {
             log::warn!("SQLite does not support float NaN values, will write NULL instead");
-            self.write_value_none(context, out);
+            self.write_null(context, out);
             return;
         }
         GenericSqlWriter::new().write_value_f64(context, out, value);
     }
 
-    fn write_value_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
         out.push_str("X'");
         for b in value {
             let _ = write!(out, "{:02X}", b);
@@ -144,12 +148,28 @@ impl SqlWriter for SQLiteSqlWriter {
         out.push('\'');
     }
 
-    fn write_expression_operand_current_timestamp_ms(
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+        out.push_str("(unixepoch('subsec') * 1000)");
+    }
+
+    fn write_list(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        _out: &mut DynQuery,
+        _value: &mut dyn Iterator<Item = &dyn Expression>,
+        _ty: Option<&Value>,
+        _is_array: bool,
     ) {
-        out.push_str("(unixepoch('subsec') * 1000)");
+        log::error!("SQLite does not support arrays or lists");
+    }
+
+    fn write_map(
+        &self,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        _value: &HashMap<Value, Value>,
+    ) {
+        log::error!("SQLite does not support maps");
     }
 
     fn write_create_schema<E>(&self, _out: &mut DynQuery, _if_not_exists: bool)

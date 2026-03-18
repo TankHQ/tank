@@ -108,7 +108,7 @@ impl ExpressionVisitor for IsConstant {
             | Operand::Type(..)
             | Operand::Variable(..)
             | Operand::Value(..) => true,
-            Operand::LitArray(operands) | Operand::LitTuple(operands) => operands
+            Operand::LitList(operands) | Operand::LitTuple(operands) => operands
                 .iter()
                 .all(|v| v.accept_visitor(&mut IsConstant, writer, context, out)),
             _ => false,

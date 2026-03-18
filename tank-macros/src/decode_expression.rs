@@ -297,7 +297,7 @@ pub fn decode_expression(expr: &Expr) -> TokenStream {
                 .iter()
                 .map(|v| decode_expression(v))
                 .collect::<Punctuated<_, Comma>>();
-            quote! { ::tank::Operand::LitArray(&[#v]) }
+            quote! { ::tank::Operand::LitList(&[#v]) }
         }
         Expr::Tuple(v) => {
             let v = v

@@ -3,8 +3,8 @@ use std::{
     fmt::Write,
 };
 use tank_core::{
-    ColumnDef, Context, DynQuery, EitherIterator, Entity, Fragment, GenericSqlWriter, Interval,
-    PrimaryKeyType, SqlWriter, Value, separated_by, write_escaped,
+    ColumnDef, Context, DynQuery, EitherIterator, Entity, Expression, Fragment, GenericSqlWriter,
+    Interval, PrimaryKeyType, SqlWriter, Value, separated_by, write_escaped,
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
 
@@ -139,7 +139,7 @@ impl SqlWriter for MySQLSqlWriter {
             } else {
                 log::warn!("MySQL does not support float NaN values, will write NULL instead");
             }
-            self.write_value_none(context, out);
+            self.write_null(context, out);
             return;
         }
         GenericSqlWriter::new().write_value_f32(context, out, value);
@@ -154,18 +154,13 @@ impl SqlWriter for MySQLSqlWriter {
             } else {
                 log::warn!("MySQL does not support float NaN values, will write NULL instead");
             }
-            self.write_value_none(context, out);
+            self.write_null(context, out);
             return;
         }
         GenericSqlWriter::new().write_value_f64(context, out, value);
     }
 
-    fn write_value_timestamptz(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &OffsetDateTime,
-    ) {
+    fn write_timestamptz(&self, context: &mut Context, out: &mut DynQuery, value: &OffsetDateTime) {
         let d = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -174,7 +169,7 @@ impl SqlWriter for MySQLSqlWriter {
         let mut context = context.switch_fragment(Fragment::Timestamp);
         out.push_str(d);
         let value = value.to_utc();
-        self.write_value_timestamp(
+        self.write_timestamp(
             &mut context.current,
             out,
             &PrimitiveDateTime::new(value.date(), value.time()),
@@ -182,7 +177,7 @@ impl SqlWriter for MySQLSqlWriter {
         out.push_str(d);
     }
 
-    fn write_value_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {
+    fn write_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {
         let d = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -198,13 +193,17 @@ impl SqlWriter for MySQLSqlWriter {
         let _ = write!(out, "{d}{h:02}:{m:02}:{s:02}.{subsecond:0width$}{d}");
     }
 
-    fn write_value_list(
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+        out.push_str("CAST(UNIX_TIMESTAMP(NOW(3)) * 1000 AS UNSIGNED)");
+    }
+
+    fn write_list(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
-        value: &mut dyn Iterator<Item = &Value>,
-        _ty: &Value,
-        _elem_ty: &Value,
+        value: &mut dyn Iterator<Item = &dyn Expression>,
+        _ty: Option<&Value>,
+        _is_array: bool,
     ) {
         let is_json = matches!(context.fragment, Fragment::Json | Fragment::JsonKey);
         let mut context = context.switch_fragment(Fragment::Json);
@@ -216,7 +215,7 @@ impl SqlWriter for MySQLSqlWriter {
             out,
             value,
             |out, v| {
-                self.write_value(&mut context.current, out, v);
+                v.write_query(self, &mut context.current, out);
             },
             ",",
         );
@@ -225,12 +224,7 @@ impl SqlWriter for MySQLSqlWriter {
             out.push('\'');
         }
     }
-    fn write_value_map(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &HashMap<Value, Value>,
-    ) {
+    fn write_map(&self, context: &mut Context, out: &mut DynQuery, value: &HashMap<Value, Value>) {
         let inside_string = context.fragment == Fragment::Json;
         let mut context = context.switch_fragment(Fragment::Json);
         if !inside_string {
@@ -256,14 +250,6 @@ impl SqlWriter for MySQLSqlWriter {
         }
     }
 
-    fn write_expression_operand_current_timestamp_ms(
-        &self,
-        _context: &mut Context,
-        out: &mut DynQuery,
-    ) {
-        out.push_str("CAST(UNIX_TIMESTAMP(NOW(3)) * 1000 AS UNSIGNED)");
-    }
-
     fn write_column_comment_inline(
         &self,
         mut context: &mut Context,
@@ -273,7 +259,7 @@ impl SqlWriter for MySQLSqlWriter {
         Self: Sized,
     {
         out.push_str(" COMMENT ");
-        self.write_value_string(&mut context, out, column.comment);
+        self.write_string(&mut context, out, column.comment);
     }
 
     fn write_column_comments_statements<E>(&self, _context: &mut Context, _out: &mut DynQuery)

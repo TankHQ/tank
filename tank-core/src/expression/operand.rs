@@ -12,7 +12,7 @@ pub enum Operand<'a> {
     LitStr(&'a str),
     LitIdent(&'a str),
     LitField(&'a [&'a str]),
-    LitArray(&'a [Operand<'a>]),
+    LitList(&'a [Operand<'a>]),
     LitTuple(&'a [Operand<'a>]),
     Type(Value),
     Variable(Value),
@@ -31,7 +31,7 @@ impl OpPrecedence for Operand<'_> {
 
 impl Expression for Operand<'_> {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        writer.write_expression_operand(context, out, self)
+        writer.write_operand(context, out, self)
     }
 
     fn accept_visitor(
@@ -54,7 +54,7 @@ impl PartialEq for Operand<'_> {
             (Self::LitField(l), Self::LitField(r)) => l == r,
             (Self::LitInt(l), Self::LitInt(r)) => l == r,
             (Self::LitStr(l), Self::LitStr(r)) => l == r,
-            (Self::LitArray(l), Self::LitArray(r)) => l == r,
+            (Self::LitList(l), Self::LitList(r)) => l == r,
             (Self::LitTuple(l), Self::LitTuple(r)) => l == r,
             (Self::Type(l), Self::Type(r)) => l.same_type(r),
             (Self::Variable(l), Self::Variable(r)) => l == r,

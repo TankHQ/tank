@@ -82,8 +82,8 @@ mod tests {
                 doc! {
                     "$project": {
                         "first col": "$_id.first col",
-                        "MAX(second_column)": 1,
-                        "AVG(second_column)": 1,
+                        "MAX(second_column)": "$MAX(second_column)",
+                        "AVG(second_column)": "$AVG(second_column)",
                     }
                 },
             ]
@@ -236,10 +236,10 @@ mod tests {
                 doc! {
                     "$project": {
                         "user id": "$_id.user id",
-                        "COUNT(_id)": 1,
-                        "SUM(total price)": 1,
-                        "AVG(total price)": 1,
-                        "MAX(ABS(total price - 100.0))": 1,
+                        "COUNT(_id)": "$COUNT(_id)",
+                        "SUM(total price)": "$SUM(total price)",
+                        "AVG(total price)": "$AVG(total price)",
+                        "MAX(ABS(total price - 100.0))": "$MAX(ABS(total price - 100.0))",
                     }
                 },
             ]

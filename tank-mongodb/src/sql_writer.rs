@@ -12,11 +12,11 @@ use mongodb::{
         InsertManyOptions, InsertOneOptions, UpdateModifications, UpdateOptions,
     },
 };
-use std::{borrow::Cow, collections::HashMap, f64, iter, mem, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, f64, iter, mem, ops::Deref, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, Dataset, DynQuery, Entity, ErrorContext,
     Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk, Operand, Order,
-    Result, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, truncate_long,
+    SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -169,7 +169,7 @@ impl SqlWriter for MongoDBSqlWriter {
         };
     }
 
-    fn write_value_none(&self, _context: &mut Context, out: &mut DynQuery) {
+    fn write_null(&self, _context: &mut Context, out: &mut DynQuery) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -180,7 +180,7 @@ impl SqlWriter for MongoDBSqlWriter {
         *target = Bson::Null;
     }
 
-    write_value_fn!(write_value_bool, bool, Bson::Boolean);
+    write_value_fn!(write_bool, bool, Bson::Boolean);
     write_value_fn!(write_value_i8, i8, Bson::Int32);
     write_value_fn!(write_value_i16, i16, Bson::Int32);
     write_value_fn!(write_value_i32, i32, Bson::Int32);
@@ -221,7 +221,7 @@ impl SqlWriter for MongoDBSqlWriter {
         }
     }
 
-    fn write_value_string(&self, _context: &mut Context, out: &mut DynQuery, value: &str) {
+    fn write_string(&self, _context: &mut Context, out: &mut DynQuery, value: &str) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -232,7 +232,7 @@ impl SqlWriter for MongoDBSqlWriter {
         *target = Bson::String(value.into());
     }
 
-    fn write_value_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -246,7 +246,7 @@ impl SqlWriter for MongoDBSqlWriter {
         });
     }
 
-    fn write_value_date(&self, _context: &mut Context, out: &mut DynQuery, value: &Date) {
+    fn write_date(&self, _context: &mut Context, out: &mut DynQuery, value: &Date) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -261,7 +261,7 @@ impl SqlWriter for MongoDBSqlWriter {
         ))
     }
 
-    fn write_value_time(&self, _context: &mut Context, out: &mut DynQuery, value: &Time) {
+    fn write_time(&self, _context: &mut Context, out: &mut DynQuery, value: &Time) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -272,7 +272,7 @@ impl SqlWriter for MongoDBSqlWriter {
         *target = Bson::String(Value::Time(Some(*value)).to_string())
     }
 
-    fn write_value_timestamp(
+    fn write_timestamp(
         &self,
         _context: &mut Context,
         out: &mut DynQuery,
@@ -289,7 +289,7 @@ impl SqlWriter for MongoDBSqlWriter {
         *target = Bson::DateTime(bson::DateTime::from_millis(ms as _));
     }
 
-    fn write_value_timestamptz(
+    fn write_timestamptz(
         &self,
         _context: &mut Context,
         out: &mut DynQuery,
@@ -306,12 +306,12 @@ impl SqlWriter for MongoDBSqlWriter {
         *target = Bson::DateTime(bson::DateTime::from_millis(ms as _));
     }
 
-    fn write_value_interval(&self, _context: &mut Context, _out: &mut DynQuery, _value: &Interval) {
+    fn write_interval(&self, _context: &mut Context, _out: &mut DynQuery, _value: &Interval) {
         log::error!("MongoDB does not support interval types");
         return;
     }
 
-    fn write_value_uuid(&self, _context: &mut Context, out: &mut DynQuery, value: &Uuid) {
+    fn write_uuid(&self, _context: &mut Context, out: &mut DynQuery, value: &Uuid) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -325,40 +325,75 @@ impl SqlWriter for MongoDBSqlWriter {
         });
     }
 
-    fn write_value_list(
+    fn write_list(
         &self,
-        _context: &mut Context,
+        context: &mut Context,
         out: &mut DynQuery,
-        value: &mut dyn Iterator<Item = &Value>,
-        _ty: &Value,
-        _elem_ty: &Value,
+        value: &mut dyn Iterator<Item = &dyn Expression>,
+        _ty: Option<&Value>,
+        _is_array: bool,
     ) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
         else {
-            log::error!("Failed to get the bson in MongoDBSqlWriter::write_value_list");
+            log::error!("Failed to get the bson in MongoDBSqlWriter::write_list");
             return;
         };
-        let list = match value.map(value_to_bson).collect::<Result<_>>() {
-            Ok(v) => v,
-            Err(e) => {
-                log::error!(
-                    "{:#}",
-                    e.context("While MongoDBSqlWriter::write_value_list")
-                );
-                return;
-            }
+        let Some(values) = value
+            .map(|v| {
+                let mut q = Self::make_prepared();
+                v.write_query(self, context, &mut q);
+                let Some(bson) = q
+                    .as_prepared::<MongoDBDriver>()
+                    .and_then(MongoDBPrepared::current_bson)
+                else {
+                    return None;
+                };
+                Some(mem::take(bson))
+            })
+            .collect::<Option<_>>()
+        else {
+            log::error!("Failed to get the bson in MongoDBSqlWriter::write_expression_list");
+            return;
         };
-        *target = Bson::Array(list);
+        *target = Bson::Array(values);
     }
 
-    fn write_value_map(
+    fn write_tuple(
         &self,
-        _context: &mut Context,
+        context: &mut Context,
         out: &mut DynQuery,
-        value: &HashMap<Value, Value>,
+        value: &mut dyn Iterator<Item = &dyn Expression>,
     ) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!("Failed to get the bson in MongoDBSqlWriter::write_expression_tuple");
+            return;
+        };
+        let Some(values) = value
+            .map(|v| {
+                let mut q = Self::make_prepared();
+                v.write_query(self, context, &mut q);
+                let Some(bson) = q
+                    .as_prepared::<MongoDBDriver>()
+                    .and_then(MongoDBPrepared::current_bson)
+                else {
+                    return None;
+                };
+                Some(mem::take(bson))
+            })
+            .collect::<Option<_>>()
+        else {
+            log::error!("Failed to get the bson in MongoDBSqlWriter::write_expression_tuple");
+            return;
+        };
+        *target = Bson::Array(values);
+    }
+
+    fn write_map(&self, _context: &mut Context, out: &mut DynQuery, value: &HashMap<Value, Value>) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -387,7 +422,7 @@ impl SqlWriter for MongoDBSqlWriter {
         *target = Bson::Document(doc);
     }
 
-    fn write_value_struct(
+    fn write_struct(
         &self,
         _context: &mut Context,
         out: &mut DynQuery,
@@ -417,7 +452,34 @@ impl SqlWriter for MongoDBSqlWriter {
         *target = Bson::Document(doc);
     }
 
-    fn write_expression_unary_op(
+    fn write_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!(
+                "Failed to get the bson in MongoDBSqlWriter::write_expression_operand_question_mark"
+            );
+            return;
+        };
+        *target = Bson::String(format!("$$param_{}", context.counter));
+        context.counter += 1;
+    }
+
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+        let Some(target) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::current_bson)
+        else {
+            log::error!(
+                "Failed to get the bson in MongoDBSqlWriter::write_expression_operand_current_timestamp_ms"
+            );
+            return;
+        };
+        *target = doc! { "$toLong": "$$NOW" }.into();
+    }
+
+    fn write_unary_op(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
@@ -454,7 +516,7 @@ impl SqlWriter for MongoDBSqlWriter {
         }
     }
 
-    fn write_expression_binary_op(
+    fn write_binary_op(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
@@ -565,7 +627,7 @@ impl SqlWriter for MongoDBSqlWriter {
         );
     }
 
-    fn write_expression_call(
+    fn write_function(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
@@ -591,7 +653,7 @@ impl SqlWriter for MongoDBSqlWriter {
             s if s.eq_ignore_ascii_case("ceil") => "$ceil",
             s if s.eq_ignore_ascii_case("cos") => "$cos",
             s if s.eq_ignore_ascii_case("count") => {
-                return self.write_expression_call(context, out, "sum", &[&Operand::LitInt(1)]);
+                return self.write_function(context, out, "sum", &[&Operand::LitInt(1)]);
             }
             s if s.eq_ignore_ascii_case("exp") => "$exp",
             s if s.eq_ignore_ascii_case("floor") => "$floor",
@@ -615,10 +677,12 @@ impl SqlWriter for MongoDBSqlWriter {
         if len == 1 {
             args[0].write_query(self, context, &mut query);
         } else {
-            self.write_expression_list(
+            self.write_list(
                 context,
                 &mut query,
-                &mut args.iter().map(|v| v as &dyn Expression),
+                &mut args.iter().map(Deref::deref),
+                None,
+                false,
             );
         };
         let Some(arg) = query
@@ -630,103 +694,6 @@ impl SqlWriter for MongoDBSqlWriter {
             return;
         };
         document.insert(function, arg);
-    }
-
-    fn write_expression_list(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &mut dyn Iterator<Item = &dyn Expression>,
-    ) {
-        let Some(target) = out
-            .as_prepared::<MongoDBDriver>()
-            .and_then(MongoDBPrepared::current_bson)
-        else {
-            log::error!("Failed to get the bson in MongoDBSqlWriter::write_expression_list");
-            return;
-        };
-        let Some(values) = value
-            .map(|v| {
-                let mut q = Self::make_prepared();
-                v.write_query(self, context, &mut q);
-                let Some(bson) = q
-                    .as_prepared::<MongoDBDriver>()
-                    .and_then(MongoDBPrepared::current_bson)
-                else {
-                    return None;
-                };
-                Some(mem::take(bson))
-            })
-            .collect::<Option<_>>()
-        else {
-            log::error!("Failed to get the bson in MongoDBSqlWriter::write_expression_list");
-            return;
-        };
-        *target = Bson::Array(values);
-    }
-
-    fn write_expression_tuple(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &mut dyn Iterator<Item = &dyn Expression>,
-    ) {
-        let Some(target) = out
-            .as_prepared::<MongoDBDriver>()
-            .and_then(MongoDBPrepared::current_bson)
-        else {
-            log::error!("Failed to get the bson in MongoDBSqlWriter::write_expression_tuple");
-            return;
-        };
-        let Some(values) = value
-            .map(|v| {
-                let mut q = Self::make_prepared();
-                v.write_query(self, context, &mut q);
-                let Some(bson) = q
-                    .as_prepared::<MongoDBDriver>()
-                    .and_then(MongoDBPrepared::current_bson)
-                else {
-                    return None;
-                };
-                Some(mem::take(bson))
-            })
-            .collect::<Option<_>>()
-        else {
-            log::error!("Failed to get the bson in MongoDBSqlWriter::write_expression_tuple");
-            return;
-        };
-        *target = Bson::Array(values);
-    }
-
-    fn write_expression_operand_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
-        let Some(target) = out
-            .as_prepared::<MongoDBDriver>()
-            .and_then(MongoDBPrepared::current_bson)
-        else {
-            log::error!(
-                "Failed to get the bson in MongoDBSqlWriter::write_expression_operand_question_mark"
-            );
-            return;
-        };
-        *target = Bson::String(format!("$$param_{}", context.counter));
-        context.counter += 1;
-    }
-
-    fn write_expression_operand_current_timestamp_ms(
-        &self,
-        _context: &mut Context,
-        out: &mut DynQuery,
-    ) {
-        let Some(target) = out
-            .as_prepared::<MongoDBDriver>()
-            .and_then(MongoDBPrepared::current_bson)
-        else {
-            log::error!(
-                "Failed to get the bson in MongoDBSqlWriter::write_expression_operand_current_timestamp_ms"
-            );
-            return;
-        };
-        *target = doc! { "$toLong": "$$NOW" }.into();
     }
 
     fn write_create_schema<E>(&self, out: &mut DynQuery, _if_not_exists: bool)

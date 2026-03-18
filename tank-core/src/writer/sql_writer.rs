@@ -33,7 +33,7 @@ macro_rules! write_float_fn {
         fn $fn_name(&self, context: &mut Context, out: &mut DynQuery, value: $ty) {
             let mut buffer = ryu::Buffer::new();
             if value.is_infinite() {
-                self.write_expression_binary_op(
+                self.write_binary_op(
                     context,
                     out,
                     &BinaryOp {
@@ -47,7 +47,7 @@ macro_rules! write_float_fn {
                     },
                 );
             } else if value.is_nan() {
-                self.write_expression_binary_op(
+                self.write_binary_op(
                     context,
                     out,
                     &BinaryOp {
@@ -220,8 +220,8 @@ pub trait SqlWriter: Send {
             ""
         };
         match value {
-            v if v.is_null() => self.write_value_none(context, out),
-            Value::Boolean(Some(v), ..) => self.write_value_bool(context, out, *v),
+            v if v.is_null() => self.write_null(context, out),
+            Value::Boolean(Some(v), ..) => self.write_bool(context, out, *v),
             Value::Int8(Some(v), ..) => self.write_value_i8(context, out, *v),
             Value::Int16(Some(v), ..) => self.write_value_i16(context, out, *v),
             Value::Int32(Some(v), ..) => self.write_value_i32(context, out, *v),
@@ -237,39 +237,44 @@ pub trait SqlWriter: Send {
             Value::Decimal(Some(v), ..) => drop(write!(out, "{delimiter}{v}{delimiter}")),
             Value::Char(Some(v), ..) => {
                 let mut buf = [0u8; 4];
-                self.write_value_string(context, out, v.encode_utf8(&mut buf));
+                self.write_string(context, out, v.encode_utf8(&mut buf));
             }
-            Value::Varchar(Some(v), ..) => self.write_value_string(context, out, v),
-            Value::Blob(Some(v), ..) => self.write_value_blob(context, out, v.as_ref()),
-            Value::Date(Some(v), ..) => self.write_value_date(context, out, v),
-            Value::Time(Some(v), ..) => self.write_value_time(context, out, v),
-            Value::Timestamp(Some(v), ..) => self.write_value_timestamp(context, out, v),
-            Value::TimestampWithTimezone(Some(v), ..) => {
-                self.write_value_timestamptz(context, out, v)
-            }
-            Value::Interval(Some(v), ..) => self.write_value_interval(context, out, v),
-            Value::Uuid(Some(v), ..) => self.write_value_uuid(context, out, v),
+            Value::Varchar(Some(v), ..) => self.write_string(context, out, v),
+            Value::Blob(Some(v), ..) => self.write_blob(context, out, v.as_ref()),
+            Value::Date(Some(v), ..) => self.write_date(context, out, v),
+            Value::Time(Some(v), ..) => self.write_time(context, out, v),
+            Value::Timestamp(Some(v), ..) => self.write_timestamp(context, out, v),
+            Value::TimestampWithTimezone(Some(v), ..) => self.write_timestamptz(context, out, v),
+            Value::Interval(Some(v), ..) => self.write_interval(context, out, v),
+            Value::Uuid(Some(v), ..) => self.write_uuid(context, out, v),
             Value::Array(Some(..), elem_ty, ..) | Value::List(Some(..), elem_ty, ..) => match value
             {
-                Value::Array(Some(v), ..) => {
-                    self.write_value_list(context, out, &mut v.iter(), value, &*elem_ty)
-                }
-                Value::List(Some(v), ..) => {
-                    self.write_value_list(context, out, &mut v.iter(), value, &*elem_ty)
-                }
+                Value::Array(Some(v), ..) => self.write_list(
+                    context,
+                    out,
+                    &mut v.iter().map(|v| v as &dyn Expression),
+                    Some(&*elem_ty),
+                    true,
+                ),
+                Value::List(Some(v), ..) => self.write_list(
+                    context,
+                    out,
+                    &mut v.iter().map(|v| v as &dyn Expression),
+                    Some(&*elem_ty),
+                    false,
+                ),
                 _ => unreachable!(),
             },
-            Value::Map(Some(v), ..) => self.write_value_map(context, out, v),
-            Value::Json(Some(v), ..) => self.write_value_json(context, out, v),
-            Value::Struct(Some(v), ..) => self.write_value_struct(context, out, v),
+            Value::Map(Some(v), ..) => self.write_map(context, out, v),
+            Value::Json(Some(v), ..) => self.write_json(context, out, v),
+            Value::Struct(Some(v), ..) => self.write_struct(context, out, v),
             _ => {
                 log::error!("Cannot write {value:?}");
             }
         };
     }
 
-    /// Write NULL.
-    fn write_value_none(&self, context: &mut Context, out: &mut DynQuery) {
+    fn write_null(&self, context: &mut Context, out: &mut DynQuery) {
         out.push_str(if context.fragment == Fragment::Json {
             "null"
         } else {
@@ -277,8 +282,7 @@ pub trait SqlWriter: Send {
         });
     }
 
-    /// Write boolean literal.
-    fn write_value_bool(&self, context: &mut Context, out: &mut DynQuery, value: bool) {
+    fn write_bool(&self, context: &mut Context, out: &mut DynQuery, value: bool) {
         if context.fragment == Fragment::JsonKey {
             out.push('"');
         }
@@ -302,8 +306,7 @@ pub trait SqlWriter: Send {
     write_float_fn!(write_value_f32, f32);
     write_float_fn!(write_value_f64, f64);
 
-    /// Write string literal.
-    fn write_value_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
+    fn write_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
         let (delimiter, escaped) = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => (None, ""),
             Fragment::Json | Fragment::JsonKey => (Some('"'), r#"\""#),
@@ -330,8 +333,7 @@ pub trait SqlWriter: Send {
         }
     }
 
-    /// Write blob literal.
-    fn write_value_blob(&self, context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, context: &mut Context, out: &mut DynQuery, value: &[u8]) {
         let delimiter = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -344,9 +346,7 @@ pub trait SqlWriter: Send {
         out.push_str(delimiter);
     }
 
-    /// Write date literal.
-    /// - `timestamp`: the date is part of a timestamp literal.
-    fn write_value_date(&self, context: &mut Context, out: &mut DynQuery, value: &Date) {
+    fn write_date(&self, context: &mut Context, out: &mut DynQuery, value: &Date) {
         let d = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -358,9 +358,7 @@ pub trait SqlWriter: Send {
         let _ = write!(out, "{d}{year:04}-{month:02}-{day:02}{d}");
     }
 
-    /// Write time literal.
-    /// - `timestamp`: the time is part of a timestamp literal.
-    fn write_value_time(&self, context: &mut Context, out: &mut DynQuery, value: &Time) {
+    fn write_time(&self, context: &mut Context, out: &mut DynQuery, value: &Time) {
         let d = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -376,8 +374,7 @@ pub trait SqlWriter: Send {
         let _ = write!(out, "{d}{h:02}:{m:02}:{s:02}.{subsecond:0width$}{d}");
     }
 
-    /// Write timestamp literal.
-    fn write_value_timestamp(
+    fn write_timestamp(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
@@ -390,19 +387,13 @@ pub trait SqlWriter: Send {
         };
         let mut context = context.switch_fragment(Fragment::Timestamp);
         out.push_str(d);
-        self.write_value_date(&mut context.current, out, &value.date());
+        self.write_date(&mut context.current, out, &value.date());
         out.push(' ');
-        self.write_value_time(&mut context.current, out, &value.time());
+        self.write_time(&mut context.current, out, &value.time());
         out.push_str(d);
     }
 
-    /// Write timestamptz literal.
-    fn write_value_timestamptz(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &OffsetDateTime,
-    ) {
+    fn write_timestamptz(&self, context: &mut Context, out: &mut DynQuery, value: &OffsetDateTime) {
         let d = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -410,7 +401,7 @@ pub trait SqlWriter: Send {
         };
         let mut context = context.switch_fragment(Fragment::Timestamp);
         out.push_str(d);
-        self.write_value_timestamp(
+        self.write_timestamp(
             &mut context.current,
             out,
             &PrimitiveDateTime::new(value.date(), value.time()),
@@ -442,8 +433,7 @@ pub trait SqlWriter: Send {
         UNITS
     }
 
-    /// Write interval literal.
-    fn write_value_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {
+    fn write_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {
         out.push_str("INTERVAL ");
         let d = match context.fragment {
             Fragment::None => "",
@@ -497,8 +487,7 @@ pub trait SqlWriter: Send {
         out.push_str(d);
     }
 
-    /// Write UUID literal.
-    fn write_value_uuid(&self, context: &mut Context, out: &mut DynQuery, value: &Uuid) {
+    fn write_uuid(&self, context: &mut Context, out: &mut DynQuery, value: &Uuid) {
         let d = match context.fragment {
             Fragment::None => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -507,25 +496,45 @@ pub trait SqlWriter: Send {
         let _ = write!(out, "{d}{value}{d}");
     }
 
-    /// Write list literal.
-    fn write_value_list(
+    fn write_list(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
-        value: &mut dyn Iterator<Item = &Value>,
-        _ty: &Value,
-        _elem_ty: &Value,
+        value: &mut dyn Iterator<Item = &dyn Expression>,
+        _ty: Option<&Value>,
+        _is_array: bool,
     ) {
-        self.write_expression_list(context, out, &mut value.map(|v| v as &dyn Expression));
+        out.push('[');
+        separated_by(
+            out,
+            value,
+            |out, v| {
+                v.write_query(self.as_dyn(), context, out);
+            },
+            ",",
+        );
+        out.push(']');
     }
 
-    /// Write map literal.
-    fn write_value_map(
+    fn write_tuple(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
-        value: &HashMap<Value, Value>,
+        value: &mut dyn Iterator<Item = &dyn Expression>,
     ) {
+        out.push('(');
+        separated_by(
+            out,
+            value,
+            |out, v| {
+                v.write_query(self.as_dyn(), context, out);
+            },
+            ",",
+        );
+        out.push(')');
+    }
+
+    fn write_map(&self, context: &mut Context, out: &mut DynQuery, value: &HashMap<Value, Value>) {
         out.push('{');
         separated_by(
             out,
@@ -540,18 +549,11 @@ pub trait SqlWriter: Send {
         out.push('}');
     }
 
-    /// Write json.
-    fn write_value_json(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &serde_json::Value,
-    ) {
-        self.write_value_string(context, out, &value.to_string());
+    fn write_json(&self, context: &mut Context, out: &mut DynQuery, value: &serde_json::Value) {
+        self.write_string(context, out, &value.to_string());
     }
 
-    /// Write struct literal.
-    fn write_value_struct(
+    fn write_struct(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
@@ -562,13 +564,33 @@ pub trait SqlWriter: Send {
             out,
             value,
             |out, (k, v)| {
-                self.write_value_string(context, out, k);
+                self.write_string(context, out, k);
                 out.push(':');
                 self.write_value(context, out, v);
             },
             ",",
         );
         out.push('}');
+    }
+
+    fn write_function(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        function: &str,
+        args: &[&dyn Expression],
+    ) {
+        out.push_str(function);
+        out.push('(');
+        separated_by(
+            out,
+            args,
+            |out, expr| {
+                expr.write_query(self.as_dyn(), context, out);
+            },
+            ",",
+        );
+        out.push(')');
     }
 
     /// Precedence table for unary operators.
@@ -615,58 +637,49 @@ pub trait SqlWriter: Send {
         }
     }
 
-    /// Write operand.
-    fn write_expression_operand(&self, context: &mut Context, out: &mut DynQuery, value: &Operand) {
+    fn write_operand(&self, context: &mut Context, out: &mut DynQuery, value: &Operand) {
         match value {
-            Operand::Null => self.write_value_none(context, out),
-            Operand::LitBool(v) => self.write_value_bool(context, out, *v),
+            Operand::Null => self.write_null(context, out),
+            Operand::LitBool(v) => self.write_bool(context, out, *v),
             Operand::LitInt(v) => self.write_value_i128(context, out, *v),
             Operand::LitFloat(v) => self.write_value_f64(context, out, *v),
-            Operand::LitStr(v) => self.write_value_string(context, out, v),
+            Operand::LitStr(v) => self.write_string(context, out, v),
             Operand::LitIdent(v) => {
                 self.write_identifier(context, out, v, context.fragment == Fragment::Aliasing)
             }
             Operand::LitField(v) => {
                 self.write_identifier(context, out, &v.join(self.separator()), false)
             }
-            Operand::LitArray(v) => self.write_expression_list(
+            Operand::LitList(v) => self.write_list(
                 context,
                 out,
                 &mut v.iter().map(|v| v as &dyn Expression),
+                None,
+                false,
             ),
-            Operand::LitTuple(v) => self.write_expression_tuple(
-                context,
-                out,
-                &mut v.iter().map(|v| v as &dyn Expression),
-            ),
+            Operand::LitTuple(v) => {
+                self.write_tuple(context, out, &mut v.iter().map(|v| v as &dyn Expression))
+            }
             Operand::Type(v) => self.write_column_type(context, out, v),
             Operand::Variable(v) => self.write_value(context, out, v),
             Operand::Value(v) => self.write_value(context, out, v),
-            Operand::Call(f, args) => self.write_expression_call(context, out, f, args),
+            Operand::Call(f, args) => self.write_function(context, out, f, args),
             Operand::Asterisk => drop(out.push('*')),
-            Operand::QuestionMark => self.write_expression_operand_question_mark(context, out),
-            Operand::CurrentTimestampMs => {
-                self.write_expression_operand_current_timestamp_ms(context, out)
-            }
+            Operand::QuestionMark => self.write_question_mark(context, out),
+            Operand::CurrentTimestampMs => self.write_current_timestamp_ms(context, out),
         };
     }
 
-    /// Render parameter placeholder (dialect may override).
-    fn write_expression_operand_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
+    fn write_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
         context.counter += 1;
         out.push('?');
     }
 
-    fn write_expression_operand_current_timestamp_ms(
-        &self,
-        _context: &mut Context,
-        out: &mut DynQuery,
-    ) {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
         out.push_str("NOW()");
     }
 
-    /// Render unary operator expression.
-    fn write_expression_unary_op(
+    fn write_unary_op(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
@@ -684,7 +697,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render binary operator expression handling precedence and parenthesis.
-    fn write_expression_binary_op(
+    fn write_binary_op(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
@@ -693,7 +706,7 @@ pub trait SqlWriter: Send {
         let (prefix, infix, suffix, lhs_parenthesized, rhs_parenthesized) = match value.op {
             BinaryOpType::Indexing => ("", "[", "]", false, true),
             BinaryOpType::Cast => {
-                return self.write_expression_cast(context, out, value.lhs, value.rhs);
+                return self.write_cast(context, out, value.lhs, value.rhs);
             }
             BinaryOpType::Multiplication => ("", " * ", "", false, false),
             BinaryOpType::Division => ("", " / ", "", false, false),
@@ -753,8 +766,7 @@ pub trait SqlWriter: Send {
         out.push_str(suffix);
     }
 
-    /// Render casting expression
-    fn write_expression_cast(
+    fn write_cast(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
@@ -770,7 +782,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Render ordered expression inside ORDER BY.
-    fn write_expression_ordered(
+    fn write_ordered(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
@@ -787,62 +799,6 @@ pub trait SqlWriter: Send {
                 }
             );
         }
-    }
-
-    fn write_expression_call(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        function: &str,
-        args: &[&dyn Expression],
-    ) {
-        out.push_str(function);
-        out.push('(');
-        separated_by(
-            out,
-            args,
-            |out, expr| {
-                expr.write_query(self.as_dyn(), context, out);
-            },
-            ",",
-        );
-        out.push(')');
-    }
-
-    fn write_expression_list(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &mut dyn Iterator<Item = &dyn Expression>,
-    ) {
-        out.push('[');
-        separated_by(
-            out,
-            value,
-            |out, v| {
-                v.write_query(self.as_dyn(), context, out);
-            },
-            ",",
-        );
-        out.push(']');
-    }
-
-    fn write_expression_tuple(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &mut dyn Iterator<Item = &dyn Expression>,
-    ) {
-        out.push('(');
-        separated_by(
-            out,
-            value,
-            |out, v| {
-                v.write_query(self.as_dyn(), context, out);
-            },
-            ",",
-        );
-        out.push(')');
     }
 
     /// Render join keyword(s) for the given join type.
@@ -1119,7 +1075,7 @@ pub trait SqlWriter: Send {
             out.push_str("\nCOMMENT ON COLUMN ");
             self.write_column_ref(&mut context.current, out, c.into());
             out.push_str(" IS ");
-            self.write_value_string(&mut context.current, out, c.comment);
+            self.write_string(&mut context.current, out, c.comment);
             out.push(';');
         }
     }

@@ -3,8 +3,7 @@ mod tests {
     use mongodb::bson::{Bson, doc};
     use tank::{ColumnRef, Context, Entity, Expression, TableRef, expr};
     use tank_mongodb::{
-        FieldType, IsCount, IsField, MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter,
-        WriteMatchExpression,
+        FieldType, IsField, MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter, WriteMatchExpression,
     };
     use tank_tests::init_logs;
 
@@ -288,29 +287,5 @@ mod tests {
                 }
             );
         }
-    }
-
-    #[test]
-    fn is_count() {
-        init_logs();
-        let mut matcher = IsCount::default();
-        assert!(expr!(COUNT(*)).accept_visitor(
-            &mut matcher,
-            &WRITER,
-            &mut Default::default(),
-            &mut Default::default(),
-        ));
-        assert!(!expr!(COUNT(hello)).accept_visitor(
-            &mut matcher,
-            &WRITER,
-            &mut Default::default(),
-            &mut Default::default(),
-        ));
-        assert!(!expr!(25 == 1).accept_visitor(
-            &mut matcher,
-            &WRITER,
-            &mut Default::default(),
-            &mut Default::default(),
-        ));
     }
 }

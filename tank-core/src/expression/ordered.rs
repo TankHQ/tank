@@ -35,7 +35,7 @@ impl<E: Expression> OpPrecedence for Ordered<E> {
 
 impl<E: Expression> Expression for Ordered<E> {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        writer.write_expression_ordered(
+        writer.write_ordered(
             context,
             out,
             &Ordered {

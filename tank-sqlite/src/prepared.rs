@@ -145,7 +145,7 @@ impl Prepared for SQLitePrepared {
                 ),
                 Value::Date(Some(v), ..) => {
                     let mut out = DynQuery::with_capacity(32);
-                    Self::WRITER.write_value_date(
+                    Self::WRITER.write_date(
                         &mut Context::fragment(Fragment::ParameterBinding),
                         &mut out,
                         &v,
@@ -160,7 +160,7 @@ impl Prepared for SQLitePrepared {
                 }
                 Value::Time(Some(v), ..) => {
                     let mut out = DynQuery::with_capacity(32);
-                    Self::WRITER.write_value_time(
+                    Self::WRITER.write_time(
                         &mut Context::fragment(Fragment::ParameterBinding),
                         &mut out,
                         &v,
@@ -175,7 +175,7 @@ impl Prepared for SQLitePrepared {
                 }
                 Value::Timestamp(Some(v), ..) => {
                     let mut out = DynQuery::with_capacity(32);
-                    Self::WRITER.write_value_timestamp(
+                    Self::WRITER.write_timestamp(
                         &mut Context::fragment(Fragment::ParameterBinding),
                         &mut out,
                         &v,
@@ -190,7 +190,7 @@ impl Prepared for SQLitePrepared {
                 }
                 Value::TimestampWithTimezone(Some(v), ..) => {
                     let mut out = DynQuery::with_capacity(32);
-                    Self::WRITER.write_value_timestamptz(
+                    Self::WRITER.write_timestamptz(
                         &mut Context::fragment(Fragment::ParameterBinding),
                         &mut out,
                         &v,

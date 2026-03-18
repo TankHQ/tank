@@ -135,7 +135,7 @@ mod tests {
         let expr = expr!(["a", "b", "c"]);
         assert!(matches!(
             expr,
-            Operand::LitArray([
+            Operand::LitList([
                 Operand::LitStr("a"),
                 Operand::LitStr("b"),
                 Operand::LitStr("c"),
@@ -154,7 +154,7 @@ mod tests {
             expr,
             BinaryOp {
                 op: BinaryOpType::Indexing,
-                lhs: Operand::LitArray([
+                lhs: Operand::LitList([
                     Operand::LitInt(11),
                     Operand::LitInt(22),
                     Operand::LitInt(33),

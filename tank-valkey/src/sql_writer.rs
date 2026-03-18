@@ -68,7 +68,7 @@ impl SqlWriter for ValkeySqlWriter {
             let _ = write!(out, " {}", value.alias);
         }
     }
-    fn write_value_string(&self, _context: &mut Context, out: &mut DynQuery, value: &str) {
+    fn write_string(&self, _context: &mut Context, out: &mut DynQuery, value: &str) {
         out.push_str(value);
     }
 
