@@ -16,10 +16,8 @@ export default {
             const setupStickyTables = () => {
                 const stickyTables = document.querySelectorAll('.sticky-table');
                 stickyTables.forEach(table => {
-                    // Skip if already set up
                     if (table.dataset.stickySetup) return;
                     table.dataset.stickySetup = 'true';
-
                     const handleScroll = () => {
                         if (table.scrollLeft > 0) {
                             table.classList.add('is-scrolled');

@@ -11,9 +11,9 @@ pub trait Dataset {
     fn qualified_columns() -> bool
     where
         Self: Sized;
-    /// Render this dataset into SQL.
+    /// Generates the SQL representation of this dataset for use in a query.
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery);
-    /// Table reference for this dataset.
+    /// Returns the primary table reference for this dataset.
     fn table_ref(&self) -> TableRef;
 }
 

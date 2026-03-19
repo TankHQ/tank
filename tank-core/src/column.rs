@@ -8,9 +8,9 @@ use std::{borrow::Cow, collections::BTreeMap, hash::Hash};
 
 /// Trait exposing column definition and reference.
 pub trait ColumnTrait {
-    /// Logical definition (column metadata).
+    /// Returns the column definition, including metadata like type and constraints.
     fn column_def(&self) -> &ColumnDef;
-    /// Column reference.
+    /// Returns the reference identifying the column (name, table, schema).
     fn column_ref(&self) -> &ColumnRef;
 }
 
@@ -26,6 +26,7 @@ pub struct ColumnRef {
 }
 
 impl ColumnRef {
+    /// Create a column reference from just a name.
     pub fn new(name: Cow<'static, str>) -> Self {
         Self {
             name,

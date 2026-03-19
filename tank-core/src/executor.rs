@@ -17,12 +17,12 @@ pub trait Executor: Send + Sized {
     /// Associated driver.
     type Driver: Driver;
 
-    /// Supports multiple statements per request.
+    /// Checks if the driver supports multiple SQL statements in a single request.
     fn accepts_multiple_statements(&self) -> bool {
         true
     }
 
-    /// Get the driver instance.
+    /// Returns the driver instance associated with this executor.
     fn driver(&self) -> Self::Driver
     where
         Self: Sized,
@@ -30,7 +30,7 @@ pub trait Executor: Send + Sized {
         Default::default()
     }
 
-    /// Prepare query.
+    /// Prepares a query for execution, returning a handle to the prepared statement.
     fn prepare<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
@@ -45,7 +45,7 @@ pub trait Executor: Send + Sized {
         }
     }
 
-    /// Actual implementation for `prepare`.
+    /// Internal hook for implementing prepared statement support.
     fn do_prepare(
         &mut self,
         _sql: String,
@@ -56,13 +56,13 @@ pub trait Executor: Send + Sized {
         ))))
     }
 
-    /// Execute a query, streaming `QueryResult` (rows or affected counts).
+    /// Executes a query and streams the results (rows or affected counts).
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send;
 
-    /// Execute a query yielding `Row` from the resulting stream (filtering out `RowsAffected`).
+    /// Executes a query and streams the resulting rows, ignoring affected counts.
     fn fetch<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
@@ -76,7 +76,7 @@ pub trait Executor: Send + Sized {
         })
     }
 
-    /// Execute and aggregate affected rows counter.
+    /// Executes a query and returns the total number of affected rows.
     fn execute<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
@@ -92,7 +92,7 @@ pub trait Executor: Send + Sized {
             .try_collect()
     }
 
-    /// Insert many entities efficiently.
+    /// Efficiently inserts a collection of entities bypassing regular SQL execution when supported by the driver.
     fn append<'a, E, It>(
         &mut self,
         entities: It,

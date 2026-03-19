@@ -1,6 +1,7 @@
 use crate::TableRef;
 use std::borrow::Cow;
 
+/// Represents the context or part of the SQL statement currently being generated.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fragment {
     #[default]
@@ -32,6 +33,7 @@ pub enum Fragment {
     SqlSelectWhere,
 }
 
+/// Holds state during SQL generation, including current fragment, table context, and formatting options.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Context {
     pub counter: u32,
@@ -42,6 +44,7 @@ pub struct Context {
 }
 
 impl Context {
+    /// Creates a new generation context for a specific fragment.
     pub const fn new(fragment: Fragment, qualify_columns: bool) -> Self {
         Self {
             counter: 0,
@@ -51,6 +54,7 @@ impl Context {
             quote_identifiers: true,
         }
     }
+    /// Creates an empty context with no special configuration.
     pub const fn empty() -> Self {
         Self {
             counter: 0,
@@ -60,6 +64,7 @@ impl Context {
             quote_identifiers: false,
         }
     }
+    /// Creates a context for a specific SQL fragment.
     pub const fn fragment(fragment: Fragment) -> Self {
         Self {
             counter: 0,
@@ -69,6 +74,7 @@ impl Context {
             quote_identifiers: true,
         }
     }
+    /// Creates a context that enforces identifying columns with their table name.
     pub const fn qualify(qualify_columns: bool) -> Self {
         Self {
             counter: 0,
@@ -78,6 +84,7 @@ impl Context {
             quote_identifiers: true,
         }
     }
+    /// Creates a context qualified with a specific table name.
     pub const fn qualify_with(table: Cow<'static, str>) -> Self {
         Self {
             counter: 0,

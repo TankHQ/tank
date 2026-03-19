@@ -15,16 +15,16 @@ pub trait Driver: Default + Debug {
     /// Human-readable backend name.
     const NAME: &'static [&'static str];
 
-    /// Driver name.
+    /// Returns the primary name of the driver.
     fn name(&self) -> &'static str {
         Self::NAME[0]
     }
 
-    /// Connect to database `url`.
+    /// Creates a new connection to the database at the specified URL.
     fn connect(&self, url: Cow<'static, str>) -> impl Future<Output = Result<Self::Connection>> {
         Self::Connection::connect(self, url)
     }
 
-    /// Get a SQL writer object.
+    /// Returns a dialect-specific SQL writer for query construction.
     fn sql_writer(&self) -> Self::SqlWriter;
 }

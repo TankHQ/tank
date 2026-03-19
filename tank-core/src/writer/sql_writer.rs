@@ -71,6 +71,7 @@ macro_rules! write_float_fn {
 
 /// SQL dialect printer.
 pub trait SqlWriter: Send {
+    /// Upcasts self to a distinct dynamic object.
     fn as_dyn(&self) -> &dyn SqlWriter;
 
     /// Separator used for qualified names (e.g., schema.table.column)
@@ -78,7 +79,7 @@ pub trait SqlWriter: Send {
         "."
     }
 
-    /// True if the current fragment context allows alias declaration.
+    /// Determines if the current SQL context supports alias declarations.
     fn is_alias_declaration(&self, context: &mut Context) -> bool {
         match context.fragment {
             Fragment::SqlSelectFrom | Fragment::SqlJoin => true,
@@ -86,7 +87,7 @@ pub trait SqlWriter: Send {
         }
     }
 
-    /// Write identifier.
+    /// Writes an identifier (like a table or column name) to the query builder, optionally quoting it.
     fn write_identifier(
         &self,
         _context: &mut Context,

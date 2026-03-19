@@ -6,23 +6,23 @@ use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
 use std::borrow::Cow;
 
-/// Table reference.
+/// Reference to a database table, including schema, alias name, columns, and primary key.
 #[derive(Default, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct TableRef {
     /// Table name.
     pub name: Cow<'static, str>,
     /// Schema name.
     pub schema: Cow<'static, str>,
-    /// Alias.
+    /// Optional alias for the table.
     pub alias: Cow<'static, str>,
-    /// Columns
+    /// List of columns defined in this table.
     pub columns: &'static [ColumnDef],
-    /// Primary key
+    /// List of columns forming the primary key.
     pub primary_key: &'static [&'static ColumnDef],
 }
 
 impl TableRef {
-    /// New table reference.
+    /// Creates a new table reference with just a name.
     pub const fn new(name: Cow<'static, str>) -> Self {
         Self {
             name,
@@ -32,7 +32,7 @@ impl TableRef {
             primary_key: &[],
         }
     }
-    /// Get the display name.
+    /// Returns the fully qualified name (schema.table) or the alias if one is present.
     pub fn full_name(&self, separator: &str) -> Cow<'static, str> {
         if !self.alias.is_empty() {
             return self.alias.clone();
@@ -43,13 +43,13 @@ impl TableRef {
         }
         name
     }
-    /// Set the alias.
+    /// Returns a clone of the table reference with a new alias.
     pub fn with_alias(&self, alias: Cow<'static, str>) -> Self {
         let mut result = self.clone();
         result.alias = alias.into();
         result
     }
-    /// True if empty.
+    /// Checks if the table reference has no name, schema, or alias.
     pub fn is_empty(&self) -> bool {
         self.name.is_empty() && self.schema.is_empty() && self.alias.is_empty()
     }

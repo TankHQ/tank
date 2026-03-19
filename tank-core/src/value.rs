@@ -23,29 +23,51 @@ pub enum Value {
     /// SQL NULL.
     #[default]
     Null,
+    /// Boolean value.
     Boolean(Option<bool>),
+    /// 8-bit signed integer.
     Int8(Option<i8>),
+    /// 16-bit signed integer.
     Int16(Option<i16>),
+    /// 32-bit signed integer.
     Int32(Option<i32>),
+    /// 64-bit signed integer.
     Int64(Option<i64>),
+    /// 128-bit signed integer.
     Int128(Option<i128>),
+    /// 8-bit unsigned integer.
     UInt8(Option<u8>),
+    /// 16-bit unsigned integer.
     UInt16(Option<u16>),
+    /// 32-bit unsigned integer.
     UInt32(Option<u32>),
+    /// 64-bit unsigned integer.
     UInt64(Option<u64>),
+    /// 128-bit unsigned integer.
     UInt128(Option<u128>),
+    /// 32-bit floating point number.
     Float32(Option<f32>),
+    /// 64-bit floating point number.
     Float64(Option<f64>),
     /// Decimal (value, precision, scale).
     Decimal(Option<Decimal>, u8, u8),
+    /// Single character.
     Char(Option<char>),
+    /// Variable-length character string.
     Varchar(Option<Cow<'static, str>>),
+    /// Binary large object.
     Blob(Option<Box<[u8]>>),
+    /// Date value (without time).
     Date(Option<Date>),
+    /// Time value (without date).
     Time(Option<Time>),
+    /// Timestamp (date and time).
     Timestamp(Option<PrimitiveDateTime>),
+    /// Timestamp with time zone.
     TimestampWithTimezone(Option<OffsetDateTime>),
+    /// Time interval.
     Interval(Option<Interval>),
+    /// UUID (Universally Unique Identifier).
     Uuid(Option<Uuid>),
     /// Homogeneous array (values, inner type, length).
     Array(Option<Box<[Value]>>, Box<Value>, u32),
@@ -53,6 +75,7 @@ pub enum Value {
     List(Option<Vec<Value>>, Box<Value>),
     /// Map (entries, key type, value type).
     Map(Option<HashMap<Value, Value>>, Box<Value>, Box<Value>),
+    /// JSON value.
     Json(Option<JsonValue>),
     /// Named struct (fields, field types, type name).
     Struct(Option<Vec<(String, Value)>>, Vec<(String, Value)>, TableRef),
@@ -61,6 +84,7 @@ pub enum Value {
 }
 
 impl Value {
+    /// Checks if two values have the same type, ignoring their actual data.
     pub fn same_type(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Decimal(.., l_width, l_scale), Self::Decimal(.., r_width, r_scale)) => {
@@ -78,6 +102,7 @@ impl Value {
         }
     }
 
+    /// Checks if the value is NULL.
     pub fn is_null(&self) -> bool {
         match self {
             Value::Null
@@ -115,6 +140,7 @@ impl Value {
         }
     }
 
+    /// Create a value retaining only the type information, with all data set to NULL.
     pub fn as_null(&self) -> Value {
         match self {
             Value::Null => Value::Null,
@@ -150,11 +176,12 @@ impl Value {
         }
     }
 
-    pub fn try_as(self, value: &Value) -> Result<Value> {
-        if self.same_type(value) {
+    /// Attempts to convert the value to the type of another value, if they are compatible.
+    pub fn try_as(self, target_type: &Value) -> Result<Value> {
+        if self.same_type(target_type) {
             return Ok(self);
         }
-        match value {
+        match target_type {
             Value::Boolean(..) => bool::try_from_value(self).map(AsValue::as_value),
             Value::Int8(..) => i8::try_from_value(self).map(AsValue::as_value),
             Value::Int16(..) => i16::try_from_value(self).map(AsValue::as_value),
@@ -188,12 +215,13 @@ impl Value {
             _ => {
                 return Err(Error::msg(format!(
                     "Cannot convert value {:?} into value {:?}",
-                    self, value
+                    self, target_type
                 )));
             }
         }
     }
 
+    /// Checks if the value is a scalar type (not an array, struct, etc.).
     pub fn is_scalar(&self) -> bool {
         match self {
             Value::Boolean(..)

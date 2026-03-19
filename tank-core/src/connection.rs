@@ -16,6 +16,7 @@ use url::Url;
 /// - `begin` starts a transaction scope. Commit/rollback MUST be awaited to
 ///   guarantee resource release.
 pub trait Connection: Executor {
+    /// Validates and normalizes the connection URL, handling special cases like in-memory databases.
     fn sanitize_url(_driver: &Self::Driver, mut url: Cow<'static, str>) -> Result<Url>
     where
         Self: Sized,
@@ -51,7 +52,7 @@ pub trait Connection: Executor {
         Ok(result)
     }
 
-    /// Create a connection (or pool) to the given URL.
+    /// Establishes a connection (or pool) to the database specified by the URL.
     ///
     /// Implementations may perform I/O or validation during `connect`.
     /// Callers should treat this as a potentially expensive operation.
@@ -62,12 +63,12 @@ pub trait Connection: Executor {
     where
         Self: Sized;
 
-    /// Begin a transaction scope tied to this connection.
+    /// Starts a new transaction on this connection.
     ///
     /// Must await `commit` or `rollback` to finalize the scope and release resources.
     fn begin(&mut self) -> impl Future<Output = Result<<Self::Driver as Driver>::Transaction<'_>>>;
 
-    /// Disconnect and release the underlying session(s).
+    /// Closes the connection and releases any session resources.
     fn disconnect(self) -> impl Future<Output = Result<()>>
     where
         Self: Sized,
