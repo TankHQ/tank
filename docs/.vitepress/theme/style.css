@@ -180,6 +180,7 @@ h1 .text {
 
 .sticky-table {
     overflow-x: auto;
+    position: relative;
 }
 
 .sticky-table table th:first-child,
@@ -189,6 +190,14 @@ h1 .text {
     z-index: 10;
     border-left: none;
     border-right: 1px solid var(--vp-c-divider);
+}
+
+/* Apply constraints only when scrolled */
+.sticky-table.is-scrolled table th:first-child,
+.sticky-table.is-scrolled table td:first-child {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .sticky-table table td:first-child {
