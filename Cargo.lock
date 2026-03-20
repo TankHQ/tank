@@ -3716,6 +3716,7 @@ dependencies = [
  "async-stream",
  "log",
  "mongodb",
+ "rcgen",
  "regex",
  "serde",
  "serde_json",

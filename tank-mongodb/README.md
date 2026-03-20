@@ -16,6 +16,7 @@ Implements Tank’s `Driver` and related traits for MongoDB, mapping Tank operat
 
 ## Features
 - Async connection and execution via [`mongodb`](https://crates.io/crates/mongodb)
+- TLS support
 - BSON to Tank Value mapping
 
 ## Install
@@ -31,9 +32,11 @@ use tank_mongodb::MongoDBDriver;
 
 let driver = MongoDBDriver::new();
 let connection = driver
-    .connect("mongodb://127.0.0.1:27017/database".into())
+    .connect("mongodb://user:pass@127.0.0.1:27017/database?tls=true&tlsCAFile=/path/to/ca.pem&tlsCertificateKeyFile=/path/to/client-combined.pem".into())
     .await?;
 ```
+
+Note: `tlsCertificateKeyFile` should point to a PEM file containing both the client certificate and private key combined.
 
 ## Running Tests
 Tests need a MongoDB instance. Provide a connection URL via `TANK_MONGODB_TEST`. If absent, a containerized MongoDB will be launched automatically using [testcontainers-modules](https://crates.io/crates/testcontainers-modules).

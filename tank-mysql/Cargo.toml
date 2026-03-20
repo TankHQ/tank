@@ -20,7 +20,7 @@ time.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-rcgen = "0"
+rcgen.workspace = true
 tank-tests = { path = "../tank-tests", features = [
     "disable-infinity",
     "disable-large-integers",

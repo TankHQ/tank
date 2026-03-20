@@ -20,7 +20,7 @@ url.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-rcgen = { version = "0", features = [ "aws_lc_rs" ] }
+rcgen = { workspace = true, features = [ "aws_lc_rs" ] }
 tank-tests = { path = "../tank-tests", features = [
     "disable-groups",
     "disable-joins",
