@@ -180,9 +180,9 @@ async fn establish_scylla_connection() -> Result<ScyllaDBConnection> {
 - `scylladb://host1,host2:9042/keyspace?consistency=quorum&compression=lz4`
 
 Parameters:
-- `sslca`: Path to the CA certificate file.
-- `sslcert`: Path to the client certificate file (PEM format).
-- `sslkey`: Path to the client private key file (PEM format).
+- `ssl_ca`: Path to the CA certificate file.
+- `ssl_cert`: Path to the client certificate file (PEM format).
+- `ssl_key`: Path to the client private key file (PEM format).
 - `local_ip_address`: Binds the connection to a specific local IP.
 - `connection_timeout (f64)`: Request timeout in seconds, the default is 5.
 - `hostname_resolution_timeout (f64)`: DNS resolution timeout in seconds.

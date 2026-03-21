@@ -210,17 +210,17 @@ impl Connection for ScyllaDBConnection {
                 };
             }
             match k.as_ref() {
-                "sslca" => {
+                "ssl_ca" => {
                     context_try!(context_builder.set_ca_file(v.as_ref()));
                     ssl = true;
                 }
-                "sslcert" => {
+                "ssl_cert" => {
                     context_try!(
                         context_builder.set_certificate_file(v.as_ref(), SslFiletype::PEM)
                     );
                     ssl = true;
                 }
-                "sslkey" => {
+                "ssl_key" => {
                     context_try!(
                         context_builder.set_private_key_file(v.as_ref(), SslFiletype::PEM)
                     );

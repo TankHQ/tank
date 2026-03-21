@@ -108,7 +108,7 @@ pub async fn init_scylladb(ssl: bool) -> (String, Option<ContainerAsync<ScyllaDB
             .await
             .expect("Cannot get the SSL port");
         let params = format!(
-            "sslca={}&sslcert={}&sslkey={}",
+            "ssl_ca={}&ssl_cert={}&ssl_key={}",
             path.join("tests/assets/ca.pem").to_string_lossy(),
             path.join("tests/assets/client-cert.pem").to_string_lossy(),
             path.join("tests/assets/client-key.pem").to_string_lossy(),
@@ -176,7 +176,7 @@ pub async fn init_cassandra(ssl: bool) -> (String, Option<ContainerAsync<Generic
             .await
             .expect("Cannot get the SSL port");
         let params = format!(
-            "sslca={}&sslcert={}&sslkey={}",
+            "ssl_ca={}&ssl_cert={}&ssl_key={}",
             path.join("tests/assets/ca.pem").to_string_lossy(),
             path.join("tests/assets/client-cert.pem").to_string_lossy(),
             path.join("tests/assets/client-key.pem").to_string_lossy(),

@@ -15,7 +15,6 @@ mod tests {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
 
-        // Unencrypted
         let (url, container) = init_scylladb(false).await;
         let _container = container.expect("Could not launch container");
 
