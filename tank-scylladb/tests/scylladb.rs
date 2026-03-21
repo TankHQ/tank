@@ -18,18 +18,19 @@ mod tests {
         // Unencrypted
         let (url, container) = init_scylladb(false).await;
         let container = container.expect("Could not launch container");
-        let error_msg = format!("Could not connect to `{url}`");
         let driver = ScyllaDBDriver::new();
-        let connection = driver.connect(url.into()).await.expect(&error_msg);
+        let connection = driver.connect(url.into()).await.expect("Failed to connect");
         execute_tests(connection).await;
         drop(container);
 
         // SSL
         let (ssl_url, container) = init_scylladb(true).await;
         let container = container.expect("Could not launch container");
-        let error_msg = format!("Could not connect to `{ssl_url}`");
         let driver = ScyllaDBDriver::new();
-        let connection = driver.connect(ssl_url.into()).await.expect(&error_msg);
+        let connection = driver
+            .connect(ssl_url.into())
+            .await
+            .expect("Failed to connect");
         execute_tests(connection).await;
         drop(container);
     }

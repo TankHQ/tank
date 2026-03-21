@@ -19,16 +19,17 @@ mod tests {
         // Unencrypted
         let (url, container) = init_mysql(false).await;
         let container = container.expect("Could not launch container");
-        let error_msg = format!("Could not connect to `{url}`");
         let driver = MySQLDriver::new();
-        let connection = driver.connect(url.clone().into()).await.expect(&error_msg);
+        let connection = driver
+            .connect(url.clone().into())
+            .await
+            .expect("Failed to connect");
         execute_tests(connection).await;
         drop(container);
 
         // SSL
         let (ssl_url, container) = init_mysql(true).await;
         let container = container.expect("Could not launch container");
-        let error_msg = format!("Could not connect to `{ssl_url}`");
         let driver = MySQLDriver::new();
 
         let url = Url::parse(&url).expect("Could not parse the url returned from init");
@@ -60,7 +61,7 @@ mod tests {
         let connection = driver
             .connect(ssl_url.to_string().into())
             .await
-            .expect(&error_msg);
+            .expect("Failed to connect");
         execute_tests(connection).await;
         drop(container);
     }

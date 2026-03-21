@@ -32,7 +32,7 @@ impl Driver for ValkeyDriver {
     type Prepared = ValkeyPrepared;
     type Transaction<'c> = ValkeyTransaction<'c>;
 
-    const NAME: &'static [&'static str] = &["valkey", "redis"];
+    const NAME: &'static [&'static str] = &["valkey", "redis", "valkeys", "rediss"];
 
     fn sql_writer(&self) -> Self::SqlWriter {
         ValkeySqlWriter::new(self.separator, self.keys_with_names)

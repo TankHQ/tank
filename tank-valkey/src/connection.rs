@@ -17,15 +17,18 @@ impl Connection for ValkeyConnection {
     where
         Self: Sized,
     {
-        let driver = *driver;
         let context = Arc::new(format!("While trying to connect to `{}`", url));
-        let client = Client::open(&*url).map_err(|e| Error::msg(e.to_string()))?;
+        let url = Self::sanitize_url(driver, url)?;
+        let client = Client::open(url.as_str()).map_err(|e| Error::msg(e.to_string()))?;
         let connection = client
             .get_multiplexed_async_connection()
             .await
             .map_err(Error::new)
             .context(context)?;
-        Ok(Self { driver, connection })
+        Ok(Self {
+            driver: *driver,
+            connection,
+        })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<ValkeyTransaction<'_>>> {
