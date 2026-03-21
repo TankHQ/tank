@@ -65,7 +65,7 @@ impl LogConsumer for TestcontainersLogConsumer {
 }
 
 pub async fn init_scylladb(ssl: bool) -> (String, Option<ContainerAsync<ScyllaDB>>) {
-    if let Ok(url) = env::var("TANK_SCYLLA_TEST") {
+    if let Ok(url) = env::var("TANK_SCYLLADB_TEST") {
         return (url, None);
     };
     let mut image = ScyllaDB::default()

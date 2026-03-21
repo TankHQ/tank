@@ -160,6 +160,40 @@ async fn establish_mongodb_connection() -> Result<MongoDBConnection> {
 }
 ```
 
+**URL Format**:
+- `mongodb://[username:password@]host1[:port1][,...hostN[:portN]][/database][?options]`
+
+The database name is extracted from the URL path. If omitted, you must specify a default database in the options or rely on the driver default.
+
+### Valkey/Redis
+Valkey is your suppressive-fire support weapon: an in-memory key-value depot for caches, sessions, queues, rate limits, and hot-path counters—built for blistering throughput when the front line can’t wait. This driver speaks both Valkey and Redis.
+
+```rust
+use tank::Driver;
+use tank_valkey::{ValkeyConnection, ValkeyDriver};
+
+async fn establish_valkey_connection() -> Result<ValkeyConnection> {
+    let driver = ValkeyDriver::default();
+    let connection = driver
+        .connect("valkey://127.0.0.1:6379/0".into())
+        .await?;
+    Ok(connection)
+}
+```
+
+**URL Format**:
+- `valkey://[[<username>]:<password>@]<hostname>[:port][/<db>]`
+- `valkeys://[[<username>]:<password>@]<hostname>[:port][/<db>]?sslmode=require&sslrootcert=CA_PATH&sslcert=CERT_PATH&sslkey=KEY_PATH`
+
+TLS parameters (used by `valkeys://` and `rediss://`):
+- `sslmode`: Use `require` for TLS.
+- `sslrootcert`: CA certificate path.
+- `sslcert`: Client certificate path.
+- `sslkey`: Client private key path.
+
+Example (Valkey + TLS):
+- `valkeys://valkey-commander:supreme@127.0.0.1:6379/0?sslmode=require&sslrootcert=/path/to/ca.pem&sslcert=/path/to/client-cert.pem&sslkey=/path/to/client-key.pem`
+
 ### ScyllaDB/Cassandra
 ScyllaDB is the rapid‑response strike force: distributed, built to swarm data with relentless, low‑latency fire.
 
@@ -170,14 +204,14 @@ use tank_scylladb::{ScyllaDBConnection, ScyllaDBDriver};
 async fn establish_scylla_connection() -> Result<ScyllaDBConnection> {
   let driver = ScyllaDBDriver::new();
   let connection = driver
-    .connect("scylladb://127.0.0.1:9042/keyspace".into())
+    .connect("scylladb://127.0.0.1:9042/keyspace?compression=lz4".into())
     .await?;
   Ok(connection)
 }
 ```
 
 **URL Format**:
-- `scylladb://host1,host2:9042/keyspace?consistency=quorum&compression=lz4`
+- `scylladb://host1,host2:9042/keyspace?compression=lz4`
 
 Parameters:
 - `ssl_ca`: Path to the CA certificate file.
@@ -207,18 +241,7 @@ Parameters:
 - `refresh_metadata_on_auto_schema_agreement (bool)`: Refreshes metadata automatically when schema agreement is reached.
 - `tracing_info_fetch_attempts`: Number of retry attempts to fetch tracing info.
 - `tracing_info_fetch_interval`: Wait time in seconds between tracing fetch attempts, the default is 0.003 (3ms).
-- `tracing_info_fetch_consistency`: Consistency level for tracing info (mapped to Scylla's internal u16 consistency levels):
-    - `0`: Any
-    - `1`: One
-    - `2`: Two
-    - `3`: Three
-    - `4`: Quorum
-    - `5`: All
-    - `6`: LocalQuorum
-    - `7`: EachQuorum
-    - `8`: Serial
-    - `9`: LocalSerial
-    - `10`: LocalOne
+- `tracing_info_fetch_consistency`: Consistency level for tracing info (mapped to Scylla's internal u16 consistency levels).
 
 The parameters are used to create an object of type [`SessionBuilder`](https://docs.rs/scylla/latest/scylla/client/session_builder/type.SessionBuilder.html). Please check the Scylla documentation for more detailed information.
 

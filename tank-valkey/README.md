@@ -24,12 +24,13 @@ It does not replace the main [`tank`](https://crates.io/crates/tank) crate. You 
 ## Limitations
 Due to the Key-Value nature of Valkey/Redis, this driver has strict limitations compared to SQL drivers:
 
-- **Primary key access only**: `SELECT` and `DELETE` operations must specify a `WHERE` clause that uniquely identifies rows by their PK (eg: `WHERE first_name == "Linus" && last_name == "Torvalds"`). Any other type of expressions are not supported.
+- **Primary key access only**: `SELECT` and `DELETE` operations must provide a `WHERE` clause that matches the entity primary key exactly (eg: `WHERE first_name == "Linus" && last_name == "Torvalds"`). Any other type of expressions are not supported.
 - **No joins or aggregations**: `JOIN` clauses and `GROUP BY` aggregations are not supported.
 - **No ordering**: `ORDER BY` clauses are not supported.
-- **No `DROP TABLE`**: `drop_table` operations are not supported and will log an error. Data must be cleared manually or via key expiration if configured.
-- **Data Modeling**: Entities are stored as Hashes. Nested fields (Arrays, Lists, Maps) are stored in separate keys suffixed with the column name (eg: `mytable:1:mycolumn`). This ensures scalar access is fast but requires multiple round-trips for full object retrieval.
-- **Transactions**: Uses Redis `MULTI`/`EXEC` blocks, which provide isolation but differ from SQL ACID transactions.
+- **No table/schema DDL**: `create_table`/`create_schema` are effectively no-ops; `drop_table` logs an error. Data must be cleared by deleting keys (or via expiration) separately.
+- **Data modeling is key-based**: Each entity instance is stored under a single “root” key (a Redis Hash). Nested collections are stored under additional child keys derived from the root key (e.g. `<root>:<field>`).
+- **No reliable rows-affected**: Valkey/Redis does not provide affected-row counts in a SQL sense; Tank returns `rows_affected: None`.
+- **Transactions are pipelined, not SQL/ACID**: Tank transactions on this driver queue commands and execute them via a Redis pipeline on `commit()`. `rollback()` is a no-op. This is not automatically wrapped in `MULTI/EXEC`.
 
 ## Install
 ```sh
@@ -42,11 +43,13 @@ cargo add tank-valkey
 use tank::{Connection, Driver, Executor};
 use tank_valkey::ValkeyDriver;
 
-let driver = ValkeyDriver::new();
+let driver = ValkeyDriver::default();
 let connection = driver
     .connect("redis://127.0.0.1:6379/".into())
     .await?;
 ```
+
+The driver accepts `valkey://` / `redis://` for plaintext and `valkeys://` / `rediss://` for TLS.
 
 ## Running Tests
 Tests need a Valkey/Redis instance. Provide a connection URL via `TANK_VALKEY_TEST`. If absent, a containerized Valkey will be launched automatically using [testcontainers-modules](https://crates.io/crates/testcontainers-modules).
