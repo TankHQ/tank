@@ -17,7 +17,7 @@ mod tests {
 
         // Unencrypted
         let (url, container) = init_valkey(false).await;
-        let container = container.expect("Could not launch container");
+        let container = container.expect("Could not launch the container");
         {
             let driver = ValkeyDriver::default();
             let mut connection = driver
@@ -44,7 +44,7 @@ mod tests {
             std::env::set_var("SSL_CERT_FILE", path.join("tests/assets/ca.pem"));
         }
         let (ssl_url, container) = init_valkey(true).await;
-        let container = container.expect("Could not launch container");
+        let container = container.expect("Could not launch the SSL container");
         let driver = ValkeyDriver::new(".", false);
         let mut connection = driver
             .connect(ssl_url.clone().into())
