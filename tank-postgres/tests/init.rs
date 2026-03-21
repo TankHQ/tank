@@ -36,7 +36,78 @@ impl LogConsumer for TestcontainersLogConsumer {
     }
 }
 
-async fn generate_postgres_ssl_files() -> Result<()> {
+pub async fn init(ssl: bool) -> (String, Option<ContainerAsync<Postgres>>) {
+    if let Ok(url) = env::var("TANK_POSTGRES_TEST") {
+        return (url, None);
+    };
+    if !Command::new("docker")
+        .arg("ps")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        log::error!("Cannot access docker");
+    }
+    let mut container = Postgres::default()
+        .with_db_name("military")
+        .with_user("tank-user")
+        .with_password("armored")
+        .with_startup_timeout(Duration::from_secs(60))
+        .with_log_consumer(TestcontainersLogConsumer);
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    if ssl {
+        generate_ssl_files()
+            .await
+            .expect("Could not create the certificate files for ssl session");
+        container = container
+            .with_copy_to(
+                "/docker-entrypoint-initdb.d/pg_hba.conf",
+                path.join("tests/assets/pg_hba.conf"),
+            )
+            .with_copy_to(
+                "/docker-entrypoint-initdb.d/root.crt",
+                path.join("tests/assets/root.crt"),
+            )
+            .with_copy_to(
+                "/docker-entrypoint-initdb.d/server.crt",
+                path.join("tests/assets/server.crt"),
+            )
+            .with_copy_to(
+                "/docker-entrypoint-initdb.d/server.key",
+                path.join("tests/assets/server.key"),
+            )
+            .with_copy_to(
+                "/docker-entrypoint-initdb.d/00-ssl.sh",
+                path.join("tests/assets/00-ssl.sh"),
+            );
+    }
+    let container = container
+        .start()
+        .await
+        .expect("Could not start the container");
+    let port = container
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("Cannot get the port of Postgres");
+    (
+        format!(
+            "postgres://tank-user:armored@127.0.0.1:{port}/military{}",
+            if ssl {
+                Cow::Owned(format!(
+                    "?sslmode=require&sslrootcert={}&sslcert={}&sslkey={}",
+                    path.join("tests/assets/root.crt").to_str().unwrap(),
+                    path.join("tests/assets/client.crt").to_str().unwrap(),
+                    path.join("tests/assets/client.key").to_str().unwrap(),
+                ))
+            } else {
+                Cow::Borrowed("")
+            }
+        ),
+        Some(container),
+    )
+}
+
+async fn generate_ssl_files() -> Result<()> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
     let mut ca_params = CertificateParams::new(vec!["root".to_string()])?;
@@ -95,75 +166,4 @@ async fn generate_postgres_ssl_files() -> Result<()> {
     .await?;
 
     Ok(())
-}
-
-pub async fn init(ssl: bool) -> (String, Option<ContainerAsync<Postgres>>) {
-    if let Ok(url) = env::var("TANK_POSTGRES_TEST") {
-        return (url, None);
-    };
-    if !Command::new("docker")
-        .arg("ps")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
-        log::error!("Cannot access docker");
-    }
-    let mut container = Postgres::default()
-        .with_db_name("military")
-        .with_user("tank-user")
-        .with_password("armored")
-        .with_startup_timeout(Duration::from_secs(60))
-        .with_log_consumer(TestcontainersLogConsumer);
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    if ssl {
-        generate_postgres_ssl_files()
-            .await
-            .expect("Could not create the certificate files for ssl session");
-        container = container
-            .with_copy_to(
-                "/docker-entrypoint-initdb.d/pg_hba.conf",
-                path.join("tests/assets/pg_hba.conf"),
-            )
-            .with_copy_to(
-                "/docker-entrypoint-initdb.d/root.crt",
-                path.join("tests/assets/root.crt"),
-            )
-            .with_copy_to(
-                "/docker-entrypoint-initdb.d/server.crt",
-                path.join("tests/assets/server.crt"),
-            )
-            .with_copy_to(
-                "/docker-entrypoint-initdb.d/server.key",
-                path.join("tests/assets/server.key"),
-            )
-            .with_copy_to(
-                "/docker-entrypoint-initdb.d/00-ssl.sh",
-                path.join("tests/assets/00-ssl.sh"),
-            );
-    }
-    let container = container
-        .start()
-        .await
-        .expect("Could not start the container");
-    let port = container
-        .get_host_port_ipv4(5432)
-        .await
-        .expect("Cannot get the port of Postgres");
-    (
-        format!(
-            "postgres://tank-user:armored@127.0.0.1:{port}/military{}",
-            if ssl {
-                Cow::Owned(format!(
-                    "?sslmode=require&sslrootcert={}&sslcert={}&sslkey={}",
-                    path.join("tests/assets/root.crt").to_str().unwrap(),
-                    path.join("tests/assets/client.crt").to_str().unwrap(),
-                    path.join("tests/assets/client.key").to_str().unwrap(),
-                ))
-            } else {
-                Cow::Borrowed("")
-            }
-        ),
-        Some(container),
-    )
 }

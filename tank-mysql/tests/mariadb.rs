@@ -18,7 +18,7 @@ mod tests {
 
         // Unencrypted
         let (url, container) = init_mariadb(false).await;
-        let container = container.expect("Could not launch container");
+        let container = container.expect("Could not launch the container");
         let driver = MariaDBDriver::new();
         let connection = driver
             .connect(url.clone().into())
@@ -29,7 +29,7 @@ mod tests {
 
         // SSL
         let (ssl_url, container) = init_mariadb(true).await;
-        let container = container.expect("Could not launch container");
+        let container = container.expect("Could not launch the SSL container");
         let driver = MariaDBDriver::new();
 
         let url = Url::parse(&url).expect("Could not parse the url returned from init");

@@ -19,14 +19,14 @@ mod tests {
 
         // Unencrypted
         let (url, container) = init(false).await;
-        let container = container.expect("Could not launch container");
+        let container = container.expect("Could not launch the container");
         let connection = driver.connect(url.into()).await.expect("Failed to connect");
         execute_tests(connection).await;
         drop(container);
 
         // SSL
         let (url, container) = init(true).await;
-        let container = container.expect("Could not launch container");
+        let container = container.expect("Could not launch the SSL container");
         let connection = driver.connect(url.into()).await.expect("Failed to connect");
         execute_tests(connection).await;
         drop(container);

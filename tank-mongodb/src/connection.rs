@@ -14,6 +14,7 @@ use tank_core::{
 };
 
 /// Minimal MongoDB connection wrapper used by the driver.
+#[derive(Debug)]
 pub struct MongoDBConnection {
     pub(crate) client: Client,
     pub(crate) session: Option<ClientSession>,

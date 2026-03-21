@@ -1,5 +1,11 @@
 use mongodb::{Client, bson::doc};
-use std::{borrow::Cow, env, future, path::PathBuf, process::Command, time::Duration};
+use rcgen::{
+    BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair,
+    KeyUsagePurpose, SanType,
+};
+use std::{
+    env, future, net::IpAddr, path::PathBuf, process::Command, str::FromStr, time::Duration,
+};
 use tank_core::future::{BoxFuture, FutureExt};
 use testcontainers_modules::testcontainers::{
     ContainerAsync, Image, ImageExt, TestcontainersError,
@@ -9,6 +15,7 @@ use testcontainers_modules::testcontainers::{
     },
     runners::AsyncRunner,
 };
+use tokio::fs;
 
 struct TestcontainersLogConsumer;
 impl LogConsumer for TestcontainersLogConsumer {
@@ -23,20 +30,20 @@ impl LogConsumer for TestcontainersLogConsumer {
                 match record {
                     LogFrame::StdOut(..) => {
                         log::trace!(
-                            "[{}]{}",
+                            "[{}] {}",
                             json.get("ctx").unwrap_or_default(),
                             json.get("msg").unwrap_or_default()
                         )
                     }
                     LogFrame::StdErr(..) => log::debug!(
-                        "[{}]{}",
+                        "[{}] {}",
                         json.get("ctx").unwrap_or_default(),
                         json.get("msg").unwrap_or_default()
                     ),
                 }
             } else {
                 match record {
-                    LogFrame::StdOut(..) => log::error!("{log}",),
+                    LogFrame::StdOut(..) => log::error!("{log}"),
                     LogFrame::StdErr(..) => log::error!("{log}"),
                 }
             }
@@ -113,6 +120,7 @@ pub async fn init(ssl: bool) -> (String, Option<ContainerAsync<Mongo>>) {
     if let Ok(url) = env::var("TANK_MONGODB_TEST") {
         return (url, None);
     };
+
     if !Command::new("docker")
         .arg("ps")
         .output()
@@ -121,22 +129,48 @@ pub async fn init(ssl: bool) -> (String, Option<ContainerAsync<Mongo>>) {
     {
         log::error!("Cannot access docker");
     }
-    let container = Mongo::repl_set()
-        .with_startup_timeout(Duration::from_secs(60))
+
+    let mut container = Mongo::repl_set()
+        .with_startup_timeout(Duration::from_secs(90)) // give a bit more breathing room
         .with_log_consumer(TestcontainersLogConsumer);
+
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    if ssl {}
+
+    if ssl {
+        generate_ssl_files()
+            .await
+            .expect("Could not create the certificate files for ssl session");
+        container = container
+            .with_copy_to("/etc/ca.pem", path.join("tests/assets/ca.pem"))
+            .with_copy_to("/etc/mongodb.pem", path.join("tests/assets/mongodb.pem"))
+            .with_cmd(vec![
+                "--replSet".to_string(),
+                "rs".to_string(),
+                "--tlsMode".to_string(),
+                "preferTLS".to_string(),
+                "--tlsCertificateKeyFile".to_string(),
+                "/etc/mongodb.pem".to_string(),
+                "--tlsCAFile".to_string(),
+                "/etc/ca.pem".to_string(),
+            ]);
+    }
+
     let container = container
         .start()
         .await
         .expect("Could not start the container");
+
     let port = container
         .get_host_port_ipv4(27017)
         .await
-        .expect("Cannot get the port of Postgres");
-    let client = Client::with_uri_str(format!("mongodb://127.0.0.1:{port}?directConnection=true"))
+        .expect("Cannot get the port of MongoDB");
+
+    // Setup connection — no auth yet, plain for init
+    let setup_url = format!("mongodb://127.0.0.1:{port}/admin?directConnection=true");
+    let client = Client::with_uri_str(&setup_url)
         .await
         .expect("Could not connect to MongoDB for setup");
+
     client
         .database("admin")
         .run_command(doc! {
@@ -146,20 +180,72 @@ pub async fn init(ssl: bool) -> (String, Option<ContainerAsync<Mongo>>) {
         })
         .await
         .expect("Could not create the user");
-    (
-        format!(
-            "mongodb://tank-user:armored@127.0.0.1:{port}/military?directConnection=true{}",
-            if ssl {
-                Cow::Owned(format!(
-                    "&sslmode=require&sslrootcert={}&sslcert={}&sslkey={}",
-                    path.join("tests/assets/root.crt").to_str().unwrap(),
-                    path.join("tests/assets/client.crt").to_str().unwrap(),
-                    path.join("tests/assets/client.key").to_str().unwrap(),
-                ))
-            } else {
-                Cow::Borrowed("&authSource=admin")
-            }
-        ),
-        Some(container),
-    )
+
+    // Final connection string for tests
+    let final_url = format!(
+        "mongodb://tank-user:armored@127.0.0.1:{port}/military?directConnection=true&authSource=admin{}",
+        if ssl {
+            format!(
+                "&tls=true&tlsCAFile={}&tlsCertificateKeyFile={}",
+                path.join("tests/assets/ca.pem").to_str().unwrap(),
+                path.join("tests/assets/client.pem").to_str().unwrap(),
+            )
+        } else {
+            "".to_string()
+        }
+    );
+
+    (final_url, Some(container))
+}
+
+async fn generate_ssl_files() -> tank::Result<()> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut ca_params = CertificateParams::new(vec!["root".to_string()])?;
+    ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    ca_params.key_usages.push(KeyUsagePurpose::KeyCertSign);
+    ca_params.key_usages.push(KeyUsagePurpose::CrlSign);
+    ca_params.use_authority_key_identifier_extension = true;
+    let ca_key = KeyPair::generate()?;
+    let ca_cert = ca_params.self_signed(&ca_key)?;
+    fs::write(path.join("tests/assets/ca.pem"), ca_cert.pem()).await?;
+
+    let issuer = Issuer::new(ca_params, ca_key);
+
+    let server_key = KeyPair::generate()?;
+    let mut server_params = CertificateParams::new(["localhost".to_string()])?;
+    server_params.use_authority_key_identifier_extension = true;
+    server_params
+        .key_usages
+        .push(KeyUsagePurpose::DigitalSignature);
+    server_params
+        .extended_key_usages
+        .push(ExtendedKeyUsagePurpose::ServerAuth);
+    server_params.subject_alt_names = vec![
+        SanType::DnsName("localhost".try_into().unwrap()),
+        SanType::IpAddress(IpAddr::from_str("127.0.0.1").unwrap()),
+    ];
+    server_params
+        .distinguished_name
+        .push(DnType::CommonName, "127.0.0.1");
+    let server_cert = server_params.signed_by(&server_key, &issuer)?;
+    let mongodb_pem = format!("{}\n{}", server_cert.pem(), server_key.serialize_pem());
+    fs::write(path.join("tests/assets/mongodb.pem"), mongodb_pem).await?;
+
+    let client_key = KeyPair::generate()?;
+    let mut client_params = CertificateParams::new([])?;
+    client_params
+        .distinguished_name
+        .push(DnType::CommonName, "tank-user");
+    client_params.is_ca = IsCa::NoCa;
+    client_params
+        .key_usages
+        .push(KeyUsagePurpose::DigitalSignature);
+    client_params
+        .extended_key_usages
+        .push(ExtendedKeyUsagePurpose::ClientAuth);
+    let client_cert = client_params.signed_by(&client_key, &issuer)?;
+    let client_pem = format!("{}\n{}", client_cert.pem(), client_key.serialize_pem());
+    fs::write(path.join("tests/assets/client.pem"), client_pem).await?;
+
+    Ok(())
 }
