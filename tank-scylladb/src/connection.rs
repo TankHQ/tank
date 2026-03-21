@@ -2,12 +2,17 @@ use crate::{CassandraDriver, RowWrap, ScyllaDBDriver, ScyllaDBPrepared, ScyllaDB
 use async_stream::stream;
 use openssl::ssl::{SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
 use scylla::{
-    client::{PoolSize, session::Session, session_builder::SessionBuilder},
-    frame::Compression,
+    client::{PoolSize, WriteCoalescingDelay, session::Session, session_builder::SessionBuilder},
     response::PagingState,
-    statement::batch::{Batch, BatchType},
+    statement::{
+        Consistency,
+        batch::{Batch, BatchType},
+    },
 };
-use std::{borrow::Cow, num::NonZeroUsize, ops::ControlFlow, pin::pin, sync::Arc, time::Duration};
+use std::{
+    borrow::Cow, net::IpAddr, num::NonZeroU64, ops::ControlFlow, pin::pin, str::FromStr, sync::Arc,
+    time::Duration,
+};
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, Row,
     impl_executor_transaction,
@@ -18,6 +23,7 @@ use tank_core::{
 /// Connection wrapper for ScyllaDB/Cassandra sessions.
 ///
 /// Holds the underlying `scylla::Session` and exposes `Executor`/`Connection` implementations for the ScyllaDB driver.
+#[derive(Debug)]
 pub struct ScyllaDBConnection {
     pub(crate) session: Session,
 }
@@ -51,6 +57,16 @@ impl ScyllaDBConnection {
             batch: Batch::new(BatchType::Counter),
             params: Default::default(),
         }
+    }
+
+    /// Access the underlying session object from `scylla` crate
+    pub fn session_ref(&self) -> &Session {
+        &self.session
+    }
+
+    /// Access the underlying session object from `scylla` crate
+    pub fn session_mut(&mut self) -> &mut Session {
+        &mut self.session
     }
 }
 
@@ -168,162 +184,180 @@ impl Connection for ScyllaDBConnection {
         if !username.is_empty() {
             session = session.user(username, password.unwrap_or_default());
         }
-        if let Some(mut segments) = url.path_segments()
-            && let Some(keyspace) = segments.next()
-        {
-            session = session.use_keyspace(keyspace, true);
+        if let Some(mut segments) = url.path_segments() {
+            if let Some(keyspace) = segments.next() {
+                session = session.use_keyspace(keyspace, true);
+            }
         }
         let mut context_builder =
             SslContextBuilder::new(SslMethod::tls()).with_context(|| context.clone())?;
         context_builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
         let mut ssl = false;
-        if let Some(path) = &url
-            .query_pairs()
-            .find_map(|(k, v)| if k == "sslca" { Some(v) } else { None })
-        {
-            context_builder
-                .set_ca_file(match path {
-                    Cow::Borrowed(v) => v,
-                    Cow::Owned(v) => v.as_str(),
-                })
-                .with_context(|| context.clone())?;
-            ssl = true;
-        };
-        if let Some(path) = &url
-            .query_pairs()
-            .find_map(|(k, v)| if k == "sslcert" { Some(v) } else { None })
-        {
-            context_builder
-                .set_certificate_file(
-                    match path {
-                        Cow::Borrowed(v) => v,
-                        Cow::Owned(v) => v.as_str(),
-                    },
-                    SslFiletype::PEM,
-                )
-                .with_context(|| context.clone())?;
-            ssl = true;
-        };
-        if let Some(path) = &url
-            .query_pairs()
-            .find_map(|(k, v)| if k == "sslkey" { Some(v) } else { None })
-        {
-            context_builder
-                .set_private_key_file(
-                    match path {
-                        Cow::Borrowed(v) => v,
-                        Cow::Owned(v) => v.as_str(),
-                    },
-                    SslFiletype::PEM,
-                )
-                .with_context(|| context.clone())?;
-            context_builder
-                .check_private_key()
-                .with_context(|| context.clone())?;
-            ssl = true;
-        };
+        let mut keyspaces = Vec::new();
+        for (k, v) in url.query_pairs() {
+            macro_rules! context_try {
+                ($value:expr) => {
+                    match $value {
+                        Ok(v) => v,
+                        Err(e) => {
+                            let e = Error::msg(format!("{e}"))
+                                .context(format!("URL param `{k} = {v}`"))
+                                .context(context.clone());
+                            log::error!("{e:#}");
+                            return Err(e);
+                        }
+                    }
+                };
+            }
+            match k.as_ref() {
+                "sslca" => {
+                    context_try!(context_builder.set_ca_file(v.as_ref()));
+                    ssl = true;
+                }
+                "sslcert" => {
+                    context_try!(
+                        context_builder.set_certificate_file(v.as_ref(), SslFiletype::PEM)
+                    );
+                    ssl = true;
+                }
+                "sslkey" => {
+                    context_try!(
+                        context_builder.set_private_key_file(v.as_ref(), SslFiletype::PEM)
+                    );
+                    context_try!(context_builder.check_private_key());
+                    ssl = true;
+                }
+                "local_ip_address" => {
+                    session =
+                        session.local_ip_address(Some(context_try!(IpAddr::from_str(v.as_ref()))));
+                }
+                "compression" => {
+                    session = session.compression(Some(context_try!(FromStr::from_str(&v))));
+                }
+                "schema_agreement_interval" => {
+                    session = session.schema_agreement_interval(context_try!(
+                        Duration::try_from_secs_f64(context_try!(FromStr::from_str(&v)),)
+                    ));
+                }
+                "tcp_nodelay" => {
+                    session = session.tcp_nodelay(context_try!(FromStr::from_str(&v)));
+                }
+                "tcp_keepalive_interval" => {
+                    session = session.tcp_keepalive_interval(context_try!(
+                        Duration::try_from_secs_f64(context_try!(FromStr::from_str(&v)))
+                    ));
+                }
+                "use_keyspace" => {
+                    session = session.use_keyspace(v.as_ref(), true);
+                }
+                "connection_timeout" => {
+                    session = session.connection_timeout(context_try!(
+                        Duration::try_from_secs_f64(context_try!(FromStr::from_str(&v)),)
+                    ));
+                }
+                "pool_size_per_host" => {
+                    session = session.pool_size(PoolSize::PerHost(context_try!(
+                        context_try!(usize::from_str(&v)).try_into()
+                    )));
+                }
+                "pool_size_per_shard" => {
+                    session = session.pool_size(PoolSize::PerShard(context_try!(
+                        context_try!(usize::from_str(&v)).try_into()
+                    )));
+                }
+                "disallow_shard_aware_port" => {
+                    session =
+                        session.disallow_shard_aware_port(context_try!(FromStr::from_str(&v)));
+                }
+                "keyspaces_to_fetch" => {
+                    keyspaces.push(v.into_owned());
+                }
+                "fetch_schema_metadata" => {
+                    session = session.fetch_schema_metadata(context_try!(FromStr::from_str(&v)));
+                }
+                "metadata_request_serverside_timeout" => {
+                    session = session.metadata_request_serverside_timeout(context_try!(
+                        Duration::try_from_secs_f64(context_try!(FromStr::from_str(&v)))
+                    ));
+                }
+                "keepalive_interval" => {
+                    session = session.keepalive_interval(context_try!(
+                        Duration::try_from_secs_f64(context_try!(FromStr::from_str(&v)))
+                    ));
+                }
+                "keepalive_timeout" => {
+                    session = session.keepalive_timeout(context_try!(Duration::try_from_secs_f64(
+                        context_try!(FromStr::from_str(&v))
+                    )));
+                }
+                "schema_agreement_timeout" => {
+                    session = session.schema_agreement_timeout(context_try!(
+                        Duration::try_from_secs_f64(context_try!(FromStr::from_str(&v)))
+                    ));
+                }
+                "auto_await_schema_agreement" => {
+                    session =
+                        session.auto_await_schema_agreement(context_try!(FromStr::from_str(&v)));
+                }
+                "hostname_resolution_timeout" => {
+                    session = session.hostname_resolution_timeout(Some(context_try!(
+                        Duration::try_from_secs_f64(context_try!(FromStr::from_str(&v)))
+                    )));
+                }
+                "refresh_metadata_on_auto_schema_agreement" => {
+                    session = session.refresh_metadata_on_auto_schema_agreement(context_try!(
+                        FromStr::from_str(&v)
+                    ));
+                }
+                "tracing_info_fetch_attempts" => {
+                    session =
+                        session.tracing_info_fetch_attempts(context_try!(FromStr::from_str(&v)));
+                }
+                "tracing_info_fetch_interval" => {
+                    session = session.tracing_info_fetch_interval(context_try!(
+                        Duration::try_from_secs_f64(context_try!(FromStr::from_str(&v)))
+                    ));
+                }
+                "tracing_info_fetch_consistency" => {
+                    session = session.tracing_info_fetch_consistency(context_try!(
+                        Consistency::try_from(context_try!(u16::from_str(&v)))
+                    ));
+                }
+                "write_coalescing_delay" => {
+                    session = session.write_coalescing(true);
+                    session = session.write_coalescing_delay(
+                        if v.eq_ignore_ascii_case("SmallNondeterministic") {
+                            WriteCoalescingDelay::SmallNondeterministic
+                        } else if let Ok(v) = NonZeroU64::from_str(&v) {
+                            WriteCoalescingDelay::Milliseconds(v)
+                        } else {
+                            return context_try!(Err(Error::msg(format!(
+                                "Unexpected value for write_coalescing_delay: `{v}`"
+                            ))));
+                        },
+                    );
+                }
+                "cluster_metadata_refresh_interval" => {
+                    session = session.cluster_metadata_refresh_interval(context_try!(
+                        Duration::try_from_secs_f64(context_try!(FromStr::from_str(&v)))
+                    ));
+                }
+                k => {
+                    let e = Error::msg(format!("Unexpected parameter in connection url: `{k}`"))
+                        .context(context);
+                    log::error!("{e:#}");
+                    return Err(e);
+                }
+            }
+        }
+
         if ssl {
             session = session.tls_context(Some(context_builder.build()));
         }
-        if let Some(compression) = url.query_pairs().find_map(|(k, v)| {
-            if k == "compression"
-                && let Some(value) = match &*v {
-                    "Lz4" => Some(Compression::Lz4),
-                    "Snappy" => Some(Compression::Snappy),
-                    _ => {
-                        log::error!("Invalid value for `compression`, expected: `Lz4`, `Snappy`");
-                        None
-                    }
-                }
-            {
-                Some(value)
-            } else {
-                None
-            }
-        }) {
-            session = session.compression(compression.into());
-        };
-        if let Some(value) = url.query_pairs().find_map(|(k, v)| {
-            if k == "schema_agreement_interval"
-                && let Ok(value) = str::parse::<f64>(&*v)
-                && let Ok(value) = Duration::try_from_secs_f64(value)
-            {
-                Some(value)
-            } else {
-                None
-            }
-        }) {
-            session = session.schema_agreement_interval(value);
-        };
-        if let Some(value) = url.query_pairs().find_map(|(k, v)| {
-            if k == "tcp_nodelay"
-                && let Ok(value) = str::parse::<bool>(&*v)
-            {
-                Some(value)
-            } else {
-                None
-            }
-        }) {
-            session = session.tcp_nodelay(value);
-        };
-        if let Some(value) = url.query_pairs().find_map(|(k, v)| {
-            if k == "tcp_keepalive_interval"
-                && let Ok(value) = str::parse::<f64>(&*v)
-                && let Ok(value) = Duration::try_from_secs_f64(value)
-            {
-                Some(value)
-            } else {
-                None
-            }
-        }) {
-            session = session.tcp_keepalive_interval(value);
-        };
-        if let Some(value) = url
-            .query_pairs()
-            .find_map(|(k, v)| if k == "use_keyspace" { Some(v) } else { None })
-        {
-            session = session.use_keyspace(&*value, true);
-        };
-        if let Some(value) = url.query_pairs().find_map(|(k, v)| {
-            if k == "connection_timeout"
-                && let Ok(value) = str::parse::<f64>(&*v)
-                && let Ok(value) = Duration::try_from_secs_f64(value)
-            {
-                Some(value)
-            } else {
-                None
-            }
-        }) {
-            session = session.connection_timeout(value);
-        };
-        if let Some(value) = url.query_pairs().find_map(|(k, v)| {
-            if (k == "pool_size_per_host" || k == "pool_size_per_shard")
-                && let Ok(value) = str::parse::<usize>(&*v)
-            {
-                NonZeroUsize::new(value).map(|v| {
-                    if k == "pool_size_per_host" {
-                        PoolSize::PerHost(v)
-                    } else {
-                        PoolSize::PerShard(v)
-                    }
-                })
-            } else {
-                None
-            }
-        }) {
-            session = session.pool_size(value);
-        };
-        if let Some(value) = url.query_pairs().find_map(|(k, v)| {
-            if k == "disallow_shard_aware_port"
-                && let Ok(value) = str::parse::<bool>(&*v)
-            {
-                Some(value)
-            } else {
-                None
-            }
-        }) {
-            session = session.disallow_shard_aware_port(value);
-        };
+        if !keyspaces.is_empty() {
+            session = session.keyspaces_to_fetch(keyspaces);
+        }
+
         Ok(ScyllaDBConnection {
             session: session.build().await?,
         })

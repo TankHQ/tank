@@ -1,4 +1,5 @@
 # Remember to increase the version first
+cargo update &&
 cd tank-core/ &&
 cargo publish &&
 cd ../ &&

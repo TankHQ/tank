@@ -8,6 +8,9 @@ edition.workspace = true
 repository.workspace = true
 categories.workspace = true
 
+[features]
+metrics = ["scylla/metrics"]
+
 [dependencies]
 async-stream.workspace = true
 log.workspace = true

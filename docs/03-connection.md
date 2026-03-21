@@ -83,10 +83,10 @@ async fn establish_sqlite_connection() -> Result<SQLiteConnection> {
 - Memory: `sqlite://:memory:` or `sqlite://database?mode=memory`
 
 Modes:
-- `mode=ro`: read-only access (fails if the file doesn’t exist)
-- `mode=rw`: read-write access (fails if the file doesn’t exist)
-- `mode=rwc`: read-write access (creates the file if it doesn’t exist)
-- `mode=memory`: in-memory access (temporary database that lives only for the duration of the connection)
+- `mode=ro`: read-only access (fails if the file doesn’t exist).
+- `mode=rw`: read-write access (fails if the file doesn’t exist).
+- `mode=rwc`: read-write access (creates the file if it doesn’t exist).
+- `mode=memory`: in-memory access (temporary database that lives only for the duration of the connection).
 
 Additional URL parameters are passed directly to the SQLite API. See the full list of supported options on the [SQLite website](https://sqlite.org/uri.html#recognized_query_parameters).
 
@@ -177,10 +177,49 @@ async fn establish_scylla_connection() -> Result<ScyllaDBConnection> {
 ```
 
 **URL Format**:
-- `scylladb://host1,host2:9042/keyspace?consistency=quorum&compression=Lz4`
+- `scylladb://host1,host2:9042/keyspace?consistency=quorum&compression=lz4`
 
 Parameters:
-- `consistency`: Query consistency level (examples: `one`, `quorum`, `all`).
-- `timeout_ms`: Request timeout in milliseconds.
+- `sslca`: Path to the CA certificate file.
+- `sslcert`: Path to the client certificate file (PEM format).
+- `sslkey`: Path to the client private key file (PEM format).
+- `local_ip_address`: Binds the connection to a specific local IP.
+- `connection_timeout (f64)`: Request timeout in seconds, the default is 5.
+- `hostname_resolution_timeout (f64)`: DNS resolution timeout in seconds.
+- `tcp_nodelay (bool)`: Set the nodelay TCP flag, true by default.
+- `tcp_keepalive_interval (f64)`: Interval between keepalive TCP messages in seconds, by default no keepalive messages are sent.
+- `keepalive_interval (f64)`: Interval in seconds between keepalive CQL messages, the default is 30.
+- `disallow_shard_aware_port (bool)`: Prevents the driver from connecting to the shard-aware port, even if the node supports it (ScyllaDB only).
+- `compression`: Data compression algorithm, no compression by default:
+    - `lz4`
+    - `snappy`
+- `pool_size_per_host`: Number of connections maintained per host, overrides `pool_size_per_shard`.
+- `pool_size_per_shard`: Number of connections maintained per shard, overrides `pool_size_per_host`, the default is 1.
+- `write_coalescing_delay (int or "SmallNondeterministic")`: Injects a delay before flushing data to the socket.
+- `use_keyspace`: Sets the active keyspace.
+- `keyspaces_to_fetch`: Specific keyspaces to fetch metadata for, by default all keyspaces will be fetched.
+- `fetch_schema_metadata (bool)`: True by default.
+- `cluster_metadata_refresh_interval (f64)`: Interval in seconds at which the driver refreshes the cluster metadata (topology and schema), the default is 60.
+- `metadata_request_serverside_timeout (f64)`: Server-side timeout in seconds for metadata queries, the default is 2.
+- `schema_agreement_interval (f64)`: Polling frequency in seconds for verifying cluster-wide schema consistency, the default is 0.2 (200ms).
+- `schema_agreement_timeout (f64)`: Timeout in seconds for waiting for schema agreement.
+- `auto_await_schema_agreement (bool)`: Automatically wait for schema agreement after executing schema-altering statements, true by default.
+- `refresh_metadata_on_auto_schema_agreement (bool)`: Refreshes metadata automatically when schema agreement is reached.
+- `tracing_info_fetch_attempts`: Number of retry attempts to fetch tracing info.
+- `tracing_info_fetch_interval`: Wait time in seconds between tracing fetch attempts, the default is 0.003 (3ms).
+- `tracing_info_fetch_consistency`: Consistency level for tracing info (mapped to Scylla's internal u16 consistency levels):
+    - `0`: Any
+    - `1`: One
+    - `2`: Two
+    - `3`: Three
+    - `4`: Quorum
+    - `5`: All
+    - `6`: LocalQuorum
+    - `7`: EachQuorum
+    - `8`: Serial
+    - `9`: LocalSerial
+    - `10`: LocalOne
+
+The parameters are used to create an object of type [`SessionBuilder`](https://docs.rs/scylla/latest/scylla/client/session_builder/type.SessionBuilder.html). Please check the Scylla documentation for more detailed information.
 
 *Lock, commit, advance. Dismissed.*
