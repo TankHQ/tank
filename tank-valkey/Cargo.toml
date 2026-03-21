@@ -25,7 +25,7 @@ tank-tests = { path = "../tank-tests", features = [
     "disable-ordering",
     "disable-references",
 ] }
-testcontainers-modules = { version = "0", features = ["valkey"] }
+testcontainers-modules = { version = "0", features = ["valkey", "redis"] }
 time.workspace = true
 tokio.workspace = true
 urlencoding.workspace = true

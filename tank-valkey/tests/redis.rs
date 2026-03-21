@@ -2,7 +2,7 @@ mod init;
 
 #[cfg(test)]
 mod tests {
-    use super::init::{execute_tests, init_valkey};
+    use super::init::{execute_tests, init_redis};
     use std::sync::Mutex;
     use tank_core::{Connection, Driver};
     use tank_tests::init_logs;
@@ -11,12 +11,12 @@ mod tests {
     static MUTEX: Mutex<()> = Mutex::new(());
 
     #[tokio::test]
-    pub async fn valkey() {
+    pub async fn redis() {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
 
         // Unencrypted
-        let (url, container) = init_valkey(false).await;
+        let (url, container) = init_redis(false).await;
         let container = container.expect("Could not launch container");
         {
             let driver = ValkeyDriver::default();
