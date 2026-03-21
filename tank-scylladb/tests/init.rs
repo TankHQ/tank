@@ -210,6 +210,7 @@ async fn generate_ssl_files() -> Result<()> {
     ca_params.use_authority_key_identifier_extension = true;
     let ca_key = KeyPair::generate_for(&PKCS_RSA_SHA256)?;
     let ca_cert = ca_params.self_signed(&ca_key)?;
+    let _ = fs::create_dir_all("tests/assets").await;
     fs::write(path.join("tests/assets/ca.pem"), ca_cert.pem()).await?;
 
     let ca_issuer = Issuer::from_params(&ca_params, ca_key);

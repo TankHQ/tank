@@ -42,10 +42,9 @@ async fn generate_ssl_files() -> std::io::Result<()> {
     let ca_cert = ca_params
         .self_signed(&ca_key)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let _ = fs::create_dir_all("tests/assets").await;
     fs::write(path.join("tests/assets/ca.pem"), ca_cert.pem()).await?;
-
     let ca_issuer = Issuer::from_params(&ca_params, ca_key);
-
     let server_key =
         KeyPair::generate().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     let mut server_params = CertificateParams::new(vec!["localhost".to_string()])
