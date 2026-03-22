@@ -3,7 +3,7 @@
 
 Tank brings a full type arsenal to the field. The `Entity` derive macro identifies the type you're using by inspecting its final path segment (the "trailer"). For example, `std::collections::VecDeque`, `collections::VecDeque`, or simply `VecDeque` all resolve to the same type: `Valu::List`.
 
-Tank maps ordinary Rust types (numbers, strings, times, collections) to the closest column types each driver supports, falling back to generic representations when appropriate. Below is the standard mapping of Rust types to each driver's column type. the symbol ❌ indicates no native support at this time. Collection types may be emulated in some drivers using generic JSON or text representations.
+Tank maps ordinary Rust types (numbers, strings, times, collections) to the closest column types each driver supports, falling back to generic representations when appropriate. Below is the standard mapping of Rust types to each driver's column type. The symbol ❌ indicates no native support at this time. Collection types may be emulated in some drivers using generic JSON or text representations.
 
 ## Column Types
 <div class="sticky-table">
@@ -47,7 +47,7 @@ Tank maps ordinary Rust types (numbers, strings, times, collections) to the clos
 </div>
 
 > [!WARNING]
-> When a type falls back to a generic representation (e.g. `TEXT` or `JSON`), Tank encodes it predictably so equality and ordering comparisons (where meaningful) behave as expected. Advanced indexing or operator support may vary by driver.
+> When a type falls back to a generic representation (like `TEXT` or `JSON`), Tank encodes it predictably so equality and ordering comparisons (where meaningful) behave as expected. Advanced indexing or operator support may vary by driver.
 >
 > The special `isize`/`usize` types map to the native pointer-width integer (64‑bit on 64‑bit targets, 32‑bit on 32‑bit targets). For cross‑database portability prefer explicit `i64`/`u64` unless you truly need platform width.
 
