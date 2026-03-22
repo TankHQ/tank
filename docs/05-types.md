@@ -114,7 +114,7 @@ use anyhow::Context;
 use reqwest::Method;
 use std::{any, str::FromStr};
 
-#[derive(Clone, Debug, PartialEq, tank::Entity)]
+#[derive(Clone, PartialEq, Eq, tank::Entity, Debug)]
 pub struct Request {
     #[tank(primary_key)]
     pub id: i64,
@@ -124,45 +124,69 @@ pub struct Request {
     pub beign_timestamp_ms: i64,
     pub end_timestamp_ms: Option<i64>,
 }
+#[derive(Clone, PartialEq, Eq, tank::Entity, Debug)]
+pub struct RequestLimit {
+    #[tank(primary_key)]
+    pub id: i64,
+    pub target_pattern: String,
+    pub requests: i32,
+    #[tank(conversion_type = MethodWrap)]
+    pub method: Option<Method>, // Method is a third party type
+    pub time_interval_ms: Option<i32>,
+}
 
 // Declare a local wrapper making it possible to implement `tank::AsValue`
-pub struct MethodWrap(pub Method);
+pub struct MethodWrap(Option<Method>);
 impl tank::AsValue for MethodWrap {
     fn as_empty_value() -> tank::Value {
         tank::Value::Varchar(None)
     }
 
     fn as_value(self) -> tank::Value {
-        self.0.to_string().as_value()
+        self.0.map(|v| v.to_string()).as_value()
     }
 
     fn try_from_value(value: tank::Value) -> tank::Result<Self>
     where
         Self: Sized,
     {
+        if value.is_null() {
+            return Ok(Self(None));
+        }
         let context = || {
             format!(
                 "Could not conver {value:?} into {}",
                 any::type_name::<Method>()
             )
         };
-        let tank::Value::Varchar(Some(value), ..) = &value else {
-            return Err(tank::Error::msg(context()));
-        };
-        Ok(match Method::from_str(&value) {
-            Ok(v) => v,
-            Err(e) => return Err(tank::Error::new(e)).with_context(context),
+        match &value {
+            tank::Value::Varchar(Some(value), ..) => {
+                Ok(Method::from_str(&value).with_context(context)?.into())
+            }
+            _ => Err(tank::Error::msg(context())),
         }
-        .into())
     }
 }
-// Implement conversion logic
+
+// Implement conversion logic for each type this method has to convert
 impl From<Method> for MethodWrap {
     fn from(value: Method) -> Self {
-        Self(value)
+        Self(Some(value))
     }
 }
 impl From<MethodWrap> for Method {
+    fn from(value: MethodWrap) -> Self {
+        value
+            .0
+            .expect("Unexpected error: no value stored in this MethodWrap object")
+    }
+}
+impl From<Option<Method>> for MethodWrap {
+    fn from(value: Option<Method>) -> Self {
+        Self(value)
+    }
+}
+impl From<MethodWrap> for Option<Method> {
     fn from(value: MethodWrap) -> Self {
         value.0
     }
