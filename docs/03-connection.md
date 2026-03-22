@@ -4,7 +4,7 @@
 Welcome to the armored convoy, commander. Before you can unleash Tank's firepower, you have to secure your supply lines. Open a **Connection** to your database, and when the mission escalates, lock operations inside a **Transaction**. No connection, no combat. It's that simple.
 
 ## Operations Briefing
-- [`prepare("SELECT...")`](https://docs.rs/tank/latest/tank/trait.Executor.html#tymethod.prepare):
+- [`prepare("SELECT...")`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.prepare):
   Compile a raw SQL string into a reusable [`Query<Driver>`](https://docs.rs/tank/latest/tank/enum.Query.html) object without firing it. Use when the same statement will be dispatched multiple times.
 
 - [`run(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#tymethod.run):
@@ -23,11 +23,10 @@ Welcome to the armored convoy, commander. Before you can unleash Tank's firepowe
   Borrow the connection and start a transaction. Issue any of the above operations against the transactional executor, then `commit` or `rollback`. Uncommitted drop triggers a rollback and gives back the connection.
 
 ## Connection Lifecycle
-1. **Establish**: Call `driver.connect("dbms://...").await?` with your database URL.
+1. **Establish**: Call [`driver.connect("dbms://...").await?`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect) with your database URL.
 2. **Deploy**: Use the connection for queries, inserts, updates, and deletes.
-3. **Lock (optional)**: Start a transaction with `connection.begin().await?`. This borrows the connection; all operations route through the transactional executor until `commit()` or `rollback()`.
-4. **Maintain**: Current drivers expose a single underlying session (DuckDB shares process instance; Postgres spawns one async connection; SQLite opens one handle).
-5. **Terminate**: Connections close automatically when dropped. Call `disconnect().await?` for an explicit shutdown when the driver supports it.
+3. **Lock (optional)**: Start a transaction with [`connection.begin().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.begin). This borrows the connection; all operations route through the transactional executor until `commit()` or `rollback()`.
+5. **Terminate**: Connections close automatically when dropped. Call [`disconnect().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#method.disconnect) for an explicit shutdown when the driver supports it.
 
 ## Connect
 Every database connection abstraction implements the [`Connection`](https://docs.rs/tank/latest/tank/trait.Connection.html) trait. This is your communication link to the database server. Call [`driver.connect("dbms://...")`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect) with a URL to let Tank establish the line. Every driver is its own crate. Load only what you need for the operation. Check the [drivers](01-introduction.md#drivers) to see the available connections.
@@ -44,14 +43,14 @@ use tank_postgres::{PostgresConnection, PostgresDriver};
 async fn establish_postgres_connection() -> Result<PostgresConnection> {
     let driver = PostgresDriver::new();
     let connection = driver
-    .connect("postgres://tank-user:armored@127.0.0.1:32790/military?sslmode=require&sslrootcert=ROOT_PATH&sslcert=CERT_PATH&sslkey=KEY_PATH".into())
+    .connect("postgres://tank-user:armored@127.0.0.1:5432/military?sslmode=require&sslrootcert=ROOT_PATH&sslcert=CERT_PATH&sslkey=KEY_PATH".into())
     .await?;
     Ok(connection)
 }
 ```
 
 **URL Format**:
-- `postgres://user:pass@host:5432/database`
+- `postgres://user:pass@host:port/database`
 
 Parameters:
 - `sslmode`: How a secure SSL TCP/IP connection will be negotiated with the server. Falls back to the environment variable `PGSSLMODE`, otherwise `disable`. This parameter is passed to `tokio_postgres`, for this reason only the following alternatives are supported (even though Postgres supports more modes):
@@ -100,14 +99,14 @@ use tank_mysql::{MySQLConnection, MySQLDriver};
 async fn establish_mysql_connection() -> Result<MySQLConnection> {
   let driver = MySQLDriver::new();
   let connection = driver
-    .connect("mysql://tank-mysql-user@localhost:33231/operations_db?require_ssl=true&ssl_ca=/home/user/Git/tank/tank-mysql/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-mysql/tests/assets/client.p12&ssl_pass=my%26pass%3Fis%3DP%40%24%24".into())
+    .connect("mysql://tank-mysql-user@localhost:3306/operations_db?require_ssl=true&ssl_ca=/home/user/Git/tank/tank-mysql/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-mysql/tests/assets/client.p12&ssl_pass=my%26pass%3Fis%3DP%40%24%24".into())
     .await?;
   Ok(connection)
 }
 ```
 
 **URL Format**:
-- `mysql://user@host:port/database?require_ssl=true&ssl_ca=CA_PATH&ssl_cert=CERT_PATH&ssl_pass=CERT_PASS`
+- `mysql://user:password@host:port/database`
 
 Parameters:
 - `require_ssl (bool)`: Require secure connection, defaults to false.
@@ -154,14 +153,14 @@ use tank_mongodb::{MongoDBConnection, MongoDBDriver};
 async fn establish_mongodb_connection() -> Result<MongoDBConnection> {
   let driver = MongoDBDriver::new();
   let connection = driver
-    .connect("mongodb://127.0.0.1:27017/database".into())
+    .connect("mongodb://tank-user:armored@127.0.0.1:27017/military?directConnection=true&authSource=admin&tls=true&tlsCAFile=/home/user/Git/tank/tank-mongodb/tests/assets/ca.pem&tlsCertificateKeyFile=/home/user/Git/tank/tank-mongodb/tests/assets/client.pem".into())
     .await?;
   Ok(connection)
 }
 ```
 
 **URL Format**:
-- `mongodb://[username:password@]host1[:port1][,...hostN[:portN]][/database][?options]`
+- `mongodb://username:password@host:port/database`
 
 The database name is extracted from the URL path. If omitted, you must specify a default database in the options or rely on the driver default.
 
@@ -175,24 +174,23 @@ use tank_valkey::{ValkeyConnection, ValkeyDriver};
 async fn establish_valkey_connection() -> Result<ValkeyConnection> {
     let driver = ValkeyDriver::default();
     let connection = driver
-        .connect("valkey://127.0.0.1:6379/0".into())
+        .connect("valkeys://valkey-commander:supreme@127.0.0.1:32823/0?sslmode=require&sslrootcert=/home/user/Git/tank/tank-valkey/tests/assets/ca.pem&sslcert=/home/user/Git/tank/tank-valkey/tests/assets/client-cert.pem&sslkey=/home/user/Git/tank/tank-valkey/tests/assets/client-key.pem".into())
         .await?;
     Ok(connection)
 }
 ```
 
 **URL Format**:
-- `valkey://[[<username>]:<password>@]<hostname>[:port][/<db>]`
-- `valkeys://[[<username>]:<password>@]<hostname>[:port][/<db>]?sslmode=require&sslrootcert=CA_PATH&sslcert=CERT_PATH&sslkey=KEY_PATH`
+- `valkeys://username:password@host:port/n?...tls_params`
+- `valkey://username:password@host:port/n`
+- `rediss://username:password@host:port/n?...tls_params`
+- `redis\://username:password@host:port/n`
 
-TLS parameters (used by `valkeys://` and `rediss://`):
+Parameters:
 - `sslmode`: Use `require` for TLS.
 - `sslrootcert`: CA certificate path.
 - `sslcert`: Client certificate path.
 - `sslkey`: Client private key path.
-
-Example (Valkey + TLS):
-- `valkeys://valkey-commander:supreme@127.0.0.1:6379/0?sslmode=require&sslrootcert=/path/to/ca.pem&sslcert=/path/to/client-cert.pem&sslkey=/path/to/client-key.pem`
 
 ### ScyllaDB/Cassandra
 ScyllaDB is the rapid-response strike force: distributed, built to swarm data with relentless, low-latency fire.
@@ -204,14 +202,15 @@ use tank_scylladb::{ScyllaDBConnection, ScyllaDBDriver};
 async fn establish_scylla_connection() -> Result<ScyllaDBConnection> {
   let driver = ScyllaDBDriver::new();
   let connection = driver
-    .connect("scylladb://127.0.0.1:9042/keyspace?compression=lz4".into())
+    .connect("scylladb://localhost:9142/scylla_keyspace?ssl_ca=/home/user/Git/tank/tank-scylladb/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-scylladb/tests/assets/client-cert.pem&ssl_key=/home/user/Git/tank/tank-scylladb/tests/assets/client-key.pem".into())
     .await?;
   Ok(connection)
 }
 ```
 
 **URL Format**:
-- `scylladb://host1,host2:9042/keyspace?compression=lz4`
+- `scylladb://host1,host2:9042/keyspace`
+- `cassandra://host1,host2:9042/keyspace`
 
 Parameters:
 - `ssl_ca`: Path to the CA certificate file.

@@ -6,7 +6,7 @@ What follows is just a visit to the shooting range, not the full campaign. This 
 **Mission brief**: install Tank and a driver, define an entity, create the table, insert a few rows, then fire a query. For full tactical exercises including transactions, complex queries, and multi-driver deployments, proceed to the [*Field Manual Section 3* - Supply Lines](03-connection.md).
 
 > [!TIP]
-> Tank is async. Run these examples under an async runtime (e.g. Tokio) and `.await` your operations.
+> Tank is async. Run these examples under an async runtime like [Tokio](https://crates.io/crates/tokio) and `.await` your operations.
 
 1) Arm your cargo
 ```sh

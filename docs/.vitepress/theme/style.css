@@ -201,6 +201,7 @@ h1 .text {
 .sticky-table table td:first-child {
     max-width: 250px;
     transition: max-width 150ms;
+    text-wrap: nowrap;
 }
 
 .sticky-table.is-scrolled table th:first-child,
