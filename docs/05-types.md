@@ -52,9 +52,7 @@ Tank maps ordinary Rust types (numbers, strings, times, collections) to the clos
 > The special `isize`/`usize` types map to the native pointer-width integer (64‑bit on 64‑bit targets, 32‑bit on 32‑bit targets). For cross‑database portability prefer explicit `i64`/`u64` unless you truly need platform width.
 
 ## Wrapper Types
-Built‑in wrappers you can use directly in entities. SQL type is inferred from the inner type.
-
-Supported wrappers:
+Built‑in wrappers you can use directly in entities, theSQL type is inferred from the inner type:
 - `Option<T>`: Nullable column.
 - `Box<T>`
 - `Cell<T>`
@@ -66,10 +64,10 @@ Supported wrappers:
 ## Custom Types
 When standard types miss the mark, deploy custom payloads: an enum that must round‑trip cleanly across drivers, or a small struct you want to pack into a single column. In Tank, you do that by implementing [`tank::AsValue`](https://docs.rs/tank/latest/tank/trait.AsValue.html).
 
-`AsValue` is your conversion contract: it turns your Rust type into a [`tank::Value`](https://docs.rs/tank/latest/tank/enum.Value.html) for binding/inserts/updates, and turns a `Value` back into your type when decoding rows. Once implemented, you can use the type directly as an `Entity` field (including `Option<T>`).
+`AsValue` is your conversion contract: it turns your Rust type into a [`tank::Value`](https://docs.rs/tank/latest/tank/enum.Value.html) for binding/inserts/updates, and turns a `Value` back into your type when decoding rows. Once implemented, you can use the type directly as an `Entity` field.
 
 ### Example: Custom Struct
-If you want a small struct to live in a single column, encode it into a stable representation (a compact string is often the most portable). Here’s a `host:port` example:
+If you want a small struct to live in a single column, encode it into a stable representation. Here’s a `host:port` example:
 
 ```rust
 use tank::{AsValue, Error, Result, Value};
@@ -106,7 +104,7 @@ impl AsValue for HostPort {
 ```
 
 ### Example: Conversion Type
-When the custom type lives outside your crate you can use intermediary wrapper type you can control and can implement `AsValue`.
+When the custom type lives outside your crate or when you want to change the serialization logic for known types, you can use a conversion wrapper type that implements `AsValue`.
 
 ```rust
 use anyhow::Context;
