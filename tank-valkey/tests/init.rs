@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 use tank_core::Connection;
-use tank_tests::{kv_storage, limits, simple};
+use tank_tests::{custom, kv_storage, limits, simple};
 use testcontainers_modules::{
     testcontainers::{
         ContainerAsync, GenericImage, ImageExt,
@@ -27,6 +27,7 @@ pub(crate) async fn execute_tests(connection: &mut impl Connection) {
     simple(connection).await;
     limits(connection).await;
     kv_storage(connection).await;
+    custom(connection).await;
 }
 
 async fn generate_ssl_files() -> std::io::Result<()> {

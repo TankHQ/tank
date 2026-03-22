@@ -1,4 +1,4 @@
-use crate::TableMetadata;
+use crate::{ColumnMetadata, TableMetadata};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Ident, Type, spanned::Spanned};
@@ -15,22 +15,33 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
             let mut #ident: Option<#ty> = None;
         }
     });
-    type AssignmentFn = dyn Fn(&Ident, &Type) -> TokenStream;
+    type AssignmentFn = dyn Fn(&Ident, &Type, Option<&Type>) -> TokenStream;
     type ProducerFn = Box<dyn Fn(&AssignmentFn) -> TokenStream>;
     let field_assignment = table
         .columns
         .iter()
-        .map(|c| (c.ident.clone(), c.name.to_string(), c.ty.clone()))
-        .map(|(ident, name, ty)| {
-            Box::new(move |assign: &AssignmentFn| {
-                let assign = assign(&ident, &ty);
-                quote! {
-                    if __n__ == #name {
-                        #assign;
+        .map(
+            |ColumnMetadata {
+                 ident,
+                 name,
+                 ty,
+                 conversion_type,
+                 ..
+             }| {
+                let ident = ident.clone();
+                let name = name.clone();
+                let ty = ty.clone();
+                let conversion_type = conversion_type.clone();
+                Box::new(move |assign: &AssignmentFn| {
+                    let assign = assign(&ident, &ty, conversion_type.as_ref());
+                    quote! {
+                        if __n__ == #name {
+                            #assign;
+                        }
                     }
-                }
-            }) as ProducerFn
-        })
+                }) as ProducerFn
+            },
+        )
         .reduce(|acc, cur| {
             Box::new(move |assign: &AssignmentFn| {
                 let acc = acc(assign);
@@ -66,12 +77,20 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
             #(#remaining,)*
         }
     };
-    let field_assignment_default = field_assignment(
-        &|field, ty| quote!(result.#field = <#ty as ::tank::AsValue>::try_from_value(__v__)?),
-    );
-    let field_assignment_holder = field_assignment(
-        &|field, ty| quote!(#field = Some(<#ty as ::tank::AsValue>::try_from_value(__v__)?)),
-    );
+    let field_assignment_default = field_assignment(&|field, ty, conversion_type| {
+        if let Some(conversion_type) = conversion_type {
+            quote!(result.#field = ::std::convert::Into::<#ty>::into(<#conversion_type as ::tank::AsValue>::try_from_value(__v__)?))
+        } else {
+            quote!(result.#field = <#ty as ::tank::AsValue>::try_from_value(__v__)?)
+        }
+    });
+    let field_assignment_holder = field_assignment(&|field, ty, conversion_type| {
+        if let Some(conversion_type) = conversion_type {
+            quote!(#field = Some(::std::convert::Into::<#ty>::into(<#conversion_type as ::tank::AsValue>::try_from_value(__v__)?)))
+        } else {
+            quote!(#field = Some(<#ty as ::tank::AsValue>::try_from_value(__v__)?))
+        }
+    });
     (
         factory_name.clone(),
         quote! {

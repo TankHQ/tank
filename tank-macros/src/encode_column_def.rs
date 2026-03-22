@@ -5,8 +5,12 @@ use tank_core::{Value, future::Either, quote_btree_map, quote_option};
 
 pub fn encode_column_def(metadata: &ColumnMetadata, column_ref: TokenStream) -> TokenStream {
     let column_type = quote_btree_map(&metadata.column_type);
-    let ty = &metadata.ty;
     let value = if matches!(metadata.value, Value::Unknown(..)) {
+        let ty = if let Some(conversion_type) = &metadata.conversion_type {
+            conversion_type
+        } else {
+            &metadata.ty
+        };
         quote!(<#ty as ::tank::AsValue>::as_empty_value())
     } else {
         metadata.value.to_token_stream()

@@ -11,18 +11,18 @@ Tank maps ordinary Rust types (numbers, strings, times, collections) to the clos
 | Rust                      | Postgres       | SQLite    | MySQL/MariaDB             | DuckDB         | MongoDB     | ScyllaDB/Cassandra | Valkey/Redis |
 | ------------------------- | -------------- | --------- | ------------------------- | -------------- | ----------- | ------------------ | ------------ |
 | `bool`                    | `BOOLEAN`      | `INTEGER` | `BOOLEAN`                 | `BOOLEAN`      | `Boolean`   | `BOOLEAN`          | `String`     |
-| `i8`                      | `SMALLINT`     | `INTEGER` | `TINYINT`                 | `TINYINT`      | `Int32`     | `TINYINT`          | `String`     |
-| `i16`                     | `SMALLINT`     | `INTEGER` | `SMALLINT`                | `SMALLINT`     | `Int32`     | `SMALLINT`         | `String`     |
-| `i32`                     | `INTEGER`      | `INTEGER` | `INTEGER`                 | `INTEGER`      | `Int32`     | `INT`              | `String`     |
-| `i64`                     | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`       | `Int64`     | `BIGINT`           | `String`     |
-| `i128`                    | `NUMERIC(39)`  | ❌        | `NUMERIC(39)`             | `HUGEINT`      | ❌          | `VARINT`           | `String`     |
-| `u8`                      | `SMALLINT`     | `INTEGER` | `TINYINT UNSIGNED`        | `UTINYINT`     | `Int32`     | `SMALLINT`         | `String`     |
-| `u16`                     | `INTEGER`      | `INTEGER` | `SMALLINT UNSIGNED`       | `USMALLINT`    | `Int32`     | `INT`              | `String`     |
-| `u32`                     | `BIGINT`       | `INTEGER` | `INTEGER UNSIGNED`        | `UINTEGER`     | `Int64`     | `BIGINT`           | `String`     |
-| `u64`                     | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`     | `VARINT`           | `String`     |
-| `u128`                    | `NUMERIC(39)`  | ❌        | `NUMERIC(39) UNSIGNED`    | `UHUGEINT`     | ❌          | `VARINT`           | `String`     |
-| `isize`                   | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`       | `Int64`     | `BIGINT`           | `String`     |
-| `usize`                   | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`     | `VARINT`           | `String`     |
+| `i8`, `NonZeroI8`         | `SMALLINT`     | `INTEGER` | `TINYINT`                 | `TINYINT`      | `Int32`     | `TINYINT`          | `String`     |
+| `i16`, `NonZeroI16`       | `SMALLINT`     | `INTEGER` | `SMALLINT`                | `SMALLINT`     | `Int32`     | `SMALLINT`         | `String`     |
+| `i32`, `NonZeroI32`       | `INTEGER`      | `INTEGER` | `INTEGER`                 | `INTEGER`      | `Int32`     | `INT`              | `String`     |
+| `i64`, `NonZeroI64`       | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`       | `Int64`     | `BIGINT`           | `String`     |
+| `i128`, `NonZeroI128`     | `NUMERIC(39)`  | ❌        | `NUMERIC(39)`             | `HUGEINT`      | ❌          | `VARINT`           | `String`     |
+| `u8`, `NonZeroU8`         | `SMALLINT`     | `INTEGER` | `TINYINT UNSIGNED`        | `UTINYINT`     | `Int32`     | `SMALLINT`         | `String`     |
+| `u16`, `NonZeroU16`       | `INTEGER`      | `INTEGER` | `SMALLINT UNSIGNED`       | `USMALLINT`    | `Int32`     | `INT`              | `String`     |
+| `u32`, `NonZeroU32`       | `BIGINT`       | `INTEGER` | `INTEGER UNSIGNED`        | `UINTEGER`     | `Int64`     | `BIGINT`           | `String`     |
+| `u64`, `NonZeroU64`       | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`     | `VARINT`           | `String`     |
+| `u128`, `NonZeroU128`     | `NUMERIC(39)`  | ❌        | `NUMERIC(39) UNSIGNED`    | `UHUGEINT`     | ❌          | `VARINT`           | `String`     |
+| `isize`, `NonZeroIsize`   | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`       | `Int64`     | `BIGINT`           | `String`     |
+| `usize`, `NonZeroUsize`   | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`     | `VARINT`           | `String`     |
 | `f32`                     | `REAL`         | `REAL`    | `FLOAT`                   | `FLOAT`        | `Double`    | `FLOAT`            | `String`     |
 | `f64`                     | `DOUBLE`       | `REAL`    | `DOUBLE`                  | `DOUBLE`       | `Double`    | `DOUBLE`           | `String`     |
 | `rust_decimal::Decimal`   | `NUMERIC`      | `REAL`    | `DECIMAL`                 | `DECIMAL`      | `Double`    | `DECIMAL`          | `String`     |
@@ -44,7 +44,6 @@ Tank maps ordinary Rust types (numbers, strings, times, collections) to the clos
 | `Vec<T>`                  | `T[]`          | ❌        | `JSON` ⚠️                 | `T[]`          | `Array`     | `LIST<T>`          | `List`       |
 | `HashMap<K,V>`            | ❌             | ❌        | `JSON` ⚠️                 | `MAP(K,V)`     | `Document`  | `MAP<K,V>`         | `Hash`       |
 | `BTreeMap<K,V>`           | ❌             | ❌        | `JSON` ⚠️                 | `MAP(K,V)`     | `Document`  | `MAP<K,V>`         | `Hash`       |
-
 </div>
 
 > [!WARNING]
@@ -66,53 +65,9 @@ Supported wrappers:
 - `Rc<T>`
 
 ## Custom Types
-When standard ammo won’t do, load custom payloads: an enum that must round‑trip cleanly across drivers, or a small struct you want to pack into a single column. In Tank, you do that by implementing [`tank::AsValue`](https://docs.rs/tank/latest/tank/trait.AsValue.html).
+When standard types miss the mark, deploy custom payloads: an enum that must round‑trip cleanly across drivers, or a small struct you want to pack into a single column. In Tank, you do that by implementing [`tank::AsValue`](https://docs.rs/tank/latest/tank/trait.AsValue.html).
 
 `AsValue` is your conversion contract: it turns your Rust type into a [`tank::Value`](https://docs.rs/tank/latest/tank/enum.Value.html) for binding/inserts/updates, and turns a `Value` back into your type when decoding rows. Once implemented, you can use the type directly as an `Entity` field (including `Option<T>`).
-
-### Example: Custom Enum
-String-backed enum :
-
-```rust
-use tank::{AsValue, Error, Result, Value};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Method {
-	GET,
-	POST,
-	PUT,
-	DELETE,
-}
-
-impl AsValue for Method {
-	fn as_empty_value() -> Value {
-		Value::Varchar(None)
-	}
-	fn as_value(self) -> Value {
-		Value::Varchar(Some(
-			match self {
-				Method::GET => "get",
-				Method::POST => "post",
-				Method::PUT => "put",
-				Method::DELETE => "delete",
-			}
-			.into(),
-		))
-	}
-	fn try_from_value(value: Value) -> Result<Self> {
-		if let Value::Varchar(Some(v), ..) = value.try_as(&Value::Varchar(None))? {
-			return match &*v {
-				"get" => Ok(Method::GET),
-				"post" => Ok(Method::POST),
-				"put" => Ok(Method::PUT),
-				"delete" => Ok(Method::DELETE),
-				_ => Err(Error::msg(format!("Unexpected value `{v}` for Method"))),
-			};
-		}
-		Err(Error::msg("Unexpected value for Method"))
-	}
-}
-```
 
 ### Example: Custom Struct
 If you want a small struct to live in a single column, encode it into a stable representation (a compact string is often the most portable). Here’s a `host:port` example:
@@ -150,6 +105,11 @@ impl AsValue for HostPort {
 	}
 }
 ```
+
+### Example: Conversion Type
+When the custom type lives outside your crate you can use intermediary wrapper type you can control and can implement `AsValue`.
+
+TODO
 
 > [!TIP]
 > Keep the encoding stable and non-lossy. Your `as_value` output becomes the output format for that field.

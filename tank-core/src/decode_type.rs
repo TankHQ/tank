@@ -58,8 +58,38 @@ pub fn decode_type(ty: &Type) -> (TypeDecoded, Option<CheckPassive>) {
                     break 'data_type Value::Varchar(None);
                 }
             }
-            if matches_path(path, &["std", "string", "String"]) {
-                break 'data_type Value::Varchar(None);
+            if matches_path(path, &["std", "num", "NonZeroI8"]) {
+                break 'data_type Value::Int8(None);
+            } else if matches_path(path, &["std", "num", "NonZeroI16"]) {
+                break 'data_type Value::Int16(None);
+            } else if matches_path(path, &["std", "num", "NonZeroI32"]) {
+                break 'data_type Value::Int32(None);
+            } else if matches_path(path, &["std", "num", "NonZeroI64"]) {
+                break 'data_type Value::Int64(None);
+            } else if matches_path(path, &["std", "num", "NonZeroI128"]) {
+                break 'data_type Value::Int128(None);
+            } else if matches_path(path, &["std", "num", "NonZeroIsize"]) {
+                break 'data_type if mem::size_of::<isize>() == mem::size_of::<i32>() {
+                    Value::Int32(None)
+                } else {
+                    Value::Int64(None)
+                };
+            } else if matches_path(path, &["std", "num", "NonZeroU8"]) {
+                break 'data_type Value::UInt8(None);
+            } else if matches_path(path, &["std", "num", "NonZeroU16"]) {
+                break 'data_type Value::UInt16(None);
+            } else if matches_path(path, &["std", "num", "NonZeroU32"]) {
+                break 'data_type Value::UInt32(None);
+            } else if matches_path(path, &["std", "num", "NonZeroU64"]) {
+                break 'data_type Value::UInt64(None);
+            } else if matches_path(path, &["std", "num", "NonZeroU128"]) {
+                break 'data_type Value::UInt128(None);
+            } else if matches_path(path, &["std", "num", "NonZeroUsize"]) {
+                break 'data_type if mem::size_of::<usize>() == mem::size_of::<u32>() {
+                    Value::UInt32(None)
+                } else {
+                    Value::UInt64(None)
+                };
             } else if matches_path(path, &["rust_decimal", "Decimal"]) {
                 break 'data_type Value::Decimal(None, 0, 0);
             } else if matches_path(path, &["tank", "FixedDecimal"]) {
@@ -87,6 +117,8 @@ pub fn decode_type(ty: &Type) -> (TypeDecoded, Option<CheckPassive>) {
                     *ws.first().expect("Doesn't have width param"),
                     *ws.last().expect("Doesn't have size param"),
                 );
+            } else if matches_path(path, &["std", "string", "String"]) {
+                break 'data_type Value::Varchar(None);
             } else if matches_path(path, &["time", "Time"])
                 || matches_path(path, &["chrono", "NaiveTime"])
             {

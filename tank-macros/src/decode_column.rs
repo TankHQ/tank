@@ -18,6 +18,7 @@ pub(crate) struct ColumnMetadata {
     pub(crate) ty: Type,
     pub(crate) name: String,
     pub(crate) column_type: BTreeMap<String, String>,
+    pub(crate) conversion_type: Option<Type>,
     pub(crate) value: Value,
     pub(crate) nullable: bool,
     pub(crate) default: Option<TokenStream>,
@@ -39,6 +40,7 @@ impl Debug for ColumnMetadata {
             .field("ty", &"..")
             .field("name", &self.name)
             .field("column_type", &self.column_type)
+            .field("conversion_type", &self.conversion_type)
             .field("value", &self.value)
             .field("nullable", &self.nullable)
             .field("default", &self.default)
@@ -138,6 +140,7 @@ pub fn decode_column(field: &Field) -> ColumnMetadata {
         ty: field.ty.clone(),
         name,
         column_type: Default::default(),
+        conversion_type: Default::default(),
         value: Value::Null,
         nullable: false,
         default: None,
@@ -176,6 +179,10 @@ pub fn decode_column(field: &Field) -> ColumnMetadata {
                     let column_type = parse2::<TypeEntries>(value.clone())
                         .expect("Cannot parse `column_type`, example: `#[tank(column_type = (postgres = \"TEXT\", mysql = \"VARCHAR(255)\")]`");
                     metadata.column_type = column_type.types;
+                } else if name == "conversion_type" {
+                    metadata.conversion_type = parse2::<Type>(value.clone())
+                        .expect("Cannot parse `conversion_type`, example: `#[tank(conversion_type = crate::TypeWrap)]`")
+                        .into();
                 } else if name == "primary_key" {
                     metadata.primary_key = PrimaryKeyType::PrimaryKey;
                     metadata.nullable = false;

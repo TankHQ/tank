@@ -72,11 +72,21 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
     let (column_trait, column) = column_trait(&table);
     let label_value_and_filter = metadata_and_filter.iter().map(|(column, filter)| {
         let name = &column.name;
-        let field = &column.ident;
-        quote!((#name.into(), ::tank::AsValue::as_value(self.#field.clone()), #filter))
+        let ident = &column.ident;
+        if let Some(conversion_type) = &column.conversion_type {
+            quote!((#name.into(), ::tank::AsValue::as_value(::std::convert::Into::<#conversion_type>::into(self.#ident.clone())), #filter))
+        } else {
+            quote!((#name.into(), ::tank::AsValue::as_value(self.#ident.clone()), #filter))
+        }
     });
     let row_full = metadata_and_filter.iter().map(
-        |(ColumnMetadata { ident, .. }, _)| quote!(::tank::AsValue::as_value(self.#ident.clone())),
+        |(ColumnMetadata { ident,  conversion_type,.. }, _)| {
+            if let Some(conversion_type) = conversion_type {
+                quote!(::tank::AsValue::as_value(::std::convert::Into::<#conversion_type>::into(self.#ident.clone())))
+            } else {
+                quote!(::tank::AsValue::as_value(self.#ident.clone()))
+            }
+        },
     );
     let columns = metadata_and_filter.iter().map(|(c, _)| {
         let field = &c.ident;
@@ -142,9 +152,9 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
             }
 
             fn primary_key_expr(&self) -> impl ::tank::Expression {
-                    let primary_key = self.primary_key();
-                    #primary_key_condition_declaration
-                    ::tank::expr!(#primary_key_condition_expression)
+                let primary_key = self.primary_key();
+                #primary_key_condition_declaration
+                ::tank::expr!(#primary_key_condition_expression)
             }
 
             fn unique_defs()

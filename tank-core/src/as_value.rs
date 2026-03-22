@@ -13,6 +13,11 @@ use std::{
     cell::{Cell, RefCell},
     collections::{BTreeMap, HashMap, LinkedList, VecDeque},
     hash::Hash,
+    num::{
+        NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI128, NonZeroIsize, NonZeroU8,
+        NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128, NonZeroUsize,
+    },
+    process::id,
     rc::Rc,
     sync::{Arc, RwLock},
 };
@@ -340,6 +345,38 @@ impl_as_value!(
         v.to_usize().ok_or(error)
     }
 );
+
+macro_rules! impl_as_value {
+    ($source:ty, $helper:path) => {
+        impl AsValue for $source {
+            fn as_empty_value() -> Value {
+                <$helper as AsValue>::as_empty_value()
+            }
+            fn as_value(self) -> Value {
+                AsValue::as_value(Into::<$helper>::into(self))
+            }
+            fn try_from_value(value: Value) -> Result<Self>
+            where
+                Self: Sized,
+            {
+                Ok(<$helper as AsValue>::try_from_value(value)?.try_into()?)
+            }
+        }
+    };
+}
+
+impl_as_value!(NonZeroI8, i8);
+impl_as_value!(NonZeroI16, i16);
+impl_as_value!(NonZeroI32, i32);
+impl_as_value!(NonZeroI64, i64);
+impl_as_value!(NonZeroI128, i128);
+impl_as_value!(NonZeroIsize, isize);
+impl_as_value!(NonZeroU8, u8);
+impl_as_value!(NonZeroU16, u16);
+impl_as_value!(NonZeroU32, u32);
+impl_as_value!(NonZeroU64, u64);
+impl_as_value!(NonZeroU128, u128);
+impl_as_value!(NonZeroUsize, usize);
 
 macro_rules! impl_as_value {
     ($source:ty, $destination:path, $extract:expr $(, $pat_rest:pat => $expr_rest:expr)* $(,)?) => {

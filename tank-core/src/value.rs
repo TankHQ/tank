@@ -404,6 +404,7 @@ pub struct TypeDecoded {
     pub passive: bool,
 }
 
+// A function to check if the current value is being inserted in the database.
 pub type CheckPassive = Box<dyn Fn(TokenStream) -> TokenStream>;
 
 impl ToTokens for Value {
