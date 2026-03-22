@@ -215,7 +215,7 @@ impl Executor for PostgresConnection {
 
 impl Connection for PostgresConnection {
     async fn connect(driver: &PostgresDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = format!("While trying to connect to `{}`", truncate_long!(url));
+        let context = "While trying to connect to Postgres";
         let mut url = Self::sanitize_url(driver, url)?;
         let mut take_url_param = |key: &str, env_var: &str, remove: bool| {
             let value = url
@@ -250,7 +250,7 @@ impl Connection for PostgresConnection {
                     .as_deref()
                     .unwrap_or("~/.postgresql/root.crt"),
             )
-            .with_context(|| context.clone())?;
+            .context(context)?;
             if path.exists() {
                 builder.set_ca_file(path)?;
             }
@@ -259,7 +259,7 @@ impl Connection for PostgresConnection {
                     .as_deref()
                     .unwrap_or("~/.postgresql/postgresql.crt"),
             )
-            .with_context(|| context.clone())?;
+            .context(context)?;
             if path.exists() {
                 builder.set_certificate_chain_file(path)?;
             }
@@ -268,7 +268,7 @@ impl Connection for PostgresConnection {
                     .as_deref()
                     .unwrap_or("~/.postgresql/postgresql.key"),
             )
-            .with_context(|| context.clone())?;
+            .context(context)?;
             if path.exists() {
                 builder.set_private_key_file(path, SslFiletype::PEM)?;
             }

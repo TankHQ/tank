@@ -43,11 +43,11 @@ mod tests {
         unsafe {
             std::env::set_var("SSL_CERT_FILE", path.join("tests/assets/ca.pem"));
         }
-        let (ssl_url, container) = init_valkey(true).await;
+        let (url, container) = init_valkey(true).await;
         let container = container.expect("Could not launch the SSL container");
         let driver = ValkeyDriver::new(".", false);
         let mut connection = driver
-            .connect(ssl_url.clone().into())
+            .connect(url.clone().into())
             .await
             .expect("Failed to connect");
         execute_tests(&mut connection).await;

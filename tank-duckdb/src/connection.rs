@@ -533,7 +533,7 @@ impl Executor for DuckDBConnection {
 
 impl Connection for DuckDBConnection {
     async fn connect(driver: &DuckDBDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = format!("While trying to connect to `{}`", truncate_long!(url));
+        let context = "While trying to connect to DuckDB";
         let url = Self::sanitize_url(driver, url)?;
         let mut config: CBox<duckdb_config> = CBox::new(ptr::null_mut(), |mut p| unsafe {
             duckdb_destroy_config(&mut p)
@@ -552,7 +552,7 @@ impl Connection for DuckDBConnection {
                 .map_or(Default::default(), |host| format!("{host}/")),
             url.path()
         ))
-        .with_context(|| context.clone())?;
+        .context(context)?;
         for (key, value) in url.query_pairs() {
             let rc = unsafe {
                 match &*key {

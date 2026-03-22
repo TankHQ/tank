@@ -169,9 +169,9 @@ impl Executor for ScyllaDBConnection {
 
 impl Connection for ScyllaDBConnection {
     async fn connect(driver: &ScyllaDBDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = format!("While trying to connect to `{}`", url);
+        let context = "While trying to connect to ScyllaDB";
         let url = Self::sanitize_url(driver, url)?;
-        let hostname = url.host_str().with_context(|| context.clone())?;
+        let hostname = url.host_str().context(context)?;
         let port = url.port();
         let username = url.username();
         let password = url.password();
@@ -189,8 +189,7 @@ impl Connection for ScyllaDBConnection {
                 session = session.use_keyspace(keyspace, true);
             }
         }
-        let mut context_builder =
-            SslContextBuilder::new(SslMethod::tls()).with_context(|| context.clone())?;
+        let mut context_builder = SslContextBuilder::new(SslMethod::tls()).context(context)?;
         context_builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
         let mut ssl = false;
         let mut keyspaces = Vec::new();
@@ -202,7 +201,7 @@ impl Connection for ScyllaDBConnection {
                         Err(e) => {
                             let e = Error::msg(format!("{e}"))
                                 .context(format!("URL param `{k} = {v}`"))
-                                .context(context.clone());
+                                .context(context);
                             log::error!("{e:#}");
                             return Err(e);
                         }

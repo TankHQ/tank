@@ -24,13 +24,10 @@ mod tests {
         drop(container);
 
         // SSL
-        let (ssl_url, container) = init_scylladb(true).await;
+        let (url, container) = init_scylladb(true).await;
         let container = container.expect("Could not launch the SSL container");
         let driver = ScyllaDBDriver::new();
-        let connection = driver
-            .connect(ssl_url.into())
-            .await
-            .expect("Failed to connect");
+        let connection = driver.connect(url.into()).await.expect("Failed to connect");
         execute_tests(connection).await;
         drop(container);
     }

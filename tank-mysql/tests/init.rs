@@ -184,7 +184,7 @@ pub async fn init_mariadb(ssl: bool) -> (String, Option<ContainerAsync<Mariadb>>
     let port = container
         .get_host_port_ipv4(3306)
         .await
-        .expect("Cannot get the port of Mysql");
+        .expect("Cannot get the port of MariaDB");
 
     (
         if ssl {

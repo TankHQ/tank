@@ -17,7 +17,7 @@ impl Connection for ValkeyConnection {
     where
         Self: Sized,
     {
-        let context = Arc::new(format!("While trying to connect to `{}`", url));
+        let context = "While trying to connect to Valkey";
         let url = Self::sanitize_url(driver, url)?;
         let client = Client::open(url.as_str()).map_err(|e| Error::msg(e.to_string()))?;
         let connection = client

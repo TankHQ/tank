@@ -25,7 +25,7 @@ impl Executor for YourDBConnection {
 
 impl Connection for YourDBConnection {
     async fn connect(driver: &YourDBDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = || format!("While trying to connect to `{url}`");
+        let context = "While trying to connect to YourDB";
         let url = Self::sanitize_url(driver, url);
         // Establish connection
         Ok(YourDBConnection {})

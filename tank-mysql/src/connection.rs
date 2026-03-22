@@ -1,9 +1,7 @@
 use crate::{MySQLDriver, MySQLQueryable, MySQLTransaction};
 use mysql_async::{ClientIdentity, Conn, Opts, OptsBuilder};
 use std::{borrow::Cow, env, path::PathBuf};
-use tank_core::{
-    Connection, Error, ErrorContext, Result, impl_executor_transaction, truncate_long,
-};
+use tank_core::{Connection, Error, ErrorContext, Result, impl_executor_transaction};
 
 /// Connection wrapper used by the MySQL/MariaDB driver.
 ///
@@ -18,7 +16,7 @@ impl_executor_transaction!(MySQLDriver, MySQLConnection, conn);
 
 impl Connection for MySQLConnection {
     async fn connect(driver: &MySQLDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = format!("While trying to connect to `{}`", truncate_long!(&url));
+        let context = "While trying to connect to MySQL";
         let mut url = Self::sanitize_url(driver, url)?;
         let mut take_url_param = |key: &str, env_var: &str, remove: bool| {
             let value = url
@@ -38,7 +36,7 @@ impl Connection for MySQLConnection {
         let ssl_ca = take_url_param("ssl_ca", "MYSQL_SSL_CA", true);
         let ssl_cert = take_url_param("ssl_cert", "MYSQL_SSL_CERT", true);
         let ssl_pass = take_url_param("ssl_pass", "MYSQL_SSL_PASS", true);
-        let opts = Opts::from_url(url.as_str()).with_context(|| context.clone())?;
+        let opts = Opts::from_url(url.as_str()).context(context)?;
         let mut ssl_opts = opts.ssl_opts().cloned();
         let mut opts = OptsBuilder::from_opts(opts);
         if let Some(ssl_ca) = ssl_ca {

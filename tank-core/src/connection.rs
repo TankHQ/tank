@@ -1,5 +1,6 @@
-use crate::{Driver, Error, Executor, Result, truncate_long};
+use crate::{Driver, Error, Executor, Result};
 use anyhow::Context;
+use convert_case::{Case, Casing};
 use std::{
     borrow::Cow,
     future::{self, Future},
@@ -17,7 +18,7 @@ use url::Url;
 ///   guarantee resource release.
 pub trait Connection: Executor {
     /// Validates and normalizes the connection URL, handling special cases like in-memory databases.
-    fn sanitize_url(_driver: &Self::Driver, mut url: Cow<'static, str>) -> Result<Url>
+    fn sanitize_url(driver: &Self::Driver, mut url: Cow<'static, str>) -> Result<Url>
     where
         Self: Sized,
     {
@@ -28,7 +29,12 @@ pub trait Connection: Executor {
             url = format!("{scheme}://localhost{}", &host[8..]).into();
             in_memory = true;
         }
-        let context = || format!("While trying to connect to `{}`", truncate_long!(url));
+        let context = || {
+            format!(
+                "While trying to connect to {}",
+                driver.name().to_case(Case::Title)
+            )
+        };
         let mut result = Url::parse(&url).with_context(context)?;
         if in_memory {
             result.query_pairs_mut().append_pair("mode", "memory");

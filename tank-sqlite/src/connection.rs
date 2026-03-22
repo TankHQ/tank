@@ -17,8 +17,7 @@ use std::{
 };
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Prepared, Query, QueryResult, RawQuery,
-    Result, Row, RowsAffected, error_message_from_ptr, send_value, stream::Stream,
-    truncate_long,
+    Result, Row, RowsAffected, error_message_from_ptr, send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -250,10 +249,10 @@ impl Executor for SQLiteConnection {
 
 impl Connection for SQLiteConnection {
     async fn connect(driver: &SQLiteDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = format!("While trying to connect to `{}`", truncate_long!(url));
+        let context = "While trying to connect to SQLite";
         let url = Self::sanitize_url(driver, url)?;
-        let url = CString::from_str(&url.as_str().replacen("sqlite://", "file:", 1))
-            .with_context(|| context.clone())?;
+        let url =
+            CString::from_str(&url.as_str().replacen("sqlite://", "file:", 1)).context(context)?;
         let mut connection;
         unsafe {
             connection = CBox::new(ptr::null_mut(), |p| {
