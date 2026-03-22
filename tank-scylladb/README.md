@@ -95,7 +95,7 @@ sudo usermod -aG docker $USER
 ```
 
 > [!CAUTION]
-> Avoid aborting tests mid‑run (e.g. killing the process at a breakpoint). Containers might be left running and consume resources.
+> Avoid aborting tests mid-run (e.g. killing the process at a breakpoint). Containers might be left running and consume resources.
 >
 > List containers:
 > ```sh

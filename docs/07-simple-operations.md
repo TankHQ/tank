@@ -136,7 +136,7 @@ Stream matching rows with a limit:
     // Executor is released from the stream at the end of the scope
 }
 ```
-The stream must be pinned with [`std::pin::pin`](https://doc.rust-lang.org/std/pin/macro.pin.html) so the async machinery can safely borrow it without relocation mid‑flight.
+The stream must be pinned with [`std::pin::pin`](https://doc.rust-lang.org/std/pin/macro.pin.html) so the async machinery can safely borrow it without relocation mid-flight.
 
 ## Save
 `save()` inserts or updates (UPSERT) if supported. Otherwise it falls back to an insert and may error if the row already exists.

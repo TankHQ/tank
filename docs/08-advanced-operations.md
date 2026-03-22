@@ -2,10 +2,10 @@
 ###### *Section 8* - Tactical Coordination
 
 In the field, isolated units rarely win the battle. Coordination is key. Joins let you link data across tables like synchronized squads advancing under fire.
-In Tank, a join is a first‑class `Dataset`, just like a `TableRef`. That means you can call `select()` and then filter, map, reduce, etc., using the same composable [Stream API](https://docs.rs/futures/latest/futures/prelude/trait.Stream.html) you already know.
+In Tank, a join is a first-class `Dataset`, just like a `TableRef`. That means you can call `select()` and then filter, map, reduce, etc., using the same composable [Stream API](https://docs.rs/futures/latest/futures/prelude/trait.Stream.html) you already know.
 
 ## Schema
-Continuing with the `Operator` and `RadioLog` schema introduced earlier. The following examples show more advanced query capabilities—operations that go beyond simple CRUD while still avoiding raw SQL.
+Continuing with the `Operator` and `RadioLog` schema introduced earlier. The following examples show more advanced query capabilities-operations that go beyond simple CRUD while still avoiding raw SQL.
 ::: code-group
 ```rust [Rust]
 #[derive(Entity)]
@@ -65,12 +65,12 @@ CREATE TABLE IF NOT EXISTS operations.radio_log (
 **Radio logs:**
 | message                                  | unit_callsign | tx_time                | rssi |
 | ---------------------------------------- | ------------- | ---------------------- | ---- |
-| Radio check, channel 3. How copy?        | Alpha-1       | 2025-11-04T19:45:21+01 | −42  |
-| Target acquired. Requesting coordinates. | Alpha-1       | 2025-11-04T19:54:12+01 | −55  |
-| Heavy armor spotted, grid 4C.            | Alpha-1       | 2025-11-04T19:51:09+01 | −52  |
-| Perimeter secure. All clear.             | Bravo-2       | 2025-11-04T19:51:09+01 | −68  |
-| Radio check, grid 1A. Over.              | Charlie-3     | 2025-11-04T18:59:11+02 | −41  |
-| Affirmative, engaging.                   | Alpha-1       | 2025-11-03T23:11:54+00 | −54  |
+| Radio check, channel 3. How copy?        | Alpha-1       | 2025-11-04T19:45:21+01 | -42  |
+| Target acquired. Requesting coordinates. | Alpha-1       | 2025-11-04T19:54:12+01 | -55  |
+| Heavy armor spotted, grid 4C.            | Alpha-1       | 2025-11-04T19:51:09+01 | -52  |
+| Perimeter secure. All clear.             | Bravo-2       | 2025-11-04T19:51:09+01 | -68  |
+| Radio check, grid 1A. Over.              | Charlie-3     | 2025-11-04T18:59:11+02 | -41  |
+| Affirmative, engaging.                   | Alpha-1       | 2025-11-03T23:11:54+00 | -54  |
 
 ## Selecting & Ordering
 The [`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) supports aliasing and ordering. When you only need raw columns, prefer the terse array `[Operator::callsign, Operator::service_rank, Operator::enlisted]` or `Operator::columns()` syntax.
@@ -118,7 +118,7 @@ assert!(
 ```
 
 ## Expr
-[`expr!()`](https://docs.rs/tank/latest/tank/macro.expr.html) parses a Rust‑like expression into a typed AST that drivers translate into backend‑specific SQL. Use it for conditions or default values.
+[`expr!()`](https://docs.rs/tank/latest/tank/macro.expr.html) parses a Rust-like expression into a typed AST that drivers translate into backend-specific SQL. Use it for conditions or default values.
 
 It accepts a subset of Rust syntax with additional sentinel tokens for SQL semantics:
 - `42`, `1.2`, `"Alpha"`, `true`, `NULL`, `[1, 2, 3]` literal values

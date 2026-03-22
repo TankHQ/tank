@@ -165,7 +165,7 @@ pub async fn init(ssl: bool) -> (String, Option<ContainerAsync<Mongo>>) {
         .await
         .expect("Cannot get the port of MongoDB");
 
-    // Setup connection — no auth yet, plain for init
+    // Setup connection - no auth yet, plain for init
     let setup_url = format!("mongodb://127.0.0.1:{port}/admin?directConnection=true");
     let client = Client::with_uri_str(&setup_url)
         .await

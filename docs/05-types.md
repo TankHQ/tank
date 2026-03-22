@@ -49,10 +49,10 @@ Tank maps ordinary Rust types (numbers, strings, times, collections) to the clos
 > [!WARNING]
 > When a type falls back to a generic representation (like `TEXT` or `JSON`), Tank encodes it predictably so equality and ordering comparisons (where meaningful) behave as expected. Advanced indexing or operator support may vary by driver.
 >
-> The special `isize`/`usize` types map to the native pointer-width integer (64‑bit on 64‑bit targets, 32‑bit on 32‑bit targets). For cross‑database portability prefer explicit `i64`/`u64` unless you truly need platform width.
+> The special `isize`/`usize` types map to the native pointer-width integer (64-bit on 64-bit targets, 32-bit on 32-bit targets). For cross-database portability prefer explicit `i64`/`u64` unless you truly need platform width.
 
 ## Wrapper Types
-Built‑in wrappers you can use directly in entities, theSQL type is inferred from the inner type:
+Built-in wrappers you can use directly in entities, theSQL type is inferred from the inner type:
 - `Option<T>`: Nullable column.
 - `Box<T>`
 - `Cell<T>`
@@ -62,7 +62,7 @@ Built‑in wrappers you can use directly in entities, theSQL type is inferred fr
 - `Rc<T>`
 
 ## Custom Types
-When standard types miss the mark, deploy custom payloads: an enum that must round‑trip cleanly across drivers, or a small struct you want to pack into a single column. In Tank, you do that by implementing [`tank::AsValue`](https://docs.rs/tank/latest/tank/trait.AsValue.html).
+When standard types miss the mark, deploy custom payloads: an enum that must round-trip cleanly across drivers, or a small struct you want to pack into a single column. In Tank, you do that by implementing [`tank::AsValue`](https://docs.rs/tank/latest/tank/trait.AsValue.html).
 
 `AsValue` is your conversion contract: it turns your Rust type into a [`tank::Value`](https://docs.rs/tank/latest/tank/enum.Value.html) for binding/inserts/updates, and turns a `Value` back into your type when decoding rows. Once implemented, you can use the type directly as an `Entity` field.
 

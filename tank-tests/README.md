@@ -15,7 +15,7 @@ Instead of duplicating many nearly identical tests inside every driver crate, `t
 📦 https://crates.io/crates/tank
 
 ## Purpose
-- Ensures consistency: all drivers pass the same baseline CRUD, query, join, multi‑statement and type coverage.
+- Ensures consistency: all drivers pass the same baseline CRUD, query, join, multi-statement and type coverage.
 - Reduces maintenance: add a new scenario once, every driver benefits.
 - Accelerates new driver development: run the suite early, disable what you have not implemented yet, iterate.
 

@@ -1,7 +1,7 @@
 # Raw SQL
 ###### *Field Manual Section 9* - Precision Fire
 
-Sometimes you need to drop the abstractions and put steel directly on target. Tank lets you fire raw SQL or multi‑statement batches (where supported) while still decoding rows into typed entities. This section covers building raw statements, executing mixed result streams, and converting rows back into your structs.
+Sometimes you need to drop the abstractions and put steel directly on target. Tank lets you fire raw SQL or multi-statement batches (where supported) while still decoding rows into typed entities. This section covers building raw statements, executing mixed result streams, and converting rows back into your structs.
 
 ## Execution Methods
 Three firing modes:
@@ -12,7 +12,7 @@ Three firing modes:
 Anything implementing [`AsQuery`](https://docs.rs/tank/latest/tank/trait.AsQuery.html) works: `String`, `&str`, `Query<D>`, or `&mut Query<D>`.
 
 ## Composing SQL With `SqlWriter`
-Every driver exposes a `SqlWriter` for dialect‑correct SQL fragments. Use the writer to buffer multiple statements into one `DynQuery`.
+Every driver exposes a `SqlWriter` for dialect-correct SQL fragments. Use the writer to buffer multiple statements into one `DynQuery`.
 
 Example building 8 statements (1 *CREATE SCHEMA* included by the first *CREATE TABLE*, 2 *CREATE TABLE*, 3 *INSERT INTO* and 2 *SELECT*):
 ```rust
@@ -48,7 +48,7 @@ struct Two { a2: u32, string: String }
 let entity = Two::from_row(row)?; // Strongly typed reconstruction
 ```
 
-You can interleave custom decoding for ad‑hoc structs defined inline, useful when projecting reduced column sets:
+You can interleave custom decoding for ad-hoc structs defined inline, useful when projecting reduced column sets:
 ```rust
 #[derive(Entity)]
 struct Projection { callsign: String, strength: i8 }

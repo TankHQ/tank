@@ -8,7 +8,7 @@ Welcome to the armored convoy, commander. Before you can unleash Tank's firepowe
   Compile a raw SQL string into a reusable [`Query<Driver>`](https://docs.rs/tank/latest/tank/enum.Query.html) object without firing it. Use when the same statement will be dispatched multiple times.
 
 - [`run(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#tymethod.run):
-  Streams [`QueryResult`](https://docs.rs/tank/latest/tank/enum.QueryResult.html) items (`Row` or `Affected`). Useful for multi‑statement batches (if supported by the database driver).
+  Streams [`QueryResult`](https://docs.rs/tank/latest/tank/enum.QueryResult.html) items (`Row` or `Affected`). Useful for multi-statement batches (if supported by the database driver).
 
 - [`fetch(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.fetch):
   Streams only [`QueryResult::Row`](https://docs.rs/tank/latest/tank/struct.Row.html), discarding [`QueryResult::Affected`](https://docs.rs/tank/latest/tank/struct.RowsAffected.html).
@@ -17,7 +17,7 @@ Welcome to the armored convoy, commander. Before you can unleash Tank's firepowe
   Aggregates all `QueryResult::Affected` counts into one [`RowsAffected`](https://docs.rs/tank/latest/tank/struct.RowsAffected.html). Rows are ignored.
 
 - [`append(query)`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.append):
-  Bulk insert entities, using a driver fast‑path when available.
+  Bulk insert entities, using a driver fast-path when available.
 
 - [`begin()`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.begin):
   Borrow the connection and start a transaction. Issue any of the above operations against the transactional executor, then `commit` or `rollback`. Uncommitted drop triggers a rollback and gives back the connection.
@@ -166,7 +166,7 @@ async fn establish_mongodb_connection() -> Result<MongoDBConnection> {
 The database name is extracted from the URL path. If omitted, you must specify a default database in the options or rely on the driver default.
 
 ### Valkey/Redis
-Valkey is your suppressive-fire support weapon: an in-memory key-value depot for caches, sessions, queues, rate limits, and hot-path counters—built for blistering throughput when the front line can’t wait. This driver speaks both Valkey and Redis.
+Valkey is your suppressive-fire support weapon: an in-memory key-value depot for caches, sessions, queues, rate limits, and hot-path counters-built for blistering throughput when the front line can’t wait. This driver speaks both Valkey and Redis.
 
 ```rust
 use tank::Driver;
@@ -195,7 +195,7 @@ Example (Valkey + TLS):
 - `valkeys://valkey-commander:supreme@127.0.0.1:6379/0?sslmode=require&sslrootcert=/path/to/ca.pem&sslcert=/path/to/client-cert.pem&sslkey=/path/to/client-key.pem`
 
 ### ScyllaDB/Cassandra
-ScyllaDB is the rapid‑response strike force: distributed, built to swarm data with relentless, low‑latency fire.
+ScyllaDB is the rapid-response strike force: distributed, built to swarm data with relentless, low-latency fire.
 
 ```rust
 use tank::Driver;

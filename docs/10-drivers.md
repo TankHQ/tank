@@ -1,7 +1,7 @@
 # Driver Creation
 ###### *Field Manual Section 10* - Armored Engineering
 
-Opening a new battlefront means forging a fresh **Driver** — the armored bridge between Tank's high‑level abstractions and a database engine's trenches (type mapping, prepared semantics, transaction doctrine). This section boots a driver crate from cold steel to live fire, then certifies it on the proving ground (`tank-tests`).
+Opening a new battlefront means forging a custom **Driver** - the armored bridge between Tank's high-level abstractions and a database engine's trenches (type mapping, prepared semantics, transaction doctrine). This section boots a driver crate from cold steel to live fire, then certifie it on the shooting range (`tank-tests`).
 
 ## Mission Objectives
 - Stand up a new `tank-<backend>` crate
@@ -90,7 +90,7 @@ Enable feature flags to disable specific functionality until green.
 - `Driver::NAME` correct and used consistently
 - `prepare` handles multiple statements (or rejects cleanly)
 - Streams drop promptly (no leaked locks or file handles)
-- `SqlWriter` prints multi‑statement sequences with proper separators and terminal `;`
+- `SqlWriter` prints multi-statement sequences with proper separators and terminal `;`
 - Upsert path (`save()`) works if PK exists; documented fallback if not supported
 
 Remove a flag the moment your driver truly supports the capability. Each removed flag unlocks corresponding test sorties.
@@ -98,7 +98,7 @@ Remove a flag the moment your driver truly supports the capability. Each removed
 ## Performance Notes
 - Prefer streaming APIs over buffering entire result sets.
 - Implement backend bulk ingestion if native (like DuckDB's appender) for `append()`.
-- Reuse prepared statements internally if engine offers server‑side caching.
+- Reuse prepared statements internally if engine offers server-side caching.
 
 ## Errors
 Return early with rich context:
