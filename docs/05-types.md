@@ -55,7 +55,6 @@ Tank maps ordinary Rust types (numbers, strings, times, collections) to the clos
 Built‑in wrappers you can use directly in entities. SQL type is inferred from the inner type.
 
 Supported wrappers:
-- `tank::Passive<T>`: Omit on update or allow default generation on insert.
 - `Option<T>`: Nullable column.
 - `Box<T>`
 - `Cell<T>`
@@ -159,7 +158,8 @@ impl tank::AsValue for MethodWrap {
                 any::type_name::<Method>()
             )
         };
-        match &value {
+        // Always call try_as before expecting a specific type, some database return unknown or json that needs conversion first
+        match &value.try_as(tank::Value::Varchar(None)) {
             tank::Value::Varchar(Some(value), ..) => {
                 Ok(Method::from_str(&value).with_context(context)?.into())
             }

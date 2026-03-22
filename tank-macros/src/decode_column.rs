@@ -8,9 +8,7 @@ use syn::{
     parse2,
     token::{Comma, Eq},
 };
-use tank_core::{
-    Action, CheckPassive, PrimaryKeyType, TypeDecoded, Value, decode_type, future::Either,
-};
+use tank_core::{Action, PrimaryKeyType, TypeDecoded, Value, decode_type, future::Either};
 
 pub(crate) struct ColumnMetadata {
     pub(crate) ident: Ident,
@@ -28,8 +26,6 @@ pub(crate) struct ColumnMetadata {
     pub(crate) on_delete: Option<Action>,
     pub(crate) on_update: Option<Action>,
     pub(crate) unique: bool,
-    pub(crate) passive: bool,
-    pub(crate) check_passive: Option<CheckPassive>,
     pub(crate) comment: String,
 }
 
@@ -50,8 +46,6 @@ impl Debug for ColumnMetadata {
             .field("on_delete", &self.on_delete)
             .field("on_update", &self.on_update)
             .field("unique", &self.unique)
-            .field("passive", &self.passive)
-            .field("check_passive", &"..")
             .field("comment", &self.comment)
             .finish()
     }
@@ -150,8 +144,6 @@ pub fn decode_column(field: &Field) -> ColumnMetadata {
         on_delete: None,
         on_update: None,
         unique: false,
-        passive: false,
-        check_passive: None,
         comment: String::new(),
     };
     if metadata.name.starts_with('_') {
@@ -262,14 +254,7 @@ pub fn decode_column(field: &Field) -> ColumnMetadata {
         }
     }
     if !metadata.ignored {
-        let (
-            TypeDecoded {
-                value,
-                nullable,
-                passive,
-            },
-            check_passive,
-        ) = if let Type::Path(..) = &field.ty {
+        let TypeDecoded { value, nullable } = if let Type::Path(..) = &field.ty {
             decode_type(&field.ty)
         } else if let Type::Array(..) = &field.ty {
             decode_type(&field.ty)
@@ -282,8 +267,6 @@ pub fn decode_column(field: &Field) -> ColumnMetadata {
         };
         metadata.value = value;
         metadata.nullable = nullable;
-        metadata.passive = passive;
-        metadata.check_passive = check_passive;
     }
     metadata
 }

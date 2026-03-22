@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use std::{pin::pin, sync::LazyLock};
-use tank::{AsValue, Entity, Passive, Row, expr, stream::StreamExt, stream::TryStreamExt};
+use tank::{AsValue, Entity, Row, expr, stream::StreamExt, stream::TryStreamExt};
 use tank::{Executor, QueryBuilder, cols};
 use tokio::sync::Mutex;
 
@@ -11,7 +11,7 @@ const COUNT: u32 = 11745;
 
 #[derive(Default, Entity)]
 struct Values {
-    id: Passive<u64>,
+    id: u64,
     /// This column contains the actual value
     value: u32,
 }
@@ -31,7 +31,7 @@ pub async fn aggregates(executor: &mut impl Executor) {
     // 1 + .. + 11745 = 68978385
     // avg(1, .., 11745) = 5873
     let mut values = (1..11746).map(|value| Values {
-        id: value.into(),
+        id: value,
         value: value as u32,
     });
     loop {

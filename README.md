@@ -186,7 +186,7 @@ async fn data() -> Result<()> {
 #[tank(schema = "testing", name = "authors")]
 pub struct Author {
     #[tank(primary_key, name = "author_id")]
-    pub id: Passive<Uuid>,
+    pub id: Uuid,
     pub name: String,
     ...
 }

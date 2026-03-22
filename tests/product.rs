@@ -4,8 +4,8 @@ mod tests {
     use rust_decimal::Decimal;
     use std::borrow::Cow;
     use tank::{
-        DefaultValueType, DynQuery, Entity, GenericSqlWriter, Passive, PrimaryKeyType, SqlWriter,
-        TableRef, Value,
+        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, SqlWriter, TableRef,
+        Value,
     };
     use time::{Date, Month, PrimitiveDateTime, Time};
 
@@ -13,7 +13,7 @@ mod tests {
     #[tank(name = "products")]
     struct Product {
         #[tank(primary_key)]
-        id: Passive<u64>,
+        id: u64,
         name: String,
         price: Decimal,
         available: bool,
@@ -24,7 +24,7 @@ mod tests {
     impl Product {
         pub fn sample() -> Self {
             Self {
-                id: Passive::NotSet,
+                id: 0,
                 name: "Smartphone".into(),
                 price: Decimal::new(49999, 2),
                 available: true,
@@ -124,12 +124,6 @@ mod tests {
         assert_eq!(columns[3].on_update, None);
         assert_eq!(columns[4].on_update, None);
         assert_eq!(columns[5].on_update, None);
-        assert_eq!(columns[0].passive, true);
-        assert_eq!(columns[1].passive, false);
-        assert_eq!(columns[2].passive, false);
-        assert_eq!(columns[3].passive, false);
-        assert_eq!(columns[4].passive, false);
-        assert_eq!(columns[5].passive, false);
     }
 
     #[test]
@@ -158,8 +152,8 @@ mod tests {
         assert_eq!(
             query.as_str(),
             indoc! {r#"
-                INSERT INTO "products" ("name", "price", "available", "tags", "added_on") VALUES
-                ('Smartphone', 499.99, true, ['electronics','mobile'], '2025-06-24 10:30:07.0');
+                INSERT INTO "products" ("id", "name", "price", "available", "tags", "added_on") VALUES
+                (0, 'Smartphone', 499.99, true, ['electronics','mobile'], '2025-06-24 10:30:07.0');
             "#}
             .trim()
         );
@@ -172,7 +166,7 @@ mod tests {
             &mut query,
             [
                 Product {
-                    id: 74.into(),
+                    id: 74,
                     name: "Headphones".into(),
                     price: Decimal::new(12995, 2),
                     available: false,
@@ -184,7 +178,7 @@ mod tests {
                 },
                 Product::sample(),
                 Product {
-                    id: Passive::NotSet,
+                    id: 0,
                     name: "Mouse".into(),
                     price: Decimal::new(3999, 2),
                     available: true,
@@ -203,8 +197,8 @@ mod tests {
             indoc! {r#"
                 INSERT INTO "products" ("id", "name", "price", "available", "tags", "added_on") VALUES
                 (74, 'Headphones', 129.95, false, ['electronics','audio'], '2025-07-08 14:15:01.0'),
-                (DEFAULT, 'Smartphone', 499.99, true, ['electronics','mobile'], '2025-06-24 10:30:07.0'),
-                (DEFAULT, 'Mouse', 39.99, true, ['electronics','accessories'], '2025-07-09 09:45:30.0');
+                (0, 'Smartphone', 499.99, true, ['electronics','mobile'], '2025-06-24 10:30:07.0'),
+                (0, 'Mouse', 39.99, true, ['electronics','accessories'], '2025-07-09 09:45:30.0');
             "#}
             .trim()
         );

@@ -108,11 +108,6 @@ mod tests {
         assert_eq!(columns[2].on_update, None);
         assert_eq!(columns[3].on_update, None);
         assert_eq!(columns[4].on_update, None);
-        assert_eq!(columns[0].passive, false);
-        assert_eq!(columns[1].passive, false);
-        assert_eq!(columns[2].passive, false);
-        assert_eq!(columns[3].passive, false);
-        assert_eq!(columns[4].passive, false);
         assert_eq!(columns[0].comment, "");
         assert_eq!(columns[1].comment, "");
         assert_eq!(columns[2].comment, "");

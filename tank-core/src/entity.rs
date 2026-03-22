@@ -1,7 +1,7 @@
 use crate::{
     ColumnDef, Context, Dataset, Driver, DynQuery, Error, Executor, Expression, Query,
-    QueryBuilder, RawQuery, Result, Row, RowValues, RowsAffected, TableRef, Value,
-    future::Either, stream::Stream, truncate_long, writer::SqlWriter,
+    QueryBuilder, RawQuery, Result, Row, RowValues, RowsAffected, TableRef, future::Either,
+    stream::Stream, truncate_long, writer::SqlWriter,
 };
 use futures::{FutureExt, StreamExt};
 use log::Level;
@@ -38,9 +38,6 @@ pub trait Entity {
     /// Unique constraint definitions.
     fn unique_defs()
     -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = &'static ColumnDef>>;
-
-    /// Column name-value pairs for persistence (excludes ignored/default fields).
-    fn row_filtered(&self) -> Box<[(&'static str, Value)]>;
 
     /// Full row representation including all persisted columns.
     fn row_full(&self) -> RowValues;

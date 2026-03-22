@@ -1,6 +1,6 @@
 use crate::IsChar;
-use std::collections::BTreeMap;
 use std::fmt::Write;
+use std::{collections::BTreeMap, iter};
 use tank_core::{
     ColumnDef, Context, Dataset, DynQuery, Entity, Error, Expression, Fragment, GenericSqlWriter,
     Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, indoc::indoc, separated_by,
@@ -343,14 +343,20 @@ impl SqlWriter for ScyllaDBSqlWriter {
         E: Entity + 'b,
     {
         let table = E::table();
-        let mut it = entities.into_iter().map(Entity::row_filtered).peekable();
-        let mut row = it.next();
-        let multiple = row.is_some() && it.peek().is_some();
+        let mut entities = entities.into_iter().peekable();
+        let Some(entity) = entities.next() else {
+            return;
+        };
+        let multiple = entities.peek().is_some();
+        let entities = iter::once(entity).chain(entities);
         out.buffer().reserve(128 + E::columns().len() * 32);
         if multiple {
-            out.push_str("BEGIN BATCH\n");
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            out.push_str("BEGIN BATCH");
         }
-        while let Some(current) = row {
+        for entity in entities {
             if !out.is_empty() {
                 out.push('\n');
             }
@@ -360,24 +366,21 @@ impl SqlWriter for ScyllaDBSqlWriter {
             out.push_str(" (");
             separated_by(
                 out,
-                current.iter(),
-                |out, (name, ..)| {
-                    self.write_identifier(&mut context, out, name, true);
+                E::columns().iter(),
+                |out, col| {
+                    self.write_identifier(&mut context, out, col.name(), true);
                 },
                 ", ",
             );
-            out.push_str(")\nVALUES (");
             let mut context = context.switch_fragment(Fragment::SqlInsertIntoValues);
+            out.push_str(") VALUES (");
             separated_by(
                 out,
-                current.iter(),
-                |out, (_, value)| {
-                    self.write_value(&mut context.current, out, value);
-                },
+                entity.row_full(),
+                |out, value| self.write_value(&mut context.current, out, &value),
                 ", ",
             );
             out.push_str(");");
-            row = it.next();
         }
         if multiple {
             out.push_str("\nAPPLY BATCH;");

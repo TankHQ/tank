@@ -2,8 +2,8 @@
 use rust_decimal::Decimal;
 use std::{collections::BTreeMap, pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
-    AsValue, Driver, DynQuery, Entity, Executor, FixedDecimal, Passive, Query, QueryBuilder,
-    QueryResult, RawQuery, RowsAffected, SqlWriter, Value,
+    AsValue, Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult,
+    RawQuery, RowsAffected, SqlWriter, Value,
     stream::{StreamExt, TryStreamExt},
 };
 use time::macros::datetime;
@@ -25,7 +25,7 @@ pub struct Trade {
     pub isin: [char; 12],
     pub price: FixedDecimal<18, 4>,
     pub quantity: u32,
-    pub execution_time: Passive<time::PrimitiveDateTime>,
+    pub execution_time: time::PrimitiveDateTime,
     pub currency: Option<String>,
     pub is_internalized: bool,
     /// Exchange
@@ -115,10 +115,7 @@ pub async fn trade_simple(executor: &mut impl Executor) {
     );
     assert_eq!(result.price, Decimal::new(1226, 2).into());
     assert_eq!(result.quantity, 500);
-    assert_eq!(
-        result.execution_time,
-        Passive::Set(datetime!(2025-06-07 14:32:00))
-    );
+    assert_eq!(result.execution_time, datetime!(2025-06-07 14:32:00));
     assert_eq!(result.currency, Some("USD".into()));
     assert_eq!(result.is_internalized, true);
     assert_eq!(result.venue, Some("NASDAQ".into()));

@@ -119,8 +119,6 @@ pub struct ColumnDef {
     pub on_delete: Option<Action>,
     /// On update action.
     pub on_update: Option<Action>,
-    /// Exclude from INSERTs.
-    pub passive: bool,
     /// Comment.
     pub comment: &'static str,
 }

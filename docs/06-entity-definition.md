@@ -16,7 +16,7 @@ Start with a plain Rust struct and derive the `tank::Entity` trait. The fields c
 #[tank(schema = "ops", name = "missions", primary_key = (Self::code_name, Self::start_time))]
 pub struct Mission {
     pub code_name: String,
-    pub start_time: Passive<PrimitiveDateTime>,
+    pub start_time: PrimitiveDateTime,
     #[tank(references = armory.weapons(serial_number))]
     pub primary_weapon: Option<i64>,
     pub objectives: Vec<String>,
@@ -24,11 +24,8 @@ pub struct Mission {
     pub casualties: Option<u16>,
 }
 ```
-*Notes:*
-* `tank::Passive<T>` lets the database provide or retain a value: omit it when updating, or allow default generation on insert.
-* `Option<T>` marks the column nullable.
 
-You now have a view of your table. Use a connection or transaction to run operations.
+You now have a view of your table. Use a connection or transaction to run operations on it.
 
 ## Attributes
 Tank's `#[tank(...)]` attributes configure tables and columns.

@@ -3,8 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::{borrow::Cow, collections::HashMap};
     use tank::{
-        DefaultValueType, DynQuery, Entity, GenericSqlWriter, Passive, PrimaryKeyType,
-        QueryBuilder, SqlWriter, TableRef, Value, expr,
+        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
+        SqlWriter, TableRef, Value, expr,
     };
     use time::{Date, Month, Time};
     use uuid::Uuid;
@@ -21,7 +21,7 @@ mod tests {
         skills: Vec<String>,
         documents: Option<Box<HashMap<String, Box<[u8]>>>>,
         #[tank(unique)]
-        access: Passive<::uuid::Uuid>,
+        access: ::uuid::Uuid,
         #[tank(default = false)]
         deleted: bool,
     }
@@ -44,7 +44,7 @@ mod tests {
                 salary: 75000.00,
                 skills: vec!["Rust".into(), "SQL".into()],
                 documents: Some(Box::new(docs)),
-                access: Passive::NotSet,
+                access: Uuid::default(),
                 deleted: true,
             }
         }
@@ -153,15 +153,6 @@ mod tests {
         assert_eq!(columns[6].unique, false);
         assert_eq!(columns[7].unique, true);
         assert_eq!(columns[8].unique, false);
-        assert_eq!(columns[0].passive, false);
-        assert_eq!(columns[1].passive, false);
-        assert_eq!(columns[2].passive, false);
-        assert_eq!(columns[3].passive, false);
-        assert_eq!(columns[4].passive, false);
-        assert_eq!(columns[5].passive, false);
-        assert_eq!(columns[6].passive, false);
-        assert_eq!(columns[7].passive, true);
-        assert_eq!(columns[8].passive, false);
     }
 
     #[test]
@@ -229,15 +220,13 @@ mod tests {
         assert_eq!(
             query.as_str(),
             indoc! {r#"
-                INSERT INTO "company"."employee" ("id", "name", "hire_date", "working_hours", "salary", "skills", "documents", "deleted") VALUES
-                (501, 'Bob Smith', '2022-01-20', ['09:00:00.0','18:00:00.0'], 75000.0, ['Rust','SQL'], {'contract.pdf':'\x25\x50\x44\x46'}, true);
+                INSERT INTO "company"."employee" ("id", "name", "hire_date", "working_hours", "salary", "skills", "documents", "access", "deleted") VALUES
+                (501, 'Bob Smith', '2022-01-20', ['09:00:00.0','18:00:00.0'], 75000.0, ['Rust','SQL'], {'contract.pdf':'\x25\x50\x44\x46'}, '00000000-0000-0000-0000-000000000000', true);
             "#}
             .trim()
         );
         let employee = Employee {
-            access: Uuid::parse_str("8f8fcc51-2fa9-4118-b14f-af2d8301a89a")
-                .unwrap()
-                .into(),
+            access: Uuid::parse_str("8f8fcc51-2fa9-4118-b14f-af2d8301a89a").unwrap(),
             ..Employee::sample()
         };
         let mut query = DynQuery::default();

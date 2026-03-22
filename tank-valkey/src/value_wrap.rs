@@ -261,11 +261,11 @@ impl<'a> ToRedisArgs for ValueWrap<'a> {
                 .map(|v| ValueWrap(Cow::Borrowed(v)))
                 .collect::<Vec<_>>()
                 .write_redis_args(out),
-            // tank_core::Value::Map(Some(v), ..) => v
-            //     .iter()
-            //     .map(|(k, v)| (ValueWrap(Cow::Borrowed(k)), ValueWrap(Cow::Borrowed(v))))
-            //     .collect::<HashMap<_, _>>()
-            //     .write_redis_args(out),
+            tank_core::Value::Map(Some(v), ..) => v
+                .iter()
+                .map(|(k, v)| (ValueWrap(Cow::Borrowed(k)), ValueWrap(Cow::Borrowed(v))))
+                .collect::<HashMap<_, _>>()
+                .write_redis_args(out),
             tank_core::Value::Json(Some(v), ..) => v.to_string().write_redis_args(out),
             tank_core::Value::Struct(Some(v), ..) => v
                 .iter()

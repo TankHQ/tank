@@ -43,7 +43,6 @@ pub fn encode_column_def(metadata: &ColumnMetadata, column_ref: TokenStream) -> 
     let on_delete = quote_option(&metadata.on_delete);
     let on_update = quote_option(&metadata.on_update);
     let unique = &metadata.unique;
-    let passive = &metadata.passive;
     let comment = &metadata.comment;
     quote! {
         ::tank::ColumnDef {
@@ -58,7 +57,6 @@ pub fn encode_column_def(metadata: &ColumnMetadata, column_ref: TokenStream) -> 
             on_delete: #on_delete,
             on_update: #on_update,
             unique: #unique,
-            passive: #passive,
             comment: #comment,
         }
     }

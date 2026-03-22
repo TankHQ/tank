@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 use crate::{
-    DynQuery, Error, FixedDecimal, GenericSqlWriter, Interval, Passive, Result, SqlWriter, Value,
+    DynQuery, Error, FixedDecimal, GenericSqlWriter, Interval, Result, SqlWriter, Value,
     consume_while, extract_number, month_to_number, number_to_month, truncate_long,
 };
 use anyhow::Context;
@@ -443,7 +443,7 @@ impl_as_value!(
         } else if n == Some(1) {
             Ok(true)
         } else {
-            Err(Error::msg(format!("Cannot convert json number `{v:?}` into bool")))
+            Err(Error::msg(format!("Cannot convert json number `{v:?}` to bool")))
         }
     },
 );
@@ -456,7 +456,7 @@ impl_as_value!(
     Value::Decimal(Some(v), ..) => Ok(v.try_into()?),
     Value::Json(Some(serde_json::Value::Number(v)), ..) => {
         let Some(v) = v.as_f64() else {
-            return Err(Error::msg(format!("Cannot convert json number `{v:?}` into f32")));
+            return Err(Error::msg(format!("Cannot convert json number `{v:?}` to f32")));
         };
         Ok(v as _)
     }
@@ -470,7 +470,7 @@ impl_as_value!(
     Value::Decimal(Some(v), ..) => Ok(v.try_into()?),
     Value::Json(Some(serde_json::Value::Number(v)), ..) => {
         let Some(v) = v.as_f64() else {
-            return Err(Error::msg(format!("Cannot convert json number `{v:?}` into f32")));
+            return Err(Error::msg(format!("Cannot convert json number `{v:?}` to f32")));
         };
         Ok(v)
     }
@@ -481,14 +481,14 @@ impl_as_value!(
     Value::Char,
     |input: &str| {
         if input.len() != 1 {
-            return Err(Error::msg(format!("Cannot convert `{input:?}` into a char")))
+            return Err(Error::msg(format!("Cannot convert `{input:?}` to char")))
         }
         Ok(input.chars().next().expect("Should have one character"))
     },
     Value::Varchar(Some(v), ..) => {
         if v.len() != 1 {
             return Err(Error::msg(format!(
-                "Cannot convert varchar `{}` into a char because it has more than one character",
+                "Cannot convert varchar `{}` to char because it has more than one character",
                 truncate_long!(v)
             )))
         }
@@ -497,7 +497,7 @@ impl_as_value!(
     Value::Json(Some(serde_json::Value::String(v)), ..) => {
         if v.len() != 1 {
             return Err(Error::msg(format!(
-                "Cannot convert json `{}` into a char because it has more than one character",
+                "Cannot convert json `{}` to char because it has more than one character",
                 truncate_long!(v)
             )))
         }
@@ -805,7 +805,7 @@ impl_as_value!(
     Value::Interval(Some(v), ..) => {
         let (h, m, s, ns) = v.as_hmsns();
         time::Time::from_hms_nano(h as _, m, s, ns,)
-            .map_err(|e| Error::msg(format!("Cannot convert interval `{v:?}` into time: {e:?}")))
+            .map_err(|e| Error::msg(format!("Cannot convert interval `{v:?}` to time: {e:?}")))
     },
     Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
@@ -1303,21 +1303,6 @@ impl AsValue for Cow<'static, str> {
         Self: Sized,
     {
         <String as AsValue>::parse(input).map(Into::into)
-    }
-}
-
-impl<T: AsValue> AsValue for Passive<T> {
-    fn as_empty_value() -> Value {
-        T::as_empty_value()
-    }
-    fn as_value(self) -> Value {
-        match self {
-            Passive::Set(v) => v.as_value(),
-            Passive::NotSet => T::as_empty_value(),
-        }
-    }
-    fn try_from_value(value: Value) -> Result<Self> {
-        Ok(Passive::Set(<T as AsValue>::try_from_value(value)?))
     }
 }
 

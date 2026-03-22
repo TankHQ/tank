@@ -1,8 +1,8 @@
 use crate::{
-    Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, EitherIterator,
-    Entity, Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
-    PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized,
-    separated_by, write_escaped, writer::Context,
+    Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, Entity, Expression,
+    Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered, PrimaryKeyType,
+    SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized, separated_by,
+    write_escaped, writer::Context,
 };
 use core::f64;
 use std::{
@@ -1199,11 +1199,10 @@ pub trait SqlWriter: Send {
         E: Entity + 'b,
     {
         let table = E::table();
-        let mut rows = entities.into_iter().map(Entity::row_filtered).peekable();
-        let Some(mut row) = rows.next() else {
+        let mut entities = entities.into_iter().peekable();
+        if entities.peek().is_none() {
             return;
         };
-        let single = rows.peek().is_none();
         let cols = E::columns().len();
         out.buffer().reserve(128 + cols * 32);
         if !out.is_empty() {
@@ -1213,85 +1212,33 @@ pub trait SqlWriter: Send {
         let mut context = Context::new(Fragment::SqlInsertInto, E::qualified_columns());
         self.write_table_ref(&mut context, out, table);
         out.push_str(" (");
-        let columns = E::columns().iter();
-        if single {
-            // Inserting a single row uses row_labeled to filter out Passive::NotSet columns
-            separated_by(
-                out,
-                row.iter(),
-                |out, (name, ..)| {
-                    self.write_identifier(&mut context, out, name, true);
-                },
-                ", ",
-            );
-        } else {
-            separated_by(
-                out,
-                columns.clone(),
-                |out, col| {
-                    self.write_identifier(&mut context, out, col.name(), true);
-                },
-                ", ",
-            );
-        };
-        out.push_str(") VALUES\n");
+        separated_by(
+            out,
+            E::columns().iter(),
+            |out, col| {
+                self.write_identifier(&mut context, out, col.name(), true);
+            },
+            ", ",
+        );
+        out.push_str(") VALUES");
         let mut context = context.switch_fragment(Fragment::SqlInsertIntoValues);
-        let mut first_row = None;
-        let mut separate = false;
-        loop {
-            if separate {
-                out.push_str(",\n");
-            }
-            out.push('(');
-            let mut fields = row.iter();
-            let mut field = fields.next();
-            separated_by(
-                out,
-                E::columns(),
-                |out, col| {
-                    if Some(col.name()) == field.map(|v| v.0) {
-                        self.write_value(
-                            &mut context.current,
-                            out,
-                            field
-                                .map(|v| &v.1)
-                                .expect(&format!("Column {} does not have a value", col.name())),
-                        );
-                        field = fields.next();
-                    } else if !single {
-                        out.push_str("DEFAULT");
-                    }
-                },
-                ", ",
-            );
-            out.push(')');
-            separate = true;
-            if first_row.is_none() {
-                first_row = row.into();
-            }
-            if let Some(next) = rows.next() {
-                row = next;
-            } else {
-                break;
-            };
-        }
-        let first_row = first_row
-            .expect("Should have at least one row")
-            .into_iter()
-            .map(|(v, _)| v);
+        separated_by(
+            out,
+            entities,
+            |out, entity| {
+                out.push_str("\n(");
+                separated_by(
+                    out,
+                    entity.row_full(),
+                    |out, value| self.write_value(&mut context.current, out, &value),
+                    ", ",
+                );
+                out.push(')');
+            },
+            ",",
+        );
         if update {
-            self.write_insert_update_fragment::<E>(
-                &mut context.current,
-                out,
-                if single {
-                    EitherIterator::Left(
-                        // If there is only one row to insert then list only the columns that appear
-                        columns.filter(|c| first_row.clone().find(|n| *n == c.name()).is_some()),
-                    )
-                } else {
-                    EitherIterator::Right(columns)
-                },
-            );
+            self.write_insert_update_fragment::<E>(&mut context.current, out, E::columns().iter());
         }
         out.push(';');
     }

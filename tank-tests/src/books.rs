@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
 use tank::{
-    DynQuery, AsValue, Dataset, Driver, Entity, Executor, Passive, Query, QueryBuilder, QueryResult,
+    DynQuery, AsValue, Dataset, Driver, Entity, Executor,  Query, QueryBuilder, QueryResult,
     Row, SqlWriter, Value, cols, expr, join, stream::{StreamExt, TryStreamExt}
 };
 use tokio::sync::Mutex;
@@ -13,7 +13,7 @@ static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 #[tank(schema = "testing", name = "authors")]
 pub struct Author {
     #[tank(primary_key, name = "author_id")]
-    pub id: Passive<Uuid>,
+    pub id: Uuid,
     pub name: String,
     pub country: String,
     pub books_published: Option<u16>,
@@ -54,41 +54,33 @@ pub async fn books(executor: &mut impl Executor) {
     // Author objects
     let authors = vec![
         Author {
-            id: Uuid::parse_str("f938f818-0a40-4ce3-8fbc-259ac252a1b5")
-                .unwrap()
-                .into(),
+            id: Uuid::parse_str("f938f818-0a40-4ce3-8fbc-259ac252a1b5").unwrap(),
             name: "J.K. Rowling".into(),
             country: "UK".into(),
             books_published: 24.into(),
         },
         Author {
-            id: Uuid::parse_str("a73bc06a-ff89-44b9-a62f-416ebe976285")
-                .unwrap()
-                .into(),
+            id: Uuid::parse_str("a73bc06a-ff89-44b9-a62f-416ebe976285").unwrap(),
             name: "J.R.R. Tolkien".into(),
             country: "USA".into(),
             books_published: 6.into(),
         },
         Author {
-            id: Uuid::parse_str("6b2f56a1-316d-42b9-a8ba-baca42c5416c")
-                .unwrap()
-                .into(),
+            id: Uuid::parse_str("6b2f56a1-316d-42b9-a8ba-baca42c5416c").unwrap(),
             name: "Dmitrij Gluchovskij".into(),
             country: "Russia".into(),
             books_published: 7.into(),
         },
         Author {
-            id: Uuid::parse_str("d3d3d3d3-d3d3-d3d3-d3d3-d3d3d3d3d3d3")
-                .unwrap()
-                .into(),
+            id: Uuid::parse_str("d3d3d3d3-d3d3-d3d3-d3d3-d3d3d3d3d3d3").unwrap(),
             name: "Linus Torvalds".into(),
             country: "Finland".into(),
             books_published: None,
         },
     ];
-    let rowling_id = authors[0].id.clone().unwrap();
-    let tolkien_id = authors[1].id.clone().unwrap();
-    let gluchovskij_id = authors[2].id.clone().unwrap();
+    let rowling_id = authors[0].id.clone();
+    let tolkien_id = authors[1].id.clone();
+    let gluchovskij_id = authors[2].id.clone();
 
     // Book objects
     let books = vec![
@@ -159,9 +151,7 @@ pub async fn books(executor: &mut impl Executor) {
     assert_eq!(
         author,
         Some(Author {
-            id: Uuid::parse_str("f938f818-0a40-4ce3-8fbc-259ac252a1b5")
-                .unwrap()
-                .into(),
+            id: Uuid::parse_str("f938f818-0a40-4ce3-8fbc-259ac252a1b5").unwrap(),
             name: "J.K. Rowling".into(),
             country: "UK".into(),
             books_published: 24.into(),
@@ -174,9 +164,7 @@ pub async fn books(executor: &mut impl Executor) {
     assert_eq!(
         author,
         Some(Author {
-            id: Uuid::parse_str("d3d3d3d3-d3d3-d3d3-d3d3-d3d3d3d3d3d3")
-                .unwrap()
-                .into(),
+            id: Uuid::parse_str("d3d3d3d3-d3d3-d3d3-d3d3-d3d3d3d3d3d3").unwrap(),
             name: "Linus Torvalds".into(),
             country: "Finland".into(),
             books_published: None,

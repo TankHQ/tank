@@ -28,9 +28,9 @@ impl AsValue for FpCategoryWrap {
     where
         Self: Sized,
     {
-        let make_error = || Error::msg(format!("Could not conver `{value:?}` to FpCategory"));
-        let Value::Varchar(Some(value), ..) = &value else {
-            return Err(make_error());
+        let error = Error::msg(format!("Could not conver `{value:?}` to FpCategory"));
+        let Ok(Value::Varchar(Some(value), ..)) = &value.try_as(&Value::Varchar(None)) else {
+            return Err(error);
         };
         Ok(match value.as_ref() {
             "Nan" => FpCategory::Nan,
@@ -38,7 +38,7 @@ impl AsValue for FpCategoryWrap {
             "Zero" => FpCategory::Zero,
             "Subnormal" => FpCategory::Subnormal,
             "Normal" => FpCategory::Normal,
-            _ => return Err(make_error()),
+            _ => return Err(error),
         }
         .into())
     }

@@ -214,7 +214,7 @@ impl SqlWriter for ValkeySqlWriter {
         let mut context = Self::make_context(Fragment::SqlInsertInto);
         let prepared = Self::prepare_query(out, &mut context);
         for entity in entities.into_iter() {
-            let row = entity.row_filtered();
+            let row = entity.row_labeled();
             let mut is_pk_condition = IsPKCondition::new(
                 self.keys_with_names,
                 table.full_name(self.separator()).into_owned(),
@@ -229,7 +229,7 @@ impl SqlWriter for ValkeySqlWriter {
             let key = is_pk_condition.key;
             prepared.commands.push(Cmd::hset_multiple(
                 &key,
-                row.iter()
+                row.into_iter()
                     .filter_map(|(k, v)| {
                         if v.is_scalar() && !v.is_null() {
                             (k, ValueWrap(Cow::Borrowed(v))).into()
@@ -240,7 +240,7 @@ impl SqlWriter for ValkeySqlWriter {
                     .collect::<Vec<_>>()
                     .as_slice(),
             ));
-            for (k, v) in row.iter().filter_map(|(k, v)| {
+            for (k, v) in row.into_iter().filter_map(|(k, v)| {
                 if !v.is_scalar() || v.same_type(&Value::Json(None)) {
                     (k, ValueWrap(Cow::Borrowed(v))).into()
                 } else {

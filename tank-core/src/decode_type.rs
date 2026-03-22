@@ -1,15 +1,13 @@
-use crate::{CheckPassive, TypeDecoded, Value, matches_path};
-use proc_macro2::TokenStream;
-use quote::{ToTokens, quote};
+use crate::{TypeDecoded, Value, matches_path};
+use quote::ToTokens;
 use std::mem;
 use syn::{
     Expr, ExprLit, GenericArgument, Lit, PathArguments, Type, TypeArray, TypePath, TypeSlice,
 };
 
 #[doc(hidden)]
-pub fn decode_type(ty: &Type) -> (TypeDecoded, Option<CheckPassive>) {
+pub fn decode_type(ty: &Type) -> TypeDecoded {
     let mut nullable = false;
-    let mut filter_passive = None;
     let data_type = 'data_type: {
         if let Type::Path(TypePath { path, .. }) = ty {
             let ident = path.get_ident();
@@ -142,7 +140,6 @@ pub fn decode_type(ty: &Type) -> (TypeDecoded, Option<CheckPassive>) {
             } else if matches_path(path, &["uuid", "Uuid"]) {
                 break 'data_type Value::Uuid(None);
             } else {
-                let is_passive = matches_path(path, &["tank", "Passive"]);
                 let is_option = matches_path(path, &["std", "option", "Option"]);
                 let is_cow = matches_path(path, &["std", "borrow", "Cow"]);
                 let is_list = matches_path(path, &["std", "vec", "Vec"])
@@ -151,7 +148,6 @@ pub fn decode_type(ty: &Type) -> (TypeDecoded, Option<CheckPassive>) {
                 let is_map = matches_path(path, &["std", "collections", "HashMap"])
                     || matches_path(path, &["std", "collections", "BTreeMap"]);
                 let is_wrapper = is_option
-                    || is_passive
                     || is_cow
                     || matches_path(path, &["std", "boxed", "Box"])
                     || matches_path(path, &["std", "cell", "Cell"])
@@ -178,30 +174,12 @@ pub fn decode_type(ty: &Type) -> (TypeDecoded, Option<CheckPassive>) {
                             }
                             if let GenericArgument::Type(generic_type) = generic_type {
                                 let first_type = decode_type(&generic_type);
-                                if first_type.1.is_some() {
-                                    filter_passive = first_type.1;
-                                }
-                                let first_type = first_type.0;
                                 if is_wrapper {
                                     nullable = if is_option {
                                         true
                                     } else {
                                         nullable || first_type.nullable
                                     };
-                                    if is_passive {
-                                        filter_passive = Some(Box::new(|v: TokenStream| {
-                                            quote!(matches!(#v, ::tank::Passive::Set(..)))
-                                        }));
-                                    } else if is_wrapper && filter_passive.is_some() {
-                                        let passive = filter_passive.take();
-                                        filter_passive = Some(Box::new(move |v: TokenStream| {
-                                            passive.as_ref().expect(
-                                                "The value `filter_passive` is checked to be some",
-                                            )(
-                                                quote!(*#v)
-                                            )
-                                        }))
-                                    }
                                     break 'data_type first_type.value;
                                 } else if is_list {
                                     break 'data_type Value::List(None, Box::new(first_type.value));
@@ -215,7 +193,7 @@ pub fn decode_type(ty: &Type) -> (TypeDecoded, Option<CheckPassive>) {
                                     else {
                                         panic!("{panic_msg}");
                                     };
-                                    let second_type = decode_type(second_type).0;
+                                    let second_type = decode_type(second_type);
                                     break 'data_type Value::Map(
                                         None,
                                         Box::new(first_type.value),
@@ -246,35 +224,30 @@ pub fn decode_type(ty: &Type) -> (TypeDecoded, Option<CheckPassive>) {
         {
             break 'data_type Value::Array(
                 None,
-                Box::new(decode_type(&*elem).0.value),
+                Box::new(decode_type(&*elem).value),
                 len.base10_parse().expect(&format!(
                     "Expected an integer literal array length in `{}`",
                     ty.to_token_stream().to_string()
                 )),
             );
         } else if let Type::Slice(TypeSlice { elem, .. }) = ty {
-            let element_type = decode_type(&*elem).0;
+            let element_type = decode_type(&*elem);
             if matches!(
                 element_type,
                 TypeDecoded {
                     value: Value::UInt8(..),
                     nullable: false,
-                    passive: false,
                 }
             ) {
                 break 'data_type Value::Blob(None);
             }
-            break 'data_type Value::List(None, Box::new(decode_type(&*elem).0.value));
+            break 'data_type Value::List(None, Box::new(decode_type(&*elem).value));
         } else {
             panic!("Unexpected type `{}`", ty.to_token_stream().to_string())
         }
     };
-    (
-        TypeDecoded {
-            value: data_type,
-            nullable,
-            passive: filter_passive.is_some(),
-        },
-        filter_passive,
-    )
+    TypeDecoded {
+        value: data_type,
+        nullable,
+    }
 }

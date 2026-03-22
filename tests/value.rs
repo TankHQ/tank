@@ -994,7 +994,7 @@ mod tests {
             Decimal::try_from_value((-11.29_f64).as_value()).unwrap(),
             Decimal::from_f64(-11.29).unwrap()
         );
-        Decimal::try_from_value("hello".into()).expect_err("Cannot convert a string to a decimal");
+        Decimal::try_from_value("hello".into()).expect_err("Cannot convert a string to decimal");
         assert_eq!(Decimal::as_empty_value(), Value::Decimal(None, 0, 0));
         assert_ne!(
             Decimal::as_empty_value(),

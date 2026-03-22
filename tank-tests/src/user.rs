@@ -4,7 +4,7 @@ use std::{
     sync::LazyLock,
 };
 use tank::{
-    Entity, Executor, Passive, expr,
+    Entity, Executor, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::macros::datetime;
@@ -18,7 +18,7 @@ static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 #[tank(schema = "testing", name = "user_profiles", primary_key = (id, follower_count))]
 pub struct UserProfile {
     #[tank(name = "user_id")]
-    pub id: Passive<Uuid>,
+    pub id: Uuid,
     #[tank(unique, column_type = (mysql = "VARCHAR(128)"))]
     pub username: String,
     #[tank(unique, column_type = (mysql = "VARCHAR(128)"))]

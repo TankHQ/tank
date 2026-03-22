@@ -35,19 +35,6 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
     let ident = &table.item.ident;
     let name = &table.name;
     let schema = &table.schema;
-    let metadata_and_filter = table
-        .columns
-        .iter()
-        .map(|metadata| {
-            let filter_passive = if let Some(ref filter_passive) = metadata.check_passive {
-                let field = &metadata.ident;
-                filter_passive(quote!(self.#field))
-            } else {
-                quote!(true)
-            };
-            (metadata, filter_passive)
-        })
-        .collect::<Vec<_>>();
     let (from_row_factory, from_row) = from_row_trait(&table);
     let primary_key_cols = table.primary_key.iter().map(|i| &table.columns[*i]);
     let primary_key = primary_key_cols.clone().map(|col| {
@@ -70,17 +57,8 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
     let unique_defs = quote!(vec![#(#unique_defs),*].into_boxed_slice());
     let primary_key_types = primary_key_cols.clone().map(|col| col.ty.clone());
     let (column_trait, column) = column_trait(&table);
-    let label_value_and_filter = metadata_and_filter.iter().map(|(column, filter)| {
-        let name = &column.name;
-        let ident = &column.ident;
-        if let Some(conversion_type) = &column.conversion_type {
-            quote!((#name.into(), ::tank::AsValue::as_value(::std::convert::Into::<#conversion_type>::into(self.#ident.clone())), #filter))
-        } else {
-            quote!((#name.into(), ::tank::AsValue::as_value(self.#ident.clone()), #filter))
-        }
-    });
-    let row_full = metadata_and_filter.iter().map(
-        |(ColumnMetadata { ident,  conversion_type,.. }, _)| {
+    let row_full = table.columns.iter().map(
+        |ColumnMetadata { ident,  conversion_type,.. }| {
             if let Some(conversion_type) = conversion_type {
                 quote!(::tank::AsValue::as_value(::std::convert::Into::<#conversion_type>::into(self.#ident.clone())))
             } else {
@@ -88,7 +66,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
             }
         },
     );
-    let columns = metadata_and_filter.iter().map(|(c, _)| {
+    let columns = table.columns.iter().map(|c| {
         let field = &c.ident;
         encode_column_def(&c, quote!(<#ident as #column_trait>::#field))
     });
@@ -165,13 +143,6 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                         #unique_defs
                     });
                 RESULT.iter().map(|v| v.iter().copied())
-            }
-
-            fn row_filtered(&self) -> Box<[(&'static str, ::tank::Value)]> {
-                [#(#label_value_and_filter),*]
-                    .into_iter()
-                    .filter_map(|(n, v, f)| if f { Some((n, v)) } else { None })
-                    .collect()
             }
 
             fn row_full(&self) -> ::tank::RowValues {

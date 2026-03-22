@@ -1,7 +1,6 @@
 use crate::{
     AsValue, DynQuery, Error, Expression, GenericSqlWriter, Result, TableRef, interval::Interval,
 };
-use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use rust_decimal::Decimal;
 use serde_json::Value as JsonValue;
@@ -214,7 +213,7 @@ impl Value {
             // Value::Map(..) => Date::try_from_value(self).map(AsValue::as_value),
             _ => {
                 return Err(Error::msg(format!(
-                    "Cannot convert value {:?} into value {:?}",
+                    "Cannot convert value {:?} to {:?}",
                     self, target_type
                 )));
             }
@@ -400,12 +399,7 @@ pub struct TypeDecoded {
     pub value: Value,
     /// Nullability indicator.
     pub nullable: bool,
-    /// Passive flag (exclude from INSERT column/value list).
-    pub passive: bool,
 }
-
-// A function to check if the current value is being inserted in the database.
-pub type CheckPassive = Box<dyn Fn(TokenStream) -> TokenStream>;
 
 impl ToTokens for Value {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {

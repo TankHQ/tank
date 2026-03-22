@@ -8,8 +8,8 @@ mod tests {
         collections::{BTreeMap, HashMap},
     };
     use tank::{
-        Action, DefaultValueType, DynQuery, Entity, GenericSqlWriter, Passive, PrimaryKeyType,
-        QueryBuilder, SqlWriter, TableRef, Value, expr,
+        Action, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
+        SqlWriter, TableRef, Value, expr,
     };
     use time::macros::datetime;
     use uuid::Uuid;
@@ -26,7 +26,7 @@ mod tests {
         pub isin: [char; 12],
         pub price: tank::FixedDecimal<18, 4>,
         pub quantity: u32,
-        pub execution_time: Passive<time::PrimitiveDateTime>,
+        pub execution_time: time::PrimitiveDateTime,
         pub currency: Option<String>,
         pub is_internalized: bool,
         /// Exchange
@@ -44,7 +44,7 @@ mod tests {
                 isin: array::from_fn(|i| "US76954A1034".chars().nth(i).unwrap()),
                 price: Decimal::new(1226, 2).into(), // 12.26
                 quantity: 500,
-                execution_time: datetime!(2025-06-07 14:32:00).into(),
+                execution_time: datetime!(2025-06-07 14:32:00),
                 currency: Some("USD".into()),
                 is_internalized: true,
                 venue: Some("NASDAQ".into()),
@@ -224,19 +224,6 @@ mod tests {
         assert_eq!(columns[10].on_update, None);
         assert_eq!(columns[11].on_update, None);
         assert_eq!(columns[12].on_update, None);
-        assert_eq!(columns[0].passive, false);
-        assert_eq!(columns[1].passive, false);
-        assert_eq!(columns[2].passive, false);
-        assert_eq!(columns[3].passive, false);
-        assert_eq!(columns[4].passive, false);
-        assert_eq!(columns[5].passive, false);
-        assert_eq!(columns[6].passive, true);
-        assert_eq!(columns[7].passive, false);
-        assert_eq!(columns[8].passive, false);
-        assert_eq!(columns[9].passive, false);
-        assert_eq!(columns[10].passive, false);
-        assert_eq!(columns[11].passive, false);
-        assert_eq!(columns[12].passive, false);
     }
 
     #[test]

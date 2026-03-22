@@ -1,8 +1,6 @@
 use rust_decimal::Decimal;
 use std::sync::LazyLock;
-use tank::{
-    Entity, Executor, FixedDecimal, Passive, QueryBuilder, cols, expr, stream::TryStreamExt,
-};
+use tank::{Entity, Executor, FixedDecimal, QueryBuilder, cols, expr, stream::TryStreamExt};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -12,7 +10,7 @@ static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 #[tank(schema = "testing", name = "orders")]
 pub struct Order {
     #[tank(primary_key)]
-    pub id: Passive<Uuid>,
+    pub id: Uuid,
     pub customer_id: Uuid,
     pub country: String,
     pub total: FixedDecimal<16, 2>,
@@ -34,7 +32,7 @@ pub async fn orders(executor: &mut impl Executor) {
     // Data
     let orders = vec![
         Order {
-            id: Uuid::new_v4().into(),
+            id: Uuid::new_v4(),
             customer_id: Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap(),
             country: "Germany".into(),
             total: Decimal::new(12999, 2).into(),
@@ -42,7 +40,7 @@ pub async fn orders(executor: &mut impl Executor) {
             created_at: chrono::Utc::now() - chrono::Duration::days(5),
         },
         Order {
-            id: Uuid::new_v4().into(),
+            id: Uuid::new_v4(),
             customer_id: Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
             country: "Italy".into(),
             total: Decimal::new(8990, 2).into(),
@@ -50,7 +48,7 @@ pub async fn orders(executor: &mut impl Executor) {
             created_at: chrono::Utc::now() - chrono::Duration::hours(3),
         },
         Order {
-            id: Uuid::new_v4().into(),
+            id: Uuid::new_v4(),
             customer_id: Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap(),
             country: "Germany".into(),
             total: Decimal::new(45900, 2).into(),
@@ -58,7 +56,7 @@ pub async fn orders(executor: &mut impl Executor) {
             created_at: chrono::Utc::now() - chrono::Duration::days(9),
         },
         Order {
-            id: Uuid::new_v4().into(),
+            id: Uuid::new_v4(),
             customer_id: Uuid::parse_str("33333333-3333-3333-3333-333333333333").unwrap(),
             country: "Spain".into(),
             total: Decimal::new(22950, 2).into(),
@@ -66,7 +64,7 @@ pub async fn orders(executor: &mut impl Executor) {
             created_at: chrono::Utc::now() - chrono::Duration::days(1),
         },
         Order {
-            id: Uuid::new_v4().into(),
+            id: Uuid::new_v4(),
             customer_id: Uuid::parse_str("44444444-4444-4444-4444-444444444444").unwrap(),
             country: "Germany".into(),
             total: Decimal::new(50, 2).into(),
@@ -74,7 +72,7 @@ pub async fn orders(executor: &mut impl Executor) {
             created_at: chrono::Utc::now() - chrono::Duration::days(30),
         },
         Order {
-            id: Uuid::new_v4().into(),
+            id: Uuid::new_v4(),
             customer_id: Uuid::parse_str("55555555-5555-5555-5555-555555555555").unwrap(),
             country: "Germany".into(),
             total: Decimal::new(111899, 2).into(),
@@ -82,7 +80,7 @@ pub async fn orders(executor: &mut impl Executor) {
             created_at: chrono::Utc::now() - chrono::Duration::days(30),
         },
         Order {
-            id: Uuid::new_v4().into(),
+            id: Uuid::new_v4(),
             customer_id: Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
             country: "Italy".into(),
             total: Decimal::new(4445, 2).into(),

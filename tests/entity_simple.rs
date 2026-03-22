@@ -79,9 +79,6 @@ mod tests {
         assert_eq!(columns[0].on_update, None);
         assert_eq!(columns[1].on_update, None);
         assert_eq!(columns[2].on_update, None);
-        assert_eq!(columns[0].passive, false);
-        assert_eq!(columns[1].passive, false);
-        assert_eq!(columns[2].passive, false);
     }
 
     #[test]
