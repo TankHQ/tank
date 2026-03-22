@@ -201,14 +201,14 @@ h1 .text {
 .sticky-table table td:first-child {
     max-width: 250px;
     transition: max-width 150ms;
+    overflow: hidden;
     text-wrap: nowrap;
+    text-overflow: ellipsis;
 }
 
 .sticky-table.is-scrolled table th:first-child,
 .sticky-table.is-scrolled table td:first-child {
     max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .sticky-table table td:first-child {
