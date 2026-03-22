@@ -214,7 +214,7 @@ impl SqlWriter for ValkeySqlWriter {
         let mut context = Self::make_context(Fragment::SqlInsertInto);
         let prepared = Self::prepare_query(out, &mut context);
         for entity in entities.into_iter() {
-            let row = entity.row_labeled();
+            let row = entity.row();
             let mut is_pk_condition = IsPKCondition::new(
                 self.keys_with_names,
                 table.full_name(self.separator()).into_owned(),

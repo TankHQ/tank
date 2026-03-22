@@ -1229,7 +1229,7 @@ pub trait SqlWriter: Send {
                 out.push_str("\n(");
                 separated_by(
                     out,
-                    entity.row_full(),
+                    entity.row_values(),
                     |out, value| self.write_value(&mut context.current, out, &value),
                     ", ",
                 );

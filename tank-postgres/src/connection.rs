@@ -177,7 +177,7 @@ impl Executor for PostgresConnection {
         for entity in entities.into_iter() {
             values.extend(
                 entity
-                    .row_full()
+                    .row_values()
                     .into_iter()
                     .map(|v| ValueWrap(Cow::Owned(v))),
             );

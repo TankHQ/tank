@@ -1051,18 +1051,15 @@ impl SqlWriter for MongoDBSqlWriter {
         let payload: Payload = match (update, single) {
             (false, true) => InsertOnePayload {
                 table,
-                row: entity.row_labeled(),
+                row: entity.row(),
                 options: InsertOneOptions::builder()
                     .comment(Bson::String(format!("Tank: insert one entity in {name}")))
                     .build(),
             }
             .into(),
             (false, false) => {
-                let rows = iter::chain(
-                    iter::once(entity.row_labeled()),
-                    entities.map(Entity::row_labeled),
-                )
-                .collect::<Vec<_>>();
+                let rows = iter::chain(iter::once(entity.row()), entities.map(Entity::row))
+                    .collect::<Vec<_>>();
                 InsertManyPayload {
                     table,
                     rows,
@@ -1091,7 +1088,7 @@ impl SqlWriter for MongoDBSqlWriter {
                         );
                         return None;
                     };
-                    let modifications: Document = match RowWrap(Cow::Owned(entity.row_labeled()))
+                    let modifications: Document = match RowWrap(Cow::Owned(entity.row()))
                         .try_into()
                         .with_context(|| "While rendering the entity to create a upsert query")
                     {

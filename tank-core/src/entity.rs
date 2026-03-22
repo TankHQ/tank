@@ -40,16 +40,16 @@ pub trait Entity {
     -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = &'static ColumnDef>>;
 
     /// Full row representation including all persisted columns.
-    fn row_full(&self) -> RowValues;
+    fn row_values(&self) -> RowValues;
 
     /// Full row representation with column labels.
-    fn row_labeled(&self) -> Row {
+    fn row(&self) -> Row {
         Row {
             labels: Self::columns()
                 .into_iter()
                 .map(|v| v.name().to_string())
                 .collect::<Arc<[String]>>(),
-            values: self.row_full(),
+            values: self.row_values(),
         }
     }
 

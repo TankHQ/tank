@@ -57,7 +57,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
     let unique_defs = quote!(vec![#(#unique_defs),*].into_boxed_slice());
     let primary_key_types = primary_key_cols.clone().map(|col| col.ty.clone());
     let (column_trait, column) = column_trait(&table);
-    let row_full = table.columns.iter().map(
+    let row_values = table.columns.iter().map(
         |ColumnMetadata { ident,  conversion_type,.. }| {
             if let Some(conversion_type) = conversion_type {
                 quote!(::tank::AsValue::as_value(::std::convert::Into::<#conversion_type>::into(self.#ident.clone())))
@@ -145,8 +145,8 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 RESULT.iter().map(|v| v.iter().copied())
             }
 
-            fn row_full(&self) -> ::tank::RowValues {
-                [#(#row_full),*].into()
+            fn row_values(&self) -> ::tank::RowValues {
+                [#(#row_values),*].into()
             }
 
             fn from_row(row: ::tank::Row) -> ::tank::Result<Self> {

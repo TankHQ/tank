@@ -292,7 +292,7 @@ impl Executor for DuckDBConnection {
         <It as IntoIterator>::IntoIter: Send,
     {
         let connection = AtomicPtr::new(*self.connection);
-        let rows = rows.into_iter().map(Entity::row_full).collect::<Vec<_>>();
+        let rows = rows.into_iter().map(Entity::row_values).collect::<Vec<_>>();
         if rows.is_empty() {
             return Ok(Default::default());
         }
