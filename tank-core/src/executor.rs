@@ -13,7 +13,7 @@ use std::{
 /// Async query execution.
 ///
 /// Implemented by connections.
-pub trait Executor: Send + Sized {
+pub trait Executor: Send {
     /// Associated driver.
     type Driver: Driver;
 
@@ -23,10 +23,7 @@ pub trait Executor: Send + Sized {
     }
 
     /// Returns the driver instance associated with this executor.
-    fn driver(&self) -> Self::Driver
-    where
-        Self: Sized,
-    {
+    fn driver(&self) -> Self::Driver {
         Default::default()
     }
 
