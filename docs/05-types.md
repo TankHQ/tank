@@ -109,7 +109,65 @@ impl AsValue for HostPort {
 ### Example: Conversion Type
 When the custom type lives outside your crate you can use intermediary wrapper type you can control and can implement `AsValue`.
 
-TODO
+```rust
+use anyhow::Context;
+use reqwest::Method;
+use std::{any, str::FromStr};
+
+#[derive(Clone, Debug, PartialEq, tank::Entity)]
+pub struct Request {
+    #[tank(primary_key)]
+    pub id: i64,
+    pub target: String,
+    #[tank(conversion_type = MethodWrap)]
+    pub method: Method, // Method is a third party type
+    pub beign_timestamp_ms: i64,
+    pub end_timestamp_ms: Option<i64>,
+}
+
+// Declare a local wrapper making it possible to implement `tank::AsValue`
+pub struct MethodWrap(pub Method);
+impl tank::AsValue for MethodWrap {
+    fn as_empty_value() -> tank::Value {
+        tank::Value::Varchar(None)
+    }
+
+    fn as_value(self) -> tank::Value {
+        self.0.to_string().as_value()
+    }
+
+    fn try_from_value(value: tank::Value) -> tank::Result<Self>
+    where
+        Self: Sized,
+    {
+        let context = || {
+            format!(
+                "Could not conver {value:?} into {}",
+                any::type_name::<Method>()
+            )
+        };
+        let tank::Value::Varchar(Some(value), ..) = &value else {
+            return Err(tank::Error::msg(context()));
+        };
+        Ok(match Method::from_str(&value) {
+            Ok(v) => v,
+            Err(e) => return Err(tank::Error::new(e)).with_context(context),
+        }
+        .into())
+    }
+}
+// Implement conversion logic
+impl From<Method> for MethodWrap {
+    fn from(value: Method) -> Self {
+        Self(value)
+    }
+}
+impl From<MethodWrap> for Method {
+    fn from(value: MethodWrap) -> Self {
+        value.0
+    }
+}
+```
 
 > [!TIP]
 > Keep the encoding stable and non-lossy. Your `as_value` output becomes the output format for that field.
