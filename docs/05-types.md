@@ -33,6 +33,7 @@ Tank maps ordinary Rust types (numbers, strings, times, collections) to the clos
 | `time::Date`              | `DATE`         | `TEXT` ⚠️ | `DATE`                    | `DATE`         | `Date`      | `DATE`             | `String`     |
 | `time::Time`              | `TIME`         | `TEXT` ⚠️ | `TIME(6)`                 | `TIME`         | `String` ⚠️ | `TIME`             | `String`     |
 | `time::PrimitiveDateTime` | `TIMESTAMP`    | `TEXT` ⚠️ | `DATETIME`                | `TIMESTAMP`    | `DateTime`  | `TIMESTAMP`        | `String`     |
+| `time::UtcDateTime`       | `TIMESTAMP`    | `TEXT` ⚠️ | `DATETIME`                | `TIMESTAMP`    | `DateTime`  | `TIMESTAMP`        | `String`     |
 | `time::OffsetDateTime`    | `TIMESTAMPTZ`  | `TEXT` ⚠️ | `DATETIME`                | `TIMESTAMPTZ`  | `DateTime`  | `TIMESTAMP`        | `String`     |
 | `std::time::Duration`     | `INTERVAL`     | ❌        | `TIME(6)`                 | `INTERVAL`     | ❌          | `DURATION`         | `String`     |
 | `time::Duration`          | `INTERVAL`     | ❌        | `TIME(6)`                 | `INTERVAL`     | ❌          | `DURATION`         | `String`     |

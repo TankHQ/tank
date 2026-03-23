@@ -126,6 +126,7 @@ pub fn decode_type(ty: &Type) -> TypeDecoded {
             {
                 break 'data_type Value::Date(None);
             } else if matches_path(path, &["time", "PrimitiveDateTime"])
+                || matches_path(path, &["time", "UtcDateTime"])
                 || matches_path(path, &["chrono", "NaiveDateTime"])
             {
                 break 'data_type Value::Timestamp(None);

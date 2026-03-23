@@ -15,7 +15,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.29.0"
+version = "0.30.0"
 authors = ["barsdeveloper <barsdeveloper@gmail.com>"]
 license = "Apache-2.0"
 edition = "2024"

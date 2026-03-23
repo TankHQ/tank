@@ -21,7 +21,7 @@ use std::{
     rc::Rc,
     sync::{Arc, RwLock},
 };
-use time::{Month, PrimitiveDateTime, Time, format_description::parse_borrowed};
+use time::{Month, PrimitiveDateTime, Time, UtcDateTime, format_description::parse_borrowed};
 use uuid::Uuid;
 
 /// Bidirectional conversion between Rust types and `Value`.
@@ -832,6 +832,21 @@ impl_as_value!(
     Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
+
+impl AsValue for UtcDateTime {
+    fn as_empty_value() -> Value {
+        time::PrimitiveDateTime::as_empty_value()
+    }
+    fn as_value(self) -> Value {
+        PrimitiveDateTime::new(self.date(), self.time()).as_value()
+    }
+    fn try_from_value(value: Value) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        PrimitiveDateTime::try_from_value(value).map(|v| Self::new(v.date(), v.time()))
+    }
+}
 
 impl_as_value!(
     time::OffsetDateTime,
