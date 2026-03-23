@@ -118,7 +118,7 @@ pub struct Request {
     pub id: i64,
     pub target: String,
     #[tank(conversion_type = MethodWrap)]
-    pub method: Method, // Method is a third party type
+    pub method: Method,
     pub beign_timestamp_ms: i64,
     pub end_timestamp_ms: Option<i64>,
 }
@@ -127,10 +127,10 @@ pub struct RequestLimit {
     #[tank(primary_key)]
     pub id: i64,
     pub target_pattern: String,
-    pub requests: i32,
+    pub requests: u32,
     #[tank(conversion_type = MethodWrap)]
-    pub method: Option<Method>, // Method is a third party type
-    pub time_interval_ms: Option<i32>,
+    pub method: Option<Method>,
+    pub interval_ms: Option<u32>,
 }
 
 // Declare a local wrapper making it possible to implement `tank::AsValue`
@@ -151,18 +151,20 @@ impl tank::AsValue for MethodWrap {
         if value.is_null() {
             return Ok(Self(None));
         }
-        let context = || {
-            format!(
-                "Could not conver {value:?} into {}",
-                any::type_name::<Method>()
-            )
-        };
-        // Always call try_as before expecting a specific type, some database return unknown or json that needs conversion first
-        match &value.try_as(tank::Value::Varchar(None)) {
-            tank::Value::Varchar(Some(value), ..) => {
-                Ok(Method::from_str(&value).with_context(context)?.into())
+        // Always call try_as before checking the received value, some database return unknown or json that needs conversion first
+        match value.try_as(&tank::Value::Varchar(None)) {
+            Ok(tank::Value::Varchar(Some(v), ..)) => {
+                let method = Method::from_str(&v).with_context(|| {
+                    format!("Could not convert {v:?} into {}", type_name::<Method>())
+                })?;
+
+                Ok(method.into())
             }
-            _ => Err(tank::Error::msg(context())),
+            Err(e) => Err(e.context(format!(
+                "Could not convert value into {}",
+                type_name::<Method>()
+            ))),
+            _ => Err(tank::Error::msg("Unexpected error")),
         }
     }
 }
