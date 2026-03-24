@@ -17,7 +17,115 @@ pub struct MySQLSqlWriter {}
 pub type MariaDBWriter = MySQLSqlWriter;
 
 impl MySQLSqlWriter {
-    const DEFAULT_PK_VARCHAR_TYPE: &'static str = "VARCHAR(60)";
+    pub(crate) const DEFAULT_PK_VARCHAR_TYPE: &'static str = "VARCHAR(60)";
+
+    pub fn encode_load_data_value(val: &Value) -> String {
+        match val {
+            Value::Varchar(Some(s)) => s
+                .replace('\\', "\\\\")
+                .replace('\t', "\\t")
+                .replace('\n', "\\n"),
+            Value::Varchar(None) => "\\N".to_string(),
+            Value::Char(Some(c)) => match c {
+                '\\' => "\\\\".to_string(),
+                '\t' => "\\t".to_string(),
+                '\n' => "\\n".to_string(),
+                _ => c.to_string(),
+            },
+            Value::Char(None) => "\\N".to_string(),
+            Value::Int8(Some(i)) => i.to_string(),
+            Value::Int8(None) => "\\N".to_string(),
+            Value::Int16(Some(i)) => i.to_string(),
+            Value::Int16(None) => "\\N".to_string(),
+            Value::Int32(Some(i)) => i.to_string(),
+            Value::Int32(None) => "\\N".to_string(),
+            Value::Int64(Some(i)) => i.to_string(),
+            Value::Int64(None) => "\\N".to_string(),
+            Value::Int128(Some(i)) => i.to_string(),
+            Value::Int128(None) => "\\N".to_string(),
+            Value::UInt8(Some(i)) => i.to_string(),
+            Value::UInt8(None) => "\\N".to_string(),
+            Value::UInt16(Some(i)) => i.to_string(),
+            Value::UInt16(None) => "\\N".to_string(),
+            Value::UInt32(Some(i)) => i.to_string(),
+            Value::UInt32(None) => "\\N".to_string(),
+            Value::UInt64(Some(i)) => i.to_string(),
+            Value::UInt64(None) => "\\N".to_string(),
+            Value::UInt128(Some(i)) => i.to_string(),
+            Value::UInt128(None) => "\\N".to_string(),
+            Value::Float32(Some(f)) => f.to_string(),
+            Value::Float32(None) => "\\N".to_string(),
+            Value::Float64(Some(f)) => f.to_string(),
+            Value::Float64(None) => "\\N".to_string(),
+            Value::Boolean(Some(b)) => (if *b { "1" } else { "0" }).to_string(),
+            Value::Boolean(None) => "\\N".to_string(),
+            Value::Date(Some(v)) => format!("{}-{:02}-{:02}", v.year(), v.month() as u8, v.day()),
+            Value::Date(None) => "\\N".to_string(),
+            Value::Time(Some(v)) => {
+                let (h, m, s, u) = v.as_hms_micro();
+                format!("{:02}:{:02}:{:02}.{:06}", h, m, s, u)
+            }
+            Value::Time(None) => "\\N".to_string(),
+            Value::Timestamp(Some(v)) => {
+                format!(
+                    "{}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}",
+                    v.year(),
+                    v.month() as u8,
+                    v.day(),
+                    v.hour(),
+                    v.minute(),
+                    v.second(),
+                    v.microsecond()
+                )
+            }
+            Value::TimestampWithTimezone(Some(v)) => {
+                format!(
+                    "{}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}",
+                    v.year(),
+                    v.month() as u8,
+                    v.day(),
+                    v.hour(),
+                    v.minute(),
+                    v.second(),
+                    v.microsecond()
+                )
+            }
+            Value::Timestamp(None) | Value::TimestampWithTimezone(None) => "\\N".to_string(),
+            Value::Interval(Some(v)) => {
+                let (h, m, s, ns) = v.as_hmsns();
+                let u = ns / 1000;
+                format!("{:02}:{:02}:{:02}.{:06}", h, m, s, u)
+            }
+            Value::Interval(None) => "\\N".to_string(),
+            Value::Json(Some(v)) => serde_json::to_string(v)
+                .unwrap_or_default()
+                .replace('\\', "\\\\")
+                .replace('\t', "\\t")
+                .replace('\n', "\\n"),
+            Value::Json(None) => "\\N".to_string(),
+            Value::Unknown(Some(s)) => s
+                .replace('\\', "\\\\")
+                .replace('\t', "\\t")
+                .replace('\n', "\\n"),
+            Value::Unknown(None) => "\\N".to_string(),
+            Value::Uuid(Some(u)) => u.to_string(),
+            Value::Uuid(None) => "\\N".to_string(),
+            Value::Decimal(Some(d), ..) => d.to_string(),
+            Value::Decimal(None, ..) => "\\N".to_string(),
+            Value::Array(..) | Value::Map(..) | Value::List(..) | Value::Struct(..) => {
+                if let Some(json) = tank_core::value_to_json(val) {
+                    serde_json::to_string(&json)
+                        .unwrap_or_default()
+                        .replace('\\', "\\\\")
+                        .replace('\t', "\\t")
+                        .replace('\n', "\\n")
+                } else {
+                    "\\N".to_string()
+                }
+            },
+            _ => "\\N".to_string(),
+        }
+    }
 }
 
 impl SqlWriter for MySQLSqlWriter {

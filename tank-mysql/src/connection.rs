@@ -1,4 +1,7 @@
-use crate::{MySQLDriver, MySQLQueryable, MySQLTransaction};
+use crate::{
+    MySQLDriver, MySQLQueryable, MySQLTransaction,
+    local_infile::{Registry, TankGlobalHandler},
+};
 use mysql_async::{ClientIdentity, Conn, Opts, OptsBuilder};
 use std::{borrow::Cow, env, path::PathBuf};
 use tank_core::{Connection, Error, ErrorContext, Result, impl_executor_transaction};
@@ -8,6 +11,7 @@ use tank_core::{Connection, Error, ErrorContext, Result, impl_executor_transacti
 /// Holds the underlying `mysql_async` connection and adapts it to the `tank_core::Connection`/`Executor` APIs.
 pub struct MySQLConnection {
     pub(crate) conn: MySQLQueryable<Conn>,
+    pub(crate) registry: Registry,
 }
 
 pub type MariaDBConnection = MySQLConnection;
@@ -39,6 +43,13 @@ impl Connection for MySQLConnection {
         let opts = Opts::from_url(url.as_str()).context(context)?;
         let mut ssl_opts = opts.ssl_opts().cloned();
         let mut opts = OptsBuilder::from_opts(opts);
+
+        let registry = Registry::default();
+        let handler = TankGlobalHandler {
+            registry: registry.clone(),
+        };
+        opts = opts.local_infile_handler(Some(handler));
+
         if let Some(ssl_ca) = ssl_ca {
             let ca_path = PathBuf::from(ssl_ca);
             if !ca_path.exists() {
@@ -79,7 +90,9 @@ impl Connection for MySQLConnection {
         Ok(MySQLConnection {
             conn: MySQLQueryable {
                 executor: connection,
+                registry: registry.clone(),
             },
+            registry,
         })
     }
 

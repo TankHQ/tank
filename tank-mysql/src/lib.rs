@@ -1,6 +1,7 @@
 mod connection;
 mod driver;
 mod executor;
+mod local_infile;
 mod prepared;
 mod row_wrap;
 mod sql_writer;
@@ -10,6 +11,7 @@ mod value_wrap;
 pub use connection::*;
 pub use driver::*;
 pub(crate) use executor::*;
+pub(crate) use local_infile::*;
 pub use prepared::*;
 pub(crate) use row_wrap::*;
 pub use sql_writer::*;
