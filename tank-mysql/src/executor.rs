@@ -1,6 +1,9 @@
 use crate::{MySQLDriver, MySQLPrepared, RowWrap, local_infile::Registry};
 use async_stream::try_stream;
-use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 use tank_core::{
     AsQuery, Context, Driver, DynQuery, Entity, Error, Executor, Query, RawQuery, Result,
     RowsAffected, SqlWriter,
@@ -85,7 +88,11 @@ impl<T: mysql_async::prelude::Queryable> Executor for MySQLQueryable<T> {
         }
         let columns_sql = column_names.join(",");
 
-        let id = format!("{}-{}", table_name, INFILE_ID.fetch_add(1, Ordering::Relaxed));
+        let id = format!(
+            "{}-{}",
+            table_name,
+            INFILE_ID.fetch_add(1, Ordering::Relaxed)
+        );
         let (reader, mut writer) = tokio::io::duplex(1024 * 1024);
 
         self.registry.register(id.clone(), Box::new(reader));
