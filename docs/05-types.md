@@ -1,9 +1,9 @@
 # Types
 ###### *Field Manual Section 5* - Payload Specs
 
-Tank brings a full type arsenal to the field. The `Entity` derive macro identifies the type you're using by inspecting its final path segment (the "trailer"). For example, `std::collections::VecDeque`, `collections::VecDeque`, or simply `VecDeque` all resolve to the same type: `Valu::List`.
+Tank brings a full type arsenal to the field. The `Entity` derive macro identifies the type you're using by inspecting its final path segment (the trailer). For example, `std::collections::VecDeque`, `collections::VecDeque`, or simply `VecDeque` all resolve to the same type: `Value::List`.
 
-Tank maps ordinary Rust types (numbers, strings, times, collections) to the closest column types each driver supports, falling back to generic representations when appropriate. Below is the standard mapping of Rust types to each driver's column type. The symbol ❌ indicates no native support at this time. Collection types may be emulated in some drivers using generic JSON or text representations.
+Tank maps ordinary Rust types (check the table below) to the closest column types each driver supports, falling back to generic representations when appropriate. Below is the standard mapping of Rust types to each driver's column type. The symbol ❌ indicates no native support at this time. Collection types may be emulated in some drivers using generic JSON or text representations.
 
 ## Column Types
 <div class="sticky-table">
@@ -48,12 +48,12 @@ Tank maps ordinary Rust types (numbers, strings, times, collections) to the clos
 </div>
 
 > [!WARNING]
-> When a type falls back to a generic representation (like `TEXT` or `JSON`), Tank encodes it predictably so equality and ordering comparisons (where meaningful) behave as expected. Advanced indexing or operator support may vary by driver.
+> When a type falls back to a generic representation (like `TEXT` or `JSON`), Tank encodes it predictably such that equality and ordering comparisons (where meaningful) behave as expected. Advanced indexing or operator support may vary by driver.
 >
 > The special `isize`/`usize` types map to the native pointer-width integer (64-bit on 64-bit targets, 32-bit on 32-bit targets). For cross-database portability prefer explicit `i64`/`u64` unless you truly need platform width.
 
 ## Wrapper Types
-Built-in wrappers you can use directly in entities, theSQL type is inferred from the inner type:
+Built-in wrappers you can use directly in entities, the SQL type is inferred from the inner type:
 - `Option<T>`: Nullable column.
 - `Box<T>`
 - `Cell<T>`
@@ -63,44 +63,50 @@ Built-in wrappers you can use directly in entities, theSQL type is inferred from
 - `Rc<T>`
 
 ## Custom Types
-When standard types miss the mark, deploy custom payloads: an enum that must round-trip cleanly across drivers, or a small struct you want to pack into a single column. In Tank, you do that by implementing [`tank::AsValue`](https://docs.rs/tank/latest/tank/trait.AsValue.html).
-
-`AsValue` is your conversion contract: it turns your Rust type into a [`tank::Value`](https://docs.rs/tank/latest/tank/enum.Value.html) for binding/inserts/updates, and turns a `Value` back into your type when decoding rows. Once implemented, you can use the type directly as an `Entity` field.
+The handle custom types you just need to implement [`tank::AsValue`](https://docs.rs/tank/latest/tank/trait.AsValue.html). It will be your conversion contract: it turns your Rust type into a [`tank::Value`](https://docs.rs/tank/latest/tank/enum.Value.html) that can be sent to the database, and turns a `tank::Value` back into the original when decoding rows. Once implemented, you can use the type directly as an `Entity` field.
 
 ### Example: Custom Struct
-If you want a small struct to live in a single column, encode it into a stable representation. Here’s a `host:port` example:
+Here’s a `host:port` example that encodes a network address as a string that must be stored in a single column:
 
 ```rust
 use tank::{AsValue, Error, Result, Value};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostPort {
-	pub host: String,
-	pub port: u16,
+    pub host: String,
+    pub port: u16,
 }
 
 impl AsValue for HostPort {
-	fn as_empty_value() -> Value {
-		Value::Varchar(None)
-	}
-	fn as_value(self) -> Value {
-		Value::Varchar(Some(format!("{}:{}", self.host, self.port).into()))
-	}
-	fn try_from_value(value: Value) -> Result<Self> {
-		if let Value::Varchar(Some(v), ..) = value.try_as(&Value::Varchar(None))? {
-			let (host, port) = v
-				.split_once(':')
-				.ok_or_else(|| Error::msg(format!("Invalid HostPort `{v}`")))?;
+    fn as_empty_value() -> Value {
+        Value::Varchar(None)
+    }
 
-			return Ok(HostPort {
-				host: host.to_string(),
-				port: port
-					.parse::<u16>()
-					.map_err(|_| Error::msg(format!("Invalid port in HostPort `{v}`")))?,
-			});
-		}
-		Err(Error::msg("Unexpected value for HostPort"))
-	}
+    fn as_value(self) -> Value {
+        Value::Varchar(Some(format!("{}:{}", self.host, self.port).into()))
+    }
+
+    fn try_from_value(value: Value) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        // Always call try_as before checking the received value
+        match value.try_as(&Value::Varchar(None)) {
+            Ok(Value::Varchar(Some(v))) => {
+                let context = || Error::msg(format!("Failed to parse HostPort from value `{v}`"));
+                let (host, port) = v.split_once(':').ok_or_else(context)?;
+                Ok(Self {
+                    host: host.to_string(),
+                    port: port
+                        .parse::<u16>()
+                        .map_err(|e| Error::new(e).context(context()))?,
+                })
+            }
+            _ => Err(Error::msg(
+                "Could not convert value into HostPort (expected Value::Varchar)",
+            )),
+        }
+    }
 }
 ```
 
@@ -151,7 +157,7 @@ impl tank::AsValue for MethodWrap {
         if value.is_null() {
             return Ok(Self(None));
         }
-        // Always call try_as before checking the received value, some database return unknown or json that needs conversion first
+        // Always call try_as before checking the received value
         match value.try_as(&tank::Value::Varchar(None)) {
             Ok(tank::Value::Varchar(Some(v), ..)) => {
                 let method = Method::from_str(&v).with_context(|| {
@@ -160,11 +166,10 @@ impl tank::AsValue for MethodWrap {
 
                 Ok(method.into())
             }
-            Err(e) => Err(e.context(format!(
+            _ => Err(tank::Error::msg(format!(
                 "Could not convert value into {}",
                 type_name::<Method>()
             ))),
-            _ => Err(tank::Error::msg("Unexpected error")),
         }
     }
 }
@@ -195,6 +200,6 @@ impl From<MethodWrap> for Option<Method> {
 ```
 
 > [!TIP]
-> Keep the encoding stable and non-lossy. Your `as_value` output becomes the output format for that field.
+> Keep the encoding stable. Your `as_value` output becomes the output format for that field.
 
 *With this arsenal, your entities hit every target, every time.*

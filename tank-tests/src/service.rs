@@ -36,19 +36,22 @@ impl AsValue for HostPort {
     where
         Self: Sized,
     {
-        if let Value::Varchar(Some(v), ..) = value.try_as(&Value::Varchar(None))? {
-            let (host, port) = v
-                .split_once(':')
-                .ok_or_else(|| Error::msg(format!("Invalid HostPort `{v}`")))?;
-
-            return Ok(Self {
-                host: host.to_string(),
-                port: port
-                    .parse::<u16>()
-                    .map_err(|_| Error::msg(format!("Invalid port in HostPort `{v}`")))?,
-            });
+        // Always call try_as before checking the received value
+        match value.try_as(&Value::Varchar(None)) {
+            Ok(Value::Varchar(Some(v))) => {
+                let context = || Error::msg(format!("Failed to parse HostPort from value `{v}`"));
+                let (host, port) = v.split_once(':').ok_or_else(context)?;
+                Ok(Self {
+                    host: host.to_string(),
+                    port: port
+                        .parse::<u16>()
+                        .map_err(|e| Error::new(e).context(context()))?,
+                })
+            }
+            _ => Err(Error::msg(
+                "Could not convert value into HostPort (expected Value::Varchar)",
+            )),
         }
-        Err(Error::msg("Unexpected value for HostPort"))
     }
 }
 
