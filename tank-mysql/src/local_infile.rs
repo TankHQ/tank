@@ -1,7 +1,8 @@
-use mysql_async::prelude::GlobalHandler;
-use mysql_async::{Error, InfileData};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use mysql_async::{InfileData, prelude::GlobalHandler};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 use tank_core::future::{BoxFuture, FutureExt};
 use tokio::io::AsyncRead;
 use tokio_util::io::ReaderStream;
