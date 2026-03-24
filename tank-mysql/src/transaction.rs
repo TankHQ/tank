@@ -25,6 +25,7 @@ impl<'c> MySQLTransaction<'c> {
                         log::error!("{:#}", e);
                         e
                     })?,
+                registry: connection.registry.clone(),
             },
         })
     }
