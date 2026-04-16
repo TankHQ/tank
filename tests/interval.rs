@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use std::{i64, time::Duration};
+    use std::{collections::HashSet, i64, time::Duration};
     use tank_core::{AsValue, Context, DynQuery, Fragment, Interval, SqlWriter};
 
     struct Writer;
@@ -238,5 +238,180 @@ mod tests {
         let value = Duration::from_micros(1) + Duration::from_hours(6);
         let expected: time::Duration = Interval::from_micros(1 + 6 * 3600 * 1_000_000).into();
         assert_eq!(value, expected);
+    }
+
+    #[test]
+    fn from_bitmask() {
+        use tank_core::IntervalUnit;
+        assert_eq!(
+            IntervalUnit::from_bitmask(1).unwrap(),
+            IntervalUnit::Nanosecond
+        );
+        assert_eq!(
+            IntervalUnit::from_bitmask(2).unwrap(),
+            IntervalUnit::Microsecond
+        );
+        assert_eq!(IntervalUnit::from_bitmask(4).unwrap(), IntervalUnit::Second);
+        assert_eq!(IntervalUnit::from_bitmask(8).unwrap(), IntervalUnit::Minute);
+        assert_eq!(IntervalUnit::from_bitmask(16).unwrap(), IntervalUnit::Hour);
+        assert_eq!(IntervalUnit::from_bitmask(32).unwrap(), IntervalUnit::Day);
+        assert_eq!(IntervalUnit::from_bitmask(64).unwrap(), IntervalUnit::Month);
+        assert_eq!(IntervalUnit::from_bitmask(128).unwrap(), IntervalUnit::Year);
+        assert!(IntervalUnit::from_bitmask(0).is_err());
+        assert!(IntervalUnit::from_bitmask(3).is_err());
+        assert!(IntervalUnit::from_bitmask(255).is_err());
+    }
+
+    #[test]
+    fn as_hmsns() {
+        let interval = Interval::from_hours(2) + Interval::from_mins(30) + Interval::from_secs(15);
+        let (h, m, s, ns) = interval.as_hmsns();
+        assert_eq!(h, 2);
+        assert_eq!(m, 30);
+        assert_eq!(s, 15);
+        assert_eq!(ns, 0);
+
+        let interval2 = Interval::from_nanos(500);
+        let (h, m, s, ns) = interval2.as_hmsns();
+        assert_eq!(h, 0);
+        assert_eq!(m, 0);
+        assert_eq!(s, 0);
+        assert_eq!(ns, 500);
+
+        // With months and days contributing to hours
+        let interval3 = Interval::new(1, 2, 0); // 1 month + 2 days
+        let (h, _, _, _) = interval3.as_hmsns();
+        assert_eq!(h, (1 * 30 + 2) * 24); // (months*30 + days) * 24
+    }
+
+    #[test]
+    fn is_zero() {
+        assert!(Interval::ZERO.is_zero());
+        assert!(Interval::default().is_zero());
+        assert!(!Interval::from_nanos(1).is_zero());
+        assert!(!Interval::from_days(1).is_zero());
+        assert!(!Interval::from_months(1).is_zero());
+    }
+
+    #[test]
+    fn as_duration_method() {
+        let interval = Interval::from_days(1);
+        let duration = interval.as_duration(30.0);
+        assert_eq!(duration, Duration::from_secs(86400));
+
+        let interval2 = Interval::from_months(1);
+        let duration2 = interval2.as_duration(30.0);
+        assert_eq!(duration2, Duration::from_secs(30 * 86400));
+
+        let interval3 = Interval::from_secs(1) + Interval::from_nanos(500);
+        let duration3 = interval3.as_duration(30.0);
+        assert_eq!(duration3, Duration::new(1, 500));
+    }
+
+    #[test]
+    fn units_mask_and_unit_value() {
+        let interval = Interval::from_years(2);
+        let mask = interval.units_mask();
+        assert_eq!(mask, 1 << 7); // Year bit
+        assert_eq!(interval.unit_value(tank_core::IntervalUnit::Year), 2);
+
+        let interval2 = Interval::from_months(5);
+        let mask = interval2.units_mask();
+        assert_eq!(mask, 1 << 6); // Month bit
+        assert_eq!(interval2.unit_value(tank_core::IntervalUnit::Month), 5);
+
+        let interval3 = Interval::from_days(3);
+        let mask = interval3.units_mask();
+        assert_eq!(mask, 1 << 5); // Day bit
+        assert_eq!(interval3.unit_value(tank_core::IntervalUnit::Day), 3);
+
+        let interval4 = Interval::from_hours(6);
+        let mask = interval4.units_mask();
+        assert_eq!(mask, 1 << 4); // Hour bit
+        assert_eq!(interval4.unit_value(tank_core::IntervalUnit::Hour), 6);
+
+        let interval5 = Interval::from_mins(45);
+        let mask = interval5.units_mask();
+        assert_eq!(mask, 1 << 3); // Minute bit
+        assert_eq!(interval5.unit_value(tank_core::IntervalUnit::Minute), 45);
+
+        let interval6 = Interval::from_secs(10);
+        let mask = interval6.units_mask();
+        assert_eq!(mask, 1 << 2); // Second bit
+        assert_eq!(interval6.unit_value(tank_core::IntervalUnit::Second), 10);
+
+        let interval7 = Interval::from_micros(500);
+        let mask = interval7.units_mask();
+        assert_eq!(mask, 1 << 1); // Microsecond bit
+        assert_eq!(
+            interval7.unit_value(tank_core::IntervalUnit::Microsecond),
+            500
+        );
+
+        let interval8 = Interval::from_nanos(42);
+        let mask = interval8.units_mask();
+        assert_eq!(mask, 1 << 0); // Nanosecond bit
+        assert_eq!(
+            interval8.unit_value(tank_core::IntervalUnit::Nanosecond),
+            42
+        );
+
+        assert_eq!(Interval::ZERO.units_mask(), 0);
+    }
+
+    #[test]
+    fn hash_interval() {
+        let mut set = HashSet::new();
+        set.insert(Interval::from_days(1));
+        set.insert(Interval::from_days(1));
+        assert_eq!(set.len(), 1);
+        set.insert(Interval::from_days(2));
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn add_assign_sub_assign() {
+        let mut interval = Interval::from_days(5);
+        interval += Interval::from_days(3);
+        assert_eq!(interval, Interval::from_days(8));
+
+        interval -= Interval::from_days(2);
+        assert_eq!(interval, Interval::from_days(6));
+    }
+
+    #[test]
+    fn neg_interval() {
+        let interval = Interval::from_days(3);
+        let negative = -interval;
+        assert_eq!(negative, Interval::from_days(-3));
+
+        let interval2 = Interval::new(2, 5, 1000);
+        let negative2 = -interval2;
+        assert_eq!(negative2.months, -2);
+        assert_eq!(negative2.days, -5);
+        assert_eq!(negative2.nanos, -1000);
+    }
+
+    #[test]
+    fn from_std_duration() {
+        let duration = Duration::from_secs(90000); // 1 day + 3600 secs
+        let interval: Interval = duration.into();
+        assert_eq!(interval.days, 1);
+        assert_eq!(interval.nanos, 3600 * Interval::NANOS_IN_SEC);
+        assert_eq!(interval.months, 0);
+
+        let d2: Duration = interval.into();
+        assert_eq!(duration, d2);
+    }
+
+    #[test]
+    fn from_time_duration() {
+        let duration = time::Duration::seconds(90000); // 1 day + 3600 s
+        let interval: Interval = duration.into();
+        assert_eq!(interval.days, 1);
+        assert_eq!(interval.months, 0);
+
+        let duration2: time::Duration = interval.into();
+        assert_eq!(duration, duration2);
     }
 }

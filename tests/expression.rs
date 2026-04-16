@@ -607,4 +607,205 @@ mod tests {
             r#"CAST("the_table"."first" AS VARCHAR) = "the_table"."second" AND "the_table"."first" > 0"#
         );
     }
+
+    #[test]
+    fn test_op_precedence() {
+        assert!(().precedence(&WRITER) > 1000);
+        assert_eq!(true.precedence(&WRITER), 0);
+        assert_eq!("hello".precedence(&WRITER), 0);
+        assert_eq!(Value::Int32(Some(1)).precedence(&WRITER), 0);
+        assert!((&Operand::Asterisk).precedence(&WRITER) > 1000);
+        assert!(
+            BinaryOpType::Multiplication.precedence(&WRITER)
+                > BinaryOpType::Addition.precedence(&WRITER)
+        );
+        assert!(
+            BinaryOpType::Multiplication.precedence(&WRITER)
+                > BinaryOpType::Subtraction.precedence(&WRITER)
+        );
+        assert!(
+            BinaryOpType::Division.precedence(&WRITER) > BinaryOpType::Addition.precedence(&WRITER)
+        );
+        assert!(
+            BinaryOpType::Division.precedence(&WRITER)
+                > BinaryOpType::Subtraction.precedence(&WRITER)
+        );
+        assert!(BinaryOpType::And.precedence(&WRITER) > BinaryOpType::Or.precedence(&WRITER));
+    }
+
+    #[test]
+    fn test_operand_eq() {
+        assert_eq!(Operand::LitBool(true), Operand::LitBool(true));
+        assert_ne!(Operand::LitBool(true), Operand::LitBool(false));
+        assert_eq!(Operand::LitFloat(1.5), Operand::LitFloat(1.5));
+        assert_eq!(Operand::LitIdent("a"), Operand::LitIdent("a"));
+        assert_ne!(Operand::LitIdent("a"), Operand::LitIdent("b"));
+        assert_eq!(
+            Operand::LitField(&["a", "b"]),
+            Operand::LitField(&["a", "b"])
+        );
+        assert_eq!(Operand::LitInt(42), Operand::LitInt(42));
+        assert_eq!(Operand::LitStr("x"), Operand::LitStr("x"));
+        assert_eq!(Operand::Asterisk, Operand::Asterisk);
+        assert_eq!(Operand::QuestionMark, Operand::QuestionMark);
+        assert_eq!(Operand::CurrentTimestampMs, Operand::CurrentTimestampMs);
+        assert_eq!(
+            Operand::Type(Value::Int32(None)),
+            Operand::Type(Value::Int32(None))
+        );
+        assert_eq!(
+            Operand::Variable(Value::Int32(Some(1))),
+            Operand::Variable(Value::Int32(Some(1)))
+        );
+        assert_ne!(Operand::Asterisk, Operand::QuestionMark);
+        assert_ne!(Operand::LitBool(true), Operand::LitBool(false));
+        assert_ne!(Operand::LitBool(true), Operand::LitInt(1));
+        assert_ne!(Operand::LitInt(0), Operand::LitInt(1));
+    }
+
+    #[test]
+    fn test_expression_unit_impl() {
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        ().write_query(&WRITER, &mut ctx, &mut out);
+        assert_eq!(out.as_str(), "");
+    }
+
+    #[test]
+    fn test_expression_bool_impl() {
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        true.write_query(&WRITER, &mut ctx, &mut out);
+        assert_eq!(out.as_str(), "true");
+    }
+
+    #[test]
+    fn test_expression_str_impl() {
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        "hello".write_query(&WRITER, &mut ctx, &mut out);
+        assert_eq!(out.as_str(), "'hello'");
+    }
+
+    #[test]
+    fn test_expression_value_impl() {
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        Value::Int32(Some(42)).write_query(&WRITER, &mut ctx, &mut out);
+        assert_eq!(out.as_str(), "42");
+    }
+
+    #[test]
+    fn test_expression_as_identifier() {
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        let ident = Operand::LitIdent("my_col").as_identifier(&mut ctx);
+        assert_eq!(ident, "my_col");
+    }
+
+    #[test]
+    fn test_expression_ref_delegation() {
+        let op = Operand::LitInt(99);
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        // &T delegates to T
+        (&op).write_query(&WRITER, &mut ctx, &mut out);
+        assert_eq!(out.as_str(), "99");
+        let ident = (&op).as_identifier(&mut ctx);
+        assert_eq!(ident, "99");
+    }
+
+    #[test]
+    fn test_default_value_type() {
+        use tank::DefaultValueType;
+        // None
+        let dvt = DefaultValueType::None;
+        assert!(!dvt.is_set());
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        dvt.write_query(&WRITER, &mut ctx, &mut out);
+        assert_eq!(out.as_str(), "");
+        assert_eq!(dvt.precedence(&WRITER), 0);
+
+        // From Value
+        let dvt: DefaultValueType = Value::Int64(Some(10)).into();
+        assert!(dvt.is_set());
+        let mut out = DynQuery::default();
+        dvt.write_query(&WRITER, &mut ctx, &mut out);
+        assert_eq!(out.as_str(), "10");
+        assert_eq!(dvt.precedence(&WRITER), 0);
+
+        // From bool
+        let dvt: DefaultValueType = true.into();
+        assert!(dvt.is_set());
+
+        // From &str
+        let dvt: DefaultValueType = "default_val".into();
+        assert!(dvt.is_set());
+
+        // From i64
+        let dvt: DefaultValueType = 42i64.into();
+        assert!(dvt.is_set());
+    }
+
+    #[test]
+    fn test_unary_op_expression() {
+        let expr = expr!(-42);
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        expr.write_query(&WRITER, &mut ctx, &mut out);
+        assert_eq!(out.as_str(), "-42");
+        // precedence
+        let _p = expr.precedence(&WRITER);
+
+        let expr = expr!(!true);
+        let mut out = DynQuery::default();
+        expr.write_query(&WRITER, &mut ctx, &mut out);
+        assert_eq!(out.as_str(), "NOT true");
+    }
+
+    #[test]
+    fn test_binary_op_as_identifier_alias() {
+        // Alias uses rhs as identifier
+        let expr = expr!(my_col as my_alias);
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        let ident = expr.as_identifier(&mut ctx);
+        assert_eq!(ident, "my_alias");
+    }
+
+    #[test]
+    fn test_binary_op_as_identifier_non_alias() {
+        // Non-alias renders the full expression
+        let expr = expr!(1 + 2);
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        let ident = expr.as_identifier(&mut ctx);
+        assert_eq!(ident, "1 + 2");
+    }
+
+    #[test]
+    fn test_ordered_expression() {
+        use tank::{Order, Ordered};
+        let ordered = Ordered {
+            expression: Operand::LitInt(1),
+            order: Order::ASC,
+        };
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        ordered.write_query(&WRITER, &mut ctx, &mut out);
+        // precedence delegates to inner expression
+        let p = ordered.precedence(&WRITER);
+        assert_eq!(p, Operand::LitInt(1).precedence(&WRITER));
+    }
+
+    #[test]
+    fn test_dyn_expression_ref() {
+        let op = Operand::LitStr("test");
+        let dyn_ref: &dyn Expression = &op;
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        dyn_ref.write_query(&WRITER, &mut ctx, &mut out);
+        assert_eq!(out.as_str(), "'test'");
+        let ident = dyn_ref.as_identifier(&mut ctx);
+        assert_eq!(ident, "'test'");
+        assert_eq!(dyn_ref.precedence(&WRITER), 1_000_000);
+    }
 }

@@ -1181,6 +1181,629 @@ mod tests {
         );
         assert_ne!(s, s_diff);
     }
+
+    #[test]
+    fn value_is_null() {
+        assert!(Value::Null.is_null());
+        assert!(Value::Boolean(None).is_null());
+        assert!(Value::Int8(None).is_null());
+        assert!(Value::Int16(None).is_null());
+        assert!(Value::Int32(None).is_null());
+        assert!(Value::Int64(None).is_null());
+        assert!(Value::Int128(None).is_null());
+        assert!(Value::UInt8(None).is_null());
+        assert!(Value::UInt16(None).is_null());
+        assert!(Value::UInt32(None).is_null());
+        assert!(Value::UInt64(None).is_null());
+        assert!(Value::UInt128(None).is_null());
+        assert!(Value::Float32(None).is_null());
+        assert!(Value::Float64(None).is_null());
+        assert!(Value::Decimal(None, 0, 0).is_null());
+        assert!(Value::Char(None).is_null());
+        assert!(Value::Varchar(None).is_null());
+        assert!(Value::Blob(None).is_null());
+        assert!(Value::Date(None).is_null());
+        assert!(Value::Time(None).is_null());
+        assert!(Value::Timestamp(None).is_null());
+        assert!(Value::TimestampWithTimezone(None).is_null());
+        assert!(Value::Interval(None).is_null());
+        assert!(Value::Uuid(None).is_null());
+        assert!(Value::Array(None, Box::new(Value::Int32(None)), 3).is_null());
+        assert!(Value::List(None, Box::new(Value::Int32(None))).is_null());
+        assert!(
+            Value::Map(
+                None,
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None))
+            )
+            .is_null()
+        );
+        assert!(Value::Json(None).is_null());
+        assert!(Value::Json(Some(serde_json::Value::Null)).is_null());
+        assert!(Value::Struct(None, vec![], TableRef::new("t".into()),).is_null());
+        assert!(Value::Unknown(None).is_null());
+
+        assert!(!Value::Boolean(Some(false)).is_null());
+        assert!(!Value::Int32(Some(0)).is_null());
+        assert!(!Value::Varchar(Some("".into())).is_null());
+        assert!(!Value::Json(Some(serde_json::json!(42))).is_null());
+    }
+
+    #[test]
+    fn value_as_null() {
+        assert!(Value::Null.as_null().is_null());
+        assert_eq!(Value::Boolean(Some(true)).as_null(), Value::Boolean(None));
+        assert_eq!(Value::Int8(Some(5)).as_null(), Value::Int8(None));
+        assert_eq!(Value::Int16(Some(5)).as_null(), Value::Int16(None));
+        assert_eq!(Value::Int32(Some(5)).as_null(), Value::Int32(None));
+        assert_eq!(Value::Int64(Some(5)).as_null(), Value::Int64(None));
+        assert_eq!(Value::Int128(Some(5)).as_null(), Value::Int128(None));
+        assert_eq!(Value::UInt8(Some(5)).as_null(), Value::UInt8(None));
+        assert_eq!(Value::UInt16(Some(5)).as_null(), Value::UInt16(None));
+        assert_eq!(Value::UInt32(Some(5)).as_null(), Value::UInt32(None));
+        assert_eq!(Value::UInt64(Some(5)).as_null(), Value::UInt64(None));
+        assert_eq!(Value::UInt128(Some(5)).as_null(), Value::UInt128(None));
+        assert_eq!(Value::Float32(Some(1.0)).as_null(), Value::Float32(None));
+        assert_eq!(Value::Float64(Some(1.0)).as_null(), Value::Float64(None));
+        assert_eq!(
+            Value::Decimal(Some(Decimal::from(10)), 10, 2).as_null(),
+            Value::Decimal(None, 10, 2)
+        );
+        assert_eq!(Value::Char(Some('x')).as_null(), Value::Char(None));
+        assert_eq!(
+            Value::Varchar(Some("hi".into())).as_null(),
+            Value::Varchar(None)
+        );
+        assert_eq!(
+            Value::Blob(Some(vec![1, 2].into())).as_null(),
+            Value::Blob(None)
+        );
+        assert_eq!(
+            Value::Date(Some(
+                time::Date::from_calendar_date(2025, Month::January, 1).unwrap()
+            ))
+            .as_null(),
+            Value::Date(None)
+        );
+        assert_eq!(
+            Value::Time(Some(time::Time::from_hms(0, 0, 0).unwrap())).as_null(),
+            Value::Time(None)
+        );
+        assert_eq!(
+            Value::Timestamp(Some(time::PrimitiveDateTime::new(
+                time::Date::from_calendar_date(2025, Month::January, 1).unwrap(),
+                time::Time::from_hms(0, 0, 0).unwrap(),
+            )))
+            .as_null(),
+            Value::Timestamp(None)
+        );
+        assert_eq!(
+            Value::TimestampWithTimezone(Some(time::OffsetDateTime::now_utc())).as_null(),
+            Value::TimestampWithTimezone(None)
+        );
+        assert_eq!(
+            Value::Interval(Some(Interval::from_days(1))).as_null(),
+            Value::Interval(None)
+        );
+        assert_eq!(Value::Uuid(Some(Uuid::nil())).as_null(), Value::Uuid(None));
+        assert_eq!(
+            Value::Array(
+                Some(vec![Value::Int32(Some(1))].into()),
+                Box::new(Value::Int32(None)),
+                1,
+            )
+            .as_null(),
+            Value::Array(None, Box::new(Value::Int32(None)), 1)
+        );
+        assert_eq!(
+            Value::List(Some(vec![]), Box::new(Value::Boolean(None))).as_null(),
+            Value::List(None, Box::new(Value::Boolean(None)))
+        );
+        assert_eq!(
+            Value::Map(
+                Some(std::collections::HashMap::new()),
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None)),
+            )
+            .as_null(),
+            Value::Map(
+                None,
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None))
+            )
+        );
+        assert_eq!(
+            Value::Json(Some(serde_json::json!({"a": 1}))).as_null(),
+            Value::Json(None)
+        );
+        assert_eq!(
+            Value::Struct(
+                Some(vec![("id".into(), 1_i32.as_value())]),
+                vec![("id".into(), i32::as_empty_value())],
+                TableRef::new("t".into()),
+            )
+            .as_null(),
+            Value::Struct(
+                None,
+                vec![("id".into(), i32::as_empty_value())],
+                TableRef::new("t".into()),
+            )
+        );
+        assert!(Value::Unknown(Some("x".into())).as_null().is_null());
+    }
+
+    #[test]
+    fn value_is_scalar() {
+        assert!(Value::Boolean(Some(true)).is_scalar());
+        assert!(Value::Int8(Some(1)).is_scalar());
+        assert!(Value::Int16(Some(1)).is_scalar());
+        assert!(Value::Int32(Some(1)).is_scalar());
+        assert!(Value::Int64(Some(1)).is_scalar());
+        assert!(Value::Int128(Some(1)).is_scalar());
+        assert!(Value::UInt8(Some(1)).is_scalar());
+        assert!(Value::UInt16(Some(1)).is_scalar());
+        assert!(Value::UInt32(Some(1)).is_scalar());
+        assert!(Value::UInt64(Some(1)).is_scalar());
+        assert!(Value::UInt128(Some(1)).is_scalar());
+        assert!(Value::Float32(Some(1.0)).is_scalar());
+        assert!(Value::Float64(Some(1.0)).is_scalar());
+        assert!(Value::Decimal(Some(Decimal::from(1)), 0, 0).is_scalar());
+        assert!(Value::Char(Some('a')).is_scalar());
+        assert!(Value::Varchar(Some("x".into())).is_scalar());
+        assert!(Value::Blob(Some(vec![].into())).is_scalar());
+        assert!(Value::Date(None).is_scalar());
+        assert!(Value::Time(None).is_scalar());
+        assert!(Value::Timestamp(None).is_scalar());
+        assert!(Value::TimestampWithTimezone(None).is_scalar());
+        assert!(Value::Interval(None).is_scalar());
+        assert!(Value::Uuid(None).is_scalar());
+        assert!(Value::Unknown(None).is_scalar());
+
+        assert!(!Value::Null.is_scalar());
+        assert!(!Value::Array(None, Box::new(Value::Int32(None)), 1).is_scalar());
+        assert!(!Value::List(None, Box::new(Value::Int32(None))).is_scalar());
+        assert!(
+            !Value::Map(
+                None,
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None))
+            )
+            .is_scalar()
+        );
+        assert!(!Value::Json(None).is_scalar());
+        assert!(!Value::Struct(None, vec![], TableRef::new("t".into())).is_scalar());
+    }
+
+    #[test]
+    fn value_same_type() {
+        assert!(Value::Int32(Some(1)).same_type(&Value::Int32(Some(99))));
+        assert!(Value::Int32(Some(1)).same_type(&Value::Int32(None)));
+        assert!(!Value::Int32(Some(1)).same_type(&Value::Int64(Some(1))));
+
+        assert!(Value::Decimal(None, 10, 2).same_type(&Value::Decimal(None, 10, 2)));
+        assert!(Value::Decimal(None, 0, 2).same_type(&Value::Decimal(None, 10, 2)));
+        assert!(Value::Decimal(None, 10, 0).same_type(&Value::Decimal(None, 10, 2)));
+        assert!(!Value::Decimal(None, 10, 2).same_type(&Value::Decimal(None, 8, 2)));
+        assert!(!Value::Decimal(None, 10, 2).same_type(&Value::Decimal(None, 10, 3)));
+
+        assert!(
+            Value::Array(None, Box::new(Value::Int32(None)), 5).same_type(&Value::Array(
+                None,
+                Box::new(Value::Int32(None)),
+                5
+            ))
+        );
+        assert!(
+            !Value::Array(None, Box::new(Value::Int32(None)), 5).same_type(&Value::Array(
+                None,
+                Box::new(Value::Int32(None)),
+                3
+            ))
+        );
+        assert!(
+            !Value::Array(None, Box::new(Value::Int32(None)), 5).same_type(&Value::Array(
+                None,
+                Box::new(Value::Int64(None)),
+                5
+            ))
+        );
+
+        assert!(
+            Value::List(None, Box::new(Value::Varchar(None)))
+                .same_type(&Value::List(None, Box::new(Value::Varchar(None))))
+        );
+        assert!(
+            !Value::List(None, Box::new(Value::Varchar(None)))
+                .same_type(&Value::List(None, Box::new(Value::Int32(None))))
+        );
+
+        assert!(
+            Value::Map(
+                None,
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None))
+            )
+            .same_type(&Value::Map(
+                None,
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None)),
+            ))
+        );
+        assert!(
+            !Value::Map(
+                None,
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None))
+            )
+            .same_type(&Value::Map(
+                None,
+                Box::new(Value::Int32(None)),
+                Box::new(Value::Int32(None)),
+            ))
+        );
+    }
+
+    #[test]
+    fn value_try_as() {
+        let v = Value::Int32(Some(42));
+        assert_eq!(v.clone().try_as(&Value::Int32(None)).unwrap(), v);
+        assert_eq!(
+            Value::Int32(Some(1)).try_as(&Value::Boolean(None)).unwrap(),
+            Value::Boolean(Some(true))
+        );
+        assert_eq!(
+            Value::Int32(Some(42)).try_as(&Value::Int8(None)).unwrap(),
+            Value::Int8(Some(42))
+        );
+        assert_eq!(
+            Value::Int8(Some(10)).try_as(&Value::Int16(None)).unwrap(),
+            Value::Int16(Some(10))
+        );
+        assert_eq!(
+            Value::Int16(Some(100)).try_as(&Value::Int32(None)).unwrap(),
+            Value::Int32(Some(100))
+        );
+        assert_eq!(
+            Value::Int32(Some(1000))
+                .try_as(&Value::Int64(None))
+                .unwrap(),
+            Value::Int64(Some(1000))
+        );
+        assert_eq!(
+            Value::Int64(Some(10000))
+                .try_as(&Value::Int128(None))
+                .unwrap(),
+            Value::Int128(Some(10000))
+        );
+        assert_eq!(
+            Value::Int32(Some(5)).try_as(&Value::UInt8(None)).unwrap(),
+            Value::UInt8(Some(5))
+        );
+        assert_eq!(
+            Value::Int32(Some(5)).try_as(&Value::UInt16(None)).unwrap(),
+            Value::UInt16(Some(5))
+        );
+        assert_eq!(
+            Value::Int32(Some(5)).try_as(&Value::UInt32(None)).unwrap(),
+            Value::UInt32(Some(5))
+        );
+        assert_eq!(
+            Value::Int32(Some(5)).try_as(&Value::UInt64(None)).unwrap(),
+            Value::UInt64(Some(5))
+        );
+        assert_eq!(
+            Value::Int32(Some(5)).try_as(&Value::UInt128(None)).unwrap(),
+            Value::UInt128(Some(5))
+        );
+        assert_eq!(
+            Value::Float64(Some(5.0))
+                .try_as(&Value::Float32(None))
+                .unwrap(),
+            Value::Float32(Some(5.0))
+        );
+        assert_eq!(
+            Value::Float32(Some(5.0))
+                .try_as(&Value::Float64(None))
+                .unwrap(),
+            Value::Float64(Some(5.0))
+        );
+        assert_eq!(
+            Value::Int32(Some(5))
+                .try_as(&Value::Decimal(None, 0, 0))
+                .unwrap(),
+            Value::Decimal(Some(Decimal::from(5)), 0, 0)
+        );
+        assert_eq!(
+            Value::Char(Some('x'))
+                .try_as(&Value::Varchar(None))
+                .unwrap(),
+            Value::Varchar(Some("x".into()))
+        );
+
+        assert!(Value::Int32(Some(5)).try_as(&Value::Json(None)).is_err());
+        assert!(
+            Value::Int32(Some(5))
+                .try_as(&Value::Array(None, Box::new(Value::Int32(None)), 1))
+                .is_err()
+        );
+
+        assert_eq!(
+            Value::UInt8(Some(10)).try_as(&Value::UInt8(None)).unwrap(),
+            Value::UInt8(Some(10))
+        );
+        assert_eq!(
+            Value::UInt16(Some(20))
+                .try_as(&Value::UInt16(None))
+                .unwrap(),
+            Value::UInt16(Some(20))
+        );
+        assert_eq!(
+            Value::UInt32(Some(30))
+                .try_as(&Value::UInt32(None))
+                .unwrap(),
+            Value::UInt32(Some(30))
+        );
+        assert_eq!(
+            Value::UInt64(Some(40))
+                .try_as(&Value::UInt64(None))
+                .unwrap(),
+            Value::UInt64(Some(40))
+        );
+        assert_eq!(
+            Value::UInt128(Some(50))
+                .try_as(&Value::UInt128(None))
+                .unwrap(),
+            Value::UInt128(Some(50))
+        );
+        assert_eq!(
+            Value::Char(Some('z')).try_as(&Value::Char(None)).unwrap(),
+            Value::Char(Some('z'))
+        );
+        assert_eq!(
+            Value::Varchar(Some("hi".into()))
+                .try_as(&Value::Varchar(None))
+                .unwrap(),
+            Value::Varchar(Some("hi".into()))
+        );
+        assert_eq!(
+            Value::Blob(Some(vec![1, 2].into()))
+                .try_as(&Value::Blob(None))
+                .unwrap(),
+            Value::Blob(Some(vec![1, 2].into()))
+        );
+        let d = time::Date::from_calendar_date(2024, time::Month::January, 1).unwrap();
+        assert_eq!(
+            Value::Date(Some(d)).try_as(&Value::Date(None)).unwrap(),
+            Value::Date(Some(d))
+        );
+        let t = time::Time::from_hms(12, 30, 0).unwrap();
+        assert_eq!(
+            Value::Time(Some(t)).try_as(&Value::Time(None)).unwrap(),
+            Value::Time(Some(t))
+        );
+        let ts = time::PrimitiveDateTime::new(d, t);
+        assert_eq!(
+            Value::Timestamp(Some(ts))
+                .try_as(&Value::Timestamp(None))
+                .unwrap(),
+            Value::Timestamp(Some(ts))
+        );
+        let tstz = ts.assume_utc();
+        assert_eq!(
+            Value::TimestampWithTimezone(Some(tstz))
+                .try_as(&Value::TimestampWithTimezone(None))
+                .unwrap(),
+            Value::TimestampWithTimezone(Some(tstz))
+        );
+        assert_eq!(
+            Value::Interval(Some(tank_core::Interval::from_days(5)))
+                .try_as(&Value::Interval(None))
+                .unwrap(),
+            Value::Interval(Some(tank_core::Interval::from_days(5)))
+        );
+        assert_eq!(
+            Value::Uuid(Some(Uuid::nil()))
+                .try_as(&Value::Uuid(None))
+                .unwrap(),
+            Value::Uuid(Some(Uuid::nil()))
+        );
+    }
+
+    #[test]
+    fn value_partial_eq_complex() {
+        assert_eq!(
+            Value::Float32(Some(f32::NAN)),
+            Value::Float32(Some(f32::NAN))
+        );
+        assert_eq!(
+            Value::Float64(Some(f64::NAN)),
+            Value::Float64(Some(f64::NAN))
+        );
+        assert_ne!(
+            Value::Decimal(Some(Decimal::from(1)), 10, 2),
+            Value::Decimal(Some(Decimal::from(1)), 10, 3)
+        );
+        assert_ne!(
+            Value::Decimal(Some(Decimal::from(1)), 10, 2),
+            Value::Decimal(Some(Decimal::from(1)), 8, 2)
+        );
+        assert_ne!(
+            Value::Unknown(Some("a".into())),
+            Value::Unknown(Some("a".into()))
+        );
+        assert_ne!(Value::Int32(Some(1)), Value::Int64(Some(1)));
+        assert_eq!(
+            Value::Map(
+                None,
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None))
+            ),
+            Value::Map(
+                None,
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None))
+            ),
+        );
+        let mut m = std::collections::HashMap::new();
+        m.insert(Value::Varchar(Some("k".into())), Value::Int32(Some(1)));
+        assert_ne!(
+            Value::Map(
+                Some(std::collections::HashMap::new()),
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None)),
+            ),
+            Value::Map(
+                Some(m),
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None)),
+            ),
+        );
+        assert_eq!(
+            Value::Map(
+                Some(std::collections::HashMap::new()),
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None)),
+            ),
+            Value::Map(
+                None,
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None))
+            ),
+        );
+        assert_eq!(
+            Value::Struct(
+                Some(vec![("a".into(), 1_i32.as_value())]),
+                vec![("a".into(), i32::as_empty_value())],
+                TableRef::new("t".into()),
+            ),
+            Value::Struct(
+                Some(vec![("a".into(), 1_i32.as_value())]),
+                vec![("a".into(), i32::as_empty_value())],
+                TableRef::new("t".into()),
+            ),
+        );
+        assert_ne!(
+            Value::Struct(Some(vec![]), vec![], TableRef::new("t1".into()),),
+            Value::Struct(Some(vec![]), vec![], TableRef::new("t2".into()),),
+        );
+        assert_eq!(Value::UInt8(Some(1)), Value::UInt8(Some(1)));
+        assert_ne!(Value::UInt8(Some(1)), Value::UInt8(Some(2)));
+        assert_eq!(Value::UInt16(Some(10)), Value::UInt16(Some(10)));
+        assert_ne!(Value::UInt16(Some(10)), Value::UInt16(Some(20)));
+        assert_eq!(Value::UInt32(Some(100)), Value::UInt32(Some(100)));
+        assert_eq!(Value::UInt64(Some(1000)), Value::UInt64(Some(1000)));
+        assert_eq!(Value::UInt128(Some(10000)), Value::UInt128(Some(10000)));
+
+        let mut m1 = std::collections::HashMap::new();
+        m1.insert(Value::Varchar(Some("a".into())), Value::Int32(Some(1)));
+        let mut m2 = std::collections::HashMap::new();
+        m2.insert(Value::Varchar(Some("a".into())), Value::Int32(Some(1)));
+        assert_eq!(
+            Value::Map(
+                Some(m1),
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None))
+            ),
+            Value::Map(
+                Some(m2),
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None))
+            ),
+        );
+    }
+
+    #[test]
+    fn value_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(Value::Null);
+        set.insert(Value::Boolean(Some(true)));
+        set.insert(Value::Boolean(None));
+        set.insert(Value::Int8(Some(1)));
+        set.insert(Value::Int16(Some(2)));
+        set.insert(Value::Int32(Some(3)));
+        set.insert(Value::Int64(Some(4)));
+        set.insert(Value::Int128(Some(5)));
+        set.insert(Value::UInt8(Some(6)));
+        set.insert(Value::UInt16(Some(7)));
+        set.insert(Value::UInt32(Some(8)));
+        set.insert(Value::UInt64(Some(9)));
+        set.insert(Value::UInt128(Some(10)));
+        set.insert(Value::Float32(Some(1.5)));
+        set.insert(Value::Float32(None));
+        set.insert(Value::Float64(Some(2.5)));
+        set.insert(Value::Float64(None));
+        set.insert(Value::Decimal(Some(Decimal::from(1)), 10, 2));
+        set.insert(Value::Char(Some('a')));
+        set.insert(Value::Varchar(Some("hello".into())));
+        set.insert(Value::Blob(Some(vec![1, 2].into())));
+        set.insert(Value::Uuid(Some(Uuid::nil())));
+        set.insert(Value::Json(Some(serde_json::json!(1))));
+        set.insert(Value::Array(
+            Some(vec![Value::Int32(Some(1))].into()),
+            Box::new(Value::Int32(None)),
+            1,
+        ));
+        set.insert(Value::List(
+            Some(vec![Value::Int32(Some(1))]),
+            Box::new(Value::Int32(None)),
+        ));
+        set.insert(Value::Map(
+            Some(std::collections::HashMap::new()),
+            Box::new(Value::Varchar(None)),
+            Box::new(Value::Int32(None)),
+        ));
+        let mut m_hash = std::collections::HashMap::new();
+        m_hash.insert(Value::Varchar(Some("k".into())), Value::Int32(Some(1)));
+        set.insert(Value::Map(
+            Some(m_hash),
+            Box::new(Value::Varchar(None)),
+            Box::new(Value::Int32(None)),
+        ));
+        set.insert(Value::Map(
+            None,
+            Box::new(Value::Varchar(None)),
+            Box::new(Value::Int32(None)),
+        ));
+        set.insert(Value::Struct(
+            Some(vec![("a".into(), 1_i32.as_value())]),
+            vec![("a".into(), i32::as_empty_value())],
+            TableRef::new("t".into()),
+        ));
+        set.insert(Value::Struct(
+            None,
+            vec![("a".into(), i32::as_empty_value())],
+            TableRef::new("t2".into()),
+        ));
+        set.insert(Value::Unknown(Some("x".into())));
+        let d = time::Date::from_calendar_date(2024, time::Month::January, 15).unwrap();
+        set.insert(Value::Date(Some(d)));
+        let t = time::Time::from_hms(10, 30, 0).unwrap();
+        set.insert(Value::Time(Some(t)));
+        set.insert(Value::Timestamp(Some(time::PrimitiveDateTime::new(d, t))));
+        set.insert(Value::TimestampWithTimezone(Some(
+            time::PrimitiveDateTime::new(d, t).assume_utc(),
+        )));
+        set.insert(Value::Interval(Some(tank_core::Interval::from_days(7))));
+        assert!(set.len() >= 25);
+    }
+
+    #[test]
+    fn value_display() {
+        assert_eq!(format!("{}", Value::Null), "NULL");
+        assert_eq!(format!("{}", Value::Boolean(Some(true))), "true");
+        assert_eq!(format!("{}", Value::Int32(Some(42))), "42");
+        assert_eq!(format!("{}", Value::Float64(Some(3.14))), "3.14");
+        assert_eq!(format!("{}", Value::Varchar(Some("hello".into()))), "hello");
+        assert_eq!(format!("{}", Value::Char(Some('x'))), "x");
+        assert_eq!(
+            format!("{}", Value::Uuid(Some(Uuid::nil()))),
+            "00000000-0000-0000-0000-000000000000"
+        );
+        assert_eq!(format!("{}", Value::UInt64(Some(999))), "999");
+        assert_eq!(format!("{}", Value::Int128(Some(-100))), "-100");
+        assert_eq!(format!("{}", Value::Boolean(Some(false))), "false");
+    }
 }
 
 #[test]
@@ -1204,4 +1827,380 @@ fn value_value() {
         Value::Array(None, Box::new(Value::UInt128(None)), 23)
     );
     assert!(Value::parse("some input").is_err());
+}
+
+#[cfg(test)]
+mod as_value_tests {
+    use tank::{AsValue, Value};
+
+    #[test]
+    fn nonzero_conversions() {
+        use std::num::*;
+        let v = NonZeroI32::new(42).unwrap().as_value();
+        assert_eq!(v, Value::Int32(Some(42)));
+        let back = NonZeroI32::try_from_value(v).unwrap();
+        assert_eq!(back.get(), 42);
+        assert_eq!(NonZeroI32::as_empty_value(), Value::Int32(None));
+
+        let v = NonZeroU64::new(100).unwrap().as_value();
+        assert_eq!(v, Value::UInt64(Some(100)));
+        let back = NonZeroU64::try_from_value(v).unwrap();
+        assert_eq!(back.get(), 100);
+
+        assert!(NonZeroI32::try_from_value(Value::Int32(Some(0))).is_err());
+    }
+
+    #[test]
+    fn bool_from_various_types() {
+        assert_eq!(bool::try_from_value(Value::Int8(Some(1))).unwrap(), true);
+        assert_eq!(bool::try_from_value(Value::Int8(Some(0))).unwrap(), false);
+        assert_eq!(bool::try_from_value(Value::Int16(Some(1))).unwrap(), true);
+        assert_eq!(bool::try_from_value(Value::UInt8(Some(1))).unwrap(), true);
+        assert_eq!(bool::try_from_value(Value::UInt16(Some(0))).unwrap(), false);
+        assert_eq!(bool::try_from_value(Value::UInt32(Some(1))).unwrap(), true);
+        assert_eq!(bool::try_from_value(Value::UInt64(Some(0))).unwrap(), false);
+        assert_eq!(bool::try_from_value(Value::UInt128(Some(1))).unwrap(), true);
+        assert_eq!(bool::try_from_value(Value::Int128(Some(0))).unwrap(), false);
+
+        assert_eq!(bool::parse("true").unwrap(), true);
+        assert_eq!(bool::parse("false").unwrap(), false);
+        assert_eq!(bool::parse("T").unwrap(), true);
+        assert_eq!(bool::parse("F").unwrap(), false);
+        assert_eq!(bool::parse("1").unwrap(), true);
+        assert_eq!(bool::parse("0").unwrap(), false);
+        assert!(bool::parse("maybe").is_err());
+
+        assert_eq!(
+            bool::try_from_value(Value::Json(Some(serde_json::json!(true)))).unwrap(),
+            true
+        );
+        assert_eq!(
+            bool::try_from_value(Value::Json(Some(serde_json::json!(0)))).unwrap(),
+            false
+        );
+        assert_eq!(
+            bool::try_from_value(Value::Json(Some(serde_json::json!(1)))).unwrap(),
+            true
+        );
+    }
+
+    #[test]
+    fn decimal_from_various_types() {
+        use rust_decimal::Decimal;
+        assert_eq!(
+            Decimal::try_from_value(Value::Int8(Some(5))).unwrap(),
+            Decimal::new(5, 0)
+        );
+        assert_eq!(
+            Decimal::try_from_value(Value::UInt8(Some(10))).unwrap(),
+            Decimal::new(10, 0)
+        );
+        assert_eq!(
+            Decimal::try_from_value(Value::UInt16(Some(20))).unwrap(),
+            Decimal::new(20, 0)
+        );
+        assert_eq!(
+            Decimal::try_from_value(Value::UInt32(Some(30))).unwrap(),
+            Decimal::new(30, 0)
+        );
+        assert_eq!(
+            Decimal::try_from_value(Value::UInt64(Some(40))).unwrap(),
+            Decimal::new(40, 0)
+        );
+        assert!(Decimal::try_from_value(Value::Float32(Some(1.5))).is_ok());
+        assert!(Decimal::try_from_value(Value::Float64(Some(2.5))).is_ok());
+        assert!(Decimal::try_from_value(Value::Varchar(Some("3.14".into()))).is_ok());
+        assert!(Decimal::try_from_value(Value::Unknown(Some("1.23".into()))).is_ok());
+
+        assert!(Decimal::try_from_value(Value::Json(Some(serde_json::json!(42.5)))).is_ok());
+    }
+
+    #[test]
+    fn integer_from_json() {
+        assert_eq!(
+            i32::try_from_value(Value::Json(Some(serde_json::json!(42)))).unwrap(),
+            42
+        );
+        assert_eq!(
+            i32::try_from_value(Value::Json(Some(serde_json::json!("99")))).unwrap(),
+            99
+        );
+        assert_eq!(
+            i32::try_from_value(Value::Json(Some(serde_json::json!(5.0)))).unwrap(),
+            5
+        );
+    }
+
+    #[test]
+    fn integer_from_varchar_and_unknown() {
+        assert_eq!(
+            i32::try_from_value(Value::Varchar(Some("42".into()))).unwrap(),
+            42
+        );
+        assert_eq!(
+            i32::try_from_value(Value::Unknown(Some("99".into()))).unwrap(),
+            99
+        );
+    }
+
+    #[test]
+    fn integer_from_float64() {
+        assert_eq!(i32::try_from_value(Value::Float64(Some(10.0))).unwrap(), 10);
+        assert!(i32::try_from_value(Value::Float64(Some(10.5))).is_err());
+    }
+
+    #[test]
+    fn integer_cross_type_conversions() {
+        assert_eq!(i16::try_from_value(Value::Int8(Some(5))).unwrap(), 5);
+        assert_eq!(i16::try_from_value(Value::UInt8(Some(200))).unwrap(), 200);
+        assert_eq!(i16::try_from_value(Value::UInt16(Some(100))).unwrap(), 100);
+        assert_eq!(i64::try_from_value(Value::UInt8(Some(1))).unwrap(), 1);
+        assert_eq!(i64::try_from_value(Value::UInt16(Some(2))).unwrap(), 2);
+        assert_eq!(i64::try_from_value(Value::UInt32(Some(3))).unwrap(), 3);
+        assert_eq!(i64::try_from_value(Value::UInt64(Some(4))).unwrap(), 4);
+        assert_eq!(i128::try_from_value(Value::UInt8(Some(1))).unwrap(), 1);
+        assert_eq!(
+            i128::try_from_value(Value::UInt128(Some(999))).unwrap(),
+            999
+        );
+        assert_eq!(u64::try_from_value(Value::UInt8(Some(1))).unwrap(), 1);
+        assert_eq!(u64::try_from_value(Value::UInt16(Some(2))).unwrap(), 2);
+        assert_eq!(u64::try_from_value(Value::UInt32(Some(3))).unwrap(), 3);
+        assert_eq!(u128::try_from_value(Value::UInt8(Some(1))).unwrap(), 1);
+        assert_eq!(u128::try_from_value(Value::UInt64(Some(9))).unwrap(), 9);
+    }
+
+    #[test]
+    fn integer_decimal_conversions() {
+        use rust_decimal::Decimal;
+        assert_eq!(
+            i32::try_from_value(Value::Decimal(Some(Decimal::new(42, 0)), 0, 0)).unwrap(),
+            42
+        );
+        assert!(i32::try_from_value(Value::Decimal(Some(Decimal::new(155, 1)), 0, 0)).is_err());
+        assert_eq!(
+            i64::try_from_value(Value::Decimal(Some(Decimal::new(100, 0)), 0, 0)).unwrap(),
+            100
+        );
+        assert_eq!(
+            u64::try_from_value(Value::Decimal(Some(Decimal::new(50, 0)), 0, 0)).unwrap(),
+            50
+        );
+    }
+
+    #[test]
+    fn float_conversions() {
+        assert!(
+            f32::try_from_value(Value::Decimal(
+                Some(rust_decimal::Decimal::new(15, 1)),
+                0,
+                0
+            ))
+            .is_ok()
+        );
+        assert_eq!(f32::try_from_value(Value::Float64(Some(2.5))).unwrap(), 2.5);
+        assert_eq!(f64::try_from_value(Value::Float32(Some(1.5))).unwrap(), 1.5);
+        assert!(
+            f64::try_from_value(Value::Decimal(
+                Some(rust_decimal::Decimal::new(25, 1)),
+                0,
+                0
+            ))
+            .is_ok()
+        );
+        assert!(f32::try_from_value(Value::Json(Some(serde_json::json!(1.5)))).is_ok());
+        assert!(f64::try_from_value(Value::Json(Some(serde_json::json!(2.5)))).is_ok());
+    }
+
+    #[test]
+    fn string_from_various_types() {
+        assert_eq!(
+            String::try_from_value(Value::Int32(Some(42))).unwrap(),
+            "42"
+        );
+        assert_eq!(
+            String::try_from_value(Value::Float64(Some(3.14))).unwrap(),
+            "3.14"
+        );
+        assert_eq!(String::try_from_value(Value::Char(Some('x'))).unwrap(), "x");
+        assert!(String::try_from_value(Value::Uuid(Some(uuid::Uuid::nil()))).is_ok());
+        assert_eq!(
+            String::try_from_value(Value::Json(Some(serde_json::json!("hi")))).unwrap(),
+            "hi"
+        );
+    }
+
+    #[test]
+    fn char_conversions() {
+        assert_eq!(
+            char::try_from_value(Value::Varchar(Some("a".into()))).unwrap(),
+            'a'
+        );
+        assert!(char::try_from_value(Value::Varchar(Some("ab".into()))).is_err());
+        assert_eq!(
+            char::try_from_value(Value::Json(Some(serde_json::json!("z")))).unwrap(),
+            'z'
+        );
+    }
+
+    #[test]
+    fn blob_parse() {
+        let v = Box::<[u8]>::try_from_value(Value::Varchar(Some("deadbeef".into()))).unwrap();
+        assert_eq!(v.as_ref(), &[0xde, 0xad, 0xbe, 0xef]);
+        let v2 = Box::<[u8]>::parse("\\xCAFE").unwrap();
+        assert_eq!(v2.as_ref(), &[0xCA, 0xFE]);
+    }
+
+    #[test]
+    fn interval_parse() {
+        use tank_core::Interval;
+        let i = Interval::parse("'1 year 2 months 3 days'").unwrap();
+        assert_eq!(i.months, 14); // 12 + 2
+        assert_eq!(i.days, 3);
+
+        let i2 = Interval::parse("5 hours 30 minutes").unwrap();
+        assert!(!i2.is_zero());
+
+        let i3 = Interval::parse("01:30:00").unwrap();
+        assert!(!i3.is_zero());
+    }
+
+    #[test]
+    fn date_parse() {
+        let d = <time::Date as AsValue>::parse("2024-06-15").unwrap();
+        assert_eq!(
+            d,
+            time::Date::from_calendar_date(2024, time::Month::June, 15).unwrap()
+        );
+    }
+
+    #[test]
+    fn time_parse() {
+        let t = <time::Time as AsValue>::parse("14:30:00").unwrap();
+        assert_eq!(t, time::Time::from_hms(14, 30, 0).unwrap());
+    }
+
+    #[test]
+    fn timestamp_parse() {
+        let ts = <time::PrimitiveDateTime as AsValue>::parse("2024-06-15T14:30:00").unwrap();
+        let d = time::Date::from_calendar_date(2024, time::Month::June, 15).unwrap();
+        let t = time::Time::from_hms(14, 30, 0).unwrap();
+        assert_eq!(ts, time::PrimitiveDateTime::new(d, t));
+    }
+
+    #[test]
+    fn offset_datetime_parse() {
+        let odt = <time::OffsetDateTime as AsValue>::parse("2024-06-15T14:30:00+05:00").unwrap();
+        assert_eq!(odt.offset().whole_hours(), 5);
+    }
+
+    #[test]
+    fn uuid_from_varchar() {
+        let u = uuid::Uuid::try_from_value(Value::Varchar(Some(
+            "550e8400-e29b-41d4-a716-446655440000".into(),
+        )))
+        .unwrap();
+        assert_eq!(u.to_string(), "550e8400-e29b-41d4-a716-446655440000");
+    }
+
+    #[test]
+    fn time_from_interval() {
+        use tank_core::Interval;
+        let t = time::Time::try_from_value(Value::Interval(Some(
+            Interval::from_hours(2) + Interval::from_mins(30),
+        )))
+        .unwrap();
+        assert_eq!(t, time::Time::from_hms(2, 30, 0).unwrap());
+    }
+
+    #[test]
+    fn date_from_timestamp() {
+        let d = time::Date::from_calendar_date(2024, time::Month::January, 1).unwrap();
+        let t = time::Time::MIDNIGHT;
+        let ts = time::PrimitiveDateTime::new(d, t);
+        let result = time::Date::try_from_value(Value::Timestamp(Some(ts))).unwrap();
+        assert_eq!(result, d);
+
+        let t2 = time::Time::from_hms(12, 0, 0).unwrap();
+        let ts2 = time::PrimitiveDateTime::new(d, t2);
+        assert!(time::Date::try_from_value(Value::Timestamp(Some(ts2))).is_err());
+    }
+
+    #[test]
+    fn offset_datetime_from_timestamp() {
+        let d = time::Date::from_calendar_date(2024, time::Month::January, 1).unwrap();
+        let t = time::Time::from_hms(12, 0, 0).unwrap();
+        let ts = time::PrimitiveDateTime::new(d, t);
+        let odt = time::OffsetDateTime::try_from_value(Value::Timestamp(Some(ts))).unwrap();
+        assert_eq!(odt.date(), d);
+    }
+
+    #[test]
+    fn vec_and_list_conversions() {
+        let v = vec![1_i32, 2, 3].as_value();
+        let back: Vec<i32> = Vec::try_from_value(v).unwrap();
+        assert_eq!(back, vec![1, 2, 3]);
+
+        let v = Value::Json(Some(serde_json::json!([1, 2, 3])));
+        let back: Vec<i32> = Vec::try_from_value(v).unwrap();
+        assert_eq!(back, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn array_conversions() {
+        let v = [10_i32, 20, 30].as_value();
+        let back: [i32; 3] = <[i32; 3]>::try_from_value(v).unwrap();
+        assert_eq!(back, [10, 20, 30]);
+    }
+
+    #[test]
+    fn hashmap_conversions() {
+        use std::collections::HashMap;
+        let mut m = HashMap::new();
+        m.insert("key".to_string(), 42_i32);
+        let v = m.clone().as_value();
+        let back: HashMap<String, i32> = HashMap::try_from_value(v).unwrap();
+        assert_eq!(back, m);
+    }
+
+    #[test]
+    fn option_and_wrapper_conversions() {
+        assert_eq!(Some(42_i32).as_value(), Value::Int32(Some(42)));
+        assert_eq!(None::<i32>.as_value(), Value::Int32(None));
+        let back: Option<i32> = Option::try_from_value(Value::Int32(Some(42))).unwrap();
+        assert_eq!(back, Some(42));
+        let none: Option<i32> = Option::try_from_value(Value::Int32(None)).unwrap();
+        assert_eq!(none, None);
+
+        assert_eq!(Box::new(42_i32).as_value(), Value::Int32(Some(42)));
+        let back: Box<i32> = Box::try_from_value(Value::Int32(Some(42))).unwrap();
+        assert_eq!(*back, 42);
+
+        use std::sync::Arc;
+        assert_eq!(Arc::new(42_i32).as_value(), Value::Int32(Some(42)));
+
+        use std::rc::Rc;
+        assert_eq!(Rc::new(42_i32).as_value(), Value::Int32(Some(42)));
+    }
+
+    #[test]
+    fn fixed_decimal_round_trip() {
+        use rust_decimal::Decimal;
+        use tank_core::FixedDecimal;
+        let fd: FixedDecimal<10, 2> = Decimal::new(1234, 2).into();
+        let v = fd.as_value();
+        let back: FixedDecimal<10, 2> = FixedDecimal::try_from_value(v).unwrap();
+        assert_eq!(back.0, Decimal::new(1234, 2));
+    }
+
+    #[test]
+    fn isize_usize_conversions() {
+        assert_eq!(42_isize.as_value(), Value::Int64(Some(42)));
+        let back: isize = isize::try_from_value(Value::Int64(Some(42))).unwrap();
+        assert_eq!(back, 42);
+
+        assert_eq!(42_usize.as_value(), Value::UInt64(Some(42)));
+        let back: usize = usize::try_from_value(Value::UInt64(Some(42))).unwrap();
+        assert_eq!(back, 42);
+    }
 }
