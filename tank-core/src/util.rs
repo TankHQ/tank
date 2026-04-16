@@ -208,7 +208,11 @@ pub fn error_message_from_ptr<'a>(ptr: &'a *const i8) -> Cow<'a, str> {
 
 /// Consume a prefix of `input` while the predicate returns true, returning that slice.
 pub fn consume_while<'s>(input: &mut &'s str, predicate: impl FnMut(&char) -> bool) -> &'s str {
-    let len = input.chars().take_while(predicate).count();
+    let len = input
+        .chars()
+        .take_while(predicate)
+        .map(char::len_utf8)
+        .sum();
     if len == 0 {
         return "";
     }

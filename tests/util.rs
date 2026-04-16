@@ -662,6 +662,11 @@ mod tests {
         let empty = consume_while(&mut input2, |c| c.is_ascii_digit());
         assert_eq!(empty, "");
         assert_eq!(input2, "abc");
+
+        let mut input3 = "ééé123";
+        let accented = consume_while(&mut input3, |c| !c.is_ascii_digit());
+        assert_eq!(accented, "ééé");
+        assert_eq!(input3, "123");
     }
 
     #[test]
