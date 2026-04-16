@@ -34,7 +34,7 @@ impl SqlWriter for MySQLSqlWriter {
     ) {
         if quoted {
             out.push('`');
-            write_escaped(out, value, '"', "``");
+            write_escaped(out, value, '`', "``");
             out.push('`');
         } else {
             out.push_str(value);

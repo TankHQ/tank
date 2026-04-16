@@ -17,7 +17,7 @@ use tank_core::{
 };
 use tank_scylladb::{CassandraDriver, ScyllaDBDriver};
 use tank_tests::{
-    ambiguity, custom, enums, interval, kv_storage, limits, metrics, service, simple,
+    ambiguity, custom, enums, identifiers, interval, kv_storage, limits, metrics, service, simple,
     trade_multiple, trade_simple, transaction1,
 };
 use testcontainers_modules::{
@@ -47,6 +47,7 @@ pub(crate) async fn execute_tests(mut connection: impl Connection) {
     service(&mut connection).await;
     enums(&mut connection).await;
     custom(&mut connection).await;
+    identifiers(&mut connection).await;
 }
 
 struct TestcontainersLogConsumer;

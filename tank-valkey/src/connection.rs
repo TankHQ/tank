@@ -109,6 +109,9 @@ impl Executor for ValkeyConnection {
                 .with_context(context)?;
                 return;
             }
+            if results.iter().all(|v| matches!(v, redis::Value::Nil)) {
+                return;
+            }
             let mut labels = Arc::new_zeroed_slice(prepared.columns.len());
             let mut values = Vec::with_capacity(prepared.columns.len());
             {

@@ -7,6 +7,7 @@ mod complex;
 mod conditions;
 mod custom;
 mod enums;
+mod identifiers;
 mod insane;
 mod interval;
 mod keywords;
@@ -38,6 +39,7 @@ pub use complex::*;
 pub use conditions::*;
 pub use custom::*;
 pub use enums::*;
+pub use identifiers::*;
 pub use insane::*;
 pub use interval::*;
 pub use keywords::*;
@@ -118,6 +120,7 @@ pub async fn execute_tests(mut connection: impl Connection) {
     do_test!(custom);
     do_test!(requests);
     do_test!(keywords);
+    do_test!(identifiers);
     connection.disconnect().await.expect("Failed to disconnect");
 }
 
