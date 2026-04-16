@@ -2049,6 +2049,19 @@ mod as_value_tests {
             char::try_from_value(Value::Json(Some(serde_json::json!("z")))).unwrap(),
             'z'
         );
+        assert_eq!(
+            char::try_from_value(Value::Varchar(Some("é".into()))).unwrap(),
+            'é'
+        );
+        assert_eq!(
+            char::try_from_value(Value::Varchar(Some("€".into()))).unwrap(),
+            '€'
+        );
+        assert_eq!(
+            char::try_from_value(Value::Json(Some(serde_json::json!("é")))).unwrap(),
+            'é'
+        );
+        assert_eq!(char::parse("é").unwrap(), 'é');
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    DynQuery, Entity, Executor, QueryBuilder, cols,
+    DynQuery, Entity, Executor, QueryBuilder, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -11,6 +11,13 @@ static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 pub struct ATable {
     #[tank(primary_key)]
     a_column: String,
+}
+
+#[derive(Entity, PartialEq, Debug)]
+pub struct CharTable {
+    #[tank(primary_key)]
+    id: i32,
+    letter: char,
 }
 
 pub async fn other(executor: &mut impl Executor) {
@@ -61,5 +68,29 @@ pub async fn other(executor: &mut impl Executor) {
     assert_eq!(
         from_build, from_build_into,
         "build() and build_into() should produce the same SQL"
+    );
+
+    // Multi byte char
+    CharTable::drop_table(executor, true, false)
+        .await
+        .expect("Failed to drop CharTable");
+    CharTable::create_table(executor, true, true)
+        .await
+        .expect("Failed to create CharTable");
+    CharTable::insert_one(
+        executor,
+        &CharTable {
+            id: 1, letter: 'é'
+        },
+    )
+    .await
+    .expect("Could not insert multi-byte char");
+    let row = CharTable::find_one(executor, expr!(CharTable::id == 1))
+        .await
+        .expect("Failed to query CharTable")
+        .expect("Row with id=1 not found");
+    assert_eq!(
+        row.letter, 'é',
+        "Multi-byte char should round-trip correctly"
     );
 }

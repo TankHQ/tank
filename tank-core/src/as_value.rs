@@ -490,13 +490,13 @@ impl_as_value!(
     char,
     Value::Char,
     |input: &str| {
-        if input.len() != 1 {
+        if input.chars().count() != 1 {
             return Err(Error::msg(format!("Cannot convert `{input:?}` to char")))
         }
         Ok(input.chars().next().expect("Should have one character"))
     },
     Value::Varchar(Some(v), ..) => {
-        if v.len() != 1 {
+        if v.chars().count() != 1 {
             return Err(Error::msg(format!(
                 "Cannot convert varchar `{}` to char because it has more than one character",
                 truncate_long!(v)
@@ -505,7 +505,7 @@ impl_as_value!(
         Ok(v.chars().next().unwrap())
     },
     Value::Json(Some(serde_json::Value::String(v)), ..) => {
-        if v.len() != 1 {
+        if v.chars().count() != 1 {
             return Err(Error::msg(format!(
                 "Cannot convert json `{}` to char because it has more than one character",
                 truncate_long!(v)

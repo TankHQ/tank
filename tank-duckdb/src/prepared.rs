@@ -84,8 +84,12 @@ impl Prepared for DuckDBPrepared {
                 }
                 Value::Char(Some(v), ..) => {
                     let v = v.to_string();
-                    let status =
-                        duckdb_bind_varchar_length(prepared, index, v.as_ptr() as *const i8, 1);
+                    let status = duckdb_bind_varchar_length(
+                        prepared,
+                        index,
+                        v.as_ptr() as *const i8,
+                        v.len() as u64,
+                    );
                     status
                 }
                 Value::Varchar(Some(v), ..) => {
