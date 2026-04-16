@@ -114,7 +114,12 @@ impl SqlWriter for PostgresSqlWriter {
         };
         let (year, suffix) = if value.year() <= 0 {
             // Year 0 in Postgres is 1 BC
-            (value.year().abs() + 1, " BC")
+            let suffix = if context.fragment == Fragment::Timestamp {
+                ""
+            } else {
+                " BC"
+            };
+            (value.year().abs() + 1, suffix)
         } else {
             (value.year(), "")
         };
@@ -145,6 +150,7 @@ impl SqlWriter for PostgresSqlWriter {
         out: &mut DynQuery,
         value: &PrimitiveDateTime,
     ) {
+        let is_timestamp = context.fragment == Fragment::Timestamp;
         let (l, r) = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => ("", ""),
             Fragment::Json | Fragment::JsonKey => ("\"", "\""),
@@ -155,7 +161,7 @@ impl SqlWriter for PostgresSqlWriter {
         self.write_date(&mut context.current, out, &value.date());
         out.push('T');
         self.write_time(&mut context.current, out, &value.time());
-        if value.date().year() <= 0 {
+        if !is_timestamp && value.date().year() <= 0 {
             out.push_str(" BC");
         }
         out.push_str(r);

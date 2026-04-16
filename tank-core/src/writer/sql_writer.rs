@@ -356,7 +356,12 @@ pub trait SqlWriter: Send {
         let year = value.year();
         let month = value.month() as u8;
         let day = value.day();
-        let _ = write!(out, "{d}{year:04}-{month:02}-{day:02}{d}");
+        let _ = write!(
+            out,
+            "{d}{}{:04}-{month:02}-{day:02}{d}",
+            if year < 0 { "-" } else { "" },
+            year.unsigned_abs()
+        );
     }
 
     fn write_time(&self, context: &mut Context, out: &mut DynQuery, value: &Time) {
