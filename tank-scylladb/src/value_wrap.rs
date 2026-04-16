@@ -186,7 +186,8 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                                 "Could not deserialize NativeType::Varint as Value::Int128: overflow (more than 16 bytes)",
                             )));
                         }
-                        let mut padded = [0u8; 16];
+                        let is_negative = len > 0 && (bytes[0] & 0x80) != 0;
+                        let mut padded = [if is_negative { 0xFFu8 } else { 0u8 }; 16];
                         padded[(16 - len)..].copy_from_slice(bytes);
                         let num = i128::from_be_bytes(padded);
                         Some(num)
@@ -221,12 +222,13 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                             return Err(error("overflow (more than 16 bytes)".into()));
                         }
                         let pad_len = 16 - len;
-                        let mut padded = [0u8; 16];
+                        let is_negative = len > 0 && (bytes[0] & 0x80) != 0;
+                        let mut padded = [if is_negative { 0xFFu8 } else { 0u8 }; 16];
                         padded[pad_len..].copy_from_slice(bytes);
                         let mut num = i128::from_be_bytes(padded);
                         if scale < 0 {
                             let Some(scaled) = 10_i128
-                                .checked_pow(scale as _)
+                                .checked_pow(scale.unsigned_abs())
                                 .and_then(|p| num.checked_mul(p))
                             else {
                                 return Err(error(

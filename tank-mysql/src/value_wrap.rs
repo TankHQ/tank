@@ -146,11 +146,11 @@ impl<'a> TryFrom<ValueWrap<'a>> for mysql_async::Value {
             TankValue::Interval(Some(v), ..) => {
                 let v: Duration = v.into();
                 let mut secs = v.whole_seconds();
-                let days = (secs / Interval::SECS_IN_DAY.abs()) as _;
-                secs = secs % Interval::SECS_IN_DAY;
-                let hours = (secs / 3600).abs() as _;
+                let days = (secs / Interval::SECS_IN_DAY).abs() as _;
+                secs = (secs % Interval::SECS_IN_DAY).abs();
+                let hours = (secs / 3600) as _;
                 secs = secs % 3600;
-                let mins = (secs / 60).abs();
+                let mins = secs / 60;
                 secs = secs % 60;
                 MySQLValue::Time(
                     v < Duration::ZERO,

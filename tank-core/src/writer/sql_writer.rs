@@ -1170,7 +1170,7 @@ pub trait SqlWriter: Send {
             out.push_str("\nHAVING ");
             having.write_query(
                 self,
-                &mut context.switch_fragment(Fragment::SqlSelectWhere).current,
+                &mut context.switch_fragment(Fragment::SqlSelectHaving).current,
                 out,
             );
         }

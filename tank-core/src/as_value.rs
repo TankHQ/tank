@@ -480,7 +480,7 @@ impl_as_value!(
     Value::Decimal(Some(v), ..) => Ok(v.try_into()?),
     Value::Json(Some(serde_json::Value::Number(v)), ..) => {
         let Some(v) = v.as_f64() else {
-            return Err(Error::msg(format!("Cannot convert json number `{v:?}` to f32")));
+            return Err(Error::msg(format!("Cannot convert json number `{v:?}` to f64")));
         };
         Ok(v)
     }

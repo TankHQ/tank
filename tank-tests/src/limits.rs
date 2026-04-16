@@ -228,6 +228,67 @@ pub async fn limits(executor: &mut impl Executor) {
         Interval::from_days(31) + Interval::from_mins(5)
     );
 
+    // Small negative values (tests sign-extension when varint is fewer than 16 bytes)
+    #[cfg(not(feature = "disable-large-integers"))]
+    {
+        macro_rules! test_small_negative {
+            ($executor:expr, $id:literal, $val:expr) => {{
+                Limits::delete_many($executor, expr!(id == $id))
+                    .await
+                    .expect("Failed to clear for small negatives test");
+                let entry = Limits {
+                    id: $id,
+                    boolean: false,
+                    int8: -1,
+                    uint8: 0,
+                    int16: -1,
+                    uint16: 0,
+                    int32: -1,
+                    uint32: 0,
+                    int64: -1,
+                    uint64: 0,
+                    int128: $val,
+                    uint128: 0,
+                    float32: 0.0,
+                    float64: 0.0,
+                    time: Time::from_hms(0, 0, 0).unwrap(),
+                    date: Date::from_calendar_date(2000, Month::January, 01).unwrap(),
+                    #[cfg(not(feature = "disable-intervals"))]
+                    interval: Interval::ZERO,
+                };
+                Limits::insert_one($executor, &entry).await.expect(concat!(
+                    "Failed to insert small negative i128 = ",
+                    stringify!($val)
+                ));
+                let loaded = Limits::find_one($executor, expr!(id == $id))
+                    .await
+                    .expect(concat!(
+                        "Failed to query small negative i128 = ",
+                        stringify!($val)
+                    ))
+                    .expect(concat!(
+                        "Failed to find small negative i128 = ",
+                        stringify!($val)
+                    ));
+                assert_eq!(
+                    loaded.int128, $val,
+                    concat!(
+                        "Small negative i128 round-trip failed for ",
+                        stringify!($val)
+                    )
+                );
+            }};
+        }
+        test_small_negative!(executor, 10, -1_i128);
+        test_small_negative!(executor, 11, -128_i128);
+        test_small_negative!(executor, 12, -1000_i128);
+        test_small_negative!(executor, 13, -100_000_i128);
+        Limits::delete_many(executor, expr!(id == 10)).await.ok();
+        Limits::delete_many(executor, expr!(id == 11)).await.ok();
+        Limits::delete_many(executor, expr!(id == 12)).await.ok();
+        Limits::delete_many(executor, expr!(id == 13)).await.ok();
+    }
+
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
