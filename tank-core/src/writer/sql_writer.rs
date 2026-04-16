@@ -410,11 +410,11 @@ pub trait SqlWriter: Send {
         let (h, m, s) = value.offset().as_hms();
         if h != 0 || m != 0 || s != 0 {
             out.push(if h >= 0 { '+' } else { '-' });
-            let _ = write!(out, "{h:02}");
+            let _ = write!(out, "{:02}", h.unsigned_abs());
             if m != 0 || s != 0 {
-                let _ = write!(out, ":{m:02}");
+                let _ = write!(out, ":{:02}", m.unsigned_abs());
                 if s != 0 {
-                    let _ = write!(out, ":{s:02}");
+                    let _ = write!(out, ":{:02}", s.unsigned_abs());
                 }
             }
         }

@@ -178,7 +178,7 @@ impl SqlWriter for PostgresSqlWriter {
             out,
             "{:+03}:{:02}",
             value.offset().whole_hours(),
-            value.offset().whole_minutes() % 60
+            (value.offset().whole_minutes() % 60).unsigned_abs()
         );
         if value.date().year() <= 0 {
             out.push_str(" BC");
