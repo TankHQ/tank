@@ -45,6 +45,6 @@ where
 
     pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
         let writer = driver.sql_writer();
-        writer.write_create_table::<E>(out, self.update);
+        writer.write_insert::<E>(out, self.values.clone(), self.update);
     }
 }

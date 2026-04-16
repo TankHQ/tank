@@ -1,6 +1,6 @@
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Entity, Executor, QueryBuilder, cols,
+    DynQuery, Entity, Executor, QueryBuilder, cols,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -48,4 +48,18 @@ pub async fn other(executor: &mut impl Executor) {
         .expect("No result returned from the stream")
         .expect("Could not query for NULL");
     assert!(value.is_null());
+
+    // InsertIntoQueryBuilder::build and build_into should produce identical SQL
+    let rows = vec![ATable {
+        a_column: "test".into(),
+    }];
+    let query = QueryBuilder::new().insert_into::<ATable>().values(&rows);
+    let from_build = query.build(&executor.driver());
+    let mut out = DynQuery::default();
+    query.build_into(&executor.driver(), &mut out);
+    let from_build_into: String = out.into();
+    assert_eq!(
+        from_build, from_build_into,
+        "build() and build_into() should produce the same SQL"
+    );
 }
