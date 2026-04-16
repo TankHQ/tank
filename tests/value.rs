@@ -1915,6 +1915,13 @@ mod as_value_tests {
             Decimal::try_from_value(Value::UInt64(Some(40))).unwrap(),
             Decimal::new(40, 0)
         );
+        let large_u64: u64 = 10_000_000_000_000_000_000;
+        let dec = Decimal::try_from_value(Value::UInt64(Some(large_u64))).unwrap();
+        assert!(
+            dec > Decimal::ZERO,
+            "Decimal from large u64 should be positive, got: {dec}"
+        );
+        assert_eq!(dec.to_string(), large_u64.to_string());
         assert!(Decimal::try_from_value(Value::Float32(Some(1.5))).is_ok());
         assert!(Decimal::try_from_value(Value::Float64(Some(2.5))).is_ok());
         assert!(Decimal::try_from_value(Value::Varchar(Some("3.14".into()))).is_ok());
