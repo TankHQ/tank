@@ -151,6 +151,8 @@ mod tests {
         assert!(i16::try_from_value((-32769_i128).as_value()).is_err());
         assert!(i16::try_from_value("-32769".as_value()).is_err());
         assert_eq!(i16::try_from_value("-32768".as_value()).unwrap(), -32768);
+        assert!(i16::try_from_value(u16::MAX.as_value()).is_err());
+        assert!(i16::try_from_value(32768_u16.as_value()).is_err());
         assert!(i16::parse("hello").is_err());
         assert_eq!(i16::parse("32767").expect("Could not parse i16"), 32767);
         assert_eq!(i16::parse("-32768").expect("Could not parse i16"), -32768);
@@ -194,6 +196,8 @@ mod tests {
         assert!(i32::parse("2147483648").is_err());
         assert!(i32::parse("-2147483649").is_err());
         assert!(i32::parse("2147483647, next").is_err());
+        assert!(i32::try_from_value(u32::MAX.as_value()).is_err());
+        assert!(i32::try_from_value(2147483648_u32.as_value()).is_err());
         assert!(i64::parse("").is_err());
     }
 
@@ -231,6 +235,8 @@ mod tests {
         assert!(i64::parse("").is_err());
         assert!(i64::parse("9223372036854775807, next").is_err());
         assert!(i64::parse("").is_err());
+        assert!(i64::try_from_value(u64::MAX.as_value()).is_err());
+        assert!(i64::try_from_value(9223372036854775808_u64.as_value()).is_err());
     }
 
     #[test]
@@ -273,6 +279,8 @@ mod tests {
         assert!(i128::parse(i128_over).is_err());
         assert!(i128::parse(i128_under).is_err());
         assert!(i128::parse("").is_err());
+        assert!(i128::try_from_value(u128::MAX.as_value()).is_err());
+        assert!(i128::try_from_value((i128::MAX as u128 + 1).as_value()).is_err());
     }
 
     #[test]

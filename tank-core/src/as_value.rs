@@ -192,7 +192,9 @@ impl_as_value!(
     i16,
     Value::Int16,
     Value::Int8(Some(v), ..) => Ok(v as _),
-    Value::UInt16(Some(v), ..) => Ok(v as _),
+    Value::UInt16(Some(v), ..) => {
+        i16::try_from(v).map_err(|_| Error::msg(format!("Value {v}: u16 is out of range for i16")))
+    },
     Value::UInt8(Some(v), ..) => Ok(v as _),
 );
 
@@ -201,7 +203,9 @@ impl_as_value!(
     Value::Int32,
     Value::Int16(Some(v), ..) => Ok(v as _),
     Value::Int8(Some(v), ..) => Ok(v as _),
-    Value::UInt32(Some(v), ..) => Ok(v as _),
+    Value::UInt32(Some(v), ..) => {
+        i32::try_from(v).map_err(|_| Error::msg(format!("Value {v}: u32 is out of range for i32")))
+    },
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
@@ -219,7 +223,9 @@ impl_as_value!(
     Value::Int32(Some(v), ..) => Ok(v as _),
     Value::Int16(Some(v), ..) => Ok(v as _),
     Value::Int8(Some(v), ..) => Ok(v as _),
-    Value::UInt64(Some(v), ..) => Ok(v as _),
+    Value::UInt64(Some(v), ..) => {
+        i64::try_from(v).map_err(|_| Error::msg(format!("Value {v}: u64 is out of range for i64")))
+    },
     Value::UInt32(Some(v), ..) => Ok(v as _),
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
@@ -239,7 +245,9 @@ impl_as_value!(
     Value::Int32(Some(v), ..) => Ok(v as _),
     Value::Int16(Some(v), ..) => Ok(v as _),
     Value::Int8(Some(v), ..) => Ok(v as _),
-    Value::UInt128(Some(v), ..) => Ok(v as _),
+    Value::UInt128(Some(v), ..) => {
+        i128::try_from(v).map_err(|_| Error::msg(format!("Value {v}: u128 is out of range for i128")))
+    },
     Value::UInt64(Some(v), ..) => Ok(v as _),
     Value::UInt32(Some(v), ..) => Ok(v as _),
     Value::UInt16(Some(v), ..) => Ok(v as _),
@@ -259,7 +267,9 @@ impl_as_value!(
     Value::Int32(Some(v), ..) => Ok(v as _),
     Value::Int16(Some(v), ..) => Ok(v as _),
     Value::Int8(Some(v), ..) => Ok(v as _),
-    Value::UInt64(Some(v), ..) => Ok(v as _),
+    Value::UInt64(Some(v), ..) => {
+        isize::try_from(v).map_err(|_| Error::msg(format!("Value {v}: u64 is out of range for isize")))
+    },
     Value::UInt32(Some(v), ..) => Ok(v as _),
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
