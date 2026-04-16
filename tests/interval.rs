@@ -264,6 +264,7 @@ mod tests {
 
     #[test]
     fn as_hmsns() {
+        // 02:30:15
         let interval = Interval::from_hours(2) + Interval::from_mins(30) + Interval::from_secs(15);
         let (h, m, s, ns) = interval.as_hmsns();
         assert_eq!(h, 2);
@@ -271,6 +272,7 @@ mod tests {
         assert_eq!(s, 15);
         assert_eq!(ns, 0);
 
+        // 00:00:00.0000005
         let interval2 = Interval::from_nanos(500);
         let (h, m, s, ns) = interval2.as_hmsns();
         assert_eq!(h, 0);
@@ -278,10 +280,26 @@ mod tests {
         assert_eq!(s, 0);
         assert_eq!(ns, 500);
 
-        // With months and days contributing to hours
+        // 1 month + 2 days = 720 + 48 hours = 768 hours
         let interval3 = Interval::new(1, 2, 0); // 1 month + 2 days
         let (h, _, _, _) = interval3.as_hmsns();
-        assert_eq!(h, (1 * 30 + 2) * 24); // (months*30 + days) * 24
+        assert_eq!(h, 768); // (months*30 + days) * 24
+
+        // -01:30:15
+        let neg = -(Interval::from_hours(1) + Interval::from_mins(30) + Interval::from_secs(15));
+        let (h, m, s, ns) = neg.as_hmsns();
+        assert_eq!(h, -1);
+        assert_eq!(m, 30);
+        assert_eq!(s, 15);
+        assert_eq!(ns, 0);
+
+        // -01:30:00.0000005
+        let neg2 = -Interval::from_nanos(5_400_000_000_500);
+        let (h, m, s, ns) = neg2.as_hmsns();
+        assert_eq!(h, -1);
+        assert_eq!(m, 30);
+        assert_eq!(s, 0);
+        assert_eq!(ns, 500);
     }
 
     #[test]

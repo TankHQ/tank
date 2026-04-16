@@ -167,6 +167,9 @@ impl Interval {
         let mut hours = self.nanos / Self::NANOS_IN_HOUR;
         nanos %= Self::NANOS_IN_HOUR;
         hours += ((self.months * 30 + self.days) * 24) as i128;
+        if nanos < 0 {
+            nanos = -nanos;
+        }
         let m = nanos / (60 * Self::NANOS_IN_SEC);
         nanos %= 60 * Self::NANOS_IN_SEC;
         let s = nanos / Self::NANOS_IN_SEC;
@@ -174,7 +177,7 @@ impl Interval {
         (hours, m as _, s as _, nanos as _)
     }
 
-        pub const fn is_zero(&self) -> bool {
+    pub const fn is_zero(&self) -> bool {
         self.months == 0 && self.days == 0 && self.nanos == 0
     }
 
