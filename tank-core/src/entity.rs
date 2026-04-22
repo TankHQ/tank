@@ -83,7 +83,7 @@ pub trait Entity {
                 executor.execute(&mut q).await?;
                 // To reuse the allocated buffer
                 query = q.into();
-                query.buffer().clear();
+                query.clear();
             }
             writer.write_create_table::<Self>(&mut query, if_not_exists);
             executor.execute(query).await.map(|_| ())
@@ -112,7 +112,7 @@ pub trait Entity {
                     executor.execute(&mut q).await?;
                     // To reuse the allocated buffer
                     query = q.into();
-                    query.buffer().clear();
+                    query.clear();
                 }
                 writer.write_drop_schema::<Self>(&mut query, true);
             }

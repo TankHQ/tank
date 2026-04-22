@@ -3,7 +3,6 @@ use std::{
     any::Any,
     borrow::Cow,
     fmt::{self, Write},
-    mem,
 };
 
 /// Dyn compatible version of `Query`
@@ -19,6 +18,12 @@ impl DynQuery {
     }
     pub fn with_capacity(capacity: usize) -> Self {
         Self::new(String::with_capacity(capacity))
+    }
+    pub fn clear(&mut self) {
+        match self {
+            Self::Raw(RawQuery(value)) => value.clear(),
+            Self::Prepared(..) => *self = Self::Raw(Default::default()),
+        }
     }
     pub fn buffer(&mut self) -> &mut String {
         if !matches!(self, Self::Raw(..)) {
@@ -105,7 +110,10 @@ impl<D: Driver> From<DynQuery> for Query<D> {
 }
 
 impl From<DynQuery> for String {
-    fn from(mut value: DynQuery) -> Self {
-        mem::take(value.buffer())
+    fn from(value: DynQuery) -> Self {
+        match value {
+            DynQuery::Raw(RawQuery(value)) => value,
+            DynQuery::Prepared(value) => format!("{:?}", value),
+        }
     }
 }

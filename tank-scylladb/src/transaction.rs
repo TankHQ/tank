@@ -89,7 +89,7 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
             let mut q = query.into_query(self.driver());
             self.execute(&mut q).await?;
             query = q.into();
-            query.buffer().clear();
+            query.clear();
         }
         Ok(Default::default())
     }
