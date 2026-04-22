@@ -10,7 +10,7 @@ mod tests {
     use serde_json::Number;
     use std::{
         borrow::Cow,
-        collections::{LinkedList, VecDeque},
+        collections::{HashSet, LinkedList, VecDeque},
         str::FromStr,
     };
     use tank::TableRef;
@@ -1161,7 +1161,7 @@ mod tests {
         m2.insert("b".into(), 2);
         let v1 = m1.clone().as_value();
         let v2 = m2.clone().as_value();
-        assert_eq!(v1, v2, "Map Value equality only considers emptiness + type");
+        assert_ne!(v1, v2, "Map Value equality must depend on the entries");
         let empty_map_v = HashMap::<String, i32>::new().as_value();
         assert_ne!(v1, empty_map_v);
         let round1: HashMap<String, i32> = HashMap::try_from_value(v1).unwrap();
@@ -1635,7 +1635,7 @@ mod tests {
             Value::Decimal(Some(Decimal::from(1)), 10, 2),
             Value::Decimal(Some(Decimal::from(1)), 8, 2)
         );
-        assert_ne!(
+        assert_eq!(
             Value::Unknown(Some("a".into())),
             Value::Unknown(Some("a".into()))
         );
@@ -1794,6 +1794,23 @@ mod tests {
         )));
         set.insert(Value::Interval(Some(tank_core::Interval::from_days(7))));
         assert!(set.len() >= 25);
+    }
+
+    #[test]
+    fn value_float_hash_matches_equality() {
+        let mut f32_set = HashSet::new();
+        f32_set.insert(Value::Float32(Some(0.0)));
+        f32_set.insert(Value::Float32(Some(-0.0)));
+        f32_set.insert(Value::Float32(Some(f32::from_bits(0x7fc0_0000))));
+        f32_set.insert(Value::Float32(Some(f32::from_bits(0x7fc0_0001))));
+        assert_eq!(f32_set.len(), 2);
+
+        let mut f64_set = HashSet::new();
+        f64_set.insert(Value::Float64(Some(0.0)));
+        f64_set.insert(Value::Float64(Some(-0.0)));
+        f64_set.insert(Value::Float64(Some(f64::from_bits(0x7ff8_0000_0000_0000))));
+        f64_set.insert(Value::Float64(Some(f64::from_bits(0x7ff8_0000_0000_0001))));
+        assert_eq!(f64_set.len(), 2);
     }
 
     #[test]

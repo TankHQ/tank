@@ -291,21 +291,41 @@ impl PartialEq for Value {
             (Self::Array(l, ..), Self::Array(r, ..)) => l == r && self.same_type(other),
             (Self::List(l, ..), Self::List(r, ..)) => l == r && self.same_type(other),
             (Self::Map(None, ..), Self::Map(None, ..)) => self.same_type(other),
-            (Self::Map(Some(l), ..), Self::Map(Some(r), ..)) => {
-                l.is_empty() == r.is_empty() && self.same_type(other)
-            }
+            (Self::Map(Some(l), ..), Self::Map(Some(r), ..)) => l == r && self.same_type(other),
             (Self::Map(..), Self::Map(..)) => self.same_type(other),
             (Self::Json(l), Self::Json(r)) => l == r,
             (Self::Struct(l, l_ty, l_name), Self::Struct(r, r_ty, r_name)) => {
                 l_name == r_name && l == r && l_ty == r_ty
             }
-            (Self::Unknown(..), Self::Unknown(..)) => false,
+            (Self::Unknown(l), Self::Unknown(r)) => l == r,
             _ => false,
         }
     }
 }
 
 impl Eq for Value {}
+
+fn hash_f32_value<H: std::hash::Hasher>(value: f32, state: &mut H) {
+    let bits = if value == 0.0 {
+        0.0f32.to_bits()
+    } else if value.is_nan() {
+        f32::NAN.to_bits()
+    } else {
+        value.to_bits()
+    };
+    bits.hash(state);
+}
+
+fn hash_f64_value<H: std::hash::Hasher>(value: f64, state: &mut H) {
+    let bits = if value == 0.0 {
+        0.0f64.to_bits()
+    } else if value.is_nan() {
+        f64::NAN.to_bits()
+    } else {
+        value.to_bits()
+    };
+    bits.hash(state);
+}
 
 impl Hash for Value {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -325,13 +345,9 @@ impl Hash for Value {
             UInt32(v) => v.hash(state),
             UInt64(v) => v.hash(state),
             UInt128(v) => v.hash(state),
-            Float32(Some(v)) => {
-                v.to_bits().hash(state);
-            }
+            Float32(Some(v)) => hash_f32_value(*v, state),
             Float32(None) => None::<u32>.hash(state),
-            Float64(Some(v)) => {
-                v.to_bits().hash(state);
-            }
+            Float64(Some(v)) => hash_f64_value(*v, state),
             Float64(None) => None::<u64>.hash(state),
             Decimal(v, width, scale) => {
                 v.hash(state);
@@ -421,7 +437,7 @@ impl ToTokens for Value {
             Value::Decimal(.., width, scale) => {
                 quote!(::tank::Value::Decimal(None, #width, #scale))
             }
-            Value::Char(..) => quote!(tank::Value::Char(None)),
+            Value::Char(..) => quote!(::tank::Value::Char(None)),
             Value::Varchar(..) => quote!(::tank::Value::Varchar(None)),
             Value::Blob(..) => quote!(::tank::Value::Blob(None)),
             Value::Date(..) => quote!(::tank::Value::Date(None)),
