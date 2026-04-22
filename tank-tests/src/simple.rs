@@ -67,7 +67,7 @@ pub async fn simple(executor: &mut impl Executor) {
         #[cfg(not(feature = "disable-large-integers"))]
         foxtrot: i128::MAX.into(),
         golf: Time::from_hms(12, 0, 10).unwrap().into(),
-        hotel: Some("Hello world!".into()),
+        hotel: Some("Hello\nworld!".into()),
         india: Box::new(None),
         juliet: true.into(),
         kilo: None,
@@ -96,7 +96,7 @@ pub async fn simple(executor: &mut impl Executor) {
         Some(170_141_183_460_469_231_731_687_303_715_884_105_727)
     );
     assert_eq!(entity.golf, Some(Time::from_hms(12, 0, 10).unwrap()));
-    assert_eq!(entity.hotel, Some("Hello world!".into()));
+    assert_eq!(entity.hotel, Some("Hello\nworld!".into()));
     assert_eq!(*entity.india, None);
     assert_eq!(entity.juliet, Some(true));
     assert_eq!(entity.kilo, None);
@@ -151,7 +151,7 @@ pub async fn simple(executor: &mut impl Executor) {
                     #[cfg(not(feature = "disable-large-integers"))]
                     foxtrot: i128::MAX.into(),
                     golf: Time::from_hms(12, 0, 10).unwrap().into(),
-                    hotel: Some("Hello world!".into()),
+                    hotel: Some("Hello\nworld!".into()),
                     india: Box::new(None),
                     juliet: true.into(),
                     kilo: None,

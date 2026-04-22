@@ -330,10 +330,6 @@ pub trait SqlWriter: Send {
                     out.push_str(&value[pos..i]);
                     out.push_str(escaped);
                     pos = i + 1;
-                } else if c == '\n' {
-                    out.push_str(&value[pos..i]);
-                    out.push_str("\\n");
-                    pos = i + 1;
                 }
             }
             out.push_str(&value[pos..]);
