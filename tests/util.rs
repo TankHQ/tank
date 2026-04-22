@@ -665,6 +665,19 @@ mod tests {
     }
 
     #[test]
+    fn sql_writer_write_infinity_float32() {
+        let writer = GenericSqlWriter::new();
+        let mut q = DynQuery::default();
+        let val = Value::Float32(Some(f32::INFINITY));
+        writer.write_value(&mut Default::default(), &mut q, &val);
+        let s = q.as_str().to_string();
+        assert!(s.contains("CAST"));
+        assert!(s.contains("inf"));
+        assert!(s.contains("FLOAT"));
+        assert!(!s.contains("DOUBLE"));
+    }
+
+    #[test]
     fn sql_writer_write_nan_float() {
         let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
@@ -673,6 +686,8 @@ mod tests {
         let s = q.as_str().to_string();
         assert!(s.contains("CAST"));
         assert!(s.contains("NaN"));
+        assert!(s.contains("FLOAT"));
+        assert!(!s.contains("DOUBLE"));
     }
 
     #[test]

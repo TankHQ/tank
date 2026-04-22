@@ -29,7 +29,7 @@ macro_rules! write_integer_fn {
 }
 
 macro_rules! write_float_fn {
-    ($fn_name:ident, $ty:ty) => {
+    ($fn_name:ident, $ty:ty, $value_ty:expr) => {
         fn $fn_name(&self, context: &mut Context, out: &mut DynQuery, value: $ty) {
             let mut buffer = ryu::Buffer::new();
             if value.is_infinite() {
@@ -43,7 +43,7 @@ macro_rules! write_float_fn {
                         } else {
                             f64::INFINITY
                         })),
-                        rhs: &Operand::Type(Value::Float64(None)),
+                        rhs: &Operand::Type($value_ty),
                     },
                 );
             } else if value.is_nan() {
@@ -53,7 +53,7 @@ macro_rules! write_float_fn {
                     &BinaryOp {
                         op: BinaryOpType::Cast,
                         lhs: &Operand::LitStr(buffer.format(f64::NAN)),
-                        rhs: &Operand::Type(Value::Float64(None)),
+                        rhs: &Operand::Type($value_ty),
                     },
                 );
             } else {
@@ -309,8 +309,8 @@ pub trait SqlWriter: Send {
     write_integer_fn!(write_value_u64, u64);
     write_integer_fn!(write_value_u128, u128);
 
-    write_float_fn!(write_value_f32, f32);
-    write_float_fn!(write_value_f64, f64);
+    write_float_fn!(write_value_f32, f32, Value::Float32(None));
+    write_float_fn!(write_value_f64, f64, Value::Float64(None));
 
     fn write_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
         if matches!(context.fragment, Fragment::Json | Fragment::JsonKey) {
