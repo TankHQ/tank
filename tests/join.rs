@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
+    use quote::ToTokens;
     use std::borrow::Cow;
+    use syn::parse_str;
     use tank::{
         BinaryOp, BinaryOpType, ColumnRef, Dataset, DeclareTableRef, DynQuery, Entity, Join,
         JoinType, Operand, SqlWriter, TableRef, join,
@@ -528,5 +530,84 @@ mod tests {
             query.as_str(),
             r#""my_data"."alpha" RIGHT JOIN "bravo" ON "my_data"."alpha"."a" <= "bravo"."first""#
         );
+    }
+
+    #[test]
+    fn join_with_aliases() {
+        #[derive(Entity)]
+        #[tank(schema = "common")]
+        struct LeftAlias {
+            _id: i32,
+        }
+
+        #[derive(Entity)]
+        #[tank(schema = "common")]
+        struct RightAlias {
+            _id: i32,
+        }
+
+        let join = join!(LeftAlias L JOIN RightAlias R ON L.id == R.id);
+        let table_ref = join.table_ref();
+        let mut query = DynQuery::default();
+        join.write_query(&WRITER, &mut Default::default(), &mut query);
+
+        assert_eq!(table_ref.name.as_ref(), "");
+        assert_eq!(table_ref.schema.as_ref(), "common");
+        assert_eq!(table_ref.alias.as_ref(), "");
+        assert_eq!(
+            query.as_str(),
+            r#""common"."left_alias" L JOIN "common"."right_alias" R ON L.id = R.id"#
+        );
+    }
+
+    #[test]
+    fn join_types() {
+        let cases = [
+            ("JOIN", JoinType::Default, ":: tank :: JoinType :: Default"),
+            (
+                "INNER JOIN",
+                JoinType::Inner,
+                ":: tank :: JoinType :: Inner",
+            ),
+            (
+                "OUTER JOIN",
+                JoinType::Outer,
+                ":: tank :: JoinType :: Outer",
+            ),
+            (
+                "LEFT OUTER JOIN",
+                JoinType::Left,
+                ":: tank :: JoinType :: Left",
+            ),
+            (
+                "RIGHT JOIN",
+                JoinType::Right,
+                ":: tank :: JoinType :: Right",
+            ),
+            (
+                "CROSS JOIN",
+                JoinType::Cross,
+                ":: tank :: JoinType :: Cross",
+            ),
+            (
+                "NATURAL JOIN",
+                JoinType::Natural,
+                ":: tank :: JoinType :: Natural",
+            ),
+        ];
+
+        for (input, expected, tokenized) in cases {
+            let join_type = parse_str::<JoinType>(input).expect("join type should parse");
+            assert!(
+                matches!(join_type, value if std::mem::discriminant(&value) == std::mem::discriminant(&expected))
+            );
+            assert_eq!(join_type.to_token_stream().to_string(), tokenized);
+        }
+    }
+
+    #[test]
+    fn join_invalid_syntax() {
+        let error = parse_str::<JoinType>("SIDE JOIN").expect_err("invalid join should fail");
+        assert!(error.to_string().contains("Not a join keyword"));
     }
 }

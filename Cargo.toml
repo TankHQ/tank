@@ -63,7 +63,9 @@ tank-macros.workspace = true
 
 [dev-dependencies]
 indoc.workspace = true
+quote.workspace = true
 rust_decimal.workspace = true
+syn.workspace = true
 time.workspace = true
 uuid.workspace = true
 serde_json.workspace = true
