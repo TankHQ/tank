@@ -1,11 +1,15 @@
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::sync::Arc;
+    use quote::ToTokens;
+    use rust_decimal::Decimal;
+    use std::{collections::HashMap, fmt::Write, sync::Arc};
     use tank::{
-        DynQuery, Entity, GenericSqlWriter, QueryResult, Row, RowsAffected, SqlWriter, TableRef,
-        Value, value_to_json,
+        Context, Dataset, DeclareTableRef, DynQuery, EitherIterator, Entity, FixedDecimal,
+        Fragment, GenericSqlWriter, Interval, QueryBuilder, QueryResult, References, Row,
+        RowsAffected, SqlWriter, TableRef, Value, as_c_string, column_def, consume_while,
+        extract_number, separated_by, value_to_json, write_escaped,
     };
+    use time::{Date, Month, OffsetDateTime, Time, UtcOffset};
 
     #[test]
     fn table_ref_full_name_no_schema() {
@@ -64,6 +68,65 @@ mod tests {
         let t: TableRef = "my_table".into();
         assert_eq!(t.name, "my_table");
         assert_eq!(t.schema, "");
+    }
+
+    #[test]
+    fn table_ref_write() {
+        let writer = GenericSqlWriter::new();
+        let table = TableRef {
+            name: "events".into(),
+            schema: "analytics".into(),
+            alias: "e".into(),
+            ..Default::default()
+        };
+
+        let mut from_context = Context::fragment(Fragment::SqlSelectFrom);
+        let mut rendered = DynQuery::default();
+        table.write_query(&writer, &mut from_context, &mut rendered);
+        assert_eq!(rendered.as_str().as_ref(), r#""analytics"."events" e"#);
+        assert_eq!(table.table_ref(), table);
+        assert!(!<TableRef as Dataset>::qualified_columns());
+
+        let mut join_context = Context::fragment(Fragment::SqlJoin);
+        let mut rendered_borrowed = DynQuery::default();
+        (&table).write_query(&writer, &mut join_context, &mut rendered_borrowed);
+        assert_eq!(
+            rendered_borrowed.as_str().as_ref(),
+            r#""analytics"."events" e"#
+        );
+        assert_eq!((&table).table_ref(), table);
+        assert!(!<&TableRef as Dataset>::qualified_columns());
+
+        let declared = DeclareTableRef(table.clone());
+        let mut declared_context = Context::fragment(Fragment::SqlSelectFrom);
+        let mut rendered_declared = DynQuery::default();
+        declared.write_query(&writer, &mut declared_context, &mut rendered_declared);
+        assert_eq!(
+            rendered_declared.as_str().as_ref(),
+            r#""analytics"."events" e"#
+        );
+        assert_eq!(declared.table_ref(), table);
+        assert!(!<DeclareTableRef as Dataset>::qualified_columns());
+    }
+
+    #[test]
+    fn table_ref_to_tokens() {
+        let table = TableRef {
+            name: "events".into(),
+            schema: "analytics".into(),
+            alias: "e".into(),
+            ..Default::default()
+        };
+
+        let tokens = table.to_token_stream().to_string();
+        assert!(tokens.contains(":: tank :: TableRef"));
+        assert!(tokens.contains("events"));
+        assert!(tokens.contains("analytics"));
+        assert!(tokens.contains("Borrowed"));
+
+        let declare_tokens = DeclareTableRef(table).to_token_stream().to_string();
+        assert!(declare_tokens.contains(":: tank :: DeclareTableRef"));
+        assert!(declare_tokens.contains(":: tank :: TableRef"));
     }
 
     #[test]
@@ -210,7 +273,6 @@ mod tests {
 
     #[test]
     fn dyn_query_write_trait() {
-        use std::fmt::Write;
         let mut q = DynQuery::default();
         write!(q, "INSERT INTO {} VALUES ({})", "t", 42).unwrap();
         assert_eq!(q.as_str().as_ref(), "INSERT INTO t VALUES (42)");
@@ -335,7 +397,6 @@ mod tests {
 
     #[test]
     fn util_value_to_json_date() {
-        use time::{Date, Month};
         let date = Date::from_calendar_date(2025, Month::March, 15).unwrap();
         let result = value_to_json(&Value::Date(Some(date)));
         assert!(result.is_some());
@@ -400,7 +461,6 @@ mod tests {
 
     #[test]
     fn util_value_to_json_interval_returns_none() {
-        use tank::Interval;
         let v = Value::Interval(Some(Interval::from_days(1)));
         assert_eq!(value_to_json(&v), None);
     }
@@ -412,7 +472,6 @@ mod tests {
 
     #[test]
     fn util_value_to_json_decimal() {
-        use rust_decimal::Decimal;
         let d = Decimal::new(1234, 2);
         let result = value_to_json(&Value::Decimal(Some(d), 0, 0));
         assert!(result.is_some());
@@ -420,7 +479,6 @@ mod tests {
 
     #[test]
     fn util_write_escaped() {
-        use tank::write_escaped;
         let mut q = DynQuery::default();
         write_escaped(&mut q, "hello", '\'', "''");
         assert_eq!(q.as_str().as_ref(), "hello");
@@ -463,7 +521,6 @@ mod tests {
 
     #[test]
     fn sql_writer_select_star() {
-        use tank::QueryBuilder;
         #[derive(Entity)]
         struct StarTable {
             id: i32,
@@ -539,7 +596,6 @@ mod tests {
 
     #[test]
     fn sql_writer_write_timestamptz() {
-        use time::{Date, Month, OffsetDateTime, Time, UtcOffset};
         let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
         let dt = OffsetDateTime::new_in_offset(
@@ -640,7 +696,6 @@ mod tests {
 
     #[test]
     fn util_either_iterator() {
-        use tank::EitherIterator;
         let left: EitherIterator<std::vec::IntoIter<i32>, std::vec::IntoIter<i32>> =
             EitherIterator::Left(vec![1, 2, 3].into_iter());
         assert_eq!(left.collect::<Vec<_>>(), vec![1, 2, 3]);
@@ -652,7 +707,6 @@ mod tests {
 
     #[test]
     fn util_consume_while() {
-        use tank_core::consume_while;
         let mut input = "12345abc";
         let digits = consume_while(&mut input, |c| c.is_ascii_digit());
         assert_eq!(digits, "12345");
@@ -671,8 +725,6 @@ mod tests {
 
     #[test]
     fn util_extract_number() {
-        use tank_core::extract_number;
-
         let mut input = "123abc";
         let num = extract_number::<false>(&mut input);
         assert_eq!(num, "123");
@@ -695,7 +747,6 @@ mod tests {
 
     #[test]
     fn util_as_c_string() {
-        use tank_core::as_c_string;
         let cs = as_c_string("hello");
         assert_eq!(cs.to_str().unwrap(), "hello");
 
@@ -705,13 +756,11 @@ mod tests {
 
     #[test]
     fn util_separated_by() {
-        use tank_core::separated_by;
         let mut out = DynQuery::default();
         separated_by(
             &mut out,
             [1, 2, 3],
             |o, v| {
-                use std::fmt::Write;
                 let _ = write!(o, "{v}");
             },
             ", ",
@@ -723,7 +772,6 @@ mod tests {
             &mut out2,
             [42],
             |o, v| {
-                use std::fmt::Write;
                 let _ = write!(o, "{v}");
             },
             ", ",
@@ -733,7 +781,6 @@ mod tests {
 
     #[test]
     fn util_column_def() {
-        use tank_core::column_def;
         #[derive(Entity)]
         struct CdTable {
             my_col: i32,
@@ -748,7 +795,6 @@ mod tests {
 
     #[test]
     fn context_constructors() {
-        use tank::{Context, Fragment};
         let c = Context::empty();
         assert_eq!(c.fragment, Fragment::None);
         assert!(!c.qualify_columns);
@@ -768,7 +814,6 @@ mod tests {
 
     #[test]
     fn context_switch_fragment() {
-        use tank::{Context, Fragment};
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         ctx.counter = 5;
         {
@@ -782,7 +827,6 @@ mod tests {
 
     #[test]
     fn context_switch_table() {
-        use tank::{Context, Fragment};
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         {
             let updater = ctx.switch_table(TableRef::new("my_tbl".into()));
@@ -796,7 +840,6 @@ mod tests {
 
     #[test]
     fn context_update_from() {
-        use tank::{Context, Fragment};
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         let other = Context {
             counter: 42,
@@ -808,7 +851,6 @@ mod tests {
 
     #[test]
     fn join_qualified_columns() {
-        use tank::Dataset;
         #[derive(Entity)]
         #[tank(schema = "sch")]
         struct Tbl1 {
@@ -831,7 +873,6 @@ mod tests {
 
     #[test]
     fn join_table_ref_same_schema() {
-        use tank::Dataset;
         #[derive(Entity)]
         #[tank(schema = "common")]
         struct Left1 {
@@ -855,8 +896,6 @@ mod tests {
 
     #[test]
     fn relations_fixed_decimal() {
-        use rust_decimal::Decimal;
-        use tank_core::FixedDecimal;
         let fd: FixedDecimal<10, 2> = Decimal::from(42).into();
         let back: Decimal = fd.into();
         assert_eq!(back, Decimal::from(42));
@@ -864,7 +903,6 @@ mod tests {
 
     #[test]
     fn relations_references() {
-        use tank_core::References;
         #[derive(Entity)]
         struct RefTarget {
             _id: i32,
