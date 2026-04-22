@@ -6,9 +6,9 @@ use rust_decimal::Decimal;
 use serde_json::Value as JsonValue;
 use std::{
     borrow::Cow,
-    collections::HashMap,
+    collections::{HashMap, hash_map::DefaultHasher},
     fmt::{self, Display},
-    hash::Hash,
+    hash::{Hash, Hasher},
     mem::discriminant,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
@@ -292,7 +292,7 @@ impl PartialEq for Value {
             (Self::List(l, ..), Self::List(r, ..)) => l == r && self.same_type(other),
             (Self::Map(None, ..), Self::Map(None, ..)) => self.same_type(other),
             (Self::Map(Some(l), ..), Self::Map(Some(r), ..)) => l == r && self.same_type(other),
-            (Self::Map(..), Self::Map(..)) => self.same_type(other),
+            (Self::Map(..), Self::Map(..)) => false,
             (Self::Json(l), Self::Json(r)) => l == r,
             (Self::Struct(l, l_ty, l_name), Self::Struct(r, r_ty, r_name)) => {
                 l_name == r_name && l == r && l_ty == r_ty
@@ -325,6 +325,30 @@ fn hash_f64_value<H: std::hash::Hasher>(value: f64, state: &mut H) {
         value.to_bits()
     };
     bits.hash(state);
+}
+
+fn hash_map_value<H: std::hash::Hasher>(
+    value: &Option<HashMap<Value, Value>>,
+    key_ty: &Value,
+    value_ty: &Value,
+    state: &mut H,
+) {
+    value.is_some().hash(state);
+    if let Some(map) = value {
+        let mut entry_hashes = map
+            .iter()
+            .map(|(key, value)| {
+                let mut hasher = DefaultHasher::new();
+                key.hash(&mut hasher);
+                value.hash(&mut hasher);
+                hasher.finish()
+            })
+            .collect::<Vec<_>>();
+        entry_hashes.sort_unstable();
+        entry_hashes.hash(state);
+    }
+    key_ty.hash(state);
+    value_ty.hash(state);
 }
 
 impl Hash for Value {
@@ -372,19 +396,7 @@ impl Hash for Value {
                 v.hash(state);
                 typ.hash(state);
             }
-            Map(v, key, val) => {
-                match v {
-                    Some(map) => {
-                        for (key, val) in map {
-                            key.hash(state);
-                            val.hash(state);
-                        }
-                    }
-                    None => {}
-                }
-                key.hash(state);
-                val.hash(state);
-            }
+            Map(v, key, val) => hash_map_value(v, key, val, state),
             Json(v) => v.hash(state),
             Struct(v, t, name) => {
                 match v {

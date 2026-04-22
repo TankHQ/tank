@@ -1673,6 +1673,18 @@ mod tests {
                 Box::new(Value::Int32(None)),
             ),
             Value::Map(
+                Some(std::collections::HashMap::new()),
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None)),
+            ),
+        );
+        assert_ne!(
+            Value::Map(
+                Some(std::collections::HashMap::new()),
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None)),
+            ),
+            Value::Map(
                 None,
                 Box::new(Value::Varchar(None)),
                 Box::new(Value::Int32(None))
@@ -1811,6 +1823,32 @@ mod tests {
         f64_set.insert(Value::Float64(Some(f64::from_bits(0x7ff8_0000_0000_0000))));
         f64_set.insert(Value::Float64(Some(f64::from_bits(0x7ff8_0000_0000_0001))));
         assert_eq!(f64_set.len(), 2);
+    }
+
+    #[test]
+    fn value_map_hash_matches_equality() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let empty = Value::Map(
+            Some(std::collections::HashMap::new()),
+            Box::new(Value::Varchar(None)),
+            Box::new(Value::Int32(None)),
+        );
+        let null = Value::Map(
+            None,
+            Box::new(Value::Varchar(None)),
+            Box::new(Value::Int32(None)),
+        );
+
+        let mut empty_hasher = DefaultHasher::new();
+        empty.hash(&mut empty_hasher);
+
+        let mut null_hasher = DefaultHasher::new();
+        null.hash(&mut null_hasher);
+
+        assert_ne!(empty, null);
+        assert_ne!(empty_hasher.finish(), null_hasher.finish());
     }
 
     #[test]
