@@ -106,7 +106,8 @@ pub trait SqlWriter: Send {
 
     /// Write table reference.
     fn write_table_ref(&self, context: &mut Context, out: &mut DynQuery, value: &TableRef) {
-        if self.is_alias_declaration(context) || value.alias.is_empty() {
+        let alias_declaration = self.is_alias_declaration(context);
+        if alias_declaration || value.alias.is_empty() {
             if !value.schema.is_empty() {
                 self.write_identifier(context, out, &value.schema, context.quote_identifiers);
                 out.push_str(self.separator());
@@ -114,7 +115,11 @@ pub trait SqlWriter: Send {
             self.write_identifier(context, out, &value.name, context.quote_identifiers);
         }
         if !value.alias.is_empty() {
-            let _ = write!(out, " {}", value.alias);
+            if alias_declaration {
+                let _ = write!(out, " {}", value.alias);
+            } else {
+                out.push_str(&value.alias);
+            }
         }
     }
 

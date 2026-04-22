@@ -110,6 +110,21 @@ mod tests {
     }
 
     #[test]
+    fn table_ref_write_alias_reference() {
+        let writer = GenericSqlWriter::new();
+        let table = TableRef {
+            name: "events".into(),
+            schema: "analytics".into(),
+            alias: "e".into(),
+            ..Default::default()
+        };
+
+        let mut rendered = DynQuery::default();
+        table.write_query(&writer, &mut Context::empty(), &mut rendered);
+        assert_eq!(rendered.as_str().as_ref(), "e");
+    }
+
+    #[test]
     fn table_ref_to_tokens() {
         let table = TableRef {
             name: "events".into(),
