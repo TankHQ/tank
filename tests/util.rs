@@ -2,12 +2,12 @@
 mod tests {
     use quote::ToTokens;
     use rust_decimal::Decimal;
-    use std::{collections::HashMap, fmt::Write, sync::Arc};
+    use std::{borrow::Cow, collections::HashMap, fmt::Write, sync::Arc};
     use tank::{
         Context, Dataset, DeclareTableRef, DynQuery, EitherIterator, Entity, FixedDecimal,
         Fragment, GenericSqlWriter, Interval, QueryBuilder, QueryResult, References, Row,
         RowsAffected, SqlWriter, TableRef, Value, as_c_string, column_def, consume_while,
-        extract_number, separated_by, value_to_json, write_escaped,
+        extract_number, quote_cow, separated_by, value_to_json, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, Time, UtcOffset};
 
@@ -127,6 +127,13 @@ mod tests {
         let declare_tokens = DeclareTableRef(table).to_token_stream().to_string();
         assert!(declare_tokens.contains(":: tank :: DeclareTableRef"));
         assert!(declare_tokens.contains(":: tank :: TableRef"));
+    }
+
+    #[test]
+    fn util_quote_cow_owned() {
+        let value: Cow<'static, str> = Cow::Owned(String::from("events"));
+        let tokens = quote_cow(&value).to_string();
+        assert_eq!(tokens, ":: std :: borrow :: Cow :: Owned (\"events\")");
     }
 
     #[test]
@@ -490,6 +497,10 @@ mod tests {
         let mut q3 = DynQuery::default();
         write_escaped(&mut q3, "a\"b\"c", '"', "\"\"");
         assert_eq!(q3.as_str().as_ref(), "a\"\"b\"\"c");
+
+        let mut q4 = DynQuery::default();
+        write_escaped(&mut q4, "a😀b😀c", '😀', "[]");
+        assert_eq!(q4.as_str().as_ref(), "a[]b[]c");
     }
 
     #[test]
@@ -581,6 +592,23 @@ mod tests {
         writer.write_value(&mut Default::default(), &mut q, &json_val);
         let s = q.as_str().to_string();
         assert!(s.contains("active"));
+    }
+
+    #[test]
+    fn sql_writer_write_json_string() {
+        let writer = GenericSqlWriter::new();
+        let mut q = DynQuery::default();
+        let mut context = Context::fragment(Fragment::Json);
+        writer.write_value(
+            &mut context,
+            &mut q,
+            &Value::Varchar(Some(r#"folder\queue"#.into())),
+        );
+        assert_eq!(q.as_str().as_ref(), r#""folder\\queue""#);
+        assert_eq!(
+            serde_json::from_str::<String>(q.as_str().as_ref()).unwrap(),
+            r#"folder\queue"#
+        );
     }
 
     #[test]

@@ -130,7 +130,7 @@ where
 {
     match value {
         Cow::Borrowed(v) => quote! { ::std::borrow::Cow::Borrowed(#v) },
-        Cow::Owned(v) => quote! { ::std::borrow::Cow::Borrowed(#v) },
+        Cow::Owned(v) => quote! { ::std::borrow::Cow::Owned(#v) },
     }
 }
 
@@ -179,7 +179,7 @@ pub fn write_escaped(out: &mut DynQuery, value: &str, search: char, replace: &st
         if c == search {
             out.push_str(&value[position..i]);
             out.push_str(replace);
-            position = i + 1;
+            position = i + c.len_utf8();
         }
     }
     out.push_str(&value[position..]);

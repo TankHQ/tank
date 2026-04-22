@@ -1,8 +1,8 @@
 use crate::{
-    Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, Entity, Expression,
-    Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered, PrimaryKeyType,
-    SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized, separated_by,
-    write_escaped, writer::Context,
+    Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, Entity, Error,
+    Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
+    PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized,
+    separated_by, write_escaped, writer::Context,
 };
 use core::f64;
 use std::{
@@ -308,9 +308,18 @@ pub trait SqlWriter: Send {
     write_float_fn!(write_value_f64, f64);
 
     fn write_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
+        if matches!(context.fragment, Fragment::Json | Fragment::JsonKey) {
+            match serde_json::to_string(value) {
+                Ok(s) => out.push_str(&s),
+                Err(e) => {
+                    let e = Error::new(e).context("Failed to serialize string as JSON");
+                    log::error!("{e:#}");
+                }
+            }
+            return;
+        }
         let (delimiter, escaped) = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => (None, ""),
-            Fragment::Json | Fragment::JsonKey => (Some('"'), r#"\""#),
             _ => (Some('\''), "''"),
         };
         if let Some(delimiter) = delimiter {
