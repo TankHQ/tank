@@ -96,7 +96,7 @@ pub struct Request {
     pub id: i64,
     pub target: String,
     pub method: Option<Method>,
-    pub beign_timestamp_ms: i64,
+    pub begin_timestamp_ms: i64,
     pub end_timestamp_ms: Option<i64>,
 }
 
@@ -109,7 +109,7 @@ impl Request {
             id,
             target,
             method,
-            beign_timestamp_ms: SystemTime::now()
+            begin_timestamp_ms: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_millis() as _,

@@ -26,7 +26,7 @@ Welcome to the armored convoy, commander. Before you can unleash Tank's firepowe
 1. **Establish**: Call [`driver.connect("dbms://...").await?`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect) with your database URL.
 2. **Deploy**: Use the connection for queries, inserts, updates, and deletes.
 3. **Lock (optional)**: Start a transaction with [`connection.begin().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.begin). This borrows the connection; all operations route through the transactional executor until `commit()` or `rollback()`.
-5. **Terminate**: Connections close automatically when dropped. Call [`disconnect().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#method.disconnect) for an explicit shutdown when the driver supports it.
+4. **Terminate**: Connections close automatically when dropped. Call [`disconnect().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#method.disconnect) for an explicit shutdown when the driver supports it.
 
 ## Connect
 Every database connection abstraction implements the [`Connection`](https://docs.rs/tank/latest/tank/trait.Connection.html) trait. This is your communication link to the database server. Call [`driver.connect("dbms://...")`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect) with a URL to let Tank establish the line. Every driver is its own crate. Load only what you need for the operation. Check the [drivers](01-introduction.md#drivers) to see the available connections.

@@ -5,14 +5,16 @@ Sometimes you need to drop the abstractions and put steel directly on target. Ta
 
 ## Execution Methods
 Three firing modes:
-- `executor.run(query)`: Streams a mix of `QueryResult::{Row, Affected}` for all statements contained in the query. Multiple statements in one batch are only available when the driver supports.
+- `executor.run(query)`: Streams a mix of `QueryResult::{Row, Affected}` for all statements contained in the query. Multiple statements in one batch are only available when the driver supports them.
 - `executor.fetch(query)`: Convenience method that yields only rows. Internally calls `Executor::run` and discards `QueryResult::Affected`.
 - `executor.execute(query)`: Damage report only. Aggregates all `RowsAffected` across the batch and returns a single total. Internally calls `Executor::run` and discards rows (if any).
 
-Anything implementing [`AsQuery`](https://docs.rs/tank/latest/tank/trait.AsQuery.html) works: `String`, `&str`, `Query<D>`, or `&mut Query<D>`.
+Anything implementing [`AsQuery`](https://docs.rs/tank/latest/tank/trait.AsQuery.html) works: `String`, `&str`, `DynQuery`, `Query<D>`, or `&mut Query<D>`.
 
 ## Composing SQL With `SqlWriter`
 Every driver exposes a `SqlWriter` for dialect-correct SQL fragments. Use the writer to buffer multiple statements into one `DynQuery`.
+
+`DynQuery` is the raw-query staging area. Use it while composing executable SQL text. Once you call `prepare(...)`, execution moves to a driver-specific prepared handle rather than an extendable SQL buffer.
 
 Example building 8 statements (1 *CREATE SCHEMA* included by the first *CREATE TABLE*, 2 *CREATE TABLE*, 3 *INSERT INTO* and 2 *SELECT*):
 ```rust
@@ -103,8 +105,10 @@ Prepared statements cache driver parsing/optimizer state (when available) and va
 ### Notes & Driver Support
 - `SqlWriter::write_create_table::<T>(&mut sql, include_schema)` will emit `CREATE SCHEMA` first when `include_schema` is `true` and the backend supports schemas.
 - Streams returned by `executor.run(...)` are ordered by statement execution; interleave `Affected` and `Row` accordingly.
+- `executor.fetch(...)` is convenient for row-only workloads, but it discards `Affected` results from mixed batches. Use `run(...)` when you need both result types.
 - When selecting a subset of columns, ensure the labels match the entity fields present. Missing labels require `Default` for omitted fields.
 - Prepared queries use positional parameters across drivers.
 - Reuse prepared queries across multiple executions: call `clear_bindings()` to reset parameters and `bind(...)` again before the next shot.
+- Prepared queries are backend-owned state. Treat their string formatting as diagnostic output, not as executable SQL.
 
 *Raw fire authorized. Execute with precision. Tank out.*

@@ -48,7 +48,7 @@ use tank_duckdb::DuckDBDriver;
 
 async fn data() -> Result<()> {
     let driver = DuckDBDriver::new();
-    let connection = driver
+    let mut connection = driver
         .connect("duckdb://../target/debug/tests.duckdb?mode=rw".into())
         .await?;
 
@@ -71,7 +71,7 @@ async fn data() -> Result<()> {
      *     "is_operational" BOOLEAN NOT NULL,
      *     "units_produced" UINTEGER);
      */
-    Tank::create_table(connection, true, true).await?;
+    Tank::create_table(&mut connection, true, true).await?;
 
     /*
      * INSERT INTO "army"."tank" ("name", "country", "caliber", "speed", "is_operational", "units_produced") VALUES
@@ -83,7 +83,7 @@ async fn data() -> Result<()> {
      *     "is_operational" = EXCLUDED."is_operational",
      *     "units_produced" = EXCLUDED."units_produced";
      */
-    my_tank.save(connection).await?;
+    my_tank.save(&mut connection).await?;
 
     /*
      * DuckDB uses the appender API. Other drivers generate an INSERT:
@@ -92,7 +92,7 @@ async fn data() -> Result<()> {
      *     ('M1 Abrams', 'USA', 120, 72.0, true, NULL);
      */
     Tank::insert_many(
-        connection,
+        &mut connection,
         &[
             Tank {
                 name: "T-34/85".into(),
@@ -120,7 +120,7 @@ async fn data() -> Result<()> {
      * WHERE "is_operational" = false
      * LIMIT 1000;
      */
-    let tanks = Tank::find_many(connection, expr!(Tank::is_operational == false), Some(1000))
+    let tanks = Tank::find_many(&mut connection, expr!(Tank::is_operational == false), Some(1000))
         .try_collect::<Vec<_>>()
         .await?;
 

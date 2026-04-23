@@ -63,7 +63,7 @@ Built-in wrappers you can use directly in entities, the SQL type is inferred fro
 - `Rc<T>`
 
 ## Custom Types
-The handle custom types you just need to implement [`tank::AsValue`](https://docs.rs/tank/latest/tank/trait.AsValue.html). It will be your conversion contract: it turns your Rust type into a [`tank::Value`](https://docs.rs/tank/latest/tank/enum.Value.html) that can be sent to the database, and turns a `tank::Value` back into the original when decoding rows. Once implemented, you can use the type directly as an `Entity` field.
+To handle custom types you just need to implement [`tank::AsValue`](https://docs.rs/tank/latest/tank/trait.AsValue.html). It will be your conversion contract: it turns your Rust type into a [`tank::Value`](https://docs.rs/tank/latest/tank/enum.Value.html) that can be sent to the database, and turns a `tank::Value` back into the original when decoding rows. Once implemented, you can use the type directly as an `Entity` field.
 
 ### Example: Custom Struct
 Here’s a `host:port` example that encodes a network address as a string that must be stored in a single column:
@@ -125,7 +125,7 @@ pub struct Request {
     pub target: String,
     #[tank(conversion_type = MethodWrap)]
     pub method: Method,
-    pub beign_timestamp_ms: i64,
+    pub begin_timestamp_ms: i64,
     pub end_timestamp_ms: Option<i64>,
 }
 #[derive(Clone, PartialEq, Eq, tank::Entity, Debug)]
@@ -161,14 +161,14 @@ impl tank::AsValue for MethodWrap {
         match value.try_as(&tank::Value::Varchar(None)) {
             Ok(tank::Value::Varchar(Some(v), ..)) => {
                 let method = Method::from_str(&v).with_context(|| {
-                    format!("Could not convert {v:?} into {}", type_name::<Method>())
+                    format!("Could not convert {v:?} into {}", any::type_name::<Method>())
                 })?;
 
                 Ok(method.into())
             }
             _ => Err(tank::Error::msg(format!(
                 "Could not convert value into {}",
-                type_name::<Method>()
+                any::type_name::<Method>()
             ))),
         }
     }

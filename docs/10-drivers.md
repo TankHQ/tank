@@ -1,7 +1,7 @@
 # Driver Creation
 ###### *Field Manual Section 10* - Armored Engineering
 
-Opening a new battlefront means forging a custom **Driver** - the armored bridge between Tank's high-level abstractions and a database engine's trenches (type mapping, prepared semantics, transaction doctrine). This section boots a driver crate from cold steel to live fire, then certifie it on the shooting range (`tank-tests`).
+Opening a new battlefront means forging a custom **Driver** - the armored bridge between Tank's high-level abstractions and a database engine's trenches (type mapping, prepared semantics, transaction doctrine). This section boots a driver crate from cold steel to live fire, then certifies it on the shooting range (`tank-tests`).
 
 ## Mission Objectives
 - Stand up a new `tank-<backend>` crate
@@ -47,6 +47,8 @@ Skeleton:
 ### 3. Prepared Statements
 Implement parameter binding according to the backend type system. Convert each Rust value (via `AsValue`) into the native representation.
 
+Keep one doctrine in mind: a `Prepared` value is driver-local executable state, not portable SQL text. Make `Display`/`Debug` useful for diagnostics and errors, but execute prepared handles through the owning driver.
+
 <<< @/../tank-yourdb/src/prepared.rs
 
 ### 4. SQL Writer (`SqlWriter`)
@@ -77,18 +79,27 @@ Add an integration test `tests/yourdb.rs`:
 Enable feature flags to disable specific functionality until green.
 
 ### Feature Flags
-`tank-tests` exposes opt-out switches:
-- `disable-arrays`, `disable-lists`, `disable-maps`: collections not implemented
-- `disable-intervals`: interval types absent
-- `disable-large-integers`: `i128`, `u128` unsupported
-- `disable-ordering`: yourdb cannot order result sets
+`tank-tests` exposes opt-out switches to avoid testing the driver on unsupported features:
+- `disable-arrays`: fixed-size arrays (example: `[u8; 13]`)
+- `disable-groups`: `GROUP BY` SQL semantic not supported
+- `disable-infinity`: infinite values for floating point numbers
+- `disable-intervals`: interval / duration value types
+- `disable-joins`: SQL join semantics
+- `disable-large-integers`: `i128` and `u128` unsupported
+- `disable-large-intervals`: disable testing very large interval values
+- `disable-lists`: dynamic list/array-like collections absent
+- `disable-maps`: avoid testing `HashMap`, `BTreeMap`
+- `disable-multiple-statements`: statement batching unsupported
+- `disable-nested-collections`: nested collection values unsupported
+- `disable-old-dates`: historical date ranges unsupported
+- `disable-ordering`: ordered result sets unsupported
 - `disable-references`: foreign keys not enforced
 - `disable-transactions`: no transactional support
 
 ### 7. Tactical Checklist
 - URL prefix enforced (`yourdb://`)
 - `Driver::NAME` correct and used consistently
-- `prepare` handles multiple statements (or rejects cleanly)
+- `prepare` handles multiple statements cleanly, or rejects them with an explicit error
 - Streams drop promptly (no leaked locks or file handles)
 - `SqlWriter` prints multi-statement sequences with proper separators and terminal `;`
 - Upsert path (`save()`) works if PK exists; documented fallback if not supported
