@@ -3,15 +3,15 @@
 </div>
 
 # Tank
-Tank (Table Abstraction & Navigation Kit): the Rust data layer.
+Tank (Table Abstraction & Navigation Kit) is the Rust data layer for teams that want one entity model, explicit queries, and the freedom to move across very different databases without rewriting their whole stack.
 
-**One platform. Any terrain.**
+**One entity model. Any terrain.**
 
-📘 https://tankhq.github.io/tank
+📘 **Docs:** https://tankhq.github.io/tank
 
-🖥️ https://github.com/TankHQ/tank
+🖥️ **Repo:**  https://github.com/TankHQ/tank
 
-📦 https://crates.io/crates/tank
+📦 **Crate:** https://crates.io/crates/tank
 
 ## Mission Briefing
 In plain terms, Tank is a thin layer over your database workflow, designed for the Rust operator who needs to deploy across multiple environments without changing the kit. It doesn't matter if you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or managing a Postgres stronghold, Tank provides a unified interface. You define your entities, Tank handles the ballistics.
@@ -298,5 +298,12 @@ let _messages: Vec<_> = executor
     .try_collect()
     .await?;
 ```
+
+## Support the Mission
+Building and maintaining drivers for half a dozen different databases is a massive effort. **If Tank saves your company time, infrastructure headaches, or boilerplate, please consider supporting its development.**
+
+Donations ensure that Tank stays maintained, well-tested, and gets new capabilities (like more advanced driver features) faster.
+
+🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**
 
 *Rustaceans don't hide behind ORMs, they drive Tanks.*

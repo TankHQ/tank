@@ -48,4 +48,11 @@ All the crates in this workspace share the same version.
 
 **2. Zero Boilerplate**: Field operations shouldn't require filling out forms in triplicate. Some tools force data definition twice: once in a complex DSL and again as a Rust struct. Tank keeps it simple: one struct, one definition. The macros handle table creation, selection, and insertion automatically. You can set up tables and get database communication running in just a few lines of code, all through a unified API that works the same regardless of the backend. Perfect for spinning up tests and prototypes rapidly while still scaling to production backends.
 
+## Support the Mission
+Building and maintaining drivers for half a dozen different databases is a massive effort. **If Tank saves your company time, infrastructure headaches, or boilerplate, please consider supporting its development.**
+
+Donations ensure that Tank stays maintained, well-tested, and gets new capabilities (like more advanced driver features) faster.
+
+🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**
+
 *Hold the line. Maintain discipline. Tank out.*
