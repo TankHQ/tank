@@ -57,6 +57,7 @@ pub async fn init_mysql(ssl: bool) -> (String, Option<ContainerAsync<Mysql>>) {
         .with_init_sql(
             format!(
                 r#"
+                    SET GLOBAL local_infile = 1;
                     CREATE DATABASE mysql_database;
                     CREATE USER 'tank-mysql-user'@'%' {};
                     GRANT ALL PRIVILEGES ON *.* TO 'tank-mysql-user'@'%';
@@ -73,6 +74,7 @@ pub async fn init_mysql(ssl: bool) -> (String, Option<ContainerAsync<Mysql>>) {
             )
             .into_bytes(),
         )
+        .with_cmd(["mysqld", "--local-infile=1"])
         .with_startup_timeout(Duration::from_secs(60))
         .with_log_consumer(TestcontainersLogConsumer);
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

@@ -1,0 +1,9 @@
+[package]
+name = "test_mysql_import"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+mysql_async = "0.36.1"

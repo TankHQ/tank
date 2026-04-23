@@ -17,6 +17,8 @@ mysql_async = { version = "0", features = ["native-tls-tls", "rust_decimal", "ti
 serde_json.workspace = true
 tank-core.workspace = true
 time.workspace = true
+tokio = { workspace = true, features = ["io-util"] }
+tokio-util = { version = "0.7.4", features = ["io"] }
 url.workspace = true
 
 [dev-dependencies]
