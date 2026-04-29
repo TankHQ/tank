@@ -137,7 +137,10 @@ mod tests {
                 "values" FLOAT[],
                 "signup_duration" INTERVAL NOT NULL,
                 "recent_purchases" BIGINT[][]);
-                COMMENT ON COLUMN "customers"."recent_purchases" IS 'List of all the full cart products\nIt''s a list of lists of ids\n\nCan also be empty';
+                COMMENT ON COLUMN "customers"."recent_purchases" IS 'List of all the full cart products
+                It''s a list of lists of ids
+                
+                Can also be empty';
             "#}
             .trim()
         );
