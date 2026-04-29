@@ -8,7 +8,7 @@ use mongodb::{
         InsertOneOptions, UpdateModifications, UpdateOneModel, UpdateOptions, WriteModel,
     },
 };
-use std::borrow::Cow;
+use std::{borrow::Cow, mem};
 use tank_core::{Error, Result, Row, TableRef, truncate_long};
 
 #[derive(Default, Debug)]
@@ -211,7 +211,8 @@ impl Payload {
                     // The database will be dropped, the previous query would have no effect
                     *self = payload;
                 } else {
-                    *self = Payload::Batch(Default::default());
+                    let previous = mem::replace(self, Payload::Batch(Default::default()));
+                    self.add_payload(previous)?;
                     return self.add_payload(payload);
                 }
             }

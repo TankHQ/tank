@@ -184,4 +184,63 @@ pub(crate) async fn structure(mut connection: impl Connection) {
             info_col_2
         );
     }
+
+    // timestamp_resolution: TIMESTAMP_S, TIMESTAMP_MS, TIMESTAMP_NS must all round-trip correctly
+    connection
+        .execute(indoc! {"
+            CREATE TABLE ts_resolution (
+                id INTEGER,
+                ts_s TIMESTAMP_S,
+                ts_ms TIMESTAMP_MS,
+                ts_ns TIMESTAMP_NS
+            );
+            INSERT INTO ts_resolution VALUES
+                (1, '2025-06-15 12:30:45', '2025-06-15 12:30:45.123', '2025-06-15 12:30:45.123456789');
+        "})
+        .await
+        .expect("Failed to create ts_resolution table");
+
+    let ts_rows = connection
+        .fetch("SELECT ts_s, ts_ms, ts_ns FROM ts_resolution WHERE id = 1")
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Failed to query ts_resolution");
+
+    assert_eq!(ts_rows.len(), 1);
+    let expected_date = time::Date::from_calendar_date(2025, time::Month::June, 15).unwrap();
+
+    // TIMESTAMP_S: should be 2025-06-15 12:30:45
+    let Value::Timestamp(Some(ts_s)) = ts_rows[0].get_column("ts_s").unwrap() else {
+        panic!("Expected Timestamp for ts_s");
+    };
+    assert_eq!(
+        ts_s.date(),
+        expected_date,
+        "TIMESTAMP_S date is wrong: got {ts_s}"
+    );
+    assert_eq!(ts_s.hour(), 12, "TIMESTAMP_S hour is wrong: got {ts_s}");
+    assert_eq!(ts_s.minute(), 30, "TIMESTAMP_S minute is wrong: got {ts_s}");
+    assert_eq!(ts_s.second(), 45, "TIMESTAMP_S second is wrong: got {ts_s}");
+
+    // TIMESTAMP_MS: should be 2025-06-15 12:30:45.123
+    let Value::Timestamp(Some(ts_ms)) = ts_rows[0].get_column("ts_ms").unwrap() else {
+        panic!("Expected Timestamp for ts_ms");
+    };
+    assert_eq!(
+        ts_ms.date(),
+        expected_date,
+        "TIMESTAMP_MS date is wrong: got {ts_ms}"
+    );
+    assert_eq!(ts_ms.hour(), 12, "TIMESTAMP_MS hour is wrong: got {ts_ms}");
+
+    // TIMESTAMP_NS: should be 2025-06-15 12:30:45.123456789
+    let Value::Timestamp(Some(ts_ns)) = ts_rows[0].get_column("ts_ns").unwrap() else {
+        panic!("Expected Timestamp for ts_ns");
+    };
+    assert_eq!(
+        ts_ns.date(),
+        expected_date,
+        "TIMESTAMP_NS date is wrong: got {ts_ns}"
+    );
+    assert_eq!(ts_ns.hour(), 12, "TIMESTAMP_NS hour is wrong: got {ts_ns}");
 }

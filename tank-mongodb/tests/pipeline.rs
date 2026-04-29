@@ -3,7 +3,7 @@ mod tests {
     use mongodb::bson::{doc, Bson, Regex};
     use std::borrow::Cow;
     use tank::{cols, expr, Entity, QueryBuilder};
-    use tank_mongodb::{AggregatePayload, FindOnePayload, MongoDBDriver, Payload};
+    use tank_mongodb::{AggregatePayload, MongoDBDriver, Payload};
     use tank_tests::init_logs;
 
     const DRIVER: MongoDBDriver = MongoDBDriver {};

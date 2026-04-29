@@ -202,11 +202,19 @@ pub(crate) fn extract_value(
             DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_S
             | DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_MS
             | DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_NS => Value::Timestamp(if is_valid {
-                let data = duckdb_from_timestamp(*(data as *const duckdb_timestamp).add(row));
-                data.time;
+                let raw = (*(data as *const duckdb_timestamp).add(row)).micros;
+                let nanos: i128 = match type_id {
+                    DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_S => raw as i128 * 1_000_000_000,
+                    DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_MS => raw as i128 * 1_000_000,
+                    DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_NS => raw as i128,
+                    _ => unreachable!(),
+                };
+                let date_time =
+                    time::OffsetDateTime::from_unix_timestamp_nanos(nanos)
+                        .map_err(|e| Error::new(e).context("Error while creating a timestamp"))?;
                 Some(time::PrimitiveDateTime::new(
-                    convert_date(data.date)?,
-                    convert_time(data.time)?,
+                    date_time.date(),
+                    date_time.time(),
                 ))
             } else {
                 None
