@@ -472,7 +472,7 @@ pub trait SqlWriter: Send {
                     "{} {}{}",
                     $val,
                     $unit,
-                    if $val != 1 { "S" } else { "" }
+                    if $val != 1 && $val != -1 { "S" } else { "" }
                 );
             };
         }
@@ -480,7 +480,7 @@ pub trait SqlWriter: Send {
         let mut nanos = value.nanos + value.days as i128 * Interval::NANOS_IN_DAY;
         let mut len = out.len();
         if months != 0 {
-            if months > 48 || months % 12 == 0 {
+            if months.abs() > 48 || months % 12 == 0 {
                 write_unit!(out, len, months / 12, "YEAR");
                 months = months % 12;
             }
@@ -490,7 +490,7 @@ pub trait SqlWriter: Send {
         }
         for &(name, factor) in self.value_interval_units() {
             let rem = nanos % factor;
-            if rem == 0 || factor / rem > 1_000_000 {
+            if rem == 0 || (rem != 0 && factor / rem.abs() > 1_000_000) {
                 let value = nanos / factor;
                 if value != 0 {
                     write_unit!(out, len, value, name);

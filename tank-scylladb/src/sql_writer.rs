@@ -2,8 +2,8 @@ use crate::IsChar;
 use std::fmt::Write;
 use std::{collections::BTreeMap, iter};
 use tank_core::{
-    ColumnDef, Context, Dataset, DynQuery, Entity, Error, Expression, Fragment, GenericSqlWriter,
-    Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, indoc::indoc, separated_by,
+    indoc::indoc, separated_by, ColumnDef, Context, Dataset, DynQuery, Entity, Error, Expression,
+    Fragment, GenericSqlWriter, Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value,
 };
 use uuid::Uuid;
 
@@ -141,7 +141,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         let mut months = value.months;
         let mut nanos = value.nanos + value.days as i128 * Interval::NANOS_IN_DAY;
         if months != 0 {
-            if months > 48 || months % 12 == 0 {
+            if months.abs() > 48 || months % 12 == 0 {
                 let _ = write!(out, "{}y", months / 12);
                 months = months % 12;
             }
@@ -151,7 +151,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         }
         for &(name, factor) in self.value_interval_units() {
             let rem = nanos % factor;
-            if rem == 0 || factor / rem > 1_000_000 {
+            if rem == 0 || (rem != 0 && factor / rem.abs() > 1_000_000) {
                 let value = nanos / factor;
                 if value != 0 {
                     let _ = write!(out, "{value}{name}");

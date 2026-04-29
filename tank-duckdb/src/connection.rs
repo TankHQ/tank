@@ -199,8 +199,16 @@ impl DuckDBConnection {
                             info.4,
                         )?)
                     });
-                    let row = Row::new(names.clone(), columns.collect::<Result<_>>().unwrap());
-                    send_value!(tx, Ok(QueryResult::Row(row)));
+                    match columns.collect::<Result<_>>() {
+                        Ok(values) => {
+                            let row = Row::new(names.clone(), values);
+                            send_value!(tx, Ok(QueryResult::Row(row)));
+                        }
+                        Err(e) => {
+                            send_value!(tx, Err(e));
+                            return;
+                        }
+                    }
                 }
             }
         }

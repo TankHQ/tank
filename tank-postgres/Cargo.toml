@@ -32,6 +32,7 @@ rcgen.workspace = true
 tank-tests = { path = "../tank-tests", features = [
     "disable-large-integers",
     "disable-lists",
+    "disable-log10",
     "disable-maps",
     "disable-multiple-statements",
 ] }

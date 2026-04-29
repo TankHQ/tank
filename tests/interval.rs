@@ -124,7 +124,7 @@ mod tests {
         test_interval!(Interval::from_months(5), "INTERVAL '5 MONTHS'");
 
         test_interval!(Interval::from_days(-5), "INTERVAL '-5 DAYS'");
-        test_interval!(Interval::from_months(-12), "INTERVAL '-1 YEARS'");
+        test_interval!(Interval::from_months(-12), "INTERVAL '-1 YEAR'");
         test_interval!(Interval::from_months(-13), "INTERVAL '-13 MONTHS'");
         test_interval!(
             Interval::from_years(1) - Interval::from_days(3),
@@ -132,7 +132,7 @@ mod tests {
         );
         test_interval!(
             Interval::from_days(3) - Interval::from_months(1),
-            "INTERVAL '-1 MONTHS 3 DAYS'"
+            "INTERVAL '-1 MONTH 3 DAYS'"
         );
 
         test_interval!(
@@ -170,6 +170,15 @@ mod tests {
             Interval::from_months(5) + Interval::from_days(-2) + Interval::from_secs(1),
             "INTERVAL '5 MONTHS -172799 SECONDS'"
         );
+
+        // Pluralization: -1 should be singular (like 1)
+        test_interval!(Interval::from_days(-1), "INTERVAL '-1 DAY'");
+        test_interval!(Interval::from_months(-1), "INTERVAL '-1 MONTH'");
+        test_interval!(Interval::from_secs(-1), "INTERVAL '-1 SECOND'");
+
+        // Negative months > 48 should decompose to years
+        test_interval!(Interval::from_months(-49), "INTERVAL '-4 YEARS -1 MONTH'");
+        test_interval!(Interval::from_months(-24), "INTERVAL '-2 YEARS'");
     }
 
     #[test]

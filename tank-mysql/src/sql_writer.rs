@@ -3,8 +3,8 @@ use std::{
     fmt::Write,
 };
 use tank_core::{
-    ColumnDef, Context, DynQuery, EitherIterator, Entity, Expression, Fragment, GenericSqlWriter,
-    Interval, PrimaryKeyType, SqlWriter, Value, separated_by, write_escaped,
+    separated_by, write_escaped, ColumnDef, Context, DynQuery, EitherIterator, Entity, Expression,
+    Fragment, GenericSqlWriter, Interval, PrimaryKeyType, SqlWriter, Value,
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
 
@@ -158,6 +158,35 @@ impl SqlWriter for MySQLSqlWriter {
             return;
         }
         GenericSqlWriter::new().write_value_f64(context, out, value);
+    }
+
+    fn write_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
+        if matches!(
+            context.fragment,
+            Fragment::None | Fragment::ParameterBinding
+        ) {
+            out.push_str(value);
+            return;
+        }
+        if matches!(context.fragment, Fragment::Json | Fragment::JsonKey) {
+            match serde_json::to_string(value) {
+                Ok(s) => out.push_str(&s),
+                Err(e) => {
+                    let e = tank_core::Error::new(e).context("Failed to serialize string as JSON");
+                    log::error!("{e:#}");
+                }
+            }
+            return;
+        }
+        out.push('\'');
+        for c in value.chars() {
+            match c {
+                '\'' => out.push_str("''"),
+                '\\' => out.push_str("\\\\"),
+                _ => out.push(c),
+            }
+        }
+        out.push('\'');
     }
 
     fn write_timestamptz(&self, context: &mut Context, out: &mut DynQuery, value: &OffsetDateTime) {

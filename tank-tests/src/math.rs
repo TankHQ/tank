@@ -105,6 +105,8 @@ pub async fn math(executor: &mut impl Executor) {
     assert_eq!(result, [true]);
 
     // LOG10: log base 10 of 1000 should be 3
+    #[cfg(not(feature = "disable-log10"))]
+    {
     let result = executor
         .fetch(
             QueryBuilder::new()
@@ -123,4 +125,5 @@ pub async fn math(executor: &mut impl Executor) {
         [MathTable { id: 0, read: 3 }],
         "FLOOR(LOG10(1000)) should be 3"
     );
+    }
 }

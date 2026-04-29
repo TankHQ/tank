@@ -4,8 +4,8 @@ use std::{
     mem,
 };
 use tank_core::{
-    ColumnDef, ColumnRef, Context, DynQuery, Entity, Expression, GenericSqlWriter, SqlWriter,
-    TableRef, Value, write_escaped,
+    write_escaped, ColumnDef, ColumnRef, Context, DynQuery, Entity, Expression, GenericSqlWriter,
+    SqlWriter, TableRef, Value,
 };
 
 /// SQL writer for SQLite dialect.
