@@ -658,7 +658,7 @@ impl SqlWriter for MongoDBSqlWriter {
             s if s.eq_ignore_ascii_case("exp") => "$exp",
             s if s.eq_ignore_ascii_case("floor") => "$floor",
             s if s.eq_ignore_ascii_case("log") => "$ln",
-            s if s.eq_ignore_ascii_case("log10") => "$log",
+            s if s.eq_ignore_ascii_case("log10") => "$log10",
             s if s.eq_ignore_ascii_case("max") => "$max",
             s if s.eq_ignore_ascii_case("min") => "$min",
             s if s.eq_ignore_ascii_case("pow") => "$pow",

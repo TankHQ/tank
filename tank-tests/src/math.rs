@@ -103,4 +103,24 @@ pub async fn math(executor: &mut impl Executor) {
         .await
         .expect("Could not get the result 5");
     assert_eq!(result, [true]);
+
+    // LOG10: log base 10 of 1000 should be 3
+    let result = executor
+        .fetch(
+            QueryBuilder::new()
+                .select(cols!(MathTable::id, FLOOR(LOG10(1000)) as read))
+                .from(MathTable::table())
+                .where_expr(expr!(MathTable::id == 0))
+                .build(&executor.driver()),
+        )
+        .map_ok(MathTable::from_row)
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Could not get the LOG10 result");
+    assert_eq!(
+        result,
+        [MathTable { id: 0, read: 3 }],
+        "FLOOR(LOG10(1000)) should be 3"
+    );
 }

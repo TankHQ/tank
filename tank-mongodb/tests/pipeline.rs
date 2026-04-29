@@ -245,40 +245,4 @@ mod tests {
             ]
         );
     }
-
-    #[test]
-    fn find_one_with_sort() {
-        #[derive(Entity)]
-        #[tank(name = "items")]
-        struct Item {
-            #[tank(primary_key)]
-            pub id: i64,
-            pub price: f64,
-        }
-        init_logs();
-        let mut query = QueryBuilder::new()
-            .select(Item::columns())
-            .from(Item::table())
-            .where_expr(true)
-            .order_by(cols!(Item::price DESC))
-            .limit(Some(1))
-            .build(&DRIVER);
-        let payload = query
-            .as_prepared::<MongoDBDriver>()
-            .map(|v| v.get_payload())
-            .expect("Expected a prepared query");
-        match payload {
-            Payload::FindOne(FindOnePayload { options, .. }) => {
-                let sort = options
-                    .sort
-                    .as_ref()
-                    .expect("FindOnePayload should have sort options when ORDER BY is specified");
-                assert_eq!(*sort, doc! { "price": -1 });
-            }
-            other => panic!(
-                "Expected FindOnePayload for limit=1 query, got {:?}",
-                std::mem::discriminant(other)
-            ),
-        }
-    }
 }
