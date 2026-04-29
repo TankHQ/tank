@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt::Write};
 use tank_core::{
-    ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment, SqlWriter, Value,
-    separated_by,
+    separated_by, ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment, SqlWriter,
+    Value,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 
@@ -180,11 +180,14 @@ impl SqlWriter for PostgresSqlWriter {
             out,
             &PrimitiveDateTime::new(value.date(), value.time()),
         );
+        let total_minutes = value.offset().whole_minutes();
+        let sign = if total_minutes >= 0 { '+' } else { '-' };
         let _ = write!(
             out,
-            "{:+03}:{:02}",
-            value.offset().whole_hours(),
-            (value.offset().whole_minutes() % 60).unsigned_abs()
+            "{}{:02}:{:02}",
+            sign,
+            (total_minutes.abs() / 60) as u8,
+            (total_minutes.abs() % 60) as u8
         );
         if value.date().year() <= 0 {
             out.push_str(" BC");

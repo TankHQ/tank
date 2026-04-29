@@ -424,7 +424,8 @@ pub trait SqlWriter: Send {
         );
         let (h, m, s) = value.offset().as_hms();
         if h != 0 || m != 0 || s != 0 {
-            out.push(if h >= 0 { '+' } else { '-' });
+            let is_negative = h < 0 || (h == 0 && (m < 0 || (m == 0 && s < 0)));
+            out.push(if is_negative { '-' } else { '+' });
             let _ = write!(out, "{:02}", h.unsigned_abs());
             if m != 0 || s != 0 {
                 let _ = write!(out, ":{:02}", m.unsigned_abs());

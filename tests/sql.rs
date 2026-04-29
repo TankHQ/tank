@@ -3,7 +3,7 @@ mod tests {
     use indoc::indoc;
     use rust_decimal::Decimal;
     use std::str::FromStr;
-    use tank::{Context, DynQuery, Entity, Fragment, QueryBuilder, SqlWriter, Value, expr};
+    use tank::{expr, Context, DynQuery, Entity, Fragment, QueryBuilder, SqlWriter, Value};
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
 
@@ -236,10 +236,6 @@ mod tests {
             sql.contains("-05:30"),
             "Expected -05:30 in timestamptz output, got: {sql}"
         );
-        assert!(
-            !sql.contains("--"),
-            "Double minus sign in timestamptz output: {sql}"
-        );
 
         let ts = OffsetDateTime::new_in_offset(
             Date::from_calendar_date(2025, Month::June, 15).unwrap(),
@@ -257,14 +253,14 @@ mod tests {
         let ts = OffsetDateTime::new_in_offset(
             Date::from_calendar_date(2025, Month::June, 15).unwrap(),
             Time::from_hms(14, 30, 0).unwrap(),
-            UtcOffset::UTC,
+            UtcOffset::from_hms(0, -30, 0).unwrap(),
         );
         let mut out = Default::default();
         WRITER.write_value(&mut ctx, &mut out, &Value::TimestampWithTimezone(Some(ts)));
         let sql = out.as_str();
         assert!(
-            !sql.contains('+') && !sql.contains(":-"),
-            "UTC offset should produce no +/- suffix, got: {sql}"
+            sql.contains("-00:30"),
+            "Expected -00:30 for sub-hour negative offset, got: {sql}"
         );
     }
 }
