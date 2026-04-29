@@ -1,6 +1,4 @@
-use crate::{
-    AsValue, Driver, DynQuery, Error, Prepared, Result, Row, RowsAffected, truncate_long,
-};
+use crate::{AsValue, Driver, DynQuery, Error, Prepared, Result, Row, RowsAffected, truncate_long};
 use std::fmt::{self, Display};
 
 #[derive(Default, Clone, Debug)]

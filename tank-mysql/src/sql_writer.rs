@@ -3,8 +3,8 @@ use std::{
     fmt::Write,
 };
 use tank_core::{
-    separated_by, write_escaped, ColumnDef, Context, DynQuery, EitherIterator, Entity, Expression,
-    Fragment, GenericSqlWriter, Interval, PrimaryKeyType, SqlWriter, Value,
+    ColumnDef, Context, DynQuery, EitherIterator, Entity, Expression, Fragment, GenericSqlWriter,
+    Interval, PrimaryKeyType, SqlWriter, Value, separated_by, write_escaped,
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
 

@@ -3,7 +3,7 @@ mod tests {
     use indoc::indoc;
     use rust_decimal::Decimal;
     use std::str::FromStr;
-    use tank::{expr, Context, DynQuery, Entity, Fragment, QueryBuilder, SqlWriter, Value};
+    use tank::{Context, DynQuery, Entity, Fragment, QueryBuilder, SqlWriter, Value, expr};
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
 

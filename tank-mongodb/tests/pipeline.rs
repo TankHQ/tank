@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use mongodb::bson::{doc, Bson, Regex};
+    use mongodb::bson::{Bson, Regex, doc};
     use std::borrow::Cow;
-    use tank::{cols, expr, Entity, QueryBuilder};
+    use tank::{Entity, QueryBuilder, cols, expr};
     use tank_mongodb::{AggregatePayload, FindManyPayload, MongoDBDriver, Payload};
     use tank_tests::init_logs;
 

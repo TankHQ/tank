@@ -1,6 +1,6 @@
 use crate::{DuckDBConnection, DuckDBDriver};
 use tank_core::{
-    DynQuery, Driver, Executor, Result, SqlWriter, Transaction, future::TryFutureExt,
+    Driver, DynQuery, Executor, Result, SqlWriter, Transaction, future::TryFutureExt,
     impl_executor_transaction,
 };
 

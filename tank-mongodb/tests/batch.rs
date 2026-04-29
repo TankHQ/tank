@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use tank::{expr, Driver, DynQuery, Entity, SqlWriter};
+    use tank::{Driver, DynQuery, Entity, SqlWriter, expr};
     use tank_mongodb::{BatchPayload, MongoDBDriver, Payload};
     use tank_tests::init_logs;
 

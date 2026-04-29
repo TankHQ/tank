@@ -15,7 +15,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.30.0"
+version = "0.31.0"
 authors = ["barsdeveloper <barsdeveloper@gmail.com>"]
 license = "Apache-2.0"
 edition = "2024"
@@ -43,7 +43,12 @@ tank = "0"
 tank-core = { version = "0", default-features = false }
 tank-macros = "0"
 time = { version = "0", features = ["macros", "parsing"] }
-tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread", "sync"] }
+tokio = { version = "1", features = [
+    "fs",
+    "macros",
+    "rt-multi-thread",
+    "sync",
+] }
 url = "2"
 urlencoding = "2"
 uuid = "1"

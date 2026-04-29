@@ -2,8 +2,8 @@ use crate::IsChar;
 use std::fmt::Write;
 use std::{collections::BTreeMap, iter};
 use tank_core::{
-    indoc::indoc, separated_by, ColumnDef, Context, Dataset, DynQuery, Entity, Error, Expression,
-    Fragment, GenericSqlWriter, Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value,
+    ColumnDef, Context, Dataset, DynQuery, Entity, Error, Expression, Fragment, GenericSqlWriter,
+    Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, indoc::indoc, separated_by,
 };
 use uuid::Uuid;
 
