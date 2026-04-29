@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use tank::{
-        Entity, Expression, FindOrder, GenericSqlWriter, IsAggregateFunction, IsAlias, IsAsterisk,
-        IsConstant, IsFalse, IsQuestionMark, IsTrue, Order, expr,
+        expr, Entity, Expression, FindOrder, GenericSqlWriter, IsAggregateFunction, IsAlias,
+        IsAsterisk, IsConstant, IsFalse, IsQuestionMark, IsTrue, Order,
     };
 
     #[derive(Entity)]
