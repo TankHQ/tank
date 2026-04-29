@@ -1111,11 +1111,12 @@ impl AsValue for Decimal {
                 if let Some(v) = v.as_f64()
                     && let Some(v) = Decimal::from_f64(v)
                 {
-                    return Ok(v);
+                    Ok(v)
+                } else {
+                    Err(Error::msg(format!(
+                        "Value {v} from json number is out of range for Decimal",
+                    )))
                 }
-                Err(Error::msg(format!(
-                    "Value {v} from json number is out of range for Decimal",
-                )))
             }
             Value::Unknown(Some(v), ..) => Self::parse(&v),
             Value::Varchar(Some(v)) => Self::parse(&v),
