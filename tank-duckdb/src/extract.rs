@@ -2,7 +2,7 @@ use crate::{cbox::CBox, duckdb_hugeint_to_i128, duckdb_uhugeint_to_u128};
 use libduckdb_sys::*;
 use rust_decimal::Decimal;
 use std::{
-    ffi::{CStr, c_void},
+    ffi::{c_void, CStr},
     ptr, slice,
 };
 use tank_core::{Error, Interval, Result, TableRef, Value};
@@ -209,9 +209,8 @@ pub(crate) fn extract_value(
                     DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_NS => raw as i128,
                     _ => unreachable!(),
                 };
-                let date_time =
-                    time::OffsetDateTime::from_unix_timestamp_nanos(nanos)
-                        .map_err(|e| Error::new(e).context("Error while creating a timestamp"))?;
+                let date_time = time::OffsetDateTime::from_unix_timestamp_nanos(nanos)
+                    .map_err(|e| Error::new(e).context("Error while creating a timestamp"))?;
                 Some(time::PrimitiveDateTime::new(
                     date_time.date(),
                     date_time.time(),

@@ -70,9 +70,9 @@ mod tests {
         assert!(e.accept_visitor(&mut IsAggregateFunction, &WRITER, &mut ctx, &mut out));
         let e = expr!(MAX(Table::col_a));
         assert!(e.accept_visitor(&mut IsAggregateFunction, &WRITER, &mut ctx, &mut out));
-        let e = expr!(ABS(Table::col_a));
-        assert!(e.accept_visitor(&mut IsAggregateFunction, &WRITER, &mut ctx, &mut out));
         // Non-aggregate
+        let e = expr!(ABS(Table::col_a));
+        assert!(!e.accept_visitor(&mut IsAggregateFunction, &WRITER, &mut ctx, &mut out));
         let e = expr!(Table::col_a);
         assert!(!e.accept_visitor(&mut IsAggregateFunction, &WRITER, &mut ctx, &mut out));
         let e = expr!(42);

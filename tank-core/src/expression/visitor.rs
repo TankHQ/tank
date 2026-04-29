@@ -128,7 +128,6 @@ impl ExpressionVisitor for IsAggregateFunction {
     ) -> bool {
         match value {
             Operand::Call(function, ..) => match function {
-                s if s.eq_ignore_ascii_case("abs") => true,
                 s if s.eq_ignore_ascii_case("avg") => true,
                 s if s.eq_ignore_ascii_case("count") => true,
                 s if s.eq_ignore_ascii_case("max") => true,

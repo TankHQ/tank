@@ -3,7 +3,7 @@ mod tests {
     use mongodb::bson::{doc, Bson, Regex};
     use std::borrow::Cow;
     use tank::{cols, expr, Entity, QueryBuilder};
-    use tank_mongodb::{AggregatePayload, MongoDBDriver, Payload};
+    use tank_mongodb::{AggregatePayload, FindManyPayload, MongoDBDriver, Payload};
     use tank_tests::init_logs;
 
     const DRIVER: MongoDBDriver = MongoDBDriver {};
@@ -243,6 +243,35 @@ mod tests {
                     }
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn pipeline_3() {
+        #[derive(Entity)]
+        #[tank(name = "transactions")]
+        struct Transaction {
+            pub id: i64,
+            pub amount: f64,
+        }
+        let mut query = QueryBuilder::new()
+            .select(cols!(Transaction::id, ABS(Transaction::amount),))
+            .from(Transaction::table())
+            .build(&DRIVER);
+
+        let Some(Payload::FindMany(FindManyPayload { options, .. })) = query
+            .as_prepared::<MongoDBDriver>()
+            .map(|v| v.get_payload())
+        else {
+            panic!("Expected FindMany payload (not aggregate) since ABS is scalar");
+        };
+
+        assert_eq!(
+            options.projection,
+            Some(doc! {
+                "id": Bson::Int32(1),
+                "ABS(amount)": { "$abs": "$amount" },
+            })
         );
     }
 }
