@@ -1011,6 +1011,7 @@ impl SqlWriter for MongoDBSqlWriter {
                 options: FindOneOptions::builder()
                     .comment(Bson::String(format!("Tank: select one entity from {name}")))
                     .projection(project)
+                    .sort(if !sort.is_empty() { Some(sort) } else { None })
                     .build(),
             }
             .into()

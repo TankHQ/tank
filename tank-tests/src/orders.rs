@@ -185,4 +185,33 @@ pub async fn orders(executor: &mut impl Executor) {
         ]
     );
     assert!(query.is_prepared());
+
+    // ORDER BY + LIMIT 1: should return the single most expensive order
+    let top_order: Vec<String> = executor
+        .fetch(
+            QueryBuilder::new()
+                .select([
+                    Order::id,
+                    Order::customer_id,
+                    Order::country,
+                    Order::total,
+                    Order::status,
+                    Order::created_at,
+                ])
+                .from(Order::table())
+                .where_expr(true)
+                .order_by(cols!(Order::total DESC))
+                .limit(Some(1))
+                .build(&executor.driver()),
+        )
+        .and_then(|v| async { Order::from_row(v) })
+        .map_ok(|v| format!("{}, {}, {:.2}€", v.country, v.status, v.total.0))
+        .try_collect()
+        .await
+        .expect("Could not run top order query");
+    assert_eq!(
+        top_order,
+        ["Germany, shipped, 1118.99€".to_string()],
+        "ORDER BY total DESC LIMIT 1 should return the most expensive order"
+    );
 }
