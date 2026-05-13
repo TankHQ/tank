@@ -15,9 +15,6 @@ Tank (Table Abstraction & Navigation Kit) is the Rust data layer for teams that 
 
 > [!IMPORTANT]  
 > **Authenticity Notice**: This is **not** AI slop. It was meticulously crafted by me (human) [barsdeveloper](https://github.com/barsdeveloper).
-> I’ve refined all the details, drawing inspiration from similar crates to smooth out their rough edges and improve ergonomics.
->
-> AI was (of course) used to solve problems, get inspiration and find bugs but where AI written code or documentation made its way into this repository, I ended up rewriting most of it because in my experience coding agents always end up stopping somewhere around 80% way to the actual solution.
 
 ## Mission Briefing
 In plain terms, Tank is a thin layer over your database workflow, designed for the Rust operator who needs to deploy across multiple environments without changing the kit. It doesn't matter if you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or managing a Postgres stronghold, Tank provides a unified interface. You define your entities, Tank handles the ballistics.
