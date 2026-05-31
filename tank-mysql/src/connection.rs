@@ -1,13 +1,15 @@
 use crate::{MySQLDriver, MySQLQueryable, MySQLTransaction};
 use mysql_async::{ClientIdentity, Conn, Opts, OptsBuilder};
 use std::{borrow::Cow, env, path::PathBuf};
-use tank_core::{Connection, Error, ErrorContext, Result, impl_executor_transaction};
+use tank_core::{Connection, Error, ErrorContext, Executor, Result, impl_executor_transaction};
+use url::Url;
 
 /// Connection wrapper used by the MySQL/MariaDB driver.
 ///
 /// Holds the underlying `mysql_async` connection and adapts it to the `tank_core::Connection`/`Executor` APIs.
 pub struct MySQLConnection {
     pub(crate) conn: MySQLQueryable<Conn>,
+    pub(crate) url: Url,
 }
 
 pub type MariaDBConnection = MySQLConnection;
@@ -80,10 +82,18 @@ impl Connection for MySQLConnection {
             conn: MySQLQueryable {
                 executor: connection,
             },
+            url,
         })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<MySQLTransaction<'_>>> {
         MySQLTransaction::new(self)
+    }
+
+    async fn duplicate(&self) -> Result<MySQLConnection>
+    where
+        Self: Sized,
+    {
+        Self::connect(&self.driver(), self.url.to_string().into()).await
     }
 }

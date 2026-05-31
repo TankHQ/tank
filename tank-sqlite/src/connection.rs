@@ -20,12 +20,14 @@ use tank_core::{
     Result, Row, RowsAffected, error_message_from_ptr, send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
+use url::Url;
 
 /// Wrapper for a SQLite `sqlite3` connection pointer used by the SQLite driver.
 ///
 /// Provides helpers to prepare/execute statements and stream results into `tank_core` result types.
 pub struct SQLiteConnection {
     pub(crate) connection: CBox<*mut sqlite3>,
+    pub(crate) url: Url,
 }
 
 impl SQLiteConnection {
@@ -251,7 +253,7 @@ impl Connection for SQLiteConnection {
     async fn connect(driver: &SQLiteDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = "While trying to connect to SQLite";
         let url = Self::sanitize_url(driver, url)?;
-        let url =
+        let connection_string =
             CString::from_str(&url.as_str().replacen("sqlite://", "file:", 1)).context(context)?;
         let mut connection;
         unsafe {
@@ -263,7 +265,7 @@ impl Connection for SQLiteConnection {
                 }
             });
             let rc = sqlite3_open_v2(
-                url.as_ptr(),
+                connection_string.as_ptr(),
                 &mut *connection,
                 SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI,
                 ptr::null(),
@@ -276,10 +278,17 @@ impl Connection for SQLiteConnection {
                 return Err(error);
             }
         }
-        Ok(Self { connection })
+        Ok(Self { connection, url })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<SQLiteTransaction<'_>>> {
         SQLiteTransaction::new(self)
+    }
+
+    async fn duplicate(&self) -> Result<SQLiteConnection>
+    where
+        Self: Sized,
+    {
+        Self::connect(&self.driver(), self.url.to_string().into()).await
     }
 }

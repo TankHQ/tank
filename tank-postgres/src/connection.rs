@@ -25,13 +25,14 @@ use tank_core::{
 };
 use tokio::{spawn, task::JoinHandle};
 use tokio_postgres::{NoTls, binary_copy::BinaryCopyInWriter};
+use url::Url;
 
 /// PostgreSQL connection.
 #[derive(Debug)]
 pub struct PostgresConnection {
     pub(crate) client: tokio_postgres::Client,
     pub(crate) handle: JoinHandle<()>,
-    pub(crate) _transaction: bool,
+    pub(crate) url: Url,
 }
 
 impl Executor for PostgresConnection {
@@ -287,12 +288,19 @@ impl Connection for PostgresConnection {
         Ok(Self {
             client,
             handle,
-            _transaction: false,
+            url,
         })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<PostgresTransaction<'_>>> {
         PostgresTransaction::new(self)
+    }
+
+    async fn duplicate(&self) -> Result<PostgresConnection>
+    where
+        Self: Sized,
+    {
+        Self::connect(&self.driver(), self.url.to_string().into()).await
     }
 
     async fn disconnect(self) -> Result<()> {

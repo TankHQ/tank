@@ -24,7 +24,6 @@ time.workspace = true
 tokio.workspace = true
 tokio-postgres = { version = "0", features = ["with-time-0_3", "with-uuid-1"] }
 url.workspace = true
-urlencoding.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

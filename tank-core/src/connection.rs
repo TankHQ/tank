@@ -74,6 +74,10 @@ pub trait Connection: Executor {
     /// Must await `commit` or `rollback` to finalize the scope and release resources.
     fn begin(&mut self) -> impl Future<Output = Result<<Self::Driver as Driver>::Transaction<'_>>>;
 
+    fn duplicate(&self) -> impl Future<Output = Result<<Self::Driver as Driver>::Connection>>
+    where
+        Self: Sized;
+
     /// Closes the connection and releases any session resources.
     fn disconnect(self) -> impl Future<Output = Result<()>>
     where
