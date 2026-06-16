@@ -20,14 +20,20 @@ mod tests {
         // Unencrypted
         let (url, container) = init(false).await;
         let container = container.expect("Could not launch the container");
-        let connection = driver.connect(url.into()).await.expect("Failed to connect");
+        let connection = driver
+            .connect_pool(url.into())
+            .await
+            .expect("Failed to connect");
         execute_tests(connection).await;
         drop(container);
 
         // SSL
         let (url, container) = init(true).await;
         let container = container.expect("Could not launch the SSL container");
-        let connection = driver.connect(url.into()).await.expect("Failed to connect");
+        let connection = driver
+            .connect_pool(url.into())
+            .await
+            .expect("Failed to connect");
         execute_tests(connection).await;
         drop(container);
     }
@@ -37,7 +43,7 @@ mod tests {
         init_logs();
         silent_logs! {
             assert!(
-                PostgresDriver::new().connect("mysql://some_url".into())
+                PostgresDriver::new().connect_pool("mysql://some_url".into())
                     .await
                     .is_err()
             );

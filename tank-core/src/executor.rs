@@ -106,3 +106,62 @@ pub trait Executor: Send {
         self.execute(query)
     }
 }
+
+impl<S: Executor + ?Sized> Executor for &mut S {
+    type Driver = S::Driver;
+
+    fn accepts_multiple_statements(&self) -> bool {
+        (**self).accepts_multiple_statements()
+    }
+
+    fn driver(&self) -> Self::Driver {
+        (**self).driver()
+    }
+
+    fn prepare<'s>(
+        &'s mut self,
+        query: impl AsQuery<Self::Driver> + 's,
+    ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
+        (**self).prepare(query)
+    }
+
+    fn do_prepare(
+        &mut self,
+        sql: String,
+    ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
+        (**self).do_prepare(sql)
+    }
+
+    fn run<'s>(
+        &'s mut self,
+        query: impl AsQuery<Self::Driver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+        (**self).run(query)
+    }
+
+    fn fetch<'s>(
+        &'s mut self,
+        query: impl AsQuery<Self::Driver> + 's,
+    ) -> impl Stream<Item = Result<Row>> + Send {
+        (**self).fetch(query)
+    }
+
+    fn execute<'s>(
+        &'s mut self,
+        query: impl AsQuery<Self::Driver> + 's,
+    ) -> impl Future<Output = Result<RowsAffected>> + Send {
+        (**self).execute(query)
+    }
+
+    fn append<'a, E, It>(
+        &mut self,
+        entities: It,
+    ) -> impl Future<Output = Result<RowsAffected>> + Send
+    where
+        E: Entity + 'a,
+        It: IntoIterator<Item = &'a E> + Send,
+        <It as IntoIterator>::IntoIter: Send,
+    {
+        (**self).append(entities)
+    }
+}

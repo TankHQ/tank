@@ -5,7 +5,7 @@ mod tests {
     use crate::structure::structure;
     use std::path::Path;
     use std::sync::Mutex;
-    use tank_core::Driver;
+    use tank_core::{ConnectionPool, Driver};
     use tank_duckdb::DuckDBDriver;
     use tank_tests::{execute_tests, init_logs};
     use tokio::fs;
@@ -28,20 +28,24 @@ mod tests {
         );
         let url = format!("duckdb://{}?mode=rw", DB_PATH);
         let driver = DuckDBDriver::new();
-        let connection = driver
-            .connect(url.clone().into())
+        let pool = driver
+            .connect_pool(url.clone().into())
             .await
             .expect("Could not open the database");
         assert!(
             Path::new(DB_PATH).exists(),
             "Database file should be created after connection"
         );
+        let connection = pool
+            .detach()
+            .await
+            .expect("Could not get a connection from the pool");
         execute_tests(connection).await;
 
-        let connection = driver
-            .connect(url.clone().into())
+        let mut connection = pool
+            .get()
             .await
-            .expect("Failed to connect to the DuckDB database the second time");
-        structure(connection).await;
+            .expect("Could not get a connection from the pool");
+        structure(connection.as_mut()).await;
     }
 }

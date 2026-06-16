@@ -21,7 +21,7 @@ mod tests {
         {
             let driver = ValkeyDriver::default();
             let mut connection = driver
-                .connect(url.clone().into())
+                .connect_pool(url.clone().into())
                 .await
                 .expect("Failed to connect");
             execute_tests(&mut connection).await;
@@ -30,7 +30,7 @@ mod tests {
         {
             let driver = ValkeyDriver::new(".", false);
             let mut connection = driver
-                .connect(url.clone().into())
+                .connect_pool(url.clone().into())
                 .await
                 .expect("Failed to connect");
             execute_tests(&mut connection).await;
@@ -47,7 +47,7 @@ mod tests {
         let container = container.expect("Could not launch the SSL container");
         let driver = ValkeyDriver::new(".", false);
         let mut connection = driver
-            .connect(url.clone().into())
+            .connect_pool(url.clone().into())
             .await
             .expect("Failed to connect");
         execute_tests(&mut connection).await;

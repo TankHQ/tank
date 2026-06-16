@@ -92,7 +92,12 @@ impl Connection for MongoDBConnection {
     where
         Self: Sized,
     {
-        Self::connect(&self.driver(), self.url.to_string().into()).await
+        Ok(MongoDBConnection {
+            client: self.client.clone(),
+            session: None,
+            default_database: self.default_database.clone(),
+            url: self.url.clone(),
+        })
     }
 }
 

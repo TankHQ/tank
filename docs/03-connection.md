@@ -23,7 +23,10 @@ Welcome to the armored convoy, commander. Before you can unleash Tank's firepowe
   Borrow the connection and start a transaction. Issue any of the above operations against the transactional executor, then `commit` or `rollback`. Uncommitted drop triggers a rollback and gives back the connection.
 
 ## Connection Lifecycle
-1. **Establish**: Call [`driver.connect("dbms://...").await?`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect) with your database URL.
+1. **Establish**: Call with your database url
+    * [`driver.connect_pool("dbms://...").await?`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect_pool) for a managed pool of connections then `.get().await?`. Prefer this alternative over the direct connection.
+    * [`DBConnection::connect(&driver, "dbms://...").await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.connect) for a direct connection or a pool of connections depending on the driver.
+
 2. **Deploy**: Use the connection for queries, inserts, updates, and deletes.
 3. **Lock (optional)**: Start a transaction with [`connection.begin().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.begin). This borrows the connection; all operations route through the transactional executor until `commit()` or `rollback()`.
 4. **Terminate**: Connections close automatically when dropped. Call [`disconnect().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#method.disconnect) for an explicit shutdown when the driver supports it.

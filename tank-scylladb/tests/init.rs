@@ -122,7 +122,7 @@ pub async fn init_scylladb(ssl: bool) -> (String, Option<ContainerAsync<ScyllaDB
     let mut plain_url = Url::parse(&final_url).expect("The URL was not correct");
     plain_url.set_path("");
     ScyllaDBDriver::new()
-        .connect(plain_url.to_string().into())
+        .connect_pool(plain_url.to_string().into())
         .await
         .expect("Could not connect to ScyllaDB for setup")
         .execute(indoc! {r#"
@@ -190,7 +190,7 @@ pub async fn init_cassandra(ssl: bool) -> (String, Option<ContainerAsync<Generic
     let mut plain_url = Url::parse(&final_url).expect("The URL was not correct");
     plain_url.set_path("");
     CassandraDriver::new()
-        .connect(plain_url.to_string().into())
+        .connect_pool(plain_url.to_string().into())
         .await
         .expect("Could not connect to Cassandra for setup")
         .execute(indoc! {r#"

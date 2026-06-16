@@ -65,7 +65,7 @@ pub trait Connection: Executor {
     fn connect(
         driver: &Self::Driver,
         url: Cow<'static, str>,
-    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Connection>>
+    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Connection>> + Send
     where
         Self: Sized;
 
@@ -74,7 +74,9 @@ pub trait Connection: Executor {
     /// Must await `commit` or `rollback` to finalize the scope and release resources.
     fn begin(&mut self) -> impl Future<Output = Result<<Self::Driver as Driver>::Transaction<'_>>>;
 
-    fn duplicate(&self) -> impl Future<Output = Result<<Self::Driver as Driver>::Connection>>
+    fn duplicate(
+        &self,
+    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Connection>> + Send
     where
         Self: Sized;
 
@@ -84,5 +86,37 @@ pub trait Connection: Executor {
         Self: Sized,
     {
         future::ready(Ok(()))
+    }
+}
+
+impl<S: Connection> Connection for &mut S {
+    fn connect(
+        driver: &Self::Driver,
+        url: Cow<'static, str>,
+    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Connection>> + Send
+    where
+        Self: Sized,
+    {
+        S::connect(driver, url)
+    }
+
+    fn begin(&mut self) -> impl Future<Output = Result<<Self::Driver as Driver>::Transaction<'_>>> {
+        (**self).begin()
+    }
+
+    fn duplicate(&self) -> impl Future<Output = Result<<Self::Driver as Driver>::Connection>> + Send
+    where
+        Self: Sized,
+    {
+        (**self).duplicate()
+    }
+
+    fn disconnect(self) -> impl Future<Output = Result<()>>
+    where
+        Self: Sized,
+    {
+        future::ready(Err(Error::msg(
+            "Cannot disconnect using `&mut Connection`, use the actual object.",
+        )))
     }
 }

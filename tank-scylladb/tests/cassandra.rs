@@ -19,7 +19,7 @@ mod tests {
         let (url, container) = init_cassandra(false).await;
         let container = container.expect("Could not launch the container");
         let driver = CassandraDriver::new();
-        let connection = driver.connect(url.into()).await.expect("Failed to connect");
+        let connection = driver.connect_pool(url.into()).await.expect("Failed to connect");
         execute_tests(connection).await;
         drop(container);
 

@@ -21,7 +21,7 @@ mod tests {
         let container = container.expect("Could not launch the container");
         let driver = MySQLDriver::new();
         let connection = driver
-            .connect(url.clone().into())
+            .connect_pool(url.clone().into())
             .await
             .expect("Failed to connect");
         execute_tests(connection).await;
@@ -42,7 +42,7 @@ mod tests {
             .finish();
         assert!(
             driver
-                .connect(no_cert_url.to_string().into())
+                .connect_pool(no_cert_url.to_string().into())
                 .await
                 .is_err()
         );
@@ -53,13 +53,13 @@ mod tests {
             .finish();
         assert!(
             driver
-                .connect(no_pass_url.to_string().into())
+                .connect_pool(no_pass_url.to_string().into())
                 .await
                 .is_err()
         );
 
         let connection = driver
-            .connect(ssl_url.to_string().into())
+            .connect_pool(ssl_url.to_string().into())
             .await
             .expect("Failed to connect");
         execute_tests(connection).await;
