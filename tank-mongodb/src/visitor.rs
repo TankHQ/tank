@@ -234,6 +234,21 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
     ) -> bool {
         let top = !self.started;
         self.started = true;
+        if top && value.op == UnaryOpType::Not {
+            let mut handled = false;
+            {
+                let mut rewriter = NotRewriter {
+                    parent: self,
+                    handled: &mut handled,
+                };
+                value
+                    .arg
+                    .accept_visitor(&mut rewriter, writer, context, out);
+            }
+            if handled {
+                return false;
+            }
+        }
         let mut negate_number = NegateNumber::default();
         let is_expr = !(value.op == UnaryOpType::Negative
             && value
@@ -499,6 +514,94 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
     ) -> bool {
         value.write_query(writer, context, out);
         true
+    }
+}
+
+struct NotRewriter<'p, 'a, 'h> {
+    parent: &'p mut WriteMatchExpression<'a>,
+    handled: &'h mut bool,
+}
+impl<'p, 'a, 'h> NotRewriter<'p, 'a, 'h> {
+    fn invert(op: BinaryOpType) -> Option<BinaryOpType> {
+        match op {
+            BinaryOpType::Equal => Some(BinaryOpType::NotEqual),
+            BinaryOpType::NotEqual => Some(BinaryOpType::Equal),
+            BinaryOpType::Less => Some(BinaryOpType::GreaterEqual),
+            BinaryOpType::Greater => Some(BinaryOpType::LessEqual),
+            BinaryOpType::LessEqual => Some(BinaryOpType::Greater),
+            BinaryOpType::GreaterEqual => Some(BinaryOpType::Less),
+            BinaryOpType::Like => Some(BinaryOpType::NotLike),
+            BinaryOpType::NotLike => Some(BinaryOpType::Like),
+            BinaryOpType::Regexp => Some(BinaryOpType::NotRegexp),
+            BinaryOpType::NotRegexp => Some(BinaryOpType::Regexp),
+            BinaryOpType::Glob => Some(BinaryOpType::NotGlob),
+            BinaryOpType::NotGlob => Some(BinaryOpType::Glob),
+            BinaryOpType::In => Some(BinaryOpType::NotIn),
+            BinaryOpType::NotIn => Some(BinaryOpType::In),
+            BinaryOpType::Is => Some(BinaryOpType::IsNot),
+            BinaryOpType::IsNot => Some(BinaryOpType::Is),
+            _ => None,
+        }
+    }
+}
+impl<'p, 'a, 'h> ExpressionVisitor for NotRewriter<'p, 'a, 'h> {
+    fn visit_column(
+        &mut self,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &ColumnRef,
+    ) -> bool {
+        let rhs = Operand::LitBool(false);
+        let rewritten = BinaryOp {
+            op: BinaryOpType::Equal,
+            lhs: value,
+            rhs: &rhs,
+        };
+        rewritten.accept_visitor(self.parent, writer, context, out);
+        *self.handled = true;
+        true
+    }
+    fn visit_operand(
+        &mut self,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &Operand,
+    ) -> bool {
+        if matches!(value, Operand::LitIdent(..) | Operand::LitField(..)) {
+            let rhs = Operand::LitBool(false);
+            let rewritten = BinaryOp {
+                op: BinaryOpType::Equal,
+                lhs: value,
+                rhs: &rhs,
+            };
+            rewritten.accept_visitor(self.parent, writer, context, out);
+            *self.handled = true;
+            true
+        } else {
+            false
+        }
+    }
+    fn visit_binary_op(
+        &mut self,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &BinaryOp<&dyn Expression, &dyn Expression>,
+    ) -> bool {
+        if let Some(op) = Self::invert(value.op) {
+            let rewritten = BinaryOp {
+                op,
+                lhs: value.lhs,
+                rhs: value.rhs,
+            };
+            rewritten.accept_visitor(self.parent, writer, context, out);
+            *self.handled = true;
+            true
+        } else {
+            false
+        }
     }
 }
 

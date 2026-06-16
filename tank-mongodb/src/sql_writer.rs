@@ -2,7 +2,8 @@ use crate::{
     AggregatePayload, BatchPayload, CreateCollectionPayload, CreateDatabasePayload, DeletePayload,
     DropCollectionPayload, DropDatabasePayload, FieldType, FindManyPayload, FindOnePayload,
     InsertManyPayload, InsertOnePayload, IsField, MongoDBDriver, MongoDBPrepared, NegateNumber,
-    Payload, RowWrap, UpsertPayload, WriteMatchExpression, like_to_regex, value_to_bson,
+    Payload, RowWrap, UpsertPayload, WriteMatchExpression, glob_to_regex, like_to_regex,
+    value_to_bson,
 };
 use mongodb::{
     Namespace,
@@ -601,16 +602,21 @@ impl SqlWriter for MongoDBSqlWriter {
             rhs
         };
         let mut op = value.op;
-        if value.op == BinaryOpType::Like {
+        if matches!(value.op, BinaryOpType::Like | BinaryOpType::Glob) {
             let Bson::String(pattern) = rhs else {
                 log::error!(
-                    "MongoDB can handle LIKE operations but only if the pattern is a string literal (to transform it in $regexMatch)"
+                    "MongoDB can handle LIKE/GLOB operations but only if the pattern is a string literal (to transform it in $regexMatch)"
                 );
                 return;
             };
+            let regex = if value.op == BinaryOpType::Glob {
+                glob_to_regex(&pattern)
+            } else {
+                like_to_regex(&pattern)
+            };
             op = BinaryOpType::Regexp;
             rhs = Bson::RegularExpression(Regex {
-                pattern: like_to_regex(&pattern).into(),
+                pattern: regex.into(),
                 options: Default::default(),
             });
         }
