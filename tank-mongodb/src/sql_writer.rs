@@ -989,23 +989,16 @@ impl SqlWriter for MongoDBSqlWriter {
             }
         }
         let limit = query.get_limit();
-        let implicit_null_id = is_aggregate && !group.is_empty() && !group.contains_key("_id");
-        let project = match project {
-            Some(mut p) if !implicit_null_id => {
-                if !p.contains_key("_id") {
-                    p.insert("_id", Bson::Int32(0));
-                }
-                p
-            }
-            _ => doc! { "_id": Bson::Int32(0) },
-        };
         let payload: Payload = if is_aggregate {
             let mut pipeline = Vec::new();
             if !where_expr.is_empty() {
                 pipeline.push(doc! { "$match": where_expr });
             }
             if !group.is_empty() {
-                group.entry("_id".into()).or_insert(Bson::Null.into());
+                group.entry("_id".into()).or_insert_with(|| {
+                    project = None;
+                    Bson::Null.into()
+                });
                 pipeline.push(doc! { "$group": group });
             }
             if !matches!(having, Bson::Null) {
@@ -1016,9 +1009,6 @@ impl SqlWriter for MongoDBSqlWriter {
             }
             if let Some(limit) = limit {
                 pipeline.push(doc! { "$limit": limit });
-            }
-            if !project.is_empty() {
-                pipeline.push(doc! { "$project": project })
             }
             AggregatePayload {
                 table,
@@ -1034,7 +1024,7 @@ impl SqlWriter for MongoDBSqlWriter {
                 filter: where_expr.into(),
                 options: FindOneOptions::builder()
                     .comment(Bson::String(format!("Tank: select one entity from {name}")))
-                    .projection(Some(project))
+                    .projection(project)
                     .sort(if !sort.is_empty() { Some(sort) } else { None })
                     .build(),
             }
@@ -1045,7 +1035,7 @@ impl SqlWriter for MongoDBSqlWriter {
                 filter: where_expr.into(),
                 options: FindOptions::builder()
                     .comment(Bson::String(format!("Tank: select entities from {name}")))
-                    .projection(Some(project))
+                    .projection(project)
                     .sort(if !sort.is_empty() { Some(sort) } else { None })
                     .limit(limit.map(|v| v as _))
                     .build(),

@@ -440,14 +440,12 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                                 | BinaryOpType::NotGlob
                         ) {
                             pattern = if let Bson::String(p) = pattern {
-                                let regex = if matches!(
-                                    op,
-                                    BinaryOpType::Glob | BinaryOpType::NotGlob
-                                ) {
-                                    glob_to_regex(&p)
-                                } else {
-                                    like_to_regex(&p)
-                                };
+                                let regex =
+                                    if matches!(op, BinaryOpType::Glob | BinaryOpType::NotGlob) {
+                                        glob_to_regex(&p)
+                                    } else {
+                                        like_to_regex(&p)
+                                    };
                                 Bson::RegularExpression(Regex {
                                     pattern: regex,
                                     options: Default::default(),
@@ -461,25 +459,12 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                         }
                         if matches!(
                             op,
-                            BinaryOpType::NotLike
-                                | BinaryOpType::NotRegexp
-                                | BinaryOpType::NotGlob
+                            BinaryOpType::NotLike | BinaryOpType::NotRegexp | BinaryOpType::NotGlob
                         ) {
                             doc! { "$not": { "$regex": pattern }, "$ne": Bson::Null }.into()
                         } else {
                             doc! { "$regex": pattern }.into()
                         }
-                    } else if op == BinaryOpType::NotEqual && !matches!(val_bson, Bson::Null) {
-                        doc! { "$nin": Bson::Array(vec![val_bson, Bson::Null]) }.into()
-                    } else if op == BinaryOpType::NotIn {
-                        let mut arr = match val_bson {
-                            Bson::Array(a) => a,
-                            v => vec![v],
-                        };
-                        if !arr.contains(&Bson::Null) {
-                            arr.push(Bson::Null);
-                        }
-                        doc! { "$nin": Bson::Array(arr) }.into()
                     } else {
                         let op_key = MongoDBSqlWriter::expression_binary_op_key(op).to_string();
                         doc! { op_key: val_bson }.into()
