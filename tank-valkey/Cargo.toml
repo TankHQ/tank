@@ -24,6 +24,7 @@ url.workspace = true
 rcgen.workspace = true
 tank = { path = ".." }
 tank-tests = { path = "../tank-tests", features = [
+    "disable-glob",
     "disable-groups",
     "disable-intervals",
     "disable-joins",

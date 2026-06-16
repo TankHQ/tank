@@ -21,7 +21,7 @@ pub struct Metric {
     value: f64,
 }
 
-#[derive(Entity)]
+#[derive(Entity, PartialEq, Debug)]
 struct MetricValue {
     pub value: f64,
 }
@@ -682,5 +682,21 @@ pub async fn metrics(executor: &mut impl Executor) {
                 },
             ]
         );
+
+        let grand_total = executor
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(SUM(Metric::value) as value))
+                    .from(Metric::table())
+                    .group_by(cols!(0))
+                    .build(&executor.driver()),
+            )
+            .map_ok(MetricValue::from_row)
+            .map(Result::flatten)
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Could not get grand total");
+
+        assert_eq!(grand_total, [MetricValue { value: 1130082.7 }]);
     }
 }

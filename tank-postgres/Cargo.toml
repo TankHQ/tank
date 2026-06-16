@@ -29,6 +29,7 @@ uuid.workspace = true
 [dev-dependencies]
 rcgen.workspace = true
 tank-tests = { path = "../tank-tests", features = [
+    "disable-glob",
     "disable-large-integers",
     "disable-lists",
     "disable-log10",

@@ -1,4 +1,4 @@
-use crate::{MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter, like_to_regex};
+use crate::{MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter, glob_to_regex, like_to_regex};
 use mongodb::bson::{Bson, Document, Regex, doc};
 use std::{borrow::Cow, iter, mem, sync::Arc};
 use tank_core::{
@@ -310,6 +310,8 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                     | BinaryOpType::NotLike
                     | BinaryOpType::Regexp
                     | BinaryOpType::NotRegexp
+                    | BinaryOpType::Glob
+                    | BinaryOpType::NotGlob
                     | BinaryOpType::Less
                     | BinaryOpType::Greater
                     | BinaryOpType::LessEqual
@@ -392,22 +394,43 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                             | BinaryOpType::NotLike
                             | BinaryOpType::Regexp
                             | BinaryOpType::NotRegexp
+                            | BinaryOpType::Glob
+                            | BinaryOpType::NotGlob
                     ) {
                         let mut pattern = val_bson;
-                        if matches!(op, BinaryOpType::Like | BinaryOpType::NotLike) {
+                        if matches!(
+                            op,
+                            BinaryOpType::Like
+                                | BinaryOpType::NotLike
+                                | BinaryOpType::Glob
+                                | BinaryOpType::NotGlob
+                        ) {
                             pattern = if let Bson::String(p) = pattern {
+                                let regex = if matches!(
+                                    op,
+                                    BinaryOpType::Glob | BinaryOpType::NotGlob
+                                ) {
+                                    glob_to_regex(&p)
+                                } else {
+                                    like_to_regex(&p)
+                                };
                                 Bson::RegularExpression(Regex {
-                                    pattern: like_to_regex(&p),
+                                    pattern: regex,
                                     options: Default::default(),
                                 })
                             } else {
                                 log::error!(
-                                    "MongoDB can handle LIKE operations but only if the pattern is a string literal (to transform it in $regex)"
+                                    "MongoDB can handle LIKE/GLOB operations but only if the pattern is a string literal (to transform it in $regex)"
                                 );
                                 return false;
                             };
                         }
-                        if matches!(op, BinaryOpType::NotLike | BinaryOpType::NotRegexp) {
+                        if matches!(
+                            op,
+                            BinaryOpType::NotLike
+                                | BinaryOpType::NotRegexp
+                                | BinaryOpType::NotGlob
+                        ) {
                             doc! { "$not": { "$regex": pattern }, "$ne": Bson::Null }.into()
                         } else {
                             doc! { "$regex": pattern }.into()

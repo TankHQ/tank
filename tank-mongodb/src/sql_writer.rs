@@ -882,7 +882,7 @@ impl SqlWriter for MongoDBSqlWriter {
             let mut context = context.switch_fragment(Fragment::SqlSelectGroupBy);
             let mut query = Self::make_prepared();
             column.write_query(self, &mut context.current, &mut query);
-            let Some(bson) = query
+            let Some(mut bson) = query
                 .as_prepared::<MongoDBDriver>()
                 .and_then(MongoDBPrepared::current_bson)
                 .map(mem::take)
@@ -893,12 +893,14 @@ impl SqlWriter for MongoDBSqlWriter {
                 );
                 return;
             };
-            update_group!(
-                column,
-                name,
-                bson,
-                column.accept_visitor(&mut IsAggregateFunction, self, &mut context.current, out)
-            );
+            let aggregate_function =
+                column.accept_visitor(&mut IsAggregateFunction, self, &mut context.current, out);
+            if !aggregate_function
+                && column.accept_visitor(&mut IsConstant, self, &mut context.current, out)
+            {
+                bson = doc! { "$literal": bson }.into();
+            }
+            update_group!(column, name, bson, aggregate_function);
         }
         let known_columns = Arc::new(group.keys().collect::<Vec<_>>());
         let mut having = Bson::Null;

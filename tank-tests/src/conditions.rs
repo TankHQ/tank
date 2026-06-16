@@ -113,4 +113,27 @@ pub async fn conditions(executor: &mut impl Executor) {
     .count()
     .await;
     assert_eq!(count, 1, "Should find 1 entry with `name NOT IN ('Alice', 'Bob')`");
+
+    #[cfg(not(feature = "disable-glob"))]
+    {
+        let count = ConditionEntry::find_many(
+            executor,
+            expr!(ConditionEntry::name == "A*" as GLOB),
+            None,
+        )
+        .map_err(|e| panic!("{e:#}"))
+        .count()
+        .await;
+        assert_eq!(count, 1, "Should find 1 entry with `name GLOB 'A*'`");
+
+        let count = ConditionEntry::find_many(
+            executor,
+            expr!(ConditionEntry::name != "?li*" as GLOB),
+            None,
+        )
+        .map_err(|e| panic!("{e:#}"))
+        .count()
+        .await;
+        assert_eq!(count, 2, "Should find 2 entries with `name NOT GLOB '?li*'`");
+    }
 }

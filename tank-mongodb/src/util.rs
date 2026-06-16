@@ -182,3 +182,27 @@ pub fn like_to_regex(like_pattern: &str) -> String {
     regex.push('$');
     regex
 }
+
+pub fn glob_to_regex(glob_pattern: &str) -> String {
+    let mut regex = String::with_capacity(glob_pattern.len() * 2 + 2);
+    regex.push('^');
+    let mut literal_start = 0;
+    for (i, ch) in glob_pattern.char_indices() {
+        if ch == '*' {
+            if i > literal_start {
+                regex.push_str(&regex::escape(&glob_pattern[literal_start..i]));
+            }
+            regex.push_str(".*");
+            literal_start = i + 1;
+        } else if ch == '?' {
+            if i > literal_start {
+                regex.push_str(&regex::escape(&glob_pattern[literal_start..i]));
+            }
+            regex.push('.');
+            literal_start = i + 1;
+        }
+    }
+    regex.push_str(&regex::escape(&glob_pattern[literal_start..]));
+    regex.push('$');
+    regex
+}
