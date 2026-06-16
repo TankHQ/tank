@@ -1010,6 +1010,11 @@ impl SqlWriter for MongoDBSqlWriter {
             if let Some(limit) = limit {
                 pipeline.push(doc! { "$limit": limit });
             }
+            if let Some(project) = project
+                && !project.is_empty()
+            {
+                pipeline.push(doc! { "$project": project })
+            }
             AggregatePayload {
                 table,
                 pipeline: pipeline.into(),

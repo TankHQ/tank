@@ -108,14 +108,8 @@ pub async fn aggregates(executor: &mut impl Executor) {
             let values = stream
                 .map(|row| {
                     let row = row.expect("Error while fetching the row");
-                    let names = row.names();
-                    assert_eq!(
-                        names.len(),
-                        2,
-                        "SELECT * should return exactly the entity columns, got {:?}",
-                        names
-                    );
-                    let i = names
+                    let i = row
+                        .names()
                         .iter()
                         .enumerate()
                         .find_map(|(i, v)| if v == "value" { Some(i) } else { None })

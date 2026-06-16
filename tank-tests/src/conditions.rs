@@ -103,32 +103,36 @@ pub async fn conditions(executor: &mut impl Executor) {
             .await;
     assert_eq!(count, 1, "Should find 1 entry with `name NOT LIKE '%e'`");
 
-    let count = ConditionEntry::find_many(executor, expr!(ConditionEntry::name != "Alice"), None)
-        .map_err(|e| panic!("{e:#}"))
-        .count()
-        .await;
-    assert_eq!(count, 2, "Should find 2 entries with `name != 'Alice'`");
-
     let count = ConditionEntry::find_many(
         executor,
-        expr!(ConditionEntry::name != ("Alice", "Bob") as IN),
+        expr!(ConditionEntry::name != "Alice" && ConditionEntry::name != NULL),
         None,
     )
     .map_err(|e| panic!("{e:#}"))
     .count()
     .await;
-    assert_eq!(count, 1, "Should find 1 entry with `name NOT IN ('Alice', 'Bob')`");
+    assert_eq!(count, 2, "Should find 2 entries with `name != 'Alice'`");
+
+    let count = ConditionEntry::find_many(
+        executor,
+        expr!(ConditionEntry::name != ("Alice", "Bob") as IN && ConditionEntry::name != NULL),
+        None,
+    )
+    .map_err(|e| panic!("{e:#}"))
+    .count()
+    .await;
+    assert_eq!(
+        count, 1,
+        "Should find 1 entry with `name NOT IN ('Alice', 'Bob')`"
+    );
 
     #[cfg(not(feature = "disable-glob"))]
     {
-        let count = ConditionEntry::find_many(
-            executor,
-            expr!(ConditionEntry::name == "A*" as GLOB),
-            None,
-        )
-        .map_err(|e| panic!("{e:#}"))
-        .count()
-        .await;
+        let count =
+            ConditionEntry::find_many(executor, expr!(ConditionEntry::name == "A*" as GLOB), None)
+                .map_err(|e| panic!("{e:#}"))
+                .count()
+                .await;
         assert_eq!(count, 1, "Should find 1 entry with `name GLOB 'A*'`");
 
         let count = ConditionEntry::find_many(
@@ -139,7 +143,10 @@ pub async fn conditions(executor: &mut impl Executor) {
         .map_err(|e| panic!("{e:#}"))
         .count()
         .await;
-        assert_eq!(count, 2, "Should find 2 entries with `name NOT GLOB '?li*'`");
+        assert_eq!(
+            count, 2,
+            "Should find 2 entries with `name NOT GLOB '?li*'`"
+        );
     }
 
     let count = ConditionEntry::find_many(executor, expr!(!(ConditionEntry::name > "Bob")), None)
