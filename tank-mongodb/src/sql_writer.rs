@@ -15,8 +15,8 @@ use mongodb::{
 use std::{borrow::Cow, collections::HashMap, f64, iter, mem, ops::Deref, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, Dataset, DynQuery, Entity, ErrorContext,
-    Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk, Operand, Order,
-    SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, truncate_long,
+    Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk, IsConstant,
+    Operand, Order, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -836,6 +836,11 @@ impl SqlWriter for MongoDBSqlWriter {
             };
             let aggregate_function =
                 column.accept_visitor(&mut IsAggregateFunction, self, &mut context, out);
+            if !aggregate_function
+                && column.accept_visitor(&mut IsConstant, self, &mut context, out)
+            {
+                bson = doc! { "$literal": bson }.into();
+            }
             update_group!(column, name.clone(), bson.clone(), aggregate_function);
             if aggregate_function {
                 bson = Bson::String(format!("${name}"));

@@ -90,4 +90,27 @@ pub async fn conditions(executor: &mut impl Executor) {
             .count()
             .await;
     assert_eq!(count, 2, "Should find 2 entry with `name LIKE '%e'`");
+
+    let count =
+        ConditionEntry::find_many(executor, expr!(ConditionEntry::name != "%e" as LIKE), None)
+            .map_err(|e| panic!("{e:#}"))
+            .count()
+            .await;
+    assert_eq!(count, 1, "Should find 1 entry with `name NOT LIKE '%e'`");
+
+    let count = ConditionEntry::find_many(executor, expr!(ConditionEntry::name != "Alice"), None)
+        .map_err(|e| panic!("{e:#}"))
+        .count()
+        .await;
+    assert_eq!(count, 2, "Should find 2 entries with `name != 'Alice'`");
+
+    let count = ConditionEntry::find_many(
+        executor,
+        expr!(ConditionEntry::name != ("Alice", "Bob") as IN),
+        None,
+    )
+    .map_err(|e| panic!("{e:#}"))
+    .count()
+    .await;
+    assert_eq!(count, 1, "Should find 1 entry with `name NOT IN ('Alice', 'Bob')`");
 }

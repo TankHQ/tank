@@ -39,23 +39,34 @@ impl<'a> ExpressionVisitor for IsField<'a> {
     ) -> bool {
         match value {
             Operand::LitIdent(v) => {
-                self.field = FieldType::Column(ColumnRef {
-                    name: Cow::Owned(v.to_string()),
-                    table: "".into(),
-                    schema: "".into(),
-                });
+                if self.known_columns.iter().any(|k| k.as_str() == *v) {
+                    self.field = FieldType::Identifier(v.to_string());
+                } else {
+                    self.field = FieldType::Column(ColumnRef {
+                        name: Cow::Owned(v.to_string()),
+                        table: "".into(),
+                        schema: "".into(),
+                    });
+                }
                 true
             }
             Operand::LitField(v) => {
-                let mut it = v.into_iter().rev();
-                let name = it.next().map(ToString::to_string).unwrap_or_default();
-                let table = it.next().map(ToString::to_string).unwrap_or_default();
-                let schema = it.next().map(ToString::to_string).unwrap_or_default();
-                self.field = FieldType::Column(ColumnRef {
-                    name: name.into(),
-                    table: table.into(),
-                    schema: schema.into(),
-                });
+                let mut it = v.iter().rev().copied();
+                let name = it.next().unwrap_or("");
+                let table = it.next().unwrap_or("");
+                let schema = it.next().unwrap_or("");
+                if table.is_empty()
+                    && schema.is_empty()
+                    && self.known_columns.iter().any(|k| k.as_str() == name)
+                {
+                    self.field = FieldType::Identifier(name.to_string());
+                } else {
+                    self.field = FieldType::Column(ColumnRef {
+                        name: name.to_string().into(),
+                        table: table.to_string().into(),
+                        schema: schema.to_string().into(),
+                    });
+                }
                 true
             }
             _ => {
@@ -296,7 +307,9 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                     | BinaryOpType::Equal
                     | BinaryOpType::NotEqual
                     | BinaryOpType::Like
+                    | BinaryOpType::NotLike
                     | BinaryOpType::Regexp
+                    | BinaryOpType::NotRegexp
                     | BinaryOpType::Less
                     | BinaryOpType::Greater
                     | BinaryOpType::LessEqual
@@ -373,9 +386,15 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                     };
                     let val_bson = if op == BinaryOpType::Equal {
                         val_bson
-                    } else if op == BinaryOpType::Like || op == BinaryOpType::Regexp {
+                    } else if matches!(
+                        op,
+                        BinaryOpType::Like
+                            | BinaryOpType::NotLike
+                            | BinaryOpType::Regexp
+                            | BinaryOpType::NotRegexp
+                    ) {
                         let mut pattern = val_bson;
-                        if op == BinaryOpType::Like {
+                        if matches!(op, BinaryOpType::Like | BinaryOpType::NotLike) {
                             pattern = if let Bson::String(p) = pattern {
                                 Bson::RegularExpression(Regex {
                                     pattern: like_to_regex(&p),
@@ -388,7 +407,22 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                                 return false;
                             };
                         }
-                        doc! { "$regex": pattern }.into()
+                        if matches!(op, BinaryOpType::NotLike | BinaryOpType::NotRegexp) {
+                            doc! { "$not": { "$regex": pattern }, "$ne": Bson::Null }.into()
+                        } else {
+                            doc! { "$regex": pattern }.into()
+                        }
+                    } else if op == BinaryOpType::NotEqual && !matches!(val_bson, Bson::Null) {
+                        doc! { "$nin": Bson::Array(vec![val_bson, Bson::Null]) }.into()
+                    } else if op == BinaryOpType::NotIn {
+                        let mut arr = match val_bson {
+                            Bson::Array(a) => a,
+                            v => vec![v],
+                        };
+                        if !arr.contains(&Bson::Null) {
+                            arr.push(Bson::Null);
+                        }
+                        doc! { "$nin": Bson::Array(arr) }.into()
                     } else {
                         let op_key = MongoDBSqlWriter::expression_binary_op_key(op).to_string();
                         doc! { op_key: val_bson }.into()

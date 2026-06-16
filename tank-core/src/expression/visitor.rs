@@ -114,6 +114,19 @@ impl ExpressionVisitor for IsConstant {
             _ => false,
         }
     }
+    fn visit_binary_op(
+        &mut self,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &BinaryOp<&dyn Expression, &dyn Expression>,
+    ) -> bool {
+        if value.op == BinaryOpType::Alias {
+            value.lhs.accept_visitor(self, writer, context, out)
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(Default, Debug)]
