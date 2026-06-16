@@ -655,7 +655,7 @@ pub async fn metrics(executor: &mut impl Executor) {
                     ))
                     .from(Metric::table())
                     .group_by([Metric::name])
-                    .having(expr!(total_val > 1000.0))
+                    .having(expr!(SUM(Metric::value) > 1000.0))
                     .order_by(cols!(name ASC))
                     .build(&executor.driver()),
             )

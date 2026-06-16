@@ -807,6 +807,7 @@ impl SqlWriter for MongoDBSqlWriter {
         }
         let mut project = Some(Document::new());
         let mut is_asterisk = true;
+        let mut aggregate_aliases: Vec<(Bson, String)> = Vec::new();
         for column in query.get_select() {
             if is_asterisk {
                 if !column.accept_visitor(
@@ -841,6 +842,9 @@ impl SqlWriter for MongoDBSqlWriter {
             {
                 bson = doc! { "$literal": bson }.into();
             }
+            if aggregate_function {
+                aggregate_aliases.push((bson.clone(), name.clone()));
+            }
             update_group!(column, name.clone(), bson.clone(), aggregate_function);
             if aggregate_function {
                 bson = Bson::String(format!("${name}"));
@@ -851,6 +855,7 @@ impl SqlWriter for MongoDBSqlWriter {
                 project.insert(name, bson);
             }
         }
+        let aggregate_aliases = Arc::new(aggregate_aliases);
         if is_asterisk {
             project = None;
         }
@@ -910,6 +915,7 @@ impl SqlWriter for MongoDBSqlWriter {
             let mut query = Self::make_prepared();
             let mut matcher = WriteMatchExpression {
                 known_columns: known_columns.clone(),
+                aggregate_aliases: aggregate_aliases.clone(),
                 ..Default::default()
             };
             condition.accept_visitor(&mut matcher, self, &mut context.current, &mut query);
@@ -977,16 +983,23 @@ impl SqlWriter for MongoDBSqlWriter {
             }
         }
         let limit = query.get_limit();
+        let implicit_null_id = is_aggregate && !group.is_empty() && !group.contains_key("_id");
+        let project = match project {
+            Some(mut p) if !implicit_null_id => {
+                if !p.contains_key("_id") {
+                    p.insert("_id", Bson::Int32(0));
+                }
+                p
+            }
+            _ => doc! { "_id": Bson::Int32(0) },
+        };
         let payload: Payload = if is_aggregate {
             let mut pipeline = Vec::new();
             if !where_expr.is_empty() {
                 pipeline.push(doc! { "$match": where_expr });
             }
             if !group.is_empty() {
-                group.entry("_id".into()).or_insert_with(|| {
-                    project = None;
-                    Bson::Null.into()
-                });
+                group.entry("_id".into()).or_insert(Bson::Null.into());
                 pipeline.push(doc! { "$group": group });
             }
             if !matches!(having, Bson::Null) {
@@ -998,9 +1011,7 @@ impl SqlWriter for MongoDBSqlWriter {
             if let Some(limit) = limit {
                 pipeline.push(doc! { "$limit": limit });
             }
-            if let Some(project) = project
-                && !project.is_empty()
-            {
+            if !project.is_empty() {
                 pipeline.push(doc! { "$project": project })
             }
             AggregatePayload {
@@ -1017,7 +1028,7 @@ impl SqlWriter for MongoDBSqlWriter {
                 filter: where_expr.into(),
                 options: FindOneOptions::builder()
                     .comment(Bson::String(format!("Tank: select one entity from {name}")))
-                    .projection(project)
+                    .projection(Some(project))
                     .sort(if !sort.is_empty() { Some(sort) } else { None })
                     .build(),
             }
@@ -1028,7 +1039,7 @@ impl SqlWriter for MongoDBSqlWriter {
                 filter: where_expr.into(),
                 options: FindOptions::builder()
                     .comment(Bson::String(format!("Tank: select entities from {name}")))
-                    .projection(project)
+                    .projection(Some(project))
                     .sort(if !sort.is_empty() { Some(sort) } else { None })
                     .limit(limit.map(|v| v as _))
                     .build(),

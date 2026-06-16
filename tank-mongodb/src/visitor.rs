@@ -6,6 +6,8 @@ use tank_core::{
     IsConstant, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp, UnaryOpType, Value,
 };
 
+pub type AggregateAliases = Arc<Vec<(Bson, String)>>;
+
 #[derive(Default, PartialEq, Eq, Debug)]
 pub enum FieldType {
     #[default]
@@ -18,6 +20,7 @@ pub enum FieldType {
 pub struct IsField<'a> {
     pub field: FieldType,
     pub known_columns: Arc<Vec<&'a String>>,
+    pub aggregate_aliases: AggregateAliases,
 }
 impl<'a> ExpressionVisitor for IsField<'a> {
     fn visit_column(
@@ -32,7 +35,7 @@ impl<'a> ExpressionVisitor for IsField<'a> {
     }
     fn visit_operand(
         &mut self,
-        _writer: &dyn SqlWriter,
+        writer: &dyn SqlWriter,
         context: &mut Context,
         _out: &mut DynQuery,
         value: &Operand,
@@ -70,16 +73,29 @@ impl<'a> ExpressionVisitor for IsField<'a> {
                 true
             }
             _ => {
-                if self.known_columns.is_empty() {
+                if self.known_columns.is_empty() && self.aggregate_aliases.is_empty() {
                     return false;
                 }
                 let identifier = value.as_identifier(&mut context.switch_table("".into()).current);
                 if self.known_columns.contains(&&identifier) {
                     self.field = FieldType::Identifier(identifier);
-                    true
-                } else {
-                    false
+                    return true;
                 }
+                if !self.aggregate_aliases.is_empty() {
+                    let mut query = MongoDBSqlWriter::make_prepared();
+                    value.write_query(writer, context, &mut query);
+                    if let Some(bson) = query
+                        .as_prepared::<MongoDBDriver>()
+                        .and_then(MongoDBPrepared::current_bson)
+                        .map(mem::take)
+                        && let Some((_, alias)) =
+                            self.aggregate_aliases.iter().find(|(b, _)| b == &bson)
+                    {
+                        self.field = FieldType::Identifier(alias.clone());
+                        return true;
+                    }
+                }
+                false
             }
         }
     }
@@ -134,6 +150,7 @@ impl<'a> ExpressionVisitor for IsField<'a> {
 pub struct WriteMatchExpression<'a> {
     pub started: bool,
     pub known_columns: Arc<Vec<&'a String>>,
+    pub aggregate_aliases: AggregateAliases,
 }
 impl<'a> WriteMatchExpression<'a> {
     pub fn new() -> Self {
@@ -319,10 +336,12 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
             ) {
                 let mut l_column = IsField {
                     known_columns: self.known_columns.clone(),
+                    aggregate_aliases: self.aggregate_aliases.clone(),
                     ..Default::default()
                 };
                 let mut r_column = IsField {
                     known_columns: self.known_columns.clone(),
+                    aggregate_aliases: self.aggregate_aliases.clone(),
                     ..Default::default()
                 };
                 let l_constant = value
