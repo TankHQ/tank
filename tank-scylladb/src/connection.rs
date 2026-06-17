@@ -18,7 +18,6 @@ use tank_core::{
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
-use url::Url;
 
 /// Connection wrapper for ScyllaDB/Cassandra sessions.
 ///
@@ -26,7 +25,6 @@ use url::Url;
 #[derive(Debug)]
 pub struct ScyllaDBConnection {
     pub(crate) session: Session,
-    pub(crate) url: Url,
 }
 
 pub type CassandraConnection = ScyllaDBConnection;
@@ -356,18 +354,10 @@ impl Connection for ScyllaDBConnection {
 
         Ok(ScyllaDBConnection {
             session: session.build().await?,
-            url,
         })
     }
 
     async fn begin<'c>(&'c mut self) -> Result<ScyllaDBTransaction<'c>> {
         Ok(Self::begin_logged_batch(self))
-    }
-
-    async fn duplicate(&self) -> Result<ScyllaDBConnection>
-    where
-        Self: Sized,
-    {
-        Self::connect(&self.driver(), self.url.to_string().into()).await
     }
 }

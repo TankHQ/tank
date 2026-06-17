@@ -59,7 +59,7 @@ pub use service::*;
 pub use shopping::*;
 pub use simple::*;
 use std::env;
-use tank::Connection;
+use tank::{Connection, ConnectionPool, Driver};
 pub use time::*;
 pub use trade::*;
 pub use transaction1::*;
@@ -79,10 +79,14 @@ pub fn init_logs() {
     let _ = logger.try_init();
 }
 
-pub async fn execute_tests(mut connection: impl Connection) {
+pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
+    let mut connection = pool
+        .get()
+        .await
+        .expect("Could not get a connection from the pool");
     macro_rules! do_test {
-        ($test_function:ident) => {
-            Box::pin($test_function(&mut connection)).await
+        ($test_function:ident $(, $args:expr )* $(,)?) => {
+            Box::pin($test_function(connection.as_mut(), $($args),*)).await
         };
     }
     do_test!(simple);
@@ -108,7 +112,13 @@ pub async fn execute_tests(mut connection: impl Connection) {
     #[cfg(not(feature = "disable-transactions"))]
     do_test!(transaction2);
     #[cfg(not(feature = "disable-transactions"))]
-    do_test!(transaction3);
+    do_test!(
+        transaction3,
+        pool.get()
+            .await
+            .expect("Could not get a second connection from the pool")
+            .as_mut()
+    );
     do_test!(shopping);
     do_test!(orders);
     do_test!(times);
@@ -126,7 +136,6 @@ pub async fn execute_tests(mut connection: impl Connection) {
     do_test!(requests);
     do_test!(keywords);
     do_test!(identifiers);
-    connection.disconnect().await.expect("Failed to disconnect");
 }
 
 #[macro_export]

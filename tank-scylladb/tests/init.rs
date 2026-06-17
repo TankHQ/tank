@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 use tank_core::{
-    Connection, Executor, Result,
+    Connection, ConnectionPool, Driver, Executor, Result,
     future::{BoxFuture, FutureExt},
     indoc::indoc,
 };
@@ -34,20 +34,25 @@ use testcontainers_modules::{
 use tokio::fs;
 use url::Url;
 
-pub(crate) async fn execute_tests(mut connection: impl Connection) {
-    simple(&mut connection).await;
-    kv_storage(&mut connection).await;
-    trade_simple(&mut connection).await;
-    trade_multiple(&mut connection).await;
-    limits(&mut connection).await;
-    interval(&mut connection).await;
-    transaction1(&mut connection).await;
-    metrics(&mut connection).await;
-    ambiguity(&mut connection).await;
-    service(&mut connection).await;
-    enums(&mut connection).await;
-    custom(&mut connection).await;
-    identifiers(&mut connection).await;
+pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
+    let mut connection = pool
+        .get()
+        .await
+        .expect("Could not get a connection from the pool");
+    let connection = connection.as_mut();
+    simple(connection).await;
+    kv_storage(connection).await;
+    trade_simple(connection).await;
+    trade_multiple(connection).await;
+    limits(connection).await;
+    interval(connection).await;
+    transaction1(connection).await;
+    metrics(connection).await;
+    ambiguity(connection).await;
+    service(connection).await;
+    enums(connection).await;
+    custom(connection).await;
+    identifiers(connection).await;
 }
 
 struct TestcontainersLogConsumer;

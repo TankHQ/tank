@@ -25,13 +25,11 @@ use tank_core::{
     send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
-use url::Url;
 
 /// Wrapper around a DuckDB `duckdb_connection` pointer used by the DuckDB driver.
 /// Provides helpers to execute queries and extract results into `tank_core` types.
 pub struct DuckDBConnection {
     pub(crate) connection: CBox<duckdb_connection>,
-    pub(crate) url: Url,
 }
 
 impl DuckDBConnection {
@@ -628,17 +626,10 @@ impl Connection for DuckDBConnection {
                 return Err(error);
             };
         };
-        Ok(DuckDBConnection { connection, url })
+        Ok(DuckDBConnection { connection })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<DuckDBTransaction<'_>>> {
         DuckDBTransaction::new(self)
-    }
-
-    async fn duplicate(&self) -> Result<DuckDBConnection>
-    where
-        Self: Sized,
-    {
-        Self::connect(&self.driver(), self.url.to_string().into()).await
     }
 }

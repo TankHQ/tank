@@ -4,8 +4,8 @@ mod init;
 mod tests {
     use crate::init::{execute_tests, init_cassandra};
     use std::sync::Mutex;
-    use tank_core::{Connection, Driver};
-    use tank_scylladb::{CassandraConnection, CassandraDriver};
+    use tank_core::Driver;
+    use tank_scylladb::CassandraDriver;
     use tank_tests::init_logs;
 
     static MUTEX: Mutex<()> = Mutex::new(());
@@ -19,18 +19,19 @@ mod tests {
         let (url, container) = init_cassandra(false).await;
         let container = container.expect("Could not launch the container");
         let driver = CassandraDriver::new();
-        let connection = CassandraConnection::connect(&driver, url.into())
+        let mut pool = driver
+            .connect_pool(url.into())
             .await
             .expect("Failed to connect");
-        execute_tests(connection).await;
+        execute_tests(&mut pool).await;
         drop(container);
 
         // SSL
         // let (ssl_url, container) = init_cassandra(true).await;
         // let container = container.expect("Could not launch container");
         // let driver = CassandraDriver::new();
-        // let connection = driver.connect(ssl_url.into()).await.expect("Failed to connect");
-        // execute_tests(connection).await;
+        // let mut pool = driver.connect(ssl_url.into()).await.expect("Failed to connect");
+        // execute_tests(&mut pool).await;
         // drop(container);
     }
 }

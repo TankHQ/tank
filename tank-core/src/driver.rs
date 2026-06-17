@@ -6,9 +6,9 @@ use deadpool::managed::Pool;
 use std::{borrow::Cow, fmt::Debug, future::Future};
 
 /// Backend connector and dialect.
-pub trait Driver: Default + Sync + Debug {
+pub trait Driver: Default + Clone + Sync + Send + Debug {
     /// Concrete connection type.
-    type Connection: Connection<Driver = Self>;
+    type Connection: Connection<Driver = Self> + Debug;
     /// Dialect-specific SQL writer.
     type SqlWriter: SqlWriter;
     /// Prepared statement implementation.
@@ -28,13 +28,11 @@ pub trait Driver: Default + Sync + Debug {
     fn connect_pool(
         &self,
         url: Cow<'static, str>,
-    ) -> impl Future<Output = Result<impl ConnectionPool<Self::Connection>>> + Send {
+    ) -> impl Future<Output = Result<impl ConnectionPool<Self>>> + Send {
         async {
-            Ok(Pool::builder(DBConnectionManager::new(
-                Self::Connection::connect(self, url).await?,
-            ))
-            .build()
-            .map_err(Error::new)?)
+            Ok(Pool::builder(DBConnectionManager::new(self.clone(), url))
+                .build()
+                .map_err(Error::new)?)
         }
     }
 

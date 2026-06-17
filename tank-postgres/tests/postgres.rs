@@ -20,19 +20,21 @@ mod tests {
         // Unencrypted
         let (url, container) = init(false).await;
         let container = container.expect("Could not launch the container");
-        let connection = PostgresConnection::connect(&driver, url.into())
+        let mut pool = driver
+            .connect_pool(url.into())
             .await
             .expect("Failed to connect");
-        execute_tests(connection).await;
+        execute_tests(&mut pool).await;
         drop(container);
 
         // SSL
         let (url, container) = init(true).await;
         let container = container.expect("Could not launch the SSL container");
-        let connection = PostgresConnection::connect(&driver, url.into())
+        let mut pool = driver
+            .connect_pool(url.into())
             .await
             .expect("Failed to connect");
-        execute_tests(connection).await;
+        execute_tests(&mut pool).await;
         drop(container);
     }
 
@@ -75,10 +77,10 @@ mod tests {
                 path.join("tests/assets/root.crt").to_str().unwrap(),
             );
         }
-        let connection = PostgresConnection::connect(&Default::default(), url.to_string().into())
+        PostgresDriver::new()
+            .connect_pool(url.to_string().into())
             .await
             .expect("Connection should succeed with environment variable replacing sslrootcert");
-        connection.disconnect().await.expect("Could not disconnect");
         unsafe {
             env::remove_var("PGSSLROOTCERT");
         }

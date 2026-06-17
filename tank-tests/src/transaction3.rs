@@ -13,19 +13,19 @@ struct Table {
     value: i32,
 }
 
-pub async fn transaction3(connection: &mut impl Connection) {
+pub async fn transaction3(c1: &mut impl Connection, c2: &mut impl Connection) {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Table::drop_table(connection, true, false)
+    Table::drop_table(c1, true, false)
         .await
         .expect("Failed to drop Table table");
-    Table::create_table(connection, true, true)
+    Table::create_table(c1, true, true)
         .await
         .expect("Failed to create Table table");
 
     Table::insert_many(
-        connection,
+        c1,
         &[
             Table { id: 1, value: 5 },
             Table { id: 2, value: 9 },
@@ -51,12 +51,10 @@ pub async fn transaction3(connection: &mut impl Connection) {
         )
         .expect("Unexpected row format")
     }
-    let sum = query_sum(connection).await;
+    let sum = query_sum(c1).await;
     assert_eq!(sum.id, 0);
     assert_eq!(sum.value, 12);
 
-    let mut c1 = connection.duplicate().await.expect("Failed to duplicate 1");
-    let mut c2 = connection.duplicate().await.expect("Failed to duplicate 2");
     let mut t1 = c1.begin().await.expect("Failed to begin 1");
     let mut t2 = c2.begin().await.expect("Failed to begin 2");
     let f1 = async {

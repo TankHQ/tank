@@ -62,7 +62,7 @@ mod tests {
         let connection = driver.connect("mydb://localhost:5555".into())
             .await
             .expect("Could not connect to MyDB");
-        execute_tests(connection).await; // Runs all enabled modules sequentially
+        execute_tests(&mut pool).await; // Runs all enabled modules sequentially
     }
 }
 ```

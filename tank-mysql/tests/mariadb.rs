@@ -20,10 +20,11 @@ mod tests {
         let (url, container) = init_mariadb(false).await;
         let container = container.expect("Could not launch the container");
         let driver = MariaDBDriver::new();
-        let connection = MariaDBConnection::connect(&driver, url.clone().into())
+        let mut pool = driver
+            .connect_pool(url.clone().into())
             .await
             .expect("Failed to connect");
-        execute_tests(connection).await;
+        execute_tests(&mut pool).await;
         drop(container);
 
         // SSL
@@ -40,8 +41,7 @@ mod tests {
             .extend_pairs(url.clone().query_pairs().filter(|(k, _)| k != "ssl_cert"))
             .finish();
         assert!(
-            driver
-                .connect_pool(no_cert_url.to_string().into())
+            MariaDBConnection::connect(&driver, no_cert_url.to_string().into())
                 .await
                 .is_err()
         );
@@ -51,16 +51,16 @@ mod tests {
             .extend_pairs(url.clone().query_pairs().filter(|(k, _)| k != "ssl_pass"))
             .finish();
         assert!(
-            driver
-                .connect_pool(no_pass_url.to_string().into())
+            MariaDBConnection::connect(&driver, no_pass_url.to_string().into())
                 .await
                 .is_err()
         );
 
-        let connection = MariaDBConnection::connect(&driver, ssl_url.into())
+        let mut pool = driver
+            .connect_pool(ssl_url.into())
             .await
             .expect("Failed to connect");
-        execute_tests(connection).await;
+        execute_tests(&mut pool).await;
         drop(container);
     }
 }

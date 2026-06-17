@@ -20,14 +20,13 @@ use tank_core::{
     Result, Row, RowsAffected, error_message_from_ptr, send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
-use url::Url;
 
 /// Wrapper for a SQLite `sqlite3` connection pointer used by the SQLite driver.
 ///
 /// Provides helpers to prepare/execute statements and stream results into `tank_core` result types.
+#[derive(Debug)]
 pub struct SQLiteConnection {
     pub(crate) connection: CBox<*mut sqlite3>,
-    pub(crate) url: Url,
 }
 
 impl SQLiteConnection {
@@ -278,17 +277,10 @@ impl Connection for SQLiteConnection {
                 return Err(error);
             }
         }
-        Ok(Self { connection, url })
+        Ok(Self { connection })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<SQLiteTransaction<'_>>> {
         SQLiteTransaction::new(self)
-    }
-
-    async fn duplicate(&self) -> Result<SQLiteConnection>
-    where
-        Self: Sized,
-    {
-        Self::connect(&self.driver(), self.url.to_string().into()).await
     }
 }

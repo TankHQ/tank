@@ -1,31 +1,24 @@
 use crate::{Connection, Driver, Error, Result};
 use deadpool::managed::{Manager, Metrics, Object, Pool, RecycleResult, Timeouts};
-use std::{future, ops::Deref, sync::Arc, time::Duration};
-use tokio::sync::Mutex;
+use std::{borrow::Cow, fmt::Debug, future, time::Duration};
 
-pub struct DBConnectionManager<C: Connection>(Arc<Mutex<C>>);
+#[derive(Debug)]
+pub struct DBConnectionManager<D: Driver> {
+    driver: D,
+    url: Cow<'static, str>,
+}
 
-impl<C: Connection> DBConnectionManager<C> {
-    pub fn new(connection: C) -> Self {
-        Self(Arc::new(Mutex::const_new(connection)))
+impl<D: Driver> DBConnectionManager<D> {
+    pub fn new(driver: D, url: Cow<'static, str>) -> Self {
+        Self { driver, url }
     }
 }
 
-impl<C: Connection> Deref for DBConnectionManager<C> {
-    type Target = <Arc<Mutex<C>> as Deref>::Target;
-    fn deref(&self) -> &Self::Target {
-        self.0.deref()
-    }
-}
-
-impl<C: Connection> Manager for DBConnectionManager<C>
-where
-    <C::Driver as Driver>::Connection: Into<C>,
-{
-    type Type = C;
+impl<D: Driver> Manager for DBConnectionManager<D> {
+    type Type = D::Connection;
     type Error = Error;
     async fn create(&self) -> Result<Self::Type> {
-        Ok(self.lock().await.duplicate().await?.into())
+        Ok(D::Connection::connect(&self.driver, self.url.clone()).await?)
     }
     fn recycle(
         &self,
@@ -36,40 +29,43 @@ where
     }
 }
 
-pub trait ConnectionPool<C: Connection>
-where
-    <C::Driver as Driver>::Connection: Into<C>,
-{
-    fn get(&self) -> impl Future<Output = Result<impl AsRef<C> + AsMut<C>>> + Send;
+pub trait ConnectionPool<D: Driver>: Debug {
+    fn get(
+        &self,
+    ) -> impl Future<Output = Result<impl AsRef<D::Connection> + AsMut<D::Connection>>> + Send;
     fn timeout_get(
         &self,
         timeout: Duration,
-    ) -> impl Future<Output = Result<impl AsRef<C> + AsMut<C>>> + Send;
-    fn detach(&self) -> impl Future<Output = Result<C>> + Send
+    ) -> impl Future<Output = Result<impl AsRef<D::Connection> + AsMut<D::Connection>>> + Send;
+    fn detach(&self) -> impl Future<Output = Result<D::Connection>> + Send
     where
         Self: Sized;
     fn resize(&self, max_size: usize) -> Result<()>;
+    fn close(self) -> impl Future<Output = Result<()>> + Send;
 }
 
-impl<C: Connection> ConnectionPool<C> for Pool<DBConnectionManager<C>>
+impl<D: Driver> ConnectionPool<D> for Pool<DBConnectionManager<D>>
 where
-    <C::Driver as Driver>::Connection: Into<C>,
+    <D as Driver>::Connection: Debug,
 {
-    async fn get(&self) -> Result<impl AsRef<C> + AsMut<C>> {
+    async fn get(&self) -> Result<impl AsRef<D::Connection> + AsMut<D::Connection>> {
         Ok(self
             .get()
             .await
             .map_err(|e| Error::msg(format!("{e:#?}")))?)
     }
 
-    async fn timeout_get(&self, timeout: Duration) -> Result<impl AsRef<C> + AsMut<C>> {
+    async fn timeout_get(
+        &self,
+        timeout: Duration,
+    ) -> Result<impl AsRef<D::Connection> + AsMut<D::Connection>> {
         Ok(self
             .timeout_get(&Timeouts::wait_millis(timeout.as_millis() as u64))
             .await
             .map_err(|e| Error::msg(format!("{e:#?}")))?)
     }
 
-    async fn detach(&self) -> Result<C>
+    async fn detach(&self) -> Result<D::Connection>
     where
         Self: Sized,
     {
@@ -77,10 +73,15 @@ where
             .get()
             .await
             .map_err(|e| Error::msg(format!("{e:#?}")))?;
-        Ok(Object::<DBConnectionManager<C>>::take(v))
+        Ok(Object::<DBConnectionManager<D>>::take(v))
     }
 
     fn resize(&self, max_size: usize) -> Result<()> {
         Ok(self.resize(max_size))
+    }
+
+    fn close(self) -> impl Future<Output = Result<()>> + Send {
+        Self::close(&self);
+        future::ready(Ok(()))
     }
 }

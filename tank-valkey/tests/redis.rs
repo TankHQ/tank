@@ -4,9 +4,9 @@ mod init;
 mod tests {
     use super::init::{execute_tests, init_redis};
     use std::sync::Mutex;
-    use tank_core::Connection;
+    use tank::Driver;
     use tank_tests::init_logs;
-    use tank_valkey::{RedisConnection, RedisDriver};
+    use tank_valkey::RedisDriver;
 
     static MUTEX: Mutex<()> = Mutex::new(());
 
@@ -20,19 +20,19 @@ mod tests {
         let container = container.expect("Could not launch the container");
         {
             let driver = RedisDriver::default();
-            let mut connection = RedisConnection::connect(&driver, url.clone().into())
+            let mut pool = driver
+                .connect_pool(url.clone().into())
                 .await
                 .expect("Failed to connect");
-            execute_tests(&mut connection).await;
-            connection.disconnect().await.expect("Failed to disconnect");
+            execute_tests(&mut pool).await;
         }
         {
             let driver = RedisDriver::new(".", false);
-            let mut connection = RedisConnection::connect(&driver, url.clone().into())
+            let mut pool = driver
+                .connect_pool(url.clone().into())
                 .await
                 .expect("Failed to connect");
-            execute_tests(&mut connection).await;
-            connection.disconnect().await.expect("Failed to disconnect");
+            execute_tests(&mut pool).await;
         }
         drop(container);
 
@@ -44,11 +44,11 @@ mod tests {
         let (ssl_url, container) = init_redis(true).await;
         let container = container.expect("Could not launch the SSL container");
         let driver = RedisDriver::new(".", false);
-        let mut connection = RedisConnection::connect(&driver, ssl_url.clone().into())
+        let mut pool = driver
+            .connect_pool(ssl_url.clone().into())
             .await
             .expect("Failed to connect");
-        execute_tests(&mut connection).await;
-        connection.disconnect().await.expect("Failed to disconnect");
+        execute_tests(&mut pool).await;
         drop(container);
     }
 }
