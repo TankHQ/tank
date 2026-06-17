@@ -20,8 +20,7 @@ mod tests {
         // Unencrypted
         let (url, container) = init(false).await;
         let container = container.expect("Could not launch the container");
-        let connection = driver
-            .connect_pool(url.into())
+        let connection = PostgresConnection::connect(&driver, url.into())
             .await
             .expect("Failed to connect");
         execute_tests(connection).await;
@@ -30,8 +29,7 @@ mod tests {
         // SSL
         let (url, container) = init(true).await;
         let container = container.expect("Could not launch the SSL container");
-        let connection = driver
-            .connect_pool(url.into())
+        let connection = PostgresConnection::connect(&driver, url.into())
             .await
             .expect("Failed to connect");
         execute_tests(connection).await;

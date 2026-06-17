@@ -4,8 +4,8 @@ mod init;
 mod tests {
     use crate::init::init_mysql;
     use std::sync::Mutex;
-    use tank_core::Driver;
-    use tank_mysql::MySQLDriver;
+    use tank_core::{Connection, Driver};
+    use tank_mysql::{MySQLConnection, MySQLDriver};
     use tank_tests::{execute_tests, init_logs};
     use url::Url;
 
@@ -15,13 +15,12 @@ mod tests {
     pub async fn mysql() {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
+        let driver = MySQLDriver::new();
 
         // Unencrypted
         let (url, container) = init_mysql(false).await;
         let container = container.expect("Could not launch the container");
-        let driver = MySQLDriver::new();
-        let connection = driver
-            .connect_pool(url.clone().into())
+        let connection = MySQLConnection::connect(&driver, url.clone().into())
             .await
             .expect("Failed to connect");
         execute_tests(connection).await;
@@ -30,7 +29,6 @@ mod tests {
         // SSL
         let (ssl_url, container) = init_mysql(true).await;
         let container = container.expect("Could not launch the SSL container");
-        let driver = MySQLDriver::new();
 
         let url = Url::parse(&url).expect("Could not parse the url returned from init");
         let mut url_base = url.clone();
@@ -58,8 +56,7 @@ mod tests {
                 .is_err()
         );
 
-        let connection = driver
-            .connect_pool(ssl_url.to_string().into())
+        let connection = MySQLConnection::connect(&driver, ssl_url.to_string().into())
             .await
             .expect("Failed to connect");
         execute_tests(connection).await;

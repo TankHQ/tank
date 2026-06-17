@@ -218,6 +218,7 @@ impl Connection for PostgresConnection {
     async fn connect(driver: &PostgresDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = "While trying to connect to Postgres";
         let mut url = Self::sanitize_url(driver, url)?;
+        let original_url = url.clone();
         let mut take_url_param = |key: &str, env_var: &str, remove: bool| {
             let value = url
                 .query_pairs()
@@ -288,7 +289,7 @@ impl Connection for PostgresConnection {
         Ok(Self {
             client,
             handle,
-            url,
+            url: original_url,
         })
     }
 

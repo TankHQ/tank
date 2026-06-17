@@ -12,14 +12,15 @@ pub struct MySQLConnection {
     pub(crate) url: Url,
 }
 
-pub type MariaDBConnection = MySQLConnection;
-
 impl_executor_transaction!(MySQLDriver, MySQLConnection, conn);
+
+pub type MariaDBConnection = MySQLConnection;
 
 impl Connection for MySQLConnection {
     async fn connect(driver: &MySQLDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = "While trying to connect to MySQL";
         let mut url = Self::sanitize_url(driver, url)?;
+        let original_url = url.clone();
         let mut take_url_param = |key: &str, env_var: &str, remove: bool| {
             let value = url
                 .query_pairs()
@@ -82,7 +83,7 @@ impl Connection for MySQLConnection {
             conn: MySQLQueryable {
                 executor: connection,
             },
-            url,
+            url: original_url,
         })
     }
 

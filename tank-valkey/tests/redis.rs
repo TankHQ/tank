@@ -4,9 +4,9 @@ mod init;
 mod tests {
     use super::init::{execute_tests, init_redis};
     use std::sync::Mutex;
-    use tank_core::{Connection, Driver};
+    use tank_core::Connection;
     use tank_tests::init_logs;
-    use tank_valkey::ValkeyDriver;
+    use tank_valkey::{RedisConnection, RedisDriver};
 
     static MUTEX: Mutex<()> = Mutex::new(());
 
@@ -19,18 +19,16 @@ mod tests {
         let (url, container) = init_redis(false).await;
         let container = container.expect("Could not launch the container");
         {
-            let driver = ValkeyDriver::default();
-            let mut connection = driver
-                .connect_pool(url.clone().into())
+            let driver = RedisDriver::default();
+            let mut connection = RedisConnection::connect(&driver, url.clone().into())
                 .await
                 .expect("Failed to connect");
             execute_tests(&mut connection).await;
             connection.disconnect().await.expect("Failed to disconnect");
         }
         {
-            let driver = ValkeyDriver::new(".", false);
-            let mut connection = driver
-                .connect_pool(url.clone().into())
+            let driver = RedisDriver::new(".", false);
+            let mut connection = RedisConnection::connect(&driver, url.clone().into())
                 .await
                 .expect("Failed to connect");
             execute_tests(&mut connection).await;
@@ -45,9 +43,8 @@ mod tests {
         }
         let (ssl_url, container) = init_redis(true).await;
         let container = container.expect("Could not launch the SSL container");
-        let driver = ValkeyDriver::new(".", false);
-        let mut connection = driver
-            .connect_pool(ssl_url.clone().into())
+        let driver = RedisDriver::new(".", false);
+        let mut connection = RedisConnection::connect(&driver, ssl_url.clone().into())
             .await
             .expect("Failed to connect");
         execute_tests(&mut connection).await;

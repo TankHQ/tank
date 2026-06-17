@@ -8,6 +8,8 @@ pub struct ValkeyDriver {
     keys_with_names: bool,
 }
 
+pub type RedisDriver = ValkeyDriver;
+
 impl ValkeyDriver {
     pub const fn new(separator: &'static str, keys_with_names: bool) -> Self {
         Self {

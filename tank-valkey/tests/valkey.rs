@@ -4,9 +4,9 @@ mod init;
 mod tests {
     use super::init::{execute_tests, init_valkey};
     use std::sync::Mutex;
-    use tank_core::{Connection, Driver};
+    use tank_core::Connection;
     use tank_tests::init_logs;
-    use tank_valkey::ValkeyDriver;
+    use tank_valkey::{ValkeyConnection, ValkeyDriver};
 
     static MUTEX: Mutex<()> = Mutex::new(());
 
@@ -20,21 +20,17 @@ mod tests {
         let container = container.expect("Could not launch the container");
         {
             let driver = ValkeyDriver::default();
-            let mut connection = driver
-                .connect_pool(url.clone().into())
+            let mut connection = ValkeyConnection::connect(&driver, url.clone().into())
                 .await
                 .expect("Failed to connect");
             execute_tests(&mut connection).await;
-            connection.disconnect().await.expect("Failed to disconnect");
         }
         {
             let driver = ValkeyDriver::new(".", false);
-            let mut connection = driver
-                .connect_pool(url.clone().into())
+            let mut connection = ValkeyConnection::connect(&driver, url.clone().into())
                 .await
                 .expect("Failed to connect");
             execute_tests(&mut connection).await;
-            connection.disconnect().await.expect("Failed to disconnect");
         }
         drop(container);
 
@@ -46,8 +42,7 @@ mod tests {
         let (url, container) = init_valkey(true).await;
         let container = container.expect("Could not launch the SSL container");
         let driver = ValkeyDriver::new(".", false);
-        let mut connection = driver
-            .connect_pool(url.clone().into())
+        let mut connection = ValkeyConnection::connect(&driver, url.clone().into())
             .await
             .expect("Failed to connect");
         execute_tests(&mut connection).await;

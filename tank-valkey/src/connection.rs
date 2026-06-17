@@ -14,6 +14,8 @@ pub struct ValkeyConnection {
     pub(crate) url: Url,
 }
 
+pub type RedisConnection = ValkeyConnection;
+
 impl Connection for ValkeyConnection {
     async fn connect(driver: &ValkeyDriver, url: Cow<'static, str>) -> Result<Self>
     where
