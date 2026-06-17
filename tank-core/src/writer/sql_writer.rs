@@ -654,6 +654,51 @@ pub trait SqlWriter: Send {
         }
     }
 
+    fn expression_binary_op_fragments(
+        &self,
+        context: &mut Context,
+        op_type: BinaryOpType,
+    ) -> (&str, &str, &str, bool, bool) {
+        match op_type {
+            BinaryOpType::Indexing => ("", "[", "]", false, true),
+            BinaryOpType::Cast => {
+                context.switch_fragment(Fragment::Casting);
+                ("CAST(", " AS ", ")", true, true)
+            }
+            BinaryOpType::Multiplication => ("", " * ", "", false, false),
+            BinaryOpType::Division => ("", " / ", "", false, false),
+            BinaryOpType::Remainder => ("", " % ", "", false, false),
+            BinaryOpType::Addition => ("", " + ", "", false, false),
+            BinaryOpType::Subtraction => ("", " - ", "", false, false),
+            BinaryOpType::ShiftLeft => ("", " << ", "", false, false),
+            BinaryOpType::ShiftRight => ("", " >> ", "", false, false),
+            BinaryOpType::BitwiseAnd => ("", " & ", "", false, false),
+            BinaryOpType::BitwiseOr => ("", " | ", "", false, false),
+            BinaryOpType::In => ("", " IN ", "", false, false),
+            BinaryOpType::NotIn => ("", " NOT IN ", "", false, false),
+            BinaryOpType::Is => ("", " IS ", "", false, false),
+            BinaryOpType::IsNot => ("", " IS NOT ", "", false, false),
+            BinaryOpType::Like => ("", " LIKE ", "", false, false),
+            BinaryOpType::NotLike => ("", " NOT LIKE ", "", false, false),
+            BinaryOpType::Regexp => ("", " REGEXP ", "", false, false),
+            BinaryOpType::NotRegexp => ("", " NOT REGEXP ", "", false, false),
+            BinaryOpType::Glob => ("", " GLOB ", "", false, false),
+            BinaryOpType::NotGlob => ("", " NOT GLOB ", "", false, false),
+            BinaryOpType::Equal => ("", " = ", "", false, false),
+            BinaryOpType::NotEqual => ("", " != ", "", false, false),
+            BinaryOpType::Less => ("", " < ", "", false, false),
+            BinaryOpType::LessEqual => ("", " <= ", "", false, false),
+            BinaryOpType::Greater => ("", " > ", "", false, false),
+            BinaryOpType::GreaterEqual => ("", " >= ", "", false, false),
+            BinaryOpType::And => ("", " AND ", "", false, false),
+            BinaryOpType::Or => ("", " OR ", "", false, false),
+            BinaryOpType::Alias => {
+                context.switch_fragment(Fragment::Aliasing);
+                ("", " AS ", "", false, false)
+            }
+        }
+    }
+
     fn write_operand(&self, context: &mut Context, out: &mut DynQuery, value: &Operand) {
         match value {
             Operand::Null => self.write_null(context, out),
@@ -720,46 +765,11 @@ pub trait SqlWriter: Send {
         out: &mut DynQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) {
-        let (prefix, infix, suffix, lhs_parenthesized, rhs_parenthesized) = match value.op {
-            BinaryOpType::Indexing => ("", "[", "]", false, true),
-            BinaryOpType::Cast => {
-                return self.write_cast(context, out, value.lhs, value.rhs);
-            }
-            BinaryOpType::Multiplication => ("", " * ", "", false, false),
-            BinaryOpType::Division => ("", " / ", "", false, false),
-            BinaryOpType::Remainder => ("", " % ", "", false, false),
-            BinaryOpType::Addition => ("", " + ", "", false, false),
-            BinaryOpType::Subtraction => ("", " - ", "", false, false),
-            BinaryOpType::ShiftLeft => ("", " << ", "", false, false),
-            BinaryOpType::ShiftRight => ("", " >> ", "", false, false),
-            BinaryOpType::BitwiseAnd => ("", " & ", "", false, false),
-            BinaryOpType::BitwiseOr => ("", " | ", "", false, false),
-            BinaryOpType::In => ("", " IN ", "", false, false),
-            BinaryOpType::NotIn => ("", " NOT IN ", "", false, false),
-            BinaryOpType::Is => ("", " IS ", "", false, false),
-            BinaryOpType::IsNot => ("", " IS NOT ", "", false, false),
-            BinaryOpType::Like => ("", " LIKE ", "", false, false),
-            BinaryOpType::NotLike => ("", " NOT LIKE ", "", false, false),
-            BinaryOpType::Regexp => ("", " REGEXP ", "", false, false),
-            BinaryOpType::NotRegexp => ("", " NOT REGEXP ", "", false, false),
-            BinaryOpType::Glob => ("", " GLOB ", "", false, false),
-            BinaryOpType::NotGlob => ("", " NOT GLOB ", "", false, false),
-            BinaryOpType::Equal => ("", " = ", "", false, false),
-            BinaryOpType::NotEqual => ("", " != ", "", false, false),
-            BinaryOpType::Less => ("", " < ", "", false, false),
-            BinaryOpType::LessEqual => ("", " <= ", "", false, false),
-            BinaryOpType::Greater => ("", " > ", "", false, false),
-            BinaryOpType::GreaterEqual => ("", " >= ", "", false, false),
-            BinaryOpType::And => ("", " AND ", "", false, false),
-            BinaryOpType::Or => ("", " OR ", "", false, false),
-            BinaryOpType::Alias => {
-                if context.fragment == Fragment::SqlSelectOrderBy {
-                    return value.lhs.write_query(self.as_dyn(), context, out);
-                } else {
-                    ("", " AS ", "", false, false)
-                }
-            }
-        };
+        if value.op == BinaryOpType::Alias && context.fragment == Fragment::SqlSelectOrderBy {
+            return value.lhs.write_query(self.as_dyn(), context, out);
+        }
+        let (prefix, infix, suffix, lhs_parenthesized, rhs_parenthesized) =
+            self.expression_binary_op_fragments(context, value.op);
         let precedence = self.expression_binary_op_precedence(&value.op);
         out.push_str(prefix);
         possibly_parenthesized!(

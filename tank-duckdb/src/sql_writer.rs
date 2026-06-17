@@ -2,7 +2,9 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
 };
-use tank_core::{ColumnDef, Context, DynQuery, Interval, SqlWriter, Value, separated_by};
+use tank_core::{
+    BinaryOpType, ColumnDef, Context, DynQuery, Interval, SqlWriter, Value, separated_by,
+};
 
 /// SQL writer for the DuckDB dialect.
 ///
@@ -62,6 +64,25 @@ impl SqlWriter for DuckDBSqlWriter {
             ",",
         );
         out.push('}');
+    }
+
+    fn expression_binary_op_fragments(
+        &self,
+        context: &mut Context,
+        op_type: BinaryOpType,
+    ) -> (&str, &str, &str, bool, bool) {
+        match op_type {
+            BinaryOpType::NotGlob => ("NOT (", " GLOB ", ")", false, false),
+            _ => {
+                struct GenericWriter;
+                impl SqlWriter for GenericWriter {
+                    fn as_dyn(&self) -> &dyn SqlWriter {
+                        self
+                    }
+                }
+                GenericWriter.expression_binary_op_fragments(context, op_type)
+            }
+        }
     }
 
     fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {

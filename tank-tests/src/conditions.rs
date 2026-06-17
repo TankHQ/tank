@@ -145,7 +145,7 @@ pub async fn conditions(executor: &mut impl Executor) {
         .await;
         assert_eq!(
             count, 2,
-            "Should find 2 entries with `name NOT GLOB '?li*'`"
+            "Should find 2 entries with name not matching GLOB '?li*'"
         );
     }
 
