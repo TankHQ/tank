@@ -18,7 +18,7 @@ impl<D: Driver> Manager for DBConnectionManager<D> {
     type Type = D::Connection;
     type Error = Error;
     async fn create(&self) -> Result<Self::Type> {
-        Ok(D::Connection::connect(&self.driver, self.url.clone()).await?)
+        Ok(Box::pin(D::Connection::connect(&self.driver, self.url.clone())).await?)
     }
     fn recycle(
         &self,
