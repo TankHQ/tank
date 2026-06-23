@@ -39,20 +39,24 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         .get()
         .await
         .expect("Could not get a connection from the pool");
-    let connection = connection.as_mut();
-    simple(connection).await;
-    kv_storage(connection).await;
-    trade_simple(connection).await;
-    trade_multiple(connection).await;
-    limits(connection).await;
-    interval(connection).await;
-    transaction1(connection).await;
-    metrics(connection).await;
-    ambiguity(connection).await;
-    service(connection).await;
-    enums(connection).await;
-    custom(connection).await;
-    identifiers(connection).await;
+    macro_rules! do_test {
+        ($test_function:ident $(, $args:expr )* $(,)?) => {
+            Box::pin($test_function(connection.as_mut(), $($args),*)).await
+        };
+    }
+    do_test!(simple);
+    do_test!(kv_storage);
+    do_test!(trade_simple);
+    do_test!(trade_multiple);
+    do_test!(limits);
+    do_test!(interval);
+    do_test!(transaction1);
+    do_test!(metrics);
+    do_test!(ambiguity);
+    do_test!(service);
+    do_test!(enums);
+    do_test!(custom);
+    do_test!(identifiers);
 }
 
 struct TestcontainersLogConsumer;
