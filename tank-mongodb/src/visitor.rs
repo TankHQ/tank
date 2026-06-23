@@ -1,10 +1,12 @@
-use crate::{MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter, like_to_regex};
+use crate::{MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter, glob_to_regex, like_to_regex};
 use mongodb::bson::{Bson, Document, Regex, doc};
 use std::{borrow::Cow, iter, mem, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
     IsConstant, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp, UnaryOpType, Value,
 };
+
+pub type AggregateAliases = Arc<Vec<(Bson, String)>>;
 
 #[derive(Default, PartialEq, Eq, Debug)]
 pub enum FieldType {
@@ -18,6 +20,7 @@ pub enum FieldType {
 pub struct IsField<'a> {
     pub field: FieldType,
     pub known_columns: Arc<Vec<&'a String>>,
+    pub aggregate_aliases: AggregateAliases,
 }
 impl<'a> ExpressionVisitor for IsField<'a> {
     fn visit_column(
@@ -32,43 +35,67 @@ impl<'a> ExpressionVisitor for IsField<'a> {
     }
     fn visit_operand(
         &mut self,
-        _writer: &dyn SqlWriter,
+        writer: &dyn SqlWriter,
         context: &mut Context,
         _out: &mut DynQuery,
         value: &Operand,
     ) -> bool {
         match value {
             Operand::LitIdent(v) => {
-                self.field = FieldType::Column(ColumnRef {
-                    name: Cow::Owned(v.to_string()),
-                    table: "".into(),
-                    schema: "".into(),
-                });
+                if self.known_columns.iter().any(|k| k.as_str() == *v) {
+                    self.field = FieldType::Identifier(v.to_string());
+                } else {
+                    self.field = FieldType::Column(ColumnRef {
+                        name: Cow::Owned(v.to_string()),
+                        table: "".into(),
+                        schema: "".into(),
+                    });
+                }
                 true
             }
             Operand::LitField(v) => {
-                let mut it = v.into_iter().rev();
-                let name = it.next().map(ToString::to_string).unwrap_or_default();
-                let table = it.next().map(ToString::to_string).unwrap_or_default();
-                let schema = it.next().map(ToString::to_string).unwrap_or_default();
-                self.field = FieldType::Column(ColumnRef {
-                    name: name.into(),
-                    table: table.into(),
-                    schema: schema.into(),
-                });
+                let mut it = v.iter().rev().copied();
+                let name = it.next().unwrap_or("");
+                let table = it.next().unwrap_or("");
+                let schema = it.next().unwrap_or("");
+                if table.is_empty()
+                    && schema.is_empty()
+                    && self.known_columns.iter().any(|k| k.as_str() == name)
+                {
+                    self.field = FieldType::Identifier(name.to_string());
+                } else {
+                    self.field = FieldType::Column(ColumnRef {
+                        name: name.to_string().into(),
+                        table: table.to_string().into(),
+                        schema: schema.to_string().into(),
+                    });
+                }
                 true
             }
             _ => {
-                if self.known_columns.is_empty() {
+                if self.known_columns.is_empty() && self.aggregate_aliases.is_empty() {
                     return false;
                 }
                 let identifier = value.as_identifier(&mut context.switch_table("".into()).current);
                 if self.known_columns.contains(&&identifier) {
                     self.field = FieldType::Identifier(identifier);
-                    true
-                } else {
-                    false
+                    return true;
                 }
+                if !self.aggregate_aliases.is_empty() {
+                    let mut query = MongoDBSqlWriter::make_prepared();
+                    value.write_query(writer, context, &mut query);
+                    if let Some(bson) = query
+                        .as_prepared::<MongoDBDriver>()
+                        .and_then(MongoDBPrepared::current_bson)
+                        .map(mem::take)
+                        && let Some((_, alias)) =
+                            self.aggregate_aliases.iter().find(|(b, _)| b == &bson)
+                    {
+                        self.field = FieldType::Identifier(alias.clone());
+                        return true;
+                    }
+                }
+                false
             }
         }
     }
@@ -123,6 +150,7 @@ impl<'a> ExpressionVisitor for IsField<'a> {
 pub struct WriteMatchExpression<'a> {
     pub started: bool,
     pub known_columns: Arc<Vec<&'a String>>,
+    pub aggregate_aliases: AggregateAliases,
 }
 impl<'a> WriteMatchExpression<'a> {
     pub fn new() -> Self {
@@ -206,6 +234,21 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
     ) -> bool {
         let top = !self.started;
         self.started = true;
+        if top && value.op == UnaryOpType::Not {
+            let mut handled = false;
+            {
+                let mut rewriter = NotRewriter {
+                    parent: self,
+                    handled: &mut handled,
+                };
+                value
+                    .arg
+                    .accept_visitor(&mut rewriter, writer, context, out);
+            }
+            if handled {
+                return false;
+            }
+        }
         let mut negate_number = NegateNumber::default();
         let is_expr = !(value.op == UnaryOpType::Negative
             && value
@@ -296,7 +339,11 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                     | BinaryOpType::Equal
                     | BinaryOpType::NotEqual
                     | BinaryOpType::Like
+                    | BinaryOpType::NotLike
                     | BinaryOpType::Regexp
+                    | BinaryOpType::NotRegexp
+                    | BinaryOpType::Glob
+                    | BinaryOpType::NotGlob
                     | BinaryOpType::Less
                     | BinaryOpType::Greater
                     | BinaryOpType::LessEqual
@@ -304,10 +351,12 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
             ) {
                 let mut l_column = IsField {
                     known_columns: self.known_columns.clone(),
+                    aggregate_aliases: self.aggregate_aliases.clone(),
                     ..Default::default()
                 };
                 let mut r_column = IsField {
                     known_columns: self.known_columns.clone(),
+                    aggregate_aliases: self.aggregate_aliases.clone(),
                     ..Default::default()
                 };
                 let l_constant = value
@@ -373,22 +422,49 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                     };
                     let val_bson = if op == BinaryOpType::Equal {
                         val_bson
-                    } else if op == BinaryOpType::Like || op == BinaryOpType::Regexp {
+                    } else if matches!(
+                        op,
+                        BinaryOpType::Like
+                            | BinaryOpType::NotLike
+                            | BinaryOpType::Regexp
+                            | BinaryOpType::NotRegexp
+                            | BinaryOpType::Glob
+                            | BinaryOpType::NotGlob
+                    ) {
                         let mut pattern = val_bson;
-                        if op == BinaryOpType::Like {
+                        if matches!(
+                            op,
+                            BinaryOpType::Like
+                                | BinaryOpType::NotLike
+                                | BinaryOpType::Glob
+                                | BinaryOpType::NotGlob
+                        ) {
                             pattern = if let Bson::String(p) = pattern {
+                                let regex =
+                                    if matches!(op, BinaryOpType::Glob | BinaryOpType::NotGlob) {
+                                        glob_to_regex(&p)
+                                    } else {
+                                        like_to_regex(&p)
+                                    };
                                 Bson::RegularExpression(Regex {
-                                    pattern: like_to_regex(&p),
+                                    pattern: regex,
                                     options: Default::default(),
                                 })
                             } else {
                                 log::error!(
-                                    "MongoDB can handle LIKE operations but only if the pattern is a string literal (to transform it in $regex)"
+                                    "MongoDB can handle LIKE/GLOB operations but only if the pattern is a string literal (to transform it in $regex)"
                                 );
                                 return false;
                             };
                         }
-                        doc! { "$regex": pattern }.into()
+                        if matches!(
+                            op,
+                            BinaryOpType::NotLike | BinaryOpType::NotRegexp | BinaryOpType::NotGlob
+                        ) {
+                            doc! { "$not": { "$regex": pattern }, "$ne": Bson::Null }.into()
+                        } else {
+                            doc! { "$regex": pattern }.into()
+                        }
                     } else {
                         let op_key = MongoDBSqlWriter::expression_binary_op_key(op).to_string();
                         doc! { op_key: val_bson }.into()
@@ -423,6 +499,94 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
     ) -> bool {
         value.write_query(writer, context, out);
         true
+    }
+}
+
+struct NotRewriter<'p, 'a, 'h> {
+    parent: &'p mut WriteMatchExpression<'a>,
+    handled: &'h mut bool,
+}
+impl<'p, 'a, 'h> NotRewriter<'p, 'a, 'h> {
+    fn invert(op: BinaryOpType) -> Option<BinaryOpType> {
+        match op {
+            BinaryOpType::Equal => Some(BinaryOpType::NotEqual),
+            BinaryOpType::NotEqual => Some(BinaryOpType::Equal),
+            BinaryOpType::Less => Some(BinaryOpType::GreaterEqual),
+            BinaryOpType::Greater => Some(BinaryOpType::LessEqual),
+            BinaryOpType::LessEqual => Some(BinaryOpType::Greater),
+            BinaryOpType::GreaterEqual => Some(BinaryOpType::Less),
+            BinaryOpType::Like => Some(BinaryOpType::NotLike),
+            BinaryOpType::NotLike => Some(BinaryOpType::Like),
+            BinaryOpType::Regexp => Some(BinaryOpType::NotRegexp),
+            BinaryOpType::NotRegexp => Some(BinaryOpType::Regexp),
+            BinaryOpType::Glob => Some(BinaryOpType::NotGlob),
+            BinaryOpType::NotGlob => Some(BinaryOpType::Glob),
+            BinaryOpType::In => Some(BinaryOpType::NotIn),
+            BinaryOpType::NotIn => Some(BinaryOpType::In),
+            BinaryOpType::Is => Some(BinaryOpType::IsNot),
+            BinaryOpType::IsNot => Some(BinaryOpType::Is),
+            _ => None,
+        }
+    }
+}
+impl<'p, 'a, 'h> ExpressionVisitor for NotRewriter<'p, 'a, 'h> {
+    fn visit_column(
+        &mut self,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &ColumnRef,
+    ) -> bool {
+        let rhs = Operand::LitBool(false);
+        let rewritten = BinaryOp {
+            op: BinaryOpType::Equal,
+            lhs: value,
+            rhs: &rhs,
+        };
+        rewritten.accept_visitor(self.parent, writer, context, out);
+        *self.handled = true;
+        true
+    }
+    fn visit_operand(
+        &mut self,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &Operand,
+    ) -> bool {
+        if matches!(value, Operand::LitIdent(..) | Operand::LitField(..)) {
+            let rhs = Operand::LitBool(false);
+            let rewritten = BinaryOp {
+                op: BinaryOpType::Equal,
+                lhs: value,
+                rhs: &rhs,
+            };
+            rewritten.accept_visitor(self.parent, writer, context, out);
+            *self.handled = true;
+            true
+        } else {
+            false
+        }
+    }
+    fn visit_binary_op(
+        &mut self,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &BinaryOp<&dyn Expression, &dyn Expression>,
+    ) -> bool {
+        if let Some(op) = Self::invert(value.op) {
+            let rewritten = BinaryOp {
+                op,
+                lhs: value.lhs,
+                rhs: value.rhs,
+            };
+            rewritten.accept_visitor(self.parent, writer, context, out);
+            *self.handled = true;
+            true
+        } else {
+            false
+        }
     }
 }
 

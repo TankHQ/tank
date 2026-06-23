@@ -21,7 +21,7 @@ pub struct Metric {
     value: f64,
 }
 
-#[derive(Entity)]
+#[derive(Entity, PartialEq, Debug)]
 struct MetricValue {
     pub value: f64,
 }
@@ -640,6 +640,45 @@ pub async fn metrics(executor: &mut impl Executor) {
                     min_val: 58.0,
                     max_val: 88.5,
                     total_val: 869.7, // Note: watch out for f64 epsilon precision issues here depending on the DB engine!
+                },
+            ]
+        );
+
+        let heavy_stats = executor
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(
+                        Metric::name,
+                        MIN(Metric::value) as min_val,
+                        MAX(Metric::value) as max_val,
+                        SUM(Metric::value) as total_val,
+                    ))
+                    .from(Metric::table())
+                    .group_by([Metric::name])
+                    .having(expr!(SUM(Metric::value) > 1000.0))
+                    .order_by(cols!(name ASC))
+                    .build(&executor.driver()),
+            )
+            .map_ok(MetricGlobalStats::from_row)
+            .map(Result::flatten)
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Could not get heavy metric stats");
+
+        assert_eq!(
+            heavy_stats,
+            [
+                MetricGlobalStats {
+                    name: "height_cm".into(),
+                    min_val: 162.0,
+                    max_val: 188.0,
+                    total_val: 1213.0,
+                },
+                MetricGlobalStats {
+                    name: "income_eur".into(),
+                    min_val: 42000.0,
+                    max_val: 130000.0,
+                    total_val: 1128000.0,
                 },
             ]
         );

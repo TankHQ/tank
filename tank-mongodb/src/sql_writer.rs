@@ -2,7 +2,8 @@ use crate::{
     AggregatePayload, BatchPayload, CreateCollectionPayload, CreateDatabasePayload, DeletePayload,
     DropCollectionPayload, DropDatabasePayload, FieldType, FindManyPayload, FindOnePayload,
     InsertManyPayload, InsertOnePayload, IsField, MongoDBDriver, MongoDBPrepared, NegateNumber,
-    Payload, RowWrap, UpsertPayload, WriteMatchExpression, like_to_regex, value_to_bson,
+    Payload, RowWrap, UpsertPayload, WriteMatchExpression, glob_to_regex, like_to_regex,
+    value_to_bson,
 };
 use mongodb::{
     Namespace,
@@ -15,8 +16,8 @@ use mongodb::{
 use std::{borrow::Cow, collections::HashMap, f64, iter, mem, ops::Deref, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, Dataset, DynQuery, Entity, ErrorContext,
-    Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk, Operand, Order,
-    SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, truncate_long,
+    Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk, IsConstant,
+    Operand, Order, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -601,16 +602,21 @@ impl SqlWriter for MongoDBSqlWriter {
             rhs
         };
         let mut op = value.op;
-        if value.op == BinaryOpType::Like {
+        if matches!(value.op, BinaryOpType::Like | BinaryOpType::Glob) {
             let Bson::String(pattern) = rhs else {
                 log::error!(
-                    "MongoDB can handle LIKE operations but only if the pattern is a string literal (to transform it in $regexMatch)"
+                    "MongoDB can handle LIKE/GLOB operations but only if the pattern is a string literal (to transform it in $regexMatch)"
                 );
                 return;
             };
+            let regex = if value.op == BinaryOpType::Glob {
+                glob_to_regex(&pattern)
+            } else {
+                like_to_regex(&pattern)
+            };
             op = BinaryOpType::Regexp;
             rhs = Bson::RegularExpression(Regex {
-                pattern: like_to_regex(&pattern).into(),
+                pattern: regex.into(),
                 options: Default::default(),
             });
         }
@@ -807,6 +813,7 @@ impl SqlWriter for MongoDBSqlWriter {
         }
         let mut project = Some(Document::new());
         let mut is_asterisk = true;
+        let mut aggregate_aliases: Vec<(Bson, String)> = Vec::new();
         for column in query.get_select() {
             if is_asterisk {
                 if !column.accept_visitor(
@@ -836,6 +843,14 @@ impl SqlWriter for MongoDBSqlWriter {
             };
             let aggregate_function =
                 column.accept_visitor(&mut IsAggregateFunction, self, &mut context, out);
+            if !aggregate_function
+                && column.accept_visitor(&mut IsConstant, self, &mut context, out)
+            {
+                bson = doc! { "$literal": bson }.into();
+            }
+            if aggregate_function {
+                aggregate_aliases.push((bson.clone(), name.clone()));
+            }
             update_group!(column, name.clone(), bson.clone(), aggregate_function);
             if aggregate_function {
                 bson = Bson::String(format!("${name}"));
@@ -846,6 +861,7 @@ impl SqlWriter for MongoDBSqlWriter {
                 project.insert(name, bson);
             }
         }
+        let aggregate_aliases = Arc::new(aggregate_aliases);
         if is_asterisk {
             project = None;
         }
@@ -877,7 +893,7 @@ impl SqlWriter for MongoDBSqlWriter {
             let mut context = context.switch_fragment(Fragment::SqlSelectGroupBy);
             let mut query = Self::make_prepared();
             column.write_query(self, &mut context.current, &mut query);
-            let Some(bson) = query
+            let Some(mut bson) = query
                 .as_prepared::<MongoDBDriver>()
                 .and_then(MongoDBPrepared::current_bson)
                 .map(mem::take)
@@ -888,12 +904,14 @@ impl SqlWriter for MongoDBSqlWriter {
                 );
                 return;
             };
-            update_group!(
-                column,
-                name,
-                bson,
-                column.accept_visitor(&mut IsAggregateFunction, self, &mut context.current, out)
-            );
+            let aggregate_function =
+                column.accept_visitor(&mut IsAggregateFunction, self, &mut context.current, out);
+            if !aggregate_function
+                && column.accept_visitor(&mut IsConstant, self, &mut context.current, out)
+            {
+                bson = doc! { "$literal": bson }.into();
+            }
+            update_group!(column, name, bson, aggregate_function);
         }
         let known_columns = Arc::new(group.keys().collect::<Vec<_>>());
         let mut having = Bson::Null;
@@ -903,6 +921,7 @@ impl SqlWriter for MongoDBSqlWriter {
             let mut query = Self::make_prepared();
             let mut matcher = WriteMatchExpression {
                 known_columns: known_columns.clone(),
+                aggregate_aliases: aggregate_aliases.clone(),
                 ..Default::default()
             };
             condition.accept_visitor(&mut matcher, self, &mut context.current, &mut query);

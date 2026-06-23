@@ -217,16 +217,14 @@ mod tests {
                             { "SUM(total price)": { "$lt": Bson::Int64(50000) } },
                             { "MAX(ABS(total price - 100.0))": { "$gt": Bson::Int64(10) } },
                             {
-                                "$expr": {
-                                    "$not": [{
-                                        "$regexMatch": {
-                                            "input": "$country",
-                                            "regex": Bson::RegularExpression(Regex {
-                                                pattern: "^FR.*$".into(),
-                                                options: Default::default(),
-                                            })
-                                        }
-                                    }]
+                                "_id.country": {
+                                    "$not": {
+                                        "$regex": Bson::RegularExpression(Regex {
+                                            pattern: "^FR.*$".into(),
+                                            options: Default::default(),
+                                        })
+                                    },
+                                    "$ne": Bson::Null
                                 }
                             },
                         ]
