@@ -75,17 +75,29 @@ pub async fn init_scylladb(ssl: bool) -> (String, Option<ContainerAsync<ScyllaDB
     if let Ok(url) = env::var("TANK_SCYLLADB_TEST") {
         return (url, None);
     };
+    let mut readiness = vec![WaitFor::message_on_stderr("init - serving")];
+    if ssl {
+        readiness.push(WaitFor::message_on_stderr(
+            "9142 (encrypted, non-shard-aware)",
+        ));
+    } else {
+        readiness.push(WaitFor::message_on_stderr(
+            "9042 (unencrypted, non-shard-aware)",
+        ));
+    }
+
     let mut image = ScyllaDB::default()
         .with_tag("2026.1.2")
         .with_startup_timeout(Duration::from_secs(120))
-        .with_log_consumer(TestcontainersLogConsumer);
+        .with_log_consumer(TestcontainersLogConsumer)
+        .with_ready_conditions(readiness)
+        .with_mapped_port(9042, ContainerPort::Tcp(9042));
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     if ssl {
         generate_ssl_files()
             .await
             .expect("Could not create the certificate files for SSL session");
         image = image
-            .with_mapped_port(9042, ContainerPort::Tcp(9042))
             .with_mapped_port(9142, ContainerPort::Tcp(9142))
             .with_copy_to(
                 "/etc/scylla/scylla.yaml",
@@ -122,7 +134,7 @@ pub async fn init_scylladb(ssl: bool) -> (String, Option<ContainerAsync<ScyllaDB
         );
         format!("scylladb://localhost:{ssl_host_port}/scylla_keyspace?{params}")
     } else {
-        format!("scylladb://localhost:{plaintext_port}/scylla_keyspace")
+        format!("scylladb://127.0.0.1:{plaintext_port}/scylla_keyspace")
     };
     let mut plain_url = Url::parse(&final_url).expect("The URL was not correct");
     plain_url.set_path("");
@@ -189,7 +201,7 @@ pub async fn init_cassandra(ssl: bool) -> (String, Option<ContainerAsync<Generic
         );
         format!("cassandra://localhost:{ssl_host_port}/cassandra_keyspace?{params}")
     } else {
-        format!("cassandra://localhost:{plaintext_port}/cassandra_keyspace")
+        format!("cassandra://127.0.0.1:{plaintext_port}/cassandra_keyspace")
     };
     let mut plain_url = Url::parse(&final_url).expect("The URL was not correct");
     plain_url.set_path("");
@@ -236,6 +248,13 @@ async fn generate_ssl_files() -> Result<()> {
         SanType::DnsName("localhost".try_into()?),
         SanType::IpAddress(IpAddr::V4(Ipv4Addr::from_str("127.0.0.1")?)),
     ];
+    for octet in 1..=254 {
+        server_params
+            .subject_alt_names
+            .push(SanType::IpAddress(IpAddr::V4(Ipv4Addr::new(
+                172, 17, 0, octet,
+            ))));
+    }
     server_params
         .distinguished_name
         .push(DnType::CommonName, "localhost");

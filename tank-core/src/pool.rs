@@ -49,8 +49,7 @@ where
     <D as Driver>::Connection: Debug,
 {
     async fn get(&self) -> Result<impl AsRef<D::Connection> + AsMut<D::Connection>> {
-        Ok(self
-            .get()
+        Ok(Pool::<DBConnectionManager<D>>::get(self)
             .await
             .map_err(|e| Error::msg(format!("{e:#?}")))?)
     }
@@ -59,8 +58,10 @@ where
         &self,
         timeout: Duration,
     ) -> Result<impl AsRef<D::Connection> + AsMut<D::Connection>> {
-        Ok(self
-            .timeout_get(&Timeouts::wait_millis(timeout.as_millis() as u64))
+        Ok(Pool::<DBConnectionManager<D>>::timeout_get(
+            self,
+            &Timeouts::wait_millis(timeout.as_millis() as u64),
+        )
             .await
             .map_err(|e| Error::msg(format!("{e:#?}")))?)
     }
@@ -69,8 +70,7 @@ where
     where
         Self: Sized,
     {
-        let v = self
-            .get()
+        let v = Pool::<DBConnectionManager<D>>::get(self)
             .await
             .map_err(|e| Error::msg(format!("{e:#?}")))?;
         Ok(Object::<DBConnectionManager<D>>::take(v))
