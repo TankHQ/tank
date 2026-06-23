@@ -12,29 +12,29 @@ mod tests {
 
     #[tokio::test]
     pub async fn scylladb() {
-        // init_logs();
-        // let _guard = MUTEX.lock().unwrap();
+        init_logs();
+        let _guard = MUTEX.lock().unwrap();
 
-        // // Unencrypted
-        // let (url, container) = init_scylladb(false).await;
-        // let container = container.expect("Could not launch the container");
-        // let driver = ScyllaDBDriver::new();
-        // let mut pool = driver
-        //     .connect_pool(url.into())
-        //     .await
-        //     .expect("Failed to connect");
-        // execute_tests(&mut pool).await;
-        // drop(container);
+        // Unencrypted
+        let (url, container) = init_scylladb(false).await;
+        let container = container.expect("Could not launch the container");
+        let driver = ScyllaDBDriver::new();
+        let mut pool = driver
+            .connect_pool(url.into())
+            .await
+            .expect("Failed to connect");
+        execute_tests(&mut pool).await;
+        drop(container);
 
-        // // SSL
-        // let (url, container) = init_scylladb(true).await;
-        // let container = container.expect("Could not launch the SSL container");
-        // let driver = ScyllaDBDriver::new();
-        // let mut pool = driver
-        //     .connect_pool(url.into())
-        //     .await
-        //     .expect("Failed to connect");
-        // execute_tests(&mut pool).await;
-        // drop(container);
+        // SSL
+        let (url, container) = init_scylladb(true).await;
+        let container = container.expect("Could not launch the SSL container");
+        let driver = ScyllaDBDriver::new();
+        let mut pool = driver
+            .connect_pool(url.into())
+            .await
+            .expect("Failed to connect");
+        execute_tests(&mut pool).await;
+        drop(container);
     }
 }

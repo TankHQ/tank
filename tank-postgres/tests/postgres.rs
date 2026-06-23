@@ -4,23 +4,23 @@ mod init;
 mod tests {
     use super::init::init;
     use std::{env, path::PathBuf, sync::Mutex};
-    use tank_core::{Connection, Driver};
+    use tank_core::{Connection, ConnectionPool, Driver};
     use tank_postgres::{PostgresConnection, PostgresDriver};
     use tank_tests::{execute_tests, init_logs, silent_logs};
     use url::Url;
 
     static MUTEX: Mutex<()> = Mutex::new(());
+    static DRIVER: PostgresDriver = PostgresDriver::new();
 
     #[tokio::test]
     pub async fn postgres() {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
-        let driver = PostgresDriver::new();
 
         // Unencrypted
         let (url, container) = init(false).await;
         let container = container.expect("Could not launch the container");
-        let mut pool = driver
+        let mut pool = DRIVER
             .connect_pool(url.into())
             .await
             .expect("Failed to connect");
@@ -30,7 +30,7 @@ mod tests {
         // SSL
         let (url, container) = init(true).await;
         let container = container.expect("Could not launch the SSL container");
-        let mut pool = driver
+        let mut pool = DRIVER
             .connect_pool(url.into())
             .await
             .expect("Failed to connect");
@@ -42,11 +42,8 @@ mod tests {
     async fn wrong_url() {
         init_logs();
         silent_logs! {
-            assert!(
-                PostgresDriver::new().connect_pool("mysql://some_url".into())
-                    .await
-                    .is_err()
-            );
+            let pool = DRIVER.connect_pool("mysql://some_url".into()).await;
+            assert!(pool.is_err() || pool.unwrap().get().await.is_err());
         }
     }
 

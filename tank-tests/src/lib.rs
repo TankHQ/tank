@@ -59,7 +59,7 @@ pub use service::*;
 pub use shopping::*;
 pub use simple::*;
 use std::env;
-use tank::{Connection, ConnectionPool, Driver};
+use tank::{ConnectionPool, Driver};
 pub use time::*;
 pub use trade::*;
 pub use transaction1::*;
