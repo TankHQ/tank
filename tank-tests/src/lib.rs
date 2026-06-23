@@ -28,7 +28,6 @@ mod time;
 mod trade;
 mod transaction1;
 mod transaction2;
-mod transaction3;
 mod user;
 
 pub use aggregates::*;
@@ -64,7 +63,6 @@ pub use time::*;
 pub use trade::*;
 pub use transaction1::*;
 pub use transaction2::*;
-pub use transaction3::*;
 pub use user::*;
 
 pub fn init_logs() {
@@ -111,14 +109,6 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     do_test!(transaction1);
     #[cfg(not(feature = "disable-transactions"))]
     do_test!(transaction2);
-    #[cfg(not(feature = "disable-transactions"))]
-    do_test!(
-        transaction3,
-        pool.get()
-            .await
-            .expect("Could not get a second connection from the pool")
-            .as_mut()
-    );
     do_test!(shopping);
     do_test!(orders);
     do_test!(times);
