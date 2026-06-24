@@ -2,7 +2,7 @@ use crate::{SQLiteConnection, SQLitePrepared, SQLiteTransaction, sql_writer::SQL
 use tank_core::Driver;
 
 /// SQLite driver.
-#[derive(Default, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct SQLiteDriver {}
 impl SQLiteDriver {
     pub const fn new() -> Self {

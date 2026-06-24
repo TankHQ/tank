@@ -13,10 +13,10 @@ mod tests {
         const URL: &'static str = "yourdb://";
         let _lock = MUTEX.lock().unwrap();
         let driver = YourDBDriver::new();
-        let connection = driver
+        let mut pool = driver
             .connect(URL.into())
             .await
             .expect("Could not open the database");
-        execute_tests(connection).await;
+        execute_tests(&mut pool).await;
     }
 }

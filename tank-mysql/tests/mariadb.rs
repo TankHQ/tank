@@ -4,8 +4,8 @@ mod init;
 mod tests {
     use crate::init::init_mariadb;
     use std::sync::Mutex;
-    use tank_core::Driver;
-    use tank_mysql::MariaDBDriver;
+    use tank_core::{Connection, Driver};
+    use tank_mysql::{MariaDBConnection, MariaDBDriver};
     use tank_tests::{execute_tests, init_logs};
     use url::Url;
 
@@ -20,11 +20,11 @@ mod tests {
         let (url, container) = init_mariadb(false).await;
         let container = container.expect("Could not launch the container");
         let driver = MariaDBDriver::new();
-        let connection = driver
-            .connect(url.clone().into())
+        let mut pool = driver
+            .connect_pool(url.clone().into())
             .await
             .expect("Failed to connect");
-        execute_tests(connection).await;
+        execute_tests(&mut pool).await;
         drop(container);
 
         // SSL
@@ -41,8 +41,7 @@ mod tests {
             .extend_pairs(url.clone().query_pairs().filter(|(k, _)| k != "ssl_cert"))
             .finish();
         assert!(
-            driver
-                .connect(no_cert_url.to_string().into())
+            MariaDBConnection::connect(&driver, no_cert_url.to_string().into())
                 .await
                 .is_err()
         );
@@ -52,17 +51,16 @@ mod tests {
             .extend_pairs(url.clone().query_pairs().filter(|(k, _)| k != "ssl_pass"))
             .finish();
         assert!(
-            driver
-                .connect(no_pass_url.to_string().into())
+            MariaDBConnection::connect(&driver, no_pass_url.to_string().into())
                 .await
                 .is_err()
         );
 
-        let connection = driver
-            .connect(ssl_url.into())
+        let mut pool = driver
+            .connect_pool(ssl_url.into())
             .await
             .expect("Failed to connect");
-        execute_tests(connection).await;
+        execute_tests(&mut pool).await;
         drop(container);
     }
 }

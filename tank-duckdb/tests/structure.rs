@@ -1,6 +1,14 @@
-use tank_core::{Connection, Executor, Transaction, Value, indoc::indoc, stream::TryStreamExt};
+use tank_core::{
+    Connection, ConnectionPool, Driver, Executor, Transaction, Value, indoc::indoc,
+    stream::TryStreamExt,
+};
 
-pub(crate) async fn structure(mut connection: impl Connection) {
+pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
+    let mut connection = pool
+        .get()
+        .await
+        .expect("Could not get a connection from the pool");
+    let connection = connection.as_mut();
     let mut tx = connection
         .begin()
         .await

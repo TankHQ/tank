@@ -1,10 +1,14 @@
-use crate::{Connection, Prepared, Result, Transaction, writer::SqlWriter};
+use crate::{
+    Connection, ConnectionPool, DBConnectionManager, Error, Prepared, Result, Transaction,
+    writer::SqlWriter,
+};
+use deadpool::managed::Pool;
 use std::{borrow::Cow, fmt::Debug, future::Future};
 
 /// Backend connector and dialect.
-pub trait Driver: Default + Debug {
+pub trait Driver: Default + Clone + Sync + Send + Debug {
     /// Concrete connection type.
-    type Connection: Connection<Driver = Self>;
+    type Connection: Connection<Driver = Self> + Debug;
     /// Dialect-specific SQL writer.
     type SqlWriter: SqlWriter;
     /// Prepared statement implementation.
@@ -21,8 +25,15 @@ pub trait Driver: Default + Debug {
     }
 
     /// Creates a new connection to the database at the specified URL.
-    fn connect(&self, url: Cow<'static, str>) -> impl Future<Output = Result<Self::Connection>> {
-        Self::Connection::connect(self, url)
+    fn connect_pool(
+        &self,
+        url: Cow<'static, str>,
+    ) -> impl Future<Output = Result<impl ConnectionPool<Self>>> + Send {
+        async {
+            Ok(Pool::builder(DBConnectionManager::new(self.clone(), url))
+                .build()
+                .map_err(Error::new)?)
+        }
     }
 
     /// Returns a dialect-specific SQL writer for query construction.
