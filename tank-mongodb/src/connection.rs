@@ -12,7 +12,6 @@ use tank_core::{
     stream::{Stream, TryStreamExt},
     truncate_long,
 };
-use url::Url;
 
 /// Minimal MongoDB connection wrapper used by the driver.
 #[derive(Debug)]
@@ -20,16 +19,14 @@ pub struct MongoDBConnection {
     pub(crate) client: Client,
     pub(crate) session: Option<ClientSession>,
     pub(crate) default_database: Database,
-    pub(crate) url: Url,
 }
 
 impl MongoDBConnection {
-    pub(crate) fn new(url: Url, client: Client, default_database: Database) -> Self {
+    pub(crate) fn new(client: Client, default_database: Database) -> Self {
         MongoDBConnection {
             client,
             session: None,
             default_database,
-            url,
         }
     }
     pub fn is_session(&self) -> bool {
@@ -72,7 +69,7 @@ impl Connection for MongoDBConnection {
                 return Err(error);
             }
         });
-        Ok(MongoDBConnection::new(url, client, database))
+        Ok(MongoDBConnection::new(client, database))
     }
 
     async fn begin(&mut self) -> Result<MongoDBTransaction<'_>> {
@@ -86,13 +83,6 @@ impl Connection for MongoDBConnection {
         };
         session.start_transaction().await?;
         Ok(MongoDBTransaction::new(self, end_connection_session))
-    }
-
-    async fn duplicate(&self) -> Result<MongoDBConnection>
-    where
-        Self: Sized,
-    {
-        Self::connect(&self.driver(), self.url.to_string().into()).await
     }
 }
 

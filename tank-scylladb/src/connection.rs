@@ -1,4 +1,4 @@
-use crate::{CassandraDriver, RowWrap, ScyllaDBDriver, ScyllaDBPrepared, ScyllaDBTransaction};
+use crate::{RowWrap, ScyllaDBDriver, ScyllaDBPrepared, ScyllaDBTransaction};
 use async_stream::stream;
 use openssl::ssl::{SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
 use scylla::{
@@ -15,11 +15,9 @@ use std::{
 };
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, Row,
-    impl_executor_transaction,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
-use url::Url;
 
 /// Connection wrapper for ScyllaDB/Cassandra sessions.
 ///
@@ -27,14 +25,9 @@ use url::Url;
 #[derive(Debug)]
 pub struct ScyllaDBConnection {
     pub(crate) session: Session,
-    pub(crate) url: Url,
 }
 
-pub struct CassandraConnection {
-    pub scylla: ScyllaDBConnection,
-}
-
-impl_executor_transaction!(CassandraDriver, CassandraConnection, scylla);
+pub type CassandraConnection = ScyllaDBConnection;
 
 impl ScyllaDBConnection {
     pub fn begin_logged_batch<'c>(&'c mut self) -> ScyllaDBTransaction<'c> {
@@ -361,18 +354,10 @@ impl Connection for ScyllaDBConnection {
 
         Ok(ScyllaDBConnection {
             session: session.build().await?,
-            url,
         })
     }
 
     async fn begin<'c>(&'c mut self) -> Result<ScyllaDBTransaction<'c>> {
         Ok(Self::begin_logged_batch(self))
-    }
-
-    async fn duplicate(&self) -> Result<ScyllaDBConnection>
-    where
-        Self: Sized,
-    {
-        Self::connect(&self.driver(), self.url.to_string().into()).await
     }
 }

@@ -6,13 +6,14 @@ use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Row,
     RowsAffected, stream::Stream, truncate_long,
 };
-use url::Url;
 
+#[derive(Debug)]
 pub struct ValkeyConnection {
     driver: ValkeyDriver,
     pub(crate) connection: MultiplexedConnection,
-    pub(crate) url: Url,
 }
+
+pub type RedisConnection = ValkeyConnection;
 
 impl Connection for ValkeyConnection {
     async fn connect(driver: &ValkeyDriver, url: Cow<'static, str>) -> Result<Self>
@@ -30,7 +31,6 @@ impl Connection for ValkeyConnection {
         Ok(Self {
             driver: *driver,
             connection,
-            url,
         })
     }
 
@@ -39,13 +39,6 @@ impl Connection for ValkeyConnection {
             connection: self,
             commands: Default::default(),
         }))
-    }
-
-    async fn duplicate(&self) -> Result<ValkeyConnection>
-    where
-        Self: Sized,
-    {
-        Self::connect(&self.driver(), self.url.to_string().into()).await
     }
 }
 
