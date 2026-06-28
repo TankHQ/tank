@@ -94,13 +94,15 @@ pub async fn init_scylladb(ssl: bool) -> (String, Option<ContainerAsync<ScyllaDB
         .with_tag("2026.1.2")
         .with_startup_timeout(Duration::from_secs(120))
         .with_log_consumer(TestcontainersLogConsumer)
-        .with_ready_conditions(readiness);
+        .with_ready_conditions(readiness)
+        .with_mapped_port(9042, ContainerPort::Tcp(9042));
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     if ssl {
         generate_ssl_files()
             .await
             .expect("Could not create the certificate files for SSL session");
         image = image
+            .with_mapped_port(9142, ContainerPort::Tcp(9142))
             .with_copy_to(
                 "/etc/scylla/scylla.yaml",
                 path.join("tests/assets/scylla.yaml"),
@@ -159,6 +161,7 @@ pub async fn init_cassandra(ssl: bool) -> (String, Option<ContainerAsync<Generic
     let mut image = GenericImage::new("cassandra", "5.0.8")
         .with_startup_timeout(Duration::from_secs(120))
         .with_log_consumer(TestcontainersLogConsumer)
+        .with_mapped_port(9042, ContainerPort::Tcp(9042))
         .with_ready_conditions(vec![WaitFor::message_on_either_std(
             "Created default superuser role",
         )]);
@@ -168,6 +171,7 @@ pub async fn init_cassandra(ssl: bool) -> (String, Option<ContainerAsync<Generic
             .await
             .expect("Could not create the certificate files for SSL session");
         image = image
+            .with_mapped_port(9142, ContainerPort::Tcp(9142))
             .with_copy_to(
                 "/etc/cassandra/cassandra.yaml",
                 path.join("tests/assets/cassandra.yaml"),
