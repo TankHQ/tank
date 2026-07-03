@@ -286,7 +286,7 @@ impl Connection for PostgresConnection {
         Ok(Self { client, handle })
     }
 
-    fn begin(&mut self) -> impl Future<Output = Result<PostgresTransaction<'_>>> {
+    fn begin(&mut self) -> impl Future<Output = Result<PostgresTransaction<'_>>> + Send {
         PostgresTransaction::new(self)
     }
 

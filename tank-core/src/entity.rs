@@ -153,7 +153,7 @@ pub trait Entity {
         executor: &mut Exec,
         condition: impl Expression,
         limit: Option<u32>,
-    ) -> impl Future<Output = Result<Query<Exec::Driver>>> {
+    ) -> impl Future<Output = Result<Query<Exec::Driver>>> + Send {
         let builder = QueryBuilder::new()
             .select(Self::columns())
             .from(Self::table())

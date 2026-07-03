@@ -63,7 +63,7 @@ impl<'c> Executor for PostgresTransaction<'c> {
 }
 
 impl<'c> Transaction<'c> for PostgresTransaction<'c> {
-    fn commit(self) -> impl Future<Output = Result<()>> {
+    fn commit(self) -> impl Future<Output = Result<()>> + Send {
         self.0.commit().map_err(|e| {
             let e = Error::new(e);
             log::error!("{:#}", e);
@@ -71,7 +71,7 @@ impl<'c> Transaction<'c> for PostgresTransaction<'c> {
         })
     }
 
-    fn rollback(self) -> impl Future<Output = Result<()>> {
+    fn rollback(self) -> impl Future<Output = Result<()>> + Send {
         self.0.rollback().map_err(|e| {
             let e = Error::new(e);
             log::error!("{:#}", e);

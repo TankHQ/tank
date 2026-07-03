@@ -24,7 +24,7 @@ impl<'c> SQLiteTransaction<'c> {
 
 impl_executor_transaction!(SQLiteDriver, SQLiteTransaction<'c>, connection);
 impl<'c> Transaction<'c> for SQLiteTransaction<'c> {
-    fn commit(self) -> impl Future<Output = Result<()>> {
+    fn commit(self) -> impl Future<Output = Result<()>> + Send {
         let mut query = DynQuery::default();
         self.driver()
             .sql_writer()
@@ -32,7 +32,7 @@ impl<'c> Transaction<'c> for SQLiteTransaction<'c> {
         self.connection.execute(query).map_ok(|_| ())
     }
 
-    fn rollback(self) -> impl Future<Output = Result<()>> {
+    fn rollback(self) -> impl Future<Output = Result<()>> + Send {
         let mut query = DynQuery::default();
         self.driver()
             .sql_writer()

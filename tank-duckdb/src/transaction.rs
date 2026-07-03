@@ -28,7 +28,7 @@ impl<'c> DuckDBTransaction<'c> {
 
 impl_executor_transaction!(DuckDBDriver, DuckDBTransaction<'c>, connection);
 impl<'c> Transaction<'c> for DuckDBTransaction<'c> {
-    fn commit(self) -> impl Future<Output = Result<()>> {
+    fn commit(self) -> impl Future<Output = Result<()>> + Send {
         let mut query = DynQuery::default();
         self.driver()
             .sql_writer()
@@ -36,7 +36,7 @@ impl<'c> Transaction<'c> for DuckDBTransaction<'c> {
         self.connection.execute(query).map_ok(|_| ())
     }
 
-    fn rollback(self) -> impl Future<Output = Result<()>> {
+    fn rollback(self) -> impl Future<Output = Result<()>> + Send {
         let mut query = DynQuery::default();
         self.driver()
             .sql_writer()
