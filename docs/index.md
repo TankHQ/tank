@@ -16,17 +16,17 @@ hero:
 
 features:
   - icon: ⚡
-    title: Async operations
-    details: Your queries run async like artillery, load fast, return fire later.
+    title: Async Firepower
+    details: Execute queries asynchronously for maximum throughput and zero blocking overhead.
   - icon: ⚔️
-    title: Tactical simplicity
-    details: Fire raw queries when you need precision strikes, use the abstractions for standard deployments.
+    title: Raw Fire Control
+    details: Deploy rapid native SQL precision strikes when high-caliber performance demands it.
   - icon: 🧩
-    title: Battlefield adaptability
-    details: Plug new backends in like changing magazines. Designed from day one to be extensible.
+    title: Adaptable Chassis
+    details: Swap database backends seamlessly like changing magazines mid-battle without friction.
   - icon: 🎖️
     title: Rich type arsenal
-    details: Map Rust types to SQL with automatic conversions.
+    details: Convert complex Rust types to database equivalents automatically and safely.
 ---
 
 <script setup>
