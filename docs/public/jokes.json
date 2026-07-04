@@ -50,15 +50,31 @@
         },
         {
             "title": "Two goldfish are in a tank.",
-            "body": "One looks at the other and says, 'Do you know how to drive this thing?'"
+            "body": "One looks at the other and says, \"Do you know how to drive this thing?\""
         },
         {
             "title": "How do tanks show gratitude?",
-            "body": "They say: Tank you very much!"
+            "body": "They say: \"Tank you very much!\""
         },
         {
             "title": "Why did the SQLite database feel safe?",
             "body": "It was backed up by a Tank."
+        },
+        {
+            "title": "How do tanks apologize?",
+            "body": "\"My misfire.\""
+        },
+        {
+            "title": "How do tanks flirt?",
+            "body": "\"Are you reactive armor? Because you've got me covered.\""
+        },
+        {
+            "title": "Why does the tank love Rust?",
+            "body": "No data races, only tank races."
+        },
+        {
+            "title": "Why did the tank commander ask everyone else to stand back?",
+            "body": "\"I have exclusive access,\" said the borrow checker."
         }
     ]
 }
