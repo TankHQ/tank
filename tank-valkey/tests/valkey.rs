@@ -4,7 +4,7 @@ mod init;
 mod tests {
     use super::init::{execute_tests, init_valkey};
     use std::sync::Mutex;
-    use tank::Driver;
+    use tank::{Driver, PoolConfig};
     use tank_tests::init_logs;
     use tank_valkey::ValkeyDriver;
 
@@ -21,7 +21,7 @@ mod tests {
         {
             let driver: ValkeyDriver = ValkeyDriver::default();
             let mut pool = driver
-                .connect_pool(url.clone().into())
+                .connect_pool(url.clone().into(), PoolConfig::new())
                 .await
                 .expect("Failed to connect");
             execute_tests(&mut pool).await;
@@ -29,7 +29,7 @@ mod tests {
         {
             let driver = ValkeyDriver::new(".", false);
             let mut pool = driver
-                .connect_pool(url.clone().into())
+                .connect_pool(url.clone().into(), PoolConfig::new())
                 .await
                 .expect("Failed to connect");
             execute_tests(&mut pool).await;
@@ -45,7 +45,7 @@ mod tests {
         let container = container.expect("Could not launch the SSL container");
         let driver = ValkeyDriver::new(".", false);
         let mut pool = driver
-            .connect_pool(url.clone().into())
+            .connect_pool(url.clone().into(), PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;

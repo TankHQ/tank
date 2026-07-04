@@ -43,13 +43,13 @@ pub struct Tank {
 4) Fire for effect
 ```rust
 use std::{borrow::Cow, collections::HashSet};
-use tank::{Entity, Executor, Result, expr, stream::TryStreamExt};
+use tank::{Entity, Executor, PoolConfig, Result, expr, stream::TryStreamExt};
 use tank_duckdb::DuckDBDriver;
 
 async fn data() -> Result<()> {
     let driver = DuckDBDriver::new();
     let mut connection = driver
-        .connect("duckdb://../target/debug/tests.duckdb?mode=rw".into())
+        .connect_pool("duckdb://../target/debug/tests.duckdb?mode=rw".into(), PoolConfig::new())
         .await?;
 
     let my_tank = Tank {

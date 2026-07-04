@@ -1,6 +1,6 @@
 use crate::{
-    Connection, ConnectionPool, DBConnectionManager, Error, Prepared, Result, Transaction,
-    writer::SqlWriter,
+    Connection, ConnectionPool, DBConnectionManager, Error, PoolConfig, Prepared, Result,
+    Transaction, writer::SqlWriter,
 };
 use deadpool::managed::Pool;
 use std::{borrow::Cow, fmt::Debug, future::Future};
@@ -28,9 +28,12 @@ pub trait Driver: Default + Clone + Sync + Send + Debug {
     fn connect_pool(
         &self,
         url: Cow<'static, str>,
+        config: PoolConfig,
     ) -> impl Future<Output = Result<impl ConnectionPool<Self>>> + Send {
-        async {
+        let config = config.into();
+        async move {
             Ok(Pool::builder(DBConnectionManager::new(self.clone(), url))
+                .config(config)
                 .build()
                 .map_err(Error::new)?)
         }

@@ -4,7 +4,7 @@ mod init;
 mod tests {
     use super::init::init;
     use std::sync::Mutex;
-    use tank::Driver;
+    use tank::{Driver, PoolConfig};
     use tank_mongodb::{MongoDBDriver, like_to_regex};
     use tank_tests::{execute_tests, init_logs};
 
@@ -20,7 +20,7 @@ mod tests {
         let (url, container) = init(false).await;
         let container = container.expect("Could not launch the container");
         let mut pool = driver
-            .connect_pool(url.into())
+            .connect_pool(url.into(), PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
@@ -30,7 +30,7 @@ mod tests {
         let (url, container) = init(true).await;
         let container = container.expect("Could not launch the SSL container");
         let mut pool = driver
-            .connect_pool(url.into())
+            .connect_pool(url.into(), PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;

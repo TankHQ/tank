@@ -4,7 +4,7 @@ mod init;
 mod tests {
     use crate::init::init_mysql;
     use std::sync::Mutex;
-    use tank_core::{Connection, Driver};
+    use tank_core::{Connection, Driver, PoolConfig};
     use tank_mysql::{MySQLConnection, MySQLDriver};
     use tank_tests::{execute_tests, init_logs};
     use url::Url;
@@ -21,7 +21,7 @@ mod tests {
         let (url, container) = init_mysql(false).await;
         let container = container.expect("Could not launch the container");
         let mut pool = driver
-            .connect_pool(url.clone().into())
+            .connect_pool(url.clone().into(), PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
@@ -56,7 +56,7 @@ mod tests {
         );
 
         let mut pool = driver
-            .connect_pool(ssl_url.to_string().into())
+            .connect_pool(ssl_url.to_string().into(), Default::default())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;

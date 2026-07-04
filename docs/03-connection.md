@@ -24,7 +24,7 @@ Welcome to the armored convoy, commander. Before you can unleash Tank's firepowe
 
 ## Connection Lifecycle
 1. **Establish**: Call with your database url
-    * [`driver.connect_pool("dbms://...").await?`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect_pool) for a managed pool of connections then `.get().await?`. Prefer this alternative over the direct connection.
+    * [`driver.connect_pool("dbms://...", PoolConfig::new()).await?`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect_pool) for a managed pool of connections then `.get().await?`. Prefer this alternative over the direct connection.
     * [`DBConnection::connect(&driver, "dbms://...").await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.connect) for a direct connection or a pool of connections depending on the driver.
 
 2. **Deploy**: Use the connection for queries, inserts, updates, and deletes.
@@ -46,7 +46,10 @@ use tank_postgres::{PostgresConnection, PostgresDriver};
 async fn establish_postgres_connection() -> Result<PostgresConnection> {
     let driver = PostgresDriver::new();
     let connection = driver
-    .connect("postgres://tank-user:armored@127.0.0.1:5432/military?sslmode=require&sslrootcert=ROOT_PATH&sslcert=CERT_PATH&sslkey=KEY_PATH".into())
+    .connect_pool(
+        "postgres://tank-user:armored@127.0.0.1:5432/military?sslmode=require&sslrootcert=ROOT_PATH&sslcert=CERT_PATH&sslkey=KEY_PATH".into(),
+        PoolConfig::new(),
+    )
     .await?;
     Ok(connection)
 }
@@ -74,7 +77,10 @@ use tank_sqlite::{SQLiteConnection, SQLiteDriver};
 async fn establish_sqlite_connection() -> Result<SQLiteConnection> {
     let driver = SQLiteDriver::new();
     let connection = driver
-        .connect("sqlite://../target/database.sqlite?mode=rwc".into())
+        .connect_pool(
+            "sqlite://../target/database.sqlite?mode=rwc".into(),
+            PoolConfig::new(),
+        )
         .await?;
     Ok(connection)
 }
@@ -102,7 +108,10 @@ use tank_mysql::{MySQLConnection, MySQLDriver};
 async fn establish_mysql_connection() -> Result<MySQLConnection> {
   let driver = MySQLDriver::new();
   let connection = driver
-    .connect("mysql://tank-mysql-user@localhost:3306/operations_db?require_ssl=true&ssl_ca=/home/user/Git/tank/tank-mysql/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-mysql/tests/assets/client.p12&ssl_pass=my%26pass%3Fis%3DP%40%24%24".into())
+    .connect_pool(
+        "mysql://tank-mysql-user@localhost:3306/operations_db?require_ssl=true&ssl_ca=/home/user/Git/tank/tank-mysql/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-mysql/tests/assets/client.p12&ssl_pass=my%26pass%3Fis%3DP%40%24%24".into(),
+        PoolConfig::new(),
+    )
     .await?;
   Ok(connection)
 }
@@ -128,7 +137,10 @@ use tank_duckdb::{DuckDBConnection, DuckDBDriver};
 async fn establish_duckdb_connection() -> Result<DuckDBConnection> {
     let driver = DuckDBDriver::new();
     let connection = driver
-        .connect("duckdb://../target/debug/database.duckdb?mode=rw".into())
+        .connect_pool(
+            "duckdb://../target/debug/database.duckdb?mode=rw".into(),
+            PoolConfig::new(),
+        )
         .await?;
     Ok(connection)
 }
@@ -156,7 +168,10 @@ use tank_mongodb::{MongoDBConnection, MongoDBDriver};
 async fn establish_mongodb_connection() -> Result<MongoDBConnection> {
   let driver = MongoDBDriver::new();
   let connection = driver
-    .connect("mongodb://tank-user:armored@127.0.0.1:27017/military?directConnection=true&authSource=admin&tls=true&tlsCAFile=/home/user/Git/tank/tank-mongodb/tests/assets/ca.pem&tlsCertificateKeyFile=/home/user/Git/tank/tank-mongodb/tests/assets/client.pem".into())
+    .connect_pool(
+        "mongodb://tank-user:armored@127.0.0.1:27017/military?directConnection=true&authSource=admin&tls=true&tlsCAFile=/home/user/Git/tank/tank-mongodb/tests/assets/ca.pem&tlsCertificateKeyFile=/home/user/Git/tank/tank-mongodb/tests/assets/client.pem".into(),
+        PoolConfig::new(),
+    )
     .await?;
   Ok(connection)
 }
@@ -177,7 +192,10 @@ use tank_valkey::{ValkeyConnection, ValkeyDriver};
 async fn establish_valkey_connection() -> Result<ValkeyConnection> {
     let driver = ValkeyDriver::default();
     let connection = driver
-        .connect("valkeys://valkey-commander:supreme@127.0.0.1:32823/0?sslmode=require&sslrootcert=/home/user/Git/tank/tank-valkey/tests/assets/ca.pem&sslcert=/home/user/Git/tank/tank-valkey/tests/assets/client-cert.pem&sslkey=/home/user/Git/tank/tank-valkey/tests/assets/client-key.pem".into())
+        .connect_pool(
+            "valkeys://valkey-commander:supreme@127.0.0.1:32823/0?sslmode=require&sslrootcert=/home/user/Git/tank/tank-valkey/tests/assets/ca.pem&sslcert=/home/user/Git/tank/tank-valkey/tests/assets/client-cert.pem&sslkey=/home/user/Git/tank/tank-valkey/tests/assets/client-key.pem".into(),
+            PoolConfig::new(),
+        )
         .await?;
     Ok(connection)
 }
@@ -205,7 +223,10 @@ use tank_scylladb::{ScyllaDBConnection, ScyllaDBDriver};
 async fn establish_scylla_connection() -> Result<ScyllaDBConnection> {
   let driver = ScyllaDBDriver::new();
   let connection = driver
-    .connect("scylladb://localhost:9142/scylla_keyspace?ssl_ca=/home/user/Git/tank/tank-scylladb/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-scylladb/tests/assets/client-cert.pem&ssl_key=/home/user/Git/tank/tank-scylladb/tests/assets/client-key.pem".into())
+    .connect_pool(
+        "scylladb://localhost:9142/scylla_keyspace?ssl_ca=/home/user/Git/tank/tank-scylladb/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-scylladb/tests/assets/client-cert.pem&ssl_key=/home/user/Git/tank/tank-scylladb/tests/assets/client-key.pem".into(),
+        PoolConfig::new(),
+    )
     .await?;
   Ok(connection)
 }

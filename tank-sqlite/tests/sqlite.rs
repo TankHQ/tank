@@ -25,7 +25,10 @@ mod tests {
         );
         let driver = SQLiteDriver::new();
         let mut pool = driver
-            .connect_pool(format!("sqlite://{DB_PATH}?mode=rwc").into())
+            .connect_pool(
+                format!("sqlite://{DB_PATH}?mode=rwc").into(),
+                Default::default(),
+            )
             .await
             .expect("Could not open the database");
         let connection = pool

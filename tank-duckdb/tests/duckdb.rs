@@ -28,7 +28,7 @@ mod tests {
         let url = format!("duckdb://{}?mode=rw", DB_PATH);
         let driver = DuckDBDriver::new();
         let mut pool = driver
-            .connect_pool(url.clone().into())
+            .connect_pool(url.clone().into(), Default::default())
             .await
             .expect("Could not open the database");
         let _ = pool.get().await.expect("Could not get a DuckDB connection");

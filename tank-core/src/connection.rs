@@ -72,7 +72,9 @@ pub trait Connection: Executor {
     /// Starts a new transaction on this connection.
     ///
     /// Must await `commit` or `rollback` to finalize the scope and release resources.
-    fn begin(&mut self) -> impl Future<Output = Result<<Self::Driver as Driver>::Transaction<'_>>> + Send;
+    fn begin(
+        &mut self,
+    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Transaction<'_>>> + Send;
 
     /// Closes the connection and releases any session resources.
     fn disconnect(self) -> impl Future<Output = Result<()>> + Send
@@ -94,7 +96,9 @@ impl<S: Connection> Connection for &mut S {
         S::connect(driver, url)
     }
 
-    fn begin(&mut self) -> impl Future<Output = Result<<Self::Driver as Driver>::Transaction<'_>>> + Send {
+    fn begin(
+        &mut self,
+    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Transaction<'_>>> + Send {
         (**self).begin()
     }
 

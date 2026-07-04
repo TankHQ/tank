@@ -21,7 +21,7 @@ mod tests {
         let container = container.expect("Could not launch the container");
         let driver = MariaDBDriver::new();
         let mut pool = driver
-            .connect_pool(url.clone().into())
+            .connect_pool(url.clone().into(), Default::default())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
@@ -57,7 +57,7 @@ mod tests {
         );
 
         let mut pool = driver
-            .connect_pool(ssl_url.into())
+            .connect_pool(ssl_url.into(), Default::default())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;

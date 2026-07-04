@@ -20,7 +20,7 @@ mod tests {
         let container = container.expect("Could not launch the container");
         let driver = CassandraDriver::new();
         let mut pool = driver
-            .connect_pool(url.into())
+            .connect_pool(url.into(), Default::default())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
