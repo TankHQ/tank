@@ -56,7 +56,7 @@ mod tests {
         );
 
         let mut pool = driver
-            .connect_pool(ssl_url.to_string().into(), Default::default())
+            .connect_pool(ssl_url.to_string().into(), PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;

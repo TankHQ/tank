@@ -15,7 +15,7 @@ use tank_core::{
     future::{BoxFuture, FutureExt},
     indoc::indoc,
 };
-use tank_scylladb::{CassandraConnection, ScyllaDBConnection};
+use tank_scylladb::{CassandraConnection, CassandraDriver, ScyllaDBConnection, ScyllaDBDriver};
 use tank_tests::{
     ambiguity, custom, enums, identifiers, interval, kv_storage, limits, metrics, service, simple,
     trade_multiple, trade_simple, transaction1,
@@ -142,7 +142,7 @@ pub async fn init_scylladb(ssl: bool) -> (String, Option<ContainerAsync<ScyllaDB
     };
     let mut plain_url = Url::parse(&final_url).expect("The URL was not correct");
     plain_url.set_path("");
-    ScyllaDBConnection::connect(&Default::default(), plain_url.to_string().into())
+    ScyllaDBConnection::connect(&ScyllaDBDriver::new(), plain_url.to_string().into())
         .await
         .expect("Could not connect to ScyllaDB for setup")
         .execute(indoc! {r#"
@@ -211,7 +211,7 @@ pub async fn init_cassandra(ssl: bool) -> (String, Option<ContainerAsync<Generic
     };
     let mut plain_url = Url::parse(&final_url).expect("The URL was not correct");
     plain_url.set_path("");
-    CassandraConnection::connect(&Default::default(), plain_url.to_string().into())
+    CassandraConnection::connect(&CassandraDriver::new(), plain_url.to_string().into())
         .await
         .expect("Could not connect to Cassandra for setup")
         .execute(indoc! {r#"

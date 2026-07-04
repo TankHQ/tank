@@ -4,7 +4,7 @@ mod structure;
 mod tests {
     use crate::structure::structure;
     use std::{path::Path, sync::Mutex};
-    use tank_core::{ConnectionPool, Driver};
+    use tank_core::{ConnectionPool, Driver, PoolConfig};
     use tank_duckdb::DuckDBDriver;
     use tank_tests::{execute_tests, init_logs};
     use tokio::fs;
@@ -28,7 +28,7 @@ mod tests {
         let url = format!("duckdb://{}?mode=rw", DB_PATH);
         let driver = DuckDBDriver::new();
         let mut pool = driver
-            .connect_pool(url.clone().into(), Default::default())
+            .connect_pool(url.clone().into(), PoolConfig::new())
             .await
             .expect("Could not open the database");
         let _ = pool.get().await.expect("Could not get a DuckDB connection");

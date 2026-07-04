@@ -21,7 +21,7 @@ mod tests {
         let (url, container) = init(false).await;
         let container = container.expect("Could not launch the container");
         let mut pool = DRIVER
-            .connect_pool(url.into(), Default::default())
+            .connect_pool(url.into(), PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
@@ -31,7 +31,7 @@ mod tests {
         let (url, container) = init(true).await;
         let container = container.expect("Could not launch the SSL container");
         let mut pool = DRIVER
-            .connect_pool(url.into(), Default::default())
+            .connect_pool(url.into(), PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
@@ -42,7 +42,7 @@ mod tests {
     async fn wrong_url() {
         init_logs();
         silent_logs! {
-            let pool = DRIVER.connect_pool("mysql://some_url".into(), Default::default()).await;
+            let pool = DRIVER.connect_pool("mysql://some_url".into(), PoolConfig::new()).await;
             assert!(pool.is_err() || pool.unwrap().get().await.is_err());
         }
     }
@@ -57,14 +57,14 @@ mod tests {
         let mut url_base = url_full.clone();
         url_base.set_query(None);
         let _container = container.expect("Could not launch container");
-        let _ = PostgresConnection::connect(&Default::default(), url_full.to_string().into())
+        let _ = PostgresConnection::connect(&PostgresDriver::new(), url_full.to_string().into())
             .await
             .expect("Connection should succeed");
         let url = url_base
             .query_pairs_mut()
             .extend_pairs(url_full.query_pairs().filter(|(k, _)| k != "sslrootcert"))
             .finish();
-        let _ = PostgresConnection::connect(&Default::default(), url.to_string().into())
+        let _ = PostgresConnection::connect(&PostgresDriver::new(), url.to_string().into())
             .await
             .expect_err("Connection should fail without sslrootcert");
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -81,7 +81,7 @@ mod tests {
         unsafe {
             env::remove_var("PGSSLROOTCERT");
         }
-        let _ = PostgresConnection::connect(&Default::default(), url.to_string().into())
+        let _ = PostgresConnection::connect(&PostgresDriver::new(), url.to_string().into())
             .await
             .expect_err("Connection should fail again without sslrootcert");
     }

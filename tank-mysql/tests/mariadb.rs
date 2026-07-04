@@ -4,7 +4,7 @@ mod init;
 mod tests {
     use crate::init::init_mariadb;
     use std::sync::Mutex;
-    use tank_core::{Connection, Driver};
+    use tank_core::{Connection, Driver, PoolConfig};
     use tank_mysql::{MariaDBConnection, MariaDBDriver};
     use tank_tests::{execute_tests, init_logs};
     use url::Url;
@@ -21,7 +21,7 @@ mod tests {
         let container = container.expect("Could not launch the container");
         let driver = MariaDBDriver::new();
         let mut pool = driver
-            .connect_pool(url.clone().into(), Default::default())
+            .connect_pool(url.clone().into(), PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
@@ -57,7 +57,7 @@ mod tests {
         );
 
         let mut pool = driver
-            .connect_pool(ssl_url.into(), Default::default())
+            .connect_pool(ssl_url.into(), PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;

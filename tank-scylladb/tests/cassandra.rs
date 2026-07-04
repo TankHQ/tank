@@ -4,7 +4,7 @@ mod init;
 mod tests {
     use crate::init::{execute_tests, init_cassandra};
     use std::sync::Mutex;
-    use tank_core::Driver;
+    use tank_core::{Driver, PoolConfig};
     use tank_scylladb::CassandraDriver;
     use tank_tests::init_logs;
 
@@ -20,7 +20,7 @@ mod tests {
         let container = container.expect("Could not launch the container");
         let driver = CassandraDriver::new();
         let mut pool = driver
-            .connect_pool(url.into(), Default::default())
+            .connect_pool(url.into(), PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
