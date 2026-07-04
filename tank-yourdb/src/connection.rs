@@ -6,6 +6,7 @@ use tank_core::{
 };
 use url::Url;
 
+#[derive(Debug)]
 pub struct YourDBConnection {
     pub(crate) url: Url,
 }
@@ -36,12 +37,5 @@ impl Connection for YourDBConnection {
 
     async fn begin(&mut self) -> Result<YourDBTransaction<'_>> {
         Err(Error::msg("Transactions are not supported by YourDB"))
-    }
-
-    async fn duplicate(&self) -> Result<YourDBConnection>
-    where
-        Self: Sized,
-    {
-        Self::connect(&self.driver(), self.url.to_string().into()).await
     }
 }

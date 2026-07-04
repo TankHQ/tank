@@ -280,7 +280,7 @@ impl Connection for SQLiteConnection {
         Ok(Self { connection })
     }
 
-    fn begin(&mut self) -> impl Future<Output = Result<SQLiteTransaction<'_>>> {
+    fn begin(&mut self) -> impl Future<Output = Result<SQLiteTransaction<'_>>> + Send {
         SQLiteTransaction::new(self)
     }
 }

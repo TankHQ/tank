@@ -11,11 +11,11 @@ use std::{
     time::Duration,
 };
 use tank_core::{
-    Connection, Driver, Executor, Result,
+    Connection, ConnectionPool, Driver, Executor, Result,
     future::{BoxFuture, FutureExt},
     indoc::indoc,
 };
-use tank_scylladb::{CassandraDriver, ScyllaDBDriver};
+use tank_scylladb::{CassandraConnection, CassandraDriver, ScyllaDBConnection, ScyllaDBDriver};
 use tank_tests::{
     ambiguity, custom, enums, identifiers, interval, kv_storage, limits, metrics, service, simple,
     trade_multiple, trade_simple, transaction1,
@@ -34,20 +34,29 @@ use testcontainers_modules::{
 use tokio::fs;
 use url::Url;
 
-pub(crate) async fn execute_tests(mut connection: impl Connection) {
-    simple(&mut connection).await;
-    kv_storage(&mut connection).await;
-    trade_simple(&mut connection).await;
-    trade_multiple(&mut connection).await;
-    limits(&mut connection).await;
-    interval(&mut connection).await;
-    transaction1(&mut connection).await;
-    metrics(&mut connection).await;
-    ambiguity(&mut connection).await;
-    service(&mut connection).await;
-    enums(&mut connection).await;
-    custom(&mut connection).await;
-    identifiers(&mut connection).await;
+pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
+    let mut connection = pool
+        .get()
+        .await
+        .expect("Could not get a connection from the pool");
+    macro_rules! do_test {
+        ($test_function:ident $(, $args:expr )* $(,)?) => {
+            Box::pin($test_function(connection.as_mut(), $($args),*)).await
+        };
+    }
+    do_test!(simple);
+    do_test!(kv_storage);
+    do_test!(trade_simple);
+    do_test!(trade_multiple);
+    do_test!(limits);
+    do_test!(interval);
+    do_test!(transaction1);
+    do_test!(metrics);
+    do_test!(ambiguity);
+    do_test!(service);
+    do_test!(enums);
+    do_test!(custom);
+    do_test!(identifiers);
 }
 
 struct TestcontainersLogConsumer;
@@ -70,17 +79,29 @@ pub async fn init_scylladb(ssl: bool) -> (String, Option<ContainerAsync<ScyllaDB
     if let Ok(url) = env::var("TANK_SCYLLADB_TEST") {
         return (url, None);
     };
+    let mut readiness = vec![WaitFor::message_on_stderr("init - serving")];
+    if ssl {
+        readiness.push(WaitFor::message_on_stderr(
+            "9142 (encrypted, non-shard-aware)",
+        ));
+    } else {
+        readiness.push(WaitFor::message_on_stderr(
+            "9042 (unencrypted, non-shard-aware)",
+        ));
+    }
+
     let mut image = ScyllaDB::default()
-        .with_tag("2025.3.8")
+        .with_tag("2026.1.2")
         .with_startup_timeout(Duration::from_secs(120))
-        .with_log_consumer(TestcontainersLogConsumer);
+        .with_log_consumer(TestcontainersLogConsumer)
+        .with_ready_conditions(readiness)
+        .with_mapped_port(9042, ContainerPort::Tcp(9042));
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     if ssl {
         generate_ssl_files()
             .await
             .expect("Could not create the certificate files for SSL session");
         image = image
-            .with_mapped_port(9042, ContainerPort::Tcp(9042))
             .with_mapped_port(9142, ContainerPort::Tcp(9142))
             .with_copy_to(
                 "/etc/scylla/scylla.yaml",
@@ -117,12 +138,11 @@ pub async fn init_scylladb(ssl: bool) -> (String, Option<ContainerAsync<ScyllaDB
         );
         format!("scylladb://localhost:{ssl_host_port}/scylla_keyspace?{params}")
     } else {
-        format!("scylladb://localhost:{plaintext_port}/scylla_keyspace")
+        format!("scylladb://127.0.0.1:{plaintext_port}/scylla_keyspace")
     };
     let mut plain_url = Url::parse(&final_url).expect("The URL was not correct");
     plain_url.set_path("");
-    ScyllaDBDriver::new()
-        .connect(plain_url.to_string().into())
+    ScyllaDBConnection::connect(&ScyllaDBDriver::new(), plain_url.to_string().into())
         .await
         .expect("Could not connect to ScyllaDB for setup")
         .execute(indoc! {r#"
@@ -138,11 +158,13 @@ pub async fn init_cassandra(ssl: bool) -> (String, Option<ContainerAsync<Generic
     if let Ok(url) = env::var("TANK_CASSANDRA_TEST") {
         return (url, None);
     };
-    let mut image = GenericImage::new("cassandra", "5.0.6")
+    let mut image = GenericImage::new("cassandra", "5.0.8")
         .with_startup_timeout(Duration::from_secs(120))
         .with_log_consumer(TestcontainersLogConsumer)
         .with_mapped_port(9042, ContainerPort::Tcp(9042))
-        .with_ready_conditions(vec![WaitFor::message_on_either_std("Startup complete")]);
+        .with_ready_conditions(vec![WaitFor::message_on_either_std(
+            "Created default superuser role",
+        )]);
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     if ssl {
         generate_ssl_files()
@@ -185,12 +207,11 @@ pub async fn init_cassandra(ssl: bool) -> (String, Option<ContainerAsync<Generic
         );
         format!("cassandra://localhost:{ssl_host_port}/cassandra_keyspace?{params}")
     } else {
-        format!("cassandra://localhost:{plaintext_port}/cassandra_keyspace")
+        format!("cassandra://127.0.0.1:{plaintext_port}/cassandra_keyspace")
     };
     let mut plain_url = Url::parse(&final_url).expect("The URL was not correct");
     plain_url.set_path("");
-    CassandraDriver::new()
-        .connect(plain_url.to_string().into())
+    CassandraConnection::connect(&CassandraDriver::new(), plain_url.to_string().into())
         .await
         .expect("Could not connect to Cassandra for setup")
         .execute(indoc! {r#"
@@ -233,6 +254,13 @@ async fn generate_ssl_files() -> Result<()> {
         SanType::DnsName("localhost".try_into()?),
         SanType::IpAddress(IpAddr::V4(Ipv4Addr::from_str("127.0.0.1")?)),
     ];
+    for octet in 1..=254 {
+        server_params
+            .subject_alt_names
+            .push(SanType::IpAddress(IpAddr::V4(Ipv4Addr::new(
+                172, 17, 0, octet,
+            ))));
+    }
     server_params
         .distinguished_name
         .push(DnType::CommonName, "localhost");

@@ -27,12 +27,15 @@ cargo add tank-mysql
 
 ## Quick Start
 ```rust
-use tank::{Connection, Driver, Executor};
+use tank::{Connection, Driver, Executor, PoolConfig};
 use tank_mysql::MySQLDriver;
 
 let driver = MySQLDriver::new();
 let connection = driver
-    .connect("mysql://user:pass@127.0.0.1:3306/db?require_ssl=true".into())
+    .connect_pool(
+        "mysql://user:pass@127.0.0.1:3306/db?require_ssl=true".into(),
+        PoolConfig::new(),
+    )
     .await?;
 ```
 

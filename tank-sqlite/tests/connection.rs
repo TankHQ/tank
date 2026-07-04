@@ -2,7 +2,7 @@
 mod tests {
     use std::{path::Path, sync::Mutex};
     use tank_core::Connection;
-    use tank_sqlite::SQLiteConnection;
+    use tank_sqlite::{SQLiteConnection, SQLiteDriver};
     use tank_tests::{init_logs, silent_logs};
     use tokio::fs;
 
@@ -23,7 +23,7 @@ mod tests {
             "Database file should not exist before test"
         );
         SQLiteConnection::connect(
-            &Default::default(),
+            &SQLiteDriver::new(),
             format!("sqlite://{DB_PATH}?mode=rwc").into(),
         )
         .await
@@ -33,7 +33,7 @@ mod tests {
             "Database file should be created after connection"
         );
         SQLiteConnection::connect(
-            &Default::default(),
+            &SQLiteDriver::new(),
             format!("sqlite://{DB_PATH}?mode=ro").into(),
         )
         .await
@@ -44,7 +44,7 @@ mod tests {
         silent_logs! {
             assert!(
                 SQLiteConnection::connect(
-                    &Default::default(),
+                    &SQLiteDriver::new(),
                     format!("sqlite://{DB_PATH}?mode=ro").into(),
                 )
                     .await
@@ -59,7 +59,7 @@ mod tests {
         init_logs();
         silent_logs! {
             assert!(
-                SQLiteConnection::connect(&Default::default(), "duckdb://some_value".into())
+                SQLiteConnection::connect(&SQLiteDriver::new(), "duckdb://some_value".into())
                     .await
                     .is_err()
             );

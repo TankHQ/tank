@@ -26,11 +26,11 @@ cargo add tank-sqlite
 
 ## Quick Start
 ```rust
-use tank::{Connection, Driver, Executor};
+use tank::{Connection, Driver, Executor, PoolConfig};
 use tank_sqlite::SQLiteDriver;
 
 let driver = SQLiteDriver::new();
 let connection = driver
-    .connect("sqlite://path/to/database.sqlite?mode=rw".into())
+    .connect_pool("sqlite://path/to/database.sqlite?mode=rw".into(), PoolConfig::new())
     .await?;
 ```

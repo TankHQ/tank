@@ -4,7 +4,7 @@ mod tests {
     use tank_core::{
         AsValue, Connection, Executor, QueryResult, indoc::indoc, stream::TryStreamExt,
     };
-    use tank_duckdb::DuckDBConnection;
+    use tank_duckdb::{DuckDBConnection, DuckDBDriver};
     use tank_tests::{init_logs, silent_logs};
     use tokio::fs;
 
@@ -25,7 +25,7 @@ mod tests {
             "Database file should not exist before test"
         );
         DuckDBConnection::connect(
-            &Default::default(),
+            &DuckDBDriver::new(),
             format!("duckdb://{DB_PATH}?mode=rw").into(),
         )
         .await
@@ -41,7 +41,7 @@ mod tests {
         init_logs();
         silent_logs! {
             assert!(
-                DuckDBConnection::connect(&Default::default(),"postgres://some_value".into())
+                DuckDBConnection::connect(&DuckDBDriver::new(),"postgres://some_value".into())
                     .await
                     .is_err()
             );
@@ -51,7 +51,7 @@ mod tests {
     #[tokio::test]
     async fn url_parameters() {
         let mut connection = DuckDBConnection::connect(
-            &Default::default(),
+            &DuckDBDriver::new(),
             "duckdb://:memory:?threads=6&max_memory=800MiB".into(),
         )
         .await

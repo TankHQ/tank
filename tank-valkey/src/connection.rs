@@ -34,7 +34,7 @@ impl Connection for ValkeyConnection {
         })
     }
 
-    fn begin(&mut self) -> impl Future<Output = Result<ValkeyTransaction<'_>>> {
+    fn begin(&mut self) -> impl Future<Output = Result<ValkeyTransaction<'_>>> + Send {
         future::ready(Ok(ValkeyTransaction {
             connection: self,
             commands: Default::default(),

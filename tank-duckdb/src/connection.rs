@@ -629,7 +629,7 @@ impl Connection for DuckDBConnection {
         Ok(DuckDBConnection { connection })
     }
 
-    fn begin(&mut self) -> impl Future<Output = Result<DuckDBTransaction<'_>>> {
+    fn begin(&mut self) -> impl Future<Output = Result<DuckDBTransaction<'_>>> + Send {
         DuckDBTransaction::new(self)
     }
 }

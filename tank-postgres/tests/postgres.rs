@@ -4,31 +4,37 @@ mod init;
 mod tests {
     use super::init::init;
     use std::{env, path::PathBuf, sync::Mutex};
-    use tank_core::{Connection, Driver};
+    use tank_core::{Connection, ConnectionPool, Driver, PoolConfig};
     use tank_postgres::{PostgresConnection, PostgresDriver};
     use tank_tests::{execute_tests, init_logs, silent_logs};
     use url::Url;
 
     static MUTEX: Mutex<()> = Mutex::new(());
+    static DRIVER: PostgresDriver = PostgresDriver::new();
 
     #[tokio::test]
     pub async fn postgres() {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
-        let driver = PostgresDriver::new();
 
         // Unencrypted
         let (url, container) = init(false).await;
         let container = container.expect("Could not launch the container");
-        let connection = driver.connect(url.into()).await.expect("Failed to connect");
-        execute_tests(connection).await;
+        let mut pool = DRIVER
+            .connect_pool(url.into(), PoolConfig::new())
+            .await
+            .expect("Failed to connect");
+        execute_tests(&mut pool).await;
         drop(container);
 
         // SSL
         let (url, container) = init(true).await;
         let container = container.expect("Could not launch the SSL container");
-        let connection = driver.connect(url.into()).await.expect("Failed to connect");
-        execute_tests(connection).await;
+        let mut pool = DRIVER
+            .connect_pool(url.into(), PoolConfig::new())
+            .await
+            .expect("Failed to connect");
+        execute_tests(&mut pool).await;
         drop(container);
     }
 
@@ -36,11 +42,8 @@ mod tests {
     async fn wrong_url() {
         init_logs();
         silent_logs! {
-            assert!(
-                PostgresDriver::new().connect("mysql://some_url".into())
-                    .await
-                    .is_err()
-            );
+            let pool = DRIVER.connect_pool("mysql://some_url".into(), PoolConfig::new()).await;
+            assert!(pool.is_err() || pool.unwrap().get().await.is_err());
         }
     }
 
@@ -54,14 +57,14 @@ mod tests {
         let mut url_base = url_full.clone();
         url_base.set_query(None);
         let _container = container.expect("Could not launch container");
-        let _ = PostgresConnection::connect(&Default::default(), url_full.to_string().into())
+        let _ = PostgresConnection::connect(&PostgresDriver::new(), url_full.to_string().into())
             .await
             .expect("Connection should succeed");
         let url = url_base
             .query_pairs_mut()
             .extend_pairs(url_full.query_pairs().filter(|(k, _)| k != "sslrootcert"))
             .finish();
-        let _ = PostgresConnection::connect(&Default::default(), url.to_string().into())
+        let _ = PostgresConnection::connect(&PostgresDriver::new(), url.to_string().into())
             .await
             .expect_err("Connection should fail without sslrootcert");
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -71,14 +74,14 @@ mod tests {
                 path.join("tests/assets/root.crt").to_str().unwrap(),
             );
         }
-        let connection = PostgresConnection::connect(&Default::default(), url.to_string().into())
+        PostgresDriver::new()
+            .connect_pool(url.to_string().into(), PoolConfig::new())
             .await
             .expect("Connection should succeed with environment variable replacing sslrootcert");
-        connection.disconnect().await.expect("Could not disconnect");
         unsafe {
             env::remove_var("PGSSLROOTCERT");
         }
-        let _ = PostgresConnection::connect(&Default::default(), url.to_string().into())
+        let _ = PostgresConnection::connect(&PostgresDriver::new(), url.to_string().into())
             .await
             .expect_err("Connection should fail again without sslrootcert");
     }

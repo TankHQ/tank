@@ -11,7 +11,7 @@ use std::{
     str::FromStr,
     time::Duration,
 };
-use tank_core::Connection;
+use tank_core::{ConnectionPool, Driver};
 use tank_tests::{custom, kv_storage, limits, simple};
 use testcontainers_modules::{
     testcontainers::{
@@ -23,7 +23,12 @@ use testcontainers_modules::{
 };
 use tokio::fs;
 
-pub(crate) async fn execute_tests(connection: &mut impl Connection) {
+pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
+    let mut connection = pool
+        .get()
+        .await
+        .expect("Could not get a connection from the pool");
+    let connection = connection.as_mut();
     simple(connection).await;
     limits(connection).await;
     kv_storage(connection).await;

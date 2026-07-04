@@ -11,9 +11,9 @@ pub struct MySQLConnection {
     pub(crate) conn: MySQLQueryable<Conn>,
 }
 
-pub type MariaDBConnection = MySQLConnection;
-
 impl_executor_transaction!(MySQLDriver, MySQLConnection, conn);
+
+pub type MariaDBConnection = MySQLConnection;
 
 impl Connection for MySQLConnection {
     async fn connect(driver: &MySQLDriver, url: Cow<'static, str>) -> Result<Self> {
@@ -84,7 +84,7 @@ impl Connection for MySQLConnection {
         })
     }
 
-    fn begin(&mut self) -> impl Future<Output = Result<MySQLTransaction<'_>>> {
+    fn begin(&mut self) -> impl Future<Output = Result<MySQLTransaction<'_>>> + Send {
         MySQLTransaction::new(self)
     }
 }

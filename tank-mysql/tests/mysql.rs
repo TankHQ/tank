@@ -4,8 +4,8 @@ mod init;
 mod tests {
     use crate::init::init_mysql;
     use std::sync::Mutex;
-    use tank_core::Driver;
-    use tank_mysql::MySQLDriver;
+    use tank_core::{Connection, Driver, PoolConfig};
+    use tank_mysql::{MySQLConnection, MySQLDriver};
     use tank_tests::{execute_tests, init_logs};
     use url::Url;
 
@@ -15,22 +15,21 @@ mod tests {
     pub async fn mysql() {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
+        let driver = MySQLDriver::new();
 
         // Unencrypted
         let (url, container) = init_mysql(false).await;
         let container = container.expect("Could not launch the container");
-        let driver = MySQLDriver::new();
-        let connection = driver
-            .connect(url.clone().into())
+        let mut pool = driver
+            .connect_pool(url.clone().into(), PoolConfig::new())
             .await
             .expect("Failed to connect");
-        execute_tests(connection).await;
+        execute_tests(&mut pool).await;
         drop(container);
 
         // SSL
         let (ssl_url, container) = init_mysql(true).await;
         let container = container.expect("Could not launch the SSL container");
-        let driver = MySQLDriver::new();
 
         let url = Url::parse(&url).expect("Could not parse the url returned from init");
         let mut url_base = url.clone();
@@ -41,8 +40,7 @@ mod tests {
             .extend_pairs(url.clone().query_pairs().filter(|(k, _)| k != "ssl_cert"))
             .finish();
         assert!(
-            driver
-                .connect(no_cert_url.to_string().into())
+            MySQLConnection::connect(&driver, no_cert_url.to_string().into())
                 .await
                 .is_err()
         );
@@ -52,17 +50,16 @@ mod tests {
             .extend_pairs(url.clone().query_pairs().filter(|(k, _)| k != "ssl_pass"))
             .finish();
         assert!(
-            driver
-                .connect(no_pass_url.to_string().into())
+            MySQLConnection::connect(&driver, no_pass_url.to_string().into())
                 .await
                 .is_err()
         );
 
-        let connection = driver
-            .connect(ssl_url.to_string().into())
+        let mut pool = driver
+            .connect_pool(ssl_url.to_string().into(), PoolConfig::new())
             .await
             .expect("Failed to connect");
-        execute_tests(connection).await;
+        execute_tests(&mut pool).await;
         drop(container);
     }
 }

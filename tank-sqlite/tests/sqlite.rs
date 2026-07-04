@@ -2,7 +2,7 @@
 mod tests {
     use std::path::Path;
     use std::sync::Mutex;
-    use tank_core::Driver;
+    use tank_core::{ConnectionPool, Driver};
     use tank_sqlite::SQLiteDriver;
     use tank_tests::{execute_tests, init_logs};
     use tokio::fs;
@@ -24,14 +24,22 @@ mod tests {
             "Database file should not exist before test"
         );
         let driver = SQLiteDriver::new();
-        let connection = driver
-            .connect(format!("sqlite://{DB_PATH}?mode=rwc").into())
+        let mut pool = driver
+            .connect_pool(
+                format!("sqlite://{DB_PATH}?mode=rwc").into(),
+                Default::default(),
+            )
             .await
             .expect("Could not open the database");
+        let connection = pool
+            .get()
+            .await
+            .expect("Could not get a SQLite connection from the pool");
         assert!(
             Path::new(DB_PATH).exists(),
             "Database file should be created after connection"
         );
-        execute_tests(connection).await;
+        drop(connection);
+        execute_tests(&mut pool).await;
     }
 }

@@ -43,7 +43,7 @@ impl<'c> Transaction<'c> for ValkeyTransaction<'c> {
             .map_err(|e| Error::msg(format!("{e:?}")))
     }
 
-    fn rollback(self) -> impl Future<Output = Result<()>> {
+    fn rollback(self) -> impl Future<Output = Result<()>> + Send {
         future::ready(Ok(()))
     }
 }
