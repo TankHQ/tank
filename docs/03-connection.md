@@ -40,7 +40,7 @@ Once the line is open, the connection exposes both the [`Connection`](https://do
 Postgres is your heavy artillery: powerful, networked, built for sustained campaigns with multiple units coordinating strikes.
 
 ```rust
-use tank::Driver;
+use tank::{Driver, PoolConfig};
 use tank_postgres::{PostgresConnection, PostgresDriver};
 
 async fn establish_postgres_connection() -> Result<PostgresConnection> {
@@ -71,7 +71,7 @@ Parameters:
 SQLite is the lone wolf operative, deep behind enemy lines: lightweight, reliable, zero configuration. Deploy anywhere, anytime.
 
 ```rust
-use tank::Driver;
+use tank::{Driver, PoolConfig};
 use tank_sqlite::{SQLiteConnection, SQLiteDriver};
 
 async fn establish_sqlite_connection() -> Result<SQLiteConnection> {
@@ -102,18 +102,18 @@ Additional URL parameters are passed directly to the SQLite API. See the full li
 MySQL is the battle-hardened workhorse of the digital front: widely deployed, solid transactional engine, broad tooling ecosystem.
 
 ```rust
-use tank::Driver;
+use tank::{Driver, PoolConfig};
 use tank_mysql::{MySQLConnection, MySQLDriver};
 
 async fn establish_mysql_connection() -> Result<MySQLConnection> {
-  let driver = MySQLDriver::new();
-  let connection = driver
-    .connect_pool(
-        "mysql://tank-mysql-user@localhost:3306/operations_db?require_ssl=true&ssl_ca=/home/user/Git/tank/tank-mysql/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-mysql/tests/assets/client.p12&ssl_pass=my%26pass%3Fis%3DP%40%24%24".into(),
-        PoolConfig::new(),
-    )
-    .await?;
-  Ok(connection)
+    let driver = MySQLDriver::new();
+    let connection = driver
+        .connect_pool(
+            "mysql://tank-mysql-user@localhost:3306/operations_db?require_ssl=true&ssl_ca=/home/user/Git/tank/tank-mysql/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-mysql/tests/assets/client.p12&ssl_pass=my%26pass%3Fis%3DP%40%24%24".into(),
+            PoolConfig::new(),
+        )
+        .await?;
+    Ok(connection)
 }
 ```
 
@@ -131,7 +131,7 @@ Additional URL parameters are passed directly to the mysql_async API. See the fu
 DuckDB is your embedded artillery piece: fast, local, and always ready. Perfect for rapid deployment scenarios and testing under fire.
 
 ```rust
-use tank::Driver;
+use tank::{Driver, PoolConfig};
 use tank_duckdb::{DuckDBConnection, DuckDBDriver};
 
 async fn establish_duckdb_connection() -> Result<DuckDBConnection> {
@@ -162,18 +162,18 @@ The `mode` parameter provides a common syntax for specifying connection access, 
 MongoDB is your guerrilla special forces unit operating in the "fog of war", gathering intel in whatever format it arrives.
 
 ```rust
-use tank::Driver;
+use tank::{Driver, PoolConfig};
 use tank_mongodb::{MongoDBConnection, MongoDBDriver};
 
 async fn establish_mongodb_connection() -> Result<MongoDBConnection> {
-  let driver = MongoDBDriver::new();
-  let connection = driver
-    .connect_pool(
-        "mongodb://tank-user:armored@127.0.0.1:27017/military?directConnection=true&authSource=admin&tls=true&tlsCAFile=/home/user/Git/tank/tank-mongodb/tests/assets/ca.pem&tlsCertificateKeyFile=/home/user/Git/tank/tank-mongodb/tests/assets/client.pem".into(),
-        PoolConfig::new(),
-    )
-    .await?;
-  Ok(connection)
+    let driver = MongoDBDriver::new();
+    let connection = driver
+        .connect_pool(
+            "mongodb://tank-user:armored@127.0.0.1:27017/military?directConnection=true&authSource=admin&tls=true&tlsCAFile=/home/user/Git/tank/tank-mongodb/tests/assets/ca.pem&tlsCertificateKeyFile=/home/user/Git/tank/tank-mongodb/tests/assets/client.pem".into(),
+            PoolConfig::new(),
+        )
+        .await?;
+    Ok(connection)
 }
 ```
 
@@ -186,7 +186,7 @@ The database name is extracted from the URL path. If omitted, you must specify a
 Valkey is your suppressive-fire support weapon: an in-memory key-value depot for caches, sessions, queues, rate limits, and hot-path counters-built for blistering throughput when the front line can’t wait. This driver speaks both Valkey and Redis.
 
 ```rust
-use tank::Driver;
+use tank::{Driver, PoolConfig};
 use tank_valkey::{ValkeyConnection, ValkeyDriver};
 
 async fn establish_valkey_connection() -> Result<ValkeyConnection> {
@@ -217,18 +217,18 @@ Parameters:
 ScyllaDB is the rapid-response strike force: distributed, built to swarm data with relentless, low-latency fire.
 
 ```rust
-use tank::Driver;
+use tank::{Driver, PoolConfig};
 use tank_scylladb::{ScyllaDBConnection, ScyllaDBDriver};
 
 async fn establish_scylla_connection() -> Result<ScyllaDBConnection> {
-  let driver = ScyllaDBDriver::new();
-  let connection = driver
-    .connect_pool(
-        "scylladb://localhost:9142/scylla_keyspace?ssl_ca=/home/user/Git/tank/tank-scylladb/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-scylladb/tests/assets/client-cert.pem&ssl_key=/home/user/Git/tank/tank-scylladb/tests/assets/client-key.pem".into(),
-        PoolConfig::new(),
-    )
-    .await?;
-  Ok(connection)
+    let driver = ScyllaDBDriver::new();
+    let connection = driver
+        .connect_pool(
+            "scylladb://localhost:9142/scylla_keyspace?ssl_ca=/home/user/Git/tank/tank-scylladb/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-scylladb/tests/assets/client-cert.pem&ssl_key=/home/user/Git/tank/tank-scylladb/tests/assets/client-key.pem".into(),
+            PoolConfig::new(),
+        )
+        .await?;
+    Ok(connection)
 }
 ```
 
