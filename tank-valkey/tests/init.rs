@@ -11,7 +11,7 @@ use std::{
     str::FromStr,
     time::Duration,
 };
-use tank::{ConnectionPool, Driver};
+use tank_core::{ConnectionPool, Driver};
 use tank_tests::{custom, kv_storage, limits, simple};
 use testcontainers_modules::{
     testcontainers::{

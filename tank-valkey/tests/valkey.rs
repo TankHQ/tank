@@ -4,7 +4,7 @@ mod init;
 mod tests {
     use super::init::{execute_tests, init_valkey};
     use std::sync::Mutex;
-    use tank::{Driver, PoolConfig};
+    use tank_core::{Driver, PoolConfig};
     use tank_tests::init_logs;
     use tank_valkey::ValkeyDriver;
 
