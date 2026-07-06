@@ -352,9 +352,11 @@ impl Connection for ScyllaDBConnection {
             session = session.keyspaces_to_fetch(keyspaces);
         }
 
-        Ok(ScyllaDBConnection {
-            session: session.build().await?,
-        })
+        let session = tokio::task::spawn(async move { session.build().await })
+            .await
+            .map_err(|e| Error::msg(format!("ScyllaDB session build panicked: {e}")))?
+            .map_err(Error::new)?;
+        Ok(ScyllaDBConnection { session })
     }
 
     async fn begin<'c>(&'c mut self) -> Result<ScyllaDBTransaction<'c>> {

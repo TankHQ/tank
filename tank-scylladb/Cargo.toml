@@ -14,6 +14,7 @@ metrics = ["scylla/metrics"]
 [dependencies]
 async-stream.workspace = true
 log.workspace = true
+tokio.workspace = true
 openssl = "0"
 rust_decimal.workspace = true
 scylla = { version = "1", features = ["openssl-010", "time-03"] }
