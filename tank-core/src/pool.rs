@@ -55,19 +55,6 @@ impl<D: Driver> Manager for DBConnectionManager<D> {
 /// The borrowed connection is automatically returned to the pool when this
 /// value is dropped.  If you need to take full ownership of the connection
 /// outside pool management, call [`ConnectionPool::detach`] instead.
-///
-/// # Obtaining a `PooledConnection`
-///
-/// Call [`ConnectionPool::get`] or [`ConnectionPool::timeout_get`] on a pool:
-///
-/// ```rust
-/// let mut pool = PostgresDriver::new()
-///     .connect_pool("postgres://localhost/mydb".into(), PoolConfig::new())
-///     .await?;
-///
-/// let mut conn = pool.get().await?;
-/// Tank::create_table(&mut conn, true, true).await?;
-/// ```
 #[derive(Debug)]
 pub struct PooledConnection<D: Driver> {
     pub(crate) object: Object<DBConnectionManager<D>>,
