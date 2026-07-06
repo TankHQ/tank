@@ -1,12 +1,12 @@
 use std::time::Duration;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum QueueMode {
     Fifo,
     Lifo,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct PoolConfig {
     pub max_size: usize,
     pub wait_timeout: Option<Duration>,

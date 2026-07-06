@@ -25,14 +25,14 @@ Welcome to the armored convoy, commander. Before you can unleash Tank's firepowe
 ## Connection Lifecycle
 1. **Establish**: Call with your database url
     * [`driver.connect_pool("dbms://...", PoolConfig::new()).await?`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect_pool) for a managed pool of connections then `.get().await?`. Prefer this alternative over the direct connection.
-    * [`DBConnection::connect(&driver, "dbms://...").await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.connect) for a direct connection or a pool of connections depending on the driver.
+    * [`Connection::connect(&driver, "dbms://...").await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.connect) for a direct connection (driver-specific type, e.g. `PostgresConnection::connect(&driver, url)`).
 
 2. **Deploy**: Use the connection for queries, inserts, updates, and deletes.
 3. **Lock (optional)**: Start a transaction with [`connection.begin().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.begin). This borrows the connection; all operations route through the transactional executor until `commit()` or `rollback()`.
 4. **Terminate**: Connections close automatically when dropped. Call [`disconnect().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#method.disconnect) for an explicit shutdown when the driver supports it.
 
 ## Connect
-Every database connection abstraction implements the [`Connection`](https://docs.rs/tank/latest/tank/trait.Connection.html) trait. This is your communication link to the database server. Call [`driver.connect("dbms://...")`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect) with a URL to let Tank establish the line. Every driver is its own crate. Load only what you need for the operation. Check the [drivers](01-introduction.md#drivers) to see the available connections.
+Every database connection abstraction implements the [`Connection`](https://docs.rs/tank/latest/tank/trait.Connection.html) trait. This is your communication link to the database server. Call [`driver.connect_pool("dbms://...", PoolConfig::new())`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect_pool) with a URL to create a connection pool, then call `.get().await?` to obtain a [`PooledConnection`](https://docs.rs/tank/latest/tank/struct.PooledConnection.html) from it. Every driver is its own crate. Load only what you need for the operation. Check the [drivers](01-introduction.md#drivers) to see the available connections.
 
 Once the line is open, the connection exposes both the [`Connection`](https://docs.rs/tank/latest/tank/trait.Connection.html) and [`Executor`](https://docs.rs/tank/latest/tank/trait.Executor.html) interfaces, enabling you to prepare statements, run multiple queries, execute commands, fetch rows and orchestrate transactions.
 
@@ -40,18 +40,18 @@ Once the line is open, the connection exposes both the [`Connection`](https://do
 Postgres is your heavy artillery: powerful, networked, built for sustained campaigns with multiple units coordinating strikes.
 
 ```rust
-use tank::{Driver, PoolConfig};
-use tank_postgres::{PostgresConnection, PostgresDriver};
+use tank::{ConnectionPool, Driver, PoolConfig};
+use tank_postgres::PostgresDriver;
 
-async fn establish_postgres_connection() -> Result<PostgresConnection> {
+async fn establish_postgres_connection() -> Result<impl ConnectionPool<PostgresDriver>> {
     let driver = PostgresDriver::new();
-    let connection = driver
-    .connect_pool(
-        "postgres://tank-user:armored@127.0.0.1:5432/military?sslmode=require&sslrootcert=ROOT_PATH&sslcert=CERT_PATH&sslkey=KEY_PATH".into(),
-        PoolConfig::new(),
-    )
-    .await?;
-    Ok(connection)
+    let pool = driver
+        .connect_pool(
+            "postgres://tank-user:armored@127.0.0.1:5432/military?sslmode=require&sslrootcert=ROOT_PATH&sslcert=CERT_PATH&sslkey=KEY_PATH".into(),
+            PoolConfig::new(),
+        )
+        .await?;
+    Ok(pool)
 }
 ```
 
@@ -71,18 +71,18 @@ Parameters:
 SQLite is the lone wolf operative, deep behind enemy lines: lightweight, reliable, zero configuration. Deploy anywhere, anytime.
 
 ```rust
-use tank::{Driver, PoolConfig};
-use tank_sqlite::{SQLiteConnection, SQLiteDriver};
+use tank::{ConnectionPool, Driver, PoolConfig};
+use tank_sqlite::SQLiteDriver;
 
-async fn establish_sqlite_connection() -> Result<SQLiteConnection> {
+async fn establish_sqlite_connection() -> Result<impl ConnectionPool<SQLiteDriver>> {
     let driver = SQLiteDriver::new();
-    let connection = driver
+    let pool = driver
         .connect_pool(
             "sqlite://../target/database.sqlite?mode=rwc".into(),
             PoolConfig::new(),
         )
         .await?;
-    Ok(connection)
+    Ok(pool)
 }
 ```
 
@@ -102,18 +102,18 @@ Additional URL parameters are passed directly to the SQLite API. See the full li
 MySQL is the battle-hardened workhorse of the digital front: widely deployed, solid transactional engine, broad tooling ecosystem.
 
 ```rust
-use tank::{Driver, PoolConfig};
-use tank_mysql::{MySQLConnection, MySQLDriver};
+use tank::{ConnectionPool, Driver, PoolConfig};
+use tank_mysql::MySQLDriver;
 
-async fn establish_mysql_connection() -> Result<MySQLConnection> {
+async fn establish_mysql_connection() -> Result<impl ConnectionPool<MySQLDriver>> {
     let driver = MySQLDriver::new();
-    let connection = driver
+    let pool = driver
         .connect_pool(
             "mysql://tank-mysql-user@localhost:3306/operations_db?require_ssl=true&ssl_ca=/home/user/Git/tank/tank-mysql/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-mysql/tests/assets/client.p12&ssl_pass=my%26pass%3Fis%3DP%40%24%24".into(),
             PoolConfig::new(),
         )
         .await?;
-    Ok(connection)
+    Ok(pool)
 }
 ```
 
@@ -131,18 +131,18 @@ Additional URL parameters are passed directly to the mysql_async API. See the fu
 DuckDB is your embedded artillery piece: fast, local, and always ready. Perfect for rapid deployment scenarios and testing under fire.
 
 ```rust
-use tank::{Driver, PoolConfig};
-use tank_duckdb::{DuckDBConnection, DuckDBDriver};
+use tank::{ConnectionPool, Driver, PoolConfig};
+use tank_duckdb::DuckDBDriver;
 
-async fn establish_duckdb_connection() -> Result<DuckDBConnection> {
+async fn establish_duckdb_connection() -> Result<impl ConnectionPool<DuckDBDriver>> {
     let driver = DuckDBDriver::new();
-    let connection = driver
+    let pool = driver
         .connect_pool(
             "duckdb://../target/debug/database.duckdb?mode=rw".into(),
             PoolConfig::new(),
         )
         .await?;
-    Ok(connection)
+    Ok(pool)
 }
 ```
 
@@ -162,18 +162,18 @@ The `mode` parameter provides a common syntax for specifying connection access, 
 MongoDB is your guerrilla special forces unit operating in the "fog of war", gathering intel in whatever format it arrives.
 
 ```rust
-use tank::{Driver, PoolConfig};
-use tank_mongodb::{MongoDBConnection, MongoDBDriver};
+use tank::{ConnectionPool, Driver, PoolConfig};
+use tank_mongodb::MongoDBDriver;
 
-async fn establish_mongodb_connection() -> Result<MongoDBConnection> {
+async fn establish_mongodb_connection() -> Result<impl ConnectionPool<MongoDBDriver>> {
     let driver = MongoDBDriver::new();
-    let connection = driver
+    let pool = driver
         .connect_pool(
             "mongodb://tank-user:armored@127.0.0.1:27017/military?directConnection=true&authSource=admin&tls=true&tlsCAFile=/home/user/Git/tank/tank-mongodb/tests/assets/ca.pem&tlsCertificateKeyFile=/home/user/Git/tank/tank-mongodb/tests/assets/client.pem".into(),
             PoolConfig::new(),
         )
         .await?;
-    Ok(connection)
+    Ok(pool)
 }
 ```
 
@@ -186,18 +186,18 @@ The database name is extracted from the URL path. If omitted, you must specify a
 Valkey is your suppressive-fire support weapon: an in-memory key-value depot for caches, sessions, queues, rate limits, and hot-path counters-built for blistering throughput when the front line can’t wait. This driver speaks both Valkey and Redis.
 
 ```rust
-use tank::{Driver, PoolConfig};
-use tank_valkey::{ValkeyConnection, ValkeyDriver};
+use tank::{ConnectionPool, Driver, PoolConfig};
+use tank_valkey::ValkeyDriver;
 
-async fn establish_valkey_connection() -> Result<ValkeyConnection> {
+async fn establish_valkey_connection() -> Result<impl ConnectionPool<ValkeyDriver>> {
     let driver = ValkeyDriver::default();
-    let connection = driver
+    let pool = driver
         .connect_pool(
             "valkeys://valkey-commander:supreme@127.0.0.1:32823/0?sslmode=require&sslrootcert=/home/user/Git/tank/tank-valkey/tests/assets/ca.pem&sslcert=/home/user/Git/tank/tank-valkey/tests/assets/client-cert.pem&sslkey=/home/user/Git/tank/tank-valkey/tests/assets/client-key.pem".into(),
             PoolConfig::new(),
         )
         .await?;
-    Ok(connection)
+    Ok(pool)
 }
 ```
 
@@ -217,18 +217,18 @@ Parameters:
 ScyllaDB is the rapid-response strike force: distributed, built to swarm data with relentless, low-latency fire.
 
 ```rust
-use tank::{Driver, PoolConfig};
-use tank_scylladb::{ScyllaDBConnection, ScyllaDBDriver};
+use tank::{ConnectionPool, Driver, PoolConfig};
+use tank_scylladb::ScyllaDBDriver;
 
-async fn establish_scylla_connection() -> Result<ScyllaDBConnection> {
+async fn establish_scylla_connection() -> Result<impl ConnectionPool<ScyllaDBDriver>> {
     let driver = ScyllaDBDriver::new();
-    let connection = driver
+    let pool = driver
         .connect_pool(
             "scylladb://localhost:9142/scylla_keyspace?ssl_ca=/home/user/Git/tank/tank-scylladb/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-scylladb/tests/assets/client-cert.pem&ssl_key=/home/user/Git/tank/tank-scylladb/tests/assets/client-key.pem".into(),
             PoolConfig::new(),
         )
         .await?;
-    Ok(connection)
+    Ok(pool)
 }
 ```
 
@@ -267,5 +267,41 @@ Parameters:
 - `tracing_info_fetch_consistency`: Consistency level for tracing info (mapped to Scylla's internal u16 consistency levels).
 
 The parameters are used to create an object of type [`SessionBuilder`](https://docs.rs/scylla/latest/scylla/client/session_builder/type.SessionBuilder.html). Please check the Scylla documentation for more detailed information.
+
+## Dynamic Pool
+
+`driver.connect_pool(...)` returns an opaque `impl ConnectionPool<Driver>` type. The compiler knows the exact concrete type at the call site, but you cannot write its name which means you cannot store it in a struct field.
+
+Use [`into_box()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_box) to type-erase the pool into a `Box<dyn ConnectionPool<D>>`. The boxed pool is fully heap-allocated, has a stable concrete type, and can be cloned into `Arc` or stored anywhere:
+
+```rust
+use tank::{ConnectionPool, Driver, PoolConfig};
+use tank_postgres::PostgresDriver;
+
+type DBType = PostgresDriver;
+struct AppState {
+    db_connection: Box<dyn ConnectionPool<DBType>>,
+}
+
+impl AppState {
+    async fn new(db_url: &'static str) -> Result<Self> {
+        let pool = DBType::new()
+            .connect_pool(db_url.into(), PoolConfig::new())
+            .await?
+            .into_box();
+        Ok(Self { db_connection: pool })
+    }
+}
+```
+
+The boxed pool is used identically to the concrete pool. Call `.get().await?` to borrow a connection, and all query operations work as usual:
+
+```rust
+async fn run(state: &AppState) -> Result<()> {
+    let mut connection = state.db_connection.get().await?;
+    Tank::create_table(&mut connection, true, true).await?;
+    Ok(())
+}
+```
 
 *Lock, commit, advance. Dismissed.*

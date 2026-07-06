@@ -12,6 +12,12 @@ use std::{
     time::Duration,
 };
 
+/// The [`Manager`] that backs every Tank connection pool.
+///
+/// A manager holds the [`Driver`] and the database URL; it knows how to open
+/// new connections on demand and how to validate recycled ones.  You do not
+/// need to construct or interact with this type directly, it is created
+/// internally by [`Driver::connect_pool`].
 #[derive(Debug)]
 pub struct DBConnectionManager<D: Driver> {
     driver: D,
@@ -39,18 +45,78 @@ impl<D: Driver> Manager for DBConnectionManager<D> {
     }
 }
 
+/// A database connection borrowed from a [`ConnectionPool`].
+///
+/// Implements both [`Executor`] and [`Connection`], so it can be used anywhere
+/// a plain connection is expected.  Deref-coerces to the underlying driver
+/// connection (`D::Connection`) via [`Deref`]/[`DerefMut`], giving access to
+/// any driver-specific extension methods.
+///
+/// The borrowed connection is automatically returned to the pool when this
+/// value is dropped.  If you need to take full ownership of the connection
+/// outside pool management, call [`ConnectionPool::detach`] instead.
+///
+/// # Obtaining a `PooledConnection`
+///
+/// Call [`ConnectionPool::get`] or [`ConnectionPool::timeout_get`] on a pool:
+///
+/// ```rust
+/// let mut pool = PostgresDriver::new()
+///     .connect_pool("postgres://localhost/mydb".into(), PoolConfig::new())
+///     .await?;
+///
+/// let mut conn = pool.get().await?;
+/// Tank::create_table(&mut conn, true, true).await?;
+/// ```
+#[derive(Debug)]
 pub struct PooledConnection<D: Driver> {
     pub(crate) object: Object<DBConnectionManager<D>>,
 }
 
+/// A managed pool of reusable database connections.
+///
+/// Every method that yields connections produces a [`PooledConnection`]
+/// that is automatically returned to the pool on drop, keeping the number
+/// of open database connections bounded.
 pub trait ConnectionPool<D: Driver>: Debug {
+    /// Acquires a connection from the pool.
+    ///
+    /// If all connections are in use and the pool is at its maximum size, this
+    /// call waits until one becomes available or the configured
+    /// [`PoolConfig::wait_timeout`] elapses, at which point an error is
+    /// returned.
     fn get<'s>(&'s self) -> BoxFuture<'s, Result<PooledConnection<D>>>;
+
+    /// Acquires a connection from the pool with an explicit timeout.
+    ///
+    /// Identical to [`get`](ConnectionPool::get) but overrides the configured
+    /// wait timeout with `timeout`.  Useful when individual call sites need
+    /// stricter or looser deadlines than the pool-level default.
     fn timeout_get<'s>(&'s self, timeout: Duration) -> BoxFuture<'s, Result<PooledConnection<D>>>;
+
+    /// Acquires a connection and removes it from pool management.
+    ///
+    /// The returned `D::Connection` is a plain, pool-unaware connection.  It
+    /// will **not** be returned to the pool when dropped, the underlying
+    /// database connection is closed instead. Use this when you need to hand
+    /// a connection to code that does not know about the pool, or when you
+    /// want to guarantee the connection is fully closed rather than recycled.
     fn detach<'s>(&'s self) -> BoxFuture<'s, Result<D::Connection>>;
+
+    /// Changes the maximum number of connections the pool may hold.
     fn resize(&self, max_size: usize) -> Result<()>;
+
+    /// Converts this pool into a sized type-erased `Box<dyn ConnectionPool<D>>`.
+    ///
+    /// `Driver::connect_pool` returns an opaque `impl ConnectionPool<D>` type
+    /// that cannot be named or stored in struct fields, returned from trait
+    /// implementations, or otherwise used where a concrete named type is required.
     fn into_box(self) -> Box<dyn ConnectionPool<D>>
     where
         D: 'static;
+
+    /// Closes the pool, marking it as unavailable and dropping all managed
+    /// connections.
     fn close(self) -> BoxFuture<'static, Result<()>>;
 }
 

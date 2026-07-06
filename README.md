@@ -92,14 +92,15 @@ use tank_duckdb::DuckDBDriver;
 
 async fn data() -> Result<()> {
     let driver = DuckDBDriver::new();
-    let connection = driver
+    let mut pool = driver
         .connect_pool(
             "duckdb://../target/debug/tests.duckdb?mode=rw".into(),
             PoolConfig::new(),
         )
         .await?;
+    let mut connection = pool.get().await?;
 
-    let mut my_tank = Tank {
+    let my_tank = Tank {
         name: "Tiger I".into(),
         country: "Germany".into(),
         caliber_mm: 88,
