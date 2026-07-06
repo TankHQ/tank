@@ -26,13 +26,14 @@ cargo add tank-scylladb
 
 ## Quick Start
 ```rust
-use tank::{Connection, Driver, Executor, PoolConfig};
+use tank::{ConnectionPool, Driver, PoolConfig};
 use tank_scylladb::ScyllaDBDriver;
 
 let driver = ScyllaDBDriver::new();
-let connection = driver
+let pool = driver
     .connect_pool("scylladb://127.0.0.1:9042/keyspace".into(), PoolConfig::new())
     .await?;
+let mut connection = pool.get().await?;
 ```
 
 ## Primary Keys

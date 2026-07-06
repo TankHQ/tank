@@ -29,7 +29,7 @@ In plain terms, Tank is a thin layer over your database workflow, designed for t
 - Valkey/Redis
 
 ## Mission Objectives
-Tank exists to implement the **best possible** design for a ORM written in Rust. A a clean-slate design focused on ergonomics, flexibility and broad database support.
+Tank exists to implement the **best possible** design for a ORM written in Rust. A clean-slate design focused on ergonomics, flexibility and broad database support.
 
 - **Async operations** - Fire and forget.
 - **Designed to be extensible** - Swap databases like changing magazines mid-battle.
@@ -86,8 +86,8 @@ pub struct Tank {
 
 4) Fire for effect
 ```rust
-use std::{borrow::Cow, collections::HashSet, sync::LazyLock};
-use tank::{Entity, Executor, PoolConfig, Result, expr, stream::TryStreamExt};
+use std::{borrow::Cow, collections::HashSet};
+use tank::{ConnectionPool, Driver, Entity, PoolConfig, Result, expr, stream::TryStreamExt};
 use tank_duckdb::DuckDBDriver;
 
 async fn data() -> Result<()> {

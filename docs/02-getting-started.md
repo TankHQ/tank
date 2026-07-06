@@ -43,7 +43,7 @@ pub struct Tank {
 4) Fire for effect
 ```rust
 use std::{borrow::Cow, collections::HashSet};
-use tank::{Entity, Executor, PoolConfig, Result, expr, stream::TryStreamExt};
+use tank::{ConnectionPool, Driver, Entity, PoolConfig, Result, expr, stream::TryStreamExt};
 use tank_duckdb::DuckDBDriver;
 
 async fn data() -> Result<()> {

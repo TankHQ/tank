@@ -27,16 +27,17 @@ cargo add tank-mongodb
 
 ## Quick Start
 ```rust
-use tank::{Connection, Driver, Executor, PoolConfig};
+use tank::{ConnectionPool, Driver, PoolConfig};
 use tank_mongodb::MongoDBDriver;
 
 let driver = MongoDBDriver::new();
-let connection = driver
+let pool = driver
     .connect_pool(
         "mongodb://user:pass@127.0.0.1:27017/database?tls=true&tlsCAFile=/path/to/ca.pem&tlsCertificateKeyFile=/path/to/client-combined.pem".into(),
         PoolConfig::new(),
     )
     .await?;
+let mut connection = pool.get().await?;
 ```
 
 Note: `tlsCertificateKeyFile` should point to a PEM file containing both the client certificate and private key combined.

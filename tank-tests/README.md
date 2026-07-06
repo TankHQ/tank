@@ -50,8 +50,8 @@ tank-tests = { version = "1", features = ["disable-arrays", "disable-lists", "di
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
-    use tank_core::Driver;
-    use tank_mydb::{MyDBConnection, MyDBDriver};
+    use tank_core::{ConnectionPool, Driver, PoolConfig};
+    use tank_mydb::MyDBDriver;
     use tank_tests::{execute_tests, init_logs};
     static MUTEX: Mutex<()> = Mutex::new(());
     #[tokio::test]
@@ -59,7 +59,8 @@ mod tests {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
         let driver = MyDBDriver::new();
-        let connection = driver.connect("mydb://localhost:5555".into())
+        let mut pool = driver
+            .connect_pool("mydb://localhost:5555".into(), PoolConfig::new())
             .await
             .expect("Could not connect to MyDB");
         execute_tests(&mut pool).await; // Runs all enabled modules sequentially

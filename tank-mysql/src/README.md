@@ -1,12 +1,12 @@
 <div align="center">
-    <img width="300" height="300" src="../docs/public/logo.png" alt="Tank logo: a circular gold emblem with a military tank and a database symbol" />
+    <img width="300" height="300" src="../../docs/public/logo.png" alt="Tank logo: a circular gold emblem with a military tank and a database symbol" />
 </div>
 
 # tank-mysql
 
 MySQL and MariaDB driver implementation for [Tank](https://crates.io/crates/tank): the Rust data layer.
 
-Implements Tank’s `Driver` and related traits for MySQL, mapping Tank operations and queries into direct MySQL commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. you still use it to define entities, manage schemas, and build queries.
+Implements Tank’s `Driver` and related traits for MySQL, mapping Tank operations and queries into direct MySQL commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. You still need it to define entities, manage schemas, and build queries.
 
 https://tankhq.github.io/tank/
 
@@ -25,16 +25,17 @@ cargo add tank-mysql
 
 ## Quick Start
 ```rust
-use tank::{Connection, Driver, Executor, PoolConfig};
+use tank::{ConnectionPool, Driver, PoolConfig};
 use tank_mysql::MySQLDriver; // also alias: use tank_mysql::MariaDBDriver;
 
 let driver = MySQLDriver::new();
-let connection = driver
-    .connect_config(
+let pool = driver
+    .connect_pool(
         "mysql://tank-mysql-user@localhost:33293/mysql_database?require_ssl=true&ssl_ca=/home/user/Git/tank/tank-mysql/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-mysql/tests/assets/client.p12&ssl_pass=my%26pass%3Fis%3DP%40%24%24".into(),
         PoolConfig::new(),
     )
     .await?;
+let mut connection = pool.get().await?;
 ```
 
 ## Running Tests

@@ -40,13 +40,14 @@ cargo add tank-valkey
 
 ## Quick Start
 ```rust
-use tank::{Connection, Driver, Executor, PoolConfig};
+use tank::{ConnectionPool, Driver, PoolConfig};
 use tank_valkey::ValkeyDriver;
 
 let driver = ValkeyDriver::default();
-let connection = driver
+let pool = driver
     .connect_pool("redis://127.0.0.1:6379/".into(), PoolConfig::new())
     .await?;
+let mut connection = pool.get().await?;
 ```
 
 The driver accepts `valkey://` / `redis://` for plaintext and `valkeys://` / `rediss://` for TLS.

@@ -35,11 +35,12 @@ cargo add tank-duckdb --no-default-features
 
 ## Quick Start
 ```rust
-use tank::{Connection, Driver, Executor, PoolConfig};
+use tank::{ConnectionPool, Driver, PoolConfig};
 use tank_duckdb::DuckDBDriver;
 
 let driver = DuckDBDriver::new();
-let connection = driver
+let pool = driver
     .connect_pool("duckdb://path/to/database.duckdb?mode=rw".into(), PoolConfig::new())
     .await?;
+let mut connection = pool.get().await?;
 ```

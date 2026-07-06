@@ -27,16 +27,17 @@ cargo add tank-postgres
 
 ## Quick Start
 ```rust
-use tank::{Connection, Driver, Executor, PoolConfig};
+use tank::{ConnectionPool, Driver, PoolConfig};
 use tank_postgres::PostgresDriver;
 
 let driver = PostgresDriver::new();
-let connection = driver
+let pool = driver
     .connect_pool(
-        "postgres://user:pass@hostname:5432/database?sslmode=require&sslrootcert=/path/to/root.crt&sslcert=/path/to/client.crt&sslkey=/path/to/client.key".into()
+        "postgres://user:pass@hostname:5432/database?sslmode=require&sslrootcert=/path/to/root.crt&sslcert=/path/to/client.crt&sslkey=/path/to/client.key".into(),
         PoolConfig::new(),
     )
     .await?;
+let mut connection = pool.get().await?;
 ```
 
 ## Running Tests
