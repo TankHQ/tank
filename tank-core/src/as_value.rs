@@ -920,12 +920,10 @@ impl AsValue for chrono::NaiveDate {
     where
         Self: Sized,
     {
-        let context = Arc::new(format!(
-            "Could not create a chrono::NaiveDate from {value:?}"
-        ));
-        let v = <time::Date as AsValue>::try_from_value(value).context(context.clone())?;
-        chrono::NaiveDate::from_ymd_opt(v.year(), month_to_number!(v.month()), v.day() as _)
-            .context(context)
+        let value = <time::Date as AsValue>::try_from_value(value)
+            .context("Could not create a chrono::NaiveDate")?;
+        chrono::NaiveDate::from_ymd_opt(value.year(), month_to_number!(value.month()), value.day() as _)
+            .context("Could not create chrono::NaiveDate: from_ymd_opt returned None")
     }
 }
 
@@ -952,17 +950,15 @@ impl AsValue for chrono::NaiveTime {
     where
         Self: Sized,
     {
-        let context = Arc::new(format!(
-            "Could not create a chrono::NaiveTime from {value:?}"
-        ));
-        let v = <time::Time as AsValue>::try_from_value(value).context(context.clone())?;
+        let value = <time::Time as AsValue>::try_from_value(value)
+            .context("Could not create a chrono::NaiveTime")?;
         Self::from_hms_nano_opt(
-            v.hour() as _,
-            v.minute() as _,
-            v.second() as _,
-            v.nanosecond() as _,
+            value.hour() as _,
+            value.minute() as _,
+            value.second() as _,
+            value.nanosecond() as _,
         )
-        .context(context)
+        .context("Could not create chrono::NaiveTime: from_hms_nano_opt returned None")
     }
 }
 
@@ -976,12 +972,12 @@ impl AsValue for chrono::NaiveDateTime {
             'value: {
                 let Ok(date) = AsValue::try_from_value(self.date().as_value()) else {
                     break 'value Err(Error::msg(
-                        "failed to convert the date part from chrono::NaiveDate to time::Date",
+                        "Failed to convert the date part from chrono::NaiveDate to time::Date",
                     ));
                 };
                 let Ok(time) = AsValue::try_from_value(self.time().as_value()) else {
                     break 'value Err(Error::msg(
-                        "failed to convert the time part from chrono::NaiveTime to time::Time",
+                        "Failed to convert the time part from chrono::NaiveTime to time::Time",
                     ));
                 };
                 Ok(time::PrimitiveDateTime::new(date, time))
@@ -998,13 +994,12 @@ impl AsValue for chrono::NaiveDateTime {
     where
         Self: Sized,
     {
-        let context = Arc::new(format!(
-            "Could not create a chrono::NaiveDateTime from {value:?}"
-        ));
-        let v =
-            <time::PrimitiveDateTime as AsValue>::try_from_value(value).context(context.clone())?;
-        let date = AsValue::try_from_value(v.date().as_value()).context(context.clone())?;
-        let time = AsValue::try_from_value(v.time().as_value()).context(context.clone())?;
+        let value = <time::PrimitiveDateTime as AsValue>::try_from_value(value)
+            .context("Could not create a chrono::NaiveDateTime")?;
+        let date = AsValue::try_from_value(value.date().as_value())
+            .context("Could not convert date part of chrono::NaiveDateTime")?;
+        let time = AsValue::try_from_value(value.time().as_value())
+            .context("Could not convert time part of chrono::NaiveDateTime")?;
         Ok(Self::new(date, time))
     }
 }
@@ -1020,18 +1015,18 @@ impl AsValue for chrono::DateTime<chrono::FixedOffset> {
                 use chrono::Offset;
                 let Ok(date) = AsValue::try_from_value(self.date_naive().as_value()) else {
                     break 'value Err(Error::msg(
-                        "failed to convert the date part from chrono::NaiveDate to time::Date",
+                        "Failed to convert the date part from chrono::NaiveDate to time::Date",
                     ));
                 };
                 let Ok(time) = AsValue::try_from_value(self.time().as_value()) else {
                     break 'value Err(Error::msg(
-                        "failed to convert the time part from chrono::NaiveTime to time::Time",
+                        "Failed to convert the time part from chrono::NaiveTime to time::Time",
                     ));
                 };
                 let Ok(offset) =
                     time::UtcOffset::from_whole_seconds(self.offset().fix().local_minus_utc())
                 else {
-                    break 'value Err(Error::msg("failed to convert the offset part from"));
+                    break 'value Err(Error::msg("Failed to convert the offset part from"));
                 };
                 Ok(time::OffsetDateTime::new_in_offset(date, time, offset))
             }
@@ -1047,16 +1042,15 @@ impl AsValue for chrono::DateTime<chrono::FixedOffset> {
     where
         Self: Sized,
     {
-        let context = Arc::new(format!(
-            "Could not create a chrono::DateTime from {value:?}"
-        ));
-        let v =
-            <time::OffsetDateTime as AsValue>::try_from_value(value).context(context.clone())?;
-        let date = AsValue::try_from_value(v.date().as_value()).context(context.clone())?;
-        let time = AsValue::try_from_value(v.time().as_value()).context(context.clone())?;
+        let value = <time::OffsetDateTime as AsValue>::try_from_value(value)
+            .context("Could not create a chrono::DateTime")?;
+        let date = AsValue::try_from_value(value.date().as_value())
+            .context("Could not convert date part of chrono::DateTime")?;
+        let time = AsValue::try_from_value(value.time().as_value())
+            .context("Could not convert time part of chrono::DateTime")?;
         let date_time = chrono::NaiveDateTime::new(date, time);
-        let offset =
-            chrono::FixedOffset::east_opt(v.offset().whole_seconds()).context(context.clone())?;
+        let offset = chrono::FixedOffset::east_opt(value.offset().whole_seconds())
+            .context("Could not convert UTC offset part of chrono::DateTime")?;
         Ok(Self::from_naive_utc_and_offset(date_time, offset))
     }
 }
