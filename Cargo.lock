@@ -763,9 +763,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-epoch"
-version = "0.9.19"
+version = "0.9.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4279b0f31df31b4add8aeae57d40f3b5e53aad2b531e89b982bd75ed1898851d"
+checksum = "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -3519,9 +3519,9 @@ dependencies = [
 
 [[package]]
 name = "rustversion"
-version = "1.0.22"
+version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
+checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
 name = "ryu"
@@ -4064,7 +4064,7 @@ checksum = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"
 
 [[package]]
 name = "tank"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "indoc",
  "quote",
@@ -4079,7 +4079,7 @@ dependencies = [
 
 [[package]]
 name = "tank-core"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -4105,7 +4105,7 @@ dependencies = [
 
 [[package]]
 name = "tank-duckdb"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "async-stream",
  "flume",
@@ -4122,7 +4122,7 @@ dependencies = [
 
 [[package]]
 name = "tank-macros"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "convert_case 0.11.0",
  "proc-macro2",
@@ -4133,7 +4133,7 @@ dependencies = [
 
 [[package]]
 name = "tank-mongodb"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "async-stream",
  "log",
@@ -4154,7 +4154,7 @@ dependencies = [
 
 [[package]]
 name = "tank-mysql"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "async-stream",
  "log",
@@ -4172,7 +4172,7 @@ dependencies = [
 
 [[package]]
 name = "tank-postgres"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "async-stream",
  "byteorder",
@@ -4197,7 +4197,7 @@ dependencies = [
 
 [[package]]
 name = "tank-scylladb"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "async-stream",
  "log",
@@ -4216,7 +4216,7 @@ dependencies = [
 
 [[package]]
 name = "tank-sqlite"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "async-stream",
  "flume",
@@ -4232,7 +4232,7 @@ dependencies = [
 
 [[package]]
 name = "tank-tests"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "chrono",
  "env_logger",
@@ -4246,7 +4246,7 @@ dependencies = [
 
 [[package]]
 name = "tank-valkey"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "async-stream",
  "log",
