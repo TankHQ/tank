@@ -37,11 +37,10 @@ impl TableRef {
         if !self.alias.is_empty() {
             return self.alias.clone();
         }
-        let mut name = self.name.clone();
         if !self.schema.is_empty() {
-            name = format!("{}{}{}", self.schema, separator, name).into();
+            return format!("{}{}{}", self.schema, separator, self.name).into();
         }
-        name
+        self.name.clone()
     }
     /// Returns a clone of the table reference with a new alias.
     pub fn with_alias(&self, alias: Cow<'static, str>) -> Self {

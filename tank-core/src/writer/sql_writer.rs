@@ -1280,23 +1280,21 @@ pub trait SqlWriter: Send {
         E: Entity,
     {
         let pk = E::primary_key_def();
-        if pk.len() == 0 {
+        if pk.is_empty() {
             return;
         }
         out.push_str("\nON CONFLICT");
         context.fragment = Fragment::SqlInsertIntoOnConflict;
-        if pk.len() > 0 {
-            out.push_str(" (");
-            separated_by(
-                out,
-                pk,
-                |out, col| {
-                    self.write_identifier(context, out, col.name(), true);
-                },
-                ", ",
-            );
-            out.push(')');
-        }
+        out.push_str(" (");
+        separated_by(
+            out,
+            pk,
+            |out, col| {
+                self.write_identifier(context, out, col.name(), true);
+            },
+            ", ",
+        );
+        out.push(')');
         let mut update_cols = columns
             .filter(|c| c.primary_key == PrimaryKeyType::None)
             .peekable();

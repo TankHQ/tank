@@ -135,8 +135,8 @@ pub fn bson_to_value(bson: &Bson) -> Result<Value> {
             }
             Value::Map(
                 Some(map),
-                Box::new(k_type.take().unwrap_or_else(|| Value::Unknown(None))),
-                Box::new(v_type.take().unwrap_or_else(|| Value::Unknown(None))),
+                Box::new(k_type.take().unwrap_or(Value::Unknown(None))),
+                Box::new(v_type.take().unwrap_or(Value::Unknown(None))),
             )
         }
         Bson::ObjectId(id) => {

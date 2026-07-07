@@ -234,7 +234,7 @@ pub trait Entity {
     where
         Self: Sized,
     {
-        if Self::primary_key_def().len() == 0 {
+        if Self::primary_key_def().is_empty() {
             let error = Error::msg(
                 "Cannot save an entity without a primary key, it would always result in an insert",
             );
@@ -277,7 +277,7 @@ pub trait Entity {
     where
         Self: Sized,
     {
-        if Self::primary_key_def().len() == 0 {
+        if Self::primary_key_def().is_empty() {
             let error = Error::msg(
                 "Cannot delete an entity without a primary key, it would delete nothing",
             );

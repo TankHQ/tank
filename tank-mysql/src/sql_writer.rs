@@ -308,7 +308,7 @@ impl SqlWriter for MySQLSqlWriter {
         E: Entity,
     {
         let pk = E::primary_key_def();
-        if pk.len() == 0 {
+        if pk.is_empty() {
             return;
         }
         out.push_str("\nON DUPLICATE KEY UPDATE");

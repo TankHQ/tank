@@ -22,7 +22,7 @@ impl Connection for ValkeyConnection {
     {
         let context = "While trying to connect to Valkey";
         let url = Self::sanitize_url(driver, url)?;
-        let client = Client::open(url.as_str()).map_err(|e| Error::msg(e.to_string()))?;
+        let client = Client::open(url.as_str()).map_err(Error::new)?;
         let connection = client
             .get_multiplexed_async_connection()
             .await
