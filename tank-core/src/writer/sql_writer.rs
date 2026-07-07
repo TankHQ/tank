@@ -574,7 +574,7 @@ pub trait SqlWriter: Send {
         &self,
         context: &mut Context,
         out: &mut DynQuery,
-        value: &Vec<(String, Value)>,
+        value: &[(String, Value)],
     ) {
         out.push('{');
         separated_by(
@@ -710,7 +710,13 @@ pub trait SqlWriter: Send {
                 self.write_identifier(context, out, v, context.fragment == Fragment::Aliasing)
             }
             Operand::LitField(v) => {
-                self.write_identifier(context, out, &v.join(self.separator()), false)
+                let separator = self.separator();
+                for (i, part) in v.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(separator);
+                    }
+                    out.push_str(part);
+                }
             }
             Operand::LitList(v) => self.write_list(
                 context,
