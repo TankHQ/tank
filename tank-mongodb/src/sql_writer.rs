@@ -427,7 +427,7 @@ impl SqlWriter for MongoDBSqlWriter {
         &self,
         _context: &mut Context,
         out: &mut DynQuery,
-        value: &Vec<(String, Value)>,
+        value: &[(String, Value)],
     ) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
@@ -960,8 +960,8 @@ impl SqlWriter for MongoDBSqlWriter {
                 let field = match is_field.field {
                     FieldType::None => {
                         log::error!(
-                            "Unexpected ordering on {:?}, {:?}",
-                            order,
+                            "Unexpected ordering on {}, known columns: {:?}",
+                            order.as_identifier(&mut Default::default()),
                             known_columns.clone()
                         );
                         return;

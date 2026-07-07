@@ -857,12 +857,12 @@ pub trait SqlWriter: Send {
         let mut context = context.switch_fragment(Fragment::SqlJoin);
         context.current.qualify_columns = true;
         join.lhs
-            .write_query(self.as_dyn(), &mut context.current, out);
+            .write_table_name(self.as_dyn(), &mut context.current, out);
         out.push(' ');
         self.write_join_type(&mut context.current, out, &join.join);
         out.push(' ');
         join.rhs
-            .write_query(self.as_dyn(), &mut context.current, out);
+            .write_table_name(self.as_dyn(), &mut context.current, out);
         if let Some(on) = &join.on {
             out.push_str(" ON ");
             on.write_query(self.as_dyn(), &mut context.current, out);
@@ -1165,7 +1165,7 @@ pub trait SqlWriter: Send {
             out.push('*');
         }
         out.push_str("\nFROM ");
-        from.write_query(
+        from.write_table_name(
             self,
             &mut context.switch_fragment(Fragment::SqlSelectFrom).current,
             out,
@@ -1259,12 +1259,7 @@ pub trait SqlWriter: Send {
             entities,
             |out, entity| {
                 out.push_str("\n(");
-                separated_by(
-                    out,
-                    entity.row_values(),
-                    |out, value| self.write_value(&mut context.current, out, &value),
-                    ", ",
-                );
+                entity.write_query(self.as_dyn(), &mut context.current, out);
                 out.push(')');
             },
             ",",

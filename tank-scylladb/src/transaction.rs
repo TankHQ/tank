@@ -2,8 +2,8 @@ use crate::{ScyllaDBConnection, ScyllaDBDriver, ScyllaDBPrepared, ValueWrap};
 use scylla::statement::batch::Batch;
 use std::future;
 use tank_core::{
-    AsQuery, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query, QueryResult, RawQuery,
-    Result, RowsAffected, SqlWriter, Transaction,
+    AsQuery, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
+    QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Transaction,
     future::Either,
     stream::{self, Stream},
     truncate_long,

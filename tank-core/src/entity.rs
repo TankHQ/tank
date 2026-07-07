@@ -14,7 +14,7 @@ use std::{
 /// Database entity mapping.
 ///
 /// Use `#[derive(Entity)]` to implement this trait.
-pub trait Entity {
+pub trait Entity: Expression {
     /// Primary key type. A tuple of field types (or single type) forming the PK.
     type PrimaryKey<'a>
     where
@@ -322,8 +322,8 @@ impl<E: Entity> Dataset for E {
     }
 
     /// Writes the table reference into the out string.
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        Self::table().write_query(writer, context, out);
+    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+        Self::table().write_table_name(writer, context, out);
     }
 
     fn table_ref(&self) -> TableRef {

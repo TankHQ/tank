@@ -244,18 +244,18 @@ pub fn column_def(name: &str, table: &TableRef) -> Option<&'static ColumnDef> {
 macro_rules! number_to_month {
     ($month:expr, $throw:expr $(,)?) => {
         match $month {
-            1 => Month::January,
-            2 => Month::February,
-            3 => Month::March,
-            4 => Month::April,
-            5 => Month::May,
-            6 => Month::June,
-            7 => Month::July,
-            8 => Month::August,
-            9 => Month::September,
-            10 => Month::October,
-            11 => Month::November,
-            12 => Month::December,
+            1 => ::time::Month::January,
+            2 => ::time::Month::February,
+            3 => ::time::Month::March,
+            4 => ::time::Month::April,
+            5 => ::time::Month::May,
+            6 => ::time::Month::June,
+            7 => ::time::Month::July,
+            8 => ::time::Month::August,
+            9 => ::time::Month::September,
+            10 => ::time::Month::October,
+            11 => ::time::Month::November,
+            12 => ::time::Month::December,
             _ => $throw,
         }
     };
@@ -265,18 +265,18 @@ macro_rules! number_to_month {
 macro_rules! month_to_number {
     ($month:expr $(,)?) => {
         match $month {
-            Month::January => 1,
-            Month::February => 2,
-            Month::March => 3,
-            Month::April => 4,
-            Month::May => 5,
-            Month::June => 6,
-            Month::July => 7,
-            Month::August => 8,
-            Month::September => 9,
-            Month::October => 10,
-            Month::November => 11,
-            Month::December => 12,
+            ::time::Month::January => 1,
+            ::time::Month::February => 2,
+            ::time::Month::March => 3,
+            ::time::Month::April => 4,
+            ::time::Month::May => 5,
+            ::time::Month::June => 6,
+            ::time::Month::July => 7,
+            ::time::Month::August => 8,
+            ::time::Month::September => 9,
+            ::time::Month::October => 10,
+            ::time::Month::November => 11,
+            ::time::Month::December => 12,
         }
     };
 }

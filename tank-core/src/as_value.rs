@@ -1,14 +1,11 @@
-#![allow(unused_imports)]
-use crate::{
-    DynQuery, Error, FixedDecimal, GenericSqlWriter, Interval, Result, SqlWriter, Value,
-    consume_while, extract_number, month_to_number, number_to_month, truncate_long,
-};
+use crate::{Error, FixedDecimal, Interval, Result, Value, consume_while, extract_number, truncate_long};
+use crate::{month_to_number, number_to_month};
 use anyhow::Context;
 #[cfg(feature = "chrono")]
 use chrono::{Datelike, Timelike};
 use rust_decimal::{Decimal, prelude::FromPrimitive, prelude::ToPrimitive};
 use std::{
-    any, array,
+    any,
     borrow::Cow,
     cell::{Cell, RefCell},
     collections::{BTreeMap, HashMap, LinkedList, VecDeque},
@@ -17,11 +14,10 @@ use std::{
         NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI128, NonZeroIsize, NonZeroU8,
         NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128, NonZeroUsize,
     },
-    process::id,
     rc::Rc,
     sync::{Arc, RwLock},
 };
-use time::{Month, PrimitiveDateTime, Time, UtcDateTime, format_description::parse_borrowed};
+use time::{PrimitiveDateTime, UtcDateTime, format_description::parse_borrowed};
 use uuid::Uuid;
 
 /// Bidirectional conversion between Rust types and `Value`.

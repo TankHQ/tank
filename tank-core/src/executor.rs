@@ -1,6 +1,6 @@
 use crate::{
-    AsQuery, Driver, DynQuery, Entity, Error, Query, QueryResult, RawQuery, Result, Row,
-    RowsAffected,
+    AsQuery, Driver, DynQuery, Entity, Error, Query, QueryResult, RawQuery, Result,
+    Row, RowsAffected,
     stream::{Stream, StreamExt, TryStreamExt},
     writer::SqlWriter,
 };

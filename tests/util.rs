@@ -82,14 +82,14 @@ mod tests {
 
         let mut from_context = Context::fragment(Fragment::SqlSelectFrom);
         let mut rendered = DynQuery::default();
-        table.write_query(&writer, &mut from_context, &mut rendered);
+        table.write_table_name(&writer, &mut from_context, &mut rendered);
         assert_eq!(rendered.as_str().as_ref(), r#""analytics"."events" e"#);
         assert_eq!(table.table_ref(), table);
         assert!(!<TableRef as Dataset>::qualified_columns());
 
         let mut join_context = Context::fragment(Fragment::SqlJoin);
         let mut rendered_borrowed = DynQuery::default();
-        (&table).write_query(&writer, &mut join_context, &mut rendered_borrowed);
+        (&table).write_table_name(&writer, &mut join_context, &mut rendered_borrowed);
         assert_eq!(
             rendered_borrowed.as_str().as_ref(),
             r#""analytics"."events" e"#
@@ -100,7 +100,7 @@ mod tests {
         let declared = DeclareTableRef(table.clone());
         let mut declared_context = Context::fragment(Fragment::SqlSelectFrom);
         let mut rendered_declared = DynQuery::default();
-        declared.write_query(&writer, &mut declared_context, &mut rendered_declared);
+        declared.write_table_name(&writer, &mut declared_context, &mut rendered_declared);
         assert_eq!(
             rendered_declared.as_str().as_ref(),
             r#""analytics"."events" e"#
@@ -120,7 +120,7 @@ mod tests {
         };
 
         let mut rendered = DynQuery::default();
-        table.write_query(&writer, &mut Context::empty(), &mut rendered);
+        table.write_table_name(&writer, &mut Context::empty(), &mut rendered);
         assert_eq!(rendered.as_str().as_ref(), "e");
     }
 

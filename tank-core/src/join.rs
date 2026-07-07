@@ -45,7 +45,7 @@ impl<L: Dataset, R: Dataset, E: Expression> Dataset for Join<L, R, E> {
     {
         true
     }
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         writer.write_join(
             context,
             out,

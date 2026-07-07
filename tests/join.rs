@@ -58,7 +58,7 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
             r#""my_data"."alpha" AA JOIN "bravo" BB ON AA.a = BB.first"#
@@ -73,7 +73,7 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
             r#""my_data"."alpha" INNER JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."first""#
@@ -88,7 +88,7 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
             r#""my_data"."alpha" OUTER JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."first""#
@@ -103,7 +103,7 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
             r#""my_data"."alpha" OUTER JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."first""#
@@ -118,7 +118,7 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
             r#""my_data"."alpha" LEFT JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."first""#
@@ -133,7 +133,7 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
             r#""my_data"."alpha" LEFT JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."first""#
@@ -148,7 +148,7 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
             r#""my_data"."alpha" RIGHT JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."first""#
@@ -163,7 +163,7 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
             r#""my_data"."alpha" RIGHT JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."first""#
@@ -179,7 +179,7 @@ mod tests {
             },
         ));
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(query.as_str(), r#""my_data"."alpha" CROSS JOIN "bravo""#);
 
         let join = join!(Alpha NATURAL JOIN Bravo);
@@ -192,7 +192,7 @@ mod tests {
             },
         ));
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(query.as_str(), r#""my_data"."alpha" NATURAL JOIN "bravo""#);
     }
 
@@ -255,7 +255,7 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
             r#""another_table" JOIN "my_data"."alpha" ON "another_table"."column" < "my_data"."alpha"."b" JOIN "bravo" ON "my_data"."alpha"."a" = "bravo"."second""#
@@ -334,7 +334,7 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
             r#""bravo" OUTER JOIN "delta_dataset"."delta_table" LEFT JOIN "my_data"."alpha" ON "delta_dataset"."delta_table"."the_string" < "my_data"."alpha"."b" ON "bravo"."second" = "delta_dataset"."delta_table"."the_string""#
@@ -404,7 +404,7 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
             r#""my_data"."alpha" A OUTER JOIN "bravo" ON "my_data"."alpha"."b" >= "bravo"."second" RIGHT JOIN "some" ON "some"."col" = "bravo"."first""#
@@ -479,7 +479,7 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
             r#""my_data"."alpha" NATURAL JOIN "ccc" CROSS JOIN "bravo" LEFT JOIN "bravo" ON "bravo"."second" = "my_data"."alpha"."b" CROSS JOIN "delta""#
@@ -525,7 +525,7 @@ mod tests {
             }
         ));
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
             r#""my_data"."alpha" RIGHT JOIN "bravo" ON "my_data"."alpha"."a" <= "bravo"."first""#
@@ -549,7 +549,7 @@ mod tests {
         let join = join!(LeftAlias L JOIN RightAlias R ON L.id == R.id);
         let table_ref = join.table_ref();
         let mut query = DynQuery::default();
-        join.write_query(&WRITER, &mut Default::default(), &mut query);
+        join.write_table_name(&WRITER, &mut Default::default(), &mut query);
 
         assert_eq!(table_ref.name.as_ref(), "");
         assert_eq!(table_ref.schema.as_ref(), "common");

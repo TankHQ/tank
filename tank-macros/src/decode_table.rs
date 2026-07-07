@@ -75,7 +75,7 @@ pub fn decode_table(item: ItemStruct) -> TableMetadata {
     let mut columns: Vec<_> = item
         .fields
         .iter()
-        .map(|f| decode_column(f))
+        .map(decode_column)
         .filter(|c| !c.ignored)
         .collect();
     let mut name = item.ident.to_string().to_case(Case::Snake);

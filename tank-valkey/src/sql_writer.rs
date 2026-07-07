@@ -303,7 +303,8 @@ impl SqlWriter for ValkeySqlWriter {
             &mut Default::default(),
         ) {
             log::error!(
-                "Valkey/Redis can only delete using the primary key conditions, found: {condition:?}"
+                "Valkey/Redis can only delete using the primary key conditions, found: {}",
+                condition.as_identifier(&mut Default::default())
             );
             return;
         }

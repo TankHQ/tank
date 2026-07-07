@@ -204,7 +204,7 @@ fn build_array<'a>(
 ) -> Result<Value, Box<dyn Error + Sync + Send>> {
     let dimension = it.next().expect("Must have one dimension at least");
     let len = dimension.len as u32;
-    Ok(if it.is_empty() {
+    Ok(if it.len() == 0 {
         let begin = begin as u32 * len;
         // Last array
         Value::Array(

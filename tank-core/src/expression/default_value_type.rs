@@ -1,11 +1,12 @@
 use crate::{Context, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, Value};
+use std::fmt;
 
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub enum DefaultValueType {
     #[default]
     None,
     Value(Value),
-    Expression(Box<dyn Expression>),
+    Expression(Box<dyn Expression + Send + Sync>),
 }
 
 impl DefaultValueType {
@@ -46,6 +47,16 @@ impl Expression for DefaultValueType {
             DefaultValueType::None => ().accept_visitor(matcher, writer, context, out),
             DefaultValueType::Value(v) => v.accept_visitor(matcher, writer, context, out),
             DefaultValueType::Expression(v) => v.accept_visitor(matcher, writer, context, out),
+        }
+    }
+}
+
+impl fmt::Debug for DefaultValueType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::None => f.write_str("None"),
+            Self::Value(v) => f.debug_tuple("Value").field(v).finish(),
+            Self::Expression(_) => f.debug_tuple("Expression").field(&"..").finish(),
         }
     }
 }

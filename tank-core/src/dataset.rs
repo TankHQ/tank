@@ -12,7 +12,7 @@ pub trait Dataset {
     where
         Self: Sized;
     /// Generates the SQL representation of this dataset for use in a query.
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery);
+    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery);
     /// Returns the primary table reference for this dataset.
     fn table_ref(&self) -> TableRef;
 }
@@ -24,8 +24,8 @@ impl Dataset for &dyn Dataset {
     {
         unreachable!("Cannot call static qualified_columns on a dyn object directly");
     }
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        (*self).write_query(writer, context, out)
+    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+        (*self).write_table_name(writer, context, out)
     }
     fn table_ref(&self) -> TableRef {
         (*self).table_ref()

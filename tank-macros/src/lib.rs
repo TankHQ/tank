@@ -12,7 +12,7 @@ mod from_row_trait;
 use crate::{
     cols::ColList,
     decode_column::ColumnMetadata,
-    decode_table::{TableMetadata, decode_table},
+    decode_table::{decode_table, TableMetadata},
     encode_column_def::encode_column_def,
     from_row_trait::from_row_trait,
 };
@@ -25,8 +25,8 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{
-    Expr, Ident, Index, ItemStruct, parse_macro_input, parse2, punctuated::Punctuated,
-    token::AndAnd,
+    parse2, parse_macro_input, punctuated::Punctuated, token::AndAnd, Expr, Ident, Index,
+    ItemStruct,
 };
 
 #[proc_macro_derive(Entity, attributes(tank))]
@@ -66,6 +66,30 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
             }
         },
     );
+    let write_fields = table.columns.iter().enumerate().map(
+        |(
+            i,
+            ColumnMetadata {
+                ident,
+                conversion_type,
+                ..
+            },
+        )| {
+            let sep = if i > 0 {
+                quote!(out.push_str(", ");)
+            } else {
+                quote!()
+            };
+            let value_expr = if let Some(conversion_type) = conversion_type {
+                quote!(::tank::AsValue::as_value(
+                    ::std::convert::Into::<#conversion_type>::into(self.#ident.clone())
+                ))
+            } else {
+                quote!(::tank::AsValue::as_value(self.#ident.clone()))
+            };
+            quote!(#sep writer.write_value(context, out, &#value_expr);)
+        },
+    );
     let columns = table.columns.iter().map(|c| {
         let field = &c.ident;
         encode_column_def(&c, quote!(<#ident as #column_trait>::#field))
@@ -78,7 +102,6 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
     let primary_key_condition_declaration = primary_key_condition
         .clone()
         .enumerate()
-        .clone()
         .map(|(i, (_, pk))| {
             let i = Index::from(i);
             quote! { let #pk = primary_key.#i.to_owned(); }
@@ -151,6 +174,23 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
 
             fn from_row(row: ::tank::Row) -> ::tank::Result<Self> {
                 #from_row_factory::<Self>::from_row(row)
+            }
+        }
+
+        impl ::tank::OpPrecedence for #ident {
+            fn precedence(&self, _: &dyn ::tank::SqlWriter) -> i32 {
+                0
+            }
+        }
+
+        impl ::tank::Expression for #ident {
+            fn write_query(
+                &self,
+                writer: &dyn ::tank::SqlWriter,
+                context: &mut ::tank::Context,
+                out: &mut ::tank::DynQuery,
+            ) {
+                #(#write_fields)*
             }
         }
     }
