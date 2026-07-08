@@ -42,7 +42,7 @@ let pool: Box<dyn ConnectionPool<MySQLDriver>> = MySQLDriver::new()
 ## Transaction
 
 ```rust
-use tank::{expr, Transaction};
+use tank::{Connection, expr, Transaction};
 
 let mut tx = connection.begin().await?;
 entity.save(&mut tx).await?;
@@ -78,7 +78,7 @@ struct EntityExample {
 ```
 
 `primary_key` is composite: `unit_id` is the partition key and `region` is the clustering key (relevant for Scylla/Cassandra). `clustering_key` is ignored by SQL drivers.
-The field transient_cache is ignored byt the database (not stored in the table)
+The field transient_cache is ignored by the database (not stored in the table)
 
 ### Conversion Types
 
@@ -192,6 +192,9 @@ EntityExample::delete_many(
 ## Expressions
 
 ```rust
+use tank::expr;
+use uuid::Uuid;
+
 expr!(EntityExample::casualties == 0)
 expr!(EntityExample::casualties >= 10)
 expr!(EntityExample::region == "North" || EntityExample::region == "South")
@@ -205,7 +208,7 @@ expr!(EntityExample::unit_id == #uid)
 ## Prepared statement
 
 ```rust
-use tank::stream::TryStreamExt;
+use tank::{expr, stream::TryStreamExt};
 
 let mut query = EntityExample::prepare_find(
     &mut connection,
@@ -217,14 +220,14 @@ let entities = connection.fetch(&mut query)
     .map_ok(|row| EntityExample::from_row(row).unwrap())
     .try_collect::<Vec<EntityExample>>()
     .await?;
-query.clear_bindings();
+query.clear_bindings()?;
 query.bind(uid2)?;
 ```
 
 ## Query Builder
 
 ```rust
-use tank::{cols, expr, join, QueryBuilder};
+use tank::{cols, expr, stream::TryStreamExt, QueryBuilder};
 
 let results = connection.fetch(
     QueryBuilder::new()
@@ -238,16 +241,60 @@ let results = connection.fetch(
 .map_ok(|row| EntityExample::from_row(row).unwrap())
 .try_collect::<Vec<_>>()
 .await?;
+```
 
-let rows = connection.fetch(
+## Joins
+
+The `join!` macro builds the `FROM` clause for `QueryBuilder`. Define a result struct that matches the selected columns, then pass the join tree to `.from()`.
+
+Supported keywords: `JOIN`, `INNER JOIN`, `LEFT JOIN`, `LEFT OUTER JOIN`, `RIGHT JOIN`, `RIGHT OUTER JOIN`, `FULL OUTER JOIN`, `CROSS JOIN`, `NATURAL JOIN`.
+
+```rust
+use tank::{cols, expr, join, Entity, stream::TryStreamExt, QueryBuilder};
+
+#[derive(Entity, Debug)]
+struct BookWithAuthor {
+    title: String,
+    author: String,
+}
+
+let rows: Vec<BookWithAuthor> = connection.fetch(
     QueryBuilder::new()
-        .select(cols!(Left::id, Right::callsign))
-        .from(join!(Left JOIN Right ON Left::id == Right::foreign_id))
+        .select(cols!(Book::title, Author::name as author))
+        .from(join!(Book JOIN Author ON Book::author_id == Author::id))
+        .where_expr(expr!(Book::year > 2000))
+        .order_by(cols!(Book::title ASC))
+        .build(&connection.driver()),
+)
+.map_ok(BookWithAuthor::from_row)
+.map(Result::flatten)
+.try_collect()
+.await?;
+
+let rows: Vec<BookWithAuthor> = connection.fetch(
+    QueryBuilder::new()
+        .select(cols!(B.title, A.name as author))
+        .from(join!(Book B LEFT JOIN Author A ON B.author_id == A.id))
         .where_expr(true)
         .build(&connection.driver()),
 )
-.map_ok(Joined::from_row)
+.map_ok(BookWithAuthor::from_row)
 .map(Result::flatten)
+.try_collect()
+.await?;
+
+let dataset = join!(
+    Book B
+        LEFT JOIN Author A1 ON B.author_id == A1.id
+        LEFT JOIN Author A2 ON B.co_author_id == A2.id
+);
+let rows = connection.fetch(
+    QueryBuilder::new()
+        .select(cols!(B.title, A1.name as author, A2.name as co_author))
+        .from(dataset)
+        .where_expr(true)
+        .build(&connection.driver()),
+)
 .try_collect::<Vec<_>>()
 .await?;
 ```
@@ -272,19 +319,21 @@ let affected = connection.execute("UPDATE army.deployments SET casualties = 0 WH
 
 ### Prepared
 ```rust
+use tank::{Entity, stream::TryStreamExt};
+
 let mut query = connection.prepare(
     "SELECT unit_id, callsign FROM army.deployments WHERE unit_id = ? LIMIT ?".into()
 ).await?;
 query.bind(uid)?;
 query.bind(25)?;
 
-let rows = connection.fetch(&mut q).try_collect::<Vec<_>>().await?;
+let rows = connection.fetch(&mut query).try_collect::<Vec<_>>().await?;
 let entity = EntityExample::from_row(row)?;
 
 #[derive(Entity)]
 struct Slim { callsign: String, casualties: i32 }
 let slim = Slim::from_row(row)?;
-query.clear_bindings();
+query.clear_bindings()?;
 query.bind(other_uid)?;
 query.bind(10)?;
 ```
@@ -292,14 +341,21 @@ query.bind(10)?;
 ### SqlWriter
 
 ```rust
-use tank::{DynQuery, SqlWriter};
+use tank::{DynQuery, QueryBuilder, QueryResult, SqlWriter, stream::TryStreamExt};
 
 let writer = connection.driver().sql_writer();
 let mut query = DynQuery::default();
 
 writer.write_create_table::<EntityExample>(&mut query, true);
 writer.write_insert(&mut query, &[entity1, entity2], false);
-writer.write_select(&mut query, EntityExample::columns(), EntityExample::table(), true, Some(100));
+writer.write_select(
+    &mut query,
+    &QueryBuilder::new()
+        .select(EntityExample::columns())
+        .from(EntityExample::table())
+        .where_expr(true)
+        .limit(Some(100)),
+);
 
-let results = connection.run(query).await?;
+let results: Vec<QueryResult> = connection.run(query).try_collect().await?;
 ```
