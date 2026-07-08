@@ -1,7 +1,7 @@
 use crate::{
-    writer::{Context, SqlWriter},
     AsValue, DynQuery, ExpressionVisitor, FixedDecimal, GenericSqlWriter, Interval, OpPrecedence,
     Operand, Value,
+    writer::{Context, SqlWriter},
 };
 use rust_decimal::Decimal;
 use std::{borrow::Cow, mem, sync::Arc};

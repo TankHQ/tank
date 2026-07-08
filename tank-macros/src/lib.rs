@@ -12,7 +12,7 @@ mod from_row_trait;
 use crate::{
     cols::ColList,
     decode_column::ColumnMetadata,
-    decode_table::{decode_table, TableMetadata},
+    decode_table::{TableMetadata, decode_table},
     encode_column_def::encode_column_def,
     from_row_trait::from_row_trait,
 };
@@ -25,8 +25,8 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{
-    parse2, parse_macro_input, punctuated::Punctuated, token::AndAnd, Expr, Ident, Index,
-    ItemStruct,
+    Expr, Ident, Index, ItemStruct, parse_macro_input, parse2, punctuated::Punctuated,
+    token::AndAnd,
 };
 
 #[proc_macro_derive(Entity, attributes(tank))]

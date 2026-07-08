@@ -32,6 +32,7 @@ tank-tests = { path = "../tank-tests", features = [
     "disable-multiple-statements",
     "disable-nested-collections",
     "disable-old-dates",
+    "disable-scanning",
 ] }
 testcontainers-modules = { version = "0", features = ["scylladb"] }
 tokio.workspace = true

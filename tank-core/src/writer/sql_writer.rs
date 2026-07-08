@@ -570,12 +570,7 @@ pub trait SqlWriter: Send {
         self.write_string(context, out, &value.to_string());
     }
 
-    fn write_struct(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &[(String, Value)],
-    ) {
+    fn write_struct(&self, context: &mut Context, out: &mut DynQuery, value: &[(String, Value)]) {
         out.push('{');
         separated_by(
             out,

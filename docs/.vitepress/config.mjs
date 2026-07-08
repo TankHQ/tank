@@ -24,6 +24,7 @@ export default defineConfig({
       {
         text: 'Docs',
         items: [
+          { text: 'Cheat Sheet', link: '/00-cheat-sheet' },
           { text: 'Introduction', link: '/01-introduction' },
           { text: 'Getting started', link: '/02-getting-started' },
           { text: 'Connection', link: '/03-connection' },

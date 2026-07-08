@@ -1,6 +1,6 @@
 use crate::{
-    writer::{Context, SqlWriter},
     DynQuery, Expression, ExpressionVisitor, OpPrecedence, Value,
+    writer::{Context, SqlWriter},
 };
 use std::fmt;
 

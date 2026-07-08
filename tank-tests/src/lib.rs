@@ -3,6 +3,7 @@ mod ambiguity;
 mod arrays1;
 mod arrays2;
 mod books;
+mod cheat_sheet;
 mod complex;
 mod conditions;
 mod custom;
@@ -35,6 +36,7 @@ pub use ambiguity::*;
 pub use arrays1::*;
 pub use arrays2::*;
 pub use books::*;
+pub use cheat_sheet::*;
 pub use complex::*;
 pub use conditions::*;
 pub use custom::*;
@@ -126,6 +128,7 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     do_test!(requests);
     do_test!(keywords);
     do_test!(identifiers);
+    do_test!(cheat_sheet);
 }
 
 #[macro_export]

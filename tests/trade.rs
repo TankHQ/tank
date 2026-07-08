@@ -8,8 +8,8 @@ mod tests {
         collections::{BTreeMap, HashMap},
     };
     use tank::{
-        Action, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
-        SqlWriter, TableRef, Value, expr,
+        Action, ColumnRef, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType,
+        QueryBuilder, SqlWriter, TableRef, Value, expr,
     };
     use time::macros::datetime;
     use uuid::Uuid;
@@ -315,5 +315,51 @@ mod tests {
             "#}
             .trim()
         );
+    }
+
+    #[test]
+    fn test_references() {
+        #[derive(Entity)]
+        #[tank(schema = "army", name = "deployments")]
+        struct Deployment {
+            #[tank(primary_key)]
+            id: i64,
+            #[tank(references = army.assets(id), on_delete = set_null, on_update = cascade)]
+            asset_id: Option<i64>,
+            #[tank(references = operators(id), on_delete = restrict)]
+            operator_id: i64,
+        }
+
+        let columns = Deployment::columns();
+        assert_eq!(
+            columns[1].references,
+            Some(ColumnRef {
+                name: Cow::Borrowed("id"),
+                table: Cow::Borrowed("assets"),
+                schema: Cow::Borrowed("army"),
+            })
+        );
+        assert_eq!(columns[1].on_delete, Some(Action::SetNull));
+        assert_eq!(columns[1].on_update, Some(Action::Cascade));
+        assert_eq!(
+            columns[2].references,
+            Some(ColumnRef {
+                name: Cow::Borrowed("id"),
+                table: Cow::Borrowed("operators"),
+                schema: Cow::Borrowed(""),
+            })
+        );
+        assert_eq!(columns[2].on_delete, Some(Action::Restrict));
+        assert_eq!(columns[2].on_update, None);
+
+        let mut query = DynQuery::default();
+        WRITER.write_create_table::<Deployment>(&mut query, false);
+        let sql = query.as_str();
+        assert!(
+            sql.contains(
+                r#"REFERENCES "army"."assets"("id") ON DELETE SET NULL ON UPDATE CASCADE"#
+            )
+        );
+        assert!(sql.contains(r#"REFERENCES "operators"("id") ON DELETE RESTRICT"#));
     }
 }

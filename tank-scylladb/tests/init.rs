@@ -17,8 +17,8 @@ use tank_core::{
 };
 use tank_scylladb::{CassandraConnection, CassandraDriver, ScyllaDBConnection, ScyllaDBDriver};
 use tank_tests::{
-    ambiguity, custom, enums, identifiers, interval, kv_storage, limits, metrics, service, simple,
-    trade_multiple, trade_simple, transaction1,
+    ambiguity, cheat_sheet, custom, enums, identifiers, interval, kv_storage, limits, metrics,
+    service, simple, trade_multiple, trade_simple, transaction1,
 };
 use testcontainers_modules::{
     scylladb::ScyllaDB,
@@ -57,6 +57,7 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     do_test!(enums);
     do_test!(custom);
     do_test!(identifiers);
+    do_test!(cheat_sheet);
 }
 
 struct TestcontainersLogConsumer;

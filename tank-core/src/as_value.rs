@@ -1,4 +1,6 @@
-use crate::{Error, FixedDecimal, Interval, Result, Value, consume_while, extract_number, truncate_long};
+use crate::{
+    Error, FixedDecimal, Interval, Result, Value, consume_while, extract_number, truncate_long,
+};
 use crate::{month_to_number, number_to_month};
 use anyhow::Context;
 #[cfg(feature = "chrono")]
@@ -918,8 +920,12 @@ impl AsValue for chrono::NaiveDate {
     {
         let value = <time::Date as AsValue>::try_from_value(value)
             .context("Could not create a chrono::NaiveDate")?;
-        chrono::NaiveDate::from_ymd_opt(value.year(), month_to_number!(value.month()), value.day() as _)
-            .context("Could not create chrono::NaiveDate: from_ymd_opt returned None")
+        chrono::NaiveDate::from_ymd_opt(
+            value.year(),
+            month_to_number!(value.month()),
+            value.day() as _,
+        )
+        .context("Could not create chrono::NaiveDate: from_ymd_opt returned None")
     }
 }
 

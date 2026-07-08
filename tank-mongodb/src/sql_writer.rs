@@ -423,12 +423,7 @@ impl SqlWriter for MongoDBSqlWriter {
         *target = Bson::Document(doc);
     }
 
-    fn write_struct(
-        &self,
-        _context: &mut Context,
-        out: &mut DynQuery,
-        value: &[(String, Value)],
-    ) {
+    fn write_struct(&self, _context: &mut Context, out: &mut DynQuery, value: &[(String, Value)]) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)

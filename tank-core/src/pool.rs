@@ -1,6 +1,6 @@
 use crate::{
-    AsQuery, Connection, Driver, Entity, Error, Executor, Query, QueryResult, Result,
-    Row, RowsAffected,
+    AsQuery, Connection, Driver, Entity, Error, Executor, Query, QueryResult, Result, Row,
+    RowsAffected,
 };
 use deadpool::managed::{Manager, Metrics, Object, Pool, RecycleResult, Timeouts};
 use futures::{FutureExt, Stream, future::BoxFuture};
