@@ -2,7 +2,7 @@
 
 ## Connect
 
-### Connection pool — Postgres
+### Connection pool
 ```rust
 use tank::PoolConfig;
 use tank_postgres::PostgresDriver;
@@ -15,7 +15,7 @@ let pool = PostgresDriver::new()
 let mut connection = pool.get().await?;
 ```
 
-### Single connection — SQLite
+### Single connection
 ```rust
 use tank::Connection;
 use tank_sqlite::{SQLiteConnection, SQLiteDriver};
@@ -28,7 +28,7 @@ let mut connection = SQLiteConnection::connect(
 connection.disconnect().await?;
 ```
 
-### Type-erased pool — MySQL
+### Type-erased pool
 ```rust
 use tank::{ConnectionPool, PoolConfig};
 use tank_mysql::MySQLDriver;
