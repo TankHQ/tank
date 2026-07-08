@@ -1,6 +1,6 @@
 use crate::{
-    Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, Entity, Error,
-    Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
+    Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, Entity, EntityArg,
+    Error, Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
     PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized,
     separated_by, write_escaped, writer::Context,
 };
@@ -1216,32 +1216,33 @@ pub trait SqlWriter: Send {
     }
 
     /// Write INSERT statement.
-    fn write_insert<'b, E>(
-        &self,
-        out: &mut DynQuery,
-        entities: impl IntoIterator<Item = &'b E>,
-        update: bool,
-    ) where
+    fn write_insert<It>(&self, out: &mut DynQuery, entities: It, update: bool)
+    where
         Self: Sized,
-        E: Entity + 'b,
+        It: IntoIterator,
+        It::IntoIter: Send,
+        It::Item: EntityArg,
     {
-        let table = E::table();
+        let table = <It::Item as EntityArg>::Entity::table();
         let mut entities = entities.into_iter().peekable();
         if entities.peek().is_none() {
             return;
         };
-        let cols = E::columns().len();
+        let cols = <It::Item as EntityArg>::Entity::columns().len();
         out.buffer().reserve(128 + cols * 32);
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("INSERT INTO ");
-        let mut context = Context::new(Fragment::SqlInsertInto, E::qualified_columns());
+        let mut context = Context::new(
+            Fragment::SqlInsertInto,
+            <It::Item as EntityArg>::Entity::qualified_columns(),
+        );
         self.write_table_ref(&mut context, out, table);
         out.push_str(" (");
         separated_by(
             out,
-            E::columns().iter(),
+            <It::Item as EntityArg>::Entity::columns().iter(),
             |out, col| {
                 self.write_identifier(&mut context, out, col.name(), true);
             },
@@ -1254,13 +1255,19 @@ pub trait SqlWriter: Send {
             entities,
             |out, entity| {
                 out.push_str("\n(");
-                entity.write_query(self.as_dyn(), &mut context.current, out);
+                entity
+                    .as_entity()
+                    .write_query(self.as_dyn(), &mut context.current, out);
                 out.push(')');
             },
             ",",
         );
         if update {
-            self.write_insert_update_fragment::<E>(&mut context.current, out, E::columns().iter());
+            self.write_insert_update_fragment::<<It::Item as EntityArg>::Entity>(
+                &mut context.current,
+                out,
+                <It::Item as EntityArg>::Entity::columns().iter(),
+            );
         }
         out.push(';');
     }

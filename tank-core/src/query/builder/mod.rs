@@ -33,11 +33,10 @@ impl QueryBuilder {
             _l: Default::default(),
         }
     }
-    pub fn insert_into<E: Entity>(self) -> InsertIntoQueryBuilder<E, NA, NA> {
+    pub fn insert_into(self) -> InsertIntoQueryBuilder<NA, NA> {
         InsertIntoQueryBuilder {
             values: Default::default(),
             update: Default::default(),
-            _table: Default::default(),
             _update: Default::default(),
         }
     }

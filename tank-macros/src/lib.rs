@@ -114,6 +114,21 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
     quote! {
         #from_row
         #column
+
+        impl ::tank::EntityArg for #ident {
+            type Entity = #ident;
+            fn as_entity(&self) -> &#ident {
+                self
+            }
+        }
+
+        impl ::tank::EntityArg for &#ident {
+            type Entity = #ident;
+            fn as_entity(&self) -> &#ident {
+                *self
+            }
+        }
+
         impl ::tank::Entity for #ident {
             type PrimaryKey<'a> = (#(&'a #primary_key_types,)*);
 

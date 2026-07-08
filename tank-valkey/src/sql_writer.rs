@@ -201,14 +201,11 @@ impl SqlWriter for ValkeySqlWriter {
         }
     }
 
-    fn write_insert<'b, E>(
-        &self,
-        out: &mut DynQuery,
-        entities: impl IntoIterator<Item = &'b E>,
-        _update: bool,
-    ) where
+    fn write_insert<It>(&self, out: &mut DynQuery, entities: It, update: bool)
+    where
         Self: Sized,
-        E: Entity + 'b,
+        It: IntoIterator + Send,
+        It::Item: EntityArg,
     {
         let table = E::table();
         let mut context = Self::make_context(Fragment::SqlInsertInto);

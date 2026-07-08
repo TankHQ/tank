@@ -11,10 +11,15 @@ use std::{
     sync::Arc,
 };
 
+pub trait EntityArg {
+    type Entity: Entity;
+    fn as_entity(&self) -> &Self::Entity;
+}
+
 /// Database entity mapping.
 ///
 /// Use `#[derive(Entity)]` to implement this trait.
-pub trait Entity: Expression {
+pub trait Entity: EntityArg + Expression {
     /// Primary key type. A tuple of field types (or single type) forming the PK.
     type PrimaryKey<'a>
     where
@@ -123,7 +128,7 @@ pub trait Entity: Expression {
     /// Insert a single entity.
     fn insert_one(
         executor: &mut impl Executor,
-        entity: &impl Entity,
+        entity: impl EntityArg,
     ) -> impl Future<Output = Result<RowsAffected>> + Send {
         let mut query = DynQuery::with_capacity(128);
         executor
@@ -134,14 +139,14 @@ pub trait Entity: Expression {
     }
 
     /// Bulk insert entities.
-    fn insert_many<'a, It>(
+    fn insert_many<It>(
         executor: &mut impl Executor,
         items: It,
     ) -> impl Future<Output = Result<RowsAffected>> + Send
     where
-        Self: Sized + 'a,
-        It: IntoIterator<Item = &'a Self> + Send,
-        <It as IntoIterator>::IntoIter: Send,
+        Self: Sized,
+        It: IntoIterator + Send,
+        It::Item: EntityArg,
     {
         executor.append(items)
     }
@@ -233,6 +238,7 @@ pub trait Entity: Expression {
     fn save(&self, executor: &mut impl Executor) -> impl Future<Output = Result<()>> + Send
     where
         Self: Sized,
+        for<'s> &'s Self: EntityArg,
     {
         if Self::primary_key_def().is_empty() {
             let error = Error::msg(

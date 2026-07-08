@@ -293,11 +293,10 @@ impl Executor for DuckDBConnection {
         }
     }
 
-    async fn append<'a, E, It>(&mut self, rows: It) -> Result<RowsAffected>
+    async fn append<It>(&mut self, rows: It) -> Result<RowsAffected>
     where
-        E: Entity + 'a,
-        It: IntoIterator<Item = &'a E> + Send,
-        <It as IntoIterator>::IntoIter: Send,
+        It: IntoIterator + Send,
+        It::Item: EntityArg,
     {
         let connection = AtomicPtr::new(*self.connection);
         let rows = rows.into_iter().map(Entity::row_values).collect::<Vec<_>>();

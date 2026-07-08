@@ -17,7 +17,7 @@ use std::{
     str::FromStr,
 };
 use tank_core::{
-    AsQuery, Connection, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
+    AsQuery, Connection, Driver, DynQuery, Entity, EntityArg, Error, ErrorContext, Executor, Query,
     QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Transaction,
     future::Either,
     stream::{Stream, StreamExt, TryStreamExt},
@@ -137,21 +137,21 @@ impl Executor for PostgresConnection {
         })
     }
 
-    async fn append<'a, E, It>(&mut self, entities: It) -> Result<RowsAffected>
+    async fn append<It>(&mut self, entities: It) -> Result<RowsAffected>
     where
-        E: Entity + 'a,
-        It: IntoIterator<Item = &'a E> + Send,
-        <It as IntoIterator>::IntoIter: Send,
+        It: IntoIterator,
+        It::IntoIter: Send,
+        It::Item: EntityArg,
     {
         let writer = self.driver().sql_writer();
         let context = || {
             format!(
                 "While appending to the table `{}`",
-                E::table().full_name(writer.separator())
+                <It::Item as EntityArg>::Entity::table().full_name(writer.separator())
             )
         };
         let mut query = DynQuery::default();
-        writer.write_copy::<E>(&mut query);
+        writer.write_copy::<<It::Item as EntityArg>::Entity>(&mut query);
         let sink = match self
             .client
             .copy_in(&query.as_str() as &str)
@@ -164,18 +164,19 @@ impl Executor for PostgresConnection {
                 return Err(e);
             }
         };
-        let types: Vec<_> = E::columns()
+        let types: Vec<_> = <It::Item as EntityArg>::Entity::columns()
             .into_iter()
             .map(|c| value_to_postgres_type(&c.value))
             .collect();
         let writer = BinaryCopyInWriter::new(sink, &types);
         let mut writer = pin!(writer);
-        let columns_len = E::columns().len();
+        let columns_len = <It::Item as EntityArg>::Entity::columns().len();
         let mut values = Vec::<ValueWrap>::with_capacity(columns_len);
         let mut refs = Vec::<&(dyn ToSql + Sync)>::with_capacity(columns_len);
         for entity in entities.into_iter() {
             values.extend(
                 entity
+                    .as_entity()
                     .row_values()
                     .into_iter()
                     .map(|v| ValueWrap(Cow::Owned(v))),
