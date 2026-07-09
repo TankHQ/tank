@@ -44,6 +44,6 @@ impl Driver for MariaDBDriver {
 
     const NAME: &'static [&'static str] = &["mariadb"];
     fn sql_writer(&self) -> Self::SqlWriter {
-        MariaDBSqlWriter::default()
+        MariaDBSqlWriter { maria_db: true }
     }
 }

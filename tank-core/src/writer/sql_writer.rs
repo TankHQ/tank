@@ -1,5 +1,5 @@
 use crate::{
-    Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, Entity, AsEntity,
+    Action, AsEntity, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, Entity,
     Error, Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
     PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized,
     separated_by, write_escaped, writer::Context,
@@ -1261,7 +1261,11 @@ pub trait SqlWriter: Send {
             ",",
         );
         if update {
-            self.write_insert_update_fragment::<E::<It>>(&mut context.current, out, E::<It>::columns().iter());
+            self.write_insert_update_fragment::<E<It>>(
+                &mut context.current,
+                out,
+                E::<It>::columns().iter(),
+            );
         }
         out.push(';');
     }
