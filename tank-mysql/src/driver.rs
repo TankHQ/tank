@@ -1,16 +1,29 @@
-use crate::{
-    MariaDBConnection, MariaDBPrepared, MariaDBSqlWriter, MariaDBTransaction, MySQLConnection,
-    MySQLPrepared, MySQLSqlWriter, MySQLTransaction,
-};
+use crate::{MySQLConnection, MySQLPrepared, MySQLSqlWriter, MySQLTransaction};
 use tank_core::Driver;
 
-/// MySQL driver.
-#[derive(Clone, Copy, Default, Debug)]
-pub struct MySQLDriver;
+/// MySQL/MariaDB driver.
+///
+/// Set `mariadb: true` (via [`MySQLDriver::mariadb()`]) for MariaDB mode,
+/// which enables MariaDB-specific SQL (e.g. native `UUID` column type).
+#[derive(Clone, Copy, Debug)]
+pub struct MySQLDriver {
+    pub(crate) mariadb: bool,
+}
 
 impl MySQLDriver {
     pub const fn new() -> Self {
-        Self
+        Self { mariadb: false }
+    }
+
+    /// Construct a driver configured for MariaDB.
+    pub const fn mariadb() -> Self {
+        Self { mariadb: true }
+    }
+}
+
+impl Default for MySQLDriver {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -20,30 +33,16 @@ impl Driver for MySQLDriver {
     type Prepared = MySQLPrepared;
     type Transaction<'c> = MySQLTransaction<'c>;
 
-    const NAME: &'static [&'static str] = &["mysql"];
+    const NAME: &'static [&'static str] = &["mysql", "mariadb"];
+
     fn sql_writer(&self) -> Self::SqlWriter {
-        MySQLSqlWriter::default()
+        if self.mariadb {
+            MySQLSqlWriter::mariadb()
+        } else {
+            MySQLSqlWriter::default()
+        }
     }
 }
 
-/// MariaDB driver.
-#[derive(Clone, Copy, Default, Debug)]
-pub struct MariaDBDriver;
-
-impl MariaDBDriver {
-    pub const fn new() -> Self {
-        Self
-    }
-}
-
-impl Driver for MariaDBDriver {
-    type Connection = MariaDBConnection;
-    type SqlWriter = MariaDBSqlWriter;
-    type Prepared = MariaDBPrepared;
-    type Transaction<'c> = MariaDBTransaction<'c>;
-
-    const NAME: &'static [&'static str] = &["mariadb"];
-    fn sql_writer(&self) -> Self::SqlWriter {
-        MariaDBSqlWriter::mariadb()
-    }
-}
+/// MariaDB driver alias. Construct with [`MySQLDriver::mariadb()`].
+pub type MariaDBDriver = MySQLDriver;

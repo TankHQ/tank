@@ -5,7 +5,7 @@ mod tests {
     use crate::init::init_mariadb;
     use std::sync::Mutex;
     use tank_core::{Connection, Driver, PoolConfig};
-    use tank_mysql::{MariaDBConnection, MariaDBDriver};
+    use tank_mysql::{MariaDBConnection, MySQLDriver};
     use tank_tests::{execute_tests, init_logs};
     use url::Url;
 
@@ -19,7 +19,7 @@ mod tests {
         // Unencrypted
         let (url, container) = init_mariadb(false).await;
         let container = container.expect("Could not launch the container");
-        let driver = MariaDBDriver::new();
+        let driver = MySQLDriver::mariadb();
         let mut pool = driver
             .connect_pool(url.clone().into(), PoolConfig::new())
             .await
@@ -30,7 +30,7 @@ mod tests {
         // SSL
         let (ssl_url, container) = init_mariadb(true).await;
         let container = container.expect("Could not launch the SSL container");
-        let driver = MariaDBDriver::new();
+        let driver = MySQLDriver::mariadb();
 
         let url = Url::parse(&url).expect("Could not parse the url returned from init");
         let mut url_base = url.clone();

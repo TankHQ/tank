@@ -446,6 +446,10 @@ macro_rules! impl_executor_transaction {
        impl $(<$lt>)? ::tank_core::Executor for $transaction $(<$lt>)? {
             type Driver = $driver;
 
+            fn driver(&self) -> Self::Driver {
+                self.$connection.driver()
+            }
+
             fn accepts_multiple_statements(&self) -> bool {
                 self.$connection.accepts_multiple_statements()
             }

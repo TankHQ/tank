@@ -1,25 +1,21 @@
-use crate::{MariaDBDriver, MariaDBTransaction, MySQLDriver, MySQLQueryable, MySQLTransaction};
+use crate::{MySQLDriver, MySQLQueryable, MySQLTransaction};
 use mysql_async::{ClientIdentity, Conn, Opts, OptsBuilder};
 use std::{borrow::Cow, env, fmt, fmt::Debug, path::PathBuf};
 use tank_core::{Connection, Error, ErrorContext, Result, impl_executor_transaction};
 use url::Url;
 
-/// Connection wrapper for the MySQL driver.
+/// Connection wrapper for MySQL and MariaDB.
 ///
 /// Holds the underlying `mysql_async` connection and adapts it to the `tank_core::Connection`/`Executor` APIs.
+/// Use a driver constructed with [`MySQLDriver::mariadb()`] for MariaDB-specific behaviour.
 pub struct MySQLConnection {
-    pub(crate) conn: MySQLQueryable<Conn, MySQLDriver>,
+    pub(crate) conn: MySQLQueryable<Conn>,
 }
 
-/// Connection wrapper for the MariaDB driver.
-///
-/// Holds the underlying `mysql_async` connection and adapts it to the `tank_core::Connection`/`Executor` APIs.
-pub struct MariaDBConnection {
-    pub(crate) conn: MySQLQueryable<Conn, MariaDBDriver>,
-}
+/// MariaDB connection alias.
+pub type MariaDBConnection = MySQLConnection;
 
 impl_executor_transaction!(MySQLDriver, MySQLConnection, conn);
-impl_executor_transaction!(MariaDBDriver, MariaDBConnection, conn);
 
 async fn connect_inner(mut url: Url) -> Result<Conn> {
     let context = "While trying to connect to MySQL/MariaDB";
@@ -94,7 +90,7 @@ impl Connection for MySQLConnection {
     async fn connect(driver: &MySQLDriver, url: Cow<'static, str>) -> Result<Self> {
         let url = Self::sanitize_url(driver, url)?;
         Ok(MySQLConnection {
-            conn: MySQLQueryable::new(connect_inner(url).await?),
+            conn: MySQLQueryable::new(connect_inner(url).await?, *driver),
         })
     }
 
@@ -103,27 +99,8 @@ impl Connection for MySQLConnection {
     }
 }
 
-impl Connection for MariaDBConnection {
-    async fn connect(driver: &MariaDBDriver, url: Cow<'static, str>) -> Result<Self> {
-        let url = Self::sanitize_url(driver, url)?;
-        Ok(MariaDBConnection {
-            conn: MySQLQueryable::new(connect_inner(url).await?),
-        })
-    }
-
-    fn begin(&mut self) -> impl Future<Output = Result<MariaDBTransaction<'_>>> + Send {
-        MariaDBTransaction::new(self)
-    }
-}
-
 impl Debug for MySQLConnection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("MySQLConnection")
-    }
-}
-
-impl Debug for MariaDBConnection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("MariaDBConnection")
     }
 }
