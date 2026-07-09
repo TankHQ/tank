@@ -9,13 +9,12 @@ use url::Url;
 ///
 /// Holds the underlying `mysql_async` connection and adapts it to the `tank_core::Connection`/`Executor` APIs.
 pub struct MySQLConnection {
-    pub(crate) conn: MySQLQueryable<Conn, MySQLDriver>,
+    pub(crate) conn: MySQLQueryable<Conn>,
 }
 
 pub type MariaDBConnection = MySQLConnection;
 
 impl_executor_transaction!(MySQLDriver, MySQLConnection, conn);
-impl_executor_transaction!(MariaDBDriver, MariaDBConnection, conn);
 
 impl Connection for MySQLConnection {
     async fn connect(driver: &MySQLDriver, url: Cow<'static, str>) -> Result<Self> {
