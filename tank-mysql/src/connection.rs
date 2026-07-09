@@ -18,7 +18,7 @@ pub type MariaDBConnection = MySQLConnection;
 impl Connection for MySQLConnection {
     async fn connect(driver: &MySQLDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = "While trying to connect to MySQL";
-        let mut url = Self::sanitize_url(driver, url)?.context(context)?;
+        let mut url = Self::sanitize_url(driver, url).context(context)?;
         if url.scheme() == "mariadb" {
             // mysql_async only accepts mysql://.
             url.set_scheme("mysql").ok();

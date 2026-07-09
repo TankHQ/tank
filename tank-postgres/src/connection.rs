@@ -174,10 +174,6 @@ impl Executor for PostgresConnection {
         let columns_len = E::<It>::columns().len();
         let mut values = Vec::<ValueWrap>::with_capacity(columns_len);
         let mut refs = Vec::<&(dyn ToSql + Sync)>::with_capacity(columns_len);
-        // Use a `while let` match loop so `entity` is scoped strictly inside the
-        // `Some` arm and is provably dead before the `.await` below.  This lets
-        // Rust's async state-machine analysis omit `It::Item` from the captured
-        // state at yield points, so `It::Item: Send` is not required.
         let mut iter = entities.into_iter();
         loop {
             match iter.next() {
@@ -190,7 +186,6 @@ impl Executor for PostgresConnection {
                             .into_iter()
                             .map(|v| ValueWrap(Cow::Owned(v))),
                     );
-                    // entity is dropped here at the end of this match arm.
                 }
             }
             refs.extend(
@@ -228,7 +223,7 @@ impl Executor for PostgresConnection {
 impl Connection for PostgresConnection {
     async fn connect(driver: &PostgresDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = "While trying to connect to Postgres";
-        let mut url = Self::sanitize_url(driver, url)?.context(context)?;
+        let mut url = Self::sanitize_url(driver, url).context(context)?;
         let mut take_url_param = |key: &str, env_var: &str, remove: bool| {
             let value = url
                 .query_pairs()

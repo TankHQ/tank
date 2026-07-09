@@ -59,7 +59,7 @@ impl MongoDBConnection {
 impl Connection for MongoDBConnection {
     async fn connect(driver: &MongoDBDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = "While trying to connect to MongoDB";
-        let url = Self::sanitize_url(driver, url)?.context(context)?;
+        let url = Self::sanitize_url(driver, url).context(context)?;
         let client = Client::with_uri_str(&url).await.context(context)?;
         let database = client.database(match url.path_segments().and_then(|mut v| v.next()) {
             Some(v) if !v.is_empty() => v,

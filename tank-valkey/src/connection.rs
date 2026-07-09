@@ -21,7 +21,7 @@ impl Connection for ValkeyConnection {
         Self: Sized,
     {
         let context = "While trying to connect to Valkey";
-        let url = Self::sanitize_url(driver, url)?.context(context)?;
+        let url = Self::sanitize_url(driver, url).context(context)?;
         let client = Client::open(url.as_str()).map_err(Error::new)?;
         let connection = client
             .get_multiplexed_async_connection()
