@@ -189,13 +189,13 @@ pub async fn init_mariadb(ssl: bool) -> (String, Option<ContainerAsync<Mariadb>>
     (
         if ssl {
             format!(
-                "mysql://tank-mariadb-user@localhost:{port}/mariadb_database?require_ssl=true&ssl_ca={}&ssl_cert={}&ssl_pass={}",
+                "mariadb://tank-mariadb-user@localhost:{port}/mariadb_database?require_ssl=true&ssl_ca={}&ssl_cert={}&ssl_pass={}",
                 path.join("tests/assets/ca.pem").to_str().unwrap(),
                 path.join("tests/assets/client.p12").to_str().unwrap(),
                 urlencoding::encode("my&pass?is=P@$$"),
             )
         } else {
-            format!("mysql://tank-mariadb-user:Th3M0$tS3cu4e@localhost:{port}/mariadb_database")
+            format!("mariadb://tank-mariadb-user:Th3M0$tS3cu4e@localhost:{port}/mariadb_database")
         },
         Some(container),
     )

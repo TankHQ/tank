@@ -72,3 +72,5 @@ impl Display for MySQLPrepared {
         self.statement.fmt(f)
     }
 }
+
+pub type MariaDBPrepared = MySQLPrepared;

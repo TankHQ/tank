@@ -8,13 +8,15 @@ use tank_core::{
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
 
-/// SQL writer for MySQL/MariaDB dialect.
-///
-/// Emits MySQL/MariaDB specific SQL syntax to mantain compatibility with tank operations.
+/// SQL writer for the MySQL dialect.
 #[derive(Default)]
 pub struct MySQLSqlWriter {}
 
-pub type MariaDBWriter = MySQLSqlWriter;
+/// SQL writer for the MariaDB dialect.
+///
+/// Uses MariaDB's native `UUID` column type (available since MariaDB 10.7) instead of `CHAR(36)`.
+#[derive(Default)]
+pub struct MariaDBSqlWriter(MySQLSqlWriter);
 
 impl MySQLSqlWriter {
     const DEFAULT_PK_VARCHAR_TYPE: &'static str = "VARCHAR(60)";
@@ -332,5 +334,114 @@ impl SqlWriter for MySQLSqlWriter {
             },
             ",\n",
         );
+    }
+}
+
+impl SqlWriter for MariaDBSqlWriter {
+    fn as_dyn(&self) -> &dyn SqlWriter {
+        self
+    }
+
+    fn write_identifier(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &str,
+        quoted: bool,
+    ) {
+        self.0.write_identifier(context, out, value, quoted);
+    }
+
+    fn write_column_overridden_type(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        column: &ColumnDef,
+        types: &BTreeMap<&'static str, &'static str>,
+    ) {
+        self.0.write_column_overridden_type(context, out, column, types);
+    }
+
+    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value) {
+        if matches!(value, Value::Uuid(..)) {
+            out.push_str("UUID");
+            return;
+        }
+        self.0.write_column_type(context, out, value);
+    }
+
+    fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
+        self.0.write_value_f32(context, out, value);
+    }
+
+    fn write_value_f64(&self, context: &mut Context, out: &mut DynQuery, value: f64) {
+        self.0.write_value_f64(context, out, value);
+    }
+
+    fn write_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
+        self.0.write_string(context, out, value);
+    }
+
+    fn write_timestamptz(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &OffsetDateTime,
+    ) {
+        self.0.write_timestamptz(context, out, value);
+    }
+
+    fn write_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {
+        self.0.write_interval(context, out, value);
+    }
+
+    fn write_current_timestamp_ms(&self, context: &mut Context, out: &mut DynQuery) {
+        self.0.write_current_timestamp_ms(context, out);
+    }
+
+    fn write_list(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &mut dyn Iterator<Item = &dyn Expression>,
+        ty: Option<&Value>,
+        is_array: bool,
+    ) {
+        self.0.write_list(context, out, value, ty, is_array);
+    }
+
+    fn write_map(&self, context: &mut Context, out: &mut DynQuery, value: &HashMap<Value, Value>) {
+        self.0.write_map(context, out, value);
+    }
+
+    fn write_column_comment_inline(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        column: &ColumnDef,
+    ) where
+        Self: Sized,
+    {
+        self.0.write_column_comment_inline(context, out, column);
+    }
+
+    fn write_column_comments_statements<E>(&self, context: &mut Context, out: &mut DynQuery)
+    where
+        Self: Sized,
+        E: Entity,
+    {
+        self.0.write_column_comments_statements::<E>(context, out);
+    }
+
+    fn write_insert_update_fragment<'a, E>(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        columns: impl Iterator<Item = &'a ColumnDef> + Clone,
+    ) where
+        Self: Sized,
+        E: Entity,
+    {
+        self.0.write_insert_update_fragment::<E>(context, out, columns);
     }
 }

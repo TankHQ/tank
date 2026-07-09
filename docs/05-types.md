@@ -8,43 +8,44 @@ Tank maps ordinary Rust types (check the table below) to the closest column type
 ## Column Types
 <div class="sticky-table">
 
-| Rust                      | Postgres       | SQLite    | MySQL/MariaDB             | DuckDB         | MongoDB     | ScyllaDB/Cassandra | Valkey/Redis |
-| ------------------------- | -------------- | --------- | ------------------------- | -------------- | ----------- | ------------------ | ------------ |
-| `bool`                    | `BOOLEAN`      | `INTEGER` | `BOOLEAN`                 | `BOOLEAN`      | `Boolean`   | `BOOLEAN`          | `String`     |
-| `i8`, `NonZeroI8`         | `SMALLINT`     | `INTEGER` | `TINYINT`                 | `TINYINT`      | `Int32`     | `TINYINT`          | `String`     |
-| `i16`, `NonZeroI16`       | `SMALLINT`     | `INTEGER` | `SMALLINT`                | `SMALLINT`     | `Int32`     | `SMALLINT`         | `String`     |
-| `i32`, `NonZeroI32`       | `INTEGER`      | `INTEGER` | `INTEGER`                 | `INTEGER`      | `Int32`     | `INT`              | `String`     |
-| `i64`, `NonZeroI64`       | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`       | `Int64`     | `BIGINT`           | `String`     |
-| `i128`, `NonZeroI128`     | `NUMERIC(39)`  | ❌        | `NUMERIC(39)`             | `HUGEINT`      | ❌          | `VARINT`           | `String`     |
-| `u8`, `NonZeroU8`         | `SMALLINT`     | `INTEGER` | `TINYINT UNSIGNED`        | `UTINYINT`     | `Int32`     | `SMALLINT`         | `String`     |
-| `u16`, `NonZeroU16`       | `INTEGER`      | `INTEGER` | `SMALLINT UNSIGNED`       | `USMALLINT`    | `Int32`     | `INT`              | `String`     |
-| `u32`, `NonZeroU32`       | `BIGINT`       | `INTEGER` | `INTEGER UNSIGNED`        | `UINTEGER`     | `Int64`     | `BIGINT`           | `String`     |
-| `u64`, `NonZeroU64`       | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`     | `VARINT`           | `String`     |
-| `u128`, `NonZeroU128`     | `NUMERIC(39)`  | ❌        | `NUMERIC(39) UNSIGNED`    | `UHUGEINT`     | ❌          | `VARINT`           | `String`     |
-| `isize`, `NonZeroIsize`   | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`       | `Int64`     | `BIGINT`           | `String`     |
-| `usize`, `NonZeroUsize`   | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`     | `VARINT`           | `String`     |
-| `f32`                     | `REAL`         | `REAL`    | `FLOAT`                   | `FLOAT`        | `Double`    | `FLOAT`            | `String`     |
-| `f64`                     | `DOUBLE`       | `REAL`    | `DOUBLE`                  | `DOUBLE`       | `Double`    | `DOUBLE`           | `String`     |
-| `rust_decimal::Decimal`   | `NUMERIC`      | `REAL`    | `DECIMAL`                 | `DECIMAL`      | `Double`    | `DECIMAL`          | `String`     |
-| `tank::FixedDecimal<W,S>` | `NUMERIC(W,S)` | `REAL`    | `DECIMAL(W,S)`            | `DECIMAL(W,S)` | `Double`    | `DECIMAL`          | `String`     |
-| `char`                    | `CHAR(1)`      | `TEXT`    | `CHAR(1)`                 | `CHAR(1)`      | `String`    | `ASCII`            | `String`     |
-| `String`                  | `TEXT`         | `TEXT`    | `TEXT, VARCHAR(60) if pk` | `TEXT`         | `String`    | `TEXT`             | `String`     |
-| `Box<[u8]>`               | `BYTEA`        | `BLOB`    | `BLOB`                    | `BLOB`         | `Binary`    | `BLOB`             | `String`     |
-| `time::Date`              | `DATE`         | `TEXT` ⚠️ | `DATE`                    | `DATE`         | `Date`      | `DATE`             | `String`     |
-| `time::Time`              | `TIME`         | `TEXT` ⚠️ | `TIME(6)`                 | `TIME`         | `String` ⚠️ | `TIME`             | `String`     |
-| `time::PrimitiveDateTime` | `TIMESTAMP`    | `TEXT` ⚠️ | `DATETIME`                | `TIMESTAMP`    | `DateTime`  | `TIMESTAMP`        | `String`     |
-| `time::UtcDateTime`       | `TIMESTAMP`    | `TEXT` ⚠️ | `DATETIME`                | `TIMESTAMP`    | `DateTime`  | `TIMESTAMP`        | `String`     |
-| `time::OffsetDateTime`    | `TIMESTAMPTZ`  | `TEXT` ⚠️ | `DATETIME`                | `TIMESTAMPTZ`  | `DateTime`  | `TIMESTAMP`        | `String`     |
-| `std::time::Duration`     | `INTERVAL`     | ❌        | `TIME(6)`                 | `INTERVAL`     | ❌          | `DURATION`         | `String`     |
-| `time::Duration`          | `INTERVAL`     | ❌        | `TIME(6)`                 | `INTERVAL`     | ❌          | `DURATION`         | `String`     |
-| `tank::Interval`          | `INTERVAL`     | ❌        | `TIME(6)`                 | `INTERVAL`     | ❌          | `DURATION`         | `String`     |
-| `uuid::Uuid`              | `UUID`         | `TEXT`    | `CHAR(36)`                | `UUID`         | `Uuid`      | `UUID`             | `String`     |
-| `[T; N]`                  | `T[N]`         | ❌        | `JSON` ⚠️                 | `T[N]`         | `Array`     | `VECTOR<T,N>`      | `List`       |
-| `VecDeque<T>`             | `T[]`          | ❌        | `JSON` ⚠️                 | `T[]`          | `Array`     | `LIST<T>`          | `List`       |
-| `LinkedList<T>`           | `T[]`          | ❌        | `JSON` ⚠️                 | `T[]`          | `Array`     | `LIST<T>`          | `List`       |
-| `Vec<T>`                  | `T[]`          | ❌        | `JSON` ⚠️                 | `T[]`          | `Array`     | `LIST<T>`          | `List`       |
-| `HashMap<K,V>`            | ❌             | ❌        | `JSON` ⚠️                 | `MAP(K,V)`     | `Document`  | `MAP<K,V>`         | `Hash`       |
-| `BTreeMap<K,V>`           | ❌             | ❌        | `JSON` ⚠️                 | `MAP(K,V)`     | `Document`  | `MAP<K,V>`         | `Hash`       |
+| Rust                      | Postgres       | SQLite    | MySQL                     | MariaDB                   | DuckDB         | MongoDB     | ScyllaDB/Cassandra | Valkey/Redis |
+| ------------------------- | -------------- | --------- | ------------------------- | ------------------------- | -------------- | ----------- | ------------------ | ------------ |
+| `bool`                    | `BOOLEAN`      | `INTEGER` | `BOOLEAN`                 | `BOOLEAN`                 | `BOOLEAN`      | `Boolean`   | `BOOLEAN`          | `String`     |
+| `i8`, `NonZeroI8`         | `SMALLINT`     | `INTEGER` | `TINYINT`                 | `TINYINT`                 | `TINYINT`      | `Int32`     | `TINYINT`          | `String`     |
+| `i16`, `NonZeroI16`       | `SMALLINT`     | `INTEGER` | `SMALLINT`                | `SMALLINT`                | `SMALLINT`     | `Int32`     | `SMALLINT`         | `String`     |
+| `i32`, `NonZeroI32`       | `INTEGER`      | `INTEGER` | `INTEGER`                 | `INTEGER`                 | `INTEGER`      | `Int32`     | `INT`              | `String`     |
+| `i64`, `NonZeroI64`       | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`                  | `BIGINT`       | `Int64`     | `BIGINT`           | `String`     |
+| `i128`, `NonZeroI128`     | `NUMERIC(39)`  | ❌        | `NUMERIC(39)`             | `NUMERIC(39)`             | `HUGEINT`      | ❌          | `VARINT`           | `String`     |
+| `u8`, `NonZeroU8`         | `SMALLINT`     | `INTEGER` | `TINYINT UNSIGNED`        | `TINYINT UNSIGNED`        | `UTINYINT`     | `Int32`     | `SMALLINT`         | `String`     |
+| `u16`, `NonZeroU16`       | `INTEGER`      | `INTEGER` | `SMALLINT UNSIGNED`       | `SMALLINT UNSIGNED`       | `USMALLINT`    | `Int32`     | `INT`              | `String`     |
+| `u32`, `NonZeroU32`       | `BIGINT`       | `INTEGER` | `INTEGER UNSIGNED`        | `INTEGER UNSIGNED`        | `UINTEGER`     | `Int64`     | `BIGINT`           | `String`     |
+| `u64`, `NonZeroU64`       | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`     | `VARINT`           | `String`     |
+| `u128`, `NonZeroU128`     | `NUMERIC(39)`  | ❌        | `NUMERIC(39) UNSIGNED`    | `NUMERIC(39) UNSIGNED`    | `UHUGEINT`     | ❌          | `VARINT`           | `String`     |
+| `isize`, `NonZeroIsize`   | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`                  | `BIGINT`       | `Int64`     | `BIGINT`           | `String`     |
+| `usize`, `NonZeroUsize`   | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`     | `VARINT`           | `String`     |
+| `f32`                     | `REAL`         | `REAL`    | `FLOAT`                   | `FLOAT`                   | `FLOAT`        | `Double`    | `FLOAT`            | `String`     |
+| `f64`                     | `DOUBLE`       | `REAL`    | `DOUBLE`                  | `DOUBLE`                  | `DOUBLE`       | `Double`    | `DOUBLE`           | `String`     |
+| `rust_decimal::Decimal`   | `NUMERIC`      | `REAL`    | `DECIMAL`                 | `DECIMAL`                 | `DECIMAL`      | `Double`    | `DECIMAL`          | `String`     |
+| `tank::FixedDecimal<W,S>` | `NUMERIC(W,S)` | `REAL`    | `DECIMAL(W,S)`            | `DECIMAL(W,S)`            | `DECIMAL(W,S)` | `Double`    | `DECIMAL`          | `String`     |
+| `char`                    | `CHAR(1)`      | `TEXT`    | `CHAR(1)`                 | `CHAR(1)`                 | `CHAR(1)`      | `String`    | `ASCII`            | `String`     |
+| `String`                  | `TEXT`         | `TEXT`    | `TEXT, VARCHAR(60) if pk` | `TEXT, VARCHAR(60) if pk` | `TEXT`         | `String`    | `TEXT`             | `String`     |
+| `Box<[u8]>`               | `BYTEA`        | `BLOB`    | `BLOB`                    | `BLOB`                    | `BLOB`         | `Binary`    | `BLOB`             | `String`     |
+| `time::Date`              | `DATE`         | `TEXT` ⚠️ | `DATE`                    | `DATE`                    | `DATE`         | `Date`      | `DATE`             | `String`     |
+| `time::Time`              | `TIME`         | `TEXT` ⚠️ | `TIME(6)`                 | `TIME(6)`                 | `TIME`         | `String` ⚠️ | `TIME`             | `String`     |
+| `time::PrimitiveDateTime` | `TIMESTAMP`    | `TEXT` ⚠️ | `DATETIME`                | `DATETIME`                | `TIMESTAMP`    | `DateTime`  | `TIMESTAMP`        | `String`     |
+| `time::UtcDateTime`       | `TIMESTAMP`    | `TEXT` ⚠️ | `DATETIME`                | `DATETIME`                | `TIMESTAMP`    | `DateTime`  | `TIMESTAMP`        | `String`     |
+| `time::OffsetDateTime`    | `TIMESTAMPTZ`  | `TEXT` ⚠️ | `DATETIME`                | `DATETIME`                | `TIMESTAMPTZ`  | `DateTime`  | `TIMESTAMP`        | `String`     |
+| `std::time::Duration`     | `INTERVAL`     | ❌        | `TIME(6)`                 | `TIME(6)`                 | `INTERVAL`     | ❌          | `DURATION`         | `String`     |
+| `time::Duration`          | `INTERVAL`     | ❌        | `TIME(6)`                 | `TIME(6)`                 | `INTERVAL`     | ❌          | `DURATION`         | `String`     |
+| `tank::Interval`          | `INTERVAL`     | ❌        | `TIME(6)`                 | `TIME(6)`                 | `INTERVAL`     | ❌          | `DURATION`         | `String`     |
+| `uuid::Uuid`              | `UUID`         | `TEXT`    | `CHAR(36)`                | `UUID`                    | `UUID`         | `Uuid`      | `UUID`             | `String`     |
+| `[T; N]`                  | `T[N]`         | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[N]`         | `Array`     | `VECTOR<T,N>`      | `List`       |
+| `VecDeque<T>`             | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array`     | `LIST<T>`          | `List`       |
+| `LinkedList<T>`           | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array`     | `LIST<T>`          | `List`       |
+| `Vec<T>`                  | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array`     | `LIST<T>`          | `List`       |
+| `HashMap<K,V>`            | ❌             | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `MAP(K,V)`     | `Document`  | `MAP<K,V>`         | `Hash`       |
+| `BTreeMap<K,V>`           | ❌             | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `MAP(K,V)`     | `Document`  | `MAP<K,V>`         | `Hash`       |
+| `BTreeMap<K,V>`           | ❌             | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `MAP(K,V)`     | `Document`  | `MAP<K,V>`         | `Hash`       |
 </div>
 
 > [!WARNING]

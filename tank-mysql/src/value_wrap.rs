@@ -161,7 +161,7 @@ impl<'a> TryFrom<ValueWrap<'a>> for mysql_async::Value {
                     v.subsec_microseconds().abs() as _,
                 )
             }
-            TankValue::Uuid(Some(v), ..) => MySQLValue::from(v),
+            TankValue::Uuid(Some(v), ..) => MySQLValue::from(v.to_string()),
             // TankValue::Array(Some(v), ..) => MySQLValue::from(v),
             // TankValue::List(Some(v), ..) => MySQLValue::from(v),
             // TankValue::Map(Some(v), ..) => MySQLValue::from(v),
