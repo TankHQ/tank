@@ -345,7 +345,7 @@ mod tests {
             },
         ];
         let mut sql = DynQuery::default();
-        WRITER.write_insert::<Item>(&mut sql, &items, false);
+        WRITER.write_insert(&mut sql, &items, false);
         let result = sql.as_str();
         assert!(result.contains("INSERT INTO"));
         assert!(result.contains("\"item\""));
@@ -363,7 +363,7 @@ mod tests {
             label: "x".into(),
         }];
         let mut sql = DynQuery::default();
-        WRITER.write_insert::<Item>(&mut sql, &items, true);
+        WRITER.write_insert(&mut sql, &items, true);
         let result = sql.as_str();
         assert!(result.contains("INSERT INTO"));
     }
@@ -456,7 +456,7 @@ mod tests {
             val: u32,
         }
         let rows = vec![Bar { val: 1 }];
-        let query = QueryBuilder::new().insert_into::<Bar>().values(&rows);
+        let query = QueryBuilder::new().insert_into().values(&rows);
         assert!(!query.get_update());
     }
 

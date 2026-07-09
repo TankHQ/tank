@@ -93,7 +93,8 @@ pub trait Executor: Send {
     fn append<It>(&mut self, entities: It) -> impl Future<Output = Result<RowsAffected>> + Send
     where
         It: IntoIterator + Send,
-        It::Item: EntityArg,
+        It::IntoIter: Send,
+        It::Item: EntityArg + Send,
     {
         let mut query = DynQuery::default();
         self.driver()
@@ -152,7 +153,8 @@ impl<S: Executor + ?Sized> Executor for &mut S {
     fn append<It>(&mut self, entities: It) -> impl Future<Output = Result<RowsAffected>> + Send
     where
         It: IntoIterator + Send,
-        It::Item: EntityArg,
+        It::IntoIter: Send,
+        It::Item: EntityArg + Send,
     {
         (**self).append(entities)
     }

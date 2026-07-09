@@ -2,8 +2,9 @@ use crate::IsChar;
 use std::fmt::Write;
 use std::{collections::BTreeMap, iter};
 use tank_core::{
-    ColumnDef, Context, Dataset, DynQuery, Entity, Error, Expression, Fragment, GenericSqlWriter,
-    Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, indoc::indoc, separated_by,
+    ColumnDef, Context, Dataset, DynQuery, Entity, EntityArg, Error, Expression, Fragment,
+    GenericSqlWriter, Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, indoc::indoc,
+    separated_by,
 };
 use uuid::Uuid;
 
@@ -336,17 +337,18 @@ impl SqlWriter for ScyllaDBSqlWriter {
     fn write_insert<It>(&self, out: &mut DynQuery, entities: It, update: bool)
     where
         Self: Sized,
-        It: IntoIterator + Send,
+        It: IntoIterator,
         It::Item: EntityArg,
     {
-        let table = E::table();
+        let table = <It::Item as EntityArg>::Entity::table();
         let mut entities = entities.into_iter().peekable();
         let Some(entity) = entities.next() else {
             return;
         };
         let multiple = entities.peek().is_some();
         let entities = iter::once(entity).chain(entities);
-        out.buffer().reserve(128 + E::columns().len() * 32);
+        out.buffer()
+            .reserve(128 + <It::Item as EntityArg>::Entity::columns().len() * 32);
         if multiple {
             if !out.is_empty() {
                 out.push('\n');
@@ -358,12 +360,15 @@ impl SqlWriter for ScyllaDBSqlWriter {
                 out.push('\n');
             }
             out.push_str("INSERT INTO ");
-            let mut context = Context::new(Fragment::SqlInsertInto, E::qualified_columns());
+            let mut context = Context::new(
+                Fragment::SqlInsertInto,
+                <It::Item as EntityArg>::Entity::qualified_columns(),
+            );
             self.write_table_ref(&mut context, out, table);
             out.push_str(" (");
             separated_by(
                 out,
-                E::columns().iter(),
+                <It::Item as EntityArg>::Entity::columns().iter(),
                 |out, col| {
                     self.write_identifier(&mut context, out, col.name(), true);
                 },
@@ -371,7 +376,9 @@ impl SqlWriter for ScyllaDBSqlWriter {
             );
             let mut context = context.switch_fragment(Fragment::SqlInsertIntoValues);
             out.push_str(") VALUES (");
-            entity.write_query(self.as_dyn(), &mut context.current, out);
+            entity
+                .as_entity()
+                .write_query(self.as_dyn(), &mut context.current, out);
             out.push_str(");");
         }
         if multiple {

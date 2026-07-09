@@ -489,8 +489,9 @@ macro_rules! impl_executor_transaction {
                 entities: It,
             ) -> impl Future<Output = ::tank_core::Result<::tank_core::RowsAffected>> + Send
             where
-                It: IntoIterator+ Send,
-                It::Item: ::tank_core::EntityArg,
+                It: IntoIterator + Send,
+                It::IntoIter: Send,
+                It::Item: ::tank_core::EntityArg + Send,
             {
                 self.$connection.append(entities)
             }

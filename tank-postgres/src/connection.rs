@@ -141,7 +141,7 @@ impl Executor for PostgresConnection {
     where
         It: IntoIterator,
         It::IntoIter: Send,
-        It::Item: EntityArg,
+        It::Item: EntityArg + Send,
     {
         let writer = self.driver().sql_writer();
         let context = || {
@@ -181,6 +181,10 @@ impl Executor for PostgresConnection {
                     .into_iter()
                     .map(|v| ValueWrap(Cow::Owned(v))),
             );
+            // Explicitly drop the entity before the await so it is not captured in the
+            // future's state machine at the yield point — `It::Item` therefore does not
+            // need to be `Send`.
+            drop(entity);
             refs.extend(
                 values
                     .iter()

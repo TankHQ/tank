@@ -1220,7 +1220,6 @@ pub trait SqlWriter: Send {
     where
         Self: Sized,
         It: IntoIterator,
-        It::IntoIter: Send,
         It::Item: EntityArg,
     {
         let table = <It::Item as EntityArg>::Entity::table();

@@ -1,6 +1,6 @@
 use crate::{
-    AsQuery, Connection, Driver, Entity, EntityArg, Error, Executor, Query, QueryResult, Result,
-    Row, RowsAffected,
+    AsQuery, Connection, Driver, EntityArg, Error, Executor, Query, QueryResult, Result, Row,
+    RowsAffected,
 };
 use deadpool::managed::{Manager, Metrics, Object, Pool, RecycleResult, Timeouts};
 use futures::{FutureExt, Stream, future::BoxFuture};
@@ -210,7 +210,8 @@ impl<D: Driver> Executor for PooledConnection<D> {
     fn append<It>(&mut self, entities: It) -> impl Future<Output = Result<RowsAffected>> + Send
     where
         It: IntoIterator + Send,
-        It::Item: EntityArg,
+        It::IntoIter: Send,
+        It::Item: EntityArg + Send,
     {
         self.object.append(entities)
     }

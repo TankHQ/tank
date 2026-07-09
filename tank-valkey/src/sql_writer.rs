@@ -2,8 +2,8 @@ use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
 use std::{borrow::Cow, fmt::Write};
 use tank_core::{
-    Context, Dataset, DynQuery, Entity, Expression, Fragment, IsAsterisk, SelectQuery, SqlWriter,
-    TableRef, Value, column_def,
+    Context, Dataset, DynQuery, Entity, EntityArg, Expression, Fragment, IsAsterisk, SelectQuery,
+    SqlWriter, TableRef, Value, column_def,
 };
 
 pub struct ValkeySqlWriter {
@@ -204,20 +204,20 @@ impl SqlWriter for ValkeySqlWriter {
     fn write_insert<It>(&self, out: &mut DynQuery, entities: It, update: bool)
     where
         Self: Sized,
-        It: IntoIterator + Send,
+        It: IntoIterator,
         It::Item: EntityArg,
     {
-        let table = E::table();
+        let table = <It::Item as EntityArg>::Entity::table();
         let mut context = Self::make_context(Fragment::SqlInsertInto);
         let prepared = Self::prepare_query(out, &mut context);
         for entity in entities.into_iter() {
-            let row = entity.row();
+            let row = entity.as_entity().row();
             let mut is_pk_condition = IsPKCondition::new(
                 self.keys_with_names,
                 table.full_name(self.separator()).into_owned(),
                 table.primary_key,
             );
-            entity.primary_key_expr().accept_visitor(
+            entity.as_entity().primary_key_expr().accept_visitor(
                 &mut is_pk_condition,
                 self,
                 &mut context,

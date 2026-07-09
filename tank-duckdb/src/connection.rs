@@ -20,9 +20,9 @@ use std::{
     },
 };
 use tank_core::{
-    AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query, QueryResult,
-    RawQuery, Result, Row, RowsAffected, SqlWriter, Value, as_c_string, error_message_from_ptr,
-    send_value, stream::Stream, truncate_long,
+    AsQuery, Connection, Driver, Entity, EntityArg, Error, ErrorContext, Executor, Query,
+    QueryResult, RawQuery, Result, Row, RowsAffected, SqlWriter, Value, as_c_string,
+    error_message_from_ptr, send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -296,10 +296,14 @@ impl Executor for DuckDBConnection {
     async fn append<It>(&mut self, rows: It) -> Result<RowsAffected>
     where
         It: IntoIterator + Send,
-        It::Item: EntityArg,
+        It::IntoIter: Send,
+        It::Item: EntityArg + Send,
     {
         let connection = AtomicPtr::new(*self.connection);
-        let rows = rows.into_iter().map(Entity::row_values).collect::<Vec<_>>();
+        let rows = rows
+            .into_iter()
+            .map(|e| e.as_entity().row_values())
+            .collect::<Vec<_>>();
         if rows.is_empty() {
             return Ok(Default::default());
         }
@@ -311,7 +315,7 @@ impl Executor for DuckDBConnection {
             .next()
             .unwrap();
         spawn_blocking(move || unsafe {
-            let table_ref = E::table();
+            let table_ref = <It::Item as EntityArg>::Entity::table();
             let mut appender = CBox::new(ptr::null_mut(), |mut p| {
                 duckdb_appender_destroy(&mut p);
             });
@@ -338,7 +342,7 @@ impl Executor for DuckDBConnection {
                 )
                 .context("While creating the `duckdb_appender` object"));
             }
-            for column in E::columns() {
+            for column in <It::Item as EntityArg>::Entity::columns() {
                 let rc = duckdb_appender_add_column(*appender, as_c_string(column.name()).as_ptr());
                 if rc != duckdb_state_DuckDBSuccess {
                     let error = Error::msg(

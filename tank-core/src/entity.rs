@@ -146,7 +146,8 @@ pub trait Entity: EntityArg + Expression {
     where
         Self: Sized,
         It: IntoIterator + Send,
-        It::Item: EntityArg,
+        It::IntoIter: Send,
+        It::Item: EntityArg + Send,
     {
         executor.append(items)
     }
