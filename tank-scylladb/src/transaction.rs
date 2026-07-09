@@ -80,14 +80,21 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
     where
         It: IntoIterator + Send,
         It::IntoIter: Send,
-        It::Item: EntityArg + Send,
+        It::Item: EntityArg,
     {
         let writer = self.driver().sql_writer();
         let mut query = DynQuery::default();
-        for entity in entities {
-            // entity is moved into [entity] and consumed by write_insert before the
-            // await below, so `It::Item` does not need to be `Send`.
-            writer.write_insert(&mut query, [entity], false);
+        // Use a match loop so `entity` is scoped to the `Some` arm and is provably
+        // dead before the `.await`, keeping `It::Item: Send` out of the requirements.
+        let mut iter = entities.into_iter();
+        loop {
+            match iter.next() {
+                None => break,
+                Some(entity) => {
+                    writer.write_insert(&mut query, [entity], false);
+                    // entity dropped here at end of Some arm.
+                }
+            }
             let mut q = query.into_query(self.driver());
             self.execute(&mut q).await?;
             query = q.into();

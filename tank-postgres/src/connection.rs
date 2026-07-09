@@ -141,7 +141,7 @@ impl Executor for PostgresConnection {
     where
         It: IntoIterator,
         It::IntoIter: Send,
-        It::Item: EntityArg + Send,
+        It::Item: EntityArg,
     {
         let writer = self.driver().sql_writer();
         let context = || {
@@ -173,18 +173,25 @@ impl Executor for PostgresConnection {
         let columns_len = <It::Item as EntityArg>::Entity::columns().len();
         let mut values = Vec::<ValueWrap>::with_capacity(columns_len);
         let mut refs = Vec::<&(dyn ToSql + Sync)>::with_capacity(columns_len);
-        for entity in entities.into_iter() {
-            values.extend(
-                entity
-                    .as_entity()
-                    .row_values()
-                    .into_iter()
-                    .map(|v| ValueWrap(Cow::Owned(v))),
-            );
-            // Explicitly drop the entity before the await so it is not captured in the
-            // future's state machine at the yield point — `It::Item` therefore does not
-            // need to be `Send`.
-            drop(entity);
+        // Use a `while let` match loop so `entity` is scoped strictly inside the
+        // `Some` arm and is provably dead before the `.await` below.  This lets
+        // Rust's async state-machine analysis omit `It::Item` from the captured
+        // state at yield points, so `It::Item: Send` is not required.
+        let mut iter = entities.into_iter();
+        loop {
+            match iter.next() {
+                None => break,
+                Some(entity) => {
+                    values.extend(
+                        entity
+                            .as_entity()
+                            .row_values()
+                            .into_iter()
+                            .map(|v| ValueWrap(Cow::Owned(v))),
+                    );
+                    // entity is dropped here at the end of this match arm.
+                }
+            }
             refs.extend(
                 values
                     .iter()

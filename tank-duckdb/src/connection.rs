@@ -297,7 +297,7 @@ impl Executor for DuckDBConnection {
     where
         It: IntoIterator + Send,
         It::IntoIter: Send,
-        It::Item: EntityArg + Send,
+        It::Item: EntityArg,
     {
         let connection = AtomicPtr::new(*self.connection);
         let rows = rows

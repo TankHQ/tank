@@ -211,7 +211,7 @@ impl<D: Driver> Executor for PooledConnection<D> {
     where
         It: IntoIterator + Send,
         It::IntoIter: Send,
-        It::Item: EntityArg + Send,
+        It::Item: EntityArg,
     {
         self.object.append(entities)
     }

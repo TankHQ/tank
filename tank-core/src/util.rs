@@ -1,6 +1,6 @@
 use crate::{AsValue, ColumnDef, DynQuery, TableRef, Value};
 use proc_macro2::TokenStream;
-use quote::{ToTokens, TokenStreamExt, quote};
+use quote::{quote, ToTokens, TokenStreamExt};
 use rust_decimal::prelude::ToPrimitive;
 use serde_json::{Map, Number, Value as JsonValue};
 use std::{
@@ -491,7 +491,7 @@ macro_rules! impl_executor_transaction {
             where
                 It: IntoIterator + Send,
                 It::IntoIter: Send,
-                It::Item: ::tank_core::EntityArg + Send,
+                It::Item: ::tank_core::EntityArg,
             {
                 self.$connection.append(entities)
             }

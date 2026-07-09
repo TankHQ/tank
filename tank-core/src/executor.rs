@@ -94,7 +94,7 @@ pub trait Executor: Send {
     where
         It: IntoIterator + Send,
         It::IntoIter: Send,
-        It::Item: EntityArg + Send,
+        It::Item: EntityArg,
     {
         let mut query = DynQuery::default();
         self.driver()
@@ -154,7 +154,7 @@ impl<S: Executor + ?Sized> Executor for &mut S {
     where
         It: IntoIterator + Send,
         It::IntoIter: Send,
-        It::Item: EntityArg + Send,
+        It::Item: EntityArg,
     {
         (**self).append(entities)
     }
