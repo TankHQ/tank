@@ -2,7 +2,7 @@ use crate::IsChar;
 use std::fmt::Write;
 use std::{collections::BTreeMap, iter};
 use tank_core::{
-    ColumnDef, Context, Dataset, DynQuery, Entity, EntityArg, Error, Expression, Fragment,
+    ColumnDef, Context, Dataset, DynQuery, Entity, AsEntity, Error, Expression, Fragment,
     GenericSqlWriter, Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, indoc::indoc,
     separated_by,
 };
@@ -338,17 +338,18 @@ impl SqlWriter for ScyllaDBSqlWriter {
     where
         Self: Sized,
         It: IntoIterator,
-        It::Item: EntityArg,
+        It::Item: AsEntity,
     {
-        let table = <It::Item as EntityArg>::Entity::table();
+        type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
+
+        let table = E::<It>::table();
         let mut entities = entities.into_iter().peekable();
         let Some(entity) = entities.next() else {
             return;
         };
         let multiple = entities.peek().is_some();
         let entities = iter::once(entity).chain(entities);
-        out.buffer()
-            .reserve(128 + <It::Item as EntityArg>::Entity::columns().len() * 32);
+        out.buffer().reserve(128 + E::<It>::columns().len() * 32);
         if multiple {
             if !out.is_empty() {
                 out.push('\n');
@@ -360,15 +361,13 @@ impl SqlWriter for ScyllaDBSqlWriter {
                 out.push('\n');
             }
             out.push_str("INSERT INTO ");
-            let mut context = Context::new(
-                Fragment::SqlInsertInto,
-                <It::Item as EntityArg>::Entity::qualified_columns(),
-            );
+            let mut context =
+                Context::new(Fragment::SqlInsertInto, E::<It>::qualified_columns());
             self.write_table_ref(&mut context, out, table);
             out.push_str(" (");
             separated_by(
                 out,
-                <It::Item as EntityArg>::Entity::columns().iter(),
+                E::<It>::columns().iter(),
                 |out, col| {
                     self.write_identifier(&mut context, out, col.name(), true);
                 },

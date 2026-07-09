@@ -17,7 +17,7 @@ use std::{
     str::FromStr,
 };
 use tank_core::{
-    AsQuery, Connection, Driver, DynQuery, Entity, EntityArg, Error, ErrorContext, Executor, Query,
+    AsQuery, Connection, Driver, DynQuery, Entity, AsEntity, Error, ErrorContext, Executor, Query,
     QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Transaction,
     future::Either,
     stream::{Stream, StreamExt, TryStreamExt},
@@ -141,17 +141,19 @@ impl Executor for PostgresConnection {
     where
         It: IntoIterator,
         It::IntoIter: Send,
-        It::Item: EntityArg,
+        It::Item: AsEntity,
     {
+        type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
+
         let writer = self.driver().sql_writer();
         let context = || {
             format!(
                 "While appending to the table `{}`",
-                <It::Item as EntityArg>::Entity::table().full_name(writer.separator())
+                E::<It>::table().full_name(writer.separator())
             )
         };
         let mut query = DynQuery::default();
-        writer.write_copy::<<It::Item as EntityArg>::Entity>(&mut query);
+        writer.write_copy::<E::<It>>(&mut query);
         let sink = match self
             .client
             .copy_in(&query.as_str() as &str)
@@ -164,13 +166,13 @@ impl Executor for PostgresConnection {
                 return Err(e);
             }
         };
-        let types: Vec<_> = <It::Item as EntityArg>::Entity::columns()
+        let types: Vec<_> = E::<It>::columns()
             .into_iter()
             .map(|c| value_to_postgres_type(&c.value))
             .collect();
         let writer = BinaryCopyInWriter::new(sink, &types);
         let mut writer = pin!(writer);
-        let columns_len = <It::Item as EntityArg>::Entity::columns().len();
+        let columns_len = E::<It>::columns().len();
         let mut values = Vec::<ValueWrap>::with_capacity(columns_len);
         let mut refs = Vec::<&(dyn ToSql + Sync)>::with_capacity(columns_len);
         // Use a `while let` match loop so `entity` is scoped strictly inside the

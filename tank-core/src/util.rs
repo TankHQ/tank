@@ -491,7 +491,7 @@ macro_rules! impl_executor_transaction {
             where
                 It: IntoIterator + Send,
                 It::IntoIter: Send,
-                It::Item: ::tank_core::EntityArg,
+                It::Item: ::tank_core::AsEntity,
             {
                 self.$connection.append(entities)
             }

@@ -15,7 +15,7 @@ use mongodb::{
 };
 use std::{borrow::Cow, collections::HashMap, f64, iter, mem, ops::Deref, sync::Arc};
 use tank_core::{
-    AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, Dataset, DynQuery, Entity, EntityArg,
+    AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, Dataset, DynQuery, Entity, AsEntity,
     ErrorContext, Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk,
     IsConstant, Operand, Order, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value,
     truncate_long,
@@ -1050,9 +1050,9 @@ impl SqlWriter for MongoDBSqlWriter {
     where
         Self: Sized,
         It: IntoIterator,
-        It::Item: EntityArg,
+        It::Item: AsEntity,
     {
-        let table = <It::Item as EntityArg>::Entity::table().clone();
+        let table = <It::Item as AsEntity>::Entity::table().clone();
         let name = table.full_name(self.separator());
         let mut entities = entities.into_iter().peekable();
         let Some(entity) = entities.next() else {

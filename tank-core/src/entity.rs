@@ -11,7 +11,7 @@ use std::{
     sync::Arc,
 };
 
-pub trait EntityArg {
+pub trait AsEntity {
     type Entity: Entity;
     fn as_entity(&self) -> &Self::Entity;
 }
@@ -19,7 +19,7 @@ pub trait EntityArg {
 /// Database entity mapping.
 ///
 /// Use `#[derive(Entity)]` to implement this trait.
-pub trait Entity: EntityArg + Expression {
+pub trait Entity: AsEntity + Expression {
     /// Primary key type. A tuple of field types (or single type) forming the PK.
     type PrimaryKey<'a>
     where
@@ -128,7 +128,7 @@ pub trait Entity: EntityArg + Expression {
     /// Insert a single entity.
     fn insert_one(
         executor: &mut impl Executor,
-        entity: impl EntityArg,
+        entity: impl AsEntity,
     ) -> impl Future<Output = Result<RowsAffected>> + Send {
         let mut query = DynQuery::with_capacity(128);
         executor
@@ -147,7 +147,7 @@ pub trait Entity: EntityArg + Expression {
         Self: Sized,
         It: IntoIterator + Send,
         It::IntoIter: Send,
-        It::Item: EntityArg,
+        It::Item: AsEntity,
     {
         executor.append(items)
     }
@@ -239,7 +239,7 @@ pub trait Entity: EntityArg + Expression {
     fn save(&self, executor: &mut impl Executor) -> impl Future<Output = Result<()>> + Send
     where
         Self: Sized,
-        for<'s> &'s Self: EntityArg,
+        for<'s> &'s Self: AsEntity,
     {
         if Self::primary_key_def().is_empty() {
             let error = Error::msg(

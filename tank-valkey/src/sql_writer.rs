@@ -2,7 +2,7 @@ use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
 use std::{borrow::Cow, fmt::Write};
 use tank_core::{
-    Context, Dataset, DynQuery, Entity, EntityArg, Expression, Fragment, IsAsterisk, SelectQuery,
+    Context, Dataset, DynQuery, Entity, AsEntity, Expression, Fragment, IsAsterisk, SelectQuery,
     SqlWriter, TableRef, Value, column_def,
 };
 
@@ -205,9 +205,9 @@ impl SqlWriter for ValkeySqlWriter {
     where
         Self: Sized,
         It: IntoIterator,
-        It::Item: EntityArg,
+        It::Item: AsEntity,
     {
-        let table = <It::Item as EntityArg>::Entity::table();
+        let table = <It::Item as AsEntity>::Entity::table();
         let mut context = Self::make_context(Fragment::SqlInsertInto);
         let prepared = Self::prepare_query(out, &mut context);
         for entity in entities.into_iter() {

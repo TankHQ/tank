@@ -1,5 +1,5 @@
 use crate::{
-    Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, Entity, EntityArg,
+    Action, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, Entity, AsEntity,
     Error, Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
     PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized,
     separated_by, write_escaped, writer::Context,
@@ -1220,28 +1220,27 @@ pub trait SqlWriter: Send {
     where
         Self: Sized,
         It: IntoIterator,
-        It::Item: EntityArg,
+        It::Item: AsEntity,
     {
-        let table = <It::Item as EntityArg>::Entity::table();
+        type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
+
+        let table = E::<It>::table();
         let mut entities = entities.into_iter().peekable();
         if entities.peek().is_none() {
             return;
         };
-        let cols = <It::Item as EntityArg>::Entity::columns().len();
+        let cols = E::<It>::columns().len();
         out.buffer().reserve(128 + cols * 32);
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("INSERT INTO ");
-        let mut context = Context::new(
-            Fragment::SqlInsertInto,
-            <It::Item as EntityArg>::Entity::qualified_columns(),
-        );
+        let mut context = Context::new(Fragment::SqlInsertInto, E::<It>::qualified_columns());
         self.write_table_ref(&mut context, out, table);
         out.push_str(" (");
         separated_by(
             out,
-            <It::Item as EntityArg>::Entity::columns().iter(),
+            E::<It>::columns().iter(),
             |out, col| {
                 self.write_identifier(&mut context, out, col.name(), true);
             },
@@ -1262,11 +1261,7 @@ pub trait SqlWriter: Send {
             ",",
         );
         if update {
-            self.write_insert_update_fragment::<<It::Item as EntityArg>::Entity>(
-                &mut context.current,
-                out,
-                <It::Item as EntityArg>::Entity::columns().iter(),
-            );
+            self.write_insert_update_fragment::<E::<It>>(&mut context.current, out, E::<It>::columns().iter());
         }
         out.push(';');
     }

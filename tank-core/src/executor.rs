@@ -1,5 +1,5 @@
 use crate::{
-    AsQuery, Driver, DynQuery, EntityArg, Error, Query, QueryResult, RawQuery, Result, Row,
+    AsQuery, Driver, DynQuery, AsEntity, Error, Query, QueryResult, RawQuery, Result, Row,
     RowsAffected,
     stream::{Stream, StreamExt, TryStreamExt},
     writer::SqlWriter,
@@ -94,7 +94,7 @@ pub trait Executor: Send {
     where
         It: IntoIterator + Send,
         It::IntoIter: Send,
-        It::Item: EntityArg,
+        It::Item: AsEntity,
     {
         let mut query = DynQuery::default();
         self.driver()
@@ -154,7 +154,7 @@ impl<S: Executor + ?Sized> Executor for &mut S {
     where
         It: IntoIterator + Send,
         It::IntoIter: Send,
-        It::Item: EntityArg,
+        It::Item: AsEntity,
     {
         (**self).append(entities)
     }

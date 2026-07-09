@@ -115,14 +115,14 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
         #from_row
         #column
 
-        impl ::tank::EntityArg for #ident {
+        impl ::tank::AsEntity for #ident {
             type Entity = #ident;
             fn as_entity(&self) -> &#ident {
                 self
             }
         }
 
-        impl ::tank::EntityArg for &#ident {
+        impl ::tank::AsEntity for &#ident {
             type Entity = #ident;
             fn as_entity(&self) -> &#ident {
                 *self

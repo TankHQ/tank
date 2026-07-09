@@ -1,4 +1,4 @@
-use crate::{Driver, DynQuery, EntityArg, NA, SqlWriter};
+use crate::{Driver, DynQuery, AsEntity, NA, SqlWriter};
 use std::marker::PhantomData;
 
 pub struct InsertIntoQueryBuilder<Values, Update> {
@@ -11,7 +11,7 @@ impl InsertIntoQueryBuilder<NA, NA> {
     pub fn values<Values>(self, values: Values) -> InsertIntoQueryBuilder<Values, NA>
     where
         Values: IntoIterator,
-        Values::Item: EntityArg,
+        Values::Item: AsEntity,
     {
         InsertIntoQueryBuilder {
             values,
@@ -24,7 +24,7 @@ impl InsertIntoQueryBuilder<NA, NA> {
 impl<V, U> InsertIntoQueryBuilder<V, U>
 where
     V: IntoIterator + Clone,
-    V::Item: EntityArg,
+    V::Item: AsEntity,
 {
     pub fn get_values(&self) -> V {
         self.values.clone()

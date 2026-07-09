@@ -1,5 +1,5 @@
 use crate::{
-    AsQuery, Connection, Driver, EntityArg, Error, Executor, Query, QueryResult, Result, Row,
+    AsQuery, Connection, Driver, AsEntity, Error, Executor, Query, QueryResult, Result, Row,
     RowsAffected,
 };
 use deadpool::managed::{Manager, Metrics, Object, Pool, RecycleResult, Timeouts};
@@ -211,7 +211,7 @@ impl<D: Driver> Executor for PooledConnection<D> {
     where
         It: IntoIterator + Send,
         It::IntoIter: Send,
-        It::Item: EntityArg,
+        It::Item: AsEntity,
     {
         self.object.append(entities)
     }
