@@ -8,11 +8,12 @@ pub struct MySQLDriver {
 }
 
 impl MySQLDriver {
+    /// Construct a driver configured for MySQL
     pub const fn mysql() -> Self {
         Self { mariadb: false }
     }
 
-    /// Construct a driver configured for MariaDB.
+    /// Construct a driver configured for MariaDB
     pub const fn mariadb() -> Self {
         Self { mariadb: true }
     }
