@@ -11,12 +11,6 @@ pub(crate) struct MySQLQueryable<T: mysql_async::prelude::Queryable> {
     pub(crate) driver: MySQLDriver,
 }
 
-impl<T: mysql_async::prelude::Queryable> MySQLQueryable<T> {
-    pub(crate) fn new(executor: T, driver: MySQLDriver) -> Self {
-        Self { executor, driver }
-    }
-}
-
 impl<T: mysql_async::prelude::Queryable + Send> Executor for MySQLQueryable<T> {
     type Driver = MySQLDriver;
 

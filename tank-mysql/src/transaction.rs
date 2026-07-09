@@ -17,8 +17,8 @@ impl<'c> MySQLTransaction<'c> {
     pub async fn new(connection: &'c mut MySQLConnection) -> Result<Self> {
         let driver = connection.conn.driver;
         Ok(Self {
-            transaction: MySQLQueryable::new(
-                connection
+            transaction: MySQLQueryable {
+                executor: connection
                     .conn
                     .executor
                     .start_transaction(TxOpts::new())
@@ -28,7 +28,7 @@ impl<'c> MySQLTransaction<'c> {
                         e
                     })?,
                 driver,
-            ),
+            },
         })
     }
 }
