@@ -1223,7 +1223,6 @@ pub trait SqlWriter: Send {
         It::Item: AsEntity,
     {
         type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
-
         let table = E::<It>::table();
         let mut entities = entities.into_iter().peekable();
         if entities.peek().is_none() {

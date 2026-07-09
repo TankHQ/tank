@@ -144,7 +144,6 @@ impl Executor for PostgresConnection {
         It::Item: AsEntity,
     {
         type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
-
         let writer = self.driver().sql_writer();
         let context = || {
             format!(

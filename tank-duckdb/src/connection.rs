@@ -300,7 +300,6 @@ impl Executor for DuckDBConnection {
         It::Item: AsEntity,
     {
         type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
-
         let connection = AtomicPtr::new(*self.connection);
         let rows = rows
             .into_iter()

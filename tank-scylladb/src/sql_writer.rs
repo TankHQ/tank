@@ -341,7 +341,6 @@ impl SqlWriter for ScyllaDBSqlWriter {
         It::Item: AsEntity,
     {
         type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
-
         let table = E::<It>::table();
         let mut entities = entities.into_iter().peekable();
         let Some(entity) = entities.next() else {
