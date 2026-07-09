@@ -1,6 +1,6 @@
 use crate::{AsValue, ColumnDef, DynQuery, TableRef, Value};
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens, TokenStreamExt};
+use quote::{ToTokens, TokenStreamExt, quote};
 use rust_decimal::prelude::ToPrimitive;
 use serde_json::{Map, Number, Value as JsonValue};
 use std::{

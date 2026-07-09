@@ -2,7 +2,7 @@ use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
 use std::{borrow::Cow, fmt::Write};
 use tank_core::{
-    Context, Dataset, DynQuery, Entity, AsEntity, Expression, Fragment, IsAsterisk, SelectQuery,
+    AsEntity, Context, Dataset, DynQuery, Entity, Expression, Fragment, IsAsterisk, SelectQuery,
     SqlWriter, TableRef, Value, column_def,
 };
 

@@ -17,7 +17,7 @@ use std::{
     str::FromStr,
 };
 use tank_core::{
-    AsQuery, Connection, Driver, DynQuery, Entity, AsEntity, Error, ErrorContext, Executor, Query,
+    AsEntity, AsQuery, Connection, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
     QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Transaction,
     future::Either,
     stream::{Stream, StreamExt, TryStreamExt},
@@ -153,7 +153,7 @@ impl Executor for PostgresConnection {
             )
         };
         let mut query = DynQuery::default();
-        writer.write_copy::<E::<It>>(&mut query);
+        writer.write_copy::<E<It>>(&mut query);
         let sink = match self
             .client
             .copy_in(&query.as_str() as &str)

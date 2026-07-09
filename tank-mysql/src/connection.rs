@@ -59,7 +59,11 @@ async fn connect_inner(mut url: Url) -> Result<Conn> {
             log::error!("{:#}", error);
             return Err(error);
         }
-        ssl_opts = Some(ssl_opts.unwrap_or_default().with_root_certs(vec![ca_path.into()]));
+        ssl_opts = Some(
+            ssl_opts
+                .unwrap_or_default()
+                .with_root_certs(vec![ca_path.into()]),
+        );
     }
     if let Some(ssl_cert) = ssl_cert {
         let ssl_cert = PathBuf::from(ssl_cert);
@@ -76,7 +80,11 @@ async fn connect_inner(mut url: Url) -> Result<Conn> {
         if let Some(ssl_pass) = ssl_pass {
             identity = identity.with_password(ssl_pass);
         };
-        ssl_opts = Some(ssl_opts.unwrap_or_default().with_client_identity(Some(identity)));
+        ssl_opts = Some(
+            ssl_opts
+                .unwrap_or_default()
+                .with_client_identity(Some(identity)),
+        );
     }
     opts = opts.ssl_opts(ssl_opts);
     Ok(Conn::new(opts).await.context(context)?)
@@ -85,7 +93,9 @@ async fn connect_inner(mut url: Url) -> Result<Conn> {
 impl Connection for MySQLConnection {
     async fn connect(driver: &MySQLDriver, url: Cow<'static, str>) -> Result<Self> {
         let url = Self::sanitize_url(driver, url)?;
-        Ok(MySQLConnection { conn: MySQLQueryable::new(connect_inner(url).await?) })
+        Ok(MySQLConnection {
+            conn: MySQLQueryable::new(connect_inner(url).await?),
+        })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<MySQLTransaction<'_>>> + Send {
@@ -96,7 +106,9 @@ impl Connection for MySQLConnection {
 impl Connection for MariaDBConnection {
     async fn connect(driver: &MariaDBDriver, url: Cow<'static, str>) -> Result<Self> {
         let url = Self::sanitize_url(driver, url)?;
-        Ok(MariaDBConnection { conn: MySQLQueryable::new(connect_inner(url).await?) })
+        Ok(MariaDBConnection {
+            conn: MySQLQueryable::new(connect_inner(url).await?),
+        })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<MariaDBTransaction<'_>>> + Send {

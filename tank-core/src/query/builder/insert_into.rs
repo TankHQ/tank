@@ -1,4 +1,4 @@
-use crate::{Driver, DynQuery, AsEntity, NA, SqlWriter};
+use crate::{AsEntity, Driver, DynQuery, NA, SqlWriter};
 use std::marker::PhantomData;
 
 pub struct InsertIntoQueryBuilder<Values, Update> {

@@ -1,5 +1,5 @@
 use crate::{
-    AsQuery, Connection, Driver, AsEntity, Error, Executor, Query, QueryResult, Result, Row,
+    AsEntity, AsQuery, Connection, Driver, Error, Executor, Query, QueryResult, Result, Row,
     RowsAffected,
 };
 use deadpool::managed::{Manager, Metrics, Object, Pool, RecycleResult, Timeouts};

@@ -20,7 +20,7 @@ use std::{
     },
 };
 use tank_core::{
-    AsQuery, Connection, Driver, Entity, AsEntity, Error, ErrorContext, Executor, Query,
+    AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
     QueryResult, RawQuery, Result, Row, RowsAffected, SqlWriter, Value, as_c_string,
     error_message_from_ptr, send_value, stream::Stream, truncate_long,
 };

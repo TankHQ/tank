@@ -2,7 +2,7 @@ use crate::IsChar;
 use std::fmt::Write;
 use std::{collections::BTreeMap, iter};
 use tank_core::{
-    ColumnDef, Context, Dataset, DynQuery, Entity, AsEntity, Error, Expression, Fragment,
+    AsEntity, ColumnDef, Context, Dataset, DynQuery, Entity, Error, Expression, Fragment,
     GenericSqlWriter, Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, indoc::indoc,
     separated_by,
 };
@@ -361,8 +361,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
                 out.push('\n');
             }
             out.push_str("INSERT INTO ");
-            let mut context =
-                Context::new(Fragment::SqlInsertInto, E::<It>::qualified_columns());
+            let mut context = Context::new(Fragment::SqlInsertInto, E::<It>::qualified_columns());
             self.write_table_ref(&mut context, out, table);
             out.push_str(" (");
             separated_by(

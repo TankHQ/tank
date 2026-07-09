@@ -55,20 +55,40 @@ impl_executor_transaction!(MariaDBDriver, MariaDBTransaction<'c>, transaction);
 
 impl<'c> Transaction<'c> for MySQLTransaction<'c> {
     async fn commit(self) -> Result<()> {
-        self.transaction.executor.commit().await.map(|_| ()).map_err(Into::into)
+        self.transaction
+            .executor
+            .commit()
+            .await
+            .map(|_| ())
+            .map_err(Into::into)
     }
 
     async fn rollback(self) -> Result<()> {
-        self.transaction.executor.rollback().await.map(|_| ()).map_err(Into::into)
+        self.transaction
+            .executor
+            .rollback()
+            .await
+            .map(|_| ())
+            .map_err(Into::into)
     }
 }
 
 impl<'c> Transaction<'c> for MariaDBTransaction<'c> {
     async fn commit(self) -> Result<()> {
-        self.transaction.executor.commit().await.map(|_| ()).map_err(Into::into)
+        self.transaction
+            .executor
+            .commit()
+            .await
+            .map(|_| ())
+            .map_err(Into::into)
     }
 
     async fn rollback(self) -> Result<()> {
-        self.transaction.executor.rollback().await.map(|_| ()).map_err(Into::into)
+        self.transaction
+            .executor
+            .rollback()
+            .await
+            .map(|_| ())
+            .map_err(Into::into)
     }
 }
