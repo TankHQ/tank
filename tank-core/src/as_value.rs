@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use crate::{
     Error, FixedDecimal, Interval, Result, Value, consume_while, extract_number, truncate_long,
 };

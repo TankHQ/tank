@@ -1,5 +1,5 @@
 use crate::{
-    AsQuery, Connection, Driver, Entity, Error, Executor, Query, QueryResult, Result, Row,
+    AsEntity, AsQuery, Connection, Driver, Error, Executor, Query, QueryResult, Result, Row,
     RowsAffected,
 };
 use deadpool::managed::{Manager, Metrics, Object, Pool, RecycleResult, Timeouts};
@@ -53,7 +53,7 @@ impl<D: Driver> Manager for DBConnectionManager<D> {
 /// any driver-specific extension methods.
 ///
 /// The borrowed connection is automatically returned to the pool when this
-/// value is dropped.  If you need to take full ownership of the connection
+/// value is dropped. If you need to take full ownership of the connection
 /// outside pool management, call [`ConnectionPool::detach`] instead.
 #[derive(Debug)]
 pub struct PooledConnection<D: Driver> {
@@ -207,14 +207,11 @@ impl<D: Driver> Executor for PooledConnection<D> {
         self.object.execute(query)
     }
 
-    fn append<'a, E, It>(
-        &mut self,
-        entities: It,
-    ) -> impl Future<Output = Result<RowsAffected>> + Send
+    fn append<It>(&mut self, entities: It) -> impl Future<Output = Result<RowsAffected>> + Send
     where
-        E: Entity + 'a,
-        It: IntoIterator<Item = &'a E> + Send,
-        <It as IntoIterator>::IntoIter: Send,
+        It: IntoIterator + Send,
+        It::IntoIter: Send,
+        It::Item: AsEntity,
     {
         self.object.append(entities)
     }

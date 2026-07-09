@@ -15,9 +15,10 @@ use mongodb::{
 };
 use std::{borrow::Cow, collections::HashMap, f64, iter, mem, ops::Deref, sync::Arc};
 use tank_core::{
-    AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, Dataset, DynQuery, Entity, ErrorContext,
-    Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk, IsConstant,
-    Operand, Order, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, truncate_long,
+    AsEntity, AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, Dataset, DynQuery, Entity,
+    ErrorContext, Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk,
+    IsConstant, Operand, Order, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value,
+    truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -1045,16 +1046,13 @@ impl SqlWriter for MongoDBSqlWriter {
         Self::prepare_query(out, &mut context, payload);
     }
 
-    fn write_insert<'b, E>(
-        &self,
-        out: &mut DynQuery,
-        entities: impl IntoIterator<Item = &'b E>,
-        update: bool,
-    ) where
+    fn write_insert<It>(&self, out: &mut DynQuery, entities: It, update: bool)
+    where
         Self: Sized,
-        E: Entity + 'b,
+        It: IntoIterator,
+        It::Item: AsEntity,
     {
-        let table = E::table().clone();
+        let table = <It::Item as AsEntity>::Entity::table().clone();
         let name = table.full_name(self.separator());
         let mut entities = entities.into_iter().peekable();
         let Some(entity) = entities.next() else {
@@ -1066,15 +1064,18 @@ impl SqlWriter for MongoDBSqlWriter {
         let payload: Payload = match (update, single) {
             (false, true) => InsertOnePayload {
                 table,
-                row: entity.row(),
+                row: entity.as_entity().row(),
                 options: InsertOneOptions::builder()
                     .comment(Bson::String(format!("Tank: insert one entity in {name}")))
                     .build(),
             }
             .into(),
             (false, false) => {
-                let rows = iter::chain(iter::once(entity.row()), entities.map(Entity::row))
-                    .collect::<Vec<_>>();
+                let rows = iter::chain(
+                    iter::once(entity.as_entity().row()),
+                    entities.map(|e| e.as_entity().row()),
+                )
+                .collect::<Vec<_>>();
                 InsertManyPayload {
                     table,
                     rows,
@@ -1087,7 +1088,7 @@ impl SqlWriter for MongoDBSqlWriter {
             (true, _) => {
                 let mut values = iter::chain(iter::once(entity), entities).filter_map(|entity| {
                     let mut query = Self::make_prepared();
-                    entity.primary_key_expr().accept_visitor(
+                    entity.as_entity().primary_key_expr().accept_visitor(
                         &mut WriteMatchExpression::new(),
                         self,
                         &mut context,
@@ -1103,7 +1104,7 @@ impl SqlWriter for MongoDBSqlWriter {
                         );
                         return None;
                     };
-                    let modifications: Document = match RowWrap(Cow::Owned(entity.row()))
+                    let modifications: Document = match RowWrap(Cow::Owned(entity.as_entity().row()))
                         .try_into()
                         .with_context(|| "While rendering the entity to create a upsert query")
                     {
@@ -1137,7 +1138,7 @@ impl SqlWriter for MongoDBSqlWriter {
                     let values = values
                         .into_iter()
                         .map(|(entity, filter, modifications)| {
-                            let table = entity.table_ref();
+                            let table = entity.as_entity().table_ref();
                             UpsertPayload {
                                 table,
                                 filter: filter.into(),

@@ -2,16 +2,28 @@ use crate::{MySQLConnection, MySQLPrepared, MySQLSqlWriter, MySQLTransaction};
 use tank_core::Driver;
 
 /// MySQL/MariaDB driver.
-#[derive(Clone, Copy, Default, Debug)]
-pub struct MySQLDriver;
+#[derive(Clone, Copy, Debug)]
+pub struct MySQLDriver {
+    pub(crate) mariadb: bool,
+}
+
 impl MySQLDriver {
-    pub const fn new() -> Self {
-        Self
+    /// Construct a driver configured for MySQL
+    pub const fn mysql() -> Self {
+        Self { mariadb: false }
+    }
+
+    /// Construct a driver configured for MariaDB
+    pub const fn mariadb() -> Self {
+        Self { mariadb: true }
     }
 }
 
-/// Alias for MariaDB.
-pub type MariaDBDriver = MySQLDriver;
+impl Default for MySQLDriver {
+    fn default() -> Self {
+        Self::mysql()
+    }
+}
 
 impl Driver for MySQLDriver {
     type Connection = MySQLConnection;
@@ -20,7 +32,15 @@ impl Driver for MySQLDriver {
     type Transaction<'c> = MySQLTransaction<'c>;
 
     const NAME: &'static [&'static str] = &["mysql", "mariadb"];
+
     fn sql_writer(&self) -> Self::SqlWriter {
-        MySQLSqlWriter::default()
+        if self.mariadb {
+            MySQLSqlWriter::mariadb()
+        } else {
+            MySQLSqlWriter::mysql()
+        }
     }
 }
+
+/// MariaDB driver alias. Construct with [`MySQLDriver::mariadb()`].
+pub type MariaDBDriver = MySQLDriver;

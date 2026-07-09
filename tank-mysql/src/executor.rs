@@ -8,10 +8,15 @@ use tank_core::{
 
 pub(crate) struct MySQLQueryable<T: mysql_async::prelude::Queryable> {
     pub(crate) executor: T,
+    pub(crate) driver: MySQLDriver,
 }
 
-impl<T: mysql_async::prelude::Queryable> Executor for MySQLQueryable<T> {
+impl<T: mysql_async::prelude::Queryable + Send> Executor for MySQLQueryable<T> {
     type Driver = MySQLDriver;
+
+    fn driver(&self) -> MySQLDriver {
+        self.driver
+    }
 
     async fn do_prepare(&mut self, sql: String) -> Result<Query<MySQLDriver>> {
         Ok(MySQLPrepared::new(self.executor.prep(sql.as_str()).await?).into())

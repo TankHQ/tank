@@ -1,5 +1,5 @@
 use crate::{
-    AsQuery, Driver, DynQuery, Entity, Error, Query, QueryResult, RawQuery, Result, Row,
+    AsEntity, AsQuery, Driver, DynQuery, Error, Query, QueryResult, RawQuery, Result, Row,
     RowsAffected,
     stream::{Stream, StreamExt, TryStreamExt},
     writer::SqlWriter,
@@ -90,14 +90,11 @@ pub trait Executor: Send {
     }
 
     /// Efficiently inserts a collection of entities bypassing regular SQL execution when supported by the driver.
-    fn append<'a, E, It>(
-        &mut self,
-        entities: It,
-    ) -> impl Future<Output = Result<RowsAffected>> + Send
+    fn append<It>(&mut self, entities: It) -> impl Future<Output = Result<RowsAffected>> + Send
     where
-        E: Entity + 'a,
-        It: IntoIterator<Item = &'a E> + Send,
-        <It as IntoIterator>::IntoIter: Send,
+        It: IntoIterator + Send,
+        It::IntoIter: Send,
+        It::Item: AsEntity,
     {
         let mut query = DynQuery::default();
         self.driver()
@@ -153,14 +150,11 @@ impl<S: Executor + ?Sized> Executor for &mut S {
         (**self).execute(query)
     }
 
-    fn append<'a, E, It>(
-        &mut self,
-        entities: It,
-    ) -> impl Future<Output = Result<RowsAffected>> + Send
+    fn append<It>(&mut self, entities: It) -> impl Future<Output = Result<RowsAffected>> + Send
     where
-        E: Entity + 'a,
-        It: IntoIterator<Item = &'a E> + Send,
-        <It as IntoIterator>::IntoIter: Send,
+        It: IntoIterator + Send,
+        It::IntoIter: Send,
+        It::Item: AsEntity,
     {
         (**self).append(entities)
     }

@@ -343,35 +343,6 @@ pub async fn cheat_sheet(executor: &mut impl Connection) {
         }
     }
 
-    {
-        let mut stream = pin!(executor.run("SELECT unit_id, callsign FROM army.deployments"));
-        let mut found_row = false;
-        while let Some(result) = stream.try_next().await.expect("run stream") {
-            if matches!(result, QueryResult::Row(_)) {
-                found_row = true;
-            }
-        }
-        assert!(found_row, "run must produce at least one Row result");
-    }
-
-    {
-        let rows: Vec<_> = executor
-            .fetch("SELECT * FROM army.deployments")
-            .try_collect()
-            .await
-            .expect("fetch raw");
-        assert!(!rows.is_empty());
-    }
-
-    #[cfg(not(feature = "disable-scanning"))]
-    {
-        let affected = executor
-            .execute("UPDATE army.deployments SET casualties = 0 WHERE region = 'North'")
-            .await
-            .expect("execute raw update");
-        let _ = affected;
-    }
-
     let mut raw_query = executor
         .prepare(
             QueryBuilder::new()

@@ -2,8 +2,8 @@ use crate::{ScyllaDBConnection, ScyllaDBDriver, ScyllaDBPrepared, ValueWrap};
 use scylla::statement::batch::Batch;
 use std::future;
 use tank_core::{
-    AsQuery, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query, QueryResult, RawQuery,
-    Result, RowsAffected, SqlWriter, Transaction,
+    AsEntity, AsQuery, Driver, DynQuery, Error, ErrorContext, Executor, Query, QueryResult,
+    RawQuery, Result, RowsAffected, SqlWriter, Transaction,
     future::Either,
     stream::{self, Stream},
     truncate_long,
@@ -76,16 +76,25 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
         Either::Right(stream::empty())
     }
 
-    async fn append<'a, E, It>(&mut self, entities: It) -> Result<RowsAffected>
+    async fn append<It>(&mut self, entities: It) -> Result<RowsAffected>
     where
-        E: Entity + 'a,
-        It: IntoIterator<Item = &'a E>,
-        <It as IntoIterator>::IntoIter: Send,
+        It: IntoIterator + Send,
+        It::IntoIter: Send,
+        It::Item: AsEntity,
     {
-        let mut query = DynQuery::default();
         let writer = self.driver().sql_writer();
-        for entity in entities {
-            writer.write_insert::<E>(&mut query, [entity], false);
+        let mut query = DynQuery::default();
+        // Use a match loop so `entity` is scoped to the `Some` arm and is provably
+        // dead before the `.await`, keeping `It::Item: Send` out of the requirements.
+        let mut iter = entities.into_iter();
+        loop {
+            match iter.next() {
+                None => break,
+                Some(entity) => {
+                    writer.write_insert(&mut query, [entity], false);
+                    // entity dropped here at end of Some arm.
+                }
+            }
             let mut q = query.into_query(self.driver());
             self.execute(&mut q).await?;
             query = q.into();

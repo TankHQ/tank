@@ -10,10 +10,10 @@ pub struct PostgresSqlWriter {}
 
 impl PostgresSqlWriter {
     /// Write COPY FROM STDIN BINARY.
-    pub fn write_copy<'b, E>(&self, out: &mut DynQuery)
+    pub fn write_copy<E>(&self, out: &mut DynQuery)
     where
         Self: Sized,
-        E: Entity + 'b,
+        E: Entity,
     {
         out.buffer().reserve(128);
         out.push_str("COPY ");

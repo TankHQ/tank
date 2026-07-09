@@ -2,8 +2,9 @@ use crate::IsChar;
 use std::fmt::Write;
 use std::{collections::BTreeMap, iter};
 use tank_core::{
-    ColumnDef, Context, Dataset, DynQuery, Entity, Error, Expression, Fragment, GenericSqlWriter,
-    Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, indoc::indoc, separated_by,
+    AsEntity, ColumnDef, Context, Dataset, DynQuery, Entity, Error, Expression, Fragment,
+    GenericSqlWriter, Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, indoc::indoc,
+    separated_by,
 };
 use uuid::Uuid;
 
@@ -333,23 +334,21 @@ impl SqlWriter for ScyllaDBSqlWriter {
     {
     }
 
-    fn write_insert<'b, E>(
-        &self,
-        out: &mut DynQuery,
-        entities: impl IntoIterator<Item = &'b E>,
-        _update: bool,
-    ) where
+    fn write_insert<It>(&self, out: &mut DynQuery, entities: It, _update: bool)
+    where
         Self: Sized,
-        E: Entity + 'b,
+        It: IntoIterator,
+        It::Item: AsEntity,
     {
-        let table = E::table();
+        type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
+        let table = E::<It>::table();
         let mut entities = entities.into_iter().peekable();
         let Some(entity) = entities.next() else {
             return;
         };
         let multiple = entities.peek().is_some();
         let entities = iter::once(entity).chain(entities);
-        out.buffer().reserve(128 + E::columns().len() * 32);
+        out.buffer().reserve(128 + E::<It>::columns().len() * 32);
         if multiple {
             if !out.is_empty() {
                 out.push('\n');
@@ -361,12 +360,12 @@ impl SqlWriter for ScyllaDBSqlWriter {
                 out.push('\n');
             }
             out.push_str("INSERT INTO ");
-            let mut context = Context::new(Fragment::SqlInsertInto, E::qualified_columns());
+            let mut context = Context::new(Fragment::SqlInsertInto, E::<It>::qualified_columns());
             self.write_table_ref(&mut context, out, table);
             out.push_str(" (");
             separated_by(
                 out,
-                E::columns().iter(),
+                E::<It>::columns().iter(),
                 |out, col| {
                     self.write_identifier(&mut context, out, col.name(), true);
                 },
@@ -374,7 +373,9 @@ impl SqlWriter for ScyllaDBSqlWriter {
             );
             let mut context = context.switch_fragment(Fragment::SqlInsertIntoValues);
             out.push_str(") VALUES (");
-            entity.write_query(self.as_dyn(), &mut context.current, out);
+            entity
+                .as_entity()
+                .write_query(self.as_dyn(), &mut context.current, out);
             out.push_str(");");
         }
         if multiple {

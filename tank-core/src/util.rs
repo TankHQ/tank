@@ -446,6 +446,10 @@ macro_rules! impl_executor_transaction {
        impl $(<$lt>)? ::tank_core::Executor for $transaction $(<$lt>)? {
             type Driver = $driver;
 
+            fn driver(&self) -> Self::Driver {
+                self.$connection.driver()
+            }
+
             fn accepts_multiple_statements(&self) -> bool {
                 self.$connection.accepts_multiple_statements()
             }
@@ -484,14 +488,14 @@ macro_rules! impl_executor_transaction {
                 self.$connection.execute(query)
             }
 
-            fn append<'a, E, It>(
+            fn append<It>(
                 &mut self,
                 entities: It,
             ) -> impl Future<Output = ::tank_core::Result<::tank_core::RowsAffected>> + Send
             where
-                E: ::tank_core::Entity + 'a,
-                It: IntoIterator<Item = &'a E> + Send,
-                <It as IntoIterator>::IntoIter: Send,
+                It: IntoIterator + Send,
+                It::IntoIter: Send,
+                It::Item: ::tank_core::AsEntity,
             {
                 self.$connection.append(entities)
             }
