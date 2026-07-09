@@ -11,7 +11,7 @@ use time::{OffsetDateTime, PrimitiveDateTime};
 /// SQL writer for the MySQL dialect.
 #[derive(Default)]
 pub struct MySQLSqlWriter {
-    maria_db: bool,
+    mariadb: bool,
 }
 
 /// SQL writer for the MariaDB dialect.
@@ -22,8 +22,12 @@ pub type MariaDBSqlWriter = MySQLSqlWriter;
 impl MySQLSqlWriter {
     const DEFAULT_PK_VARCHAR_TYPE: &'static str = "VARCHAR(60)";
 
+    pub(crate) fn mysql() -> Self {
+        Self { mariadb: false }
+    }
+
     pub(crate) fn mariadb() -> Self {
-        Self { maria_db: true }
+        Self { mariadb: true }
     }
 }
 
@@ -128,7 +132,7 @@ impl SqlWriter for MySQLSqlWriter {
             Value::Timestamp(..) => out.push_str("DATETIME"),
             Value::TimestampWithTimezone(..) => out.push_str("DATETIME"),
             Value::Interval(..) => out.push_str("TIME(6)"),
-            Value::Uuid(..) => out.push_str(if self.maria_db { "UUID" } else { "CHAR(36)" }),
+            Value::Uuid(..) => out.push_str(if self.mariadb { "UUID" } else { "CHAR(36)" }),
             Value::Array(..) => out.push_str("JSON"),
             Value::List(..) => out.push_str("JSON"),
             Value::Map(..) => out.push_str("JSON"),

@@ -15,7 +15,7 @@ mod tests {
     pub async fn mysql() {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
-        let driver = MySQLDriver::new();
+        let driver = MySQLDriver::mysql();
 
         // Unencrypted
         let (url, container) = init_mysql(false).await;

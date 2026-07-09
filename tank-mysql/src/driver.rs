@@ -2,16 +2,13 @@ use crate::{MySQLConnection, MySQLPrepared, MySQLSqlWriter, MySQLTransaction};
 use tank_core::Driver;
 
 /// MySQL/MariaDB driver.
-///
-/// Set `mariadb: true` (via [`MySQLDriver::mariadb()`]) for MariaDB mode,
-/// which enables MariaDB-specific SQL (e.g. native `UUID` column type).
 #[derive(Clone, Copy, Debug)]
 pub struct MySQLDriver {
     pub(crate) mariadb: bool,
 }
 
 impl MySQLDriver {
-    pub const fn new() -> Self {
+    pub const fn mysql() -> Self {
         Self { mariadb: false }
     }
 
@@ -23,7 +20,7 @@ impl MySQLDriver {
 
 impl Default for MySQLDriver {
     fn default() -> Self {
-        Self::new()
+        Self::mysql()
     }
 }
 
@@ -39,7 +36,7 @@ impl Driver for MySQLDriver {
         if self.mariadb {
             MySQLSqlWriter::mariadb()
         } else {
-            MySQLSqlWriter::default()
+            MySQLSqlWriter::mysql()
         }
     }
 }
