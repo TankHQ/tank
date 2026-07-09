@@ -29,13 +29,7 @@ pub trait Connection: Executor {
             url = format!("{scheme}://localhost{}", &host[8..]).into();
             in_memory = true;
         }
-        let context = || {
-            format!(
-                "While trying to connect to {}",
-                driver.name().to_case(Case::Title)
-            )
-        };
-        let mut result = Url::parse(&url).with_context(context)?;
+        let mut result = Url::parse(&url)?;
         if in_memory {
             result.query_pairs_mut().append_pair("mode", "memory");
         }
@@ -50,8 +44,7 @@ pub trait Connection: Executor {
             let error = Error::msg(format!(
                 "Connection URL must start with: {}",
                 names.join(", ")
-            ))
-            .context(context());
+            ));
             log::error!("{:#}", error);
             return Err(error);
         };

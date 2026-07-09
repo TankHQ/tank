@@ -7,11 +7,11 @@ use tank_core::{Result, Transaction, impl_executor_transaction};
 /// Wraps a `mysql_async::Transaction` and implements the `Transaction`/`Executor`
 /// behavior expected by the `tank_core` abstractions.
 pub struct MySQLTransaction<'c> {
-    pub(crate) transaction: MySQLQueryable<mysql_async::Transaction<'c>, MySQLDriver>,
+    pub(crate) transaction: MySQLQueryable<mysql_async::Transaction<'c>>,
 }
 
 pub struct MariaDBTransaction<'c> {
-    pub(crate) transaction: MySQLQueryable<mysql_async::Transaction<'c>, MariaDBDriver>,
+    pub(crate) transaction: MySQLQueryable<mysql_async::Transaction<'c>>,
 }
 
 impl<'c> MySQLTransaction<'c> {
