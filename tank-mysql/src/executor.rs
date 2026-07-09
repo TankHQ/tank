@@ -2,30 +2,36 @@ use crate::{MySQLDriver, MySQLPrepared, RowWrap};
 use async_stream::try_stream;
 use std::{marker::PhantomData, sync::Arc};
 use tank_core::{
-    AsQuery, Error, Executor, Query, RawQuery, Result,
+    AsQuery, Driver, Error, Executor, Query, RawQuery, Result,
     stream::{Stream, StreamExt, TryStreamExt},
 };
 
-pub(crate) struct MySQLQueryable<T: mysql_async::prelude::Queryable> {
+pub(crate) struct MySQLQueryable<T: mysql_async::prelude::Queryable, D: Driver = MySQLDriver> {
     pub(crate) executor: T,
+    _driver: PhantomData<D>,
 }
 
-impl<T: mysql_async::prelude::Queryable> MySQLQueryable<T> {
+impl<T: mysql_async::prelude::Queryable, D: Driver> MySQLQueryable<T, D> {
     pub(crate) fn new(executor: T) -> Self {
-        Self { executor }
+        Self {
+            executor,
+            _driver: PhantomData,
+        }
     }
 }
 
-impl<T: mysql_async::prelude::Queryable> Executor for MySQLQueryable<T> {
-    type Driver = MySQLDriver;
+impl<T: mysql_async::prelude::Queryable + Send, D: Driver<Prepared = MySQLPrepared>> Executor
+    for MySQLQueryable<T, D>
+{
+    type Driver = D;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<MySQLDriver>> {
+    async fn do_prepare(&mut self, sql: String) -> Result<Query<D>> {
         Ok(MySQLPrepared::new(self.executor.prep(sql.as_str()).await?).into())
     }
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<MySQLDriver> + 's,
+        query: impl AsQuery<D> + 's,
     ) -> impl Stream<Item = Result<tank_core::QueryResult>> + Send {
         let mut query = query.as_query();
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));

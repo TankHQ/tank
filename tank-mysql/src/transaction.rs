@@ -7,11 +7,11 @@ use tank_core::{Result, Transaction, impl_executor_transaction};
 /// Wraps a `mysql_async::Transaction` and implements the `Transaction`/`Executor`
 /// behavior expected by the `tank_core` abstractions.
 pub struct MySQLTransaction<'c> {
-    pub(crate) transaction: MySQLQueryable<mysql_async::Transaction<'c>>,
+    pub(crate) transaction: MySQLQueryable<mysql_async::Transaction<'c>, MySQLDriver>,
 }
 
 pub struct MariaDBTransaction<'c> {
-    pub(crate) transaction: MySQLQueryable<mysql_async::Transaction<'c>>,
+    pub(crate) transaction: MySQLQueryable<mysql_async::Transaction<'c>, MariaDBDriver>,
 }
 
 impl<'c> MySQLTransaction<'c> {
@@ -55,40 +55,20 @@ impl_executor_transaction!(MariaDBDriver, MariaDBTransaction<'c>, transaction);
 
 impl<'c> Transaction<'c> for MySQLTransaction<'c> {
     async fn commit(self) -> Result<()> {
-        self.transaction
-            .executor
-            .commit()
-            .await
-            .map(|_| ())
-            .map_err(Into::into)
+        self.transaction.executor.commit().await.map(|_| ()).map_err(Into::into)
     }
 
     async fn rollback(self) -> Result<()> {
-        self.transaction
-            .executor
-            .rollback()
-            .await
-            .map(|_| ())
-            .map_err(Into::into)
+        self.transaction.executor.rollback().await.map(|_| ()).map_err(Into::into)
     }
 }
 
 impl<'c> Transaction<'c> for MariaDBTransaction<'c> {
     async fn commit(self) -> Result<()> {
-        self.transaction
-            .executor
-            .commit()
-            .await
-            .map(|_| ())
-            .map_err(Into::into)
+        self.transaction.executor.commit().await.map(|_| ()).map_err(Into::into)
     }
 
     async fn rollback(self) -> Result<()> {
-        self.transaction
-            .executor
-            .rollback()
-            .await
-            .map(|_| ())
-            .map_err(Into::into)
+        self.transaction.executor.rollback().await.map(|_| ()).map_err(Into::into)
     }
 }

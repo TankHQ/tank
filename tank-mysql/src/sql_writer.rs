@@ -9,15 +9,23 @@ use tank_core::{
 use time::{OffsetDateTime, PrimitiveDateTime};
 
 /// SQL writer for the MySQL dialect.
+#[derive(Default)]
 pub struct MySQLSqlWriter {
-    pub(crate) maria_db: bool,
+    maria_db: bool,
 }
+
+/// SQL writer for the MariaDB dialect.
+///
+/// Uses MariaDB's native `UUID` column type (available since MariaDB 10.7) instead of `CHAR(36)`.
+pub type MariaDBSqlWriter = MySQLSqlWriter;
 
 impl MySQLSqlWriter {
     const DEFAULT_PK_VARCHAR_TYPE: &'static str = "VARCHAR(60)";
-}
 
-pub type MariaDBSqlWriter = MySQLSqlWriter;
+    pub(crate) fn mariadb() -> Self {
+        Self { maria_db: true }
+    }
+}
 
 impl SqlWriter for MySQLSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
