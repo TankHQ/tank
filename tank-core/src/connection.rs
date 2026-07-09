@@ -1,6 +1,4 @@
 use crate::{Driver, Error, Executor, Result};
-use anyhow::Context;
-use convert_case::{Case, Casing};
 use std::{
     borrow::Cow,
     future::{self, Future},
@@ -18,7 +16,7 @@ use url::Url;
 ///   guarantee resource release.
 pub trait Connection: Executor {
     /// Validates and normalizes the connection URL, handling special cases like in-memory databases.
-    fn sanitize_url(driver: &Self::Driver, mut url: Cow<'static, str>) -> Result<Url>
+    fn sanitize_url(_driver: &Self::Driver, mut url: Cow<'static, str>) -> Result<Url>
     where
         Self: Sized,
     {

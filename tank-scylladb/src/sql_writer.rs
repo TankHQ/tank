@@ -334,7 +334,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
     {
     }
 
-    fn write_insert<It>(&self, out: &mut DynQuery, entities: It, update: bool)
+    fn write_insert<It>(&self, out: &mut DynQuery, entities: It, _update: bool)
     where
         Self: Sized,
         It: IntoIterator,
