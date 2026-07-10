@@ -100,7 +100,9 @@ impl AsValue for NotesWrap {
     }
     fn try_from_value(value: Value) -> Result<Self> {
         match value.try_as(&Value::Varchar(None)) {
-            Ok(Value::Varchar(Some(s))) => Ok(NotesWrap(Notes(s.to_string()))),
+            Ok(Value::Varchar(Some(s))) => {
+                Ok(NotesWrap(Notes(s.to_string())))
+            }
             _ => Err(Error::msg("Expected Varchar for Notes")),
         }
     }
@@ -130,7 +132,7 @@ EntityExample::drop_table(&mut connection, true, false).await?;
 
 ```rust
 EntityExample::insert_one(&mut connection, &entity).await?;
-EntityExample::insert_many(&mut connection, &[entity1, entity2, entity3]).await?;
+EntityExample::insert_many(&mut connection, &[entity1, entity2, ...]).await?;
 connection.append(&[entity1, entity2, entity3]).await?;
 ```
 
@@ -303,26 +305,42 @@ let rows = connection.fetch(
 
 ### Simple query
 ```rust
+use indoc::indoc;
 use std::pin::pin;
 use tank::{stream::TryStreamExt, QueryResult};
 
-let mut stream = pin!(connection.run("SELECT unit_id, callsign FROM army.deployments WHERE casualties > 0"));
+let mut stream = pin!(connection.run(indoc! {"
+    SELECT unit_id, callsign
+    FROM army.deployments
+    WHERE casualties > 0
+"}));
 while let Some(result) = stream.try_next().await? {
     match result {
         QueryResult::Row(row) => println!("{:?}", row.values),
         QueryResult::Affected(v) => println!("affected: {}", v.rows_affected),
     }
 }
-let rows: Vec<_> = connection.fetch("SELECT * FROM army.deployments").try_collect().await?;
-let affected = connection.execute("UPDATE army.deployments SET casualties = 0 WHERE region = 'North'").await?;
+let rows: Vec<_> = connection
+    .fetch("SELECT * FROM army.deployments")
+    .try_collect()
+    .await?;
+let affected = connection.execute(indoc! {"
+    UPDATE army.deployments SET casualties = 0
+    WHERE region = 'North'"
+}).await?;
 ```
 
 ### Prepared
 ```rust
+use indoc::indoc;
 use tank::{Entity, stream::TryStreamExt};
 
-let mut query = connection.prepare(
-    "SELECT unit_id, callsign FROM army.deployments WHERE unit_id = ? LIMIT ?".into()
+let mut query = connection.prepare(indoc! {"
+    SELECT unit_id, callsign
+    FROM army.deployments
+    WHERE unit_id = ?
+    LIMIT ?
+"}.into()
 ).await?;
 query.bind(uid)?;
 query.bind(25)?;
