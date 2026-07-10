@@ -194,7 +194,6 @@ h1 .text {
 .sticky-table table td:first-child {
     position: sticky;
     left: 0;
-    z-index: 10;
     border-left: none;
     border-right: 1px solid var(--vp-c-divider);
 }
@@ -228,11 +227,10 @@ h1 .text {
 
 .sticky-table table thead th {
     position: sticky;
-    top: 0;
-    z-index: 20;
+    top: -4px;
     background-color: var(--vp-c-bg-soft);
 }
 
 .sticky-table table thead th:first-child {
-    z-index: 30;
+    z-index: 10;
 }
