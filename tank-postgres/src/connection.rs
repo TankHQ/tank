@@ -139,11 +139,12 @@ impl Executor for PostgresConnection {
 
     async fn append<It>(&mut self, entities: It) -> Result<RowsAffected>
     where
-        It: IntoIterator,
+        It: IntoIterator + Send,
         It::IntoIter: Send,
         It::Item: AsEntity,
     {
         type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
+        let mut iter = entities.into_iter();
         let writer = self.driver().sql_writer();
         let context = || {
             format!(
@@ -174,7 +175,6 @@ impl Executor for PostgresConnection {
         let columns_len = E::<It>::columns().len();
         let mut values = Vec::<ValueWrap>::with_capacity(columns_len);
         let mut refs = Vec::<&(dyn ToSql + Sync)>::with_capacity(columns_len);
-        let mut iter = entities.into_iter();
         loop {
             match iter.next() {
                 None => break,

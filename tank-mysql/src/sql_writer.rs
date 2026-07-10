@@ -59,25 +59,21 @@ impl SqlWriter for MySQLSqlWriter {
         column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
-        if let Some(t) = types
-            .iter()
-            .find_map(|(k, v)| {
-                if *k == "mysql" || *k == "mariadb" {
-                    Some(*v)
-                } else {
-                    None
-                }
-            })
-            .or_else(|| {
-                if matches!(column.value, Value::Varchar(..))
-                    && column.primary_key != PrimaryKeyType::None
-                {
-                    Some(Self::DEFAULT_PK_VARCHAR_TYPE)
-                } else {
-                    None
-                }
-            })
-        {
+        if let Some(t) = if self.mariadb {
+            types.get("mariadb").or_else(|| types.get("mysql"))
+        } else {
+            types.get("mysql")
+        }
+        .copied()
+        .or_else(|| {
+            if matches!(column.value, Value::Varchar(..))
+                && column.primary_key != PrimaryKeyType::None
+            {
+                Some(Self::DEFAULT_PK_VARCHAR_TYPE)
+            } else {
+                None
+            }
+        }) {
             out.push_str(t);
         }
     }

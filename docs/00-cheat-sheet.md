@@ -33,7 +33,7 @@ connection.disconnect().await?;
 use tank::{ConnectionPool, PoolConfig};
 use tank_mysql::MySQLDriver;
 
-let pool: Box<dyn ConnectionPool<MySQLDriver>> = MySQLDriver::new()
+let pool: Box<dyn ConnectionPool<MySQLDriver>> = MySQLDriver::mysql()
     .connect_pool("mysql://user:pass@host:3306/db".into(), PoolConfig::new())
     .await?
     .into_box();

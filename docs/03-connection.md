@@ -106,7 +106,7 @@ use tank::{ConnectionPool, Driver, PoolConfig};
 use tank_mysql::MySQLDriver;
 
 async fn establish_mysql_connection() -> Result<impl ConnectionPool<MySQLDriver>> {
-    let driver = MySQLDriver::new();
+    let driver = MySQLDriver::mysql();
     let pool = driver
         .connect_pool(
             "mysql://tank-mysql-user@localhost:3306/operations_db?require_ssl=true&ssl_ca=/home/user/Git/tank/tank-mysql/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-mysql/tests/assets/client.p12&ssl_pass=my%26pass%3Fis%3DP%40%24%24".into(),
@@ -119,6 +119,7 @@ async fn establish_mysql_connection() -> Result<impl ConnectionPool<MySQLDriver>
 
 **URL Format**:
 - `mysql://user:password@host:port/database`
+- `mariadb://user:password@host:port/database`
 
 Parameters:
 - `require_ssl (bool)`: Require secure connection, defaults to false.
@@ -126,6 +127,11 @@ Parameters:
 - `ssl_cert`: Client certificate path (falls back to environment variable `MYSQL_SSL_CERT`).
 
 Additional URL parameters are passed directly to the mysql_async API. See the full list of supported options from options structure [Opts](https://docs.rs/mysql_async/latest/mysql_async/struct.Opts.html).
+
+> [!NOTE]
+> **MariaDB support**: use `MariaDBDriver::mariadb()` or a `mariadb://` URL to enable MariaDB mode. When active, tank uses MariaDB native column types where they differ from MySQL, most notably `UUID` instead of `CHAR(36)`.
+>
+> Use the `column_type` attribute to opt into the native DDL for those (e.g. `#[tank(column_type = (mariadb = "INET6", mysql = "VARCHAR(39)"))]` on a `String` field). The `column_type = mariadb` applies only to MariaDB connections, `mysql` key applies to both.
 
 ### DuckDB
 DuckDB is your embedded artillery piece: fast, local, and always ready. Perfect for rapid deployment scenarios and testing under fire.

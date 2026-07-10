@@ -10,7 +10,8 @@ pub struct InsertIntoQueryBuilder<Values, Update> {
 impl InsertIntoQueryBuilder<NA, NA> {
     pub fn values<Values>(self, values: Values) -> InsertIntoQueryBuilder<Values, NA>
     where
-        Values: IntoIterator,
+        Values: IntoIterator + Send,
+        Values::IntoIter: Send,
         Values::Item: AsEntity,
     {
         InsertIntoQueryBuilder {
@@ -23,7 +24,8 @@ impl InsertIntoQueryBuilder<NA, NA> {
 
 impl<V, U> InsertIntoQueryBuilder<V, U>
 where
-    V: IntoIterator + Clone,
+    V: IntoIterator + Clone + Send,
+    V::IntoIter: Send,
     V::Item: AsEntity,
 {
     pub fn get_values(&self) -> V {
