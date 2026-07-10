@@ -185,6 +185,8 @@ h1 .text {
 
 .sticky-table {
     overflow-x: auto;
+    overflow-y: auto;
+    max-height: 70vh;
     position: relative;
 }
 
@@ -222,4 +224,15 @@ h1 .text {
 .sticky-table table {
     display: table;
     min-width: max-content;
+}
+
+.sticky-table table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background-color: var(--vp-c-bg-soft);
+}
+
+.sticky-table table thead th:first-child {
+    z-index: 30;
 }
