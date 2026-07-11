@@ -220,20 +220,22 @@ expr!(EntityExample::unit_id == #uid);
 ## Prepared statement
 
 ```rust
-use tank::{expr, stream::TryStreamExt};
+use tank::{Entity, expr, stream::TryStreamExt};
 
 let mut query = EntityExample::prepare_find(
     &mut connection,
     expr!(EntityExample::unit_id == ?),
     Some(50),
-).await?;
-query.bind(736621)?;
-let entities = connection.fetch(&mut query)
+)
+.await?;
+query.bind(Uuid::from_str("2f4f97da-0278-4c99-bc22-2b3986aeee85")?)?;
+let entities = connection
+    .fetch(&mut query)
     .map_ok(|row| EntityExample::from_row(row).unwrap())
     .try_collect::<Vec<EntityExample>>()
     .await?;
 query.clear_bindings()?;
-query.bind(88221)?;
+query.bind(Uuid::from_str("962f2c1c-7caa-468d-a387-53ed9860c4bf")?)?;
 ```
 
 ## Query Builder
@@ -262,7 +264,9 @@ The `join!` macro builds the `FROM` clause for `QueryBuilder`. Define a result s
 Supported keywords: `JOIN`, `INNER JOIN`, `LEFT JOIN`, `LEFT OUTER JOIN`, `RIGHT JOIN`, `RIGHT OUTER JOIN`, `FULL OUTER JOIN`, `CROSS JOIN`, `NATURAL JOIN`.
 
 ```rust
-use tank::{Entity, QueryBuilder, cols, expr, join, stream::TryStreamExt};
+use tank::{
+    Entity, QueryBuilder, cols, expr, join, stream::StreamExt, stream::TryStreamExt,
+};
 
 #[derive(Entity, Debug)]
 struct BookWithAuthor {
@@ -270,45 +274,48 @@ struct BookWithAuthor {
     author: String,
 }
 
-let rows: Vec<BookWithAuthor> = connection.fetch(
-    QueryBuilder::new()
-        .select(cols!(Book::title, Author::name as author))
-        .from(join!(Book JOIN Author ON Book::author_id == Author::id))
-        .where_expr(expr!(Book::year > 2000))
-        .order_by(cols!(Book::title ASC))
-        .build(&connection.driver()),
-)
-.map_ok(BookWithAuthor::from_row)
-.map(Result::flatten)
-.try_collect()
-.await?;
+let rows: Vec<BookWithAuthor> = connection
+    .fetch(
+        QueryBuilder::new()
+            .select(cols!(Book::title, Author::name as author))
+            .from(join!(Book JOIN Author ON Book::author == Author::id))
+            .where_expr(expr!(Book::year > 2000))
+            .order_by(cols!(Book::title ASC))
+            .build(&connection.driver()),
+    )
+    .map_ok(BookWithAuthor::from_row)
+    .map(Result::flatten)
+    .try_collect()
+    .await?;
 
-let rows: Vec<BookWithAuthor> = connection.fetch(
-    QueryBuilder::new()
-        .select(cols!(B.title, A.name as author))
-        .from(join!(Book B LEFT JOIN Author A ON B.author_id == A.id))
-        .where_expr(true)
-        .build(&connection.driver()),
-)
-.map_ok(BookWithAuthor::from_row)
-.map(Result::flatten)
-.try_collect()
-.await?;
+let rows: Vec<BookWithAuthor> = connection
+    .fetch(
+        QueryBuilder::new()
+            .select(cols!(B.title, A.name as author))
+            .from(join!(Book B LEFT JOIN Author A ON B.author == A.author_id))
+            .where_expr(true)
+            .build(&connection.driver()),
+    )
+    .map_ok(BookWithAuthor::from_row)
+    .map(Result::flatten)
+    .try_collect()
+    .await?;
 
 let dataset = join!(
     Book B
-        LEFT JOIN Author A1 ON B.author_id == A1.id
-        LEFT JOIN Author A2 ON B.co_author_id == A2.id
+        LEFT JOIN Author A1 ON B.author == A1.author_id
+        LEFT JOIN Author A2 ON B.co_author == A2.author_id
 );
-let rows = connection.fetch(
-    QueryBuilder::new()
-        .select(cols!(B.title, A1.name as author, A2.name as co_author))
-        .from(dataset)
-        .where_expr(true)
-        .build(&connection.driver()),
-)
-.try_collect::<Vec<_>>()
-.await?;
+let rows = connection
+    .fetch(
+        QueryBuilder::new()
+            .select(cols!(B.title, A1.name as author, A2.name as co_author))
+            .from(dataset)
+            .where_expr(true)
+            .build(&connection.driver()),
+    )
+    .try_collect::<Vec<_>>()
+    .await?;
 ```
 
 ## Raw SQL

@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use std::{collections::HashMap, str::FromStr, sync::LazyLock};
-use tank::{AsValue, Connection, Entity, Result, Transaction, Value, expr};
+use tank::{AsValue, Entity, Result, Value, expr};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -54,7 +54,7 @@ struct EntityExample {
     transient_cache: HashMap<String, String>,
 }
 
-pub async fn cheat_sheet(mut connection: &mut impl Connection) -> Result<()> {
+pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     {
@@ -72,8 +72,10 @@ pub async fn cheat_sheet(mut connection: &mut impl Connection) -> Result<()> {
     };
 
     {
+        use tank::{Entity, Transaction, expr};
+
         let mut tx = connection.begin().await?;
-        entity.save(&mut tx).await?;
+        entity.delete(&mut tx).await?;
         EntityExample::delete_many(&mut tx, expr!(true)).await?;
         tx.commit().await?;
     }
@@ -158,14 +160,14 @@ pub async fn cheat_sheet(mut connection: &mut impl Connection) -> Result<()> {
             Some(50),
         )
         .await?;
-        query.bind(736621)?;
+        query.bind(Uuid::from_str("2f4f97da-0278-4c99-bc22-2b3986aeee85")?)?;
         let entities = connection
             .fetch(&mut query)
             .map_ok(|row| EntityExample::from_row(row).unwrap())
             .try_collect::<Vec<EntityExample>>()
             .await?;
         query.clear_bindings()?;
-        query.bind(88221)?;
+        query.bind(Uuid::from_str("962f2c1c-7caa-468d-a387-53ed9860c4bf")?)?;
     }
 
     {
@@ -218,7 +220,7 @@ pub async fn cheat_sheet(mut connection: &mut impl Connection) -> Result<()> {
             .fetch(
                 QueryBuilder::new()
                     .select(cols!(B.title, A.name as author))
-                    .from(join!(Book B LEFT JOIN Author A ON B.author_id == A.id))
+                    .from(join!(Book B LEFT JOIN Author A ON B.author == A.author_id))
                     .where_expr(true)
                     .build(&connection.driver()),
             )
@@ -229,8 +231,8 @@ pub async fn cheat_sheet(mut connection: &mut impl Connection) -> Result<()> {
 
         let dataset = join!(
             Book B
-                LEFT JOIN Author A1 ON B.author_id == A1.id
-                LEFT JOIN Author A2 ON B.co_author_id == A2.id
+                LEFT JOIN Author A1 ON B.author == A1.author_id
+                LEFT JOIN Author A2 ON B.co_author == A2.author_id
         );
         let rows = connection
             .fetch(
@@ -242,74 +244,6 @@ pub async fn cheat_sheet(mut connection: &mut impl Connection) -> Result<()> {
             )
             .try_collect::<Vec<_>>()
             .await?;
-    }
-
-    {
-        use indoc::indoc;
-        use std::pin::pin;
-        use tank::{QueryResult, stream::TryStreamExt};
-
-        {
-            let mut stream = pin!(connection.run(indoc! {r#"
-            SELECT unit_id, callsign
-            FROM army.deployments
-            WHERE casualties > 0
-        "#}));
-            while let Some(result) = stream.try_next().await? {
-                match result {
-                    QueryResult::Row(row) => {
-                        println!("{:?}", row.values);
-                    }
-                    QueryResult::Affected(v) => {
-                        println!("affected: {:?}", v.rows_affected);
-                    }
-                }
-            }
-        }
-        let rows: Vec<_> = connection
-            .fetch("SELECT * FROM army.deployments")
-            .try_collect()
-            .await?;
-        let affected = connection
-            .execute(indoc! {r#"
-                UPDATE army.deployments SET casualties = 0
-                WHERE region = 'North'
-            "#})
-            .await?;
-    }
-
-    {
-        use anyhow::anyhow;
-        use indoc::indoc;
-        use std::pin::pin;
-        use tank::{Entity, Row, stream::TryStreamExt};
-
-        let mut query = connection
-            .prepare(indoc! {r#"
-                    SELECT unit_id, callsign
-                    FROM army.deployments
-                    WHERE unit_id = ?
-                    LIMIT ?
-                "#})
-            .await?;
-        query.bind_index(57383, 0)?;
-        query.bind_index(1, 1)?;
-
-        let row: Row = pin!(connection.fetch(&mut query))
-            .try_next()
-            .await?
-            .ok_or(anyhow!("Not found"))?;
-        let entity = EntityExample::from_row(row.clone())?;
-
-        #[derive(Entity)]
-        struct Slim {
-            callsign: String,
-            casualties: i32,
-        }
-        let slim = Slim::from_row(row)?;
-        query.clear_bindings()?;
-        query.bind(34724)?;
-        query.bind(1)?;
     }
 
     Ok(())
