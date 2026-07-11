@@ -122,11 +122,11 @@ EntityExample::drop_table(&mut connection, true, false).await?;
 ## Transaction
 
 ```rust
-use tank::{Connection, Entity, Transaction, expr};
+use tank::{Entity, Transaction};
 
 let mut tx = connection.begin().await?;
-entity.save(&mut tx).await?;
-EntityExample::delete_many(&mut tx, expr!(...)).await?;
+EntityExample::insert_one(&mut tx, &entity).await?;
+entity.delete(&mut tx).await?;
 tx.commit().await?;
 ```
 
@@ -163,9 +163,10 @@ let entity = EntityExample::find_one(
     entity.primary_key_expr()
 ).await?;
 {
+    let uid = entity2.unit_id;
     let mut stream = pin!(EntityExample::find_many(
         &mut connection,
-        expr!(EntityExample::casualties > 0),
+        expr!(EntityExample::unit_id == #uid),
         Some(100),
     ));
     while let Some(entity) = stream.try_next().await? {
@@ -187,14 +188,14 @@ let entities: Vec<EntityExample> =
 
 ```rust
 use tank::{Entity, expr};
-use uuid::Uuid;
 
+let uid = entity2.unit_id;
 EntityExample::delete_many(
     &mut connection,
-    expr!(EntityExample::casualties == 0)
+    expr!(EntityExample::unit_id == #uid)
 ).await?;
 
-let uid = Uuid::from_str("2ed19568-a1ed-423d-aa81-735e75bb6b14").unwrap();
+let uid = entity3.unit_id;
 EntityExample::delete_many(
     &mut connection,
     expr!(EntityExample::unit_id == #uid)
@@ -243,12 +244,14 @@ query.bind(Uuid::from_str("962f2c1c-7caa-468d-a387-53ed9860c4bf")?)?;
 ```rust
 use tank::{cols, expr, stream::TryStreamExt, QueryBuilder};
 
+let uid = entity.unit_id;
 let results = connection.fetch(
     QueryBuilder::new()
+        // Selecting fewer columns requires the entity to have the Default trait
         .select(cols!(EntityExample::callsign, EntityExample::casualties))
         .from(EntityExample::table())
-        .where_expr(expr!(EntityExample::casualties > 0))
-        .order_by(cols!(EntityExample::casualties DESC))
+        .where_expr(expr!(EntityExample::unit_id == #uid))
+        .order_by(cols!(EntityExample::region ASC))
         .limit(Some(50))
         .build(&connection.driver()),
 )

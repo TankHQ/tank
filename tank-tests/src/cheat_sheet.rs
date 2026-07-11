@@ -72,11 +72,11 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     };
 
     {
-        use tank::{Entity, Transaction, expr};
+        use tank::{Entity, Transaction};
 
         let mut tx = connection.begin().await?;
+        EntityExample::insert_one(&mut tx, &entity).await?;
         entity.delete(&mut tx).await?;
-        EntityExample::delete_many(&mut tx, expr!(true)).await?;
         tx.commit().await?;
     }
 
@@ -114,9 +114,10 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
         let entity = EntityExample::find_one(&mut connection, entity.primary_key_expr()).await?;
         {
+            let uid = entity2.unit_id;
             let mut stream = pin!(EntityExample::find_many(
                 &mut connection,
-                expr!(EntityExample::casualties > 0),
+                expr!(EntityExample::unit_id == #uid),
                 Some(100),
             ));
             while let Some(entity) = stream.try_next().await? {
@@ -132,11 +133,11 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
     {
         use tank::{Entity, expr};
-        use uuid::Uuid;
 
-        EntityExample::delete_many(&mut connection, expr!(EntityExample::casualties == 0)).await?;
+        let uid = entity2.unit_id;
+        EntityExample::delete_many(&mut connection, expr!(EntityExample::unit_id == #uid)).await?;
 
-        let uid = Uuid::from_str("2ed19568-a1ed-423d-aa81-735e75bb6b14").unwrap();
+        let uid = entity3.unit_id;
         EntityExample::delete_many(&mut connection, expr!(EntityExample::unit_id == #uid)).await?;
     }
 
@@ -173,14 +174,15 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     {
         use tank::{QueryBuilder, cols, expr, stream::TryStreamExt};
 
+        let uid = entity.unit_id;
         let results = connection
             .fetch(
                 QueryBuilder::new()
-                    // Selecting less columns requires the entity to have the Default trait
+                    // Selecting fewer columns requires the entity to have the Default trait
                     .select(cols!(EntityExample::callsign, EntityExample::casualties))
                     .from(EntityExample::table())
-                    .where_expr(expr!(EntityExample::casualties > 0))
-                    .order_by(cols!(EntityExample::casualties DESC))
+                    .where_expr(expr!(EntityExample::unit_id == #uid))
+                    .order_by(cols!(EntityExample::region ASC))
                     .limit(Some(50))
                     .build(&connection.driver()),
             )
