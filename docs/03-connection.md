@@ -278,7 +278,7 @@ The parameters are used to create an object of type [`SessionBuilder`](https://d
 
 `driver.connect_pool(...)` returns an opaque `impl ConnectionPool<Driver>` type. The compiler knows the exact concrete type at the call site, but you cannot write its name which means you cannot store it in a struct field.
 
-Use [`into_box()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_box) to type-erase the pool into a `Box<dyn ConnectionPool<D>>`. The boxed pool is fully heap-allocated, has a stable concrete type, and can be cloned into `Arc` or stored anywhere:
+Use [`into_box()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_box) or [`into_arc()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_arc) to type-erase the pool into a `Box<dyn ConnectionPool<D>>` or `Arc<dyn ConnectionPool<D>>` respectively. The type erased pool is fully heap-allocated, has a stable concrete type, and can be cloned stored anywhere:
 
 ```rust
 use tank::{ConnectionPool, Driver, PoolConfig};

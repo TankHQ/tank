@@ -4235,6 +4235,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "env_logger",
+ "indoc",
  "log",
  "rust_decimal",
  "tank",

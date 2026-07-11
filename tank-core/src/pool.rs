@@ -10,6 +10,7 @@ use std::{
     fmt::Debug,
     future,
     ops::{Deref, DerefMut},
+    sync::Arc,
     time::Duration,
 };
 
@@ -95,11 +96,12 @@ pub trait ConnectionPool<D: Driver>: Debug {
     fn resize(&self, max_size: usize) -> Result<()>;
 
     /// Converts this pool into a sized type-erased `Box<dyn ConnectionPool<D>>`.
-    ///
-    /// `Driver::connect_pool` returns an opaque `impl ConnectionPool<D>` type
-    /// that cannot be named or stored in struct fields, returned from trait
-    /// implementations, or otherwise used where a concrete named type is required.
     fn into_box(self) -> Box<dyn ConnectionPool<D>>
+    where
+        D: 'static;
+
+    /// Converts this pool into a sized type-erased `Arc<dyn ConnectionPool<D>>`.
+    fn into_arc(self) -> Arc<dyn ConnectionPool<D>>
     where
         D: 'static;
 
@@ -157,6 +159,13 @@ where
         D: 'static,
     {
         Box::new(self)
+    }
+
+    fn into_arc(self) -> Arc<dyn ConnectionPool<D>>
+    where
+        D: 'static,
+    {
+        Arc::new(self)
     }
 
     fn close(self) -> BoxFuture<'static, Result<()>> {

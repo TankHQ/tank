@@ -9,7 +9,7 @@ use std::{
     ffi::c_void,
     fmt::{self, Display},
 };
-use tank_core::{AsValue, Error, Prepared, Result, Value, error_message_from_ptr};
+use tank_core::{error_message_from_ptr, AsValue, Error, Prepared, Result, Value};
 
 /// Prepared statement wrapper for DuckDB.
 ///
@@ -33,7 +33,11 @@ impl DuckDBPrepared {
 
 impl Display for DuckDBPrepared {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:p}", self.statement())
+        write!(
+            f,
+            "<prepared statement at {:p}, SQL not retrievable from DuckDB C API>",
+            self.statement()
+        )
     }
 }
 
