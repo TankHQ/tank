@@ -1,3 +1,4 @@
+use indoc::indoc;
 use rcgen::{
     CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose,
     PKCS_RSA_SHA256, SanType,
@@ -13,7 +14,6 @@ use std::{
 use tank_core::{
     Connection, ConnectionPool, Driver, Executor, Result,
     future::{BoxFuture, FutureExt},
-    indoc::indoc,
 };
 use tank_scylladb::{CassandraConnection, CassandraDriver, ScyllaDBConnection, ScyllaDBDriver};
 use tank_tests::{
