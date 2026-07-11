@@ -1,15 +1,15 @@
-use crate::{CBox, sql_writer::SQLiteSqlWriter};
+use crate::{sql_writer::SQLiteSqlWriter, CBox};
 use anyhow::anyhow;
 use libsqlite3_sys::*;
 use rust_decimal::prelude::ToPrimitive;
 use std::{
-    ffi::{CStr, c_int},
+    ffi::{c_int, CStr},
     fmt::{self, Display},
     os::raw::{c_char, c_void},
 };
 use tank_core::{
-    AsValue, Context, DynQuery, Error, Fragment, Prepared, Result, SqlWriter, Value,
-    error_message_from_ptr, truncate_long,
+    error_message_from_ptr, truncate_long, AsValue, Context, DynQuery, Error, Fragment, Prepared,
+    Result, SqlWriter, Value,
 };
 
 /// Prepared statement wrapper for SQLite.
@@ -238,6 +238,11 @@ impl Prepared for SQLitePrepared {
 
 impl Display for SQLitePrepared {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:p}", self.statement())
+        let ptr = unsafe { sqlite3_sql(self.statement()) };
+        if ptr.is_null() {
+            return write!(f, "{:p}", self.statement());
+        }
+        let sql = unsafe { CStr::from_ptr(ptr) }.to_string_lossy();
+        f.write_str(&sql)
     }
 }
