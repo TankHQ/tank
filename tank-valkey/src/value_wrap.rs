@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use redis::{FromRedisValue, RedisWrite, ToRedisArgs};
 use std::{borrow::Cow, collections::HashMap};
 
@@ -95,9 +96,7 @@ impl<'a> TryFrom<redis::Value> for ValueWrap<'a> {
             }
             redis::Value::BigNumber(v) => tank_core::Value::Varchar(Some(v.to_string().into())),
             v => {
-                return Err(Self::Error::msg(format!(
-                    "Unexpected Valkey/Redis value {v:?}"
-                )));
+                return Err(anyhow!("Unexpected Valkey/Redis value {v:?}"));
             }
         }
         .into())
@@ -197,7 +196,11 @@ impl<'a> TryFrom<ValueWrap<'a>> for redis::Value {
                     })
                     .collect::<Result<_, _>>()?,
             ),
-            _ => return Err(tank_core::Error::msg("")),
+            _ => {
+                return Err(anyhow!(
+                    "Unexpected tank::Value variant for Redis conversion"
+                ));
+            }
         })
     }
 }

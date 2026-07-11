@@ -317,8 +317,8 @@ pub trait SqlWriter: Send {
             match serde_json::to_string(value) {
                 Ok(s) => out.push_str(&s),
                 Err(e) => {
-                    let e = Error::new(e).context("Failed to serialize string as JSON");
-                    log::error!("{e:#}");
+                    let error = Error::new(e).context("Failed to serialize string as JSON");
+                    log::error!("{error:#}");
                 }
             }
             return;

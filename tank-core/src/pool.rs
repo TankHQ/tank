@@ -2,6 +2,7 @@ use crate::{
     AsEntity, AsQuery, Connection, Driver, Error, Executor, Query, QueryResult, Result, Row,
     RowsAffected,
 };
+use anyhow::anyhow;
 use deadpool::managed::{Manager, Metrics, Object, Pool, RecycleResult, Timeouts};
 use futures::{FutureExt, Stream, future::BoxFuture};
 use std::{
@@ -115,7 +116,7 @@ where
         async move {
             let object = Pool::<DBConnectionManager<D>>::get(self)
                 .await
-                .map_err(|e| Error::msg(format!("{e:#?}")))?;
+                .map_err(|e| anyhow!("{e:#?}"))?;
             Ok(PooledConnection { object })
         }
         .boxed()
@@ -128,7 +129,7 @@ where
                 &Timeouts::wait_millis(timeout.as_millis() as u64),
             )
             .await
-            .map_err(|e| Error::msg(format!("{e:#?}")))?;
+            .map_err(|e| anyhow!("{e:#?}"))?;
             Ok(PooledConnection::<D> { object })
         }
         .boxed()
@@ -141,7 +142,7 @@ where
         async {
             let v = Pool::<DBConnectionManager<D>>::get(self)
                 .await
-                .map_err(|e| Error::msg(format!("{e:#?}")))?;
+                .map_err(|e| anyhow!("{e:#?}"))?;
             Ok(Object::<DBConnectionManager<D>>::take(v))
         }
         .boxed()
@@ -225,7 +226,7 @@ impl<D: Driver> Connection for PooledConnection<D> {
     where
         Self: Sized,
     {
-        future::ready(Err(Error::msg(
+        future::ready(Err(anyhow!(
             "Cannot connect using a PooledConnection, such object must be obtained from a connection pool",
         )))
     }

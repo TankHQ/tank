@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use byteorder::{NetworkEndian, ReadBytesExt};
 use bytes::{BufMut, BytesMut};
 use postgres_types::{FromSql, IsNull, ToSql, Type, to_sql_checked};
@@ -13,9 +14,7 @@ impl ToSql for IntervalWrap {
         Self: Sized,
     {
         if !matches!(*ty, Type::INTERVAL) {
-            return Err(
-                tank_core::Error::msg(format!("Cannot write Interval into type: {}", ty)).into(),
-            );
+            return Err(anyhow!("Cannot write Interval into type: {}", ty).into());
         }
         let micros_all = self.0.nanos / 1000;
         let micros = micros_all.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
@@ -41,11 +40,7 @@ impl ToSql for IntervalWrap {
 impl<'a> FromSql<'a> for IntervalWrap {
     fn from_sql(ty: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
         if !matches!(*ty, Type::INTERVAL) {
-            return Err(tank_core::Error::msg(format!(
-                "Cannot read Interval sql from type: {}",
-                ty
-            ))
-            .into());
+            return Err(anyhow!("Cannot read Interval sql from type: {}", ty).into());
         }
         let mut result = IntervalWrap(Default::default());
         let mut raw = Cursor::new(raw);

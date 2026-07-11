@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::sync::LazyLock;
 use tank::{
-    AsValue, Entity, Error, Executor, QueryBuilder, Result, Value, cols, expr,
+    AsValue, Entity, Error, Executor, QueryBuilder, Result, Value, anyhow, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -39,7 +39,7 @@ impl AsValue for HostPort {
         // Always call try_as before checking the received value
         match value.try_as(&Value::Varchar(None)) {
             Ok(Value::Varchar(Some(v))) => {
-                let context = || Error::msg(format!("Failed to parse HostPort from value `{v}`"));
+                let context = || anyhow!("Failed to parse HostPort from value `{v}`");
                 let (host, port) = v.split_once(':').ok_or_else(context)?;
                 Ok(Self {
                     host: host.to_string(),
@@ -48,7 +48,7 @@ impl AsValue for HostPort {
                         .map_err(|e| Error::new(e).context(context()))?,
                 })
             }
-            _ => Err(Error::msg(
+            _ => Err(anyhow!(
                 "Could not convert value into HostPort (expected Value::Varchar)",
             )),
         }

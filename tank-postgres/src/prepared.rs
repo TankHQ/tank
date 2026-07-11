@@ -1,10 +1,11 @@
 use crate::ValueWrap;
+use anyhow::anyhow;
 use std::{
     borrow::Cow,
     fmt::{self, Debug, Display},
     mem,
 };
-use tank_core::{AsValue, Error, Prepared, Result, Value};
+use tank_core::{AsValue, Prepared, Result, Value};
 use tokio_postgres::Statement;
 
 /// Postgres prepared statement.
@@ -51,12 +52,9 @@ impl Prepared for PostgresPrepared {
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
         let len = self.statement.params().len();
         self.params.resize_with(len, Default::default);
-        let target = self
-            .params
-            .get_mut(index as usize)
-            .ok_or(Error::msg(format!(
-                "Index {index} cannot be bound, the query has only {len} parameters",
-            )))?;
+        let target = self.params.get_mut(index as usize).ok_or(anyhow!(
+            "Index {index} cannot be bound, the query has only {len} parameters",
+        ))?;
         *target = value.as_value();
         self.index = index + 1;
         Ok(self)

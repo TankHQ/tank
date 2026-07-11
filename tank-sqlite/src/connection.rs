@@ -2,6 +2,7 @@ use crate::{
     CBox, SQLiteDriver, SQLitePrepared, SQLiteTransaction,
     extract::{extract_name, extract_value},
 };
+use anyhow::anyhow;
 use async_stream::try_stream;
 use flume::Sender;
 use libsqlite3_sys::*;
@@ -192,16 +193,16 @@ impl Executor for SQLiteConnection {
                 let error =
                     Error::msg(error_message_from_ptr(&sqlite3_errmsg(connection)).to_string())
                         .context(context);
-                log::error!("{:#}", error);
+                log::error!("{error:#}");
                 return Err(error);
             }
             if tail != ptr::null() && *tail != '\0' as i8 {
-                let error = Error::msg(format!(
+                let error = anyhow!(
                     "Cannot prepare more than one statement at a time (remaining: {})",
                     CStr::from_ptr(tail).to_str().unwrap_or("unprintable")
-                ))
+                )
                 .context(context);
-                log::error!("{:#}", error);
+                log::error!("{error:#}");
                 return Err(error);
             }
             Ok(statement)
@@ -239,7 +240,7 @@ impl Executor for SQLiteConnection {
             while let Ok(result) = rx.recv_async().await {
                 yield result.map_err(|e| {
                     let error = e.context(context.clone());
-                    log::error!("{:#}", error);
+                    log::error!("{error:#}");
                     error
                 })?;
             }
@@ -273,7 +274,7 @@ impl Connection for SQLiteConnection {
                 let error =
                     Error::msg(error_message_from_ptr(&sqlite3_errmsg(*connection)).to_string())
                         .context(context);
-                log::error!("{:#}", error);
+                log::error!("{error:#}");
                 return Err(error);
             }
         }

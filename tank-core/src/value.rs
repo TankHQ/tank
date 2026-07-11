@@ -1,6 +1,7 @@
 use crate::{
-    AsValue, DynQuery, Error, Expression, GenericSqlWriter, Result, TableRef, interval::Interval,
+    AsValue, DynQuery, Expression, GenericSqlWriter, Result, TableRef, interval::Interval,
 };
+use anyhow::anyhow;
 use quote::{ToTokens, quote};
 use rust_decimal::Decimal;
 use serde_json::Value as JsonValue;
@@ -212,10 +213,11 @@ impl Value {
             // Value::List(..) => Box::<[Value]>::try_from_value(self).map(AsValue::as_value),
             // Value::Map(..) => Date::try_from_value(self).map(AsValue::as_value),
             _ => {
-                return Err(Error::msg(format!(
+                return Err(anyhow!(
                     "Cannot convert value {:?} to {:?}",
-                    self, target_type
-                )));
+                    self,
+                    target_type
+                ));
             }
         }
     }

@@ -19,8 +19,8 @@ mod tests {
     fn visitor_is_true() {
         let mut out = Default::default();
         let mut ctx = Default::default();
-        let e = expr!(true);
-        assert!(e.accept_visitor(&mut IsTrue, &WRITER, &mut ctx, &mut out));
+        let error = expr!(true);
+        assert!(error.accept_visitor(&mut IsTrue, &WRITER, &mut ctx, &mut out));
         let e = expr!(false);
         assert!(!e.accept_visitor(&mut IsTrue, &WRITER, &mut ctx, &mut out));
         let e = expr!(42);

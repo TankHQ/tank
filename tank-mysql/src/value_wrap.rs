@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use std::borrow::Cow;
 use tank_core::Interval;
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
@@ -107,10 +108,7 @@ impl<'a> TryFrom<ValueWrap<'a>> for mysql_async::Value {
                         $date.microsecond(),
                     ))
                 } else {
-                    Err(Self::Error::msg(format!(
-                        "Date {} is out of range for MySQL",
-                        $date
-                    )))
+                    Err(anyhow!("Date {} is out of range for MySQL", $date))
                 }
             }};
         }
@@ -168,10 +166,9 @@ impl<'a> TryFrom<ValueWrap<'a>> for mysql_async::Value {
             // TankValue::Struct(Some(v), ..) => MySQLValue::from(v),
             TankValue::Unknown(Some(v), ..) => MySQLValue::from(v),
             v => {
-                return Err(tank_core::Error::msg(format!(
-                    "tank::Value variant `{v:?}` is not supported by MySQL",
-                ))
-                .into());
+                return Err(
+                    anyhow!("tank::Value variant `{v:?}` is not supported by MySQL").into(),
+                );
             }
         })
     }

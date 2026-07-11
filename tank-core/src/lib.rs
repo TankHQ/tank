@@ -21,6 +21,7 @@ mod value;
 mod writer;
 
 pub use ::anyhow::Context as ErrorContext;
+pub use ::anyhow::anyhow;
 pub use as_value::*;
 pub use column::*;
 pub use connection::*;
@@ -52,5 +53,3 @@ pub use ::futures::sink;
 pub type Result<T> = anyhow::Result<T>;
 /// Error type.
 pub type Error = anyhow::Error;
-
-pub use ::indoc;

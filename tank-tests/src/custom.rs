@@ -3,7 +3,7 @@ use std::{
     num::{FpCategory, NonZeroI32},
     sync::LazyLock,
 };
-use tank::{AsValue, Entity, Error, Executor, Result, Value, expr};
+use tank::{AsValue, Entity, Executor, Result, Value, anyhow, expr};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -28,7 +28,7 @@ impl AsValue for FpCategoryWrap {
     where
         Self: Sized,
     {
-        let error = Error::msg(format!("Could not conver `{value:?}` to FpCategory"));
+        let error = anyhow!("Could not conver `{value:?}` to FpCategory");
         let Ok(Value::Varchar(Some(value), ..)) = &value.try_as(&Value::Varchar(None)) else {
             return Err(error);
         };

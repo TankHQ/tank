@@ -1,4 +1,5 @@
-use crate::{Driver, Error, Executor, Result};
+use crate::{Driver, Executor, Result};
+use anyhow::anyhow;
 use std::{
     borrow::Cow,
     future::{self, Future},
@@ -39,11 +40,8 @@ pub trait Connection: Executor {
                     break 'prefix prefix;
                 }
             }
-            let error = Error::msg(format!(
-                "Connection URL must start with: {}",
-                names.join(", ")
-            ));
-            log::error!("{:#}", error);
+            let error = anyhow!("Connection URL must start with: {}", names.join(", "));
+            log::error!("{error:#}");
             return Err(error);
         };
         Ok(result)
@@ -97,7 +95,7 @@ impl<S: Connection> Connection for &mut S {
     where
         Self: Sized,
     {
-        future::ready(Err(Error::msg(
+        future::ready(Err(anyhow!(
             "Cannot disconnect using `&mut Connection`, use the actual object.",
         )))
     }

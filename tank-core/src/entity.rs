@@ -1,8 +1,9 @@
 use crate::{
-    ColumnDef, Context, Dataset, Driver, DynQuery, Error, Executor, Expression, Query,
-    QueryBuilder, RawQuery, Result, Row, RowValues, RowsAffected, TableRef, future::Either,
-    stream::Stream, truncate_long, writer::SqlWriter,
+    ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Query, QueryBuilder,
+    RawQuery, Result, Row, RowValues, RowsAffected, TableRef, future::Either, stream::Stream,
+    truncate_long, writer::SqlWriter,
 };
+use anyhow::anyhow;
 use futures::{FutureExt, StreamExt};
 use log::Level;
 use std::{
@@ -242,10 +243,10 @@ pub trait Entity: AsEntity + Expression {
         for<'s> &'s Self: AsEntity,
     {
         if Self::primary_key_def().is_empty() {
-            let error = Error::msg(
+            let error = anyhow!(
                 "Cannot save an entity without a primary key, it would always result in an insert",
             );
-            log::error!("{:#}", error);
+            log::error!("{error:#}");
             return Either::Left(future::ready(Err(error)));
         }
         let mut query = DynQuery::with_capacity(512);
@@ -260,16 +261,13 @@ pub trait Entity: AsEntity + Expression {
                 && let Some(affected) = result.rows_affected
                 && affected > 2
             {
-                v = Err(Error::msg(format!(
+                v = Err(anyhow!(
                     "The driver returned affected rows: {affected} (expected <= 2)"
-                )));
+                ));
             }
             match v {
                 Ok(_) => Ok(()),
-                Err(e) => {
-                    let e = e.context(context);
-                    Err(e)
-                }
+                Err(e) => Err(e.context(context)),
             }
         }))
     }
@@ -285,10 +283,9 @@ pub trait Entity: AsEntity + Expression {
         Self: Sized,
     {
         if Self::primary_key_def().is_empty() {
-            let error = Error::msg(
-                "Cannot delete an entity without a primary key, it would delete nothing",
-            );
-            log::error!("{:#}", error);
+            let error =
+                anyhow!("Cannot delete an entity without a primary key, it would delete nothing",);
+            log::error!("{error:#}");
             return Either::Left(future::ready(Err(error)));
         }
         Either::Right(
@@ -296,9 +293,9 @@ pub trait Entity: AsEntity + Expression {
                 v.and_then(|v| {
                     if let Some(affected) = v.rows_affected {
                         if affected != 1 {
-                            let error = Error::msg(format!(
+                            let error = anyhow!(
                                 "The query deleted {affected} rows instead of the expected 1"
-                            ));
+                            );
                             log::log!(
                                 if affected == 0 {
                                     Level::Info

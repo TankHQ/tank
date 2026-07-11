@@ -5,6 +5,7 @@ use crate::{
     primitive_date_time_to_duckdb_timestamp, tank_value_to_duckdb_logical_type,
     tank_value_to_duckdb_value, time_to_duckdb_time, u128_to_duckdb_uhugeint,
 };
+use anyhow::anyhow;
 use async_stream::try_stream;
 use flume::Sender;
 use libduckdb_sys::*;
@@ -237,7 +238,7 @@ impl Executor for DuckDBConnection {
                     let error = Error::new(e)
                         .context("Could not create a CString from the query String")
                         .context(context);
-                    log::error!("{:#}", error);
+                    log::error!("{error:#}");
                     return Err(error);
                 }
             };
@@ -251,7 +252,7 @@ impl Executor for DuckDBConnection {
                     error_message_from_ptr(&duckdb_prepare_error(*prepared)).to_string(),
                 )
                 .context(context);
-                log::error!("{:#}", error);
+                log::error!("{error:#}");
                 return Err(error);
             }
             Ok(prepared)
@@ -284,7 +285,7 @@ impl Executor for DuckDBConnection {
             while let Ok(result) = rx.recv_async().await {
                 yield result.map_err(|e| {
                     let error = e.context(context.clone());
-                    log::error!("{:#}", error);
+                    log::error!("{error:#}");
                     error
                 })?;
             }
@@ -349,7 +350,7 @@ impl Executor for DuckDBConnection {
                     let error = Error::msg(
                         error_message_from_ptr(&duckdb_appender_error(*appender)).to_string(),
                     );
-                    log::error!("{:#}", error);
+                    log::error!("{error:#}");
                     return Err(error);
                 }
             }
@@ -434,8 +435,8 @@ impl Executor for DuckDBConnection {
                                 |mut p| duckdb_destroy_value(&mut p),
                             );
                             if value.is_null() {
-                                let error = Error::msg("Could not create list value");
-                                log::error!("{:#}", error);
+                                let error = anyhow!("Could not create list value");
+                                log::error!("{error:#}");
                                 return Err(error);
                             }
                             duckdb_append_value(*appender, *value)
@@ -455,8 +456,8 @@ impl Executor for DuckDBConnection {
                                 |mut p| duckdb_destroy_value(&mut p),
                             );
                             if value.is_null() {
-                                let error = Error::msg("Could not create array value");
-                                log::error!("{:#}", error);
+                                let error = anyhow!("Could not create array value");
+                                log::error!("{error:#}");
                                 return Err(error);
                             }
                             duckdb_append_value(*appender, *value)
@@ -481,8 +482,8 @@ impl Executor for DuckDBConnection {
                                 |mut p| duckdb_destroy_value(&mut p),
                             );
                             if value.is_null() {
-                                let error = Error::msg("Could not create map value");
-                                log::error!("{:#}", error);
+                                let error = anyhow!("Could not create map value");
+                                log::error!("{error:#}");
                                 return Err(error);
                             }
                             duckdb_append_value(*appender, *value)
@@ -500,8 +501,8 @@ impl Executor for DuckDBConnection {
                                 |mut p| duckdb_destroy_value(&mut p),
                             );
                             if value.is_null() {
-                                let error = Error::msg("Could not create struct value");
-                                log::error!("{:#}", error);
+                                let error = anyhow!("Could not create struct value");
+                                log::error!("{error:#}");
                                 return Err(error);
                             }
                             duckdb_append_value(*appender, *value)
@@ -512,7 +513,7 @@ impl Executor for DuckDBConnection {
                         let error = Error::msg(
                             error_message_from_ptr(&duckdb_appender_error(*appender)).to_string(),
                         );
-                        log::error!("{:#}", error);
+                        log::error!("{error:#}");
                         return Err(error);
                     }
                 }
@@ -521,7 +522,7 @@ impl Executor for DuckDBConnection {
                     let error = Error::msg(
                         error_message_from_ptr(&duckdb_appender_error(*appender)).to_string(),
                     );
-                    log::error!("{:#}", error);
+                    log::error!("{error:#}");
                     return Err(error);
                 }
             }
@@ -531,7 +532,7 @@ impl Executor for DuckDBConnection {
                     error_message_from_ptr(&duckdb_appender_error(*appender)).to_string(),
                 )
                 .context("While closing the `duckdb_appender` object");
-                log::error!("{:#}", error);
+                log::error!("{error:#}");
                 return Err(error);
             }
             Ok(RowsAffected {
@@ -553,8 +554,8 @@ impl Connection for DuckDBConnection {
         unsafe {
             let rc = duckdb_create_config(&mut *config);
             if rc != duckdb_state_DuckDBSuccess {
-                let error = Error::msg("Cannot allocate the duckdb_config object").context(context);
-                log::error!("{:#}", error);
+                let error = anyhow!("Cannot allocate the duckdb_config object").context(context);
+                log::error!("{error:#}");
                 return Err(error);
             }
         };
@@ -580,8 +581,8 @@ impl Connection for DuckDBConnection {
                                 "ro" => c"READ_ONLY",
                                 "rw" | "rwc" => c"READ_WRITE",
                                 _ => {
-                                    let error = Error::msg("Unknown value {value:?} for `mode`, expected one of: `ro`, `rw`, `rwc`, `memory`");
-                                    log::warn!("{:#}", error);
+                                    let error = anyhow!("Unknown value {value:?} for `mode`, expected one of: `ro`, `rw`, `rwc`, `memory`");
+                                    log::warn!("{error:#}");
                                     return Err(error);
                                 }
                             }
@@ -596,8 +597,8 @@ impl Connection for DuckDBConnection {
                 }
             };
             if rc != duckdb_state_DuckDBSuccess {
-                let error = Error::msg(format!("Error while setting config `{key}={value}`"));
-                log::warn!("{:#}", error);
+                let error = anyhow!("Error while setting config `{key}={value}`");
+                log::warn!("{error:#}");
                 return Err(error);
             }
         }
@@ -625,8 +626,8 @@ impl Connection for DuckDBConnection {
             connection = CBox::new(ptr::null_mut(), |mut p| duckdb_disconnect(&mut p));
             let rc = duckdb_connect(database, &mut *connection);
             if rc != duckdb_state_DuckDBSuccess {
-                let error = Error::msg(format!("Failed to connect to database url `{url}`"));
-                log::error!("{:#}", error);
+                let error = anyhow!("Failed to connect to database url `{url}`");
+                log::error!("{error:#}");
                 return Err(error);
             };
         };

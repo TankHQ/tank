@@ -1,4 +1,5 @@
 use crate::{RowWrap, bson_is_empty};
+use anyhow::anyhow;
 use mongodb::{
     Namespace,
     bson::{Bson, Document},
@@ -9,7 +10,7 @@ use mongodb::{
     },
 };
 use std::{borrow::Cow, mem};
-use tank_core::{Error, Result, Row, TableRef, truncate_long};
+use tank_core::{Result, Row, TableRef, truncate_long};
 
 #[derive(Default, Debug)]
 pub struct FindOnePayload {
@@ -193,10 +194,10 @@ impl Payload {
                     }
                 }
                 _ => {
-                    return Err(Error::msg(format!(
+                    return Err(anyhow!(
                         "Batches can only contain write operations, cannot add {}",
                         truncate_long!(format!("{payload:?}"), true)
-                    )));
+                    ));
                 }
             },
             _ => {

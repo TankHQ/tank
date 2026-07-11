@@ -94,7 +94,7 @@ impl AsValue for HostPort {
         // Always call try_as before checking the received value
         match value.try_as(&Value::Varchar(None)) {
             Ok(Value::Varchar(Some(v))) => {
-                let context = || Error::msg(format!("Failed to parse HostPort from value `{v}`"));
+                let context = || anyhow!("Failed to parse HostPort from value `{v}`");
                 let (host, port) = v.split_once(':').ok_or_else(context)?;
                 Ok(Self {
                     host: host.to_string(),

@@ -12,7 +12,9 @@ categories.workspace = true
 metrics = ["scylla/metrics"]
 
 [dependencies]
+anyhow.workspace = true
 async-stream.workspace = true
+indoc.workspace = true
 log.workspace = true
 tokio.workspace = true
 openssl = "0"

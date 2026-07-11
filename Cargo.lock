@@ -4097,8 +4097,10 @@ dependencies = [
 name = "tank-duckdb"
 version = "0.39.0"
 dependencies = [
+ "anyhow",
  "async-stream",
  "flume",
+ "indoc",
  "libduckdb-sys",
  "log",
  "rust_decimal",
@@ -4125,6 +4127,7 @@ dependencies = [
 name = "tank-mongodb"
 version = "0.39.0"
 dependencies = [
+ "anyhow",
  "async-stream",
  "log",
  "mongodb",
@@ -4146,6 +4149,7 @@ dependencies = [
 name = "tank-mysql"
 version = "0.39.0"
 dependencies = [
+ "anyhow",
  "async-stream",
  "log",
  "mysql_async",
@@ -4164,6 +4168,7 @@ dependencies = [
 name = "tank-postgres"
 version = "0.39.0"
 dependencies = [
+ "anyhow",
  "async-stream",
  "byteorder",
  "bytes",
@@ -4189,7 +4194,9 @@ dependencies = [
 name = "tank-scylladb"
 version = "0.39.0"
 dependencies = [
+ "anyhow",
  "async-stream",
+ "indoc",
  "log",
  "openssl",
  "rcgen",
@@ -4208,6 +4215,7 @@ dependencies = [
 name = "tank-sqlite"
 version = "0.39.0"
 dependencies = [
+ "anyhow",
  "async-stream",
  "flume",
  "libsqlite3-sys",
@@ -4224,6 +4232,7 @@ dependencies = [
 name = "tank-tests"
 version = "0.39.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "env_logger",
  "log",
@@ -4238,6 +4247,7 @@ dependencies = [
 name = "tank-valkey"
 version = "0.39.0"
 dependencies = [
+ "anyhow",
  "async-stream",
  "log",
  "rcgen",

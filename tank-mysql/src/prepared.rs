@@ -1,11 +1,12 @@
 use crate::ValueWrap;
+use anyhow::anyhow;
 use mysql_async::Statement;
 use std::{
     borrow::Cow,
     fmt::{self, Debug, Display},
     mem,
 };
-use tank_core::{AsValue, Error, Prepared, Result, Value};
+use tank_core::{AsValue, Prepared, Result, Value};
 
 #[derive(Debug)]
 /// Prepared statement wrapper for MySQL/MariaDB.
@@ -54,12 +55,9 @@ impl Prepared for MySQLPrepared {
         if self.params.is_empty() {
             self.params.resize_with(len as _, Default::default);
         }
-        let target = self
-            .params
-            .get_mut(index as usize)
-            .ok_or(Error::msg(format!(
-                "Index {index} cannot be bound, the query has only {len} parameters",
-            )))?;
+        let target = self.params.get_mut(index as usize).ok_or(anyhow!(
+            "Index {index} cannot be bound, the query has only {len} parameters",
+        ))?;
         *target = value.as_value();
         self.index = index + 1;
         Ok(self)

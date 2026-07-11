@@ -103,7 +103,7 @@ impl AsValue for NotesWrap {
             Ok(Value::Varchar(Some(s))) => {
                 Ok(NotesWrap(Notes(s.to_string())))
             }
-            _ => Err(Error::msg("Expected Varchar for Notes")),
+            _ => Err(anyhow!("Expected Varchar for Notes")),
         }
     }
 }

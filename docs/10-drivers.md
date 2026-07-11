@@ -113,7 +113,7 @@ Remove a flag the moment your driver truly supports the capability. Each removed
 
 ## Errors
 Return early with rich context:
-- Wrong URL prefix: immediate `Error::msg("YourDB connection URL must start with yourdb://")`
+- Wrong URL prefix: immediate `anyhow!("YourDB connection URL must start with yourdb://")`
 - Prepare failure: attach truncated query text (`truncate_long!` style) to context
 - Bind failure: specify parameter index and offending value type
 

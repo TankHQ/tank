@@ -1,6 +1,6 @@
+use indoc::indoc;
 use tank_core::{
-    Connection, ConnectionPool, Driver, Executor, Transaction, Value, indoc::indoc,
-    stream::TryStreamExt,
+    Connection, ConnectionPool, Driver, Executor, Transaction, Value, stream::TryStreamExt,
 };
 
 pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {

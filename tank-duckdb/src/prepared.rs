@@ -3,6 +3,7 @@ use crate::{
     interval_to_duckdb_interval, offsetdatetime_to_duckdb_timestamp,
     primitive_date_time_to_duckdb_timestamp, time_to_duckdb_time, u128_to_duckdb_uhugeint,
 };
+use anyhow::anyhow;
 use libduckdb_sys::*;
 use std::{
     ffi::c_void,
@@ -45,9 +46,9 @@ impl Prepared for DuckDBPrepared {
         unsafe {
             let rc = duckdb_clear_bindings(self.statement());
             if rc != duckdb_state_DuckDBSuccess {
-                let e = Error::msg("Could not clear the bindings from DuckDB statement");
-                log::error!("{e:#}");
-                return Err(e);
+                let error = anyhow!("Could not clear the bindings from DuckDB statement");
+                log::error!("{error:#}");
+                return Err(error);
             }
         }
         Ok(self)
@@ -137,9 +138,8 @@ impl Prepared for DuckDBPrepared {
                     duckdb_bind_value(prepared, index, *v)
                 }
                 _ => {
-                    let error =
-                        Error::msg(format!("Cannot use a {:?} as a query parameter", value));
-                    log::error!("{:#}", error);
+                    let error = anyhow!("Cannot use a {:?} as a query parameter", value);
+                    log::error!("{error:#}");
                     return Err(error);
                 }
             };
@@ -147,7 +147,7 @@ impl Prepared for DuckDBPrepared {
                 let error =
                     Error::msg(error_message_from_ptr(&duckdb_prepare_error(prepared)).to_string())
                         .context(format!("While trying to bind the parameter {}", index));
-                log::error!("{:#}", error);
+                log::error!("{error:#}");
                 return Err(error);
             }
             self.index = index + 1;

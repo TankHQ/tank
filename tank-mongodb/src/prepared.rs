@@ -1,10 +1,11 @@
 use crate::{Payload, value_to_bson};
+use anyhow::anyhow;
 use mongodb::bson::{Bson, Document};
 use std::{
     fmt::{self, Display, Formatter, Write},
     mem,
 };
-use tank_core::{AsValue, Error, Prepared, Result, Value};
+use tank_core::{AsValue, Prepared, Result, Value};
 
 #[derive(Default, Debug)]
 pub struct MongoDBPrepared {
@@ -76,7 +77,7 @@ impl Prepared for MongoDBPrepared {
         let target = self
             .params
             .get_mut(index as usize)
-            .ok_or(Error::msg(format!("Index {index} cannot be bound")))?;
+            .ok_or(anyhow!("Index {index} cannot be bound"))?;
         *target = value.as_value();
         self.index = index + 1;
         Ok(self)

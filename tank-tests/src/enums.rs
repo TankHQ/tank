@@ -10,7 +10,7 @@ use std::{
 };
 use tank::{
     AsValue, Driver, DynQuery, Entity, Error, Executor, FixedDecimal, Query, QueryBuilder,
-    QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Value, cols, expr,
+    QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Value, anyhow, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Time, macros::date};
@@ -45,7 +45,7 @@ impl AsValue for SomeEnum {
                 _ => {}
             }
         }
-        Err(Error::msg("Could not decode SomeEnum from value"))
+        Err(anyhow!("Could not decode SomeEnum from value"))
     }
 }
 
@@ -81,7 +81,7 @@ impl AsValue for AnotherEnum {
                 _ => {}
             }
         }
-        Err(Error::msg("Could not decode AnotherEnum from value"))
+        Err(anyhow!("Could not decode AnotherEnum from value"))
     }
 }
 

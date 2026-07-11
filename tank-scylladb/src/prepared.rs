@@ -1,10 +1,11 @@
 use crate::ValueWrap;
+use anyhow::anyhow;
 use scylla::statement::prepared::PreparedStatement;
 use std::{
     fmt::{self, Debug, Display, Formatter},
     mem,
 };
-use tank_core::{AsValue, Error, Prepared, Result};
+use tank_core::{AsValue, Prepared, Result};
 
 /// Prepared statement wrapper for ScyllaDB.
 ///
@@ -46,12 +47,9 @@ impl Prepared for ScyllaDBPrepared {
         if self.params.is_empty() {
             self.params.resize_with(len, Default::default);
         }
-        let target = self
-            .params
-            .get_mut(index as usize)
-            .ok_or(Error::msg(format!(
-                "Index {index} cannot be bound, the query has only {len} parameters",
-            )))?;
+        let target = self.params.get_mut(index as usize).ok_or(anyhow!(
+            "Index {index} cannot be bound, the query has only {len} parameters",
+        ))?;
         *target = value.as_value().into();
         self.index = index + 1;
         Ok(self)

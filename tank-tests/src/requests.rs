@@ -8,7 +8,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tank::{
-    AsValue, Entity, Error, Executor, QueryBuilder, Result, Value, current_timestamp_ms, expr,
+    AsValue, Entity, Executor, QueryBuilder, Result, Value, anyhow, current_timestamp_ms, expr,
     join,
     stream::{StreamExt, TryStreamExt},
 };
@@ -49,13 +49,11 @@ impl AsValue for Method {
                 "put" => return Ok(Method::PUT),
                 "delete" => return Ok(Method::DELETE),
                 _ => {
-                    return Err(Error::msg(format!(
-                        "Unexpected value `{v}` for Method enum"
-                    )));
+                    return Err(anyhow!("Unexpected value `{v}` for Method enum"));
                 }
             }
         }
-        Err(Error::msg("Unexpected value for Method enum"))
+        Err(anyhow!("Unexpected value for Method enum"))
     }
 }
 

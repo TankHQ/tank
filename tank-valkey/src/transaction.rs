@@ -1,7 +1,8 @@
+use anyhow::anyhow;
 use redis::{Cmd, Pipeline};
 use std::future;
 use tank_core::{
-    AsQuery, Error, Executor, Query, QueryResult, Result, Transaction,
+    AsQuery, Executor, Query, QueryResult, Result, Transaction,
     future::Either,
     stream::{self, Stream},
 };
@@ -22,7 +23,7 @@ impl<'c> Executor for ValkeyTransaction<'c> {
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
         let Query::Prepared(prepared) = query.as_mut() else {
-            return Either::Left(stream::once(future::ready(Err(Error::msg(
+            return Either::Left(stream::once(future::ready(Err(anyhow!(
                 "Query is not the expected tank::Query::Prepared variant (Valkey/Redis driver uses prepared)",
             )))));
         };
@@ -40,7 +41,7 @@ impl<'c> Transaction<'c> for ValkeyTransaction<'c> {
         pipeline
             .query_async(&mut self.connection.connection)
             .await
-            .map_err(|e| Error::msg(format!("{e:?}")))
+            .map_err(|e| anyhow!("{e:?}"))
     }
 
     fn rollback(self) -> impl Future<Output = Result<()>> + Send {

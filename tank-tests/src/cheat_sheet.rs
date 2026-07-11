@@ -2,7 +2,7 @@
 use std::{collections::HashMap, pin::pin, sync::LazyLock};
 use tank::{
     AsValue, Connection, Driver, DynQuery, Entity, Error, Executor, QueryBuilder, QueryResult,
-    Result, RowsAffected, SqlWriter, Transaction, Value, cols, expr, join,
+    Result, RowsAffected, SqlWriter, Transaction, Value, anyhow, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -24,7 +24,7 @@ impl AsValue for NotesWrap {
     fn try_from_value(value: Value) -> Result<Self> {
         match value.try_as(&Value::Varchar(None)) {
             Ok(Value::Varchar(Some(s))) => Ok(NotesWrap(Notes(s.to_string()))),
-            _ => Err(Error::msg("Expected Varchar for Notes")),
+            _ => Err(anyhow!("Expected Varchar for Notes")),
         }
     }
 }

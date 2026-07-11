@@ -65,8 +65,8 @@ impl MongoDBSqlWriter {
     pub(crate) fn prepare_query(query: &mut DynQuery, context: &mut Context, payload: Payload) {
         if let Some(prepared) = query.as_prepared::<MongoDBDriver>() {
             if let Err(e) = prepared.add_payload(payload) {
-                let e = e.context("While preparing the query (adding payload)");
-                log::error!("{e:#}",);
+                let error = e.context("While preparing the query (adding payload)");
+                log::error!("{error:#}",);
             };
             prepared.count = context.counter;
         } else {
@@ -162,10 +162,8 @@ impl SqlWriter for MongoDBSqlWriter {
         *target = match value_to_bson(value) {
             Ok(v) => v,
             Err(e) => {
-                log::error!(
-                    "{:#}",
-                    e.context(format!("While writing the value {value:?}"))
-                );
+                let error = e.context(format!("While writing the value {value:?}"));
+                log::error!("{error:#}");
                 return;
             }
         };
@@ -412,10 +410,8 @@ impl SqlWriter for MongoDBSqlWriter {
             let v = match value_to_bson(v) {
                 Ok(v) => v,
                 Err(e) => {
-                    log::error!(
-                        "{:#}",
-                        e.context(format!("While converting value {v:?} to bson"))
-                    );
+                    let error = e.context(format!("While converting value {v:?} to bson"));
+                    log::error!("{error:#}");
                     return;
                 }
             };
@@ -437,10 +433,8 @@ impl SqlWriter for MongoDBSqlWriter {
             let v = match value_to_bson(v) {
                 Ok(v) => v,
                 Err(e) => {
-                    log::error!(
-                        "{:#}",
-                        e.context(format!("While converting value {v:?} to bson"))
-                    );
+                    let error = e.context(format!("While converting value {v:?} to bson"));
+                    log::error!("{error:#}");
                     return;
                 }
             };
