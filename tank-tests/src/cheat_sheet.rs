@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Default, PartialEq, Clone, Debug)]
 pub struct Notes(pub String); // Third party type
 pub struct NotesWrap(pub Notes); // Local wrapper
 
@@ -35,7 +35,7 @@ impl From<NotesWrap> for Notes {
     }
 }
 
-#[derive(Entity, Debug, PartialEq)]
+#[derive(Default, Entity, PartialEq, Debug)]
 #[tank(
     schema = "army",
     name = "deployments",
@@ -174,6 +174,7 @@ pub async fn cheat_sheet(mut connection: &mut impl Connection) -> Result<()> {
         let results = connection
             .fetch(
                 QueryBuilder::new()
+                    // Selecting less columns requires the entity to have the Default trait
                     .select(cols!(EntityExample::callsign, EntityExample::casualties))
                     .from(EntityExample::table())
                     .where_expr(expr!(EntityExample::casualties > 0))
@@ -188,7 +189,10 @@ pub async fn cheat_sheet(mut connection: &mut impl Connection) -> Result<()> {
 
     #[cfg(not(feature = "disable-joins"))]
     {
-        use tank::{Entity, QueryBuilder, cols, expr, join, stream::TryStreamExt};
+        use crate::{Author, AuthorColumnTrait, Book, BookColumnTrait};
+        use tank::{
+            Entity, QueryBuilder, cols, expr, join, stream::StreamExt, stream::TryStreamExt,
+        };
 
         #[derive(Entity, Debug)]
         struct BookWithAuthor {
