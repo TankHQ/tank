@@ -4,7 +4,7 @@
 
 ### Connection pool
 ```rust
-use tank::PoolConfig;
+use tank::{PoolConfig, Driver};
 use tank_postgres::PostgresDriver;
 
 let mut config = PoolConfig::new();
@@ -30,24 +30,14 @@ connection.disconnect().await?;
 
 ### Type-erased pool
 ```rust
-use tank::{ConnectionPool, PoolConfig};
+use std::sync::Arc;
+use tank::{Driver, ConnectionPool, PoolConfig};
 use tank_mysql::MySQLDriver;
 
-let pool: Box<dyn ConnectionPool<MySQLDriver>> = MySQLDriver::mysql()
+let pool: Arc<dyn ConnectionPool<MySQLDriver>> = MySQLDriver::mysql()
     .connect_pool("mysql://user:pass@host:3306/db".into(), PoolConfig::new())
     .await?
-    .into_box();
-```
-
-## Transaction
-
-```rust
-use tank::{Connection, expr, Transaction};
-
-let mut tx = connection.begin().await?;
-entity.save(&mut tx).await?;
-EntityExample::delete_many(&mut tx, expr!(...)).await?;
-tx.commit().await?;
+    .into_arc();
 ```
 
 ## Entity Definition
@@ -82,13 +72,14 @@ The field transient_cache is ignored by the database (not stored in the table)
 
 ### Conversion Types
 
-`conversion_type` lets you use any type as an entity field by routing reads and writes through a local wrapper that implements [`AsValue`](./05-types.md):
+`conversion_type` lets you use any type as an entity field by routing reads and writes through a local wrapper that implements [`AsValue`](./05-types.md), the only requirement is that the type can be cloned:
 
 ```rust
-use tank::{AsValue, Error, Result, Value};
+use anyhow::anyhow;
+use tank::{AsValue, Entity, Result, Value};
 
-#[derive(Debug, PartialEq)]
-pub struct Notes(pub String); // Custom third party type
+#[derive(Debug, PartialEq, Clone)]
+pub struct Notes(pub String); // Third party type
 pub struct NotesWrap(pub Notes); // Local wrapper
 
 impl AsValue for NotesWrap {
@@ -128,13 +119,28 @@ EntityExample::create_table(&mut connection, true, true).await?;
 EntityExample::drop_table(&mut connection, true, false).await?;
 ```
 
+## Transaction
+
+```rust
+use tank::{Connection, Entity, Transaction, expr};
+
+let mut tx = connection.begin().await?;
+entity.save(&mut tx).await?;
+EntityExample::delete_many(&mut tx, expr!(...)).await?;
+tx.commit().await?;
+```
+
+Both transactions and connections can be provided as a executors to run the queries in methods like: `EntityExample::create_table(&mut tx, ...)`.
+
 ## Insert
 
 ```rust
 EntityExample::insert_one(&mut connection, &entity).await?;
-EntityExample::insert_many(&mut connection, &[entity1, entity2, ...]).await?;
-connection.append(&[entity1, entity2, entity3]).await?;
+EntityExample::insert_many(&mut connection, [&entity2, ...]).await?;
+connection.append([&entity3, ...]).await?;
 ```
+
+Insert and append methods accept any container that can be turned into a iterator yielding either a entity value or reference.
 
 ## Save and Delete
 
@@ -150,33 +156,37 @@ entity.delete(&mut connection).await?;
 
 ```rust
 use std::pin::pin;
-use tank::{expr, stream::TryStreamExt};
+use tank::{Entity, expr, stream::TryStreamExt};
 
 let entity = EntityExample::find_one(
     &mut connection,
     entity.primary_key_expr()
 ).await?;
-let mut stream = pin!(EntityExample::find_many(
-    &mut connection,
-    expr!(EntityExample::casualties > 0),
-    Some(100),
-));
-while let Some(entity) = stream.try_next().await? {
-    println!("{}", entity.callsign);
+{
+    let mut stream = pin!(EntityExample::find_many(
+        &mut connection,
+        expr!(EntityExample::casualties > 0),
+        Some(100),
+    ));
+    while let Some(entity) = stream.try_next().await? {
+        println!("{}", entity.callsign);
+    }
 }
-let entities = EntityExample::find_many(
-    &mut connection,
-    expr!(EntityExample::unit_id == uid),
-    None
-)
-    .try_collect::<Vec<EntityExample>>()
+let uid = Uuid::from_str("94f0cbcc-1fce-454e-a6e4-4e3587741808")?;
+let entities: Vec<EntityExample> =
+    EntityExample::find_many(
+        &mut connection,
+        expr!(EntityExample::unit_id == #uid),
+        None
+    )
+    .try_collect()
     .await?;
 ```
 
 ## Delete Many
 
 ```rust
-use tank::expr;
+use tank::{Entity, expr};
 use uuid::Uuid;
 
 EntityExample::delete_many(
@@ -184,7 +194,7 @@ EntityExample::delete_many(
     expr!(EntityExample::casualties == 0)
 ).await?;
 
-let uid = Uuid::new_v4();
+let uid = Uuid::from_str("2ed19568-a1ed-423d-aa81-735e75bb6b14").unwrap();
 EntityExample::delete_many(
     &mut connection,
     expr!(EntityExample::unit_id == #uid)
@@ -197,14 +207,14 @@ EntityExample::delete_many(
 use tank::expr;
 use uuid::Uuid;
 
-expr!(EntityExample::casualties == 0)
-expr!(EntityExample::casualties >= 10)
-expr!(EntityExample::region == "North" || EntityExample::region == "South")
-expr!(EntityExample::callsign == "Alpha%" as LIKE)
-expr!(EntityExample::callsign != "Alpha%" as LIKE)
-expr!(EntityExample::casualties > ?)
-let uid = Uuid::new_v4();
-expr!(EntityExample::unit_id == #uid)
+expr!(EntityExample::casualties == 0);
+expr!(EntityExample::casualties >= 10);
+expr!(EntityExample::region == "North" || EntityExample::region == "South");
+expr!(EntityExample::callsign == "Alpha%" as LIKE);
+expr!(EntityExample::callsign != "Alpha%" as LIKE);
+expr!(EntityExample::casualties > ?);
+let uid = Uuid::new_v4();;
+expr!(EntityExample::unit_id == #uid);
 ```
 
 ## Prepared statement
@@ -217,13 +227,13 @@ let mut query = EntityExample::prepare_find(
     expr!(EntityExample::unit_id == ?),
     Some(50),
 ).await?;
-query.bind(some_unit_id)?;
+query.bind(736621)?;
 let entities = connection.fetch(&mut query)
     .map_ok(|row| EntityExample::from_row(row).unwrap())
     .try_collect::<Vec<EntityExample>>()
     .await?;
 query.clear_bindings()?;
-query.bind(uid2)?;
+query.bind(88221)?;
 ```
 
 ## Query Builder
@@ -252,7 +262,7 @@ The `join!` macro builds the `FROM` clause for `QueryBuilder`. Define a result s
 Supported keywords: `JOIN`, `INNER JOIN`, `LEFT JOIN`, `LEFT OUTER JOIN`, `RIGHT JOIN`, `RIGHT OUTER JOIN`, `FULL OUTER JOIN`, `CROSS JOIN`, `NATURAL JOIN`.
 
 ```rust
-use tank::{cols, expr, join, Entity, stream::TryStreamExt, QueryBuilder};
+use tank::{Entity, QueryBuilder, cols, expr, join, stream::TryStreamExt};
 
 #[derive(Entity, Debug)]
 struct BookWithAuthor {
@@ -307,27 +317,35 @@ let rows = connection.fetch(
 ```rust
 use indoc::indoc;
 use std::pin::pin;
-use tank::{stream::TryStreamExt, QueryResult};
+use tank::{QueryResult, stream::TryStreamExt};
 
-let mut stream = pin!(connection.run(indoc! {"
+{
+    let mut stream = pin!(connection.run(indoc! {r#"
     SELECT unit_id, callsign
     FROM army.deployments
     WHERE casualties > 0
-"}));
-while let Some(result) = stream.try_next().await? {
-    match result {
-        QueryResult::Row(row) => println!("{:?}", row.values),
-        QueryResult::Affected(v) => println!("affected: {}", v.rows_affected),
+"#}));
+    while let Some(result) = stream.try_next().await? {
+        match result {
+            QueryResult::Row(row) => {
+                println!("{:?}", row.values);
+            }
+            QueryResult::Affected(v) => {
+                println!("affected: {:?}", v.rows_affected);
+            }
+        }
     }
 }
 let rows: Vec<_> = connection
     .fetch("SELECT * FROM army.deployments")
     .try_collect()
     .await?;
-let affected = connection.execute(indoc! {"
-    UPDATE army.deployments SET casualties = 0
-    WHERE region = 'North'"
-}).await?;
+let affected = connection
+    .execute(indoc! {r#"
+        UPDATE army.deployments SET casualties = 0
+        WHERE region = 'North'
+    "#})
+    .await?;
 ```
 
 ### Prepared

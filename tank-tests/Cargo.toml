@@ -12,6 +12,7 @@ categories.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 env_logger.workspace = true
+indoc.workspace = true
 log.workspace = true
 rust_decimal.workspace = true
 tank = { workspace = true, features = ["chrono"] }

@@ -115,9 +115,6 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     do_test!(orders);
     do_test!(times);
     do_test!(conditions);
-    do_test!(readme).expect("Readme examples test did not succeed");
-    do_test!(operations).expect("Operations examples test did not succeed");
-    do_test!(advanced_operations).expect("Advanced operations examples test did not succeed");
     do_test!(metrics);
     do_test!(math);
     do_test!(ambiguity);
@@ -128,7 +125,10 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     do_test!(requests);
     do_test!(keywords);
     do_test!(identifiers);
-    do_test!(cheat_sheet);
+    do_test!(readme).expect("Readme examples test did not succeed");
+    do_test!(operations).expect("Operations examples test did not succeed");
+    do_test!(advanced_operations).expect("Advanced operations examples test did not succeed");
+    do_test!(cheat_sheet).expect("Cheat Sheet examples test did not succeed");
 }
 
 #[macro_export]

@@ -57,7 +57,7 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     do_test!(enums);
     do_test!(custom);
     do_test!(identifiers);
-    do_test!(cheat_sheet);
+    do_test!(cheat_sheet).expect("Cheat Sheet examples test did not succeed");
 }
 
 struct TestcontainersLogConsumer;
