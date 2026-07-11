@@ -24,7 +24,7 @@ impl<'c> MySQLTransaction<'c> {
                     .start_transaction(TxOpts::new())
                     .await
                     .map_err(|e| {
-                        log::error!("{:#}", e);
+                        log::error!("{e:#}");
                         e
                     })?,
                 driver,

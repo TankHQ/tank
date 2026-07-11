@@ -13,6 +13,7 @@ default = ["bundled"]
 bundled = ["libduckdb-sys/bundled"]
 
 [dependencies]
+anyhow.workspace = true
 async-stream.workspace = true
 flume = "0"
 libduckdb-sys = "1"

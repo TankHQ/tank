@@ -245,7 +245,7 @@ pub trait Entity: AsEntity + Expression {
             let error = Error::msg(
                 "Cannot save an entity without a primary key, it would always result in an insert",
             );
-            log::error!("{:#}", error);
+            log::error!("{error:#}");
             return Either::Left(future::ready(Err(error)));
         }
         let mut query = DynQuery::with_capacity(512);
@@ -266,10 +266,7 @@ pub trait Entity: AsEntity + Expression {
             }
             match v {
                 Ok(_) => Ok(()),
-                Err(e) => {
-                    let e = e.context(context);
-                    Err(e)
-                }
+                Err(e) => Err(e.context(context)),
             }
         }))
     }
@@ -288,7 +285,7 @@ pub trait Entity: AsEntity + Expression {
             let error = Error::msg(
                 "Cannot delete an entity without a primary key, it would delete nothing",
             );
-            log::error!("{:#}", error);
+            log::error!("{error:#}");
             return Either::Left(future::ready(Err(error)));
         }
         Either::Right(

@@ -65,8 +65,8 @@ impl MongoDBSqlWriter {
     pub(crate) fn prepare_query(query: &mut DynQuery, context: &mut Context, payload: Payload) {
         if let Some(prepared) = query.as_prepared::<MongoDBDriver>() {
             if let Err(e) = prepared.add_payload(payload) {
-                let e = e.context("While preparing the query (adding payload)");
-                log::error!("{e:#}",);
+                let error = e.context("While preparing the query (adding payload)");
+                log::error!("{error:#}",);
             };
             prepared.count = context.counter;
         } else {

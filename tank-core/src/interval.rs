@@ -1,4 +1,5 @@
-use crate::{Error, Result};
+use crate::Result;
+use anyhow::anyhow;
 use std::{
     hash::Hash,
     ops::{Add, AddAssign, Neg, Sub, SubAssign},
@@ -30,7 +31,7 @@ impl IntervalUnit {
             32 => IntervalUnit::Day,
             64 => IntervalUnit::Month,
             128 => IntervalUnit::Year,
-            _ => return Err(Error::msg("Invalid mask, it must be a single bit on")),
+            _ => return Err(anyhow!("Invalid mask, it must be a single bit on")),
         })
     }
 }

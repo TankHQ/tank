@@ -4097,6 +4097,7 @@ dependencies = [
 name = "tank-duckdb"
 version = "0.39.0"
 dependencies = [
+ "anyhow",
  "async-stream",
  "flume",
  "libduckdb-sys",
@@ -4125,6 +4126,7 @@ dependencies = [
 name = "tank-mongodb"
 version = "0.39.0"
 dependencies = [
+ "anyhow",
  "async-stream",
  "log",
  "mongodb",
@@ -4164,6 +4166,7 @@ dependencies = [
 name = "tank-postgres"
 version = "0.39.0"
 dependencies = [
+ "anyhow",
  "async-stream",
  "byteorder",
  "bytes",

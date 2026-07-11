@@ -3,7 +3,7 @@ use crate::{
     Error, FixedDecimal, Interval, Result, Value, consume_while, extract_number, truncate_long,
 };
 use crate::{month_to_number, number_to_month};
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 #[cfg(feature = "chrono")]
 use chrono::{Datelike, Timelike};
 use rust_decimal::{Decimal, prelude::FromPrimitive, prelude::ToPrimitive};
@@ -130,7 +130,7 @@ macro_rules! impl_as_value {
                         if v.is_finite() && v.fract() == 0.0 {
                             return Self::try_from_value(Value::Int64(Some(v as _)))
                         }
-                        Err(Error::msg(format!("Value {v}: f64 does not fit into a integer")))
+                        Err(anyhow!("Value {v}: f64 does not fit into a integer"))
                     },
                     // This is needed to allow integer keys in maps, in some drivers the maps keys are strings only
                     Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v).with_context(|| {
@@ -181,7 +181,7 @@ impl_as_value!(
     Value::Int16(Some(v), ..) => {
         let result = v as i8;
         if result as i16 != v {
-            return Err(Error::msg(format!("Value {v}: i16 is out of range for i8")));
+            return Err(anyhow!("Value {v}: i16 is out of range for i8"));
         }
         Ok(result)
     },
@@ -192,7 +192,7 @@ impl_as_value!(
     Value::Int16,
     Value::Int8(Some(v), ..) => Ok(v as _),
     Value::UInt16(Some(v), ..) => {
-        i16::try_from(v).map_err(|_| Error::msg(format!("Value {v}: u16 is out of range for i16")))
+        i16::try_from(v).map_err(|_| anyhow!("Value {v}: u16 is out of range for i16"))
     },
     Value::UInt8(Some(v), ..) => Ok(v as _),
 );
@@ -203,12 +203,12 @@ impl_as_value!(
     Value::Int16(Some(v), ..) => Ok(v as _),
     Value::Int8(Some(v), ..) => Ok(v as _),
     Value::UInt32(Some(v), ..) => {
-        i32::try_from(v).map_err(|_| Error::msg(format!("Value {v}: u32 is out of range for i32")))
+        i32::try_from(v).map_err(|_| anyhow!("Value {v}: u32 is out of range for i32"))
     },
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = Error::msg(format!("Value {v}: Decimal does not fit into i32"));
+        let error = anyhow!("Value {v}: Decimal does not fit into i32");
         if !v.is_integer() {
             return Err(error.context("The value is not an integer"));
         }
@@ -223,13 +223,13 @@ impl_as_value!(
     Value::Int16(Some(v), ..) => Ok(v as _),
     Value::Int8(Some(v), ..) => Ok(v as _),
     Value::UInt64(Some(v), ..) => {
-        i64::try_from(v).map_err(|_| Error::msg(format!("Value {v}: u64 is out of range for i64")))
+        i64::try_from(v).map_err(|_| anyhow!("Value {v}: u64 is out of range for i64"))
     },
     Value::UInt32(Some(v), ..) => Ok(v as _),
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = Error::msg(format!("Value {v}: Decimal does not fit into i64"));
+        let error = anyhow!("Value {v}: Decimal does not fit into i64");
         if !v.is_integer() {
             return Err(error.context("The value is not an integer"));
         }
@@ -245,14 +245,14 @@ impl_as_value!(
     Value::Int16(Some(v), ..) => Ok(v as _),
     Value::Int8(Some(v), ..) => Ok(v as _),
     Value::UInt128(Some(v), ..) => {
-        i128::try_from(v).map_err(|_| Error::msg(format!("Value {v}: u128 is out of range for i128")))
+        i128::try_from(v).map_err(|_| anyhow!("Value {v}: u128 is out of range for i128"))
     },
     Value::UInt64(Some(v), ..) => Ok(v as _),
     Value::UInt32(Some(v), ..) => Ok(v as _),
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = Error::msg(format!("Value {v}: Decimal does not fit into i128"));
+        let error = anyhow!("Value {v}: Decimal does not fit into i128");
         if !v.is_integer() {
             return Err(error.context("The value is not an integer"));
         }
@@ -267,13 +267,13 @@ impl_as_value!(
     Value::Int16(Some(v), ..) => Ok(v as _),
     Value::Int8(Some(v), ..) => Ok(v as _),
     Value::UInt64(Some(v), ..) => {
-        isize::try_from(v).map_err(|_| Error::msg(format!("Value {v}: u64 is out of range for isize")))
+        isize::try_from(v).map_err(|_| anyhow!("Value {v}: u64 is out of range for isize"))
     },
     Value::UInt32(Some(v), ..) => Ok(v as _),
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = Error::msg(format!("Value {v}: Decimal does not fit into i64"));
+        let error = anyhow!("Value {v}: Decimal does not fit into i64");
         if !v.is_integer() {
             return Err(error.context("The value is not an integer"));
         }
@@ -285,7 +285,7 @@ impl_as_value!(
     u8,
     Value::UInt8,
     Value::Int16(Some(v), ..) => {
-        v.to_u8().ok_or(Error::msg(format!("Value {v}: i16 is out of range for u8")))
+        v.to_u8().ok_or(anyhow!("Value {v}: i16 is out of range for u8"))
     }
 );
 
@@ -296,7 +296,7 @@ impl_as_value!(
     Value::Int32(Some(v), ..) => {
         let result = v as u16;
         if result as i32 != v {
-            return Err(Error::msg(format!("Value {v}: i32 is out of range for u16")));
+            return Err(anyhow!("Value {v}: i32 is out of range for u16"));
         }
         Ok(result)
     }
@@ -316,7 +316,7 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = Error::msg(format!("Value {v}: Decimal does not fit into u64"));
+        let error = anyhow!("Value {v}: Decimal does not fit into u64");
         if !v.is_integer() {
             return Err(error.context("The value is not an integer"));
         }
@@ -332,7 +332,7 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = Error::msg(format!("Value {v}: Decimal does not fit into u128"));
+        let error = anyhow!("Value {v}: Decimal does not fit into u128");
         if !v.is_integer() {
             return Err(error.context("The value is not an integer"));
         }
@@ -347,7 +347,7 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = Error::msg(format!("Value {v}: Decimal does not fit into u64"));
+        let error = anyhow!("Value {v}: Decimal does not fit into u64");
         if !v.is_integer() {
             return Err(error.context("The value is not an integer"));
         }
@@ -431,7 +431,7 @@ impl_as_value!(
         match input {
             x if x.eq_ignore_ascii_case("true") || x.eq_ignore_ascii_case("t") || x.eq("1") => Ok(true),
             x if x.eq_ignore_ascii_case("false") || x.eq_ignore_ascii_case("f") || x.eq("0") => Ok(false),
-            _  => return Err(Error::msg(format!("Cannot parse boolean from `{input}`")))
+            _  => return Err(anyhow!("Cannot parse boolean from `{input}`"))
         }
     },
     Value::Int8(Some(v), ..) => Ok(v != 0),
@@ -452,7 +452,7 @@ impl_as_value!(
         } else if n == Some(1) {
             Ok(true)
         } else {
-            Err(Error::msg(format!("Cannot convert json number `{v:?}` to bool")))
+            Err(anyhow!("Cannot convert json number `{v:?}` to bool"))
         }
     },
 );
@@ -465,7 +465,7 @@ impl_as_value!(
     Value::Decimal(Some(v), ..) => Ok(v.try_into()?),
     Value::Json(Some(serde_json::Value::Number(v)), ..) => {
         let Some(v) = v.as_f64() else {
-            return Err(Error::msg(format!("Cannot convert json number `{v:?}` to f32")));
+            return Err(anyhow!("Cannot convert json number `{v:?}` to f32"));
         };
         Ok(v as _)
     }
@@ -479,7 +479,7 @@ impl_as_value!(
     Value::Decimal(Some(v), ..) => Ok(v.try_into()?),
     Value::Json(Some(serde_json::Value::Number(v)), ..) => {
         let Some(v) = v.as_f64() else {
-            return Err(Error::msg(format!("Cannot convert json number `{v:?}` to f64")));
+            return Err(anyhow!("Cannot convert json number `{v:?}` to f64"));
         };
         Ok(v)
     }
@@ -490,7 +490,7 @@ impl_as_value!(
     Value::Char,
     |input: &str| {
         if input.chars().count() != 1 {
-            return Err(Error::msg(format!("Cannot convert `{input:?}` to char")))
+            return Err(anyhow!("Cannot convert `{input:?}` to char"))
         }
         Ok(input.chars().next().expect("Should have one character"))
     },
@@ -789,7 +789,7 @@ impl_as_value!(
     Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
     Value::Timestamp(Some(v), ..) => {
         if v.time() != time::Time::MIDNIGHT {
-            return Err(Error::msg(format!("Timestamp {v:?} cannot be converted to date because the time part is not midnight")))
+            return Err(anyhow!("Timestamp {v:?} cannot be converted to date because the time part is not midnight"))
         }
         Ok(v.date())
     },
@@ -814,7 +814,7 @@ impl_as_value!(
     Value::Interval(Some(v), ..) => {
         let (h, m, s, ns) = v.as_hmsns();
         time::Time::from_hms_nano(h as _, m, s, ns,)
-            .map_err(|e| Error::msg(format!("Cannot convert interval `{v:?}` to time: {e:?}")))
+            .map_err(|e| anyhow!("Cannot convert interval `{v:?}` to time: {e:?}"))
     },
     Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
@@ -1029,7 +1029,7 @@ impl AsValue for chrono::DateTime<chrono::FixedOffset> {
                 let Ok(offset) =
                     time::UtcOffset::from_whole_seconds(self.offset().fix().local_minus_utc())
                 else {
-                    break 'value Err(Error::msg("Failed to convert the offset part from"));
+                    break 'value Err(anyhow!("Failed to convert the offset part from"));
                 };
                 Ok(time::OffsetDateTime::new_in_offset(date, time, offset))
             }
@@ -1076,7 +1076,7 @@ impl AsValue for chrono::DateTime<chrono::Utc> {
         let secs = utc_odt.unix_timestamp();
         let nanos = utc_odt.nanosecond();
         Self::from_timestamp(secs, nanos)
-            .ok_or_else(|| Error::msg("Timestamp out of range for chrono::DateTime<Utc>"))
+            .ok_or_else(|| anyhow!("Timestamp out of range for chrono::DateTime<Utc>"))
     }
 }
 
@@ -1100,10 +1100,12 @@ impl AsValue for Decimal {
             Value::UInt64(Some(v), ..) => Decimal::from_u64(v).ok_or(Error::msg(format!(
                 "Value {v}: u64 does not fit into Decimal"
             ))),
-            Value::Float32(Some(v), ..) => Ok(Decimal::from_f32(v)
-                .ok_or(Error::msg(format!("Cannot convert {value:?} to Decimal")))?),
-            Value::Float64(Some(v), ..) => Ok(Decimal::from_f64(v)
-                .ok_or(Error::msg(format!("Cannot convert {value:?} to Decimal")))?),
+            Value::Float32(Some(v), ..) => {
+                Ok(Decimal::from_f32(v).ok_or(anyhow!("Cannot convert {value:?} to Decimal"))?)
+            }
+            Value::Float64(Some(v), ..) => {
+                Ok(Decimal::from_f64(v).ok_or(anyhow!("Cannot convert {value:?} to Decimal"))?)
+            }
             Value::Json(Some(serde_json::Value::Number(v)), ..) => {
                 if let Some(v) = v.as_f64()
                     && let Some(v) = Decimal::from_f64(v)
@@ -1117,7 +1119,7 @@ impl AsValue for Decimal {
             }
             Value::Unknown(Some(v), ..) => Self::parse(&v),
             Value::Varchar(Some(v)) => Self::parse(&v),
-            _ => Err(Error::msg(format!("Cannot convert {value:?} to Decimal"))),
+            _ => Err(anyhow!("Cannot convert {value:?} to Decimal")),
         }
     }
     fn parse(input: impl AsRef<str>) -> Result<Self> {

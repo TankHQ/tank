@@ -3,6 +3,7 @@ use crate::{
     DropDatabasePayload, FindManyPayload, FindOnePayload, InsertManyPayload, InsertOnePayload,
     MongoDBDriver, MongoDBTransaction, Payload, RowWrap, UpsertPayload,
 };
+use anyhow::anyhow;
 use async_stream::try_stream;
 use mongodb::{Client, ClientSession, Collection, Database, bson::Bson};
 use std::{borrow::Cow, future, i64};
@@ -64,8 +65,8 @@ impl Connection for MongoDBConnection {
         let database = client.database(match url.path_segments().and_then(|mut v| v.next()) {
             Some(v) if !v.is_empty() => v,
             _ => {
-                let error = Error::msg("Empty database name").context(context);
-                log::error!("{:#}", error);
+                let error = anyhow!("Empty database name").context(context);
+                log::error!("{error:#}");
                 return Err(error);
             }
         });
@@ -79,7 +80,7 @@ impl Connection for MongoDBConnection {
             end_connection_session = true;
         }
         let Some(session) = &mut self.session else {
-            return Err(Error::msg("Expected the connection to be a session by now"));
+            return Err(anyhow!("Expected the connection to be a session by now"));
         };
         session.start_transaction().await?;
         Ok(MongoDBTransaction::new(self, end_connection_session))
@@ -93,7 +94,7 @@ impl Executor for MongoDBConnection {
         &mut self,
         _query: String,
     ) -> impl Future<Output = Result<Query<MongoDBDriver>>> + Send {
-        future::ready(Err(Error::msg("MongoDB does not support prepare")))
+        future::ready(Err(anyhow!("MongoDB does not support prepare")))
     }
 
     fn run<'s>(
@@ -145,7 +146,7 @@ impl Executor for MongoDBConnection {
                         }
                         Ok(None) => {}
                         Err(e) => {
-                            Err(Error::msg(format!("{e}"))).context(make_context!(payload))?;
+                            Err(anyhow!("{e}")).context(make_context!(payload))?;
                             return;
                         }
                     }

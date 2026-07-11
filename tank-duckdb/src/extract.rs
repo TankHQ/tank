@@ -1,4 +1,5 @@
 use crate::{cbox::CBox, duckdb_hugeint_to_i128, duckdb_uhugeint_to_u128};
+use anyhow::anyhow;
 use libduckdb_sys::*;
 use rust_decimal::Decimal;
 use std::{
@@ -186,8 +187,8 @@ pub(crate) fn extract_value(
                                 *(data as *const i128).add(row) as i128
                             }
                             _ => {
-                                let error = Error::msg("Invalid internal decimal storage type");
-                                log::error!("{:#}", error);
+                                let error = anyhow!("Invalid internal decimal storage type");
+                                log::error!("{error:#}");
                                 return Err(error);
                             }
                         };
@@ -379,7 +380,7 @@ pub(crate) fn extract_value(
                 let error = Error::msg(format!(
                     "Invalid type value: {type_id}, must be one of the expected DUCKDB_TYPE_DUCKDB_TYPE_* variant",
                 ));
-                log::error!("{:#}", error);
+                log::error!("{error:#}");
                 return Err(error);
             }
         };

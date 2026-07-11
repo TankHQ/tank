@@ -52,7 +52,7 @@ impl Connection for MySQLConnection {
                     ca_path.to_string_lossy()
                 ))
                 .context(context);
-                log::error!("{:#}", error);
+                log::error!("{error:#}");
                 return Err(error);
             }
             let certs = vec![ca_path.into()];
@@ -66,7 +66,7 @@ impl Connection for MySQLConnection {
                     ssl_cert.to_string_lossy()
                 ))
                 .context(context);
-                log::error!("{:#}", error);
+                log::error!("{error:#}");
                 return Err(error);
             }
             let mut identity = ClientIdentity::new(ssl_cert.into());

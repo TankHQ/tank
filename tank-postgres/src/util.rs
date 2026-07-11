@@ -1,4 +1,5 @@
 use crate::{ValueWrap, interval_wrap::IntervalWrap};
+use anyhow::anyhow;
 use async_stream::try_stream;
 use postgres_protocol::types::{ArrayDimension, array_from_sql};
 use postgres_types::{FromSql, Kind, Type};
@@ -123,9 +124,7 @@ where
                             .collect::<tank_core::RowLabels>(),
                     );
                     if columns.is_empty() {
-                        log::warn!(
-                            "The row description contains no columns, this can be expected but it can also be symthon of a wrong query"
-                        )
+                        log::warn!("The row description contains no columns, this can be expected but it can also be symthon of a wrong query")
                     }
                 }
                 _ => {}
@@ -192,7 +191,7 @@ pub(crate) fn extract_value(
                 Value::List(None, Box::new(ty))
             }
         }
-        _ => return Err(tank_core::Error::msg(format!("Unexpected kind {kind:?}")).into()),
+        _ => return Err(tank_core::anyhow!("Unexpected kind {kind:?}").into()),
     })
 }
 

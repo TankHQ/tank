@@ -83,7 +83,7 @@ impl Executor for ValkeyConnection {
                 redis::Value::Array(arr) => arr,
                 redis::Value::Nil => vec![],
                 redis::Value::ServerError(err) => {
-                    Err(Error::msg(format!("Valkey/Redis server error: {err}")))
+                    Err(anyhow!("Valkey/Redis server error: {err}"))
                         .with_context(context)?;
                     return;
                 }

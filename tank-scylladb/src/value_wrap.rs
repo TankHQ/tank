@@ -288,7 +288,7 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                         std::io::ErrorKind::InvalidData,
                         format!("Unexpected type {ty:?} from ScyllaDB"),
                     ));
-                    log::error!("{:#}", error);
+                    log::error!("{error:#}");
                     return Err(error);
                 }
             },

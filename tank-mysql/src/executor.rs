@@ -61,7 +61,7 @@ impl<T: mysql_async::prelude::Queryable + Send> Executor for MySQLQueryable<T> {
         }
         .map_err(move |e: Error| {
             let error = e.context(context.clone());
-            log::error!("{:#}", error);
+            log::error!("{error:#}");
             error
         })
     }

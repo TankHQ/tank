@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use mongodb::bson::{self, Binary, Bson, Document, spec::BinarySubtype};
 use std::{borrow::Cow, cell::OnceCell, collections::HashMap};
 use tank_core::{AsValue, Error, Result, Value};
@@ -126,10 +127,10 @@ pub fn bson_to_value(bson: &Bson) -> Result<Value> {
                 if k_type.get().is_none() {
                     k_type
                         .set(k.as_null())
-                        .map_err(|_| Error::msg("Could not set the key"))?;
+                        .map_err(|_| anyhow!("Could not set the key"))?;
                     v_type
                         .set(v.as_null())
-                        .map_err(|_| Error::msg("Could not set the value"))?;
+                        .map_err(|_| anyhow!("Could not set the value"))?;
                 }
                 map.insert(k, v);
             }
@@ -146,7 +147,7 @@ pub fn bson_to_value(bson: &Bson) -> Result<Value> {
             u128::from_be_bytes(padded).as_value()
         }
         _ => {
-            return Err(Error::msg(format!("Unexpected Bson type: {bson:?}")));
+            return Err(anyhow!("Unexpected Bson type: {bson:?}"));
         }
     })
 }

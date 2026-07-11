@@ -52,10 +52,10 @@ impl Prepared for SQLitePrepared {
         unsafe {
             let rc = sqlite3_reset(self.statement());
             let error = || {
-                let e = Error::msg(self.last_error())
+                let error = Error::msg(self.last_error())
                     .context("Could not clear the bindings from Sqlite statement");
-                log::error!("{e:#}");
-                e
+                log::error!("{error:#}");
+                error
             };
             if rc != SQLITE_OK {
                 return Err(error());
@@ -116,7 +116,7 @@ impl Prepared for SQLitePrepared {
                     statement,
                     index,
                     v.to_f64().ok_or_else(|| {
-                        Error::msg(format!("Cannot bind the Decimal value `{v}` to f64"))
+                        anyhow!("Cannot bind the Decimal value `{v}` to f64")
                     })?,
                 ),
                 Value::Char(Some(v), ..) => {
@@ -216,7 +216,7 @@ impl Prepared for SQLitePrepared {
                 _ => {
                     let error =
                         Error::msg(format!("Cannot use a {:?} as a query parameter", value));
-                    log::error!("{:#}", error);
+                    log::error!("{error:#}");
                     return Err(error);
                 }
             };
@@ -228,7 +228,7 @@ impl Prepared for SQLitePrepared {
                         "Cannot bind parameter {index} to query:\n{}",
                         truncate_long!(CStr::from_ptr(query).to_string_lossy())
                     ));
-                log::error!("{:#}", error);
+                log::error!("{error:#}");
                 return Err(error);
             }
             self.index = index as u64 + 1;

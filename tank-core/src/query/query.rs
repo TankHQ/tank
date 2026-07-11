@@ -1,4 +1,5 @@
-use crate::{AsValue, Driver, DynQuery, Error, Prepared, Result, Row, RowsAffected, truncate_long};
+use crate::{AsValue, Driver, DynQuery, Prepared, Result, Row, RowsAffected, truncate_long};
+use anyhow::anyhow;
 use std::fmt::{self, Display};
 
 #[derive(Default, Clone, Debug)]
@@ -44,7 +45,7 @@ impl<D: Driver> Query<D> {
     /// Error if not prepared.
     pub fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         let Self::Prepared(prepared) = self else {
-            return Err(Error::msg("Cannot bind a raw query"));
+            return Err(anyhow!("Cannot bind a raw query"));
         };
         prepared.bind(value)?;
         Ok(self)
@@ -54,7 +55,7 @@ impl<D: Driver> Query<D> {
     /// Error if not prepared.
     pub fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
         let Self::Prepared(prepared) = self else {
-            return Err(Error::msg("Cannot bind index of a raw query"));
+            return Err(anyhow!("Cannot bind index of a raw query"));
         };
         prepared.bind_index(value, index)?;
         Ok(self)

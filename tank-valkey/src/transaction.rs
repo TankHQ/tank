@@ -40,7 +40,7 @@ impl<'c> Transaction<'c> for ValkeyTransaction<'c> {
         pipeline
             .query_async(&mut self.connection.connection)
             .await
-            .map_err(|e| Error::msg(format!("{e:?}")))
+            .map_err(|e| anyhow!("{e:?}"))
     }
 
     fn rollback(self) -> impl Future<Output = Result<()>> + Send {

@@ -121,7 +121,7 @@ impl Executor for ScyllaDBConnection {
         }
         .map_err(move |e: Error| {
             let error = e.context(context.clone());
-            log::error!("{:#}", error);
+            log::error!("{error:#}");
             error
         })
     }
@@ -156,7 +156,7 @@ impl Executor for ScyllaDBConnection {
         }
         .map_err(move |e: Error| {
             let error = e.context(context.clone());
-            log::error!("{:#}", error);
+            log::error!("{error:#}");
             error
         })
     }
@@ -194,11 +194,11 @@ impl Connection for ScyllaDBConnection {
                     match $value {
                         Ok(v) => v,
                         Err(e) => {
-                            let e = Error::msg(format!("{e}"))
+                            let error = anyhow!("{e}")
                                 .context(format!("URL param `{k} = {v}`"))
                                 .context(context);
-                            log::error!("{e:#}");
-                            return Err(e);
+                            log::error!("{error:#}");
+                            return Err(error);
                         }
                     }
                 };
@@ -337,10 +337,10 @@ impl Connection for ScyllaDBConnection {
                     ));
                 }
                 k => {
-                    let e = Error::msg(format!("Unexpected parameter in connection url: `{k}`"))
-                        .context(context);
-                    log::error!("{e:#}");
-                    return Err(e);
+                    let error =
+                        anyhow!("Unexpected parameter in connection url: `{k}`").context(context);
+                    log::error!("{error:#}");
+                    return Err(error);
                 }
             }
         }
@@ -354,7 +354,7 @@ impl Connection for ScyllaDBConnection {
 
         let session = tokio::task::spawn(async move { session.build().await })
             .await
-            .map_err(|e| Error::msg(format!("ScyllaDB session build panicked: {e}")))?
+            .map_err(|e| anyhow!("ScyllaDB session build panicked: {e}"))?
             .map_err(Error::new)?;
         Ok(ScyllaDBConnection { session })
     }

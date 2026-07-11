@@ -43,7 +43,7 @@ pub trait Connection: Executor {
                 "Connection URL must start with: {}",
                 names.join(", ")
             ));
-            log::error!("{:#}", error);
+            log::error!("{error:#}");
             return Err(error);
         };
         Ok(result)

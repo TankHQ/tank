@@ -55,7 +55,7 @@ impl AsValue for Method {
                 }
             }
         }
-        Err(Error::msg("Unexpected value for Method enum"))
+        Err(anyhow!("Unexpected value for Method enum"))
     }
 }
 

@@ -192,7 +192,7 @@ impl Executor for SQLiteConnection {
                 let error =
                     Error::msg(error_message_from_ptr(&sqlite3_errmsg(connection)).to_string())
                         .context(context);
-                log::error!("{:#}", error);
+                log::error!("{error:#}");
                 return Err(error);
             }
             if tail != ptr::null() && *tail != '\0' as i8 {
@@ -201,7 +201,7 @@ impl Executor for SQLiteConnection {
                     CStr::from_ptr(tail).to_str().unwrap_or("unprintable")
                 ))
                 .context(context);
-                log::error!("{:#}", error);
+                log::error!("{error:#}");
                 return Err(error);
             }
             Ok(statement)
@@ -239,7 +239,7 @@ impl Executor for SQLiteConnection {
             while let Ok(result) = rx.recv_async().await {
                 yield result.map_err(|e| {
                     let error = e.context(context.clone());
-                    log::error!("{:#}", error);
+                    log::error!("{error:#}");
                     error
                 })?;
             }
@@ -273,7 +273,7 @@ impl Connection for SQLiteConnection {
                 let error =
                     Error::msg(error_message_from_ptr(&sqlite3_errmsg(*connection)).to_string())
                         .context(context);
-                log::error!("{:#}", error);
+                log::error!("{error:#}");
                 return Err(error);
             }
         }
