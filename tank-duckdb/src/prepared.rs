@@ -138,8 +138,7 @@ impl Prepared for DuckDBPrepared {
                     duckdb_bind_value(prepared, index, *v)
                 }
                 _ => {
-                    let error =
-                        Error::msg(format!("Cannot use a {:?} as a query parameter", value));
+                    let error = anyhow!("Cannot use a {:?} as a query parameter", value);
                     log::error!("{error:#}");
                     return Err(error);
                 }

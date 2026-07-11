@@ -1,4 +1,5 @@
 use crate::{CBox, sql_writer::SQLiteSqlWriter};
+use anyhow::anyhow;
 use libsqlite3_sys::*;
 use rust_decimal::prelude::ToPrimitive;
 use std::{
@@ -85,9 +86,9 @@ impl Prepared for SQLitePrepared {
                 Value::Int64(Some(v), ..) => sqlite3_bind_int64(statement, index, v),
                 Value::Int128(Some(v), ..) => {
                     if v as sqlite3_int64 as i128 != v {
-                        return Err(Error::msg(format!(
+                        return Err(anyhow!(
                             "Cannot bind i128 value `{v}` into sqlite integer because it's out of bounds"
-                        )));
+                        ));
                     }
                     sqlite3_bind_int64(statement, index, v as sqlite3_int64)
                 }
@@ -96,17 +97,17 @@ impl Prepared for SQLitePrepared {
                 Value::UInt32(Some(v), ..) => sqlite3_bind_int(statement, index, v as c_int),
                 Value::UInt64(Some(v), ..) => {
                     if v as sqlite3_int64 as u64 != v {
-                        return Err(Error::msg(format!(
+                        return Err(anyhow!(
                             "Cannot bind i128 value `{v}` into sqlite integer because it's out of bounds"
-                        )));
+                        ));
                     }
                     sqlite3_bind_int64(statement, index, v as sqlite3_int64)
                 }
                 Value::UInt128(Some(v), ..) => {
                     if v as sqlite3_int64 as u128 != v {
-                        return Err(Error::msg(format!(
+                        return Err(anyhow!(
                             "Cannot bind i128 value `{v}` into sqlite integer because it's out of bounds"
-                        )));
+                        ));
                     }
                     sqlite3_bind_int64(statement, index, v as sqlite3_int64)
                 }
@@ -115,9 +116,8 @@ impl Prepared for SQLitePrepared {
                 Value::Decimal(Some(v), ..) => sqlite3_bind_double(
                     statement,
                     index,
-                    v.to_f64().ok_or_else(|| {
-                        anyhow!("Cannot bind the Decimal value `{v}` to f64")
-                    })?,
+                    v.to_f64()
+                        .ok_or_else(|| anyhow!("Cannot bind the Decimal value `{v}` to f64"))?,
                 ),
                 Value::Char(Some(v), ..) => {
                     let v = v.to_string();
@@ -214,8 +214,7 @@ impl Prepared for SQLitePrepared {
                     )
                 }
                 _ => {
-                    let error =
-                        Error::msg(format!("Cannot use a {:?} as a query parameter", value));
+                    let error = anyhow!("Cannot use a {:?} as a query parameter", value);
                     log::error!("{error:#}");
                     return Err(error);
                 }

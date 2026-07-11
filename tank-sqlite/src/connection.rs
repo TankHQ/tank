@@ -2,6 +2,7 @@ use crate::{
     CBox, SQLiteDriver, SQLitePrepared, SQLiteTransaction,
     extract::{extract_name, extract_value},
 };
+use anyhow::anyhow;
 use async_stream::try_stream;
 use flume::Sender;
 use libsqlite3_sys::*;
@@ -196,10 +197,10 @@ impl Executor for SQLiteConnection {
                 return Err(error);
             }
             if tail != ptr::null() && *tail != '\0' as i8 {
-                let error = Error::msg(format!(
+                let error = anyhow!(
                     "Cannot prepare more than one statement at a time (remaining: {})",
                     CStr::from_ptr(tail).to_str().unwrap_or("unprintable")
-                ))
+                )
                 .context(context);
                 log::error!("{error:#}");
                 return Err(error);

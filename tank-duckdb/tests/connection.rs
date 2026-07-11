@@ -1,9 +1,8 @@
 #[cfg(test)]
 mod tests {
+    use indoc::indoc;
     use std::{path::Path, sync::Mutex};
-    use tank_core::{
-        AsValue, Connection, Executor, QueryResult, indoc::indoc, stream::TryStreamExt,
-    };
+    use tank_core::{AsValue, Connection, Executor, QueryResult, stream::TryStreamExt};
     use tank_duckdb::{DuckDBConnection, DuckDBDriver};
     use tank_tests::{init_logs, silent_logs};
     use tokio::fs;

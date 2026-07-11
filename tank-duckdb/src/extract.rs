@@ -377,9 +377,9 @@ pub(crate) fn extract_value(
             //  DUCKDB_TYPE_DUCKDB_TYPE_VARINT =>
             DUCKDB_TYPE_DUCKDB_TYPE_SQLNULL => Value::Null,
             _ => {
-                let error = Error::msg(format!(
+                let error = anyhow!(
                     "Invalid type value: {type_id}, must be one of the expected DUCKDB_TYPE_DUCKDB_TYPE_* variant",
-                ));
+                );
                 log::error!("{error:#}");
                 return Err(error);
             }

@@ -1,10 +1,11 @@
 use crate::IsChar;
+use anyhow::anyhow;
+use indoc::indoc;
 use std::fmt::Write;
 use std::{collections::BTreeMap, iter};
 use tank_core::{
-    AsEntity, ColumnDef, Context, Dataset, DynQuery, Entity, Error, Expression, Fragment,
-    GenericSqlWriter, Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, indoc::indoc,
-    separated_by,
+    AsEntity, ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment,
+    GenericSqlWriter, Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, separated_by,
 };
 use uuid::Uuid;
 
@@ -188,7 +189,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
                     if v.accept_visitor(&mut is_char, self, context, out) {
                         Ok(is_char.value)
                     } else {
-                        return Err(Error::msg(
+                        return Err(anyhow!(
                             "Unexoected error: non char element in a array of char",
                         ));
                     }

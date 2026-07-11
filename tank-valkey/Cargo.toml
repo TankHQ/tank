@@ -9,7 +9,8 @@ repository.workspace = true
 categories.workspace = true
 
 [dependencies]
-async-stream = { workspace = true }
+anyhow.workspace = true
+async-stream.workspace = true
 log.workspace = true
 redis = { version = "1.0.4", features = [
     "aio",

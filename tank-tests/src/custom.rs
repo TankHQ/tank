@@ -3,7 +3,7 @@ use std::{
     num::{FpCategory, NonZeroI32},
     sync::LazyLock,
 };
-use tank::{AsValue, Entity, Error, Executor, Result, Value, expr};
+use tank::{AsValue, Entity, Executor, Result, Value, anyhow, expr};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));

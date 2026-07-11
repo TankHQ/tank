@@ -10,7 +10,7 @@ use std::{
 };
 use tank::{
     AsValue, Driver, DynQuery, Entity, Error, Executor, FixedDecimal, Query, QueryBuilder,
-    QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Value, cols, expr,
+    QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Value, anyhow, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Time, macros::date};

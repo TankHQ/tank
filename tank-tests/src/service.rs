@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::sync::LazyLock;
 use tank::{
-    AsValue, Entity, Error, Executor, QueryBuilder, Result, Value, cols, expr,
+    AsValue, Entity, Error, Executor, QueryBuilder, Result, Value, anyhow, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -48,7 +48,7 @@ impl AsValue for HostPort {
                         .map_err(|e| Error::new(e).context(context()))?,
                 })
             }
-            _ => Err(Error::msg(
+            _ => Err(anyhow!(
                 "Could not convert value into HostPort (expected Value::Varchar)",
             )),
         }

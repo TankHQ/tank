@@ -2,6 +2,7 @@ use crate::{
     interval_wrap::IntervalWrap,
     util::{extract_value, flatten_array},
 };
+use anyhow::anyhow;
 use bytes::BytesMut;
 use postgres_protocol::types::array_to_sql;
 use postgres_types::{FromSql, IsNull, ToSql, Type, to_sql_checked};
@@ -114,10 +115,10 @@ impl<'a> ToSql for ValueWrap<'a> {
                 None => None::<Vec<ValueWrap>>.to_sql(ty, out),
             },
             _ => {
-                return Err(tank_core::Error::msg(format!(
+                return Err(anyhow!(
                     "tank::Value variant `{:?}` is not supported by Postgres",
                     &self.0
-                ))
+                )
                 .into());
             }
         }

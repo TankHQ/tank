@@ -38,11 +38,11 @@ pub trait AsValue {
     where
         Self: Sized,
     {
-        Err(Error::msg(format!(
+        Err(anyhow!(
             "Cannot parse '{}' as {} (the parse method is not implemented)",
             truncate_long!(input.as_ref()),
             any::type_name::<Self>()
-        )))
+        ))
     }
 }
 
@@ -87,10 +87,10 @@ macro_rules! impl_as_value {
                             max = i128::MAX;
                         }
                         if (v as i128).clamp(<$source>::MIN as _, max as _) != v as i128 {
-                            return Err(Error::msg(format!(
+                            return Err(anyhow!(
                                 "Value {v}: i32 is out of range for {}",
                                 any::type_name::<Self>(),
-                            )));
+                            ));
                         }
                         Ok(v as $source)
                     }
@@ -102,10 +102,10 @@ macro_rules! impl_as_value {
                             max = i128::MAX;
                         }
                         if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
-                            return Err(Error::msg(format!(
+                            return Err(anyhow!(
                                 "Value {v}: i64 is out of range for {}",
                                 any::type_name::<Self>(),
-                            )));
+                            ));
                         }
                         Ok(v as $source)
                     }
@@ -117,10 +117,10 @@ macro_rules! impl_as_value {
                             max = i128::MAX;
                         }
                         if v.clamp(<$source>::MIN as _, max) != v as i128 {
-                            return Err(Error::msg(format!(
+                            return Err(anyhow!(
                                 "Value {v}: i128 is out of range for {}",
                                 any::type_name::<Self>(),
-                            )));
+                            ));
                         }
                         Ok(v as _)
                     },
@@ -151,20 +151,20 @@ macro_rules! impl_as_value {
                             && v.clamp(<$source>::MIN as _, max) == v as i128 {
                             return Ok(v as $source);
                         }
-                        Err(Error::msg(format!(
+                        Err(anyhow!(
                             "Value {v} from json number is out of range for {} (extracted integer is: {integer:?})",
                             any::type_name::<Self>(),
-                        )))
+                        ))
                     }
                     // This is needed to allow integer keys in maps, in some drivers the maps are json objects
                     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
                     Value::Unknown(Some(ref v), ..) => Self::parse(v).with_context(|| {
                         format!("While parsing a {} from `{}`", any::type_name::<Self>(), v)
                     }),
-                    _ => Err(Error::msg(format!(
+                    _ => Err(anyhow!(
                         "Cannot convert {value:?} to {}",
                         any::type_name::<Self>(),
-                    ))),
+                    )),
                 }
             }
             fn parse(input: impl AsRef<str>) -> Result<Self> {
@@ -411,10 +411,10 @@ macro_rules! impl_as_value {
                             format!("While parsing a {} from `{}`", any::type_name::<Self>(), v)
                         })
                     }
-                    _ => Err(Error::msg(format!(
+                    _ => Err(anyhow!(
                         "Cannot convert {value:?} to {}",
                         any::type_name::<Self>(),
-                    ))),
+                    )),
                 }
             }
             fn parse(input: impl AsRef<str>) -> Result<Self> {
@@ -496,19 +496,19 @@ impl_as_value!(
     },
     Value::Varchar(Some(v), ..) => {
         if v.chars().count() != 1 {
-            return Err(Error::msg(format!(
+            return Err(anyhow!(
                 "Cannot convert varchar `{}` to char because it has more than one character",
                 truncate_long!(v)
-            )))
+            ))
         }
         Ok(v.chars().next().unwrap())
     },
     Value::Json(Some(serde_json::Value::String(v)), ..) => {
         if v.chars().count() != 1 {
-            return Err(Error::msg(format!(
+            return Err(anyhow!(
                 "Cannot convert json `{}` to char because it has more than one character",
                 truncate_long!(v)
-            )))
+            ))
         }
         Ok(v.chars().next().unwrap())
     }
@@ -568,11 +568,10 @@ impl_as_value!(
     Value::Interval,
     |mut input: &str| {
         let context = || {
-            Error::msg(format!(
+            anyhow!(
                 "Cannot parse interval from `{}`",
                 truncate_long!(input)
-            ))
-            .into()
+            )
         };
         match input.chars().peekable().peek() {
             Some(v) if *v == '"' || *v == '\'' => {
@@ -743,11 +742,11 @@ impl_as_value!(
 macro_rules! parse_time {
     ($value: ident, $($formats:literal),+ $(,)?) => {
         'value: {
-            let context = || Error::msg(format!(
-                "Cannot parse `{}` as {}",
-                truncate_long!($value),
-                any::type_name::<Self>()
-            ));
+        let context = || anyhow!(
+            "Cannot parse `{}` as {}",
+            truncate_long!($value),
+            any::type_name::<Self>()
+        );
             for format in [$($formats,)+] {
                 let format = parse_borrowed::<2>(format)?;
                 let mut parsed = time::parsing::Parsed::new();
@@ -782,7 +781,7 @@ impl_as_value!(
             }
         }
         if !value.is_empty() {
-            return Err(Error::msg(format!("Cannot parse `{}` as time::Date", truncate_long!(input))))
+            return Err(anyhow!("Cannot parse `{}` as time::Date", truncate_long!(input)))
         }
         Ok(result)
     },
@@ -807,7 +806,7 @@ impl_as_value!(
             "[hour]:[minute]",
         )?;
         if !input.is_empty() {
-            return Err(Error::msg(format!("Cannot parse `{}` as time::Time", truncate_long!(input))))
+            return Err(anyhow!("Cannot parse `{}` as time::Time", truncate_long!(input)))
         }
         Ok(result)
     },
@@ -834,7 +833,7 @@ impl_as_value!(
             "[year]-[month]-[day] [hour]:[minute]",
         )?;
         if !input.is_empty() {
-            return Err(Error::msg(format!("Cannot parse `{}` as time::PrimitiveDateTime", truncate_long!(input))))
+            return Err(anyhow!("Cannot parse `{}` as time::PrimitiveDateTime", truncate_long!(input)))
         }
         Ok(result)
     },
@@ -881,7 +880,7 @@ impl_as_value!(
         if let Ok(result) = <PrimitiveDateTime as AsValue>::parse(input).map(|v| v.assume_utc()) {
             return Ok(result);
         }
-        Err(Error::msg(format!("Cannot parse `{}` as time::OffsetDateTime", truncate_long!(input))))
+        Err(anyhow!("Cannot parse `{}` as time::OffsetDateTime", truncate_long!(input)))
     },
     Value::Timestamp(Some(timestamp), ..) => Ok(timestamp.assume_utc()),
     Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
@@ -900,10 +899,7 @@ impl AsValue for chrono::NaiveDate {
                     self.year(),
                     number_to_month!(
                         self.month(),
-                        break 'date Err(Error::msg(format!(
-                            "Unexpected month value {}",
-                            self.month()
-                        )))
+                        break 'date Err(anyhow!("Unexpected month value {}", self.month()))
                     ),
                     self.day() as _,
                 )
@@ -974,12 +970,12 @@ impl AsValue for chrono::NaiveDateTime {
         Value::Timestamp(
             'value: {
                 let Ok(date) = AsValue::try_from_value(self.date().as_value()) else {
-                    break 'value Err(Error::msg(
+                    break 'value Err(anyhow!(
                         "Failed to convert the date part from chrono::NaiveDate to time::Date",
                     ));
                 };
                 let Ok(time) = AsValue::try_from_value(self.time().as_value()) else {
-                    break 'value Err(Error::msg(
+                    break 'value Err(anyhow!(
                         "Failed to convert the time part from chrono::NaiveTime to time::Time",
                     ));
                 };
@@ -1017,12 +1013,12 @@ impl AsValue for chrono::DateTime<chrono::FixedOffset> {
             'value: {
                 use chrono::Offset;
                 let Ok(date) = AsValue::try_from_value(self.date_naive().as_value()) else {
-                    break 'value Err(Error::msg(
+                    break 'value Err(anyhow!(
                         "Failed to convert the date part from chrono::NaiveDate to time::Date",
                     ));
                 };
                 let Ok(time) = AsValue::try_from_value(self.time().as_value()) else {
-                    break 'value Err(Error::msg(
+                    break 'value Err(anyhow!(
                         "Failed to convert the time part from chrono::NaiveTime to time::Time",
                     ));
                 };
@@ -1097,9 +1093,9 @@ impl AsValue for Decimal {
             Value::UInt8(Some(v), ..) => Ok(Decimal::new(v as i64, 0)),
             Value::UInt16(Some(v), ..) => Ok(Decimal::new(v as i64, 0)),
             Value::UInt32(Some(v), ..) => Ok(Decimal::new(v as i64, 0)),
-            Value::UInt64(Some(v), ..) => Decimal::from_u64(v).ok_or(Error::msg(format!(
-                "Value {v}: u64 does not fit into Decimal"
-            ))),
+            Value::UInt64(Some(v), ..) => {
+                Decimal::from_u64(v).ok_or(anyhow!("Value {v}: u64 does not fit into Decimal"))
+            }
             Value::Float32(Some(v), ..) => {
                 Ok(Decimal::from_f32(v).ok_or(anyhow!("Cannot convert {value:?} to Decimal"))?)
             }
@@ -1112,9 +1108,9 @@ impl AsValue for Decimal {
                 {
                     Ok(v)
                 } else {
-                    Err(Error::msg(format!(
+                    Err(anyhow!(
                         "Value {v} from json number is out of range for Decimal",
-                    )))
+                    ))
                 }
             }
             Value::Unknown(Some(v), ..) => Self::parse(&v),
@@ -1125,10 +1121,10 @@ impl AsValue for Decimal {
     fn parse(input: impl AsRef<str>) -> Result<Self> {
         let input = input.as_ref();
         Ok(input.parse::<Decimal>().with_context(|| {
-            Error::msg(format!(
+            anyhow!(
                 "Cannot parse a decimal value from `{}`",
                 truncate_long!(input)
-            ))
+            )
         })?)
     }
 }
@@ -1171,11 +1167,11 @@ impl<T: AsValue, const N: usize> AsValue for [T; N] {
                 .collect::<Result<Vec<_>>>()?
                 .try_into()
                 .map_err(|v: Vec<T>| {
-                    Error::msg(format!(
+                    anyhow!(
                         "Expected array of length {N}, got {} elements ({})",
                         v.len(),
                         any::type_name::<[T; N]>()
-                    ))
+                    )
                 })
         }
         match value {
@@ -1190,10 +1186,10 @@ impl<T: AsValue, const N: usize> AsValue for [T; N] {
                 convert_iter(v.into_iter())
             }
             Value::Unknown(Some(v)) => <Self as AsValue>::parse(v),
-            _ => Err(Error::msg(format!(
+            _ => Err(anyhow!(
                 "Cannot convert {value:?} to array {}",
                 any::type_name::<Self>()
-            ))),
+            )),
         }
     }
 }
@@ -1225,10 +1221,10 @@ macro_rules! impl_as_value {
                         .into_iter()
                         .map(|v| Ok::<_, Error>(<T as AsValue>::try_from_value(v.as_value())?))
                         .collect::<Result<_>>()?),
-                    _ => Err(Error::msg(format!(
+                    _ => Err(anyhow!(
                         "Cannot convert {value:?} to {}",
                         any::type_name::<Self>(),
-                    ))),
+                    )),
                 }
             }
         }
@@ -1279,10 +1275,10 @@ macro_rules! impl_as_value {
                             .collect::<Result<_>>()?)
                     }
                     _=> {
-                        Err(Error::msg(format!(
+                        Err(anyhow!(
                             "Cannot convert {value:?} to {}",
                             any::type_name::<Self>(),
-                        )))
+                        ))
                     }
                 }
             }
@@ -1304,9 +1300,9 @@ impl AsValue for &'static str {
         Self: Sized,
     {
         let Value::Varchar(Some(Cow::Borrowed(v))) = value.try_as(&Value::Varchar(None))? else {
-            return Err(Error::msg(format!(
+            return Err(anyhow!(
                 "Cannot assign a `&'static str` with data fetched from the database. Please consider `Cow<'static, str>` instead, can still use `&'static str` for data insertion purpose.",
-            )));
+            ));
         };
         Ok(v)
     }
@@ -1464,7 +1460,7 @@ impl AsValue for serde_json::Value {
                 None => Self::Null,
             }
         } else {
-            return Err(Error::msg(
+            return Err(anyhow!(
                 "Cannot convert non json tank::Value to serde_json::Value",
             ));
         })

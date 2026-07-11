@@ -1,8 +1,9 @@
 use crate::{MySQLDriver, MySQLQueryable, MySQLTransaction};
+use anyhow::anyhow;
 use core::fmt;
 use mysql_async::{ClientIdentity, Conn, Opts, OptsBuilder};
 use std::{borrow::Cow, env, fmt::Debug, path::PathBuf};
-use tank_core::{Connection, Error, ErrorContext, Result, impl_executor_transaction};
+use tank_core::{Connection, ErrorContext, Result, impl_executor_transaction};
 
 /// Connection wrapper used by the MySQL/MariaDB driver.
 ///
@@ -47,11 +48,8 @@ impl Connection for MySQLConnection {
         if let Some(ssl_ca) = ssl_ca {
             let ca_path = PathBuf::from(ssl_ca);
             if !ca_path.exists() {
-                let error = Error::msg(format!(
-                    "SSL CA file not found: `{}`",
-                    ca_path.to_string_lossy()
-                ))
-                .context(context);
+                let error = anyhow!("SSL CA file not found: `{}`", ca_path.to_string_lossy())
+                    .context(context);
                 log::error!("{error:#}");
                 return Err(error);
             }
@@ -61,11 +59,8 @@ impl Connection for MySQLConnection {
         if let Some(ssl_cert) = ssl_cert {
             let ssl_cert = PathBuf::from(ssl_cert);
             if !ssl_cert.exists() {
-                let error = Error::msg(format!(
-                    "SSL CERT file not found: `{}`",
-                    ssl_cert.to_string_lossy()
-                ))
-                .context(context);
+                let error = anyhow!("SSL CERT file not found: `{}`", ssl_cert.to_string_lossy())
+                    .context(context);
                 log::error!("{error:#}");
                 return Err(error);
             }

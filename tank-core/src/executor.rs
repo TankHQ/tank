@@ -1,9 +1,9 @@
 use crate::{
-    AsEntity, AsQuery, Driver, DynQuery, Error, Query, QueryResult, RawQuery, Result, Row,
-    RowsAffected,
+    AsEntity, AsQuery, Driver, DynQuery, Query, QueryResult, RawQuery, Result, Row, RowsAffected,
     stream::{Stream, StreamExt, TryStreamExt},
     writer::SqlWriter,
 };
+use anyhow::anyhow;
 use convert_case::{Case, Casing};
 use std::{
     future::{self, Future},
@@ -47,10 +47,10 @@ pub trait Executor: Send {
         &mut self,
         _sql: String,
     ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
-        future::ready(Err(Error::msg(format!(
+        future::ready(Err(anyhow!(
             "{} does not support prepare",
             self.driver().name().to_case(Case::Pascal)
-        ))))
+        )))
     }
 
     /// Executes a query and streams the results (rows or affected counts).

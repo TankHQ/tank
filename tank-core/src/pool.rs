@@ -226,7 +226,7 @@ impl<D: Driver> Connection for PooledConnection<D> {
     where
         Self: Sized,
     {
-        future::ready(Err(Error::msg(
+        future::ready(Err(anyhow!(
             "Cannot connect using a PooledConnection, such object must be obtained from a connection pool",
         )))
     }

@@ -162,10 +162,8 @@ impl SqlWriter for MongoDBSqlWriter {
         *target = match value_to_bson(value) {
             Ok(v) => v,
             Err(e) => {
-                log::error!(
-                    "{:#}",
-                    e.context(format!("While writing the value {value:?}"))
-                );
+                let error = e.context(format!("While writing the value {value:?}"));
+                log::error!("{error:#}");
                 return;
             }
         };
@@ -412,10 +410,8 @@ impl SqlWriter for MongoDBSqlWriter {
             let v = match value_to_bson(v) {
                 Ok(v) => v,
                 Err(e) => {
-                    log::error!(
-                        "{:#}",
-                        e.context(format!("While converting value {v:?} to bson"))
-                    );
+                    let error = e.context(format!("While converting value {v:?} to bson"));
+                    log::error!("{error:#}");
                     return;
                 }
             };
@@ -437,10 +433,8 @@ impl SqlWriter for MongoDBSqlWriter {
             let v = match value_to_bson(v) {
                 Ok(v) => v,
                 Err(e) => {
-                    log::error!(
-                        "{:#}",
-                        e.context(format!("While converting value {v:?} to bson"))
-                    );
+                    let error = e.context(format!("While converting value {v:?} to bson"));
+                    log::error!("{error:#}");
                     return;
                 }
             };

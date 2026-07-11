@@ -112,7 +112,7 @@ impl Executor for MongoDBConnection {
         let mut query = query.as_query();
         try_stream! {
             let Query::Prepared(prepared) = query.as_mut() else {
-                Err(Error::msg(
+                Err(anyhow!(
                     "Query is not the expected tank::Query::Prepared variant (MongoDB driver uses prepared)",
                 ))?;
                 return;
@@ -121,9 +121,7 @@ impl Executor for MongoDBConnection {
             let payload = &prepared.get_payload();
             match payload {
                 Payload::Fragment(..) => {
-                    Err(Error::msg(format!(
-                        "Cannot run a query with fragment variant {payload:?}"
-                    )))?;
+                    Err(anyhow!("Cannot run a query with fragment variant {payload:?}"))?;
                     return;
                 }
 
@@ -415,9 +413,7 @@ impl Executor for MongoDBConnection {
                 }
 
                 _ => {
-                    Err(Error::msg(format!(
-                        "Unexpected payload in the query {payload:?}"
-                    )))?;
+                    Err(anyhow!("Unexpected payload in the query {payload:?}"))?;
                     return;
                 }
             }

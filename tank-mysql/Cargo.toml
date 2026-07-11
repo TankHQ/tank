@@ -11,6 +11,7 @@ categories.workspace = true
 [features]
 
 [dependencies]
+anyhow.workspace = true
 async-stream.workspace = true
 log.workspace = true
 mysql_async = { version = "0", features = [

@@ -37,15 +37,15 @@ pub(crate) fn simple_query_row_to_tank_row(
         .map(|i| match row.try_get(i) {
             Ok(Some(v)) => ValueWrap::from_sql(&Type::UNKNOWN, v.as_bytes())
                 .map(|v| v.0.into_owned())
-                .map_err(|e| tank_core::Error::msg(format!("{:#}", e))),
+                .map_err(|e| anyhow!("{e:#}")),
             Ok(None) => Ok(Value::Null),
             Err(..) => {
                 let col = &row.columns()[i];
-                Err(tank_core::Error::msg(format!(
+                Err(anyhow!(
                     "Could not deserialize column {} `{}`",
                     i,
                     col.name(),
-                )))
+                ))
             }
         })
         .collect::<tank_core::Result<tank_core::RowValues>>()
@@ -94,7 +94,7 @@ where
                             .as_ref()
                             .filter(|v| v.len() == row.len())
                             .ok_or_else(|| {
-                                tank_core::Error::msg(
+                                anyhow!(
                                     "Row columns names does not match the row currently received",
                                 )
                             })?
@@ -170,10 +170,7 @@ pub(crate) fn extract_value(
             Type::UUID => Value::Uuid(convert::<Uuid>(ty, raw)?),
             Type::UNKNOWN => Value::Unknown(convert::<String>(ty, raw)?),
             _ => {
-                return Err(tank_core::Error::msg(format!(
-                    "Unexpected {ty} variant for Kind::Simple"
-                ))
-                .into());
+                return Err(anyhow!("Unexpected {ty} variant for Kind::Simple").into());
             }
         },
         Kind::Array(inner_ty) => {

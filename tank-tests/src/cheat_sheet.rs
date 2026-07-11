@@ -2,7 +2,7 @@
 use std::{collections::HashMap, pin::pin, sync::LazyLock};
 use tank::{
     AsValue, Connection, Driver, DynQuery, Entity, Error, Executor, QueryBuilder, QueryResult,
-    Result, RowsAffected, SqlWriter, Transaction, Value, cols, expr, join,
+    Result, RowsAffected, SqlWriter, Transaction, Value, anyhow, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;

@@ -9,6 +9,7 @@ repository.workspace = true
 categories.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 chrono.workspace = true
 env_logger.workspace = true
 log.workspace = true

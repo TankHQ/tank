@@ -1,4 +1,5 @@
 use crate::{RowWrap, ScyllaDBDriver, ScyllaDBPrepared, ScyllaDBTransaction};
+use anyhow::anyhow;
 use async_stream::stream;
 use openssl::ssl::{SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
 use scylla::{
@@ -325,9 +326,9 @@ impl Connection for ScyllaDBConnection {
                         } else if let Ok(v) = NonZeroU64::from_str(&v) {
                             WriteCoalescingDelay::Milliseconds(v)
                         } else {
-                            return context_try!(Err(Error::msg(format!(
+                            return context_try!(Err(anyhow!(
                                 "Unexpected value for write_coalescing_delay: `{v}`"
-                            ))));
+                            )));
                         },
                     );
                 }

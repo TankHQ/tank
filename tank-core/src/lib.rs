@@ -21,6 +21,7 @@ mod value;
 mod writer;
 
 pub use ::anyhow::Context as ErrorContext;
+pub use ::anyhow::anyhow;
 pub use as_value::*;
 pub use column::*;
 pub use connection::*;

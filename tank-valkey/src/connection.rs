@@ -1,4 +1,5 @@
 use crate::{ValkeyDriver, ValkeyTransaction, ValueWrap};
+use anyhow::anyhow;
 use async_stream::try_stream;
 use redis::{Client, aio::MultiplexedConnection};
 use std::{borrow::Cow, future, mem, sync::Arc};
@@ -59,7 +60,7 @@ impl Executor for ValkeyConnection {
         let mut query = query.as_query();
         try_stream! {
             let Query::Prepared(prepared) = query.as_mut() else {
-                Err(Error::msg(
+                Err(anyhow!(
                     "Query is not the expected tank::Query::Prepared variant (Valkey/Redis driver uses prepared)",
                 ))?;
                 return;
@@ -88,10 +89,10 @@ impl Executor for ValkeyConnection {
                     return;
                 }
                 other => {
-                    Err(Error::msg(format!(
+                    Err(anyhow!(
                         "Unexpected top-level pipeline response: {:?}",
                         other
-                    )))
+                    ))
                     .with_context(context)?;
                     return;
                 }
@@ -104,11 +105,11 @@ impl Executor for ValkeyConnection {
                 return;
             }
             if results.len() != prepared.columns.len() {
-                Err(Error::msg(format!(
+                Err(anyhow!(
                     "Column/result mismatch: {} columns but {} redis results",
                     prepared.columns.len(),
                     results.len()
-                )))
+                ))
                 .with_context(context)?;
                 return;
             }
