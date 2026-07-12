@@ -67,7 +67,7 @@ pub struct PooledConnection<D: Driver> {
 /// Every method that yields connections produces a [`PooledConnection`]
 /// that is automatically returned to the pool on drop, keeping the number
 /// of open database connections bounded.
-pub trait ConnectionPool<D: Driver>: Debug {
+pub trait ConnectionPool<D: Driver>: Sync + Send + Debug {
     /// Acquires a connection from the pool.
     ///
     /// If all connections are in use and the pool is at its maximum size, this
@@ -96,13 +96,15 @@ pub trait ConnectionPool<D: Driver>: Debug {
     fn resize(&self, max_size: usize) -> Result<()>;
 
     /// Converts this pool into a sized type-erased `Box<dyn ConnectionPool<D>>`.
-    fn into_box(self) -> Box<dyn ConnectionPool<D>>
+    fn into_box(self) -> Box<dyn ConnectionPool<D> + Send + Sync>
     where
+        Self: Sized,
         D: 'static;
 
     /// Converts this pool into a sized type-erased `Arc<dyn ConnectionPool<D>>`.
-    fn into_arc(self) -> Arc<dyn ConnectionPool<D>>
+    fn into_arc(self) -> Arc<dyn ConnectionPool<D> + Send + Sync>
     where
+        Self: Sized,
         D: 'static;
 
     /// Closes the pool, marking it as unavailable and dropping all managed
@@ -154,15 +156,17 @@ where
         Ok(self.resize(max_size))
     }
 
-    fn into_box(self) -> Box<dyn ConnectionPool<D>>
+    fn into_box(self) -> Box<dyn ConnectionPool<D> + Send + Sync>
     where
+        Self: Sized,
         D: 'static,
     {
         Box::new(self)
     }
 
-    fn into_arc(self) -> Arc<dyn ConnectionPool<D>>
+    fn into_arc(self) -> Arc<dyn ConnectionPool<D> + Send + Sync>
     where
+        Self: Sized,
         D: 'static,
     {
         Arc::new(self)

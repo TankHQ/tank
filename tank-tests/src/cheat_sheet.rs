@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 use anyhow::anyhow;
 use std::{collections::HashMap, str::FromStr, sync::LazyLock};
 use tank::{AsValue, Entity, Result, Value, expr};
