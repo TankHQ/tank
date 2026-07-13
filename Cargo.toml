@@ -3,6 +3,7 @@ members = [
     ".",
     "tank-core",
     "tank-macros",
+    "tank-clickhouse",
     "tank-duckdb",
     "tank-mongodb",
     "tank-mysql",
