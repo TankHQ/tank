@@ -1,6 +1,9 @@
 use std::{env, future, time::Duration};
 use tank_clickhouse::{ClickHouseConnection, ClickHouseDriver};
-use tank_core::{Connection, future::{BoxFuture, FutureExt}};
+use tank_core::{
+    Connection,
+    future::{BoxFuture, FutureExt},
+};
 use testcontainers_modules::{
     clickhouse::ClickHouse as ClickHouseImage,
     testcontainers::{

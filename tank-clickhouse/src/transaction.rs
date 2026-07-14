@@ -1,5 +1,5 @@
-use anyhow::anyhow;
 use crate::{ClickHouseConnection, ClickHouseDriver};
+use anyhow::anyhow;
 use tank_core::{Result, Transaction, impl_executor_transaction};
 
 /// ClickHouse transaction wrapper.

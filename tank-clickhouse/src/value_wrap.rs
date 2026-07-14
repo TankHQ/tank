@@ -64,15 +64,27 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
 
         KlValue::Decimal32(scale, raw) => {
             let (p, s) = decimal_ps(ty, scale);
-            Ok(Value::Decimal(Some(Decimal::from_i128_with_scale(raw as i128, s as u32)), p, s))
+            Ok(Value::Decimal(
+                Some(Decimal::from_i128_with_scale(raw as i128, s as u32)),
+                p,
+                s,
+            ))
         }
         KlValue::Decimal64(scale, raw) => {
             let (p, s) = decimal_ps(ty, scale);
-            Ok(Value::Decimal(Some(Decimal::from_i128_with_scale(raw as i128, s as u32)), p, s))
+            Ok(Value::Decimal(
+                Some(Decimal::from_i128_with_scale(raw as i128, s as u32)),
+                p,
+                s,
+            ))
         }
         KlValue::Decimal128(scale, raw) => {
             let (p, s) = decimal_ps(ty, scale);
-            Ok(Value::Decimal(Some(Decimal::from_i128_with_scale(raw, s as u32)), p, s))
+            Ok(Value::Decimal(
+                Some(Decimal::from_i128_with_scale(raw, s as u32)),
+                p,
+                s,
+            ))
         }
 
         KlValue::String(bytes) => {
@@ -95,7 +107,10 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
                 Type::DateTime(tz) if tz.name() != "UTC" => {
                     Ok(Value::TimestampWithTimezone(Some(odt)))
                 }
-                _ => Ok(Value::Timestamp(Some(PrimitiveDateTime::new(odt.date(), odt.time())))),
+                _ => Ok(Value::Timestamp(Some(PrimitiveDateTime::new(
+                    odt.date(),
+                    odt.time(),
+                )))),
             }
         }
 
@@ -124,7 +139,10 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
                 Type::DateTime64(_, tz) if tz.name() != "UTC" => {
                     Ok(Value::TimestampWithTimezone(Some(odt)))
                 }
-                _ => Ok(Value::Timestamp(Some(PrimitiveDateTime::new(odt.date(), odt.time())))),
+                _ => Ok(Value::Timestamp(Some(PrimitiveDateTime::new(
+                    odt.date(),
+                    odt.time(),
+                )))),
             }
         }
 
@@ -136,8 +154,10 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
                 _ => return Err(anyhow!("Expected Array type, got {ty:?}")),
             };
             let inner_proto = kl_type_proto(inner_ty);
-            let values: Result<Vec<Value>> =
-                elements.into_iter().map(|e| kl_to_tank(inner_ty, e)).collect();
+            let values: Result<Vec<Value>> = elements
+                .into_iter()
+                .map(|e| kl_to_tank(inner_ty, e))
+                .collect();
             Ok(Value::List(Some(values?), Box::new(inner_proto)))
         }
 
@@ -206,9 +226,7 @@ pub(crate) fn kl_type_proto(ty: &Type) -> Value {
         }
         Type::Nullable(inner) | Type::LowCardinality(inner) => kl_type_proto(inner),
         Type::Array(inner) => Value::List(None, Box::new(kl_type_proto(inner))),
-        Type::Map(k, v) => {
-            Value::Map(None, Box::new(kl_type_proto(k)), Box::new(kl_type_proto(v)))
-        }
+        Type::Map(k, v) => Value::Map(None, Box::new(kl_type_proto(k)), Box::new(kl_type_proto(v))),
         _ => Value::Unknown(None),
     }
 }

@@ -1,15 +1,15 @@
-use crate::{sql_writer::SQLiteSqlWriter, CBox};
+use crate::{CBox, sql_writer::SQLiteSqlWriter};
 use anyhow::anyhow;
 use libsqlite3_sys::*;
 use rust_decimal::prelude::ToPrimitive;
 use std::{
-    ffi::{c_int, CStr},
+    ffi::{CStr, c_int},
     fmt::{self, Display},
     os::raw::{c_char, c_void},
 };
 use tank_core::{
-    error_message_from_ptr, truncate_long, AsValue, Context, DynQuery, Error, Fragment, Prepared,
-    Result, SqlWriter, Value,
+    AsValue, Context, DynQuery, Error, Fragment, Prepared, Result, SqlWriter, Value,
+    error_message_from_ptr, truncate_long,
 };
 
 /// Prepared statement wrapper for SQLite.

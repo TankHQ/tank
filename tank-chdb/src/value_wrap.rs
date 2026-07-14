@@ -50,7 +50,13 @@ pub(crate) fn json_compact_to_results(data: &[u8]) -> Result<Vec<QueryResult>> {
         let values = labels
             .iter()
             .enumerate()
-            .map(|(idx, _)| items.get(idx).cloned().map(json_to_tank).unwrap_or(Value::Null))
+            .map(|(idx, _)| {
+                items
+                    .get(idx)
+                    .cloned()
+                    .map(json_to_tank)
+                    .unwrap_or(Value::Null)
+            })
             .collect::<Vec<_>>();
         rows.push(QueryResult::Row(Row::new(labels.clone(), values.into())));
     }

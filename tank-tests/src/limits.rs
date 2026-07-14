@@ -220,7 +220,10 @@ pub async fn limits(executor: &mut impl Executor) {
         Date::from_calendar_date(9999, Month::December, 31).unwrap()
     );
     #[cfg(feature = "disable-large-dates")]
-    assert_eq!(loaded.date, Date::from_calendar_date(2149, Month::June, 6).unwrap());
+    assert_eq!(
+        loaded.date,
+        Date::from_calendar_date(2149, Month::June, 6).unwrap()
+    );
     #[cfg(all(
         not(feature = "disable-intervals"),
         not(feature = "disable-large-intervals"),
