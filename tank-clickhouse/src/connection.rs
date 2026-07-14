@@ -97,13 +97,22 @@ impl Executor for ClickHouseConnection {
                 });
             }
         }
+        .map_err(move |e| {
+            log::error!("{e:#}");
+            e
+        })
     }
 }
 
 impl Connection for ClickHouseConnection {
     async fn connect(driver: &ClickHouseDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = "While trying to connect to ClickHouse";
-        let url = Self::sanitize_url(driver, url).context(context)?;
+        let url = Self::sanitize_url(driver, url)
+            .context(context)
+            .map_err(|e| {
+                log::error!("{e:#}");
+                e
+            })?;
         let host = url.host_str().unwrap_or("localhost");
         let port = url.port().unwrap_or(9000);
         let user = if url.username().is_empty() {
@@ -129,16 +138,27 @@ impl Connection for ClickHouseConnection {
 
         let client = Client::connect(&addr, options)
             .await
-            .map_err(|e| anyhow!("Cannot connect to ClickHouse at {addr}: {e}").context(context))?;
+            .map_err(|e| anyhow!("Cannot connect to ClickHouse at {addr}: {e}").context(context))
+            .map_err(|e| {
+                log::error!("{e:#}");
+                e
+            })?;
 
         for sql in &[
             "SET allow_experimental_lightweight_delete=1",
             "SET join_use_nulls=1",
             "SET final=1",
         ] {
-            client.execute(*sql).await.map_err(|e| {
-                anyhow!("Failed to apply session setting '{sql}': {e}").context(context)
-            })?;
+            client
+                .execute(*sql)
+                .await
+                .map_err(|e| {
+                    anyhow!("Failed to apply session setting '{sql}': {e}").context(context)
+                })
+                .map_err(|e| {
+                    log::error!("{e:#}");
+                    e
+                })?;
         }
 
         Ok(ClickHouseConnection { client })

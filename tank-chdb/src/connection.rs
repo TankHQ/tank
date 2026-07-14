@@ -69,20 +69,35 @@ impl Executor for ChdbConnection {
                 }
             }
         }
+        .map_err(move |e| {
+            log::error!("{e:#}");
+            e
+        })
     }
 }
 
 impl Connection for ChdbConnection {
     async fn connect(driver: &ChdbDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = "While trying to connect to chDB";
-        let url = Self::sanitize_url(driver, url).context(context)?;
+        let url = Self::sanitize_url(driver, url).map_err(|e| {
+            log::error!("{e:#}");
+            e
+        })?;
         let connection = match build_chdb_path(&url) {
             Some(path) => ChConnection::open_with_path(&path)
                 .map_err(|e| anyhow!("Cannot open chDB at '{}': {e}", path))
-                .context(context)?,
+                .context(context)
+                .map_err(|e| {
+                    log::error!("{e:#}");
+                    e
+                })?,
             None => ChConnection::open_in_memory()
                 .map_err(|e| anyhow!("Cannot open in-memory chDB: {e}"))
-                .context(context)?,
+                .context(context)
+                .map_err(|e| {
+                    log::error!("{e:#}");
+                    e
+                })?,
         };
         for sql in &[
             "SET allow_experimental_lightweight_delete=1",
@@ -92,7 +107,11 @@ impl Connection for ChdbConnection {
             connection
                 .query(sql, OutputFormat::Null)
                 .map_err(|e| anyhow!("Failed to apply session setting '{sql}': {e}"))
-                .context(context)?;
+                .context(context)
+                .map_err(|e| {
+                    log::error!("{e:#}");
+                    e
+                })?;
         }
         Ok(Self { connection })
     }

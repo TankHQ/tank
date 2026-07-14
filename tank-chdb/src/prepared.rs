@@ -31,7 +31,11 @@ impl ChdbPrepared {
             out.push_str(&remaining[..pos]);
             let value = param_iter
                 .next()
-                .ok_or_else(|| anyhow!("Not enough parameters bound for prepared statement"))?;
+                .ok_or_else(|| {
+                    let error = anyhow!("Not enough parameters bound for prepared statement");
+                    log::error!("{error:#}");
+                    error
+                })?;
             writer.write_value(&mut context, &mut out, value);
             remaining = &remaining[pos + 1..];
         }
@@ -65,9 +69,11 @@ impl Prepared for ChdbPrepared {
         if self.params.is_empty() {
             self.params.resize_with(count as _, Default::default);
         }
-        let target = self.params.get_mut(index as usize).ok_or(anyhow!(
-            "Index {index} cannot be bound, the query has only {count} parameters",
-        ))?;
+        let target = self.params.get_mut(index as usize).ok_or_else(|| {
+            let error = anyhow!("Index {index} cannot be bound, the query has only {count} parameters");
+            log::error!("{error:#}");
+            error
+        })?;
         *target = value.as_value();
         self.index = index + 1;
         Ok(self)
