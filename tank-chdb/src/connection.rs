@@ -51,10 +51,6 @@ impl Executor for ChdbConnection {
                     sql
                 }
             };
-            let sql = sql.replace(
-                "ENGINE = ReplacingMergeTree()\nORDER BY tuple()",
-                "ENGINE = MergeTree()\nORDER BY tuple()",
-            );
 
             log::debug!("chDB run: {}", truncate_long!(&sql));
             let result = self

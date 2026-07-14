@@ -10,11 +10,21 @@ use time::{OffsetDateTime, PrimitiveDateTime};
 
 /// ClickHouse SQL writer.
 #[derive(Default, Clone, Copy, Debug)]
-pub struct ClickHouseSqlWriter {}
+pub struct ClickHouseSqlWriter {
+    replacing_merge_tree: bool,
+}
 
 impl ClickHouseSqlWriter {
     pub const fn new() -> Self {
-        Self {}
+        Self {
+            replacing_merge_tree: true,
+        }
+    }
+
+    pub const fn chdb() -> Self {
+        Self {
+            replacing_merge_tree: false,
+        }
     }
 }
 
@@ -362,7 +372,11 @@ impl SqlWriter for ClickHouseSqlWriter {
         out.push_str("\n)");
 
         let pk = E::primary_key_def();
-        out.push_str("\nENGINE = ReplacingMergeTree()");
+        if self.replacing_merge_tree || !pk.is_empty() {
+            out.push_str("\nENGINE = ReplacingMergeTree()");
+        } else {
+            out.push_str("\nENGINE = MergeTree()");
+        }
         if pk.is_empty() {
             let order_cols: Vec<&ColumnDef> = E::columns()
                 .iter()
