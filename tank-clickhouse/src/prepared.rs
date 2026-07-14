@@ -5,9 +5,7 @@ use std::{
 };
 use tank_core::{AsValue, Context, DynQuery, Fragment, Prepared, Result, SqlWriter, Value};
 
-/// Prepared statement wrapper for ClickHouse.
-///
-/// Holds the SQL template and bound [`Value`]s; parameters are interpolated client-side.
+/// ClickHouse prepared statement.
 #[derive(Debug)]
 pub struct ClickHousePrepared {
     pub(crate) sql: String,
@@ -24,11 +22,8 @@ impl ClickHousePrepared {
         }
     }
 
-    /// Substitutes all bound parameters into the SQL string, replacing each
-    /// `?` with its SQL-escaped value produced by the writer.
     pub(crate) fn build_sql(&self, writer: &impl SqlWriter) -> Result<String> {
         let mut out = DynQuery::default();
-        // SqlSelectWhere causes write_* calls to emit proper SQL literals (quoted strings, dates, etc.).
         let mut context = Context::fragment(Fragment::SqlSelectWhere);
         let mut param_iter = self.params.iter();
         let mut remaining = self.sql.as_str();
@@ -44,7 +39,6 @@ impl ClickHousePrepared {
         Ok(String::from(out))
     }
 
-    /// Returns the bound params, resetting internal state.
     pub(crate) fn take_params(&mut self) -> Vec<Value> {
         self.index = 0;
         mem::take(&mut self.params)

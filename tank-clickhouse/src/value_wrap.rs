@@ -1,20 +1,39 @@
 use anyhow::anyhow;
 use klickhouse::{Type, Value as KlValue};
 use rust_decimal::Decimal;
+use std::fmt::Write as _;
 use std::{borrow::Cow, collections::HashMap};
 use tank_core::{Result, Value};
-use time::{OffsetDateTime, PrimitiveDateTime};
+use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
 use uuid::Uuid;
 
-/// Convert a [`klickhouse::Value`] to a [`tank_core::Value`], guided by the
-/// corresponding [`klickhouse::Type`] from the block column-type map.
-///
-/// `Nullable(T)` is handled transparently: a null wire value yields
-/// [`Value::Null`] regardless of the inner type.  `LowCardinality(T)` is
-/// unwrapped transparently because its in-memory representation is identical
-/// to the inner type `T`.
+fn format_datetime(odt: OffsetDateTime) -> String {
+    let odt = odt.to_offset(UtcOffset::UTC);
+    let mut out = String::new();
+    let _ = write!(
+        out,
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        odt.year(),
+        odt.month() as u8,
+        odt.day(),
+        odt.hour(),
+        odt.minute(),
+        odt.second(),
+    );
+    let nanos = odt.nanosecond();
+    if nanos != 0 {
+        let mut frac = format!("{nanos:09}");
+        while frac.ends_with('0') {
+            frac.pop();
+        }
+        out.push('.');
+        out.push_str(&frac);
+    }
+    out
+}
+
+/// Convert a klickhouse value to a tank value.
 pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
-    // Transparent wrappers: Nullable and LowCardinality.
     match ty {
         Type::Nullable(inner) => {
             return match val {
@@ -29,7 +48,6 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
     match val {
         KlValue::Null => Ok(Value::Null),
 
-        // Integers
         KlValue::Int8(v) => Ok(Value::Int8(Some(v))),
         KlValue::Int16(v) => Ok(Value::Int16(Some(v))),
         KlValue::Int32(v) => Ok(Value::Int32(Some(v))),
@@ -41,11 +59,9 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
         KlValue::UInt64(v) => Ok(Value::UInt64(Some(v))),
         KlValue::UInt128(v) => Ok(Value::UInt128(Some(v))),
 
-        // Floats
         KlValue::Float32(v) => Ok(Value::Float32(Some(v))),
         KlValue::Float64(v) => Ok(Value::Float64(Some(v))),
 
-        // Decimal — each variant carries its own scale; precision comes from the column type.
         KlValue::Decimal32(scale, raw) => {
             let (p, s) = decimal_ps(ty, scale);
             Ok(Value::Decimal(Some(Decimal::from_i128_with_scale(raw as i128, s as u32)), p, s))
@@ -59,16 +75,11 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
             Ok(Value::Decimal(Some(Decimal::from_i128_with_scale(raw, s as u32)), p, s))
         }
 
-        // String — ClickHouse `String` columns cover char, varchar, blob, time,
-        // date, interval, and json; tank_core's AsValue does the final decoding
-        // (e.g. hex for blobs, "1234ns" for intervals), so returning Varchar here
-        // handles all cases uniformly.
         KlValue::String(bytes) => {
             let s = String::from_utf8_lossy(&bytes).into_owned();
             Ok(Value::Varchar(Some(Cow::Owned(s))))
         }
 
-        // Date — klickhouse::Date wraps a u16 day count since 1970-01-01 UTC.
         KlValue::Date(d) => {
             let secs = d.0 as i64 * 86_400;
             let date = OffsetDateTime::from_unix_timestamp(secs)
@@ -77,9 +88,6 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
             Ok(Value::Date(Some(date)))
         }
 
-        // DateTime — klickhouse::DateTime holds a timezone name and a u32 unix
-        // second count.  Columns we create are always DateTime('UTC') or plain
-        // DateTime; treat the seconds as UTC in both cases.
         KlValue::DateTime(dt) => {
             let odt = OffsetDateTime::from_unix_timestamp(dt.1 as i64)
                 .map_err(|e| anyhow!("Invalid DateTime from klickhouse: {e}"))?;
@@ -91,17 +99,22 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
             }
         }
 
-        // DateTime64 — klickhouse::DateTime64 holds a timezone, a tick count
-        // stored as u64, and a sub-second precision exponent.  The tick field
-        // is the two's-complement wire i64 reinterpreted as u64; cast back to
-        // i64 to correctly decode pre-epoch (negative) timestamps.
         KlValue::DateTime64(dt64) => {
             let precision = dt64.2 as u32;
+            if precision > 9 {
+                let ticks = dt64.1 as i64 as i128;
+                let scale_down = 10i128
+                    .checked_pow(precision - 9)
+                    .ok_or_else(|| anyhow!("Unsupported DateTime64 precision: {precision}"))?;
+                let nanos = ticks.div_euclid(scale_down);
+                let odt = OffsetDateTime::from_unix_timestamp_nanos(nanos)
+                    .map_err(|e| anyhow!("Invalid DateTime64 from klickhouse: {e}"))?;
+                return Ok(Value::Varchar(Some(Cow::Owned(format_datetime(odt)))));
+            }
             let ticks = dt64.1 as i64;
             let factor = 10i64.pow(precision);
-            let secs = ticks / factor;
-            // Fractional ticks are always non-negative (they represent a sub-second offset).
-            let sub = (ticks % factor).unsigned_abs();
+            let secs = ticks.div_euclid(factor);
+            let sub = ticks.rem_euclid(factor) as u64;
             let nanos = sub * 10u64.pow(9 - precision);
             let odt = OffsetDateTime::from_unix_timestamp_nanos(
                 secs as i128 * 1_000_000_000 + nanos as i128,
@@ -115,11 +128,8 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
             }
         }
 
-        // UUID
         KlValue::Uuid(u) => Ok(Value::Uuid(Some(Uuid::from_bytes(*u.as_bytes())))),
 
-        // Array — both variable-length `Array(T)` and fixed-size array columns
-        // arrive as the same variant; emit Value::List with the inner prototype.
         KlValue::Array(elements) => {
             let inner_ty = match ty {
                 Type::Array(inner) => inner.as_ref(),
@@ -131,7 +141,6 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
             Ok(Value::List(Some(values?), Box::new(inner_proto)))
         }
 
-        // Map — klickhouse stores Map columns as two parallel `Vec<Value>`.
         KlValue::Map(keys, vals) => {
             let (key_ty, val_ty) = match ty {
                 Type::Map(k, v) => (k.as_ref(), v.as_ref()),
@@ -150,8 +159,6 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
             ))
         }
 
-        // Enum8/16 — tank does not use ClickHouse enums natively; surface the
-        // numeric discriminant so callers can handle it via Unknown fallback.
         KlValue::Enum8(v) => Ok(Value::Int8(Some(v))),
         KlValue::Enum16(v) => Ok(Value::Int16(Some(v))),
 
@@ -162,9 +169,7 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
     }
 }
 
-/// Build a tank [`Value`] prototype (always `None` inner) from a
-/// [`klickhouse::Type`].  Used to populate the element-type slot of
-/// [`Value::List`] and [`Value::Map`].
+/// Build a null prototype for nested collection types.
 pub(crate) fn kl_type_proto(ty: &Type) -> Value {
     match ty {
         Type::Int8 => Value::Int8(None),
@@ -185,8 +190,20 @@ pub(crate) fn kl_type_proto(ty: &Type) -> Value {
         Type::String | Type::FixedString(_) => Value::Varchar(None),
         Type::Uuid => Value::Uuid(None),
         Type::Date => Value::Date(None),
-        Type::DateTime(_) => Value::Timestamp(None),
-        Type::DateTime64(_, _) => Value::Timestamp(None),
+        Type::DateTime(tz) => {
+            if tz.name() == "UTC" {
+                Value::Timestamp(None)
+            } else {
+                Value::TimestampWithTimezone(None)
+            }
+        }
+        Type::DateTime64(_, tz) => {
+            if tz.name() == "UTC" {
+                Value::Timestamp(None)
+            } else {
+                Value::TimestampWithTimezone(None)
+            }
+        }
         Type::Nullable(inner) | Type::LowCardinality(inner) => kl_type_proto(inner),
         Type::Array(inner) => Value::List(None, Box::new(kl_type_proto(inner))),
         Type::Map(k, v) => {
@@ -196,11 +213,6 @@ pub(crate) fn kl_type_proto(ty: &Type) -> Value {
     }
 }
 
-/// Extract `(precision, scale)` for a Decimal column.
-///
-/// ClickHouse encodes the scale inside the wire value but stores precision
-/// only in the column [`Type`].  Falls back to the maximum precision for
-/// each Decimal width when the type is not one of the three Decimal variants.
 fn decimal_ps(ty: &Type, scale: usize) -> (u8, u8) {
     let s = scale as u8;
     match ty {

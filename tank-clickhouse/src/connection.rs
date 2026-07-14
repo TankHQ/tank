@@ -12,7 +12,7 @@ use tank_core::{
     RowsAffected, stream::Stream, truncate_long,
 };
 
-/// Connection wrapper for ClickHouse backed by the klickhouse native TCP client.
+/// ClickHouse connection.
 pub struct ClickHouseConnection {
     pub(crate) client: Client,
 }
@@ -72,7 +72,6 @@ impl Executor for ClickHouseConnection {
                     continue;
                 }
 
-                // Strip `table.column` prefixes from unaliased JOIN columns.
                 let col_count = block.column_types.len();
                 let names: Arc<[String]> = block.column_types
                     .keys()
@@ -108,13 +107,20 @@ impl Connection for ClickHouseConnection {
     async fn connect(driver: &ClickHouseDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = "While trying to connect to ClickHouse";
         let url = Self::sanitize_url(driver, url).context(context)?;
-
         let host = url.host_str().unwrap_or("localhost");
         let port = url.port().unwrap_or(9000);
-        let user = if url.username().is_empty() { "default" } else { url.username() };
+        let user = if url.username().is_empty() {
+            "default"
+        } else {
+            url.username()
+        };
         let password = url.password().unwrap_or("");
         let database = url.path().trim_start_matches('/');
-        let database = if database.is_empty() { "default" } else { database };
+        let database = if database.is_empty() {
+            "default"
+        } else {
+            database
+        };
 
         let addr = format!("{host}:{port}");
         let options = ClientOptions {
@@ -128,16 +134,14 @@ impl Connection for ClickHouseConnection {
             .await
             .map_err(|e| anyhow!("Cannot connect to ClickHouse at {addr}: {e}").context(context))?;
 
-        // Apply session settings once; they persist for the connection lifetime.
         for sql in &[
             "SET allow_experimental_lightweight_delete=1",
             "SET join_use_nulls=1",
             "SET final=1",
         ] {
-            client
-                .execute(*sql)
-                .await
-                .map_err(|e| anyhow!("Failed to apply session setting '{sql}': {e}").context(context))?;
+            client.execute(*sql).await.map_err(|e| {
+                anyhow!("Failed to apply session setting '{sql}': {e}").context(context)
+            })?;
         }
 
         Ok(ClickHouseConnection { client })

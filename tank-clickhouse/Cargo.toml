@@ -29,6 +29,7 @@ tank-tests = { path = "../tank-tests", features = [
     "disable-maps",
     "disable-multiple-statements",
     "disable-old-dates",
+    "disable-large-dates",
     "disable-references",
     "disable-transactions",
 ] }

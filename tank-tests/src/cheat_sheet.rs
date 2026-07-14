@@ -72,6 +72,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         transient_cache: HashMap::new(),
     };
 
+    #[cfg(not(feature = "disable-transactions"))]
     {
         use tank::{Entity, Transaction};
 

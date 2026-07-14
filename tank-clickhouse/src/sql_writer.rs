@@ -1,11 +1,14 @@
-use std::{collections::{BTreeMap, HashMap}, fmt::Write};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt::Write,
+};
 use tank_core::{
-    BinaryOpType, ColumnDef, Context, Dataset, DynQuery, Entity,
-    Fragment, Interval, PrimaryKeyType, SqlWriter, TableRef, Value, separated_by, write_escaped,
+    BinaryOpType, ColumnDef, Context, Dataset, DynQuery, Entity, Fragment, Interval,
+    PrimaryKeyType, SqlWriter, TableRef, Value, separated_by, write_escaped,
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
 
-/// SQL writer for the ClickHouse dialect.
+/// ClickHouse SQL writer.
 #[derive(Default, Clone, Copy, Debug)]
 pub struct ClickHouseSqlWriter {}
 
@@ -13,6 +16,34 @@ impl ClickHouseSqlWriter {
     pub const fn new() -> Self {
         Self {}
     }
+}
+
+fn write_datetime_literal(
+    out: &mut DynQuery,
+    quote: &str,
+    year: i32,
+    month: u8,
+    day: u8,
+    hour: u8,
+    minute: u8,
+    second: u8,
+    nanos: u32,
+) {
+    out.push_str(quote);
+    let _ = write!(
+        out,
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        year, month, day, hour, minute, second,
+    );
+    if nanos != 0 {
+        let mut frac = format!("{nanos:09}");
+        while frac.ends_with('0') {
+            frac.pop();
+        }
+        out.push('.');
+        out.push_str(&frac);
+    }
+    out.push_str(quote);
 }
 
 impl SqlWriter for ClickHouseSqlWriter {
@@ -39,10 +70,7 @@ impl SqlWriter for ClickHouseSqlWriter {
     fn write_null(&self, context: &mut Context, out: &mut DynQuery) {
         match context.fragment {
             Fragment::Json | Fragment::JsonKey => out.push_str("null"),
-            Fragment::SqlSelect => {
-                // A bare NULL infers Nullable(Nothing) which klickhouse cannot parse.
-                out.push_str("CAST(NULL AS Nullable(String))");
-            }
+            Fragment::SqlSelect => out.push_str("CAST(NULL AS Nullable(String))"),
             _ => out.push_str("NULL"),
         }
     }
@@ -63,7 +91,6 @@ impl SqlWriter for ClickHouseSqlWriter {
                 out.push_str(&value.alias);
             }
         }
-        // FINAL is applied via the `final=1` session setting (see connection.rs).
     }
 
     fn write_column_overridden_type(
@@ -102,13 +129,11 @@ impl SqlWriter for ClickHouseSqlWriter {
             }
             Value::Char(..) | Value::Varchar(..) => out.push_str("String"),
             Value::Blob(..) => out.push_str("String"),
-            // Date, Time, and Interval have no exact ClickHouse counterpart; store as String.
-            Value::Date(..) => out.push_str("String"),
+            Value::Date(..) => out.push_str("Date"),
             Value::Time(..) => out.push_str("String"),
             Value::Interval(..) => out.push_str("String"),
-            // DateTime64(0, 'UTC') covers the full signed-epoch range; plain DateTime is 32-bit.
-            Value::Timestamp(..) => out.push_str("DateTime64(0, 'UTC')"),
-            Value::TimestampWithTimezone(..) => out.push_str("DateTime64(0, 'UTC')"),
+            Value::Timestamp(..) => out.push_str("DateTime64(9, 'UTC')"),
+            Value::TimestampWithTimezone(..) => out.push_str("DateTime64(9, 'UTC')"),
             Value::Uuid(..) => out.push_str("UUID"),
             Value::Array(_, inner, _) => {
                 out.push_str("Array(");
@@ -133,7 +158,10 @@ impl SqlWriter for ClickHouseSqlWriter {
     }
 
     fn write_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
-        if matches!(context.fragment, Fragment::None | Fragment::ParameterBinding) {
+        if matches!(
+            context.fragment,
+            Fragment::None | Fragment::ParameterBinding
+        ) {
             out.push_str(value);
             return;
         }
@@ -184,7 +212,6 @@ impl SqlWriter for ClickHouseSqlWriter {
             BinaryOpType::BitwiseOr => ("bitOr(", ", ", ")", true, true),
             BinaryOpType::ShiftLeft => ("bitShiftLeft(", ", ", ")", true, true),
             BinaryOpType::ShiftRight => ("bitShiftRight(", ", ", ")", true, true),
-            // ClickHouse rejects `constant LIKE column`; materialize() forces column semantics.
             BinaryOpType::Like => ("like(materialize(", "), ", ")", true, true),
             BinaryOpType::NotLike => ("NOT like(materialize(", "), ", ")", true, true),
             other => {
@@ -207,57 +234,54 @@ impl SqlWriter for ClickHouseSqlWriter {
     }
 
     fn write_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {
-        // Stored as a String column; months approximated as 30 days.
         let total_nanos: i128 = value.months as i128 * 30 * Interval::NANOS_IN_DAY
             + value.days as i128 * Interval::NANOS_IN_DAY
             + value.nanos;
         self.write_string(context, out, &format!("{total_nanos}ns"));
     }
 
-    fn write_timestamp(&self, context: &mut Context, out: &mut DynQuery, value: &PrimitiveDateTime) {
-        let d = match context.fragment {
+    fn write_timestamp(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &PrimitiveDateTime,
+    ) {
+        let quote = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => "",
             Fragment::Json | Fragment::JsonKey => "\"",
             _ => "'",
         };
-        out.push_str(d);
-        let _ = write!(
+        write_datetime_literal(
             out,
-            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+            quote,
             value.year(),
             value.month() as u8,
             value.day(),
             value.hour(),
             value.minute(),
             value.second(),
+            value.nanosecond(),
         );
-        out.push_str(d);
     }
 
-    fn write_timestamptz(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        value: &OffsetDateTime,
-    ) {
+    fn write_timestamptz(&self, context: &mut Context, out: &mut DynQuery, value: &OffsetDateTime) {
         let utc = value.to_offset(time::UtcOffset::UTC);
-        let d = match context.fragment {
+        let quote = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => "",
             Fragment::Json | Fragment::JsonKey => "\"",
             _ => "'",
         };
-        out.push_str(d);
-        let _ = write!(
+        write_datetime_literal(
             out,
-            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+            quote,
             utc.year(),
             utc.month() as u8,
             utc.day(),
             utc.hour(),
             utc.minute(),
             utc.second(),
+            utc.nanosecond(),
         );
-        out.push_str(d);
     }
 
     fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
@@ -309,7 +333,6 @@ impl SqlWriter for ClickHouseSqlWriter {
         }
     }
 
-    /// Emit `CREATE TABLE` with a `ReplacingMergeTree` engine and `ORDER BY` clause.
     fn write_create_table<E>(&self, out: &mut DynQuery, if_not_exists: bool)
     where
         Self: Sized,
@@ -341,7 +364,6 @@ impl SqlWriter for ClickHouseSqlWriter {
         let pk = E::primary_key_def();
         out.push_str("\nENGINE = ReplacingMergeTree()");
         if pk.is_empty() {
-            // No primary key: order by all non-nullable, non-collection columns.
             let order_cols: Vec<&ColumnDef> = E::columns()
                 .iter()
                 .filter(|c| {
@@ -378,7 +400,6 @@ impl SqlWriter for ClickHouseSqlWriter {
         out.push(';');
     }
 
-    /// ClickHouse uses `CREATE DATABASE` instead of `CREATE SCHEMA`.
     fn write_create_schema<E>(&self, out: &mut DynQuery, if_not_exists: bool)
     where
         Self: Sized,
@@ -401,7 +422,6 @@ impl SqlWriter for ClickHouseSqlWriter {
         out.push(';');
     }
 
-    /// ClickHouse uses `DROP DATABASE` instead of `DROP SCHEMA`.
     fn write_drop_schema<E>(&self, out: &mut DynQuery, if_exists: bool)
     where
         Self: Sized,
@@ -424,7 +444,6 @@ impl SqlWriter for ClickHouseSqlWriter {
         out.push(';');
     }
 
-    /// ClickHouse deduplicates via the engine; no `ON CONFLICT` clause is emitted.
     fn write_insert_update_fragment<'a, E>(
         &self,
         _context: &mut Context,
