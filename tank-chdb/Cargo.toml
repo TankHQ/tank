@@ -13,7 +13,6 @@ anyhow.workspace = true
 async-stream.workspace = true
 chdb-rust = "1.3"
 futures.workspace = true
-log.workspace = true
 serde_json.workspace = true
 tank-clickhouse = { path = "../tank-clickhouse" }
 tank-core.workspace = true

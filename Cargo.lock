@@ -4547,7 +4547,6 @@ dependencies = [
  "async-stream",
  "chdb-rust",
  "futures",
- "log",
  "serde_json",
  "tank-clickhouse",
  "tank-core",

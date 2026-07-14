@@ -8,7 +8,7 @@ use chdb_rust::{connection::Connection as ChConnection, format::OutputFormat};
 use std::{borrow::Cow, fmt};
 use tank_core::{
     AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result,
-    RowsAffected, stream::Stream, truncate_long,
+    RowsAffected, stream::Stream,
 };
 
 /// chDB connection.
@@ -30,7 +30,6 @@ impl Executor for ChdbConnection {
     }
 
     async fn do_prepare(&mut self, sql: String) -> Result<Query<ChdbDriver>> {
-        log::debug!("chDB prepare: {}", truncate_long!(sql));
         Ok(Query::Prepared(ChdbPrepared::new(sql)))
     }
 
@@ -45,14 +44,13 @@ impl Executor for ChdbConnection {
             let sql = match query.as_mut() {
                 Query::Raw(RawQuery(sql)) => sql.clone(),
                 Query::Prepared(prepared) => {
-                    let writer = ChdbSqlWriter::new();
-                    let sql = prepared.build_sql(&writer)?;
+                    let writer = ChdbSqlWriter::chdb();
+                    let sql = prepared.build_sql(&writer).context(context.clone())?;
                     prepared.take_params();
                     sql
                 }
             };
 
-            log::debug!("chDB run: {}", truncate_long!(&sql));
             let result = self
                 .connection
                 .query(&sql, OutputFormat::JSONCompactEachRowWithNamesAndTypes)

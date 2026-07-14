@@ -9,7 +9,7 @@ use klickhouse::{Client, ClientOptions};
 use std::{borrow::Cow, fmt, sync::Arc};
 use tank_core::{
     AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, Row,
-    RowsAffected, stream::Stream, truncate_long,
+    RowsAffected, stream::Stream,
 };
 
 /// ClickHouse connection.
@@ -31,7 +31,6 @@ impl Executor for ClickHouseConnection {
     }
 
     async fn do_prepare(&mut self, sql: String) -> Result<Query<ClickHouseDriver>> {
-        log::debug!("ClickHouse prepare: {}", truncate_long!(sql));
         Ok(Query::Prepared(ClickHousePrepared::new(sql)))
     }
 
@@ -54,8 +53,6 @@ impl Executor for ClickHouseConnection {
                     sql
                 }
             };
-
-            log::debug!("ClickHouse run: {}", truncate_long!(&sql));
 
             let mut kl_stream = client
                 .query_raw(sql)
