@@ -4,19 +4,19 @@
 
 # tank-sqlite
 
-SQLite driver implementation for [Tank](https://crates.io/crates/tank): the Rust data layer.
+`tank-sqlite` is the SQLite driver for [Tank](https://crates.io/crates/tank): the Rust data layer.
 
-Implements Tank’s `Driver` and related traits for SQLite, mapping Tank operations and queries into direct SQLite commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. You still need it to define entities, manage schemas, and build queries.
+It maps Tank operations and queries to native SQLite commands. Use it with the main [`tank`](https://crates.io/crates/tank) crate, which provides entity definitions and the query API.
 
-📘 https://tankhq.github.io/tank
+📘 **Docs:** https://tankhq.github.io/tank
 
-🖥️ https://github.com/TankHQ/tank
+🖥️ **Repo:** https://github.com/TankHQ/tank
 
-📦 https://crates.io/crates/tank
+📦 **Crate:** https://crates.io/crates/tank-sqlite
 
 ## Features
 - SQLite C API (FFI) using [libsqlite3-sys](https://crates.io/crates/libsqlite3-sys)
-- Queries are streamed row by row using `try_stream!` ([async_stream](https://crates.io/crates/async-stream)): each statement is stepped with `sqlite3_step` and results are yielded immediately (no buffering occurs)
+- Queries stream row by row through [`async-stream`](https://crates.io/crates/async-stream), with each statement stepped using `sqlite3_step` and no result buffering
 
 ## Install
 ```sh
@@ -35,3 +35,5 @@ let pool = driver
     .await?;
 let mut connection = pool.get().await?;
 ```
+
+Run this inside an async function. The returned connection can execute Tank entity operations.

@@ -4,15 +4,15 @@
 
 # tank-scylladb
 
-ScyllaDB and Cassandra driver implementation for [Tank](https://crates.io/crates/tank): the Rust data layer.
+`tank-scylladb` is the ScyllaDB and Cassandra driver for [Tank](https://crates.io/crates/tank): the Rust data layer.
 
-Implements Tank’s `Driver` and related traits for ScyllaDB and Cassandra, mapping Tank operations and queries into direct ScyllaDB commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. You still need it to define entities, manage schemas, and build queries.
+It maps Tank operations and queries to native CQL commands. Use it with the main [`tank`](https://crates.io/crates/tank) crate, which provides entity definitions and the query API.
 
-📘 https://tankhq.github.io/tank
+📘 **Docs:** https://tankhq.github.io/tank
 
-🖥️ https://github.com/TankHQ/tank
+🖥️ **Repo:** https://github.com/TankHQ/tank
 
-📦 https://crates.io/crates/tank
+📦 **Crate:** https://crates.io/crates/tank-scylladb
 
 ## Features
 - Async connection and execution via [`scylla`](https://crates.io/crates/scylla)
@@ -31,10 +31,17 @@ use tank_scylladb::ScyllaDBDriver;
 
 let driver = ScyllaDBDriver::new();
 let pool = driver
-    .connect_pool("scylladb://127.0.0.1:9042/keyspace".into(), PoolConfig::new())
+    .connect_pool(
+        "scylladb://user:password@127.0.0.1:9142/keyspace?ssl_ca=ca.pem&ssl_cert=client-cert.pem&ssl_key=client-key.pem".into(),
+        PoolConfig::new(),
+    )
     .await?;
 let mut connection = pool.get().await?;
 ```
+
+Run this inside an async function. The returned connection can execute Tank entity operations.
+
+Certificate filenames are resolved relative to the working directory. Use paths appropriate for your deployment.
 
 ## Primary Keys
 ScyllaDB/Cassandra primary keys have the shape:
@@ -44,9 +51,8 @@ ScyllaDB/Cassandra primary keys have the shape:
 In Tank, you define the primary key order via `#[tank(primary_key = (...))]` and mark clustering columns with `#[tank(clustering_key)]`.
 
 - If no field in the primary key is marked `clustering_key`, then all primary-key fields become the partition key.
-- If some fields are marked `clustering_key`, then:
-  - fields before the first clustering key become the partition key
-  - the first clustering key and anything after it (in the PK tuple order) become clustering keys
+- If some fields are marked `clustering_key`, fields before the first clustering key become the partition key.
+- The first clustering key and anything after it in the primary key tuple become clustering keys.
 
 Example:
 ```rust
@@ -72,25 +78,25 @@ Tank transactions on this driver are implemented as **batches**:
 - `Connection::begin()` starts a **logged batch**.
 - Statements are queued during the transaction and only sent to the server on `Transaction::commit()`.
 - `Transaction::rollback()` results in no operation because nothing was sent yet.
-- `SELECT` (or any query that returns rows) is not meaningful inside a transaction, and will fail when the batch is committed.
+- `SELECT` (or any query that returns rows) is not meaningful inside a transaction and will fail when the batch is committed.
 
 If you need different batch semantics, `ScyllaDBConnection` also exposes `begin_unlogged_batch()` and `begin_counter_batch()`.
 
 ## Limitations
-- **Batches are not ACID transactions**: No interactive reads inside the transaction moreover they are atomic only withing the partition.
+- **Batches are not ACID transactions**: They do not support interactive reads and atomicity only applies within a partition.
 - **No `CLUSTERING ORDER BY` in DDL**: `CREATE TABLE` does not currently emit `WITH CLUSTERING ORDER BY ...`.
 - No JOIN support: Tank queries requiring joins cannot be executed with this driver.
 - `RowsAffected` is not available: The ScyllaDB driver does not report affected-row counts.
-- CQL query rules still apply: e.g., `ORDER BY` is only valid on clustering keys and typically requires an equality-restricted partition key.
+- CQL query rules still apply: For example, `ORDER BY` is only valid on clustering keys and typically requires an equality-restricted partition key.
 
 ## Running Tests
 Tests need a ScyllaDB instance. Provide a connection URL via `TANK_SCYLLADB_TEST`. If absent, a containerized ScyllaDB will be launched automatically using [testcontainers-modules](https://crates.io/crates/testcontainers-modules).
 
-1. Ensure Docker is running (linux):
+1. Ensure Docker is running on Linux:
 ```sh
 systemctl status docker
 ```
-2. Add your user to the `docker` group if needed (linux):
+2. Add your user to the `docker` group if needed on Linux:
 ```sh
 sudo usermod -aG docker $USER
 ```
