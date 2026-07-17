@@ -3,21 +3,18 @@
 </div>
 
 # Tank
-Tank (Table Abstraction & Navigation Kit) is the Rust data layer for teams that want one entity model, explicit queries, and the freedom to move across very different databases without rewriting their whole stack.
+Tank (Table Abstraction & Navigation Kit) is the Rust data layer that lets you define an entity once and use the same explicit query API across a wide range of database management systems.
 
 **One entity model. Any terrain.**
 
 📘 **Docs:** https://tankhq.github.io/tank
 
-🖥️ **Repo:**  https://github.com/TankHQ/tank
+🖥️ **Repo:** https://github.com/TankHQ/tank
 
 📦 **Crate:** https://crates.io/crates/tank
 
-> [!IMPORTANT]  
-> **Authenticity Notice**: This is **not** AI slop. It was meticulously crafted by me (human) [barsdeveloper](https://github.com/barsdeveloper).
-
 ## Mission Briefing
-In plain terms, Tank is a thin layer over your database workflow, designed for the Rust operator who needs to deploy across multiple environments without changing the kit. It doesn't matter if you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or managing a Postgres stronghold, Tank provides a unified interface. You define your entities, Tank handles the ballistics.
+In plain terms, Tank is a thin layer over your database workflow for Rust teams that need one interface across different databases. Whether you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or managing a Postgres stronghold, Tank keeps your entity and query code consistent. You define your entities. Tank and your chosen driver handle the ballistics.
 
 **Known battlefields**:
 - Postgres
@@ -29,33 +26,33 @@ In plain terms, Tank is a thin layer over your database workflow, designed for t
 - Valkey/Redis
 
 ## Mission Objectives
-Tank exists to implement the **best possible** design for a ORM written in Rust. A clean-slate design focused on ergonomics, flexibility and broad database support.
+Tank aims to provide a clean ORM design focused on ergonomics, flexibility and broad database support.
 
-- **Async operations** - Fire and forget.
-- **Designed to be extensible** - Swap databases like changing magazines mid-battle.
+- **Async operations** - Non-blocking database operations built for async Rust.
+- **Designed to be extensible** - Add or swap database drivers without changing Tank's core.
 - **SQL and NoSQL support** - One Tank, all terrains.
-- **Transactions abstraction** - Commit on success or rollback and retreat.
+- **Transaction abstraction** - Commit on success or rollback and retreat.
 - **Rich type arsenal** - Automatic conversions between Rust and database types.
-- **Optional appender API** - High caliber bulk inserts.
-- **TLS** - No open radios on this battlefield.
-- **Joins** - Multi unit coordination.
+- **Optional appender API** - High caliber bulk inserts where the database supports them.
+- **TLS** - No open radios for drivers that connect over the network.
+- **Joins** - Explicit multi-unit coordination.
 - **Raw SQL** - You're never limited by the abstractions provided.
 - **Zero setup** - Skip training. Go straight to live fire.
 
 ## No-Fly Zone
-- No schema migrations (just table creation and destroy for fast setup).
+- No schema migrations (only table creation and drop for fast setup).
 - No implicit joins (no entities as fields, joins are explicit, every alliance is signed).
 
 ## Why Tank?
-**Intelligence Report**: A quick recon of the battlefield revealed that while existing heavy weaponry is effective, there was a critical need for a more adaptable, cleaner design. Tank was designed from scratch to address these weaknesses.
+**Intelligence Report**: Existing Rust data layers are effective, but Tank takes a different approach: one entity definition, explicit queries and an extensible driver model for SQL and NoSQL databases.
 
-**1. Modular Architecture**: Some systems rely on hardcoded enums for database support, which limits flexibility. If a backend isn't in the core list, it cannot be used. Tank is designed to be extensible: a driver can be implemented for any database (SQL or NoSQL) without touching the core library. If it can hold data, Tank can likely target it.
+**1. Modular Architecture**: Database support lives behind driver traits rather than a hardcoded list in the core library. A driver can be implemented for a new SQL or NoSQL database without changing Tank itself. If it can hold data, Tank can likely target it.
 
-**2. Zero Boilerplate**: Field operations shouldn't require filling out forms in triplicate. Some tools force data definition twice: once in a complex DSL and again as a Rust struct. Tank keeps it simple: one struct, one definition. The macros handle table creation, selection, and insertion automatically. You can set up tables and get database communication running in just a few lines of code, all through a unified API that works the same regardless of the backend. Perfect for spinning up tests and prototypes rapidly while still scaling to production backends.
+**2. Zero Boilerplate**: Field operations shouldn't require filling out forms in triplicate. Define a normal Rust struct once, then let Tank's macros derive table creation, selection and insertion. The result is less setup for tests and prototypes, with the same API available across production backends.
 
 ## Operational Guide
 
-*For more examples check the [cheat sheet](https://tankhq.github.io/tank/00-cheat-sheet.html)*
+*For more examples, check the [cheat sheet](https://tankhq.github.io/tank/00-cheat-sheet.html).*
 
 1) Arm your cargo
 ```sh
@@ -70,7 +67,7 @@ cargo add tank-duckdb
 3) Define unit schematics
 ```rust
 use std::borrow::Cow;
-use tank::{Entity, Executor, Result};
+use tank::{Entity, Result};
 
 #[derive(Entity)]
 #[tank(schema = "army")]
@@ -89,13 +86,13 @@ pub struct Tank {
 
 4) Fire for effect
 ```rust
-use std::{borrow::Cow, collections::HashSet};
-use tank::{ConnectionPool, Driver, Entity, PoolConfig, Result, expr, stream::TryStreamExt};
+use std::collections::HashSet;
+use tank::{ConnectionPool, Driver, PoolConfig, expr, stream::TryStreamExt};
 use tank_duckdb::DuckDBDriver;
 
 async fn data() -> Result<()> {
     let driver = DuckDBDriver::new();
-    let mut pool = driver
+    let pool = driver
         .connect_pool(
             "duckdb://../target/debug/tests.duckdb?mode=rw".into(),
             PoolConfig::new(),
@@ -182,15 +179,17 @@ async fn data() -> Result<()> {
             .collect::<HashSet<_>>(),
         HashSet::from_iter(["Tiger I".into(), "T-34/85".into()])
     );
+    println!("Tank is operational: {} units found.", tanks.len());
+    Tank::drop_table(&mut connection, true, true).await?;
     Ok(())
 }
 ```
 
 ## Support the Mission
-Building and maintaining drivers for half a dozen different databases is a massive effort. **If Tank saves your company time, infrastructure headaches, or boilerplate, please consider supporting its development.**
+Building and maintaining drivers for several database families is a major effort. **If Tank saves your company time, infrastructure headaches, or boilerplate, please consider supporting its development.**
 
-Donations ensure that Tank stays maintained, well-tested, and gets new capabilities (like more advanced driver features) faster.
+Sponsorship helps keep Tank maintained, well-tested and moving toward new capabilities faster.
 
-🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**
+🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**. Tank is independently designed, written and maintained by [barsdeveloper](https://github.com/barsdeveloper).
 
 *Rustaceans don't hide behind ORMs, they drive Tanks.*
