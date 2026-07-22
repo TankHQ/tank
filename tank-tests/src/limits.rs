@@ -160,7 +160,11 @@ pub async fn limits(executor: &mut impl Executor) {
         float64: f64::MAX,
         time: Time::from_hms_micro(23, 59, 59, 999_999)
             .expect("Close to midnight time must be correct"),
+        #[cfg(not(feature = "disable-large-dates"))]
         date: Date::from_calendar_date(9999, Month::December, 31)
+            .expect("Very old date must be correct"),
+        #[cfg(feature = "disable-large-dates")]
+        date: Date::from_calendar_date(2149, Month::June, 6)
             .expect("Very old date must be correct"),
         #[cfg(all(
             not(feature = "disable-intervals"),
@@ -210,9 +214,15 @@ pub async fn limits(executor: &mut impl Executor) {
         (loaded.time - Time::from_hms_micro(23, 59, 59, 999_999).unwrap()).abs()
             < time::Duration::milliseconds(1),
     );
+    #[cfg(not(feature = "disable-large-dates"))]
     assert_eq!(
         loaded.date,
         Date::from_calendar_date(9999, Month::December, 31).unwrap()
+    );
+    #[cfg(feature = "disable-large-dates")]
+    assert_eq!(
+        loaded.date,
+        Date::from_calendar_date(2149, Month::June, 6).unwrap()
     );
     #[cfg(all(
         not(feature = "disable-intervals"),

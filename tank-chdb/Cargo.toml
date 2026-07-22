@@ -1,0 +1,38 @@
+[package]
+name = "tank-chdb"
+description = "chDB driver implementation for Tank: the Rust data layer"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+categories.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-stream.workspace = true
+chdb-rust = "1.3"
+futures.workspace = true
+flume = "0"
+log.workspace = true
+serde_json.workspace = true
+tank-clickhouse = { path = "../tank-clickhouse" }
+tank-core.workspace = true
+tokio.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tank-tests = { path = "../tank-tests", features = [
+    "disable-arrays",
+    "disable-infinity",
+    "disable-glob",
+    "disable-large-integers",
+    "disable-large-dates",
+    "disable-large-intervals",
+    "disable-lists",
+    "disable-maps",
+    "disable-multiple-statements",
+    "disable-old-dates",
+    "disable-references",
+    "disable-transactions",
+] }

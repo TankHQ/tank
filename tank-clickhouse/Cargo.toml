@@ -1,0 +1,37 @@
+[package]
+name = "tank-clickhouse"
+description = "ClickHouse driver implementation for Tank: the Rust data layer"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+categories.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-stream.workspace = true
+futures.workspace = true
+klickhouse = { version = "0.15", features = ["rust_decimal"] }
+log.workspace = true
+rust_decimal.workspace = true
+tank-core.workspace = true
+time.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tank-tests = { path = "../tank-tests", features = [
+    "disable-arrays",
+    "disable-glob",
+    "disable-large-intervals",
+    "disable-lists",
+    "disable-maps",
+    "disable-multiple-statements",
+    "disable-old-dates",
+    "disable-large-dates",
+    "disable-references",
+    "disable-transactions",
+] }
+testcontainers-modules = { version = "0", features = ["clickhouse"] }
+tokio.workspace = true

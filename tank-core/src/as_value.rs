@@ -81,6 +81,106 @@ macro_rules! impl_as_value {
                     $destination(Some(v), ..) => Ok(v as _),
                     $($pat_rest => $expr_rest,)*
                     #[allow(unreachable_patterns)]
+                    Value::Int8(Some(v), ..) => {
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
+                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
+                            return Err(anyhow!(
+                                "Value {v}: i8 is out of range for {}",
+                                any::type_name::<Self>(),
+                            ));
+                        }
+                        Ok(v as $source)
+                    }
+                    #[allow(unreachable_patterns)]
+                    Value::Int16(Some(v), ..) => {
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
+                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
+                            return Err(anyhow!(
+                                "Value {v}: i16 is out of range for {}",
+                                any::type_name::<Self>(),
+                            ));
+                        }
+                        Ok(v as $source)
+                    }
+                    #[allow(unreachable_patterns)]
+                    Value::UInt8(Some(v), ..) => {
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
+                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
+                            return Err(anyhow!(
+                                "Value {v}: u8 is out of range for {}",
+                                any::type_name::<Self>(),
+                            ));
+                        }
+                        Ok(v as $source)
+                    }
+                    #[allow(unreachable_patterns)]
+                    Value::UInt16(Some(v), ..) => {
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
+                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
+                            return Err(anyhow!(
+                                "Value {v}: u16 is out of range for {}",
+                                any::type_name::<Self>(),
+                            ));
+                        }
+                        Ok(v as $source)
+                    }
+                    #[allow(unreachable_patterns)]
+                    Value::UInt32(Some(v), ..) => {
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
+                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
+                            return Err(anyhow!(
+                                "Value {v}: u32 is out of range for {}",
+                                any::type_name::<Self>(),
+                            ));
+                        }
+                        Ok(v as $source)
+                    }
+                    #[allow(unreachable_patterns)]
+                    Value::UInt64(Some(v), ..) => {
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
+                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
+                            return Err(anyhow!(
+                                "Value {v}: u64 is out of range for {}",
+                                any::type_name::<Self>(),
+                            ));
+                        }
+                        Ok(v as $source)
+                    }
+                    #[allow(unreachable_patterns)]
+                    Value::UInt128(Some(v), ..) => {
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
+                        // u128 may exceed i128::MAX; guard against wrapping before clamping.
+                        let v128 = if v > i128::MAX as u128 { i128::MAX } else { v as i128 };
+                        if v128.clamp(<$source>::MIN as _, max) != v128 {
+                            return Err(anyhow!(
+                                "Value {v}: u128 is out of range for {}",
+                                any::type_name::<Self>(),
+                            ));
+                        }
+                        Ok(v as $source)
+                    }
+                    #[allow(unreachable_patterns)]
                     Value::Int32(Some(v), ..) => {
                         let mut max = <$source>::MAX as i128;
                         if max < 0 {
@@ -706,6 +806,7 @@ impl_as_value!(
         }
         Ok(interval)
     },
+    Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v),
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
@@ -713,6 +814,7 @@ impl_as_value!(
     std::time::Duration,
     Value::Interval,
     |v| <Interval as AsValue>::parse(v).map(Into::into),
+    Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v),
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
@@ -720,6 +822,7 @@ impl_as_value!(
     time::Duration,
     Value::Interval,
     |v| <Interval as AsValue>::parse(v).map(Into::into),
+    Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v),
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
