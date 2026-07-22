@@ -5,15 +5,21 @@ use crate::{
 use anyhow::anyhow;
 use async_stream::try_stream;
 use chdb_rust::{connection::Connection as ChConnection, format::OutputFormat};
-use std::{borrow::Cow, fmt};
+use flume::Sender;
+use std::{
+    borrow::Cow,
+    fmt,
+    sync::{Arc, Mutex},
+};
 use tank_core::{
     AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result,
-    RowsAffected, stream::Stream,
+    RowsAffected, send_value, stream::Stream,
 };
+use tokio::task::spawn_blocking;
 
 /// chDB connection.
 pub struct ChdbConnection {
-    pub(crate) connection: ChConnection,
+    pub(crate) connection: Arc<Mutex<ChConnection>>,
 }
 
 impl fmt::Debug for ChdbConnection {
@@ -39,6 +45,8 @@ impl Executor for ChdbConnection {
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
         let context = format!("While running the query:\n{}", query.as_mut());
+        let connection = Arc::clone(&self.connection);
+        let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
 
         try_stream! {
             let sql = match query.as_mut() {
@@ -51,28 +59,50 @@ impl Executor for ChdbConnection {
                 }
             };
 
-            let result = self
-                .connection
-                .query(&sql, OutputFormat::JSONCompactEachRowWithNamesAndTypes)
-                .map_err(|e| anyhow!("chDB query failed: {e}"))
-                .context(context.clone())?;
+            let join = spawn_blocking(move || {
+                Self::do_run(connection, sql, tx);
+            });
+            while let Ok(result) = rx.recv_async().await {
+                yield result.map_err(|e| {
+                    let error = e.context(context.clone());
+                    log::error!("{error:#}");
+                    error
+                })?;
+            }
+            join.await?;
+        }
+    }
+}
 
-            let rows = json_compact_to_results(result.data_ref()).context(context.clone())?;
-            if rows.is_empty() {
-                yield QueryResult::Affected(RowsAffected {
-                    rows_affected: None,
-                    last_affected_id: None,
-                });
-            } else {
+impl ChdbConnection {
+    fn do_run(connection: Arc<Mutex<ChConnection>>, sql: String, tx: Sender<Result<QueryResult>>) {
+        let result = (|| -> Result<Vec<QueryResult>> {
+            let connection = connection
+                .lock()
+                .map_err(|e| anyhow!("chDB connection lock poisoned: {e}"))?;
+            let result = connection
+                .query(&sql, OutputFormat::JSONCompactEachRowWithNamesAndTypes)
+                .map_err(|e| anyhow!("chDB query failed: {e}"))?;
+            json_compact_to_results(result.data_ref())
+        })();
+
+        match result {
+            Ok(rows) if rows.is_empty() => {
+                send_value!(
+                    tx,
+                    Ok(QueryResult::Affected(RowsAffected {
+                        rows_affected: None,
+                        last_affected_id: None,
+                    }))
+                );
+            }
+            Ok(rows) => {
                 for row in rows {
-                    yield row;
+                    send_value!(tx, Ok(row));
                 }
             }
+            Err(error) => send_value!(tx, Err(error)),
         }
-        .map_err(move |e| {
-            log::error!("{e:#}");
-            e
-        })
     }
 }
 
@@ -83,37 +113,31 @@ impl Connection for ChdbConnection {
             log::error!("{e:#}");
             e
         })?;
-        let connection = match build_chdb_path(&url) {
-            Some(path) => ChConnection::open_with_path(&path)
-                .map_err(|e| anyhow!("Cannot open chDB at '{}': {e}", path))
-                .context(context)
-                .map_err(|e| {
-                    log::error!("{e:#}");
-                    e
-                })?,
-            None => ChConnection::open_in_memory()
-                .map_err(|e| anyhow!("Cannot open in-memory chDB: {e}"))
-                .context(context)
-                .map_err(|e| {
-                    log::error!("{e:#}");
-                    e
-                })?,
-        };
-        for sql in &[
-            "SET allow_experimental_lightweight_delete=1",
-            "SET join_use_nulls=1",
-            "SET final=1",
-        ] {
-            connection
-                .query(sql, OutputFormat::Null)
-                .map_err(|e| anyhow!("Failed to apply session setting '{sql}': {e}"))
-                .context(context)
-                .map_err(|e| {
-                    log::error!("{e:#}");
-                    e
-                })?;
-        }
-        Ok(Self { connection })
+        let path = build_chdb_path(&url).map(Cow::into_owned);
+        let connection = spawn_blocking(move || -> Result<ChConnection> {
+            let connection = match path {
+                Some(path) => ChConnection::open_with_path(&path)
+                    .map_err(|e| anyhow!("Cannot open chDB at '{path}': {e}"))?,
+                None => ChConnection::open_in_memory()
+                    .map_err(|e| anyhow!("Cannot open in-memory chDB: {e}"))?,
+            };
+            for sql in &[
+                "SET allow_experimental_lightweight_delete=1",
+                "SET join_use_nulls=1",
+                "SET final=1",
+            ] {
+                connection
+                    .query(sql, OutputFormat::Null)
+                    .map_err(|e| anyhow!("Failed to apply session setting '{sql}': {e}"))?;
+            }
+            Ok(connection)
+        })
+        .await
+        .context(context)?
+        .context(context)?;
+        Ok(Self {
+            connection: Arc::new(Mutex::new(connection)),
+        })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<ChdbTransaction<'_>>> + Send {

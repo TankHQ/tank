@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::anyhow;
 use async_stream::try_stream;
-use futures::StreamExt;
+use futures::{StreamExt, TryStreamExt};
 use klickhouse::{Client, ClientOptions};
 use std::{borrow::Cow, fmt, sync::Arc};
 use tank_core::{
