@@ -2,6 +2,7 @@
 mod connection;
 mod driver;
 mod prepared;
+mod streaming;
 mod transaction;
 mod value_wrap;
 

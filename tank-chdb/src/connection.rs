@@ -1,6 +1,7 @@
 use crate::{
     ChdbDriver, ChdbPrepared, ChdbSqlWriter, ChdbTransaction,
-    value_wrap::{build_chdb_path, json_compact_to_results},
+    streaming::ChdbStream,
+    value_wrap::{JsonRowParser, build_chdb_path},
 };
 use anyhow::anyhow;
 use async_stream::try_stream;
@@ -8,7 +9,7 @@ use chdb_rust::{connection::Connection as ChConnection, format::OutputFormat};
 use flume::Sender;
 use std::{
     borrow::Cow,
-    fmt,
+    fmt, mem,
     sync::{Arc, Mutex},
 };
 use tank_core::{
@@ -44,50 +45,69 @@ impl Executor for ChdbConnection {
         query: impl AsQuery<ChdbDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
-        let context = format!("While running the query:\n{}", query.as_mut());
+        let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         let connection = Arc::clone(&self.connection);
-        let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
+        let (tx, rx) = flume::bounded::<Result<QueryResult>>(16);
+        let mut owned = mem::take(query.as_mut());
+        let join = spawn_blocking(move || {
+            match &mut owned {
+                Query::Raw(RawQuery(sql)) => Self::do_run(connection, sql, tx),
+                Query::Prepared(prepared) => match prepared.build_sql(&ChdbSqlWriter::chdb()) {
+                    Ok(sql) => {
+                        prepared.take_params();
+                        Self::do_run(connection, &sql, tx);
+                    }
+                    Err(error) => send_value!(tx, Err(error)),
+                },
+            }
+            owned
+        });
 
         try_stream! {
-            let sql = match query.as_mut() {
-                Query::Raw(RawQuery(sql)) => sql.clone(),
-                Query::Prepared(prepared) => {
-                    let writer = ChdbSqlWriter::chdb();
-                    let sql = prepared.build_sql(&writer).context(context.clone())?;
-                    prepared.take_params();
-                    sql
-                }
-            };
-
-            let join = spawn_blocking(move || {
-                Self::do_run(connection, sql, tx);
-            });
+            let mut query_error = None;
             while let Ok(result) = rx.recv_async().await {
-                yield result.map_err(|e| {
-                    let error = e.context(context.clone());
-                    log::error!("{error:#}");
-                    error
-                })?;
+                match result {
+                    Ok(result) => yield result,
+                    Err(error) => {
+                        let error = error.context(context.clone());
+                        log::error!("{error:#}");
+                        query_error = Some(error);
+                        break;
+                    }
+                }
             }
-            join.await?;
+            *query.as_mut() = mem::take(&mut join.await?);
+            query.as_mut().clear_bindings().context(context.clone())?;
+            if let Some(error) = query_error {
+                Err(error)?;
+            }
         }
     }
 }
 
 impl ChdbConnection {
-    fn do_run(connection: Arc<Mutex<ChConnection>>, sql: String, tx: Sender<Result<QueryResult>>) {
-        let result = (|| -> Result<Vec<QueryResult>> {
+    fn do_run(connection: Arc<Mutex<ChConnection>>, sql: &str, tx: Sender<Result<QueryResult>>) {
+        let result = (|| -> Result<usize> {
             let connection = connection
                 .lock()
                 .map_err(|e| anyhow!("chDB connection lock poisoned: {e}"))?;
-            let result = connection
-                .query(&sql, OutputFormat::JSONCompactEachRowWithNamesAndTypes)
-                .map_err(|e| anyhow!("chDB query failed: {e}"))?;
-            json_compact_to_results(result.data_ref())
+            if !returns_rows(sql) {
+                connection
+                    .query(sql, OutputFormat::Null)
+                    .map_err(|e| anyhow!("chDB query failed: {e}"))?;
+                return Ok(0);
+            }
+            let mut stream = ChdbStream::start(&connection, sql)?;
+            let mut parser = JsonRowParser::new();
+            while let Some(chunk) = stream.next()? {
+                parser.push(chunk.data(), |row| send_value!(tx, Ok(row)))?;
+            }
+            parser.finish(|row| send_value!(tx, Ok(row)))?;
+            Ok(parser.rows())
         })();
 
         match result {
-            Ok(rows) if rows.is_empty() => {
+            Ok(0) => {
                 send_value!(
                     tx,
                     Ok(QueryResult::Affected(RowsAffected {
@@ -96,14 +116,31 @@ impl ChdbConnection {
                     }))
                 );
             }
-            Ok(rows) => {
-                for row in rows {
-                    send_value!(tx, Ok(row));
-                }
-            }
             Err(error) => send_value!(tx, Err(error)),
+            Ok(_) => {}
         }
     }
+}
+
+fn returns_rows(sql: &str) -> bool {
+    let keyword = sql.trim_start().split_ascii_whitespace().next();
+    matches!(
+        keyword,
+        Some(
+            "SELECT"
+                | "select"
+                | "WITH"
+                | "with"
+                | "SHOW"
+                | "show"
+                | "DESCRIBE"
+                | "describe"
+                | "DESC"
+                | "desc"
+                | "EXPLAIN"
+                | "explain"
+        )
+    )
 }
 
 impl Connection for ChdbConnection {
