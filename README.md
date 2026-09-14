@@ -190,6 +190,6 @@ Building and maintaining drivers for several database families is a major effort
 
 Sponsorship helps keep Tank maintained, well-tested and moving toward new capabilities faster.
 
-🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**. Tank is independently designed, written and maintained by [barsdeveloper](https://github.com/barsdeveloper).
+🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**. Tank is carefully designed, written and maintained by (human) [barsdeveloper](https://github.com/barsdeveloper).
 
 *Rustaceans don't hide behind ORMs, they drive Tanks.*
