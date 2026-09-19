@@ -1,10 +1,10 @@
 use anyhow::anyhow;
 use chdb_rust::connection::Connection as ChConnection;
 use std::{
-    ffi::{CStr, c_char, c_void},
+    ffi::{c_char, c_void},
     slice,
 };
-use tank_core::Result;
+use tank_core::{Result, error_message_from_ptr};
 
 type ChdbConnection = c_void;
 type ChdbStreamingResult = c_void;
@@ -21,7 +21,7 @@ struct ChdbResult {
 }
 
 unsafe extern "C" {
-    fn query_conn_streaming_n(
+    fn chdb_stream_query_n(
         connection: *mut ChdbConnection,
         query: *const c_char,
         query_len: usize,
@@ -51,14 +51,13 @@ unsafe impl Send for ChDBStream {}
 
 impl ChDBStream {
     pub(crate) fn start(connection: &ChConnection, sql: &str) -> Result<Self> {
-        // chdb-rust::Connection is a one-field wrapper around the C connection handle,
-        // but does not expose that handle or the streaming C API yet.
+        // chdb-rust::Connection is a one-field wrapper around the C connection handle
         let connection =
             unsafe { **(connection as *const ChConnection).cast::<*mut *mut ChdbConnection>() };
         let sql = sql.trim().trim_end_matches(';').trim_end();
         let format = b"JSONEachRow";
         let result = unsafe {
-            query_conn_streaming_n(
+            chdb_stream_query_n(
                 connection,
                 sql.as_ptr().cast(),
                 sql.len(),
@@ -69,7 +68,7 @@ impl ChDBStream {
         if result.is_null() {
             return Err(anyhow!("chDB streaming query returned no result"));
         }
-        let error = unsafe { chdb_streaming_result_error(result) };
+        let error = unsafe { chdb_result_error(result) };
         if let Some(error) = error_string(error) {
             unsafe { chdb_destroy_result(result) };
             return Err(anyhow!("chDB streaming query failed: {error}"));
@@ -91,7 +90,7 @@ impl ChDBStream {
             return Ok(None);
         }
         let error = unsafe { (*chunk).error_message.cast_const() };
-        if let Some(error) = error_string(error) {
+        if let Some(error) = error_message_from_ptr(&error) {
             unsafe { free_result_v2(chunk) };
             self.finished = true;
             return Err(anyhow!("chDB streaming fetch failed: {error}"));
@@ -136,12 +135,4 @@ impl Drop for ChDBChunk {
     fn drop(&mut self) {
         unsafe { free_result_v2(self.result) };
     }
-}
-
-fn error_string(error: *const c_char) -> Option<String> {
-    if error.is_null() {
-        return None;
-    }
-    let error = unsafe { CStr::from_ptr(error) }.to_string_lossy();
-    (!error.is_empty()).then(|| error.into_owned())
 }

@@ -7,7 +7,7 @@ use std::{
     borrow::Cow,
     cmp::min,
     collections::BTreeMap,
-    ffi::{CStr, CString},
+    ffi::{CStr, CString, c_char},
     ptr,
 };
 use syn::Path;
@@ -196,7 +196,7 @@ pub fn as_c_string(str: impl Into<Vec<u8>>) -> CString {
     .unwrap_or_default()
 }
 
-pub fn error_message_from_ptr<'a>(ptr: &'a *const i8) -> Cow<'a, str> {
+pub fn error_message_from_ptr<'a>(ptr: &'a *const c_char) -> Cow<'a, str> {
     unsafe {
         if *ptr != ptr::null() {
             CStr::from_ptr(*ptr).to_string_lossy()
