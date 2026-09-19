@@ -4154,6 +4154,7 @@ dependencies = [
  "log",
  "mysql_async",
  "rcgen",
+ "rust_decimal",
  "serde_json",
  "tank-core",
  "tank-tests",

@@ -1,9 +1,156 @@
 use anyhow::anyhow;
+use mysql_async::{
+    Column, Value as MyValue,
+    consts::{ColumnFlags, ColumnType},
+};
+use rust_decimal::Decimal;
 use std::borrow::Cow;
-use tank_core::Interval;
+use tank_core::{AsValue, Interval};
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
 pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, tank_core::Value>);
+
+/// MySQL's binary pseudo-charset, reported for binary columns.
+const BINARY_CHARSET: u16 = 63;
+
+/// Decode a raw MySQL value, using the column metadata to disambiguate it.
+/// Both protocols report `DECIMAL`, `VARCHAR`, `BLOB`, `ENUM` and `JSON` as bytes.
+pub(crate) fn extract_value(
+    column: &Column,
+    value: MyValue,
+) -> tank_core::Result<ValueWrap<'static>> {
+    let MyValue::Bytes(bytes) = &value else {
+        // The binary protocol already reports these as typed values.
+        return ValueWrap::try_from(value)
+            .map_err(|_| anyhow!("Could not convert the MySQL value into a tank value"));
+    };
+    let text = String::from_utf8_lossy(bytes);
+    let text = text.as_ref();
+    let unsigned = column.flags().contains(ColumnFlags::UNSIGNED_FLAG);
+    Ok(match column.column_type() {
+        ColumnType::MYSQL_TYPE_NULL => tank_core::Value::Null,
+        ColumnType::MYSQL_TYPE_DECIMAL | ColumnType::MYSQL_TYPE_NEWDECIMAL => {
+            tank_core::Value::Decimal(Some(<Decimal as AsValue>::parse(text)?), 0, 0)
+        }
+        ColumnType::MYSQL_TYPE_TINY => {
+            if unsigned {
+                tank_core::Value::UInt8(Some(<u8 as AsValue>::parse(text)?))
+            } else {
+                tank_core::Value::Int8(Some(<i8 as AsValue>::parse(text)?))
+            }
+        }
+        ColumnType::MYSQL_TYPE_SHORT | ColumnType::MYSQL_TYPE_YEAR => {
+            if unsigned {
+                tank_core::Value::UInt16(Some(<u16 as AsValue>::parse(text)?))
+            } else {
+                tank_core::Value::Int16(Some(<i16 as AsValue>::parse(text)?))
+            }
+        }
+        ColumnType::MYSQL_TYPE_INT24 | ColumnType::MYSQL_TYPE_LONG => {
+            if unsigned {
+                tank_core::Value::UInt32(Some(<u32 as AsValue>::parse(text)?))
+            } else {
+                tank_core::Value::Int32(Some(<i32 as AsValue>::parse(text)?))
+            }
+        }
+        ColumnType::MYSQL_TYPE_LONGLONG => {
+            if unsigned {
+                tank_core::Value::UInt64(Some(<u64 as AsValue>::parse(text)?))
+            } else {
+                tank_core::Value::Int64(Some(<i64 as AsValue>::parse(text)?))
+            }
+        }
+        ColumnType::MYSQL_TYPE_FLOAT => {
+            tank_core::Value::Float32(Some(<f32 as AsValue>::parse(text)?))
+        }
+        ColumnType::MYSQL_TYPE_DOUBLE => {
+            tank_core::Value::Float64(Some(<f64 as AsValue>::parse(text)?))
+        }
+        ColumnType::MYSQL_TYPE_DATE | ColumnType::MYSQL_TYPE_NEWDATE => {
+            tank_core::Value::Date(Some(<Date as AsValue>::parse(text)?))
+        }
+        ColumnType::MYSQL_TYPE_DATETIME
+        | ColumnType::MYSQL_TYPE_DATETIME2
+        | ColumnType::MYSQL_TYPE_TIMESTAMP
+        | ColumnType::MYSQL_TYPE_TIMESTAMP2 => {
+            tank_core::Value::Timestamp(Some(<PrimitiveDateTime as AsValue>::parse(text)?))
+        }
+        ColumnType::MYSQL_TYPE_TIME | ColumnType::MYSQL_TYPE_TIME2 => {
+            tank_core::Value::Interval(Some(parse_mysql_time(text)?))
+        }
+        ColumnType::MYSQL_TYPE_JSON => {
+            tank_core::Value::Json(Some(serde_json::from_str(text).map_err(|e| {
+                anyhow!(
+                    "Could not decode the JSON column `{}`: {e}",
+                    column.name_str()
+                )
+            })?))
+        }
+        // Binary payloads are identified by charset, not by `BINARY_FLAG` (MariaDB sets it on textual `UUID`).
+        ColumnType::MYSQL_TYPE_BIT
+        | ColumnType::MYSQL_TYPE_GEOMETRY
+        | ColumnType::MYSQL_TYPE_VECTOR
+        | ColumnType::MYSQL_TYPE_STRING
+        | ColumnType::MYSQL_TYPE_VAR_STRING
+        | ColumnType::MYSQL_TYPE_BLOB
+        | ColumnType::MYSQL_TYPE_TINY_BLOB
+        | ColumnType::MYSQL_TYPE_MEDIUM_BLOB
+        | ColumnType::MYSQL_TYPE_LONG_BLOB
+            if column.character_set() == BINARY_CHARSET =>
+        {
+            tank_core::Value::Blob(Some(bytes.clone().into()))
+        }
+        // Text payloads (`CHAR`, `VARCHAR`, `TEXT`, `ENUM`, `SET`, ...).
+        _ => {
+            // MariaDB reports `JSON` as a text blob, so structural JSON is recognized from the content.
+            match serde_json::from_slice::<serde_json::Value>(bytes) {
+                Ok(json @ (serde_json::Value::Array(..) | serde_json::Value::Object(..))) => {
+                    tank_core::Value::Json(Some(json))
+                }
+                _ => tank_core::Value::Varchar(Some(text.to_owned().into())),
+            }
+        }
+    }
+    .into())
+}
+
+/// Parse a MySQL `TIME` literal (`[-]HH:MM:SS[.ffffff]`) into an interval.
+fn parse_mysql_time(text: &str) -> tank_core::Result<Interval> {
+    let context = || anyhow!("Could not parse the MySQL TIME value `{text}`");
+    let (negative, text) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text),
+    };
+    let mut parts = text.split(':');
+    let hours: i64 = parts
+        .next()
+        .and_then(|v| v.parse().ok())
+        .ok_or_else(context)?;
+    let minutes: i64 = parts
+        .next()
+        .and_then(|v| v.parse().ok())
+        .ok_or_else(context)?;
+    let seconds = parts.next().ok_or_else(context)?;
+    let (seconds, micros) = match seconds.split_once('.') {
+        Some((seconds, fraction)) => {
+            let mut fraction = fraction.to_owned();
+            fraction.truncate(6);
+            while fraction.len() < 6 {
+                fraction.push('0');
+            }
+            (
+                seconds.parse::<i64>().map_err(|_| context())?,
+                fraction.parse::<i64>().unwrap_or(0),
+            )
+        }
+        None => (seconds.parse::<i64>().map_err(|_| context())?, 0),
+    };
+    let result = Interval::from_hours(hours)
+        + Interval::from_mins(minutes)
+        + Interval::from_secs(seconds)
+        + Interval::from_micros(micros as i128);
+    Ok(if negative { -result } else { result })
+}
 
 impl<'a> From<&'a tank_core::Value> for ValueWrap<'a> {
     fn from(value: &'a tank_core::Value) -> Self {
