@@ -86,6 +86,7 @@ Enable feature flags to disable specific functionality until green.
 - `disable-intervals`: interval / duration value types
 - `disable-joins`: SQL join semantics
 - `disable-large-integers`: `i128` and `u128` unsupported
+- `disable-large-decimals`: decimals beyond IEEE-754 double precision unsupported
 - `disable-large-intervals`: disable testing very large interval values
 - `disable-lists`: dynamic list/array-like collections absent
 - `disable-maps`: avoid testing `HashMap`, `BTreeMap`
