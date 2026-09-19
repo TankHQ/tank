@@ -116,7 +116,7 @@ impl Connection for ChDBConnection {
     async fn connect(driver: &ChDBDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = "While trying to connect to chDB";
         let url = Self::sanitize_url(driver, url).context(context)?;
-        let path = url
+        let path: Option<Cow<'static, str>> = url
             .query_pairs()
             .find_map(|(k, v)| (k.eq_ignore_ascii_case("path") && !v.is_empty()).then_some(v))
             .map(|v| Cow::Owned(v.to_string()))
@@ -127,8 +127,11 @@ impl Connection for ChDBConnection {
             });
         let connection = spawn_blocking(move || -> Result<ChConnection> {
             let connection = match path {
-                Some(path) => ChConnection::open_with_path(&path)
-                    .map_err(|e| anyhow!("Cannot open chDB at '{path}': {e}"))?,
+                Some(path) => {
+                    let arg = format!("--path={path}");
+                    ChConnection::open(&[&arg])
+                        .map_err(|e| anyhow!("Cannot open chDB at '{path}': {e}"))?
+                }
                 None => ChConnection::open_in_memory()
                     .map_err(|e| anyhow!("Cannot open in-memory chDB: {e}"))?,
             };

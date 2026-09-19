@@ -277,6 +277,19 @@ impl Connection for SQLiteConnection {
                 log::error!("{error:#}");
                 return Err(error);
             }
+            let rc = sqlite3_exec(
+                *connection,
+                c"PRAGMA foreign_keys = ON".as_ptr(),
+                None,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+            if rc != SQLITE_OK {
+                let error =
+                    Error::msg(error_message_from_ptr(&sqlite3_errmsg(*connection)).to_string())
+                        .context("While enabling foreign key enforcement");
+                log::error!("{error:#}");
+            }
         }
         Ok(Self { connection })
     }

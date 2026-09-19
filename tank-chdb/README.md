@@ -25,6 +25,14 @@ cargo add tank
 cargo add tank-chdb
 ```
 
+Optional feature flags:
+- `bundled` (default): links the chDB library statically, so the binary is self-contained.
+
+Disable it to link `libchdb` dynamically instead:
+```sh
+cargo add tank-chdb --no-default-features
+```
+
 ## Quick Start
 ```rust
 use tank::{ConnectionPool, Driver, PoolConfig};

@@ -17,7 +17,6 @@ log.workspace = true
 rust_decimal.workspace = true
 tank-core.workspace = true
 time.workspace = true
-tokio.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

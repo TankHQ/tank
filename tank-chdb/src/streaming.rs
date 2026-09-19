@@ -1,24 +1,11 @@
 use anyhow::anyhow;
 use chdb_rust::connection::Connection as ChConnection;
-use std::{
-    ffi::{c_char, c_void},
-    slice,
-};
+use std::{ffi::c_char, slice};
 use tank_core::{Result, error_message_from_ptr};
 
-type ChdbConnection = c_void;
-type ChdbStreamingResult = c_void;
-
-#[repr(C)]
-struct ChdbResult {
-    buffer: *mut c_char,
-    length: usize,
-    _vec: *mut c_void,
-    _elapsed: f64,
-    _rows_read: u64,
-    _bytes_read: u64,
-    error_message: *mut c_char,
-}
+/// Opaque handles from `chdb.h`.
+enum ChdbConnection {}
+enum ChdbResult {}
 
 unsafe extern "C" {
     fn chdb_stream_query_n(
@@ -27,23 +14,21 @@ unsafe extern "C" {
         query_len: usize,
         format: *const c_char,
         format_len: usize,
-    ) -> *mut ChdbStreamingResult;
-    fn chdb_streaming_result_error(result: *mut ChdbStreamingResult) -> *const c_char;
-    fn chdb_streaming_fetch_result(
-        connection: *mut ChdbConnection,
-        result: *mut ChdbStreamingResult,
     ) -> *mut ChdbResult;
-    fn chdb_streaming_cancel_query(
+    fn chdb_stream_fetch_result(
         connection: *mut ChdbConnection,
-        result: *mut ChdbStreamingResult,
-    );
-    fn chdb_destroy_result(result: *mut ChdbStreamingResult);
-    fn free_result_v2(result: *mut ChdbResult);
+        result: *mut ChdbResult,
+    ) -> *mut ChdbResult;
+    fn chdb_stream_cancel_query(connection: *mut ChdbConnection, result: *mut ChdbResult);
+    fn chdb_result_buffer(result: *mut ChdbResult) -> *mut c_char;
+    fn chdb_result_length(result: *mut ChdbResult) -> usize;
+    fn chdb_result_error(result: *mut ChdbResult) -> *const c_char;
+    fn chdb_destroy_query_result(result: *mut ChdbResult);
 }
 
 pub(crate) struct ChDBStream {
     connection: *mut ChdbConnection,
-    result: *mut ChdbStreamingResult,
+    result: *mut ChdbResult,
     finished: bool,
 }
 
@@ -51,8 +36,8 @@ unsafe impl Send for ChDBStream {}
 
 impl ChDBStream {
     pub(crate) fn start(connection: &ChConnection, sql: &str) -> Result<Self> {
-        // chdb-rust::Connection is a one-field wrapper around the C connection handle
-        let connection =
+        // `chdb_rust::Connection` wraps `*mut *mut chdb_connection_` in a private field.
+        let connection: *mut ChdbConnection =
             unsafe { **(connection as *const ChConnection).cast::<*mut *mut ChdbConnection>() };
         let sql = sql.trim().trim_end_matches(';').trim_end();
         let format = b"JSONEachRow";
@@ -69,8 +54,9 @@ impl ChDBStream {
             return Err(anyhow!("chDB streaming query returned no result"));
         }
         let error = unsafe { chdb_result_error(result) };
-        if let Some(error) = error_string(error) {
-            unsafe { chdb_destroy_result(result) };
+        if !error.is_null() {
+            let error = error_message_from_ptr(&error);
+            unsafe { chdb_destroy_query_result(result) };
             return Err(anyhow!("chDB streaming query failed: {error}"));
         }
         Ok(Self {
@@ -84,19 +70,20 @@ impl ChDBStream {
         if self.finished {
             return Ok(None);
         }
-        let chunk = unsafe { chdb_streaming_fetch_result(self.connection, self.result) };
+        let chunk = unsafe { chdb_stream_fetch_result(self.connection, self.result) };
         if chunk.is_null() {
             self.finished = true;
             return Ok(None);
         }
-        let error = unsafe { (*chunk).error_message.cast_const() };
-        if let Some(error) = error_message_from_ptr(&error) {
-            unsafe { free_result_v2(chunk) };
+        let error = unsafe { chdb_result_error(chunk) };
+        if !error.is_null() {
+            let error = error_message_from_ptr(&error);
+            unsafe { chdb_destroy_query_result(chunk) };
             self.finished = true;
             return Err(anyhow!("chDB streaming fetch failed: {error}"));
         }
-        if unsafe { (*chunk).length } == 0 {
-            unsafe { free_result_v2(chunk) };
+        if unsafe { chdb_result_length(chunk) } == 0 {
+            unsafe { chdb_destroy_query_result(chunk) };
             self.finished = true;
             return Ok(None);
         }
@@ -110,9 +97,9 @@ impl Drop for ChDBStream {
             return;
         }
         if !self.finished {
-            unsafe { chdb_streaming_cancel_query(self.connection, self.result) };
+            unsafe { chdb_stream_cancel_query(self.connection, self.result) };
         }
-        unsafe { chdb_destroy_result(self.result) };
+        unsafe { chdb_destroy_query_result(self.result) };
     }
 }
 
@@ -122,8 +109,8 @@ pub(crate) struct ChDBChunk {
 
 impl ChDBChunk {
     pub(crate) fn data(&self) -> &[u8] {
-        let buffer = unsafe { (*self.result).buffer };
-        let length = unsafe { (*self.result).length };
+        let buffer = unsafe { chdb_result_buffer(self.result) };
+        let length = unsafe { chdb_result_length(self.result) };
         if buffer.is_null() || length == 0 {
             return &[];
         }
@@ -133,6 +120,6 @@ impl ChDBChunk {
 
 impl Drop for ChDBChunk {
     fn drop(&mut self) {
-        unsafe { free_result_v2(self.result) };
+        unsafe { chdb_destroy_query_result(self.result) };
     }
 }
