@@ -1,12 +1,12 @@
 use crate::{
     ClickHouseDriver, ClickHousePrepared, ClickHouseSqlWriter, ClickHouseTransaction,
-    value_wrap::kl_to_tank,
+    value_wrap::extract_value,
 };
 use anyhow::anyhow;
 use async_stream::try_stream;
 use futures::{StreamExt, TryStreamExt};
 use klickhouse::{Client, ClientOptions};
-use std::{borrow::Cow, fmt, mem, sync::Arc};
+use std::{borrow::Cow, fmt, sync::Arc};
 use tank_core::{
     AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, Row,
     RowsAffected, stream::Stream,
@@ -41,105 +41,65 @@ impl Executor for ClickHouseConnection {
         let mut query = query.as_query();
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         let client = self.client.clone();
-        let mut owned = mem::take(query.as_mut());
 
         try_stream! {
-            let mut query_error = None;
-            let sql = match &mut owned {
+            let sql = match query.as_mut() {
                 Query::Raw(RawQuery(sql)) => Cow::Borrowed(sql.as_str()),
                 Query::Prepared(prepared) => {
                     let writer = ClickHouseSqlWriter::new();
-                    match prepared.build_sql(&writer) {
-                        Ok(sql) => {
-                            prepared.take_params();
-                            Cow::Owned(sql)
-                        }
-                        Err(error) => {
-                            query_error = Some(error.context(context.clone()));
-                            Cow::Borrowed("")
-                        }
-                    }
+                    let sql = prepared
+                        .build_sql(&writer)
+                        .map_err(|e| e.context(context.clone()))?;
+                    prepared.take_params();
+                    Cow::Owned(sql)
                 }
             };
 
-            let mut kl_stream = if query_error.is_none() {
-                match client.query_raw(sql.as_ref()).await {
-                    Ok(stream) => Some(stream),
-                    Err(error) => {
-                        query_error = Some(
-                            anyhow!("ClickHouse query failed: {error}").context(context.clone()),
-                        );
-                        None
-                    }
-                }
-            } else {
-                None
-            };
+            let mut stream = client
+                .query_raw(sql.as_ref())
+                .await
+                .map_err(|error| {
+                    anyhow!("ClickHouse query failed: {error}").context(context.clone())
+                })?;
 
             let mut got_rows = false;
 
-            if let Some(stream) = kl_stream.as_mut() {
-                while let Some(block_result) = stream.next().await {
-                    let block = match block_result {
-                        Ok(block) => block,
-                        Err(error) => {
-                            query_error = Some(
-                                anyhow!("ClickHouse stream error: {error}")
-                                    .context(context.clone()),
-                            );
-                            break;
-                        }
-                    };
+            while let Some(block) = stream.next().await.transpose().map_err(|error| {
+                anyhow!("ClickHouse stream error: {error}").context(context.clone())
+            })? {
+                if block.column_types.is_empty() {
+                    continue;
+                }
+                got_rows = true;
+                if block.rows == 0 {
+                    continue;
+                }
 
-                    if block.rows == 0 {
-                        continue;
-                    }
+                let names: Arc<[String]> = block.column_types
+                    .keys()
+                    .map(|n| n.rsplit('.').next().unwrap_or(n).to_owned())
+                    .collect::<Vec<_>>()
+                    .into();
+                let columns: Vec<(&klickhouse::Type, &Vec<klickhouse::Value>)> =
+                    block.column_types.values().zip(block.column_data.values()).collect();
 
-                    let col_count = block.column_types.len();
-                    let names: Arc<[String]> = block.column_types
-                        .keys()
-                        .map(|n| n.rsplit('.').next().unwrap_or(n).to_owned())
-                        .collect::<Vec<_>>()
-                        .into();
-                    let types: Vec<&klickhouse::Type> = block.column_types.values().collect();
-                    let columns: Vec<&Vec<klickhouse::Value>> =
-                        block.column_data.values().collect();
-
-                    for row_idx in 0..block.rows as usize {
-                        got_rows = true;
-                        let values: Result<Vec<tank_core::Value>> = (0..col_count)
-                            .map(|col_idx| {
-                                kl_to_tank(types[col_idx], columns[col_idx][row_idx].clone())
-                                    .map_err(|e| e.context(context.clone()))
-                            })
-                            .collect();
-                        match values {
-                            Ok(values) => {
-                                yield QueryResult::Row(Row::new(names.clone(), values.into()))
-                            }
-                            Err(error) => {
-                                query_error = Some(error);
-                                break;
-                            }
-                        }
-                    }
-                    if query_error.is_some() {
-                        break;
-                    }
+                for row_idx in 0..block.rows as usize {
+                    let values = columns
+                        .iter()
+                        .map(|(ty, column)| {
+                            extract_value(ty, column[row_idx].clone())
+                                .map_err(|e| e.context(context.clone()))
+                        })
+                        .collect::<Result<Vec<tank_core::Value>>>()?;
+                    yield QueryResult::Row(Row::new(names.clone(), values.into()));
                 }
             }
 
-            if query_error.is_none() && !got_rows {
+            if !got_rows {
                 yield QueryResult::Affected(RowsAffected {
                     rows_affected: None,
                     last_affected_id: None,
                 });
-            }
-
-            *query.as_mut() = owned;
-            query.as_mut().clear_bindings().context(context.clone())?;
-            if let Some(error) = query_error {
-                Err(error)?;
             }
         }
         .map_err(move |e| {
@@ -152,12 +112,7 @@ impl Executor for ClickHouseConnection {
 impl Connection for ClickHouseConnection {
     async fn connect(driver: &ClickHouseDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = "While trying to connect to ClickHouse";
-        let url = Self::sanitize_url(driver, url)
-            .context(context)
-            .map_err(|e| {
-                log::error!("{e:#}");
-                e
-            })?;
+        let url = Self::sanitize_url(driver, url).context(context)?;
         let host = url.host_str().unwrap_or("localhost");
         let port = url.port().unwrap_or(9000);
         let user = if url.username().is_empty() {
@@ -183,27 +138,16 @@ impl Connection for ClickHouseConnection {
 
         let client = Client::connect(&addr, options)
             .await
-            .map_err(|e| anyhow!("Cannot connect to ClickHouse at {addr}: {e}").context(context))
-            .map_err(|e| {
-                log::error!("{e:#}");
-                e
-            })?;
+            .map_err(|e| anyhow!("Cannot connect to ClickHouse at {addr}: {e}").context(context))?;
 
         for sql in &[
             "SET allow_experimental_lightweight_delete=1",
             "SET join_use_nulls=1",
             "SET final=1",
         ] {
-            client
-                .execute(*sql)
-                .await
-                .map_err(|e| {
-                    anyhow!("Failed to apply session setting '{sql}': {e}").context(context)
-                })
-                .map_err(|e| {
-                    log::error!("{e:#}");
-                    e
-                })?;
+            client.execute(*sql).await.map_err(|e| {
+                anyhow!("Failed to apply session setting '{sql}': {e}").context(context)
+            })?;
         }
 
         Ok(ClickHouseConnection { client })

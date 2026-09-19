@@ -9,9 +9,15 @@ use tank_core::{
 use time::{OffsetDateTime, PrimitiveDateTime};
 
 /// ClickHouse SQL writer.
-#[derive(Default, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct ClickHouseSqlWriter {
     replacing_merge_tree: bool,
+}
+
+impl Default for ClickHouseSqlWriter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ClickHouseSqlWriter {
@@ -28,23 +34,19 @@ impl ClickHouseSqlWriter {
     }
 }
 
-fn write_datetime_literal(
-    out: &mut DynQuery,
-    quote: &str,
-    year: i32,
-    month: u8,
-    day: u8,
-    hour: u8,
-    minute: u8,
-    second: u8,
-    nanos: u32,
-) {
+fn write_datetime_literal(out: &mut DynQuery, quote: &str, value: &PrimitiveDateTime) {
     out.push_str(quote);
     let _ = write!(
         out,
         "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-        year, month, day, hour, minute, second,
+        value.year(),
+        value.month() as u8,
+        value.day(),
+        value.hour(),
+        value.minute(),
+        value.second(),
     );
+    let nanos = value.nanosecond();
     if nanos != 0 {
         let mut frac = format!("{nanos:09}");
         while frac.ends_with('0') {
@@ -132,9 +134,9 @@ impl SqlWriter for ClickHouseSqlWriter {
             Value::Float64(..) => out.push_str("Float64"),
             Value::Decimal(.., precision, scale) => {
                 if (*precision, *scale) == (0, 0) {
-                    out.push_str("Decimal(18, 6)");
+                    out.push_str("Decimal(38,9)");
                 } else {
-                    let _ = write!(out, "Decimal({precision}, {scale})");
+                    let _ = write!(out, "Decimal({precision},{scale})");
                 }
             }
             Value::Char(..) | Value::Varchar(..) => out.push_str("String"),
@@ -142,8 +144,8 @@ impl SqlWriter for ClickHouseSqlWriter {
             Value::Date(..) => out.push_str("Date"),
             Value::Time(..) => out.push_str("String"),
             Value::Interval(..) => out.push_str("String"),
-            Value::Timestamp(..) => out.push_str("DateTime64(9, 'UTC')"),
-            Value::TimestampWithTimezone(..) => out.push_str("DateTime64(9, 'UTC')"),
+            Value::Timestamp(..) => out.push_str("DateTime64(9,'UTC')"),
+            Value::TimestampWithTimezone(..) => out.push_str("DateTime64(9,'UTC')"),
             Value::Uuid(..) => out.push_str("UUID"),
             Value::Array(_, inner, _) => {
                 out.push_str("Array(");
@@ -158,7 +160,7 @@ impl SqlWriter for ClickHouseSqlWriter {
             Value::Map(_, key, val) => {
                 out.push_str("Map(");
                 self.write_column_type(context, out, key);
-                out.push_str(", ");
+                out.push(',');
                 self.write_column_type(context, out, val);
                 out.push(')');
             }
@@ -225,8 +227,13 @@ impl SqlWriter for ClickHouseSqlWriter {
             BinaryOpType::Like => ("like(materialize(", "), ", ")", true, true),
             BinaryOpType::NotLike => ("NOT like(materialize(", "), ", ")", true, true),
             other => {
-                let base: &dyn SqlWriter = &tank_core::GenericSqlWriter {};
-                base.expression_binary_op_fragments(context, other)
+                struct GenericWriter;
+                impl SqlWriter for GenericWriter {
+                    fn as_dyn(&self) -> &dyn SqlWriter {
+                        self
+                    }
+                }
+                GenericWriter.expression_binary_op_fragments(context, other)
             }
         }
     }
@@ -261,17 +268,7 @@ impl SqlWriter for ClickHouseSqlWriter {
             Fragment::Json | Fragment::JsonKey => "\"",
             _ => "'",
         };
-        write_datetime_literal(
-            out,
-            quote,
-            value.year(),
-            value.month() as u8,
-            value.day(),
-            value.hour(),
-            value.minute(),
-            value.second(),
-            value.nanosecond(),
-        );
+        write_datetime_literal(out, quote, value);
     }
 
     fn write_timestamptz(&self, context: &mut Context, out: &mut DynQuery, value: &OffsetDateTime) {
@@ -281,17 +278,7 @@ impl SqlWriter for ClickHouseSqlWriter {
             Fragment::Json | Fragment::JsonKey => "\"",
             _ => "'",
         };
-        write_datetime_literal(
-            out,
-            quote,
-            utc.year(),
-            utc.month() as u8,
-            utc.day(),
-            utc.hour(),
-            utc.minute(),
-            utc.second(),
-            utc.nanosecond(),
-        );
+        write_datetime_literal(out, quote, &PrimitiveDateTime::new(utc.date(), utc.time()));
     }
 
     fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {

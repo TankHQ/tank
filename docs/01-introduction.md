@@ -35,6 +35,8 @@ Tank exists to implement the **best possible** design for an ORM written in Rust
 - [**tank-sqlite**](https://crates.io/crates/tank-sqlite)
 - [**tank-mysql**](https://crates.io/crates/tank-mysql)
 - [**tank-duckdb**](https://crates.io/crates/tank-duckdb)
+- [**tank-clickhouse**](https://crates.io/crates/tank-clickhouse)
+- [**tank-chdb**](https://crates.io/crates/tank-chdb)
 - [**tank-mongodb**](https://crates.io/crates/tank-mongodb)
 - [**tank-scylladb**](https://crates.io/crates/tank-scylladb)
 - [**tank-valkey**](https://crates.io/crates/tank-valkey)

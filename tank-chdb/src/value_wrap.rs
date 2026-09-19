@@ -16,7 +16,6 @@ pub(crate) struct JsonRowParser {
     object_keys: Option<Arc<[String]>>,
     header_lines: u8,
     compact: bool,
-    rows: usize,
 }
 
 impl JsonRowParser {
@@ -27,7 +26,6 @@ impl JsonRowParser {
             object_keys: None,
             header_lines: 0,
             compact: false,
-            rows: 0,
         }
     }
 
@@ -64,10 +62,6 @@ impl JsonRowParser {
         }
         let pending = std::mem::take(&mut self.pending);
         self.parse_line(&pending, &mut send)
-    }
-
-    pub(crate) fn rows(&self) -> usize {
-        self.rows
     }
 
     fn parse_line<F>(&mut self, line: &[u8], send: &mut F) -> Result<()>
@@ -145,7 +139,6 @@ impl JsonRowParser {
                         .unwrap_or(Value::Null)
                 })
                 .collect::<Vec<_>>();
-            self.rows += 1;
             send(QueryResult::Row(Row::new(labels.clone(), values.into())));
         } else if let JsonValue::Object(items) = json {
             self.emit_object(&items, send);
@@ -174,7 +167,6 @@ impl JsonRowParser {
                     .unwrap_or(Value::Null)
             })
             .collect::<Vec<_>>();
-        self.rows += 1;
         send(QueryResult::Row(Row::new(labels.clone(), values.into())));
     }
 }
@@ -213,21 +205,5 @@ mod tests {
         assert_eq!(row.labels.as_ref(), ["a", "b"]);
         assert_eq!(row.values[0], Value::Json(Some(serde_json::json!(1))));
         assert_eq!(row.values[1], Value::Varchar(Some(Cow::Borrowed("hello"))));
-    }
-}
-
-pub(crate) fn build_chdb_path(url: &url::Url) -> Option<Cow<'static, str>> {
-    if let Some(path) = url
-        .query_pairs()
-        .find_map(|(k, v)| (k.eq_ignore_ascii_case("path") && !v.is_empty()).then_some(v))
-    {
-        return Some(Cow::Owned(path.to_string()));
-    }
-
-    let raw = url.path().trim();
-    if raw.is_empty() || raw == "/" {
-        None
-    } else {
-        Some(Cow::Owned(raw.trim_start_matches('/').to_string()))
     }
 }

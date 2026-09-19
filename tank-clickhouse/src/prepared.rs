@@ -29,13 +29,11 @@ impl ClickHousePrepared {
         let mut remaining = self.sql.as_str();
         while let Some(pos) = remaining.find('?') {
             out.push_str(&remaining[..pos]);
-            let value = param_iter
-                .next()
-                .ok_or_else(|| {
-                    let error = anyhow!("Not enough parameters bound for prepared statement");
-                    log::error!("{error:#}");
-                    error
-                })?;
+            let value = param_iter.next().ok_or_else(|| {
+                let error = anyhow!("Not enough parameters bound for prepared statement");
+                log::error!("{error:#}");
+                error
+            })?;
             writer.write_value(&mut context, &mut out, value);
             remaining = &remaining[pos + 1..];
         }
@@ -70,7 +68,8 @@ impl Prepared for ClickHousePrepared {
             self.params.resize_with(count as _, Default::default);
         }
         let target = self.params.get_mut(index as usize).ok_or_else(|| {
-            let error = anyhow!("Index {index} cannot be bound, the query has only {count} parameters");
+            let error =
+                anyhow!("Index {index} cannot be bound, the query has only {count} parameters");
             log::error!("{error:#}");
             error
         })?;

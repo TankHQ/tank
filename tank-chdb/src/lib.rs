@@ -9,5 +9,5 @@ mod value_wrap;
 pub use connection::*;
 pub use driver::*;
 pub use prepared::*;
-pub use tank_clickhouse::ClickHouseSqlWriter as ChdbSqlWriter;
+pub use tank_clickhouse::ClickHouseSqlWriter as ChDBSqlWriter;
 pub use transaction::*;

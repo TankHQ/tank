@@ -1,7 +1,6 @@
 use crate::{
-    ChdbDriver, ChdbPrepared, ChdbSqlWriter, ChdbTransaction,
-    streaming::ChdbStream,
-    value_wrap::{JsonRowParser, build_chdb_path},
+    ChDBDriver, ChDBPrepared, ChDBSqlWriter, ChDBTransaction, streaming::ChDBStream,
+    value_wrap::JsonRowParser,
 };
 use anyhow::anyhow;
 use async_stream::try_stream;
@@ -9,7 +8,7 @@ use chdb_rust::{connection::Connection as ChConnection, format::OutputFormat};
 use flume::Sender;
 use std::{
     borrow::Cow,
-    fmt, mem,
+    fmt,
     sync::{Arc, Mutex},
 };
 use tank_core::{
@@ -19,75 +18,63 @@ use tank_core::{
 use tokio::task::spawn_blocking;
 
 /// chDB connection.
-pub struct ChdbConnection {
+pub struct ChDBConnection {
     pub(crate) connection: Arc<Mutex<ChConnection>>,
 }
 
-impl fmt::Debug for ChdbConnection {
+impl fmt::Debug for ChDBConnection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ChdbConnection").finish()
+        f.debug_struct("ChDBConnection").finish()
     }
 }
 
-impl Executor for ChdbConnection {
-    type Driver = ChdbDriver;
+impl Executor for ChDBConnection {
+    type Driver = ChDBDriver;
 
     fn accepts_multiple_statements(&self) -> bool {
         false
     }
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<ChdbDriver>> {
-        Ok(Query::Prepared(ChdbPrepared::new(sql)))
+    async fn do_prepare(&mut self, sql: String) -> Result<Query<ChDBDriver>> {
+        Ok(Query::Prepared(ChDBPrepared::new(sql)))
     }
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<ChdbDriver> + 's,
+        query: impl AsQuery<ChDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         let connection = Arc::clone(&self.connection);
-        let (tx, rx) = flume::bounded::<Result<QueryResult>>(16);
-        let mut owned = mem::take(query.as_mut());
-        let join = spawn_blocking(move || {
-            match &mut owned {
-                Query::Raw(RawQuery(sql)) => Self::do_run(connection, sql, tx),
-                Query::Prepared(prepared) => match prepared.build_sql(&ChdbSqlWriter::chdb()) {
-                    Ok(sql) => {
-                        prepared.take_params();
-                        Self::do_run(connection, &sql, tx);
-                    }
-                    Err(error) => send_value!(tx, Err(error)),
-                },
-            }
-            owned
-        });
+        let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
 
         try_stream! {
-            let mut query_error = None;
-            while let Ok(result) = rx.recv_async().await {
-                match result {
-                    Ok(result) => yield result,
-                    Err(error) => {
-                        let error = error.context(context.clone());
-                        log::error!("{error:#}");
-                        query_error = Some(error);
-                        break;
-                    }
+            let sql = match query.as_mut() {
+                Query::Raw(RawQuery(sql)) => sql.clone(),
+                Query::Prepared(prepared) => {
+                    let sql = prepared
+                        .build_sql(&ChDBSqlWriter::chdb())
+                        .map_err(|e| e.context(context.clone()))?;
+                    prepared.take_params();
+                    sql
                 }
-            }
-            *query.as_mut() = mem::take(&mut join.await?);
-            query.as_mut().clear_bindings().context(context.clone())?;
-            if let Some(error) = query_error {
-                Err(error)?;
+            };
+            spawn_blocking(move || Self::do_run(connection, &sql, tx));
+
+            while let Ok(result) = rx.recv_async().await {
+                yield result.map_err(|e| {
+                    let error = e.context(context.clone());
+                    log::error!("{error:#}");
+                    error
+                })?;
             }
         }
     }
 }
 
-impl ChdbConnection {
+impl ChDBConnection {
     fn do_run(connection: Arc<Mutex<ChConnection>>, sql: &str, tx: Sender<Result<QueryResult>>) {
-        let result = (|| -> Result<usize> {
+        let result = (|| -> Result<()> {
             let connection = connection
                 .lock()
                 .map_err(|e| anyhow!("chDB connection lock poisoned: {e}"))?;
@@ -95,19 +82,6 @@ impl ChdbConnection {
                 connection
                     .query(sql, OutputFormat::Null)
                     .map_err(|e| anyhow!("chDB query failed: {e}"))?;
-                return Ok(0);
-            }
-            let mut stream = ChdbStream::start(&connection, sql)?;
-            let mut parser = JsonRowParser::new();
-            while let Some(chunk) = stream.next()? {
-                parser.push(chunk.data(), |row| send_value!(tx, Ok(row)))?;
-            }
-            parser.finish(|row| send_value!(tx, Ok(row)))?;
-            Ok(parser.rows())
-        })();
-
-        match result {
-            Ok(0) => {
                 send_value!(
                     tx,
                     Ok(QueryResult::Affected(RowsAffected {
@@ -115,42 +89,45 @@ impl ChdbConnection {
                         last_affected_id: None,
                     }))
                 );
+                return Ok(());
             }
-            Err(error) => send_value!(tx, Err(error)),
-            Ok(_) => {}
+            let mut stream = ChDBStream::start(&connection, sql)?;
+            let mut parser = JsonRowParser::new();
+            while let Some(chunk) = stream.next()? {
+                parser.push(chunk.data(), |row| send_value!(tx, Ok(row)))?;
+            }
+            parser.finish(|row| send_value!(tx, Ok(row)))?;
+            Ok(())
+        })();
+
+        if let Err(error) = result {
+            send_value!(tx, Err(error));
         }
     }
 }
 
 fn returns_rows(sql: &str) -> bool {
-    let keyword = sql.trim_start().split_ascii_whitespace().next();
-    matches!(
-        keyword,
-        Some(
-            "SELECT"
-                | "select"
-                | "WITH"
-                | "with"
-                | "SHOW"
-                | "show"
-                | "DESCRIBE"
-                | "describe"
-                | "DESC"
-                | "desc"
-                | "EXPLAIN"
-                | "explain"
-        )
-    )
+    let Some(keyword) = sql.trim_start().split_ascii_whitespace().next() else {
+        return false;
+    };
+    ["SELECT", "WITH", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"]
+        .iter()
+        .any(|k| keyword.eq_ignore_ascii_case(k))
 }
 
-impl Connection for ChdbConnection {
-    async fn connect(driver: &ChdbDriver, url: Cow<'static, str>) -> Result<Self> {
+impl Connection for ChDBConnection {
+    async fn connect(driver: &ChDBDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = "While trying to connect to chDB";
-        let url = Self::sanitize_url(driver, url).map_err(|e| {
-            log::error!("{e:#}");
-            e
-        })?;
-        let path = build_chdb_path(&url).map(Cow::into_owned);
+        let url = Self::sanitize_url(driver, url).context(context)?;
+        let path = url
+            .query_pairs()
+            .find_map(|(k, v)| (k.eq_ignore_ascii_case("path") && !v.is_empty()).then_some(v))
+            .map(|v| Cow::Owned(v.to_string()))
+            .or_else(|| {
+                let raw = url.path().trim();
+                (!raw.is_empty() && raw != "/")
+                    .then(|| Cow::Owned(raw.trim_start_matches('/').to_string()))
+            });
         let connection = spawn_blocking(move || -> Result<ChConnection> {
             let connection = match path {
                 Some(path) => ChConnection::open_with_path(&path)
@@ -162,6 +139,7 @@ impl Connection for ChdbConnection {
                 "SET allow_experimental_lightweight_delete=1",
                 "SET join_use_nulls=1",
                 "SET final=1",
+                "SET output_format_json_quote_decimals=1",
             ] {
                 connection
                     .query(sql, OutputFormat::Null)
@@ -177,7 +155,7 @@ impl Connection for ChdbConnection {
         })
     }
 
-    fn begin(&mut self) -> impl Future<Output = Result<ChdbTransaction<'_>>> + Send {
-        ChdbTransaction::new(self)
+    fn begin(&mut self) -> impl Future<Output = Result<ChDBTransaction<'_>>> + Send {
+        ChDBTransaction::new(self)
     }
 }

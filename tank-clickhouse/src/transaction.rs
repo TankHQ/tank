@@ -8,8 +8,7 @@ pub struct ClickHouseTransaction<'c> {
 }
 
 impl<'c> ClickHouseTransaction<'c> {
-    pub async fn new(connection: &'c mut ClickHouseConnection) -> Result<Self> {
-        let _ = connection;
+    pub async fn new(_connection: &'c mut ClickHouseConnection) -> Result<Self> {
         Err(anyhow!("ClickHouse transactions are not supported"))
     }
 }
@@ -17,11 +16,11 @@ impl<'c> ClickHouseTransaction<'c> {
 impl_executor_transaction!(ClickHouseDriver, ClickHouseTransaction<'c>, connection);
 
 impl<'c> Transaction<'c> for ClickHouseTransaction<'c> {
-    fn commit(self) -> impl Future<Output = Result<()>> + Send {
-        async { Err(anyhow!("ClickHouse transactions are not supported")) }
+    async fn commit(self) -> Result<()> {
+        Err(anyhow!("ClickHouse transactions are not supported"))
     }
 
-    fn rollback(self) -> impl Future<Output = Result<()>> + Send {
-        async { Err(anyhow!("ClickHouse transactions are not supported")) }
+    async fn rollback(self) -> Result<()> {
+        Err(anyhow!("ClickHouse transactions are not supported"))
     }
 }

@@ -33,15 +33,15 @@ fn format_datetime(odt: OffsetDateTime) -> String {
 }
 
 /// Convert a klickhouse value to a tank value.
-pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
+pub(crate) fn extract_value(ty: &Type, val: KlValue) -> Result<Value> {
     match ty {
         Type::Nullable(inner) => {
             return match val {
                 KlValue::Null => Ok(Value::Null),
-                other => kl_to_tank(inner, other),
+                other => extract_value(inner, other),
             };
         }
-        Type::LowCardinality(inner) => return kl_to_tank(inner, val),
+        Type::LowCardinality(inner) => return extract_value(inner, val),
         _ => {}
     }
 
@@ -153,10 +153,10 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
                 Type::Array(inner) => inner.as_ref(),
                 _ => return Err(anyhow!("Expected Array type, got {ty:?}")),
             };
-            let inner_proto = kl_type_proto(inner_ty);
+            let inner_proto = clickhouse_type_to_value(inner_ty);
             let values: Result<Vec<Value>> = elements
                 .into_iter()
-                .map(|e| kl_to_tank(inner_ty, e))
+                .map(|e| extract_value(inner_ty, e))
                 .collect();
             Ok(Value::List(Some(values?), Box::new(inner_proto)))
         }
@@ -166,11 +166,11 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
                 Type::Map(k, v) => (k.as_ref(), v.as_ref()),
                 _ => return Err(anyhow!("Expected Map type, got {ty:?}")),
             };
-            let key_proto = kl_type_proto(key_ty);
-            let val_proto = kl_type_proto(val_ty);
+            let key_proto = clickhouse_type_to_value(key_ty);
+            let val_proto = clickhouse_type_to_value(val_ty);
             let mut map = HashMap::new();
             for (k, v) in keys.into_iter().zip(vals) {
-                map.insert(kl_to_tank(key_ty, k)?, kl_to_tank(val_ty, v)?);
+                map.insert(extract_value(key_ty, k)?, extract_value(val_ty, v)?);
             }
             Ok(Value::Map(
                 Some(map),
@@ -190,7 +190,7 @@ pub(crate) fn kl_to_tank(ty: &Type, val: KlValue) -> Result<Value> {
 }
 
 /// Build a null prototype for nested collection types.
-pub(crate) fn kl_type_proto(ty: &Type) -> Value {
+pub(crate) fn clickhouse_type_to_value(ty: &Type) -> Value {
     match ty {
         Type::Int8 => Value::Int8(None),
         Type::Int16 => Value::Int16(None),
@@ -224,9 +224,13 @@ pub(crate) fn kl_type_proto(ty: &Type) -> Value {
                 Value::TimestampWithTimezone(None)
             }
         }
-        Type::Nullable(inner) | Type::LowCardinality(inner) => kl_type_proto(inner),
-        Type::Array(inner) => Value::List(None, Box::new(kl_type_proto(inner))),
-        Type::Map(k, v) => Value::Map(None, Box::new(kl_type_proto(k)), Box::new(kl_type_proto(v))),
+        Type::Nullable(inner) | Type::LowCardinality(inner) => clickhouse_type_to_value(inner),
+        Type::Array(inner) => Value::List(None, Box::new(clickhouse_type_to_value(inner))),
+        Type::Map(k, v) => Value::Map(
+            None,
+            Box::new(clickhouse_type_to_value(k)),
+            Box::new(clickhouse_type_to_value(v)),
+        ),
         _ => Value::Unknown(None),
     }
 }

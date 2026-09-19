@@ -1,27 +1,26 @@
-use crate::{ChdbConnection, ChdbDriver};
+use crate::{ChDBConnection, ChDBDriver};
 use anyhow::anyhow;
 use tank_core::{Result, Transaction, impl_executor_transaction};
 
 /// chDB transaction wrapper.
-pub struct ChdbTransaction<'c> {
-    connection: &'c mut ChdbConnection,
+pub struct ChDBTransaction<'c> {
+    connection: &'c mut ChDBConnection,
 }
 
-impl<'c> ChdbTransaction<'c> {
-    pub async fn new(connection: &'c mut ChdbConnection) -> Result<Self> {
-        let _ = connection;
+impl<'c> ChDBTransaction<'c> {
+    pub async fn new(_connection: &'c mut ChDBConnection) -> Result<Self> {
         Err(anyhow!("chDB transactions are not supported"))
     }
 }
 
-impl_executor_transaction!(ChdbDriver, ChdbTransaction<'c>, connection);
+impl_executor_transaction!(ChDBDriver, ChDBTransaction<'c>, connection);
 
-impl<'c> Transaction<'c> for ChdbTransaction<'c> {
-    fn commit(self) -> impl Future<Output = Result<()>> + Send {
-        async { Err(anyhow!("chDB transactions are not supported")) }
+impl<'c> Transaction<'c> for ChDBTransaction<'c> {
+    async fn commit(self) -> Result<()> {
+        Err(anyhow!("chDB transactions are not supported"))
     }
 
-    fn rollback(self) -> impl Future<Output = Result<()>> + Send {
-        async { Err(anyhow!("chDB transactions are not supported")) }
+    async fn rollback(self) -> Result<()> {
+        Err(anyhow!("chDB transactions are not supported"))
     }
 }

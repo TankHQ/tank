@@ -41,15 +41,15 @@ unsafe extern "C" {
     fn free_result_v2(result: *mut ChdbResult);
 }
 
-pub(crate) struct ChdbStream {
+pub(crate) struct ChDBStream {
     connection: *mut ChdbConnection,
     result: *mut ChdbStreamingResult,
     finished: bool,
 }
 
-unsafe impl Send for ChdbStream {}
+unsafe impl Send for ChDBStream {}
 
-impl ChdbStream {
+impl ChDBStream {
     pub(crate) fn start(connection: &ChConnection, sql: &str) -> Result<Self> {
         let connection = raw_connection(connection);
         let sql = sql.trim().trim_end_matches(';').trim_end();
@@ -77,7 +77,7 @@ impl ChdbStream {
         })
     }
 
-    pub(crate) fn next(&mut self) -> Result<Option<ChdbChunk>> {
+    pub(crate) fn next(&mut self) -> Result<Option<ChDBChunk>> {
         if self.finished {
             return Ok(None);
         }
@@ -97,11 +97,11 @@ impl ChdbStream {
             self.finished = true;
             return Ok(None);
         }
-        Ok(Some(ChdbChunk { result: chunk }))
+        Ok(Some(ChDBChunk { result: chunk }))
     }
 }
 
-impl Drop for ChdbStream {
+impl Drop for ChDBStream {
     fn drop(&mut self) {
         if self.result.is_null() {
             return;
@@ -113,11 +113,11 @@ impl Drop for ChdbStream {
     }
 }
 
-pub(crate) struct ChdbChunk {
+pub(crate) struct ChDBChunk {
     result: *mut ChdbResult,
 }
 
-impl ChdbChunk {
+impl ChDBChunk {
     pub(crate) fn data(&self) -> &[u8] {
         let buffer = unsafe { (*self.result).buffer };
         let length = unsafe { (*self.result).length };
@@ -128,7 +128,7 @@ impl ChdbChunk {
     }
 }
 
-impl Drop for ChdbChunk {
+impl Drop for ChDBChunk {
     fn drop(&mut self) {
         unsafe { free_result_v2(self.result) };
     }
