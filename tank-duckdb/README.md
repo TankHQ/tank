@@ -4,20 +4,20 @@
 
 # tank-duckdb
 
-DuckDB driver implementation for [Tank](https://crates.io/crates/tank): the Rust data layer.
+`tank-duckdb` is the DuckDB driver for [Tank](https://crates.io/crates/tank): the Rust data layer.
 
-Implements Tank’s `Driver` and related traits for DuckDB, mapping Tank operations and queries into direct DuckDB commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. you still use it to define entities, manage schemas, and build queries.
+It maps Tank operations and queries to native DuckDB commands. Use it with the main [`tank`](https://crates.io/crates/tank) crate, which provides entity definitions and the query API.
 
-📘 https://tankhq.github.io/tank
+📘 **Docs:** https://tankhq.github.io/tank
 
-🖥️ https://github.com/TankHQ/tank
+🖥️ **Repo:** https://github.com/TankHQ/tank
 
-📦 https://crates.io/crates/tank
+📦 **Crate:** https://crates.io/crates/tank-duckdb
 
 ## Features
 - DuckDB C API (FFI) using [libduckdb-sys](https://crates.io/crates/libduckdb-sys)
 - Bulk inserts use DuckDB's appender API
-- Queries are executed in parallel using [tokio](https://crates.io/crates/tokio) runtime, results are send using [flume](https://crates.io/crates/flume) unbounded channel
+- Queries execute through the [Tokio](https://crates.io/crates/tokio) runtime, with results streamed through a [Flume](https://crates.io/crates/flume) channel
 
 ## Install
 ```sh
@@ -44,3 +44,5 @@ let pool = driver
     .await?;
 let mut connection = pool.get().await?;
 ```
+
+Run this inside an async function. The returned connection can execute Tank entity operations.

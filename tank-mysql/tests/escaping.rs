@@ -21,4 +21,15 @@ mod tests {
             "Backslash and quote must both be escaped for MySQL"
         );
     }
+
+    #[test]
+    fn binary_is_written_as_hex_literal() {
+        let writer = MySQLSqlWriter::default();
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlInsertIntoValues, false);
+        // MySQL binary literals are `X'..'`; the generic `'\x..'` form is read as a
+        // string and loses the raw bytes.
+        writer.write_blob(&mut ctx, &mut out, &[0x00, 0xFF, 0xDE, 0xAD]);
+        assert_eq!(out.as_str(), "X'00FFDEAD'");
+    }
 }

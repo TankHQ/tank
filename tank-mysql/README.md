@@ -4,15 +4,15 @@
 
 # tank-mysql
 
-MySQL and MariaDB driver implementation for [Tank](https://crates.io/crates/tank): the Rust data layer.
+`tank-mysql` is the MySQL and MariaDB driver for [Tank](https://crates.io/crates/tank): the Rust data layer.
 
-Implements Tank’s `Driver` and related traits for MySQL and MariaDB, mapping Tank operations and queries into direct MySQL commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. You still need it to define entities, manage schemas, and build queries.
+It maps Tank operations and queries to native MySQL and MariaDB commands. Use it with the main [`tank`](https://crates.io/crates/tank) crate, which provides entity definitions and the query API.
 
-📘 https://tankhq.github.io/tank
+📘 **Docs:** https://tankhq.github.io/tank
 
-🖥️ https://github.com/TankHQ/tank
+🖥️ **Repo:** https://github.com/TankHQ/tank
 
-📦 https://crates.io/crates/tank
+📦 **Crate:** https://crates.io/crates/tank-mysql
 
 ## Features
 - Async connection and execution via [`mysql_async`](https://crates.io/crates/mysql_async)
@@ -33,21 +33,25 @@ use tank_mysql::MySQLDriver;
 let driver = MySQLDriver::new();
 let pool = driver
     .connect_pool(
-        "mysql://user:pass@127.0.0.1:3306/db?require_ssl=true".into(),
+        "mysql://user:password@127.0.0.1:3306/database?require_ssl=true&ssl_ca=ca.pem&ssl_cert=client.p12&ssl_pass=certificate-password".into(),
         PoolConfig::new(),
     )
     .await?;
 let mut connection = pool.get().await?;
 ```
 
-## Running Tests
-Tests need a MySQL instance. Provide a connection URL via `TANK_MYSQL_TEST`. If absent, a containerized MySQL will be launched automatically using [testcontainers-modules](https://crates.io/crates/testcontainers-modules).
+Run this inside an async function. The returned connection can execute Tank entity operations.
 
-1. Ensure Docker is running (linux):
+Certificate filenames are resolved relative to the working directory. Use paths appropriate for your deployment.
+
+## Running Tests
+Tests cover both MySQL and MariaDB. Provide connection URLs through `TANK_MYSQL_TEST` and `TANK_MARIADB_TEST`. If either variable is absent, the corresponding containerized database will be launched automatically using [testcontainers-modules](https://crates.io/crates/testcontainers-modules).
+
+1. Ensure Docker is running on Linux:
 ```sh
 systemctl status docker
 ```
-2. Add your user to the `docker` group if needed (linux):
+2. Add your user to the `docker` group if needed on Linux:
 ```sh
 sudo usermod -aG docker $USER
 ```

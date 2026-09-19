@@ -18,7 +18,11 @@ pub fn value_to_bson(v: &Value) -> Result<Bson> {
         Value::UInt64(Some(..), ..) => Bson::Int64(i64::try_from_value(v.clone())?),
         Value::Float32(Some(v), ..) => Bson::Double(*v as f64),
         Value::Float64(Some(v), ..) => Bson::Double(*v),
-        Value::Decimal(Some(..), ..) => Bson::Double(f64::try_from_value(v.clone())?),
+        Value::Decimal(Some(v), ..) => Bson::Decimal128(
+            v.to_string()
+                .parse()
+                .map_err(|e| anyhow!("Could not convert {v} into a BSON Decimal128: {e}"))?,
+        ),
         Value::Char(Some(v), ..) => Bson::String(v.to_string()),
         Value::Varchar(Some(v), ..) => Bson::String(v.to_string()),
         Value::Blob(Some(v), ..) => Bson::Binary(Binary {

@@ -4,15 +4,15 @@
 
 # tank-postgres
 
-Postgres driver implementation for [Tank](https://crates.io/crates/tank): the Rust data layer.
+`tank-postgres` is the Postgres driver for [Tank](https://crates.io/crates/tank): the Rust data layer.
 
-Implements Tank’s `Driver` and related traits for Postgres, mapping Tank operations and queries into direct Postgres commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. You still need it to define entities, manage schemas, and build queries.
+It maps Tank operations and queries to native Postgres commands. Use it with the main [`tank`](https://crates.io/crates/tank) crate, which provides entity definitions and the query API.
 
-📘 https://tankhq.github.io/tank
+📘 **Docs:** https://tankhq.github.io/tank
 
-🖥️ https://github.com/TankHQ/tank
+🖥️ **Repo:** https://github.com/TankHQ/tank
 
-📦 https://crates.io/crates/tank
+📦 **Crate:** https://crates.io/crates/tank-postgres
 
 ## Features
 - Async connection and execution via [`tokio-postgres`](https://crates.io/crates/tokio-postgres)
@@ -33,21 +33,25 @@ use tank_postgres::PostgresDriver;
 let driver = PostgresDriver::new();
 let pool = driver
     .connect_pool(
-        "postgres://user:pass@hostname:5432/database?sslmode=require&sslrootcert=/path/to/root.crt&sslcert=/path/to/client.crt&sslkey=/path/to/client.key".into(),
+        "postgres://user:password@127.0.0.1:5432/database?sslmode=require&sslrootcert=root.crt&sslcert=client.crt&sslkey=client.key".into(),
         PoolConfig::new(),
     )
     .await?;
 let mut connection = pool.get().await?;
 ```
 
+Run this inside an async function. The returned connection can execute Tank entity operations.
+
+Certificate filenames are resolved relative to the working directory. Use paths appropriate for your deployment.
+
 ## Running Tests
 Tests need a Postgres instance. Provide a connection URL via `TANK_POSTGRES_TEST`. If absent, a containerized Postgres will be launched automatically using [testcontainers-modules](https://crates.io/crates/testcontainers-modules).
 
-1. Ensure Docker is running (linux):
+1. Ensure Docker is running on Linux:
 ```sh
 systemctl status docker
 ```
-2. Add your user to the `docker` group if needed (linux):
+2. Add your user to the `docker` group if needed on Linux:
 ```sh
 sudo usermod -aG docker $USER
 ```

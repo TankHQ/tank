@@ -24,6 +24,7 @@ uuid.workspace = true
 tank-tests = { path = "../tank-tests", features = [
     "disable-arrays",
     "disable-intervals",
+    "disable-large-decimals",
     "disable-large-integers",
     "disable-lists",
     "disable-log10",

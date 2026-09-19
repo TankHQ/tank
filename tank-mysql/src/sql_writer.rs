@@ -196,6 +196,14 @@ impl SqlWriter for MySQLSqlWriter {
         out.push('\'');
     }
 
+    fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+        out.push_str("X'");
+        for b in value {
+            let _ = write!(out, "{b:02X}");
+        }
+        out.push('\'');
+    }
+
     fn write_timestamptz(&self, context: &mut Context, out: &mut DynQuery, value: &OffsetDateTime) {
         let d = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => "",

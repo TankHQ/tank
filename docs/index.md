@@ -13,14 +13,17 @@ hero:
     - theme: brand
       text: Getting started
       link: /02-getting-started
+    - theme: alt
+      text: View on crates.io
+      link: https://crates.io/crates/tank
 
 features:
   - icon: ⚡
     title: Async Firepower
-    details: Execute queries asynchronously for maximum throughput and zero blocking overhead.
+    details: Build on non-blocking database operations designed for async Rust applications.
   - icon: ⚔️
-    title: Raw Fire Control
-    details: Deploy rapid native SQL precision strikes when high-caliber performance demands it.
+    title: Explicit Fire Control
+    details: Use typed expressions and joins, then deploy raw SQL when the abstraction is not enough.
   - icon: 🧩
     title: Adaptable Chassis
     details: Swap database backends seamlessly like changing magazines mid-battle without friction.

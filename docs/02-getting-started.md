@@ -1,9 +1,9 @@
 # Getting Started
 ###### *Field Manual Section 2* - Deployment Orders
 
-What follows is just a visit to the shooting range, not the full campaign. This minimal example shows Tank in action: connecting, defining a unit, and executing basic maneuvers. Just enough to get mud on your boots and feel the recoil.
+What follows is just a visit to the shooting range, not the full campaign. This minimal example shows Tank in action: connecting, defining a unit and executing basic maneuvers. Just enough to get mud on your boots and feel the recoil.
 
-**Mission brief**: install Tank and a driver, define an entity, create the table, insert a few rows, then fire a query. For full tactical exercises including transactions, complex queries, and multi-driver deployments, proceed to the [*Field Manual Section 3* - Supply Lines](03-connection.md).
+**Mission brief**: install Tank and a driver, define an entity, create the table, insert a few rows, then fire a query. For full tactical exercises including transactions, complex queries and multi-driver deployments, proceed to the [*Field Manual Section 3* - Supply Lines](03-connection.md).
 
 > [!TIP]
 > Tank is async. Run these examples under an async runtime like [Tokio](https://crates.io/crates/tokio) and `.await` your operations.
@@ -23,7 +23,7 @@ cargo add tank-duckdb
 3) Define unit schematics
 ```rust
 use std::borrow::Cow;
-use tank::{Entity, Executor, Result};
+use tank::{Entity, Result};
 
 #[derive(Entity)]
 #[tank(schema = "army")]
@@ -42,13 +42,18 @@ pub struct Tank {
 
 4) Fire for effect
 ```rust
-use std::{borrow::Cow, collections::HashSet};
-use tank::{ConnectionPool, Driver, Entity, PoolConfig, Result, expr, stream::TryStreamExt};
+use std::collections::HashSet;
+use tank::{ConnectionPool, Driver, PoolConfig, expr, stream::TryStreamExt};
+use tank_duckdb::DuckDBDriver;
+
+async fn data() -> Result<()> {
+use std::collections::HashSet;
+use tank::{ConnectionPool, Driver, PoolConfig, expr, stream::TryStreamExt};
 use tank_duckdb::DuckDBDriver;
 
 async fn data() -> Result<()> {
     let driver = DuckDBDriver::new();
-    let mut pool = driver
+    let pool = driver
         .connect_pool(
             "duckdb://../target/debug/tests.duckdb?mode=rw".into(),
             PoolConfig::new(),
@@ -135,9 +140,13 @@ async fn data() -> Result<()> {
             .collect::<HashSet<_>>(),
         HashSet::from_iter(["Tiger I".into(), "T-34/85".into()])
     );
+    println!("Tank is operational: {} units found.", tanks.len());
+    Tank::drop_table(&mut connection, true, true).await?;
     Ok(())
 }
 ```
+
+Run `cargo run`. Tank will create `tank-demo.duckdb` and report `Tank is operational: 2 units found.`
 
 > [!NOTE]
 > The `expr!` macro is explained in the [Field Manual Section 8 - Tactical Coordination](08-advanced-operations.md#expr).

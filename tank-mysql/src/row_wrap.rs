@@ -1,4 +1,4 @@
-use crate::ValueWrap;
+use crate::extract_value;
 use mysql_async::FromRowError;
 
 pub(crate) struct RowWrap(pub(crate) tank_core::Row);
@@ -8,18 +8,19 @@ impl mysql_async::prelude::FromRow for RowWrap {
     where
         Self: Sized,
     {
-        let names: tank_core::RowLabels = row
-            .columns()
-            .iter()
-            .map(|v| v.name_str().into_owned())
-            .collect();
-        let values: tank_core::RowValues = (0..row.len())
+        let columns = row.columns();
+        let names: tank_core::RowLabels =
+            columns.iter().map(|v| v.name_str().into_owned()).collect();
+        let values = (0..row.len())
             .map(|i| {
-                row.take_opt::<ValueWrap, _>(i)
-                    .expect("Unexpected error: the column does not exist")
+                let value = row
+                    .take::<mysql_async::Value, _>(i)
+                    .expect("Unexpected error: the column does not exist");
+                extract_value(&columns[i], value)
                     .map(|v| v.0.into_owned())
+                    .map_err(|_| ())
             })
-            .collect::<Result<_, _>>()
+            .collect::<Result<tank_core::RowValues, ()>>()
             .map_err(|_| FromRowError(row))?;
         Ok(RowWrap(tank_core::Row::new(names, values)))
     }

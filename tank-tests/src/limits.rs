@@ -1,10 +1,11 @@
 #![allow(unused_imports)]
 use crate::silent_logs;
 use core::f64;
+use rust_decimal::Decimal;
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, Interval, QueryBuilder, QueryResult, RawQuery,
-    RowsAffected, SqlWriter, expr, stream::StreamExt,
+    Driver, DynQuery, Entity, Executor, FixedDecimal, Interval, QueryBuilder, QueryResult,
+    RawQuery, RowsAffected, SqlWriter, expr, stream::StreamExt,
 };
 use time::{Date, Month, Time};
 use tokio::sync::Mutex;
@@ -13,6 +14,12 @@ static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 // Safe max value
 const F32_MAX: f32 = 3.4e+38_f32;
+
+fn decimal(value: &str) -> Decimal {
+    value
+        .parse()
+        .unwrap_or_else(|e| panic!("Cannot parse `{value}` as Decimal: {e}"))
+}
 
 #[derive(Entity)]
 struct Limits {
@@ -36,6 +43,7 @@ struct Limits {
     float64: f64,
     time: Time,
     date: Date,
+    decimal: FixedDecimal<38, 9>,
     #[cfg(not(feature = "disable-intervals"))]
     interval: Interval,
 }
@@ -86,6 +94,10 @@ pub async fn limits(executor: &mut impl Executor) {
         #[cfg(feature = "disable-old-dates")]
         date: Date::from_calendar_date(1970, Month::January, 01)
             .expect("Very old date must be correct"),
+        #[cfg(not(feature = "disable-large-decimals"))]
+        decimal: FixedDecimal::from(decimal("-79228162514264337593.543950335")),
+        #[cfg(feature = "disable-large-decimals")]
+        decimal: FixedDecimal::from(decimal("-123456789012345")),
         #[cfg(not(feature = "disable-intervals"))]
         interval: Interval::from_micros(1),
     };
@@ -130,6 +142,10 @@ pub async fn limits(executor: &mut impl Executor) {
         loaded.date,
         Date::from_calendar_date(1970, Month::January, 01).unwrap()
     );
+    #[cfg(not(feature = "disable-large-decimals"))]
+    assert_eq!(loaded.decimal.0, decimal("-79228162514264337593.543950335"));
+    #[cfg(feature = "disable-large-decimals")]
+    assert_eq!(loaded.decimal.0, decimal("-123456789012345"));
     #[cfg(not(feature = "disable-intervals"))]
     assert_eq!(loaded.interval, Interval::from_micros(1));
 
@@ -166,6 +182,10 @@ pub async fn limits(executor: &mut impl Executor) {
         #[cfg(feature = "disable-large-dates")]
         date: Date::from_calendar_date(2149, Month::June, 6)
             .expect("Very old date must be correct"),
+        #[cfg(not(feature = "disable-large-decimals"))]
+        decimal: FixedDecimal::from(decimal("79228162514264337593.543950335")),
+        #[cfg(feature = "disable-large-decimals")]
+        decimal: FixedDecimal::from(decimal("123456789012345")),
         #[cfg(all(
             not(feature = "disable-intervals"),
             not(feature = "disable-large-intervals"),
@@ -224,6 +244,10 @@ pub async fn limits(executor: &mut impl Executor) {
         loaded.date,
         Date::from_calendar_date(2149, Month::June, 6).unwrap()
     );
+    #[cfg(not(feature = "disable-large-decimals"))]
+    assert_eq!(loaded.decimal.0, decimal("79228162514264337593.543950335"));
+    #[cfg(feature = "disable-large-decimals")]
+    assert_eq!(loaded.decimal.0, decimal("123456789012345"));
     #[cfg(all(
         not(feature = "disable-intervals"),
         not(feature = "disable-large-intervals"),
@@ -263,6 +287,7 @@ pub async fn limits(executor: &mut impl Executor) {
                     float64: 0.0,
                     time: Time::from_hms(0, 0, 0).unwrap(),
                     date: Date::from_calendar_date(2000, Month::January, 01).unwrap(),
+                    decimal: FixedDecimal::from(Decimal::ZERO),
                     #[cfg(not(feature = "disable-intervals"))]
                     interval: Interval::ZERO,
                 };

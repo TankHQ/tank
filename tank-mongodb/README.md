@@ -4,15 +4,15 @@
 
 # tank-mongodb
 
-MongoDB driver implementation for [Tank](https://crates.io/crates/tank): the Rust data layer.
+`tank-mongodb` is the MongoDB driver for [Tank](https://crates.io/crates/tank): the Rust data layer.
 
-Implements Tank’s `Driver` and related traits for MongoDB, mapping Tank operations and queries into direct MongoDB commands. It does not replace the main [`tank`](https://crates.io/crates/tank) crate. You still need it to define entities, manage schemas, and build queries.
+It maps Tank operations and queries to native MongoDB commands. Use it with the main [`tank`](https://crates.io/crates/tank) crate, which provides entity definitions and the query API.
 
-📘 https://tankhq.github.io/tank
+📘 **Docs:** https://tankhq.github.io/tank
 
-🖥️ https://github.com/TankHQ/tank
+🖥️ **Repo:** https://github.com/TankHQ/tank
 
-📦 https://crates.io/crates/tank
+📦 **Crate:** https://crates.io/crates/tank-mongodb
 
 ## Features
 - Async connection and execution via [`mongodb`](https://crates.io/crates/mongodb)
@@ -33,23 +33,27 @@ use tank_mongodb::MongoDBDriver;
 let driver = MongoDBDriver::new();
 let pool = driver
     .connect_pool(
-        "mongodb://user:pass@127.0.0.1:27017/database?tls=true&tlsCAFile=/path/to/ca.pem&tlsCertificateKeyFile=/path/to/client-combined.pem".into(),
+        "mongodb://user:password@127.0.0.1:27017/database?authSource=admin&tls=true&tlsCAFile=ca.pem&tlsCertificateKeyFile=client-combined.pem".into(),
         PoolConfig::new(),
     )
     .await?;
 let mut connection = pool.get().await?;
 ```
 
-Note: `tlsCertificateKeyFile` should point to a PEM file containing both the client certificate and private key combined.
+Run this inside an async function. The returned connection can execute Tank entity operations.
+
+Certificate filenames are resolved relative to the working directory. Use paths appropriate for your deployment.
+
+For mutual TLS, `tlsCertificateKeyFile` should point to a PEM file containing both the client certificate and private key.
 
 ## Running Tests
 Tests need a MongoDB instance. Provide a connection URL via `TANK_MONGODB_TEST`. If absent, a containerized MongoDB will be launched automatically using [testcontainers-modules](https://crates.io/crates/testcontainers-modules).
 
-1. Ensure Docker is running (linux):
+1. Ensure Docker is running on Linux:
 ```sh
 systemctl status docker
 ```
-2. Add your user to the `docker` group if needed (linux):
+2. Add your user to the `docker` group if needed on Linux:
 ```sh
 sudo usermod -aG docker $USER
 ```

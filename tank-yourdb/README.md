@@ -4,15 +4,15 @@
 
 # tank-yourdb
 
-Template driver implementation for [Tank](https://crates.io/crates/tank): the Rust data layer.
+`tank-yourdb` is the driver template for [Tank](https://crates.io/crates/tank): the Rust data layer.
 
 Use this crate as a starting point when implementing a new driver for Tank.
 
-📘 https://tankhq.github.io/tank
+📘 **Docs:** https://tankhq.github.io/tank
 
-🖥️ https://github.com/TankHQ/tank
+🖥️ **Repo:** https://github.com/TankHQ/tank
 
-📦 https://crates.io/crates/tank
+📦 **Crate:** https://crates.io/crates/tank
 
 ## Checklist
 1. Rename `tank-yourdb` to `tank-backendname`
