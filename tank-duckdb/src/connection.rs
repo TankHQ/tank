@@ -66,10 +66,12 @@ impl DuckDBConnection {
             }
             let statement_type = duckdb_result_statement_type(*result);
             #[allow(non_upper_case_globals)]
-            if !matches!(
+            if matches!(
                 statement_type,
                 duckdb_statement_type_DUCKDB_STATEMENT_TYPE_SELECT
             ) {
+                Self::extract_result(&mut *result, tx);
+            } else {
                 let rows_affected = duckdb_rows_changed(&mut *result);
                 send_value!(
                     tx,
@@ -78,9 +80,7 @@ impl DuckDBConnection {
                         ..Default::default()
                     }))
                 );
-                return;
             }
-            Self::extract_result(&mut *result, tx);
         }
     }
 
@@ -267,9 +267,9 @@ impl Executor for DuckDBConnection {
     ) -> impl Stream<Item = Result<QueryResult>> {
         let mut query = query.as_query();
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
-        let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
         let connection = AtomicPtr::new(*self.connection);
         let mut owned = mem::take(query.as_mut());
+        let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
         let join = spawn_blocking(move || {
             match &mut owned {
                 Query::Raw(RawQuery(sql)) => {

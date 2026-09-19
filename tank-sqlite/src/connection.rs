@@ -63,18 +63,6 @@ impl SQLiteConnection {
                     SQLITE_BUSY => {
                         continue;
                     }
-                    SQLITE_DONE => {
-                        if sqlite3_stmt_readonly(statement) == 0 {
-                            send_value!(
-                                tx,
-                                Ok(QueryResult::Affected(RowsAffected {
-                                    rows_affected: Some(sqlite3_changes64(connection) as _),
-                                    last_affected_id: Some(sqlite3_last_insert_rowid(connection)),
-                                }))
-                            );
-                        }
-                        break;
-                    }
                     SQLITE_ROW => {
                         let values = match (0..count)
                             .map(|i| extract_value(statement, i))
@@ -93,6 +81,18 @@ impl SQLiteConnection {
                                 values: values,
                             }))
                         )
+                    }
+                    SQLITE_DONE => {
+                        if sqlite3_stmt_readonly(statement) == 0 {
+                            send_value!(
+                                tx,
+                                Ok(QueryResult::Affected(RowsAffected {
+                                    rows_affected: Some(sqlite3_changes64(connection) as _),
+                                    last_affected_id: Some(sqlite3_last_insert_rowid(connection)),
+                                }))
+                            );
+                        }
+                        break;
                     }
                     _ => {
                         send_value!(

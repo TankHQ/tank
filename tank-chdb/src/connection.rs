@@ -7,6 +7,7 @@ use chdb_rust::{connection::Connection as ChConnection, format::OutputFormat};
 use flume::Sender;
 use std::{
     borrow::Cow,
+    mem,
     sync::{Arc, Mutex},
 };
 use tank_core::{
@@ -24,37 +25,43 @@ pub struct ChDBConnection {
 
 impl ChDBConnection {
     fn do_run(connection: Arc<Mutex<ChConnection>>, sql: &str, tx: Sender<Result<QueryResult>>) {
-        let result = (|| -> Result<()> {
-            let connection = connection
-                .lock()
-                .map_err(|e| anyhow!("chDB connection lock poisoned: {e:#?}"))?;
-            let returns_rows = sql
-                .trim_start()
-                .split_ascii_whitespace()
-                .next()
-                .is_some_and(|keyword| {
-                    ["SELECT", "WITH", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"]
-                        .iter()
-                        .any(|k| keyword.eq_ignore_ascii_case(k))
-                });
-            if !returns_rows {
-                connection
-                    .query(sql, OutputFormat::Null)
-                    .map_err(|e| anyhow!("chDB query failed: {e}"))?;
-                send_value!(tx, Ok(QueryResult::Affected(Default::default())));
-                return Ok(());
-            }
+        let result = Self::extract_result(connection, sql, tx.clone());
+        if let Err(e) = result {
+            send_value!(tx, Err(e));
+        }
+    }
+
+    fn extract_result(
+        connection: Arc<Mutex<ChConnection>>,
+        sql: &str,
+        tx: Sender<Result<QueryResult>>,
+    ) -> Result<()> {
+        let connection = connection
+            .lock()
+            .map_err(|e| anyhow!("chDB connection lock poisoned: {e:#?}"))?;
+        let returns_rows = sql
+            .trim_start()
+            .split_ascii_whitespace()
+            .next()
+            .is_some_and(|keyword| {
+                ["SELECT", "WITH", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"]
+                    .iter()
+                    .any(|k| keyword.eq_ignore_ascii_case(k))
+            });
+        if returns_rows {
+            connection
+                .query(sql, OutputFormat::Null)
+                .map_err(|e| anyhow!("chDB query failed: {e:#}"))?;
             let mut stream = ChDBStream::start(&connection, sql)?;
             let mut parser = JsonRowParser::new();
             while let Some(chunk) = stream.next()? {
                 parser.push(chunk.data(), |row| send_value!(tx, Ok(row)))?;
             }
             parser.finish(|row| send_value!(tx, Ok(row)))?;
-            Ok(())
-        })();
-        if let Err(error) = result {
-            send_value!(tx, Err(error));
+        } else {
+            send_value!(tx, Ok(QueryResult::Affected(Default::default())));
         }
+        Ok(())
     }
 }
 
@@ -90,7 +97,6 @@ impl Executor for ChDBConnection {
                 }
             };
             spawn_blocking(move || Self::do_run(connection, &sql, tx));
-
             while let Ok(result) = rx.recv_async().await {
                 yield result.map_err(|e| {
                     let error = e.context(context.clone());
