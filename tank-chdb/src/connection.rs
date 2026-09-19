@@ -17,14 +17,44 @@ use tank_core::{
 };
 use tokio::task::spawn_blocking;
 
-/// chDB connection.
+/// Wrapper around chdb connection.
+/// Provides helpers to execute queries and extract results into `tank_core` types.
+#[derive(Debug)]
 pub struct ChDBConnection {
     pub(crate) connection: Arc<Mutex<ChConnection>>,
 }
 
-impl fmt::Debug for ChDBConnection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ChDBConnection").finish()
+impl ChDBConnection {
+    fn do_run(connection: Arc<Mutex<ChConnection>>, sql: &str, tx: Sender<Result<QueryResult>>) {
+        let result = (|| -> Result<()> {
+            let connection = connection
+                .lock()
+                .map_err(|e| anyhow!("chDB connection lock poisoned: {e:#?}"))?;
+            if !returns_rows(sql) {
+                connection
+                    .query(sql, OutputFormat::Null)
+                    .map_err(|e| anyhow!("chDB query failed: {e}"))?;
+                send_value!(
+                    tx,
+                    Ok(QueryResult::Affected(RowsAffected {
+                        rows_affected: None,
+                        last_affected_id: None,
+                    }))
+                );
+                return Ok(());
+            }
+            let mut stream = ChDBStream::start(&connection, sql)?;
+            let mut parser = JsonRowParser::new();
+            while let Some(chunk) = stream.next()? {
+                parser.push(chunk.data(), |row| send_value!(tx, Ok(row)))?;
+            }
+            parser.finish(|row| send_value!(tx, Ok(row)))?;
+            Ok(())
+        })();
+
+        if let Err(error) = result {
+            send_value!(tx, Err(error));
+        }
     }
 }
 
@@ -68,40 +98,6 @@ impl Executor for ChDBConnection {
                     error
                 })?;
             }
-        }
-    }
-}
-
-impl ChDBConnection {
-    fn do_run(connection: Arc<Mutex<ChConnection>>, sql: &str, tx: Sender<Result<QueryResult>>) {
-        let result = (|| -> Result<()> {
-            let connection = connection
-                .lock()
-                .map_err(|e| anyhow!("chDB connection lock poisoned: {e}"))?;
-            if !returns_rows(sql) {
-                connection
-                    .query(sql, OutputFormat::Null)
-                    .map_err(|e| anyhow!("chDB query failed: {e}"))?;
-                send_value!(
-                    tx,
-                    Ok(QueryResult::Affected(RowsAffected {
-                        rows_affected: None,
-                        last_affected_id: None,
-                    }))
-                );
-                return Ok(());
-            }
-            let mut stream = ChDBStream::start(&connection, sql)?;
-            let mut parser = JsonRowParser::new();
-            while let Some(chunk) = stream.next()? {
-                parser.push(chunk.data(), |row| send_value!(tx, Ok(row)))?;
-            }
-            parser.finish(|row| send_value!(tx, Ok(row)))?;
-            Ok(())
-        })();
-
-        if let Err(error) = result {
-            send_value!(tx, Err(error));
         }
     }
 }
