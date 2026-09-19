@@ -100,7 +100,14 @@ impl JsonRowParser {
                     let keys = items.keys().cloned().collect::<Vec<_>>();
                     self.labels = Some(
                         keys.iter()
-                            .map(|key| normalize_label(key))
+                            .map(|key| {
+                                key.rsplit('.')
+                                    .next()
+                                    .unwrap_or(key)
+                                    .trim_matches('`')
+                                    .trim_matches('"')
+                                    .to_owned()
+                            })
                             .collect::<Vec<_>>()
                             .into(),
                     );
@@ -169,15 +176,6 @@ impl JsonRowParser {
             .collect::<Vec<_>>();
         send(QueryResult::Row(Row::new(labels.clone(), values.into())));
     }
-}
-
-fn normalize_label(name: &str) -> String {
-    name.rsplit('.')
-        .next()
-        .unwrap_or(name)
-        .trim_matches('`')
-        .trim_matches('"')
-        .to_owned()
 }
 
 #[cfg(test)]

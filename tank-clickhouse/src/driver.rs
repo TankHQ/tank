@@ -18,7 +18,7 @@ impl Driver for ClickHouseDriver {
 
     const NAME: &'static [&'static str] = &["clickhouse"];
 
-    fn sql_writer(&self) -> ClickHouseSqlWriter {
+    fn sql_writer(&self) -> Self::SqlWriter {
         ClickHouseSqlWriter::new()
     }
 }

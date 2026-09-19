@@ -1,36 +1,10 @@
 use anyhow::anyhow;
 use klickhouse::{Type, Value as KlValue};
 use rust_decimal::Decimal;
-use std::fmt::Write as _;
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, fmt::Write as _};
 use tank_core::{Result, Value};
 use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
 use uuid::Uuid;
-
-fn format_datetime(odt: OffsetDateTime) -> String {
-    let odt = odt.to_offset(UtcOffset::UTC);
-    let mut out = String::new();
-    let _ = write!(
-        out,
-        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-        odt.year(),
-        odt.month() as u8,
-        odt.day(),
-        odt.hour(),
-        odt.minute(),
-        odt.second(),
-    );
-    let nanos = odt.nanosecond();
-    if nanos != 0 {
-        let mut frac = format!("{nanos:09}");
-        while frac.ends_with('0') {
-            frac.pop();
-        }
-        out.push('.');
-        out.push_str(&frac);
-    }
-    out
-}
 
 /// Convert a klickhouse value to a tank value.
 pub(crate) fn extract_value(ty: &Type, val: KlValue) -> Result<Value> {
@@ -121,10 +95,30 @@ pub(crate) fn extract_value(ty: &Type, val: KlValue) -> Result<Value> {
                 let scale_down = 10i128
                     .checked_pow(precision - 9)
                     .ok_or_else(|| anyhow!("Unsupported DateTime64 precision: {precision}"))?;
-                let nanos = ticks.div_euclid(scale_down);
-                let odt = OffsetDateTime::from_unix_timestamp_nanos(nanos)
-                    .map_err(|e| anyhow!("Invalid DateTime64 from klickhouse: {e}"))?;
-                return Ok(Value::Varchar(Some(Cow::Owned(format_datetime(odt)))));
+                let odt = OffsetDateTime::from_unix_timestamp_nanos(ticks.div_euclid(scale_down))
+                    .map_err(|e| anyhow!("Invalid DateTime64 from klickhouse: {e}"))?
+                    .to_offset(UtcOffset::UTC);
+                let mut formatted = String::new();
+                let _ = write!(
+                    formatted,
+                    "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                    odt.year(),
+                    odt.month() as u8,
+                    odt.day(),
+                    odt.hour(),
+                    odt.minute(),
+                    odt.second(),
+                );
+                let nanos = odt.nanosecond();
+                if nanos != 0 {
+                    let mut frac = format!("{nanos:09}");
+                    while frac.ends_with('0') {
+                        frac.pop();
+                    }
+                    formatted.push('.');
+                    formatted.push_str(&frac);
+                }
+                return Ok(Value::Varchar(Some(Cow::Owned(formatted))));
             }
             let ticks = dt64.1 as i64;
             let factor = 10i64.pow(precision);
@@ -149,43 +143,39 @@ pub(crate) fn extract_value(ty: &Type, val: KlValue) -> Result<Value> {
         KlValue::Uuid(u) => Ok(Value::Uuid(Some(Uuid::from_bytes(*u.as_bytes())))),
 
         KlValue::Array(elements) => {
-            let inner_ty = match ty {
-                Type::Array(inner) => inner.as_ref(),
-                _ => return Err(anyhow!("Expected Array type, got {ty:?}")),
+            let Type::Array(inner_ty) = ty else {
+                return Err(anyhow!("Expected Array type, got {ty:?}"));
             };
-            let inner_proto = clickhouse_type_to_value(inner_ty);
-            let values: Result<Vec<Value>> = elements
-                .into_iter()
-                .map(|e| extract_value(inner_ty, e))
-                .collect();
-            Ok(Value::List(Some(values?), Box::new(inner_proto)))
+            Ok(Value::List(
+                Some(
+                    elements
+                        .into_iter()
+                        .map(|e| extract_value(inner_ty, e))
+                        .collect::<Result<_>>()?,
+                ),
+                Box::new(clickhouse_type_to_value(inner_ty)),
+            ))
         }
 
         KlValue::Map(keys, vals) => {
-            let (key_ty, val_ty) = match ty {
-                Type::Map(k, v) => (k.as_ref(), v.as_ref()),
-                _ => return Err(anyhow!("Expected Map type, got {ty:?}")),
+            let Type::Map(key_ty, val_ty) = ty else {
+                return Err(anyhow!("Expected Map type, got {ty:?}"));
             };
-            let key_proto = clickhouse_type_to_value(key_ty);
-            let val_proto = clickhouse_type_to_value(val_ty);
             let mut map = HashMap::new();
             for (k, v) in keys.into_iter().zip(vals) {
                 map.insert(extract_value(key_ty, k)?, extract_value(val_ty, v)?);
             }
             Ok(Value::Map(
                 Some(map),
-                Box::new(key_proto),
-                Box::new(val_proto),
+                Box::new(clickhouse_type_to_value(key_ty)),
+                Box::new(clickhouse_type_to_value(val_ty)),
             ))
         }
 
         KlValue::Enum8(v) => Ok(Value::Int8(Some(v))),
         KlValue::Enum16(v) => Ok(Value::Int16(Some(v))),
 
-        other => {
-            let s = format!("{other:?}");
-            Ok(Value::Unknown(Some(s)))
-        }
+        other => Ok(Value::Unknown(Some(format!("{other:?}")))),
     }
 }
 

@@ -19,7 +19,7 @@ impl Driver for ChDBDriver {
 
     const NAME: &'static [&'static str] = &["chdb"];
 
-    fn sql_writer(&self) -> ChDBSqlWriter {
+    fn sql_writer(&self) -> Self::SqlWriter {
         ChDBSqlWriter::chdb()
     }
 }

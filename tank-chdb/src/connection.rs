@@ -1,6 +1,5 @@
 use crate::{
-    ChDBDriver, ChDBPrepared, ChDBSqlWriter, ChDBTransaction, streaming::ChDBStream,
-    value_wrap::JsonRowParser,
+    ChDBDriver, ChDBPrepared, ChDBSqlWriter, ChDBTransaction, JsonRowParser, streaming::ChDBStream,
 };
 use anyhow::anyhow;
 use async_stream::try_stream;
@@ -8,12 +7,11 @@ use chdb_rust::{connection::Connection as ChConnection, format::OutputFormat};
 use flume::Sender;
 use std::{
     borrow::Cow,
-    fmt,
     sync::{Arc, Mutex},
 };
 use tank_core::{
-    AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result,
-    RowsAffected, send_value, stream::Stream,
+    AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, send_value,
+    stream::Stream,
 };
 use tokio::task::spawn_blocking;
 
@@ -30,17 +28,20 @@ impl ChDBConnection {
             let connection = connection
                 .lock()
                 .map_err(|e| anyhow!("chDB connection lock poisoned: {e:#?}"))?;
-            if !returns_rows(sql) {
+            let returns_rows = sql
+                .trim_start()
+                .split_ascii_whitespace()
+                .next()
+                .is_some_and(|keyword| {
+                    ["SELECT", "WITH", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"]
+                        .iter()
+                        .any(|k| keyword.eq_ignore_ascii_case(k))
+                });
+            if !returns_rows {
                 connection
                     .query(sql, OutputFormat::Null)
                     .map_err(|e| anyhow!("chDB query failed: {e}"))?;
-                send_value!(
-                    tx,
-                    Ok(QueryResult::Affected(RowsAffected {
-                        rows_affected: None,
-                        last_affected_id: None,
-                    }))
-                );
+                send_value!(tx, Ok(QueryResult::Affected(Default::default())));
                 return Ok(());
             }
             let mut stream = ChDBStream::start(&connection, sql)?;
@@ -51,7 +52,6 @@ impl ChDBConnection {
             parser.finish(|row| send_value!(tx, Ok(row)))?;
             Ok(())
         })();
-
         if let Err(error) = result {
             send_value!(tx, Err(error));
         }
@@ -100,15 +100,6 @@ impl Executor for ChDBConnection {
             }
         }
     }
-}
-
-fn returns_rows(sql: &str) -> bool {
-    let Some(keyword) = sql.trim_start().split_ascii_whitespace().next() else {
-        return false;
-    };
-    ["SELECT", "WITH", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"]
-        .iter()
-        .any(|k| keyword.eq_ignore_ascii_case(k))
 }
 
 impl Connection for ChDBConnection {

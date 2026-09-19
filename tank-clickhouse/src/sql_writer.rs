@@ -3,8 +3,8 @@ use std::{
     fmt::Write,
 };
 use tank_core::{
-    BinaryOpType, ColumnDef, Context, Dataset, DynQuery, Entity, Fragment, Interval,
-    PrimaryKeyType, SqlWriter, TableRef, Value, separated_by, write_escaped,
+    BinaryOpType, ColumnDef, Context, Dataset, DynQuery, Entity, Fragment, GenericSqlWriter,
+    Interval, PrimaryKeyType, SqlWriter, TableRef, Value, separated_by, write_escaped,
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
 
@@ -139,20 +139,18 @@ impl SqlWriter for ClickHouseSqlWriter {
                     let _ = write!(out, "Decimal({precision},{scale})");
                 }
             }
-            Value::Char(..) | Value::Varchar(..) => out.push_str("String"),
-            Value::Blob(..) => out.push_str("String"),
+            Value::Char(..)
+            | Value::Varchar(..)
+            | Value::Blob(..)
+            | Value::Time(..)
+            | Value::Interval(..)
+            | Value::Json(..) => out.push_str("String"),
             Value::Date(..) => out.push_str("Date"),
-            Value::Time(..) => out.push_str("String"),
-            Value::Interval(..) => out.push_str("String"),
-            Value::Timestamp(..) => out.push_str("DateTime64(9,'UTC')"),
-            Value::TimestampWithTimezone(..) => out.push_str("DateTime64(9,'UTC')"),
-            Value::Uuid(..) => out.push_str("UUID"),
-            Value::Array(_, inner, _) => {
-                out.push_str("Array(");
-                self.write_column_type(context, out, inner);
-                out.push(')');
+            Value::Timestamp(..) | Value::TimestampWithTimezone(..) => {
+                out.push_str("DateTime64(9,'UTC')")
             }
-            Value::List(_, inner) => {
+            Value::Uuid(..) => out.push_str("UUID"),
+            Value::Array(_, inner, _) | Value::List(_, inner) => {
                 out.push_str("Array(");
                 self.write_column_type(context, out, inner);
                 out.push(')');
@@ -164,46 +162,34 @@ impl SqlWriter for ClickHouseSqlWriter {
                 self.write_column_type(context, out, val);
                 out.push(')');
             }
-            Value::Json(..) => out.push_str("String"),
             _ => log::error!("Unexpected tank::Value, ClickHouse does not support {value:?}"),
         }
     }
 
     fn write_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
-        if matches!(
-            context.fragment,
-            Fragment::None | Fragment::ParameterBinding
-        ) {
-            out.push_str(value);
-            return;
-        }
-        if matches!(context.fragment, Fragment::Json | Fragment::JsonKey) {
-            out.push('"');
-            for c in value.chars() {
-                match c {
-                    '"' => out.push_str("\\\""),
-                    '\\' => out.push_str("\\\\"),
-                    '\n' => out.push_str("\\n"),
-                    '\r' => out.push_str("\\r"),
-                    '\t' => out.push_str("\\t"),
-                    c => out.push(c),
-                }
+        let quote = match context.fragment {
+            Fragment::None | Fragment::ParameterBinding => {
+                out.push_str(value);
+                return;
             }
-            out.push('"');
-            return;
-        }
-        out.push('\'');
+            Fragment::Json | Fragment::JsonKey => '"',
+            _ => '\'',
+        };
+        out.push(quote);
         for c in value.chars() {
             match c {
-                '\'' => out.push_str("\\'"),
                 '\\' => out.push_str("\\\\"),
                 '\n' => out.push_str("\\n"),
                 '\r' => out.push_str("\\r"),
                 '\t' => out.push_str("\\t"),
+                c if c == quote => {
+                    out.push('\\');
+                    out.push(c);
+                }
                 c => out.push(c),
             }
         }
-        out.push('\'');
+        out.push(quote);
     }
 
     fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
@@ -226,15 +212,7 @@ impl SqlWriter for ClickHouseSqlWriter {
             BinaryOpType::ShiftRight => ("bitShiftRight(", ", ", ")", true, true),
             BinaryOpType::Like => ("like(materialize(", "), ", ")", true, true),
             BinaryOpType::NotLike => ("NOT like(materialize(", "), ", ")", true, true),
-            other => {
-                struct GenericWriter;
-                impl SqlWriter for GenericWriter {
-                    fn as_dyn(&self) -> &dyn SqlWriter {
-                        self
-                    }
-                }
-                GenericWriter.expression_binary_op_fragments(context, other)
-            }
+            other => GenericSqlWriter.expression_binary_op_fragments(context, other),
         }
     }
 
@@ -359,38 +337,29 @@ impl SqlWriter for ClickHouseSqlWriter {
         out.push_str("\n)");
 
         let pk = E::primary_key_def();
-        if self.replacing_merge_tree || !pk.is_empty() {
-            out.push_str("\nENGINE = ReplacingMergeTree()");
+        out.push_str(if self.replacing_merge_tree || !pk.is_empty() {
+            "\nENGINE = ReplacingMergeTree()"
         } else {
-            out.push_str("\nENGINE = MergeTree()");
-        }
-        if pk.is_empty() {
-            let order_cols: Vec<&ColumnDef> = E::columns()
+            "\nENGINE = MergeTree()"
+        });
+        let order_cols: Vec<&ColumnDef> = if pk.is_empty() {
+            E::columns()
                 .iter()
                 .filter(|c| {
                     !c.nullable
                         && !matches!(c.value, Value::Array(..) | Value::List(..) | Value::Map(..))
                 })
-                .collect();
-            if order_cols.is_empty() {
-                out.push_str("\nORDER BY tuple()");
-            } else {
-                out.push_str("\nORDER BY (");
-                separated_by(
-                    out,
-                    order_cols,
-                    |out, col| {
-                        self.write_identifier(&mut context, out, col.name(), true);
-                    },
-                    ", ",
-                );
-                out.push(')');
-            }
+                .collect()
+        } else {
+            pk.to_vec()
+        };
+        if order_cols.is_empty() {
+            out.push_str("\nORDER BY tuple()");
         } else {
             out.push_str("\nORDER BY (");
             separated_by(
                 out,
-                pk.iter(),
+                order_cols.iter(),
                 |out, col| {
                     self.write_identifier(&mut context, out, col.name(), true);
                 },

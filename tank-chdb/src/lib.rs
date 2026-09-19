@@ -11,3 +11,4 @@ pub use driver::*;
 pub use prepared::*;
 pub use tank_clickhouse::ClickHouseSqlWriter as ChDBSqlWriter;
 pub use transaction::*;
+pub(crate) use value_wrap::*;

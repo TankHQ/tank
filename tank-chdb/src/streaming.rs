@@ -51,7 +51,10 @@ unsafe impl Send for ChDBStream {}
 
 impl ChDBStream {
     pub(crate) fn start(connection: &ChConnection, sql: &str) -> Result<Self> {
-        let connection = raw_connection(connection);
+        // chdb-rust::Connection is a one-field wrapper around the C connection handle,
+        // but does not expose that handle or the streaming C API yet.
+        let connection =
+            unsafe { **(connection as *const ChConnection).cast::<*mut *mut ChdbConnection>() };
         let sql = sql.trim().trim_end_matches(';').trim_end();
         let format = b"JSONEachRow";
         let result = unsafe {
@@ -66,7 +69,8 @@ impl ChDBStream {
         if result.is_null() {
             return Err(anyhow!("chDB streaming query returned no result"));
         }
-        if let Some(error) = streaming_result_error(result) {
+        let error = unsafe { chdb_streaming_result_error(result) };
+        if let Some(error) = error_string(error) {
             unsafe { chdb_destroy_result(result) };
             return Err(anyhow!("chDB streaming query failed: {error}"));
         }
@@ -86,13 +90,13 @@ impl ChDBStream {
             self.finished = true;
             return Ok(None);
         }
-        if let Some(error) = chunk_error(chunk) {
+        let error = unsafe { (*chunk).error_message.cast_const() };
+        if let Some(error) = error_string(error) {
             unsafe { free_result_v2(chunk) };
             self.finished = true;
             return Err(anyhow!("chDB streaming fetch failed: {error}"));
         }
-        let length = unsafe { (*chunk).length };
-        if length == 0 {
+        if unsafe { (*chunk).length } == 0 {
             unsafe { free_result_v2(chunk) };
             self.finished = true;
             return Ok(None);
@@ -134,26 +138,10 @@ impl Drop for ChDBChunk {
     }
 }
 
-fn streaming_result_error(result: *mut ChdbStreamingResult) -> Option<String> {
-    let error = unsafe { chdb_streaming_result_error(result) };
-    error_string(error)
-}
-
-fn chunk_error(result: *mut ChdbResult) -> Option<String> {
-    let error = unsafe { (*result).error_message };
-    error_string(error.cast_const())
-}
-
 fn error_string(error: *const c_char) -> Option<String> {
     if error.is_null() {
         return None;
     }
     let error = unsafe { CStr::from_ptr(error) }.to_string_lossy();
     (!error.is_empty()).then(|| error.into_owned())
-}
-
-fn raw_connection(connection: &ChConnection) -> *mut ChdbConnection {
-    // chdb-rust::Connection is a one-field wrapper around the C connection handle,
-    // but does not expose that handle or the streaming C API yet.
-    unsafe { **(connection as *const ChConnection).cast::<*mut *mut ChdbConnection>() }
 }
