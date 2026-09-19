@@ -49,9 +49,6 @@ impl ChDBConnection {
                     .any(|k| keyword.eq_ignore_ascii_case(k))
             });
         if returns_rows {
-            connection
-                .query(sql, OutputFormat::Null)
-                .map_err(|e| anyhow!("chDB query failed: {e:#}"))?;
             let mut stream = ChDBStream::start(&connection, sql)?;
             let mut parser = JsonRowParser::new();
             while let Some(chunk) = stream.next()? {
@@ -59,6 +56,9 @@ impl ChDBConnection {
             }
             parser.finish(|row| send_value!(tx, Ok(row)))?;
         } else {
+            connection
+                .query(sql, OutputFormat::Null)
+                .map_err(|e| anyhow!("chDB query failed: {e:#}"))?;
             send_value!(tx, Ok(QueryResult::Affected(Default::default())));
         }
         Ok(())
@@ -83,20 +83,22 @@ impl Executor for ChDBConnection {
         let mut query = query.as_query();
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         let connection = Arc::clone(&self.connection);
+        let mut owned = mem::take(query.as_mut());
         let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
-
+        let join = spawn_blocking(move || {
+            match &mut owned {
+                Query::Raw(RawQuery(sql)) => Self::do_run(connection, sql, tx),
+                Query::Prepared(prepared) => match prepared.build_sql(&ChDBSqlWriter::chdb()) {
+                    Ok(sql) => {
+                        prepared.take_params();
+                        Self::do_run(connection, &sql, tx);
+                    }
+                    Err(error) => send_value!(tx, Err(error)),
+                },
+            }
+            owned
+        });
         try_stream! {
-            let sql = match query.as_mut() {
-                Query::Raw(RawQuery(sql)) => sql.clone(),
-                Query::Prepared(prepared) => {
-                    let sql = prepared
-                        .build_sql(&ChDBSqlWriter::chdb())
-                        .map_err(|e| e.context(context.clone()))?;
-                    prepared.take_params();
-                    sql
-                }
-            };
-            spawn_blocking(move || Self::do_run(connection, &sql, tx));
             while let Ok(result) = rx.recv_async().await {
                 yield result.map_err(|e| {
                     let error = e.context(context.clone());
@@ -104,6 +106,8 @@ impl Executor for ChDBConnection {
                     error
                 })?;
             }
+            *query.as_mut() = mem::take(&mut join.await?);
+            query.as_mut().clear_bindings().context(context)?;
         }
     }
 }
