@@ -149,6 +149,10 @@ impl Executor for ChDBConnection {
         let connection = Arc::clone(&self.connection);
         let mut owned = mem::take(query.as_mut());
         let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
+        eprintln!(
+            "[tank] chDB run() called, about to spawn_blocking (thread {:?})",
+            std::thread::current().id()
+        );
         let join = spawn_blocking(move || {
             match &mut owned {
                 Query::Raw(RawQuery(sql)) => Self::do_run(connection, sql, tx),
@@ -162,7 +166,26 @@ impl Executor for ChDBConnection {
             }
             owned
         });
+        eprintln!(
+            "[tank] chDB run() spawn_blocking returned (thread {:?})",
+            std::thread::current().id()
+        );
+        struct DropLog(&'static str);
+        impl Drop for DropLog {
+            fn drop(&mut self) {
+                eprintln!(
+                    "[tank] chDB {} (thread {:?})",
+                    self.0,
+                    std::thread::current().id()
+                );
+            }
+        }
         try_stream! {
+            let _drop_log = DropLog("run() stream future dropped");
+            eprintln!(
+                "[tank] chDB run() stream first poll (thread {:?})",
+                std::thread::current().id()
+            );
             while let Ok(result) = rx.recv_async().await {
                 yield result.map_err(|e| {
                     let error = e.context(context.clone());
@@ -170,8 +193,13 @@ impl Executor for ChDBConnection {
                     error
                 })?;
             }
+            eprintln!(
+                "[tank] chDB run() channel closed, awaiting join (thread {:?})",
+                std::thread::current().id()
+            );
             log::debug!("chDB run waiting for the blocking task to finish");
             *query.as_mut() = mem::take(&mut join.await?);
+            eprintln!("[tank] chDB run() join awaited, finishing");
             query.as_mut().clear_bindings().context(context)?;
         }
     }
