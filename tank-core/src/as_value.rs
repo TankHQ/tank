@@ -312,11 +312,11 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = anyhow!("Value {v}: Decimal does not fit into i32");
+        let make_error = || anyhow!("Value {v}: Decimal does not fit into i32");
         if !v.is_integer() {
-            return Err(error.context("The value is not an integer"));
+            return Err(make_error().context("The value is not an integer"));
         }
-        v.to_i32().ok_or(error)
+        v.to_i32().ok_or_else(make_error)
     }
 );
 
@@ -333,11 +333,11 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = anyhow!("Value {v}: Decimal does not fit into i64");
+        let make_error = || anyhow!("Value {v}: Decimal does not fit into i64");
         if !v.is_integer() {
-            return Err(error.context("The value is not an integer"));
+            return Err(make_error().context("The value is not an integer"));
         }
-        v.to_i64().ok_or(error)
+        v.to_i64().ok_or_else(make_error)
     }
 );
 
@@ -356,11 +356,11 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = anyhow!("Value {v}: Decimal does not fit into i128");
+        let make_error = || anyhow!("Value {v}: Decimal does not fit into i128");
         if !v.is_integer() {
-            return Err(error.context("The value is not an integer"));
+            return Err(make_error().context("The value is not an integer"));
         }
-        v.to_i128().ok_or(error)
+        v.to_i128().ok_or_else(make_error)
     }
 );
 
@@ -377,11 +377,11 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = anyhow!("Value {v}: Decimal does not fit into i64");
+        let make_error = || anyhow!("Value {v}: Decimal does not fit into i64");
         if !v.is_integer() {
-            return Err(error.context("The value is not an integer"));
+            return Err(make_error().context("The value is not an integer"));
         }
-        v.to_isize().ok_or(error)
+        v.to_isize().ok_or_else(make_error)
     }
 );
 
@@ -389,7 +389,7 @@ impl_as_value!(
     u8,
     Value::UInt8,
     Value::Int16(Some(v), ..) => {
-        v.to_u8().ok_or(anyhow!("Value {v}: i16 is out of range for u8"))
+        v.to_u8().ok_or_else(|| anyhow!("Value {v}: i16 is out of range for u8"))
     }
 );
 
@@ -420,11 +420,11 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = anyhow!("Value {v}: Decimal does not fit into u64");
+        let make_error = || anyhow!("Value {v}: Decimal does not fit into u64");
         if !v.is_integer() {
-            return Err(error.context("The value is not an integer"));
+            return Err(make_error().context("The value is not an integer"));
         }
-        v.to_u64().ok_or(error)
+        v.to_u64().ok_or_else(make_error)
     }
 );
 
@@ -436,11 +436,11 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = anyhow!("Value {v}: Decimal does not fit into u128");
+        let make_error = || anyhow!("Value {v}: Decimal does not fit into u128");
         if !v.is_integer() {
-            return Err(error.context("The value is not an integer"));
+            return Err(make_error().context("The value is not an integer"));
         }
-        v.to_u128().ok_or(error)
+        v.to_u128().ok_or_else(make_error)
     }
 );
 
@@ -451,11 +451,11 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = anyhow!("Value {v}: Decimal does not fit into u64");
+        let make_error = || anyhow!("Value {v}: Decimal does not fit into usize");
         if !v.is_integer() {
-            return Err(error.context("The value is not an integer"));
+            return Err(make_error().context("The value is not an integer"));
         }
-        v.to_usize().ok_or(error)
+        v.to_usize().ok_or_else(make_error)
     }
 );
 
@@ -846,25 +846,32 @@ impl_as_value!(
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
+/// Parses `$value` against each of the given formats, returning the first
+/// successful parse and advancing `$value` past the consumed input.
+///
+/// Yields `None` when no format matches, and deliberately never builds an
+/// `anyhow::Error`. `anyhow` captures a backtrace for every error when
+/// `RUST_BACKTRACE`/`RUST_LIB_BACKTRACE` is set, and with a statically linked
+/// chDB `libchdb.a` exports its own `_Unwind_GetIP`, shadowing libgcc's, so the
+/// unwinder used to capture that backtrace crashes. Callers build the error
+/// lazily, only once every alternative has been exhausted.
 macro_rules! parse_time {
     ($value: ident, $($formats:literal),+ $(,)?) => {
         'value: {
-        let context = || anyhow!(
-            "Cannot parse `{}` as {}",
-            truncate_long!($value),
-            any::type_name::<Self>()
-        );
             for format in [$($formats,)+] {
-                let format = parse_borrowed::<2>(format)?;
+                let Ok(format) = parse_borrowed::<2>(format) else {
+                    break 'value None;
+                };
                 let mut parsed = time::parsing::Parsed::new();
                 let remaining = parsed.parse_items($value.as_bytes(), &format);
                 if let Ok(remaining) = remaining {
-                    let result = parsed.try_into().with_context(context)?;
-                    $value = &$value[($value.len() - remaining.len())..];
-                    break 'value Ok(result);
+                    if let Ok(result) = parsed.try_into() {
+                        $value = &$value[($value.len() - remaining.len())..];
+                        break 'value Some(result);
+                    }
                 }
             }
-            Err(context())
+            None
         }
     }
 }
@@ -874,7 +881,8 @@ impl_as_value!(
     Value::Date,
     |input: &str| {
         let mut value = input;
-        let mut result: time::Date = parse_time!(value, "[year]-[month]-[day]")?;
+        let mut result: time::Date = parse_time!(value, "[year]-[month]-[day]")
+            .ok_or_else(|| anyhow!("Cannot parse `{}` as time::Date", truncate_long!(input)))?;
         {
             let mut attempt = value.trim_start();
             let suffix = consume_while(&mut attempt, char::is_ascii_alphabetic);
@@ -911,7 +919,8 @@ impl_as_value!(
             "[hour]:[minute]:[second].[subsecond]",
             "[hour]:[minute]:[second]",
             "[hour]:[minute]",
-        )?;
+        )
+        .ok_or_else(|| anyhow!("Cannot parse `{}` as time::Time", truncate_long!(input)))?;
         if !input.is_empty() {
             return Err(anyhow!("Cannot parse `{}` as time::Time", truncate_long!(input)))
         }
@@ -938,7 +947,8 @@ impl_as_value!(
             "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond]",
             "[year]-[month]-[day] [hour]:[minute]:[second]",
             "[year]-[month]-[day] [hour]:[minute]",
-        )?;
+        )
+        .ok_or_else(|| anyhow!("Cannot parse `{}` as time::PrimitiveDateTime", truncate_long!(input)))?;
         if !input.is_empty() {
             return Err(anyhow!("Cannot parse `{}` as time::PrimitiveDateTime", truncate_long!(input)))
         }
@@ -967,7 +977,7 @@ impl_as_value!(
     time::OffsetDateTime,
     Value::TimestampWithTimezone,
     |mut input: &str| {
-        if let Ok::<time::OffsetDateTime, _>(result) = parse_time!(
+        if let Some(result) = parse_time!(
             input,
             "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]",
             "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]",
@@ -1201,14 +1211,13 @@ impl AsValue for Decimal {
             Value::UInt16(Some(v), ..) => Ok(Decimal::new(v as i64, 0)),
             Value::UInt32(Some(v), ..) => Ok(Decimal::new(v as i64, 0)),
             Value::UInt64(Some(v), ..) => {
-                Decimal::from_u64(v).ok_or(anyhow!("Value {v}: u64 does not fit into Decimal"))
+                Decimal::from_u64(v)
+                    .ok_or_else(|| anyhow!("Value {v}: u64 does not fit into Decimal"))
             }
-            Value::Float32(Some(v), ..) => {
-                Ok(Decimal::from_f32(v).ok_or(anyhow!("Cannot convert {value:?} to Decimal"))?)
-            }
-            Value::Float64(Some(v), ..) => {
-                Ok(Decimal::from_f64(v).ok_or(anyhow!("Cannot convert {value:?} to Decimal"))?)
-            }
+            Value::Float32(Some(v), ..) => Ok(Decimal::from_f32(v)
+                .ok_or_else(|| anyhow!("Cannot convert {value:?} to Decimal"))?),
+            Value::Float64(Some(v), ..) => Ok(Decimal::from_f64(v)
+                .ok_or_else(|| anyhow!("Cannot convert {value:?} to Decimal"))?),
             Value::Json(Some(serde_json::Value::Number(v)), ..) => {
                 if let Some(v) = v.as_f64()
                     && let Some(v) = Decimal::from_f64(v)
