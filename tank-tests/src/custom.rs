@@ -28,20 +28,20 @@ impl AsValue for FpCategoryWrap {
     where
         Self: Sized,
     {
-        let message = format!("Could not conver `{value:?}` to FpCategory");
-        let make_error = || anyhow!("{message}");
-        let Ok(Value::Varchar(Some(value), ..)) = &value.try_as(&Value::Varchar(None)) else {
-            return Err(make_error());
+        let Ok(Value::Varchar(Some(value), ..)) = value.try_as(&Value::Varchar(None)) else {
+            return Err(anyhow!(
+                "Could not convert value into FpCategory (expected a Value::Varchar)"
+            ));
         };
-        Ok(match value.as_ref() {
-            "Nan" => FpCategory::Nan,
-            "Infinite" => FpCategory::Infinite,
-            "Zero" => FpCategory::Zero,
-            "Subnormal" => FpCategory::Subnormal,
-            "Normal" => FpCategory::Normal,
-            _ => return Err(make_error()),
+        match value.as_ref() {
+            "Nan" => Ok(FpCategory::Nan),
+            "Infinite" => Ok(FpCategory::Infinite),
+            "Zero" => Ok(FpCategory::Zero),
+            "Subnormal" => Ok(FpCategory::Subnormal),
+            "Normal" => Ok(FpCategory::Normal),
+            other => Err(anyhow!("Could not convert `{other}` to FpCategory")),
         }
-        .into())
+        .map(Into::into)
     }
 }
 impl From<FpCategory> for FpCategoryWrap {
