@@ -41,6 +41,7 @@ impl ChDBStream {
             unsafe { **(connection as *const ChConnection).cast::<*mut *mut ChdbConnection>() };
         let sql = sql.trim().trim_end_matches(';').trim_end();
         let format = b"JSONEachRow";
+        eprintln!("[tank] chDB chdb_stream_query_n -> conn={connection:p} sql={sql:?}");
         let result = unsafe {
             chdb_stream_query_n(
                 connection,
@@ -53,9 +54,10 @@ impl ChDBStream {
         if result.is_null() {
             return Err(anyhow!("chDB streaming query returned no result"));
         }
+        eprintln!("[tank] chDB chdb_stream_query_n <- result={result:p}");
         let error = unsafe { chdb_result_error(result) };
         if !error.is_null() {
-            let error = error_message_from_ptr(&error);
+            let error = error_message_from_ptr(&error).into_owned();
             unsafe { chdb_destroy_query_result(result) };
             return Err(anyhow!("chDB streaming query failed: {error}"));
         }
@@ -70,19 +72,23 @@ impl ChDBStream {
         if self.finished {
             return Ok(None);
         }
+        eprintln!("[tank] chDB chdb_stream_fetch_result -> handle={:p}", self.result);
         let chunk = unsafe { chdb_stream_fetch_result(self.connection, self.result) };
+        eprintln!("[tank] chDB chdb_stream_fetch_result <- chunk={chunk:p}");
         if chunk.is_null() {
             self.finished = true;
             return Ok(None);
         }
         let error = unsafe { chdb_result_error(chunk) };
         if !error.is_null() {
-            let error = error_message_from_ptr(&error);
+            let error = error_message_from_ptr(&error).into_owned();
             unsafe { chdb_destroy_query_result(chunk) };
             self.finished = true;
             return Err(anyhow!("chDB streaming fetch failed: {error}"));
         }
-        if unsafe { chdb_result_length(chunk) } == 0 {
+        let length = unsafe { chdb_result_length(chunk) };
+        eprintln!("[tank] chDB chunk len={length}");
+        if length == 0 {
             unsafe { chdb_destroy_query_result(chunk) };
             self.finished = true;
             return Ok(None);
