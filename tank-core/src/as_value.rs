@@ -1210,14 +1210,14 @@ impl AsValue for Decimal {
             Value::UInt8(Some(v), ..) => Ok(Decimal::new(v as i64, 0)),
             Value::UInt16(Some(v), ..) => Ok(Decimal::new(v as i64, 0)),
             Value::UInt32(Some(v), ..) => Ok(Decimal::new(v as i64, 0)),
-            Value::UInt64(Some(v), ..) => {
-                Decimal::from_u64(v)
-                    .ok_or_else(|| anyhow!("Value {v}: u64 does not fit into Decimal"))
+            Value::UInt64(Some(v), ..) => Decimal::from_u64(v)
+                .ok_or_else(|| anyhow!("Value {v}: u64 does not fit into Decimal")),
+            Value::Float32(Some(v), ..) => {
+                Decimal::from_f32(v).ok_or_else(|| anyhow!("Cannot convert {value:?} to Decimal"))
             }
-            Value::Float32(Some(v), ..) => Ok(Decimal::from_f32(v)
-                .ok_or_else(|| anyhow!("Cannot convert {value:?} to Decimal"))?),
-            Value::Float64(Some(v), ..) => Ok(Decimal::from_f64(v)
-                .ok_or_else(|| anyhow!("Cannot convert {value:?} to Decimal"))?),
+            Value::Float64(Some(v), ..) => {
+                Decimal::from_f64(v).ok_or_else(|| anyhow!("Cannot convert {value:?} to Decimal"))
+            }
             Value::Json(Some(serde_json::Value::Number(v)), ..) => {
                 if let Some(v) = v.as_f64()
                     && let Some(v) = Decimal::from_f64(v)

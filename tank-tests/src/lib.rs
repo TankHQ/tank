@@ -87,14 +87,9 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         .await
         .expect("Could not get a connection from the pool");
     macro_rules! do_test {
-        ($test_function:ident $(, $args:expr )* $(,)?) => {{
-            log::info!(">>> TEST START {}", stringify!($test_function));
-            eprintln!("[tank] >>> START {}", stringify!($test_function));
-            let __result = Box::pin($test_function(&mut connection, $($args),*)).await;
-            eprintln!("[tank] <<< END   {}", stringify!($test_function));
-            log::info!("<<< TEST END   {}", stringify!($test_function));
-            __result
-        }};
+        ($test_function:ident $(, $args:expr )* $(,)?) => {
+            Box::pin($test_function(&mut connection, $($args),*)).await
+        };
     }
     do_test!(simple);
     do_test!(kv_storage);
