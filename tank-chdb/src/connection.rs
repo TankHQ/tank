@@ -8,7 +8,8 @@ use flume::Sender;
 use std::{
     borrow::Cow,
     mem,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
+    time::Instant,
 };
 use tank_core::{
     AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, send_value,
@@ -23,10 +24,48 @@ pub struct ChDBConnection {
     pub(crate) connection: Arc<Mutex<ChConnection>>,
 }
 
+/// The query currently executing (`Some`) or idle (`None`), plus when it started.
+///
+/// Updated by the blocking worker in [`ChDBConnection::do_run`]. A background
+/// watchdog thread reads it to report queries that have been stuck for a while,
+/// which is how we localise a hard hang in the native chDB library.
+static IN_FLIGHT: OnceLock<Mutex<Option<(String, Instant)>>> = OnceLock::new();
+
+fn in_flight() -> &'static Mutex<Option<(String, Instant)>> {
+    IN_FLIGHT.get_or_init(|| Mutex::new(None))
+}
+
+fn start_watchdog() {
+    static STARTED: OnceLock<()> = OnceLock::new();
+    STARTED.get_or_init(|| {
+        std::thread::spawn(|| loop {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            if let Ok(guard) = in_flight().lock()
+                && let Some((sql, started)) = guard.as_ref()
+                && started.elapsed() >= std::time::Duration::from_secs(15)
+            {
+                eprintln!(
+                    "[tank] chDB WATCHDOG: query has been running for {:?} and has not \
+                     returned; the worker thread is almost certainly blocked inside native \
+                     chDB. Query:\n{sql}",
+                    started.elapsed()
+                );
+            }
+        });
+    });
+}
+
 impl ChDBConnection {
     fn do_run(connection: Arc<Mutex<ChConnection>>, sql: &str, tx: Sender<Result<QueryResult>>) {
+        start_watchdog();
         eprintln!("[tank] chDB do_run START (thread {:?}): {sql}", std::thread::current().id());
+        if let Ok(mut guard) = in_flight().lock() {
+            *guard = Some((sql.to_owned(), Instant::now()));
+        }
         let result = Self::extract_result(connection, sql, tx.clone());
+        if let Ok(mut guard) = in_flight().lock() {
+            *guard = None;
+        }
         if let Err(e) = result {
             send_value!(tx, Err(e));
         }
