@@ -3,7 +3,6 @@ use chdb_rust::connection::Connection as ChConnection;
 use std::{ffi::c_char, slice};
 use tank_core::{Result, error_message_from_ptr};
 
-/// Opaque handles from `chdb.h`.
 enum ChdbConnection {}
 enum ChdbResult {}
 

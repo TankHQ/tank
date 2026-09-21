@@ -19,6 +19,7 @@ use tank_core::{
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
+use tokio::task;
 
 /// Connection wrapper for ScyllaDB/Cassandra sessions.
 ///
@@ -66,108 +67,10 @@ impl ScyllaDBConnection {
     }
 }
 
-impl Executor for ScyllaDBConnection {
-    type Driver = ScyllaDBDriver;
-
-    fn accepts_multiple_statements(&self) -> bool {
-        false
-    }
-
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<ScyllaDBDriver>> {
-        let context = format!("While preparing the query:\n{}", truncate_long!(sql));
-        let statement = self.session.prepare(sql).await.with_context(|| context)?;
-        Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
-    }
-
-    fn run<'s>(
-        &'s mut self,
-        query: impl AsQuery<ScyllaDBDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
-        let mut query = query.as_query();
-        let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
-        stream! {
-            let mut paging_state = PagingState::start();
-            loop {
-                let (query_result, paging_state_response) = match query.as_mut() {
-                    Query::Raw(RawQuery(sql)) => {
-                        self.session
-                            .query_single_page(sql.as_str(), &[], paging_state)
-                            .await?
-                    }
-                    Query::Prepared(prepared) => {
-                        let params = prepared.take_params()?;
-                        self.session
-                            .execute_single_page(&prepared.statement.clone(), params, paging_state)
-                            .await?
-                    }
-                };
-                if query_result.is_rows() {
-                    for row in query_result.into_rows_result()?.rows::<RowWrap>()? {
-                        let row = row?.0;
-                        yield Ok(QueryResult::Row(row));
-                    }
-                } else {
-                    // The driver does not give the number of affected rows
-                    yield Ok(QueryResult::Affected(Default::default()));
-                }
-                match paging_state_response.into_paging_control_flow() {
-                    ControlFlow::Break(..) => {
-                        break;
-                    }
-                    ControlFlow::Continue(new_paging_state) => {
-                        paging_state = new_paging_state;
-                    }
-                }
-            }
-        }
-        .map_err(move |e: Error| {
-            let error = e.context(context.clone());
-            log::error!("{error:#}");
-            error
-        })
-    }
-
-    fn fetch<'s>(
-        &'s mut self,
-        query: impl AsQuery<ScyllaDBDriver> + 's,
-    ) -> impl Stream<Item = Result<Row>> + Send {
-        let mut query = query.as_query();
-        let context = Arc::new(format!("While fetching the query:\n{}", query.as_mut()));
-        stream! {
-            let stream = match query.as_mut() {
-                Query::Raw(raw) => {
-                    let sql = raw.0.as_str();
-                    self.session
-                        .query_iter(sql, [])
-                        .await?
-                        .rows_stream::<RowWrap>()?
-                }
-                Query::Prepared(prepared) => {
-                    let params = prepared.take_params()?;
-                    self.session
-                        .execute_iter(prepared.statement.clone(), params)
-                        .await?
-                        .rows_stream::<RowWrap>()?
-                }
-            };
-            let mut stream = pin!(stream);
-            while let Some(row) = stream.next().await.transpose()? {
-                yield Ok(row.0)
-            }
-        }
-        .map_err(move |e: Error| {
-            let error = e.context(context.clone());
-            log::error!("{error:#}");
-            error
-        })
-    }
-}
-
 impl Connection for ScyllaDBConnection {
     async fn connect(driver: &ScyllaDBDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = "While trying to connect to ScyllaDB";
-        let url = Self::sanitize_url(driver, url).context(context)?;
-        let hostname = url.host_str().context(context)?;
+        let url = Self::sanitize_url(driver, url)?;
+        let hostname = url.host_str().context("No hostname")?;
         let port = url.port();
         let username = url.username();
         let password = url.password();
@@ -176,16 +79,19 @@ impl Connection for ScyllaDBConnection {
         } else {
             Cow::Borrowed(hostname)
         };
+        let context = format!(
+            "While trying to connect to ScyllaDB {}",
+            truncate_long!(address)
+        );
         let mut session = SessionBuilder::new().known_node(address);
         if !username.is_empty() {
             session = session.user(username, password.unwrap_or_default());
         }
-        if let Some(mut segments) = url.path_segments() {
-            if let Some(keyspace) = segments.next() {
-                session = session.use_keyspace(keyspace, true);
-            }
+        if let Some(keyspace) = url.path_segments().and_then(|mut v| v.next()) {
+            session = session.use_keyspace(keyspace, true);
         }
-        let mut context_builder = SslContextBuilder::new(SslMethod::tls()).context(context)?;
+        let mut context_builder =
+            SslContextBuilder::new(SslMethod::tls()).with_context(|| context.clone())?;
         context_builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
         let mut ssl = false;
         let mut keyspaces = Vec::new();
@@ -197,7 +103,7 @@ impl Connection for ScyllaDBConnection {
                         Err(e) => {
                             let error = anyhow!("{e}")
                                 .context(format!("URL param `{k} = {v}`"))
-                                .context(context);
+                                .context(context.clone());
                             log::error!("{error:#}");
                             return Err(error);
                         }
@@ -339,7 +245,7 @@ impl Connection for ScyllaDBConnection {
                 }
                 k => {
                     let error =
-                        anyhow!("Unexpected parameter in connection url: `{k}`").context(context);
+                        anyhow!("Unknown parameter in connection url: `{k}`").context(context);
                     log::error!("{error:#}");
                     return Err(error);
                 }
@@ -353,7 +259,7 @@ impl Connection for ScyllaDBConnection {
             session = session.keyspaces_to_fetch(keyspaces);
         }
 
-        let session = tokio::task::spawn(async move { session.build().await })
+        let session = task::spawn(async move { session.build().await })
             .await
             .map_err(|e| anyhow!("ScyllaDB session build panicked: {e}"))?
             .map_err(Error::new)?;
@@ -362,5 +268,102 @@ impl Connection for ScyllaDBConnection {
 
     async fn begin<'c>(&'c mut self) -> Result<ScyllaDBTransaction<'c>> {
         Ok(Self::begin_logged_batch(self))
+    }
+}
+
+impl Executor for ScyllaDBConnection {
+    type Driver = ScyllaDBDriver;
+
+    fn accepts_multiple_statements(&self) -> bool {
+        false
+    }
+
+    async fn do_prepare(&mut self, sql: String) -> Result<Query<ScyllaDBDriver>> {
+        let context = format!("While preparing the query:\n{}", truncate_long!(sql));
+        let statement = self.session.prepare(sql).await.with_context(|| context)?;
+        Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
+    }
+
+    fn run<'s>(
+        &'s mut self,
+        query: impl AsQuery<ScyllaDBDriver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+        let mut query = query.as_query();
+        let context = format!("While running the query:\n{}", query.as_mut());
+        stream! {
+            let mut paging_state = PagingState::start();
+            loop {
+                let (query_result, paging_state_response) = match query.as_mut() {
+                    Query::Raw(RawQuery(sql)) => {
+                        self.session
+                            .query_single_page(sql.as_str(), &[], paging_state)
+                            .await?
+                    }
+                    Query::Prepared(prepared) => {
+                        let params = prepared.take_params()?;
+                        self.session
+                            .execute_single_page(&prepared.statement.clone(), params, paging_state)
+                            .await?
+                    }
+                };
+                if query_result.is_rows() {
+                    for row in query_result.into_rows_result()?.rows::<RowWrap>()? {
+                        let row = row?.0;
+                        yield Ok(QueryResult::Row(row));
+                    }
+                } else {
+                    // The driver does not give the number of affected rows
+                    yield Ok(QueryResult::Affected(Default::default()));
+                }
+                match paging_state_response.into_paging_control_flow() {
+                    ControlFlow::Break(..) => {
+                        break;
+                    }
+                    ControlFlow::Continue(new_paging_state) => {
+                        paging_state = new_paging_state;
+                    }
+                }
+            }
+        }
+        .map_err(move |e: Error| {
+            let error = e.context(context.clone());
+            log::error!("{error:#}");
+            error
+        })
+    }
+
+    fn fetch<'s>(
+        &'s mut self,
+        query: impl AsQuery<ScyllaDBDriver> + 's,
+    ) -> impl Stream<Item = Result<Row>> + Send {
+        let mut query = query.as_query();
+        let context = format!("While fetching the query:\n{}", query.as_mut());
+        stream! {
+            let stream = match query.as_mut() {
+                Query::Raw(raw) => {
+                    let sql = raw.0.as_str();
+                    self.session
+                        .query_iter(sql, [])
+                        .await?
+                        .rows_stream::<RowWrap>()?
+                }
+                Query::Prepared(prepared) => {
+                    let params = prepared.take_params()?;
+                    self.session
+                        .execute_iter(prepared.statement.clone(), params)
+                        .await?
+                        .rows_stream::<RowWrap>()?
+                }
+            };
+            let mut stream = pin!(stream);
+            while let Some(row) = stream.next().await.transpose()? {
+                yield Ok(row.0)
+            }
+        }
+        .map_err(move |e: Error| {
+            let error = e.context(context.clone());
+            log::error!("{error:#}");
+            error
+        })
     }
 }

@@ -1,24 +1,100 @@
 use crate::{
     ClickHouseDriver, ClickHousePrepared, ClickHouseSqlWriter, ClickHouseTransaction, extract_value,
 };
-use anyhow::anyhow;
+use anyhow::{Error, anyhow};
 use async_stream::try_stream;
 use futures::{StreamExt, TryStreamExt};
 use klickhouse::{Client, ClientOptions};
-use std::{borrow::Cow, fmt, sync::Arc};
+use std::{borrow::Cow, fmt, str::FromStr, sync::Arc};
 use tank_core::{
     AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, Row,
-    stream::Stream,
+    stream::Stream, truncate_long,
 };
 
-/// ClickHouse connection.
+/// ClickHouse connection wrapper.
+///
+/// Holds the underlying `klickhouse::Client` and implements the tank_core::Connection`/`Executor` APIs
 pub struct ClickHouseConnection {
     pub(crate) client: Client,
 }
 
-impl fmt::Debug for ClickHouseConnection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ClickHouseConnection").finish()
+impl Connection for ClickHouseConnection {
+    async fn connect(driver: &ClickHouseDriver, url: Cow<'static, str>) -> Result<Self> {
+        let url = Self::sanitize_url(driver, url)?;
+        let hostname = url.host_str().context("No hostname")?;
+        let port = url.port();
+        let username = url.username();
+        let password = url.password();
+        let address = if let Some(port) = port {
+            Cow::Owned(format!("{hostname}:{port}"))
+        } else {
+            Cow::Borrowed(hostname)
+        };
+        let context = format!(
+            "While trying to connect to ClickHouse {}",
+            truncate_long!(address)
+        );
+        let mut options = ClientOptions::default();
+        if !username.is_empty() {
+            options.username = username.into();
+        };
+        if let Some(password) = password
+            && !password.is_empty()
+        {
+            options.password = password.into()
+        };
+        if let Some(database) = url.path_segments().and_then(|mut v| v.next())
+            && !database.is_empty()
+        {
+            options.default_database = database.into();
+        }
+        for (k, v) in url.query_pairs() {
+            macro_rules! context_try {
+                ($value:expr) => {
+                    match $value {
+                        Ok(v) => v,
+                        Err(e) => {
+                            let error = anyhow!("{e}")
+                                .context(format!("URL param `{k} = {v}`"))
+                                .context(context);
+                            log::error!("{error:#}");
+                            return Err(error);
+                        }
+                    }
+                };
+            }
+            match k.as_ref() {
+                "tcp_nodelay" => {
+                    options.tcp_nodelay = context_try!(FromStr::from_str(&v));
+                }
+                k => {
+                    let error = anyhow!("Unknown parameter in connection url: `{k}`")
+                        .context(context.clone());
+                    log::error!("{error:#}");
+                    return Err(error);
+                }
+            }
+        }
+        let client = Client::connect(&address as &str, options)
+            .await
+            .map_err(Error::new)
+            .with_context(|| context.clone())?;
+        for sql in &[
+            "SET allow_experimental_lightweight_delete=1",
+            "SET join_use_nulls=1",
+            "SET final=1",
+        ] {
+            client
+                .execute(*sql)
+                .await
+                .map_err(|e| Error::new(e).context(format!("While executing: `{sql}`")))
+                .with_context(|| context.clone())?;
+        }
+        Ok(ClickHouseConnection { client })
+    }
+
+    fn begin(&mut self) -> impl Future<Output = Result<ClickHouseTransaction<'_>>> + Send {
+        ClickHouseTransaction::new(self)
     }
 }
 
@@ -38,7 +114,7 @@ impl Executor for ClickHouseConnection {
         query: impl AsQuery<ClickHouseDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
-        let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
+        let context = format!("While running the query:\n{}", query.as_mut());
         let client = self.client.clone();
 
         try_stream! {
@@ -47,7 +123,7 @@ impl Executor for ClickHouseConnection {
                 Query::Prepared(prepared) => {
                     let sql = prepared
                         .build_sql(&ClickHouseSqlWriter::new())
-                        .map_err(|e| e.context(context.clone()))?;
+                        .with_context(|| context.clone())?;
                     prepared.take_params();
                     Cow::Owned(sql)
                 }
@@ -55,13 +131,16 @@ impl Executor for ClickHouseConnection {
             let mut stream = client
                 .query_raw(sql.as_ref())
                 .await
-                .map_err(|error| {
-                    anyhow!("ClickHouse query failed: {error}").context(context.clone())
-                })?;
+                .map_err(Error::new)
+                .with_context(|| context.clone())?;
             let mut got_rows = false;
-            while let Some(block) = stream.next().await.transpose().map_err(|error| {
-                anyhow!("ClickHouse stream error: {error}").context(context.clone())
-            })? {
+            while let Some(block) = stream
+                .next()
+                .await
+                .transpose()
+                .map_err(Error::new)
+                .with_context(|| context.clone())?
+            {
                 if block.column_types.is_empty() {
                     continue;
                 }
@@ -85,7 +164,7 @@ impl Executor for ClickHouseConnection {
                         .iter()
                         .map(|(ty, column)| {
                             extract_value(ty, column[row_idx].clone())
-                                .map_err(|e| e.context(context.clone()))
+                                .with_context(|| context.clone())
                         })
                         .collect::<Result<Vec<_>>>()?;
                     yield QueryResult::Row(Row::new(names.clone(), values.into()));
@@ -102,50 +181,8 @@ impl Executor for ClickHouseConnection {
     }
 }
 
-impl Connection for ClickHouseConnection {
-    async fn connect(driver: &ClickHouseDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = "While trying to connect to ClickHouse";
-        let url = Self::sanitize_url(driver, url).context(context)?;
-        let database = url.path().trim_start_matches('/');
-        let addr = format!(
-            "{}:{}",
-            url.host_str().unwrap_or("localhost"),
-            url.port().unwrap_or(9000)
-        );
-        let client = Client::connect(
-            &addr,
-            ClientOptions {
-                username: if url.username().is_empty() {
-                    "default"
-                } else {
-                    url.username()
-                }
-                .to_string(),
-                password: url.password().unwrap_or("").to_string(),
-                default_database: if database.is_empty() {
-                    "default"
-                } else {
-                    database
-                }
-                .to_string(),
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| anyhow!("Cannot connect to ClickHouse at {addr}: {e}").context(context))?;
-        for sql in &[
-            "SET allow_experimental_lightweight_delete=1",
-            "SET join_use_nulls=1",
-            "SET final=1",
-        ] {
-            client.execute(*sql).await.map_err(|e| {
-                anyhow!("Failed to apply session setting '{sql}': {e}").context(context)
-            })?;
-        }
-        Ok(ClickHouseConnection { client })
-    }
-
-    fn begin(&mut self) -> impl Future<Output = Result<ClickHouseTransaction<'_>>> + Send {
-        ClickHouseTransaction::new(self)
+impl fmt::Debug for ClickHouseConnection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ClickHouseConnection").finish()
     }
 }

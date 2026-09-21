@@ -105,7 +105,7 @@ impl Executor for MongoDBConnection {
             ($query:expr) => {
                 format!(
                     "While running the query:\n{}",
-                    truncate_long!(format!("{:?}", $query), true)
+                    truncate_long!(format!("{:?}", $query), true) // TODO try to print the query directly
                 )
             };
         }

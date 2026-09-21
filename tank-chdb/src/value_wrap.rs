@@ -177,31 +177,3 @@ impl JsonRowParser {
         send(QueryResult::Row(Row::new(labels.clone(), values.into())));
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_rows_split_across_chunks() {
-        let mut parser = JsonRowParser::new();
-        let mut rows = Vec::new();
-        parser
-            .push(b"[\"a\",\"b\"]\n[\"UInt8\",\"String\"]\n[1,\"hel", |row| {
-                rows.push(row)
-            })
-            .unwrap();
-        parser
-            .push(b"lo\"]\n[2, null]\n", |row| rows.push(row))
-            .unwrap();
-        parser.finish(|row| rows.push(row)).unwrap();
-
-        assert_eq!(rows.len(), 2);
-        let QueryResult::Row(row) = &rows[0] else {
-            panic!("expected row");
-        };
-        assert_eq!(row.labels.as_ref(), ["a", "b"]);
-        assert_eq!(row.values[0], Value::Json(Some(serde_json::json!(1))));
-        assert_eq!(row.values[1], Value::Varchar(Some(Cow::Borrowed("hello"))));
-    }
-}

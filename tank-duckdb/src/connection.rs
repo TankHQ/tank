@@ -216,11 +216,98 @@ impl DuckDBConnection {
     }
 }
 
-impl Debug for DuckDBConnection {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DuckDBConnection")
-            .field("connection", &self.connection)
-            .finish()
+impl Connection for DuckDBConnection {
+    async fn connect(driver: &DuckDBDriver, url: Cow<'static, str>) -> Result<Self> {
+        let context = "While trying to connect to DuckDB";
+        let url = Self::sanitize_url(driver, url)?;
+        let mut config: CBox<duckdb_config> = CBox::new(ptr::null_mut(), |mut p| unsafe {
+            duckdb_destroy_config(&mut p)
+        });
+        unsafe {
+            let rc = duckdb_create_config(&mut *config);
+            if rc != duckdb_state_DuckDBSuccess {
+                let error = anyhow!("Cannot allocate the duckdb_config object").context(context);
+                log::error!("{error:#}");
+                return Err(error);
+            }
+        };
+        let mut path = CString::from_str(&format!(
+            "{}{}",
+            url.host_str()
+                .map_or(Default::default(), |host| format!("{host}/")),
+            url.path()
+        ))
+        .context(context)?;
+        for (key, value) in url.query_pairs() {
+            let rc = unsafe {
+                match &*key {
+                    "mode" => {
+                        if value == "memory" {
+                            path = CString::from_str(":memory:")?;
+                            continue;
+                        }
+                        duckdb_set_config(
+                            *config,
+                            c"access_mode".as_ptr(),
+                            match &*value {
+                                "ro" => c"READ_ONLY",
+                                "rw" | "rwc" => c"READ_WRITE",
+                                _ => {
+                                    let error = anyhow!("Unknown value {value:?} for `mode`, expected one of: `ro`, `rw`, `rwc`, `memory`");
+                                    log::warn!("{error:#}");
+                                    return Err(error);
+                                }
+                            }
+                            .as_ptr(),
+                        )
+                    }
+                    _ => duckdb_set_config(
+                        *config,
+                        as_c_string(&*key).as_ptr(),
+                        as_c_string(&*value).as_ptr(),
+                    ),
+                }
+            };
+            if rc != duckdb_state_DuckDBSuccess {
+                let error = anyhow!("Error while setting config `{key}={value}`");
+                log::warn!("{error:#}");
+                return Err(error);
+            }
+        }
+        let mut database: duckdb_database = ptr::null_mut();
+        let mut connection;
+        let mut error: CBox<*mut c_char> = CBox::new(ptr::null_mut(), |p| unsafe {
+            duckdb_free(p as *mut c_void)
+        });
+        let db_cache = Self::database_cache().load(Ordering::Relaxed);
+        unsafe {
+            let rc = duckdb_get_or_create_from_cache(
+                db_cache,
+                path.as_ptr(),
+                &mut database,
+                *config,
+                &mut *error,
+            );
+            if rc != duckdb_state_DuckDBSuccess {
+                let error = CStr::from_ptr(*error)
+                    .to_str()
+                    .context("While reading the error from `duckdb_get_or_create_from_cache`")?
+                    .to_owned();
+                return Err(Error::msg(error));
+            };
+            connection = CBox::new(ptr::null_mut(), |mut p| duckdb_disconnect(&mut p));
+            let rc = duckdb_connect(database, &mut *connection);
+            if rc != duckdb_state_DuckDBSuccess {
+                let error = anyhow!("Failed to connect to database url `{url}`");
+                log::error!("{error:#}");
+                return Err(error);
+            };
+        };
+        Ok(DuckDBConnection { connection })
+    }
+
+    fn begin(&mut self) -> impl Future<Output = Result<DuckDBTransaction<'_>>> + Send {
+        DuckDBTransaction::new(self)
     }
 }
 
@@ -236,7 +323,7 @@ impl Executor for DuckDBConnection {
                 Ok(sql) => sql,
                 Err(e) => {
                     let error = Error::new(e)
-                        .context("Could not create a CString from the query String")
+                        .context("Could convert `String` to `CString`")
                         .context(context);
                     log::error!("{error:#}");
                     return Err(error);
@@ -544,97 +631,10 @@ impl Executor for DuckDBConnection {
     }
 }
 
-impl Connection for DuckDBConnection {
-    async fn connect(driver: &DuckDBDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = "While trying to connect to DuckDB";
-        let url = Self::sanitize_url(driver, url).context(context)?;
-        let mut config: CBox<duckdb_config> = CBox::new(ptr::null_mut(), |mut p| unsafe {
-            duckdb_destroy_config(&mut p)
-        });
-        unsafe {
-            let rc = duckdb_create_config(&mut *config);
-            if rc != duckdb_state_DuckDBSuccess {
-                let error = anyhow!("Cannot allocate the duckdb_config object").context(context);
-                log::error!("{error:#}");
-                return Err(error);
-            }
-        };
-        let mut path = CString::from_str(&format!(
-            "{}{}",
-            url.host_str()
-                .map_or(Default::default(), |host| format!("{host}/")),
-            url.path()
-        ))
-        .context(context)?;
-        for (key, value) in url.query_pairs() {
-            let rc = unsafe {
-                match &*key {
-                    "mode" => {
-                        if value == "memory" {
-                            path = CString::from_str(":memory:")?;
-                            continue;
-                        }
-                        duckdb_set_config(
-                            *config,
-                            c"access_mode".as_ptr(),
-                            match &*value {
-                                "ro" => c"READ_ONLY",
-                                "rw" | "rwc" => c"READ_WRITE",
-                                _ => {
-                                    let error = anyhow!("Unknown value {value:?} for `mode`, expected one of: `ro`, `rw`, `rwc`, `memory`");
-                                    log::warn!("{error:#}");
-                                    return Err(error);
-                                }
-                            }
-                            .as_ptr(),
-                        )
-                    }
-                    _ => duckdb_set_config(
-                        *config,
-                        as_c_string(&*key).as_ptr(),
-                        as_c_string(&*value).as_ptr(),
-                    ),
-                }
-            };
-            if rc != duckdb_state_DuckDBSuccess {
-                let error = anyhow!("Error while setting config `{key}={value}`");
-                log::warn!("{error:#}");
-                return Err(error);
-            }
-        }
-        let mut database: duckdb_database = ptr::null_mut();
-        let mut connection;
-        let mut error: CBox<*mut c_char> = CBox::new(ptr::null_mut(), |p| unsafe {
-            duckdb_free(p as *mut c_void)
-        });
-        let db_cache = Self::database_cache().load(Ordering::Relaxed);
-        unsafe {
-            let rc = duckdb_get_or_create_from_cache(
-                db_cache,
-                path.as_ptr(),
-                &mut database,
-                *config,
-                &mut *error,
-            );
-            if rc != duckdb_state_DuckDBSuccess {
-                let error = CStr::from_ptr(*error)
-                    .to_str()
-                    .context("While reading the error from `duckdb_get_or_create_from_cache`")?
-                    .to_owned();
-                return Err(Error::msg(error));
-            };
-            connection = CBox::new(ptr::null_mut(), |mut p| duckdb_disconnect(&mut p));
-            let rc = duckdb_connect(database, &mut *connection);
-            if rc != duckdb_state_DuckDBSuccess {
-                let error = anyhow!("Failed to connect to database url `{url}`");
-                log::error!("{error:#}");
-                return Err(error);
-            };
-        };
-        Ok(DuckDBConnection { connection })
-    }
-
-    fn begin(&mut self) -> impl Future<Output = Result<DuckDBTransaction<'_>>> + Send {
-        DuckDBTransaction::new(self)
+impl Debug for DuckDBConnection {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DuckDBConnection")
+            .field("connection", &self.connection)
+            .finish()
     }
 }

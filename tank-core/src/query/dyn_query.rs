@@ -2,7 +2,7 @@ use crate::{Driver, Prepared, Query, RawQuery};
 use std::{
     any::Any,
     borrow::Cow,
-    fmt::{self, Write},
+    fmt::{self, Display, Write},
 };
 
 /// Dyn compatible version of `Query`
@@ -114,6 +114,15 @@ impl From<DynQuery> for String {
         match value {
             DynQuery::Raw(RawQuery(value)) => value,
             DynQuery::Prepared(value) => format!("{:?}", value),
+        }
+    }
+}
+
+impl Display for DynQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DynQuery::Raw(v) => v.fmt(f),
+            DynQuery::Prepared(v) => v.fmt(f),
         }
     }
 }

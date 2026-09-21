@@ -1,9 +1,9 @@
 use crate::{
     ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Query, QueryBuilder,
     RawQuery, Result, Row, RowValues, RowsAffected, TableRef, future::Either, stream::Stream,
-    truncate_long, writer::SqlWriter,
+    writer::SqlWriter,
 };
-use anyhow::anyhow;
+use anyhow::{Context as _, anyhow};
 use futures::{FutureExt, StreamExt};
 use log::Level;
 use std::{
@@ -254,8 +254,7 @@ pub trait Entity: AsEntity + Expression {
             .driver()
             .sql_writer()
             .write_insert(&mut query, [self], true);
-        let sql = query.as_str();
-        let context = format!("While saving using the query {}", truncate_long!(sql));
+        let context = format!("While saving using the query {query}");
         Either::Right(executor.execute(query).map(|mut v| {
             if let Ok(result) = v
                 && let Some(affected) = result.rows_affected
@@ -265,10 +264,7 @@ pub trait Entity: AsEntity + Expression {
                     "The driver returned affected rows: {affected} (expected <= 2)"
                 ));
             }
-            match v {
-                Ok(_) => Ok(()),
-                Err(e) => Err(e.context(context)),
-            }
+            v.map(|_| ()).context(context)
         }))
     }
 

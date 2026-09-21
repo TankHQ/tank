@@ -65,53 +65,6 @@ impl ChDBConnection {
     }
 }
 
-impl Executor for ChDBConnection {
-    type Driver = ChDBDriver;
-
-    fn accepts_multiple_statements(&self) -> bool {
-        false
-    }
-
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<ChDBDriver>> {
-        Ok(Query::Prepared(ChDBPrepared::new(sql)))
-    }
-
-    fn run<'s>(
-        &'s mut self,
-        query: impl AsQuery<ChDBDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
-        let mut query = query.as_query();
-        let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
-        let connection = Arc::clone(&self.connection);
-        let mut owned = mem::take(query.as_mut());
-        let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
-        let join = spawn_blocking(move || {
-            match &mut owned {
-                Query::Raw(RawQuery(sql)) => Self::do_run(connection, sql, tx),
-                Query::Prepared(prepared) => match prepared.build_sql(&ChDBSqlWriter::chdb()) {
-                    Ok(sql) => {
-                        prepared.take_params();
-                        Self::do_run(connection, &sql, tx);
-                    }
-                    Err(error) => send_value!(tx, Err(error)),
-                },
-            }
-            owned
-        });
-        try_stream! {
-            while let Ok(result) = rx.recv_async().await {
-                yield result.map_err(|e| {
-                    let error = e.context(context.clone());
-                    log::error!("{error:#}");
-                    error
-                })?;
-            }
-            *query.as_mut() = mem::take(&mut join.await?);
-            query.as_mut().clear_bindings().context(context)?;
-        }
-    }
-}
-
 impl Connection for ChDBConnection {
     async fn connect(driver: &ChDBDriver, url: Cow<'static, str>) -> Result<Self> {
         let context = "While trying to connect to chDB";
@@ -157,5 +110,52 @@ impl Connection for ChDBConnection {
 
     fn begin(&mut self) -> impl Future<Output = Result<ChDBTransaction<'_>>> + Send {
         ChDBTransaction::new(self)
+    }
+}
+
+impl Executor for ChDBConnection {
+    type Driver = ChDBDriver;
+
+    fn accepts_multiple_statements(&self) -> bool {
+        false
+    }
+
+    async fn do_prepare(&mut self, sql: String) -> Result<Query<ChDBDriver>> {
+        Ok(Query::Prepared(ChDBPrepared::new(sql)))
+    }
+
+    fn run<'s>(
+        &'s mut self,
+        query: impl AsQuery<ChDBDriver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+        let mut query = query.as_query();
+        let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
+        let connection = Arc::clone(&self.connection);
+        let mut owned = mem::take(query.as_mut());
+        let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
+        let join = spawn_blocking(move || {
+            match &mut owned {
+                Query::Raw(RawQuery(sql)) => Self::do_run(connection, sql, tx),
+                Query::Prepared(prepared) => match prepared.build_sql(&ChDBSqlWriter::chdb()) {
+                    Ok(sql) => {
+                        prepared.take_params();
+                        Self::do_run(connection, &sql, tx);
+                    }
+                    Err(error) => send_value!(tx, Err(error)),
+                },
+            }
+            owned
+        });
+        try_stream! {
+            while let Ok(result) = rx.recv_async().await {
+                yield result.map_err(|e| {
+                    let error = e.context(context.clone());
+                    log::error!("{error:#}");
+                    error
+                })?;
+            }
+            *query.as_mut() = mem::take(&mut join.await?);
+            query.as_mut().clear_bindings().context(context)?;
+        }
     }
 }
