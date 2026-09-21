@@ -48,6 +48,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn postgresql_url_scheme() {
+        init_logs();
+        let _guard = MUTEX.lock().unwrap();
+
+        let (url, container) = init(false).await;
+        let container = container.expect("Could not launch the container");
+        let url = url.replacen("postgres://", "postgresql://", 1);
+        let pool = DRIVER
+            .connect_pool(url.into(), PoolConfig::new())
+            .await
+            .expect("Failed to build the pool");
+        pool.get().await.expect("Failed to connect using postgresql://");
+        drop(container);
+    }
+
+    #[tokio::test]
     async fn check_tls() {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
