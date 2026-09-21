@@ -152,6 +152,8 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         expr!(EntityExample::casualties > ?);
         let uid = Uuid::new_v4();
         expr!(EntityExample::unit_id == #uid);
+        let regions = ["North", "South"];
+        expr!(EntityExample::region == #regions as IN);
     }
 
     {

@@ -285,6 +285,58 @@ mod tests {
     }
 
     #[test]
+    fn test_in_with_rust_collections() {
+        // A Rust array evaluated via `#` becomes a `Value::Array`, but `IN`
+        // expects a parenthesized list, not a SQL array literal.
+        let ids = [1, 2, 3, 4, 5];
+        let expr = expr!(col == #ids as IN);
+        assert!(matches!(
+            expr,
+            BinaryOp {
+                op: BinaryOpType::In,
+                lhs: Operand::LitIdent("col"),
+                rhs: Operand::Variable(Value::Array(Some(..), ..)),
+            }
+        ));
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "col IN (1,2,3,4,5)");
+
+        // `Vec` behaves the same way, becoming a `Value::List`.
+        let names = vec!["Alice", "Bob"];
+        let expr = expr!(col != #names as IN);
+        assert!(matches!(
+            expr,
+            BinaryOp {
+                op: BinaryOpType::NotIn,
+                lhs: Operand::LitIdent("col"),
+                rhs: Operand::Variable(Value::List(Some(..), ..)),
+            }
+        ));
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "col NOT IN ('Alice','Bob')");
+
+        // The literal tuple form keeps working.
+        let expr = expr!(col == (1, 3, 5) as IN);
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "col IN (1,3,5)");
+    }
+
+    #[test]
     fn test_question_mark_expressions() {
         let expr = expr!(alpha == ? && bravo > ?);
         assert!(matches!(

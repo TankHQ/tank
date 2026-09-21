@@ -1,8 +1,8 @@
 use crate::{
     Action, AsEntity, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, Entity,
-    Error, Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
-    PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized,
-    separated_by, write_escaped, writer::Context,
+    Error, Expression, ExpressionVisitor, Fragment, Interval, IsTrue, Join, JoinType, Operand,
+    Order, Ordered, PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value,
+    possibly_parenthesized, separated_by, write_escaped, writer::Context,
 };
 use core::f64;
 use std::{
@@ -784,6 +784,58 @@ pub trait SqlWriter: Send {
         } else {
             context.fragment
         });
+        if matches!(value.op, BinaryOpType::In | BinaryOpType::NotIn) {
+            // Expands a Rust collection (`#collection as IN`), carried as
+            // [`Value::Array`]/[`Value::List`], into a parenthesized list instead
+            // of the SQL array literal it would otherwise render as.
+            struct WriteInList;
+            impl ExpressionVisitor for WriteInList {
+                fn visit_operand(
+                    &mut self,
+                    writer: &dyn SqlWriter,
+                    context: &mut Context,
+                    out: &mut DynQuery,
+                    value: &Operand,
+                ) -> bool {
+                    fn write(
+                        writer: &dyn SqlWriter,
+                        context: &mut Context,
+                        out: &mut DynQuery,
+                        v: &[Value],
+                    ) {
+                        writer.write_tuple(
+                            context,
+                            out,
+                            &mut v.iter().map(|v| v as &dyn Expression),
+                        );
+                    }
+                    match value {
+                        Operand::LitList(values) | Operand::LitTuple(values) => writer.write_tuple(
+                            context,
+                            out,
+                            &mut values.iter().map(|v| v as &dyn Expression),
+                        ),
+                        Operand::Variable(Value::Array(Some(values), ..))
+                        | Operand::Value(Value::Array(Some(values), ..)) => {
+                            write(writer, context, out, values)
+                        }
+                        Operand::Variable(Value::List(Some(values), ..))
+                        | Operand::Value(Value::List(Some(values), ..)) => {
+                            write(writer, context, out, values)
+                        }
+                        _ => return false,
+                    }
+                    true
+                }
+            }
+            if value
+                .rhs
+                .accept_visitor(&mut WriteInList, self.as_dyn(), &mut context.current, out)
+            {
+                out.push_str(suffix);
+                return;
+            }
+        }
         possibly_parenthesized!(
             out,
             !rhs_parenthesized && value.rhs.precedence(self.as_dyn()) <= precedence,

@@ -216,6 +216,8 @@ expr!(EntityExample::callsign != "Alpha%" as LIKE);
 expr!(EntityExample::casualties > ?);
 let uid = Uuid::new_v4();;
 expr!(EntityExample::unit_id == #uid);
+let regions = ["North", "South"];
+expr!(EntityExample::region == #regions as IN);
 ```
 
 ## Prepared statement
