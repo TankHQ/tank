@@ -6,8 +6,8 @@ mod tests {
     use tank::{
         Context, Dataset, DeclareTableRef, DynQuery, EitherIterator, Entity, FixedDecimal,
         Fragment, GenericSqlWriter, Interval, QueryBuilder, QueryResult, References, Row,
-        RowsAffected, SqlWriter, TableRef, Value, as_c_string, column_def, consume_while,
-        extract_number, quote_cow, separated_by, value_to_json, write_escaped,
+        RowsAffected, SqlValueWriter, SqlWriter, TableRef, Value, as_c_string, column_def,
+        consume_while, extract_number, quote_cow, separated_by, value_to_json, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, Time, UtcOffset};
 

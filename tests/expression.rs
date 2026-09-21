@@ -3,17 +3,10 @@ mod tests {
     use std::borrow::Cow;
     use tank::{
         BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Entity, Expression, Fragment,
-        OpPrecedence, Operand, SqlWriter, UnaryOp, UnaryOpType, Value, expr,
+        GenericSqlWriter, OpPrecedence, Operand, UnaryOp, UnaryOpType, Value, expr,
     };
 
-    struct Writer;
-    impl SqlWriter for Writer {
-        fn as_dyn(&self) -> &dyn SqlWriter {
-            self
-        }
-    }
-
-    const WRITER: Writer = Writer {};
+    const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
     fn test_simple_expressions() {

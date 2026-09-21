@@ -4,7 +4,8 @@ use std::{
 };
 use tank_core::{
     ColumnDef, Context, DynQuery, EitherIterator, Entity, Error, Expression, Fragment,
-    GenericSqlWriter, Interval, PrimaryKeyType, SqlWriter, Value, separated_by, write_escaped,
+    GenericSqlWriter, Interval, PrimaryKeyType, SqlCoreWriter, SqlExpressionWriter,
+    SqlFragmentWriter, SqlValueWriter, SqlWriter, Value, separated_by, write_escaped,
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
 
@@ -31,7 +32,7 @@ impl MySQLSqlWriter {
     }
 }
 
-impl SqlWriter for MySQLSqlWriter {
+impl SqlCoreWriter for MySQLSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -136,7 +137,9 @@ impl SqlWriter for MySQLSqlWriter {
             _ => log::error!("Unexpected tank::Value, MySQL does not support {value:?}"),
         };
     }
+}
 
+impl SqlValueWriter for MySQLSqlWriter {
     fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
         if value.is_infinite() || value.is_nan() {
             if value.is_infinite() {
@@ -237,10 +240,6 @@ impl SqlWriter for MySQLSqlWriter {
         let _ = write!(out, "{d}{h:02}:{m:02}:{s:02}.{subsecond:0width$}{d}");
     }
 
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
-        out.push_str("CAST(UNIX_TIMESTAMP(NOW(3)) * 1000 AS UNSIGNED)");
-    }
-
     fn write_list(
         &self,
         context: &mut Context,
@@ -268,6 +267,7 @@ impl SqlWriter for MySQLSqlWriter {
             out.push('\'');
         }
     }
+
     fn write_map(&self, context: &mut Context, out: &mut DynQuery, value: &HashMap<Value, Value>) {
         let inside_string = context.fragment == Fragment::Json;
         let mut context = context.switch_fragment(Fragment::Json);
@@ -293,8 +293,16 @@ impl SqlWriter for MySQLSqlWriter {
             out.push('\'');
         }
     }
+}
 
-    fn write_column_comment_inline(
+impl SqlExpressionWriter for MySQLSqlWriter {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+        out.push_str("CAST(UNIX_TIMESTAMP(NOW(3)) * 1000 AS UNSIGNED)");
+    }
+}
+
+impl SqlFragmentWriter for MySQLSqlWriter {
+    fn write_column_comment_inline_fragment(
         &self,
         mut context: &mut Context,
         out: &mut DynQuery,
@@ -306,8 +314,11 @@ impl SqlWriter for MySQLSqlWriter {
         self.write_string(&mut context, out, column.comment);
     }
 
-    fn write_column_comments_statements<E>(&self, _context: &mut Context, _out: &mut DynQuery)
-    where
+    fn write_column_comments_statements_fragment<E>(
+        &self,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+    ) where
         Self: Sized,
         E: Entity,
     {
@@ -349,3 +360,5 @@ impl SqlWriter for MySQLSqlWriter {
         );
     }
 }
+
+impl SqlWriter for MySQLSqlWriter {}

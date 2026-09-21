@@ -17,8 +17,8 @@ use std::{borrow::Cow, collections::HashMap, f64, iter, mem, ops::Deref, sync::A
 use tank_core::{
     AsEntity, AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, Dataset, DynQuery, Entity,
     ErrorContext, Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk,
-    IsConstant, Operand, Order, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value,
-    truncate_long,
+    IsConstant, Operand, Order, SelectQuery, SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter,
+    SqlValueWriter, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -119,7 +119,7 @@ impl MongoDBSqlWriter {
     }
 }
 
-impl SqlWriter for MongoDBSqlWriter {
+impl SqlCoreWriter for MongoDBSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -150,7 +150,9 @@ impl SqlWriter for MongoDBSqlWriter {
     fn write_column_ref(&self, context: &mut Context, out: &mut DynQuery, value: &ColumnRef) {
         self.write_identifier(context, out, &value.name, false);
     }
+}
 
+impl SqlValueWriter for MongoDBSqlWriter {
     fn write_value(&self, _context: &mut Context, out: &mut DynQuery, value: &Value) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
@@ -442,7 +444,9 @@ impl SqlWriter for MongoDBSqlWriter {
         }
         *target = Bson::Document(doc);
     }
+}
 
+impl SqlExpressionWriter for MongoDBSqlWriter {
     fn write_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
@@ -691,7 +695,11 @@ impl SqlWriter for MongoDBSqlWriter {
         };
         document.insert(function, arg);
     }
+}
 
+impl SqlFragmentWriter for MongoDBSqlWriter {}
+
+impl SqlWriter for MongoDBSqlWriter {
     fn write_create_schema<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
     where
         Self: Sized,

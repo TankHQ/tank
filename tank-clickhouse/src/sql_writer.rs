@@ -4,7 +4,8 @@ use std::{
 };
 use tank_core::{
     BinaryOpType, ColumnDef, Context, Dataset, DynQuery, Entity, Fragment, GenericSqlWriter,
-    Interval, PrimaryKeyType, SqlWriter, TableRef, Value, separated_by, write_escaped,
+    Interval, PrimaryKeyType, SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter,
+    SqlValueWriter, SqlWriter, TableRef, Value, separated_by, write_escaped,
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
 
@@ -58,7 +59,7 @@ fn write_datetime_literal(out: &mut DynQuery, quote: &str, value: &PrimitiveDate
     out.push_str(quote);
 }
 
-impl SqlWriter for ClickHouseSqlWriter {
+impl SqlCoreWriter for ClickHouseSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -76,14 +77,6 @@ impl SqlWriter for ClickHouseSqlWriter {
             out.push('`');
         } else {
             out.push_str(value);
-        }
-    }
-
-    fn write_null(&self, context: &mut Context, out: &mut DynQuery) {
-        match context.fragment {
-            Fragment::Json | Fragment::JsonKey => out.push_str("null"),
-            Fragment::SqlSelect => out.push_str("CAST(NULL AS Nullable(String))"),
-            _ => out.push_str("NULL"),
         }
     }
 
@@ -165,6 +158,16 @@ impl SqlWriter for ClickHouseSqlWriter {
             _ => log::error!("Unexpected tank::Value, ClickHouse does not support {value:?}"),
         }
     }
+}
+
+impl SqlValueWriter for ClickHouseSqlWriter {
+    fn write_null(&self, context: &mut Context, out: &mut DynQuery) {
+        match context.fragment {
+            Fragment::Json | Fragment::JsonKey => out.push_str("null"),
+            Fragment::SqlSelect => out.push_str("CAST(NULL AS Nullable(String))"),
+            _ => out.push_str("NULL"),
+        }
+    }
 
     fn write_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
         let quote = match context.fragment {
@@ -198,22 +201,6 @@ impl SqlWriter for ClickHouseSqlWriter {
             let _ = write!(out, "{:02X}", b);
         }
         out.push('\'');
-    }
-
-    fn expression_binary_op_fragments(
-        &self,
-        context: &mut Context,
-        op_type: BinaryOpType,
-    ) -> (&str, &str, &str, bool, bool) {
-        match op_type {
-            BinaryOpType::BitwiseAnd => ("bitAnd(", ", ", ")", true, true),
-            BinaryOpType::BitwiseOr => ("bitOr(", ", ", ")", true, true),
-            BinaryOpType::ShiftLeft => ("bitShiftLeft(", ", ", ")", true, true),
-            BinaryOpType::ShiftRight => ("bitShiftRight(", ", ", ")", true, true),
-            BinaryOpType::Like => ("like(materialize(", "), ", ")", true, true),
-            BinaryOpType::NotLike => ("NOT like(materialize(", "), ", ")", true, true),
-            other => GenericSqlWriter.expression_binary_op_fragments(context, other),
-        }
     }
 
     fn write_date(&self, context: &mut Context, out: &mut DynQuery, value: &time::Date) {
@@ -259,10 +246,6 @@ impl SqlWriter for ClickHouseSqlWriter {
         write_datetime_literal(out, quote, &PrimitiveDateTime::new(utc.date(), utc.time()));
     }
 
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
-        out.push_str("toUnixTimestamp64Milli(now64())");
-    }
-
     fn write_map(&self, context: &mut Context, out: &mut DynQuery, value: &HashMap<Value, Value>) {
         out.push_str("map(");
         separated_by(
@@ -277,7 +260,31 @@ impl SqlWriter for ClickHouseSqlWriter {
         );
         out.push(')');
     }
+}
 
+impl SqlExpressionWriter for ClickHouseSqlWriter {
+    fn expression_binary_op_fragments(
+        &self,
+        context: &mut Context,
+        op_type: BinaryOpType,
+    ) -> (&str, &str, &str, bool, bool) {
+        match op_type {
+            BinaryOpType::BitwiseAnd => ("bitAnd(", ", ", ")", true, true),
+            BinaryOpType::BitwiseOr => ("bitOr(", ", ", ")", true, true),
+            BinaryOpType::ShiftLeft => ("bitShiftLeft(", ", ", ")", true, true),
+            BinaryOpType::ShiftRight => ("bitShiftRight(", ", ", ")", true, true),
+            BinaryOpType::Like => ("like(materialize(", "), ", ")", true, true),
+            BinaryOpType::NotLike => ("NOT like(materialize(", "), ", ")", true, true),
+            other => GenericSqlWriter.expression_binary_op_fragments(context, other),
+        }
+    }
+
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+        out.push_str("toUnixTimestamp64Milli(now64())");
+    }
+}
+
+impl SqlFragmentWriter for ClickHouseSqlWriter {
     fn write_create_table_column_fragment(
         &self,
         context: &mut Context,
@@ -300,14 +307,37 @@ impl SqlWriter for ClickHouseSqlWriter {
             );
             if column.nullable && column.primary_key == PrimaryKeyType::None && can_be_nullable {
                 out.push_str("Nullable(");
-                SqlWriter::write_column_type(self, context, out, &column.value);
+                self.write_column_type(context, out, &column.value);
                 out.push(')');
             } else {
-                SqlWriter::write_column_type(self, context, out, &column.value);
+                self.write_column_type(context, out, &column.value);
             }
         }
     }
 
+    fn write_column_comments_statements_fragment<E>(
+        &self,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+    ) where
+        Self: Sized,
+        E: Entity,
+    {
+    }
+
+    fn write_insert_update_fragment<'a, E>(
+        &self,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        _columns: impl Iterator<Item = &'a ColumnDef> + Clone,
+    ) where
+        Self: Sized,
+        E: Entity,
+    {
+    }
+}
+
+impl SqlWriter for ClickHouseSqlWriter {
     fn write_create_table<E>(&self, out: &mut DynQuery, if_not_exists: bool)
     where
         Self: Sized,
@@ -412,23 +442,5 @@ impl SqlWriter for ClickHouseSqlWriter {
         }
         self.write_identifier(&mut context, out, &table.schema, true);
         out.push(';');
-    }
-
-    fn write_insert_update_fragment<'a, E>(
-        &self,
-        _context: &mut Context,
-        _out: &mut DynQuery,
-        _columns: impl Iterator<Item = &'a ColumnDef> + Clone,
-    ) where
-        Self: Sized,
-        E: Entity,
-    {
-    }
-
-    fn write_column_comments_statements<E>(&self, _context: &mut Context, _out: &mut DynQuery)
-    where
-        Self: Sized,
-        E: Entity,
-    {
     }
 }

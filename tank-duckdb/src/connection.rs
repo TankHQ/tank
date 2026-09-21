@@ -22,7 +22,7 @@ use std::{
 };
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, RawQuery, Result, Row, RowsAffected, SqlWriter, Value, as_c_string,
+    QueryResult, RawQuery, Result, Row, RowsAffected, SqlCoreWriter, Value, as_c_string,
     error_message_from_ptr, send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;

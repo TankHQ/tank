@@ -52,13 +52,27 @@ Keep one doctrine in mind: a `Prepared` value is driver-local executable state, 
 <<< @/../tank-yourdb/src/prepared.rs
 
 ### 4. SQL Writer (`SqlWriter`)
+
+The writer has two faces:
+
+- **`SqlWriter`** is the *user-facing* trait. It owns complete statements:
+  - `write_create_table`,
+  - `write_select`,
+  - `write_insert`,
+  - `write_delete`,
+  - `write_drop_table`,
+  - transactions.
+- The rest of the traits writing smaller pieces of a query. This is what **driver authors** implement.
+
 Override only differences from the generic fallback:
 - Identifier quoting style
 - Column type mapping
 - Literal escaping quirks (BLOB, INTERVAL, UUID, arrays)
-- Parameter placeholder (override `write_expression_operand_question_mark`) if not `?`
+- Parameter placeholder (override `write_question_mark`) if not `?`
 - Schema operations (skip if engine lacks schemas like SQLite)
 - Upsert syntax via `write_insert_update_fragment` if divergence
+
+Only `SqlCoreWriter` declares `as_dyn`. It upcasts to the `SqlWriter` view so a fragment can reach any other fragment. Calls between fragments from a default body must go through `self.as_dyn()` so backend overrides are picked up. Calls within the same trait (or to a supertrait) resolve directly. Statements in `SqlWriter` call fragments with plain `self.method()`.
 
 Tip: Start from `tank-core`'s `GenericSqlWriter` implementation; copy then trim.
 

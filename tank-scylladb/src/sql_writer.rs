@@ -5,7 +5,8 @@ use std::fmt::Write;
 use std::{collections::BTreeMap, iter};
 use tank_core::{
     AsEntity, ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment,
-    GenericSqlWriter, Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, separated_by,
+    GenericSqlWriter, Interval, IsTrue, PrimaryKeyType, Result, SqlCoreWriter, SqlExpressionWriter,
+    SqlFragmentWriter, SqlValueWriter, SqlWriter, Value, separated_by,
 };
 use uuid::Uuid;
 
@@ -15,7 +16,7 @@ use uuid::Uuid;
 #[derive(Default)]
 pub struct ScyllaDBSqlWriter {}
 
-impl SqlWriter for ScyllaDBSqlWriter {
+impl SqlCoreWriter for ScyllaDBSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -88,7 +89,9 @@ impl SqlWriter for ScyllaDBSqlWriter {
             ),
         };
     }
+}
 
+impl SqlValueWriter for ScyllaDBSqlWriter {
     fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
         if value.is_infinite() {
             if value.is_sign_negative() {
@@ -216,55 +219,15 @@ impl SqlWriter for ScyllaDBSqlWriter {
         );
         out.push(']');
     }
+}
 
+impl SqlExpressionWriter for ScyllaDBSqlWriter {
     fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
         out.push_str("toUnixTimestamp(currentTimestamp())");
     }
+}
 
-    fn write_create_schema<E>(&self, out: &mut DynQuery, if_not_exists: bool)
-    where
-        Self: Sized,
-        E: Entity,
-    {
-        let table = E::table();
-        out.buffer().reserve(128 + table.schema.len());
-        if !out.is_empty() {
-            out.push('\n');
-        }
-        out.push_str("CREATE KEYSPACE ");
-        let mut context = Context::new(Fragment::SqlCreateSchema, E::qualified_columns());
-        if if_not_exists {
-            out.push_str("IF NOT EXISTS ");
-        }
-        self.write_identifier(&mut context, out, &table.schema, true);
-        out.push('\n');
-        out.push_str(indoc! {r#"
-            WITH replication = {
-                'class': 'SimpleStrategy',
-                'replication_factor': 1
-            };
-        "#});
-    }
-
-    fn write_drop_schema<E>(&self, out: &mut DynQuery, if_exists: bool)
-    where
-        Self: Sized,
-        E: Entity,
-    {
-        let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
-        let table = E::table();
-        out.buffer().reserve(32 + table.schema.len());
-        if !out.is_empty() {
-            out.push('\n');
-        }
-        out.push_str("DROP KEYSPACE ");
-        if if_exists {
-            out.push_str("IF EXISTS ");
-        }
-        self.write_identifier(&mut context, out, &table.schema, true);
-        out.push(';');
-    }
-
+impl SqlFragmentWriter for ScyllaDBSqlWriter {
     fn write_create_table_column_fragment(
         &self,
         context: &mut Context,
@@ -279,7 +242,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         self.write_column_overridden_type(context, out, column, &column.column_type);
         let didnt_write_type = out.len() == len;
         if didnt_write_type {
-            SqlWriter::write_column_type(self, context, out, &column.value);
+            self.write_column_type(context, out, &column.value);
         }
         if column.primary_key == PrimaryKeyType::PrimaryKey {
             // Composite primary key will be printed elsewhere
@@ -328,11 +291,60 @@ impl SqlWriter for ScyllaDBSqlWriter {
         out.push(')');
     }
 
-    fn write_column_comments_statements<E>(&self, _context: &mut Context, _out: &mut DynQuery)
+    fn write_column_comments_statements_fragment<E>(
+        &self,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+    ) where
+        Self: Sized,
+        E: Entity,
+    {
+    }
+}
+
+impl SqlWriter for ScyllaDBSqlWriter {
+    fn write_create_schema<E>(&self, out: &mut DynQuery, if_not_exists: bool)
     where
         Self: Sized,
         E: Entity,
     {
+        let table = E::table();
+        out.buffer().reserve(128 + table.schema.len());
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("CREATE KEYSPACE ");
+        let mut context = Context::new(Fragment::SqlCreateSchema, E::qualified_columns());
+        if if_not_exists {
+            out.push_str("IF NOT EXISTS ");
+        }
+        self.write_identifier(&mut context, out, &table.schema, true);
+        out.push('\n');
+        out.push_str(indoc! {r#"
+            WITH replication = {
+                'class': 'SimpleStrategy',
+                'replication_factor': 1
+            };
+        "#});
+    }
+
+    fn write_drop_schema<E>(&self, out: &mut DynQuery, if_exists: bool)
+    where
+        Self: Sized,
+        E: Entity,
+    {
+        let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
+        let table = E::table();
+        out.buffer().reserve(32 + table.schema.len());
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("DROP KEYSPACE ");
+        if if_exists {
+            out.push_str("IF EXISTS ");
+        }
+        self.write_identifier(&mut context, out, &table.schema, true);
+        out.push(';');
     }
 
     fn write_insert<It>(&self, out: &mut DynQuery, entities: It, _update: bool)

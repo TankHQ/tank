@@ -8,7 +8,7 @@ use std::{
     os::raw::{c_char, c_void},
 };
 use tank_core::{
-    AsValue, Context, DynQuery, Error, Fragment, Prepared, Result, SqlWriter, Value,
+    AsValue, Context, DynQuery, Error, Fragment, Prepared, Result, SqlValueWriter, Value,
     error_message_from_ptr, truncate_long,
 };
 

@@ -59,7 +59,9 @@ mod tests {
             .connect_pool(url.into(), PoolConfig::new())
             .await
             .expect("Failed to build the pool");
-        pool.get().await.expect("Failed to connect using postgresql://");
+        pool.get()
+            .await
+            .expect("Failed to connect using postgresql://");
         drop(container);
     }
 

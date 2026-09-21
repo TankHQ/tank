@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt::Write};
 use tank_core::{
-    ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment, SqlWriter, Value,
-    separated_by,
+    ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment, SqlCoreWriter,
+    SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, Value, separated_by,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 
@@ -32,7 +32,7 @@ impl PostgresSqlWriter {
     }
 }
 
-impl SqlWriter for PostgresSqlWriter {
+impl SqlCoreWriter for PostgresSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -97,7 +97,9 @@ impl SqlWriter for PostgresSqlWriter {
             _ => log::error!("Unexpected tank::Value, Postgres does not support {value:?}"),
         };
     }
+}
 
+impl SqlValueWriter for PostgresSqlWriter {
     fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
         out.push_str("'\\x");
         for b in value {
@@ -219,7 +221,9 @@ impl SqlWriter for PostgresSqlWriter {
             out.push_str("[]");
         }
     }
+}
 
+impl SqlExpressionWriter for PostgresSqlWriter {
     fn write_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
         context.counter += 1;
         let _ = write!(out, "${}", context.counter);
@@ -229,3 +233,6 @@ impl SqlWriter for PostgresSqlWriter {
         out.push_str("CAST(EXTRACT(EPOCH FROM NOW()) * 1000 AS BIGINT)");
     }
 }
+
+impl SqlFragmentWriter for PostgresSqlWriter {}
+impl SqlWriter for PostgresSqlWriter {}

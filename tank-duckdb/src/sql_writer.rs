@@ -3,7 +3,8 @@ use std::{
     fmt::Write,
 };
 use tank_core::{
-    BinaryOpType, ColumnDef, Context, DynQuery, Interval, SqlWriter, Value, separated_by,
+    BinaryOpType, ColumnDef, Context, DynQuery, GenericSqlWriter, Interval, SqlCoreWriter,
+    SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, Value, separated_by,
 };
 
 /// SQL writer for the DuckDB dialect.
@@ -12,7 +13,7 @@ use tank_core::{
 #[derive(Default)]
 pub struct DuckDBSqlWriter {}
 
-impl SqlWriter for DuckDBSqlWriter {
+impl SqlCoreWriter for DuckDBSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -31,7 +32,9 @@ impl SqlWriter for DuckDBSqlWriter {
             out.push_str(t);
         }
     }
+}
 
+impl SqlValueWriter for DuckDBSqlWriter {
     fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
         out.push('\'');
         for b in value {
@@ -65,7 +68,9 @@ impl SqlWriter for DuckDBSqlWriter {
         );
         out.push('}');
     }
+}
 
+impl SqlExpressionWriter for DuckDBSqlWriter {
     fn expression_binary_op_fragments(
         &self,
         context: &mut Context,
@@ -73,15 +78,7 @@ impl SqlWriter for DuckDBSqlWriter {
     ) -> (&str, &str, &str, bool, bool) {
         match op_type {
             BinaryOpType::NotGlob => ("NOT (", " GLOB ", ")", false, false),
-            _ => {
-                struct GenericWriter;
-                impl SqlWriter for GenericWriter {
-                    fn as_dyn(&self) -> &dyn SqlWriter {
-                        self
-                    }
-                }
-                GenericWriter.expression_binary_op_fragments(context, op_type)
-            }
+            _ => GenericSqlWriter.expression_binary_op_fragments(context, op_type),
         }
     }
 
@@ -89,3 +86,6 @@ impl SqlWriter for DuckDBSqlWriter {
         out.push_str("epoch_ms(current_timestamp)");
     }
 }
+
+impl SqlFragmentWriter for DuckDBSqlWriter {}
+impl SqlWriter for DuckDBSqlWriter {}

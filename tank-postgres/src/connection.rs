@@ -18,7 +18,7 @@ use std::{
 };
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Transaction,
+    QueryResult, RawQuery, Result, RowsAffected, SqlCoreWriter, Transaction,
     future::Either,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
