@@ -11,8 +11,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tank_core::{
-    AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, send_value,
-    stream::Stream,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result,
+    describe_path, send_value, stream::Stream,
 };
 use tokio::task::spawn_blocking;
 
@@ -25,8 +25,7 @@ pub struct ChDBConnection {
 
 impl ChDBConnection {
     fn do_run(connection: Arc<Mutex<ChConnection>>, sql: &str, tx: Sender<Result<QueryResult>>) {
-        let result = Self::extract_result(connection, sql, tx.clone());
-        if let Err(e) = result {
+        if let Err(e) = Self::extract_result(connection, sql, &tx) {
             send_value!(tx, Err(e));
         }
     }
@@ -34,7 +33,7 @@ impl ChDBConnection {
     fn extract_result(
         connection: Arc<Mutex<ChConnection>>,
         sql: &str,
-        tx: Sender<Result<QueryResult>>,
+        tx: &Sender<Result<QueryResult>>,
     ) -> Result<()> {
         let connection = connection
             .lock()
@@ -67,8 +66,13 @@ impl ChDBConnection {
 
 impl Connection for ChDBConnection {
     async fn connect(driver: &ChDBDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = "While trying to connect to chDB";
-        let url = Self::sanitize_url(driver, url).context(context)?;
+        let url = Self::sanitize_url(driver, url)?;
+        let make_context = || {
+            format!(
+                "While trying to connect to chDB {}",
+                describe_path::<ChDBDriver>(&url)
+            )
+        };
         let path: Option<Cow<'static, str>> = url
             .query_pairs()
             .find_map(|(k, v)| (k.eq_ignore_ascii_case("path") && !v.is_empty()).then_some(v))
@@ -101,8 +105,9 @@ impl Connection for ChDBConnection {
             Ok(connection)
         })
         .await
-        .context(context)?
-        .context(context)?;
+        .map_err(Error::new)
+        .flatten()
+        .with_context(make_context)?;
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
         })
@@ -129,7 +134,7 @@ impl Executor for ChDBConnection {
         query: impl AsQuery<ChDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
-        let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
+        let context = format!("While running the query:\n{}", query.as_mut());
         let connection = Arc::clone(&self.connection);
         let mut owned = mem::take(query.as_mut());
         let (tx, rx) = flume::unbounded::<Result<QueryResult>>();

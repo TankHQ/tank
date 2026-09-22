@@ -1,9 +1,9 @@
 use crate::{MySQLDriver, MySQLPrepared, RowWrap};
 use async_stream::try_stream;
-use std::sync::Arc;
 use tank_core::{
-    AsQuery, Error, Executor, Query, RawQuery, Result,
+    AsQuery, Error, ErrorContext, Executor, Query, RawQuery, Result,
     stream::{Stream, StreamExt, TryStreamExt},
+    truncate_long,
 };
 
 pub(crate) struct MySQLQueryable<T: mysql_async::prelude::Queryable> {
@@ -19,7 +19,14 @@ impl<T: mysql_async::prelude::Queryable + Send> Executor for MySQLQueryable<T> {
     }
 
     async fn do_prepare(&mut self, sql: String) -> Result<Query<MySQLDriver>> {
-        Ok(MySQLPrepared::new(self.executor.prep(sql.as_str()).await?).into())
+        let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
+        let prepared = self
+            .executor
+            .prep(sql.as_str())
+            .await
+            .map_err(Error::new)
+            .with_context(make_context)?;
+        Ok(MySQLPrepared::new(prepared).into())
     }
 
     fn run<'s>(
@@ -27,7 +34,7 @@ impl<T: mysql_async::prelude::Queryable + Send> Executor for MySQLQueryable<T> {
         query: impl AsQuery<MySQLDriver> + 's,
     ) -> impl Stream<Item = Result<tank_core::QueryResult>> + Send {
         let mut query = query.as_query();
-        let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
+        let context = format!("While running the query:\n{}", query.as_mut());
         try_stream! {
             match query.as_mut() {
                 Query::Raw(RawQuery(sql)) => {

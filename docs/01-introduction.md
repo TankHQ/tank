@@ -1,3 +1,6 @@
+> [!NOTE]
+> Just show me the code: [Cheat sheet](00-cheat-sheet.md)
+
 # Introduction
 ###### *Field Manual Section 1* - Mission Briefing
 
@@ -55,6 +58,6 @@ Building and maintaining drivers for several database families is a major effort
 
 Sponsorship helps keep Tank maintained, well-tested and moving toward new capabilities faster.
 
-🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**. Tank is independently designed, written and maintained by [barsdeveloper](https://github.com/barsdeveloper).
+🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**. Tank is carefully designed, written and maintained by (human) [barsdeveloper](https://github.com/barsdeveloper).
 
 *Hold the line. Maintain discipline. Tank out.*

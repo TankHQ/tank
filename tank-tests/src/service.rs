@@ -39,13 +39,13 @@ impl AsValue for HostPort {
         // Always call try_as before checking the received value
         match value.try_as(&Value::Varchar(None)) {
             Ok(Value::Varchar(Some(v))) => {
-                let context = || anyhow!("Failed to parse HostPort from value `{v}`");
-                let (host, port) = v.split_once(':').ok_or_else(context)?;
+                let make_context = || anyhow!("Failed to parse HostPort from value `{v}`");
+                let (host, port) = v.split_once(':').ok_or_else(make_context)?;
                 Ok(Self {
                     host: host.to_string(),
                     port: port
                         .parse::<u16>()
-                        .map_err(|e| Error::new(e).context(context()))?,
+                        .map_err(|e| Error::new(e).context(make_context()))?,
                 })
             }
             _ => Err(anyhow!(

@@ -9,7 +9,7 @@ use mongodb::{Client, ClientSession, Collection, Database, bson::Bson};
 use std::{borrow::Cow, future, i64};
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowsAffected,
-    TableRef,
+    TableRef, describe_url,
     stream::{Stream, TryStreamExt},
     truncate_long,
 };
@@ -59,13 +59,20 @@ impl MongoDBConnection {
 
 impl Connection for MongoDBConnection {
     async fn connect(driver: &MongoDBDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = "While trying to connect to MongoDB";
-        let url = Self::sanitize_url(driver, url).context(context)?;
-        let client = Client::with_uri_str(&url).await.context(context)?;
+        let url = Self::sanitize_url(driver, url)?;
+        let make_context = || {
+            format!(
+                "While trying to connect to MongoDB {}",
+                describe_url::<MongoDBDriver>(&url)
+            )
+        };
+        let client = Client::with_uri_str(&url)
+            .await
+            .with_context(make_context)?;
         let database = client.database(match url.path_segments().and_then(|mut v| v.next()) {
             Some(v) if !v.is_empty() => v,
             _ => {
-                let error = anyhow!("Empty database name").context(context);
+                let error = anyhow!("Empty database name").context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
             }

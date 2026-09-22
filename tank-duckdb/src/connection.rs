@@ -23,7 +23,7 @@ use std::{
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
     QueryResult, RawQuery, Result, Row, RowsAffected, SqlCoreWriter, Value, as_c_string,
-    error_message_from_ptr, send_value, stream::Stream, truncate_long,
+    describe_path, error_message_from_ptr, send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -218,15 +218,21 @@ impl DuckDBConnection {
 
 impl Connection for DuckDBConnection {
     async fn connect(driver: &DuckDBDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = "While trying to connect to DuckDB";
         let url = Self::sanitize_url(driver, url)?;
+        let make_context = || {
+            format!(
+                "While trying to connect to DuckDB {}",
+                describe_path::<DuckDBDriver>(&url)
+            )
+        };
         let mut config: CBox<duckdb_config> = CBox::new(ptr::null_mut(), |mut p| unsafe {
             duckdb_destroy_config(&mut p)
         });
         unsafe {
             let rc = duckdb_create_config(&mut *config);
             if rc != duckdb_state_DuckDBSuccess {
-                let error = anyhow!("Cannot allocate the duckdb_config object").context(context);
+                let error =
+                    anyhow!("Cannot allocate the duckdb_config object").context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
             }
@@ -237,7 +243,7 @@ impl Connection for DuckDBConnection {
                 .map_or(Default::default(), |host| format!("{host}/")),
             url.path()
         ))
-        .context(context)?;
+        .with_context(make_context)?;
         for (key, value) in url.query_pairs() {
             let rc = unsafe {
                 match &*key {
@@ -316,15 +322,15 @@ impl Executor for DuckDBConnection {
 
     async fn do_prepare(&mut self, sql: String) -> Result<Query<DuckDBDriver>> {
         let connection = AtomicPtr::new(*self.connection);
-        let context = format!("While preparing the query:\n{}", truncate_long!(sql));
         let prepared = spawn_blocking(move || unsafe {
+            let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
             let mut prepared = CBox::new(ptr::null_mut(), |mut p| duckdb_destroy_prepare(&mut p));
             let sql = match CString::new(sql.as_bytes()) {
                 Ok(sql) => sql,
                 Err(e) => {
                     let error = Error::new(e)
                         .context("Could convert `String` to `CString`")
-                        .context(context);
+                        .context(make_context());
                     log::error!("{error:#}");
                     return Err(error);
                 }
@@ -338,7 +344,7 @@ impl Executor for DuckDBConnection {
                 let error = Error::msg(
                     error_message_from_ptr(&duckdb_prepare_error(*prepared)).to_string(),
                 )
-                .context(context);
+                .context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
             }
@@ -353,7 +359,7 @@ impl Executor for DuckDBConnection {
         query: impl AsQuery<DuckDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> {
         let mut query = query.as_query();
-        let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
+        let context = format!("While running the query:\n{}", query.as_mut());
         let connection = AtomicPtr::new(*self.connection);
         let mut owned = mem::take(query.as_mut());
         let (tx, rx) = flume::unbounded::<Result<QueryResult>>();

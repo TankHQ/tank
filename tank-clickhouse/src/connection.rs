@@ -8,7 +8,7 @@ use klickhouse::{Client, ClientOptions};
 use std::{borrow::Cow, fmt, str::FromStr, sync::Arc};
 use tank_core::{
     AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, Row,
-    stream::Stream, truncate_long,
+    describe_url, stream::Stream,
 };
 
 /// ClickHouse connection wrapper.
@@ -22,18 +22,19 @@ impl Connection for ClickHouseConnection {
     async fn connect(driver: &ClickHouseDriver, url: Cow<'static, str>) -> Result<Self> {
         let url = Self::sanitize_url(driver, url)?;
         let hostname = url.host_str().context("No hostname")?;
-        let port = url.port();
         let username = url.username();
         let password = url.password();
-        let address = if let Some(port) = port {
+        let address = if let Some(port) = url.port() {
             Cow::Owned(format!("{hostname}:{port}"))
         } else {
             Cow::Borrowed(hostname)
         };
-        let context = format!(
-            "While trying to connect to ClickHouse {}",
-            truncate_long!(address)
-        );
+        let make_context = || {
+            format!(
+                "While trying to connect to ClickHouse {}",
+                describe_url::<ClickHouseDriver>(&url)
+            )
+        };
         let mut options = ClientOptions::default();
         if !username.is_empty() {
             options.username = username.into();
@@ -56,7 +57,7 @@ impl Connection for ClickHouseConnection {
                         Err(e) => {
                             let error = anyhow!("{e}")
                                 .context(format!("URL param `{k} = {v}`"))
-                                .context(context);
+                                .context(make_context());
                             log::error!("{error:#}");
                             return Err(error);
                         }
@@ -69,7 +70,7 @@ impl Connection for ClickHouseConnection {
                 }
                 k => {
                     let error = anyhow!("Unknown parameter in connection url: `{k}`")
-                        .context(context.clone());
+                        .context(make_context());
                     log::error!("{error:#}");
                     return Err(error);
                 }
@@ -78,7 +79,7 @@ impl Connection for ClickHouseConnection {
         let client = Client::connect(&address as &str, options)
             .await
             .map_err(Error::new)
-            .with_context(|| context.clone())?;
+            .with_context(make_context)?;
         for sql in &[
             "SET allow_experimental_lightweight_delete=1",
             "SET join_use_nulls=1",
@@ -88,7 +89,7 @@ impl Connection for ClickHouseConnection {
                 .execute(*sql)
                 .await
                 .map_err(|e| Error::new(e).context(format!("While executing: `{sql}`")))
-                .with_context(|| context.clone())?;
+                .with_context(make_context)?;
         }
         Ok(ClickHouseConnection { client })
     }

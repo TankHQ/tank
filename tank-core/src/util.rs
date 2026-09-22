@@ -1,4 +1,4 @@
-use crate::{AsValue, ColumnDef, DynQuery, TableRef, Value};
+use crate::{AsValue, ColumnDef, Driver, DynQuery, TableRef, Value};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
 use rust_decimal::prelude::ToPrimitive;
@@ -8,9 +8,11 @@ use std::{
     cmp::min,
     collections::BTreeMap,
     ffi::{CStr, CString, c_char},
+    fmt::Write,
     ptr,
 };
 use syn::Path;
+use url::Url;
 
 #[derive(Clone)]
 /// Iterator adapter for two types.
@@ -349,6 +351,59 @@ macro_rules! truncate_long {
             },
         )
     }};
+}
+
+/// Builds a short, log friendly description of a networked connection target:
+/// host, port (when specified) and the first path segment (the
+/// database/keyspace) when present.
+#[inline]
+pub fn describe_url<D: Driver>(url: &Url) -> String {
+    let mut target = String::with_capacity(32);
+    if let Some(host) = url.host_str() {
+        let _ = write!(&mut target, "{host}");
+    }
+    if let Some(port) = url.port() {
+        let _ = write!(&mut target, ":{port}");
+    }
+    if let Some(database) = url
+        .path_segments()
+        .and_then(|mut v| v.find(|s| !s.is_empty()))
+    {
+        let _ = write!(&mut target, "/{}", truncate_long!(database));
+    }
+    target
+}
+
+/// Builds a short, log friendly description of an embedded connection target:
+/// the database path or `:memory:`.
+#[inline]
+pub fn describe_path<D: Driver>(url: &Url) -> String {
+    let mut target = String::with_capacity(32);
+    if url
+        .query_pairs()
+        .any(|(k, v)| k.eq_ignore_ascii_case("mode") && v.eq_ignore_ascii_case("memory"))
+    {
+        let _ = write!(&mut target, ":memory:");
+        return target;
+    }
+    if let Some(path) = url
+        .query_pairs()
+        .find_map(|(k, v)| k.eq_ignore_ascii_case("path").then_some(v))
+    {
+        let _ = write!(&mut target, "{}", truncate_long!(path));
+        return target;
+    }
+    let host = url.host_str().unwrap_or_default();
+    let path = url.path();
+    if host.is_empty() && (path.is_empty() || path == "/") {
+        let _ = write!(&mut target, ":memory:");
+        return target;
+    }
+    let _ = write!(&mut target, "{host}");
+    if !path.is_empty() {
+        let _ = write!(&mut target, "{}", truncate_long!(path));
+    }
+    target
 }
 
 /// Sends the value through the channel and logs in case of error.

@@ -11,11 +11,12 @@ use scylla::{
     },
 };
 use std::{
-    borrow::Cow, net::IpAddr, num::NonZeroU64, ops::ControlFlow, pin::pin, str::FromStr, sync::Arc,
+    borrow::Cow, net::IpAddr, num::NonZeroU64, ops::ControlFlow, pin::pin, str::FromStr,
     time::Duration,
 };
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, Row,
+    describe_url,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
@@ -71,18 +72,19 @@ impl Connection for ScyllaDBConnection {
     async fn connect(driver: &ScyllaDBDriver, url: Cow<'static, str>) -> Result<Self> {
         let url = Self::sanitize_url(driver, url)?;
         let hostname = url.host_str().context("No hostname")?;
-        let port = url.port();
         let username = url.username();
         let password = url.password();
-        let address = if let Some(port) = port {
+        let address = if let Some(port) = url.port() {
             Cow::Owned(format!("{hostname}:{port}"))
         } else {
             Cow::Borrowed(hostname)
         };
-        let context = format!(
-            "While trying to connect to ScyllaDB {}",
-            truncate_long!(address)
-        );
+        let make_context = || {
+            format!(
+                "While trying to connect to ScyllaDB {}",
+                describe_url::<ScyllaDBDriver>(&url)
+            )
+        };
         let mut session = SessionBuilder::new().known_node(address);
         if !username.is_empty() {
             session = session.user(username, password.unwrap_or_default());
@@ -91,7 +93,7 @@ impl Connection for ScyllaDBConnection {
             session = session.use_keyspace(keyspace, true);
         }
         let mut context_builder =
-            SslContextBuilder::new(SslMethod::tls()).with_context(|| context.clone())?;
+            SslContextBuilder::new(SslMethod::tls()).with_context(make_context)?;
         context_builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
         let mut ssl = false;
         let mut keyspaces = Vec::new();
@@ -103,7 +105,7 @@ impl Connection for ScyllaDBConnection {
                         Err(e) => {
                             let error = anyhow!("{e}")
                                 .context(format!("URL param `{k} = {v}`"))
-                                .context(context.clone());
+                                .context(make_context());
                             log::error!("{error:#}");
                             return Err(error);
                         }
@@ -244,8 +246,8 @@ impl Connection for ScyllaDBConnection {
                     ));
                 }
                 k => {
-                    let error =
-                        anyhow!("Unknown parameter in connection url: `{k}`").context(context);
+                    let error = anyhow!("Unknown parameter in connection url: `{k}`")
+                        .context(make_context());
                     log::error!("{error:#}");
                     return Err(error);
                 }
@@ -279,8 +281,12 @@ impl Executor for ScyllaDBConnection {
     }
 
     async fn do_prepare(&mut self, sql: String) -> Result<Query<ScyllaDBDriver>> {
-        let context = format!("While preparing the query:\n{}", truncate_long!(sql));
-        let statement = self.session.prepare(sql).await.with_context(|| context)?;
+        let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
+        let statement = self
+            .session
+            .prepare(sql.as_str())
+            .await
+            .with_context(make_context)?;
         Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
     }
 
@@ -302,7 +308,7 @@ impl Executor for ScyllaDBConnection {
                     Query::Prepared(prepared) => {
                         let params = prepared.take_params()?;
                         self.session
-                            .execute_single_page(&prepared.statement.clone(), params, paging_state)
+                            .execute_single_page(&prepared.statement, params, paging_state)
                             .await?
                     }
                 };

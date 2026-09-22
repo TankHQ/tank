@@ -671,7 +671,7 @@ impl_as_value!(
     Interval,
     Value::Interval,
     |mut input: &str| {
-        let context = || {
+        let make_context = || {
             anyhow!(
                 "Cannot parse interval from `{}`",
                 truncate_long!(input)
@@ -681,7 +681,7 @@ impl_as_value!(
             Some(v) if *v == '"' || *v == '\'' => {
                 input = &input[1..];
                 if !input.ends_with(*v) {
-                    return Err(context());
+                    return Err(make_context());
                 }
                 input = input.trim_end_matches(*v);
             }
@@ -754,7 +754,7 @@ impl_as_value!(
                 {
                     interval += Interval::from_nanos(count as _)
                 }
-                _ => return Err(context()),
+                _ => return Err(make_context()),
             }
             input = cur.trim_start();
         }
@@ -767,34 +767,34 @@ impl_as_value!(
         let mut time_interval = Interval::ZERO;
         let num = extract_number::<true>(&mut input);
         if !num.is_empty() {
-            let num = num.parse::<u64>().with_context(context)?;
+            let num = num.parse::<u64>().with_context(make_context)?;
             time_interval += Interval::from_hours(num as _);
             if Some(':') == input.chars().next() {
                 input = &input[1..];
                 let num = extract_number::<false>(&mut input).parse::<u64>()?;
                 if input.is_empty() {
-                    return Err(context());
+                    return Err(make_context());
                 }
                 time_interval += Interval::from_mins(num as _);
                 if Some(':') == input.chars().next() {
                     input = &input[1..];
                     let num = extract_number::<false>(&mut input)
                         .parse::<u64>()
-                        .with_context(context)?;
+                        .with_context(make_context)?;
                     time_interval += Interval::from_secs(num as _);
                     if Some('.') == input.chars().next() {
                         input = &input[1..];
                         let len = input.len();
                         let mut num = extract_number::<true>(&mut input)
                             .parse::<i128>()
-                            .with_context(context)?;
+                            .with_context(make_context)?;
                         let magnitude = (len - 1) / 3;
                         num *= 10_i128.pow(2 - (len + 2) as u32 % 3);
                         match magnitude {
                             0 => time_interval += Interval::from_millis(num),
                             1 => time_interval += Interval::from_micros(num),
                             2 => time_interval += Interval::from_nanos(num),
-                            _ => return Err(context()),
+                            _ => return Err(make_context()),
                         }
                     }
                 }
@@ -806,7 +806,7 @@ impl_as_value!(
             }
         }
         if !input.is_empty() {
-            return Err(context());
+            return Err(make_context());
         }
         Ok(interval)
     },
