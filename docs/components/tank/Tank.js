@@ -26,6 +26,7 @@ export class Tank {
     this.hull = null
     this.wheels = []
     this.alive = false
+    this._idlerSpin = 0
 
     // Weight force per unit mass, taken from Matter's own gravity settings.
     this.gravityForcePerMass = engine.gravity.y * engine.gravity.scale
@@ -198,6 +199,10 @@ export class Tank {
   _spinWheels(dt) {
     const groundSpeed = this.hull.velocity.x
     for (const wheel of this.wheels) wheel.spin(dt, groundSpeed)
+    // Idlers are fixed to the hull but roll against the same track, so their
+    // visual spin follows ground speed over their own radius.
+    const idlerRadius = IDLER_MOUNTS[0].radius
+    this._idlerSpin += (groundSpeed / idlerRadius) * (dt / 16.666)
   }
 
   // Scroll the track for the given belt loop and return the new phase. Called
@@ -210,11 +215,12 @@ export class Tank {
 
   // --- geometry for the renderer --------------------------------------------
 
-  // World-space idler discs (idlers are fixed to the hull, not sprung).
+  // World-space idler discs (idlers are fixed to the hull, not sprung). They
+  // spin with ground speed just like the road wheels.
   _idlerDiscs(pose) {
     return IDLER_MOUNTS.map((i) => {
       const p = toWorld(pose.x, pose.y, pose.angle, i.x, i.y)
-      return { x: p.x, y: p.y, r: i.radius }
+      return { x: p.x, y: p.y, r: i.radius, spin: this._idlerSpin }
     })
   }
 
@@ -251,7 +257,8 @@ export class Tank {
   muzzle() {
     if (!this.alive || !this.hull) return null
     const dir = this.hull.angle
-    const offset = { x: 120, y: -18 }
+    // Tip of the drawn 120 mm barrel (see Renderer MUZZLE_X / GUN_Y).
+    const offset = { x: 420, y: -86 }
     const p = toWorld(this.hull.position.x, this.hull.position.y, dir, offset.x, offset.y)
     return { dir, x: p.x, y: p.y }
   }

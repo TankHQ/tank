@@ -6,10 +6,10 @@
 // is why the raw stiffness/damping numbers are small.
 
 export const CONFIG = {
-  // World scale: the hull spans 218 px between HULL_POINTS extremes (x -110
-  // to +108), which represents a ~7.5 m tracked vehicle. This is what turns
-  // simulation pixels into real-world metres for the HUD and tuning.
-  pixelsPerMetre: 218 / 7.5,
+  // World scale: the hull spans 412 px between HULL_POINTS extremes (x -206
+  // to +206), which represents a ~7.93 m tracked vehicle (M1 hull length).
+  // This is what turns simulation pixels into real-world metres for the HUD.
+  pixelsPerMetre: 412 / 7.93,
 
   // ---------------------------------------------------------------------------
   // SUSPENSION  (how the wheels/springs hold the body up)
@@ -58,10 +58,10 @@ export const CONFIG = {
   // ENGINE AND BRAKES  (multiples of the vehicle's weight)
   // ---------------------------------------------------------------------------
 
-  accelerationForce: 0.1,  // forward push (~0.1 g, heavy)
-  brakingForce: 0.35,      // braking push
-  reverseForce: 0.12,      // reverse push
-  maximumSpeed: 9,         // top speed in px/frame (~67 km/h)
+  accelerationForce: 0.3, // forward push
+  brakingForce: 0.5,       // braking push
+  reverseForce: 0.35,      // reverse push
+  maximumSpeed: 40,        // top speed in px/frame (~89 km/h)
 
   // Grip: a wheel transmits at most `gripLimit * weight on that wheel` before
   // the track slips.
@@ -77,29 +77,38 @@ export const CONFIG = {
 }
 
 // Chassis outline, in body-local coordinates (y points down, as in Matter).
+// A deep slab: the long flat lower edge (y = ~36) is the side skirt, sitting
+// just below the road-wheel centre line so it covers the top half of every
+// wheel and the top run of the track. The nose and tail slope up to the deck.
+// The hull deliberately overhangs the track at both ends (longer than the
+// running gear), as on the reference M1: the sponsons project forward and aft
+// of the idler wheels.
 export const HULL_POINTS = [
-  { x: -108, y: 4 },
-  { x: 108, y: 4 },
-  { x: 92, y: -20 },
-  { x: -60, y: -26 },
-  { x: -96, y: -12 },
-  { x: -110, y: -2 },
+  { x: -196, y: 14 },
+  { x: -206, y: -6 },
+  { x: -186, y: -52 },
+  { x: 150, y: -52 },
+  { x: 196, y: -30 },
+  { x: 206, y: 14 },
 ]
 
-// Road wheels: mount position relative to the hull centre, and radius.
+// Road wheels: mount position relative to the hull centre, and radius. Seven of
+// them, large and closely spaced, sitting below the skirt and fully exposed.
 export const WHEEL_MOUNTS = [
-  { x: -94, y: -2, radius: 16 },
-  { x: -56, y: -2, radius: 16 },
-  { x: -19, y: -2, radius: 16 },
-  { x: 19, y: -2, radius: 16 },
-  { x: 56, y: -2, radius: 16 },
-  { x: 94, y: -2, radius: 16 },
+  { x: -114, y: -2, radius: 19 },
+  { x: -76, y: -2, radius: 19 },
+  { x: -38, y: -2, radius: 19 },
+  { x: 0, y: -2, radius: 19 },
+  { x: 38, y: -2, radius: 19 },
+  { x: 76, y: -2, radius: 19 },
+  { x: 114, y: -2, radius: 19 },
 ]
 
-// Idler wheels: fixed to the chassis (not sprung), they only shape the track.
+// Idler wheels ("top wheels"): fixed to the chassis (not sprung). Set at the
+// extreme ends and raised, so the side skirt covers roughly their upper half.
 export const IDLER_MOUNTS = [
-  { x: -114, y: 6, radius: 18 },
-  { x: 114, y: 6, radius: 18 },
+  { x: -152, y: 10, radius: 21 },
+  { x: 152, y: 10, radius: 21 },
 ]
 
 // Track construction.
@@ -121,9 +130,15 @@ export const PALETTE = {
   grassDark: '#6b603c',
   soil: '#4a4029',
   soilDeep: '#332c1c',
-  track: '#2a2825',
-  trackHi: '#545049',
-  hull: ['#6d6a4a', '#575339', '#3a3726'],
-  wheel: '#26241f',
-  wheelRim: '#4e4a40',
+  track: '#332f28',
+  trackHi: '#5c574c',
+  // Desert-camouflage bodywork (M1 Abrams tan).
+  hull: ['#e0cda6', '#cdb489', '#ab9064'],
+  camo: ['#e8d7b0', '#a8814f', '#c1a273', '#8f7247'],
+  barrel: '#c6b085',
+  barrelHi: '#dcc8a0',
+  hullLine: 'rgba(70,52,28,0.65)',
+  wheel: '#c9b58c',
+  wheelRim: '#8c7648',
+  wheelHub: '#b2422e',
 }
