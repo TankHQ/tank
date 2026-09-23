@@ -49,7 +49,7 @@ export const CONFIG = {
   // The main dial for how much the body tilts on bumpy ground: the body's
   // rotational inertia is multiplied by this. 1.0 = calm and heavy,
   // 0.5 = lively, 0.2 = twitchy, below 0.1 it can flip.
-  bodyRotationInertiaScale: 1.0,
+  bodyRotationInertiaScale: 0.6,
 
   // Air resistance; also settles any spin once airborne.
   airResistance: 0.002,
@@ -94,15 +94,25 @@ export const HULL_POINTS = [
 
 // Road wheels: mount position relative to the hull centre, and radius. Seven of
 // them, large and closely spaced, sitting below the skirt and fully exposed.
-export const WHEEL_MOUNTS = [
-  { x: -114, y: -2, radius: 19 },
-  { x: -76, y: -2, radius: 19 },
-  { x: -38, y: -2, radius: 19 },
-  { x: 0, y: -2, radius: 19 },
-  { x: 38, y: -2, radius: 19 },
-  { x: 76, y: -2, radius: 19 },
-  { x: 114, y: -2, radius: 19 },
-]
+export const WHEEL_MOUNTS = (() => {
+  const count = 7;
+  const radius = 22;
+  const distance = 36;
+  const y = -2;
+
+  const mounts = [];
+  const startX = -((count - 1) * distance) / 2;
+
+  for (let i = 0; i < count; i++) {
+    mounts.push({
+      x: startX + i * distance,
+      y,
+      radius
+    });
+  }
+
+  return mounts;
+})();
 
 // Idler wheels ("top wheels"): fixed to the chassis (not sprung). Set at the
 // extreme ends and raised, so the side skirt covers roughly their upper half.
