@@ -15,46 +15,46 @@ export const CONFIG = {
   // where u is compression as a fraction of full travel (0 = fully extended,
   // 1 = fully compressed). The linear term sets the soft ride; the progressive
   // term makes the spring much stiffer near the bump stop.
-  springLinearStiffness: 20,
-  springProgressiveStiffness: 0.001,
+  springLinearStiffness: 60,
+  springProgressiveStiffness: 10,
 
   // Shock absorbers. 0 = bouncy/springy; 0.03 = settled; 0.06 = taut and heavy.
-  shockAbsorberDamping: 0.02,
+  shockAbsorberDamping: 20,
 
   // Suspension geometry in pixels, from the wheel mount to the wheel centre.
   // restLength      : where the wheel sits when parked (spring partly loaded).
   // fullyCompressed : the hard limit; the body can never sink past this.
   // fullyExtended   : the longest the wheel can hang when the ground drops away.
   suspensionRestLength: 38,
-  suspensionFullyCompressedLength: 10,
+  suspensionFullyCompressedLength: 5,
   suspensionFullyExtendedLength: 58,
 
   // How fast a wheel may stretch back down toward the ground, in px per 60fps
   // frame. This rebound lag is what lets the tank leave the ground over bumps.
-  wheelExtensionRate: 1.5,
+  wheelExtensionRate: 1.8,
 
   // ---------------------------------------------------------------------------
   // BODY  (the chassis)
   // ---------------------------------------------------------------------------
 
   // Mass per unit area. Higher = harder to accelerate and push around.
-  bodyDensity: 0.9,
+  bodyDensity: 1,
 
   // The main dial for how much the body tilts on bumpy ground: the body's
   // rotational inertia is multiplied by this. 1.0 = calm and heavy,
   // 0.5 = lively, 0.2 = twitchy, below 0.1 it can flip.
-  bodyRotationInertiaScale: 1.5,
+  bodyRotationInertiaScale: 1.0,
 
   // Air resistance; also settles any spin once airborne.
-  airResistance: 0.002,
+  airResistance: 0.0001,
 
   // ---------------------------------------------------------------------------
   // ENGINE AND BRAKES  (multiples of the vehicle's weight)
   // ---------------------------------------------------------------------------
 
-  accelerationForce: 1.0, // forward push
-  brakingForce: 0.4,      // braking push
-  reverseForce: 0.55,     // reverse push
+  accelerationForce: 1, // forward push
+  brakingForce: 0.8,      // braking push
+  reverseForce: 0.5,     // reverse push
   maximumSpeed: 30,       // top speed in px/frame
 
   // Grip: a wheel transmits at most `gripLimit * weight on that wheel` before
@@ -64,7 +64,7 @@ export const CONFIG = {
   rollingResistanceGripLimit: 0.7,
 
   // How quickly the tank coasts to a stop with no throttle.
-  coastingDrag: 0.35,
+  coastingDrag: 0.005,
 
   // ---------------------------------------------------------------------------
   // WEIGHT TRANSFER  (nose lifting / dipping under power and braking)
@@ -74,7 +74,7 @@ export const CONFIG = {
   // resulting squat/dive shows. Separate because braking force far exceeds
   // engine force. 0 = none, higher = more pronounced.
   accelerationPitchLever: 10,
-  brakingPitchLever: 12,
+  brakingPitchLever: 20,
 
   // Gravity, in Matter's units.
   gravity: 1,
