@@ -18,20 +18,6 @@ export class ParticleField {
     })
   }
 
-  // Dust kicked up as the tank drives over rough ground.
-  dust(x, y, groundSpeed) {
-    this._spawn({
-      x: x + (Math.random() - 0.5) * 10,
-      y: y + (Math.random() - 0.5) * 4,
-      vx: -groundSpeed * 0.15 + (Math.random() - 0.5) * 1.2,
-      vy: -0.4 - Math.random() * 1.4,
-      life: 0.5 + Math.random() * 0.6,
-      size: 2 + Math.random() * 5,
-      color: '#cdbb8e',
-      gravity: -0.005,
-    })
-  }
-
   // Exhaust puff trailing behind the hull.
   exhaust(x, y, groundSpeed) {
     this._spawn({

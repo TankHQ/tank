@@ -6,12 +6,13 @@ import { ParticleField } from './ParticleField.js'
 import { ShellManager } from './ShellManager.js'
 import { Renderer } from './Renderer.js'
 
+// Collision categories. The hull and wheels are deliberately *not* physical
+// bodies (the suspension handles ground contact), so only terrain and shells
+// have real collision filters.
 const COLLISION_CATEGORIES = {
   ground: 0x0001,
-  hull: 0x0002,
-  wheel: 0x0004,
   shell: 0x0008,
-  all: 0x0001 | 0x0002 | 0x0004 | 0x0008,
+  groundAndShell: 0x0001 | 0x0008,
 }
 
 const FIXED_STEP_MS = 1000 / 60
@@ -56,18 +57,6 @@ export class Game {
 
     this._dustTimer = 0
     this._onHud = null
-  }
-
-  get alive() {
-    return this.tank.alive
-  }
-
-  get distance() {
-    return this._dist
-  }
-
-  get airtime() {
-    return this._airtime
   }
 
   // Called once per HUD refresh (a few times a second) with a stats object.
@@ -136,6 +125,7 @@ export class Game {
     // which is what removes jitter on high-refresh displays.
     const alpha = this._accumulator / FIXED_STEP_MS
     const view = this.tank.view(alpha)
+    if (view) view.trackPhase = this.tank.scrollTrack(view.belt, dt)
     this.camera.follow(view ? view.pose : null, this.renderer.width, this.renderer.height)
     this.renderer.render({
       camera: this.camera,
@@ -145,7 +135,7 @@ export class Game {
       shells: this.shells.shells,
     })
 
-    this._updateStats(dt, steps)
+    this._updateStats(dt)
   }
 
   _physicsStep(dt) {
@@ -181,12 +171,11 @@ export class Game {
       }
     }
 
-    this.tank.updateTrack(dt)
     this.particles.update(dt)
     this.shells.update(dt)
   }
 
-  _updateStats(dt, steps) {
+  _updateStats(dt) {
     this._fpsAccumulator += dt
     this._fpsFrames++
     if (this._fpsAccumulator > 500) {
@@ -194,7 +183,6 @@ export class Game {
       this._fpsAccumulator = 0
       this._fpsFrames = 0
     }
-    void steps
 
     this._hudAccumulator += dt
     if (this._hudAccumulator > 60 && this._onHud) {
@@ -212,4 +200,3 @@ export class Game {
   }
 }
 
-export { COLLISION_CATEGORIES }

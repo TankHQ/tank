@@ -1,4 +1,4 @@
-import { TAU, distance, toWorld } from './util.js'
+import { TAU, distance } from './util.js'
 
 // The track belt that wraps the wheels.
 //
@@ -8,27 +8,15 @@ import { TAU, distance, toWorld } from './util.js'
 // segments, so the belt drapes around each wheel and bends smoothly like a
 // chain. The pads then scroll around the loop at ground speed.
 export class Track {
-  constructor({ Matter, trackConfig, idlerMounts }) {
+  constructor({ Matter, trackConfig }) {
     this._Vertices = Matter.Vertices
     this._track = trackConfig
-    this._idlers = idlerMounts
     this.phase = 0
   }
 
-  // World-space discs (idlers + road wheels) that shape the belt.
-  discs(pose, wheelCentres) {
-    const circles = this._idlers.map((i) => {
-      const p = toWorld(pose.x, pose.y, pose.angle, i.x, i.y)
-      return { x: p.x, y: p.y, r: i.radius }
-    })
-    for (const w of wheelCentres) circles.push({ x: w.x, y: w.y, r: w.radius })
-    return circles
-  }
-
-  // Samples the inflated discs then takes their convex hull. Returns null if
-  // there are too few points to form a loop.
-  outline(pose, wheelCentres) {
-    const discs = this.discs(pose, wheelCentres)
+  // Convex hull of the inflated discs. Returns null if there are too few points
+  // to form a loop.
+  _outline(discs) {
     const points = []
     for (const disc of discs) {
       const r = disc.r + this._track.clearance
@@ -43,8 +31,9 @@ export class Track {
 
   // Resample the hull at a fixed arc spacing to get evenly spaced pads, and
   // work out which way the loop flows (so scrolling pushes the right way).
-  buildLoop(pose, wheelCentres) {
-    const hull = this.outline(pose, wheelCentres)
+  // `discs` is a list of { x, y, r } in world space.
+  buildLoop(discs) {
+    const hull = this._outline(discs)
     if (!hull || hull.length < 4) return null
 
     const n = hull.length

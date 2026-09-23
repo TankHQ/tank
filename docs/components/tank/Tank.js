@@ -23,7 +23,6 @@ export class Tank {
     this.terrain = terrain
     this.input = input
 
-    this.config = CONFIG
     this.hull = null
     this.wheels = []
     this.alive = false
@@ -31,7 +30,7 @@ export class Tank {
     // Weight force per unit mass, taken from Matter's own gravity settings.
     this.gravityForcePerMass = engine.gravity.y * engine.gravity.scale
 
-    this.track = new Track({ Matter, trackConfig: TRACK_CONFIG, idlerMounts: IDLER_MOUNTS })
+    this.track = new Track({ Matter, trackConfig: TRACK_CONFIG })
   }
 
   // --- lifecycle ------------------------------------------------------------
@@ -40,29 +39,28 @@ export class Tank {
   spawn(x) {
     this.reset()
     const { Bodies, Body, Composite } = this.Matter
-    const config = this.config
 
     // Sit so every wheel rests at its natural length:
     // mount.y + restLength + radius = ground height.
     const mount = WHEEL_MOUNTS[0]
-    const hullY = this.terrain.heightAt(x) - (mount.y + config.suspensionRestLength + mount.radius)
+    const hullY = this.terrain.heightAt(x) - (mount.y + CONFIG.suspensionRestLength + mount.radius)
 
     this.hull = Bodies.fromVertices(x, hullY, [HULL_POINTS], {
-      density: config.bodyDensity,
-      frictionAir: config.airResistance,
+      density: CONFIG.bodyDensity,
+      frictionAir: CONFIG.airResistance,
       label: 'hull',
       // The hull never collides with anything; ground contact is handled by the
-      // suspension, which is why it can drive smoothly over a heightfield.
-      collisionFilter: { category: 0x0002, mask: 0 },
+      // suspension, which is why it can drive smoothly over a heightfield. A
+      // zero mask disables all collisions, so no category is needed.
+      collisionFilter: { mask: 0 },
     })
-    if (config.bodyRotationInertiaScale !== 1) {
-      Body.setInertia(this.hull, this.hull.inertia * config.bodyRotationInertiaScale)
+    if (CONFIG.bodyRotationInertiaScale !== 1) {
+      Body.setInertia(this.hull, this.hull.inertia * CONFIG.bodyRotationInertiaScale)
     }
     Composite.add(this.world, this.hull)
 
-    this.wheels = WHEEL_MOUNTS.map((m) => new SuspensionWheel(config, m))
+    this.wheels = WHEEL_MOUNTS.map((m) => new SuspensionWheel(m))
     this.alive = true
-    this.track.reset()
     this._capturePrevious()
   }
 
@@ -87,7 +85,7 @@ export class Tank {
     this._spinWheels(dt)
   }
 
-  pose() {
+  _pose() {
     return { x: this.hull.position.x, y: this.hull.position.y, angle: this.hull.angle }
   }
 
@@ -108,10 +106,9 @@ export class Tank {
   }
 
   _applySuspension(dt) {
-    const pose = this.pose()
-    const config = this.config
+    const pose = this._pose()
     const groundY = (x) => this.terrain.heightAt(x)
-    const maxExtensionThisStep = config.wheelExtensionRate * (dt / (1000 / 60))
+    const maxExtensionThisStep = CONFIG.wheelExtensionRate * (dt / (1000 / 60))
     const staticLoad = this._staticLoad()
     const massPerWheel = this._massPerWheel()
     const { Body } = this.Matter
@@ -133,9 +130,9 @@ export class Tank {
   // Guarantee no wheel penetrates past its bump stop. The spring can be
   // overpowered by a fast hit; this is a positional constraint, so it cannot.
   _enforceGround() {
-    const pose = this.pose()
+    const pose = this._pose()
     const { Body } = this.Matter
-    const min = this.config.suspensionFullyCompressedLength
+    const min = CONFIG.suspensionFullyCompressedLength
 
     let push = 0
     for (const wheel of this.wheels) {
@@ -154,13 +151,12 @@ export class Tank {
   }
 
   _settleWheels() {
-    const pose = this.pose()
+    const pose = this._pose()
     const groundY = (x) => this.terrain.heightAt(x)
     for (const wheel of this.wheels) wheel.settle(pose, groundY)
   }
 
   _applyTraction() {
-    const config = this.config
     const { Body } = this.Matter
     const grounded = this.wheels.filter((w) => w.contact && w.normalForce > 0)
     if (!grounded.length) return
@@ -172,19 +168,19 @@ export class Tank {
     let total = 0
     let gripLimit = 0
     if (w && !s) {
-      total = config.accelerationForce * weight * clamp(1 - vx / config.maximumSpeed, 0, 1)
-      gripLimit = config.driveGripLimit
+      total = CONFIG.accelerationForce * weight * clamp(1 - vx / CONFIG.maximumSpeed, 0, 1)
+      gripLimit = CONFIG.driveGripLimit
     } else if (s && !w) {
       if (vx > 0.4) {
-        total = -config.brakingForce * weight * clamp(vx / 5, 0, 1)
-        gripLimit = config.brakeGripLimit
+        total = -CONFIG.brakingForce * weight * clamp(vx / 5, 0, 1)
+        gripLimit = CONFIG.brakeGripLimit
       } else {
-        total = -config.reverseForce * weight
-        gripLimit = config.driveGripLimit
+        total = -CONFIG.reverseForce * weight
+        gripLimit = CONFIG.driveGripLimit
       }
     } else {
-      total = -vx * config.coastingDrag * weight
-      gripLimit = config.rollingResistanceGripLimit
+      total = -vx * CONFIG.coastingDrag * weight
+      gripLimit = CONFIG.rollingResistanceGripLimit
     }
 
     const perWheel = total / grounded.length
@@ -199,7 +195,7 @@ export class Tank {
     // Weight-transfer moment: traction acts below the centre of mass, so net
     // forward drive lifts the nose and braking dives it.
     if (applied !== 0) {
-      const lever = applied > 0 ? config.accelerationPitchLever : config.brakingPitchLever
+      const lever = applied > 0 ? CONFIG.accelerationPitchLever : CONFIG.brakingPitchLever
       this.hull.torque += -applied * lever
     }
   }
@@ -209,32 +205,22 @@ export class Tank {
     for (const wheel of this.wheels) wheel.spin(dt, groundSpeed)
   }
 
-  // Scroll the track. Called once per rendered frame with wall-clock dt, so the
-  // scroll speed does not depend on the display refresh rate.
-  updateTrack(dt) {
-    const loop = this.currentTrackLoop()
-    this.track.scroll(loop, this.hull ? this.hull.velocity.x : 0, dt)
+  // Scroll the track for the given belt loop and return the new phase. Called
+  // once per rendered frame with wall-clock dt, so scroll speed is
+  // display-refresh independent.
+  scrollTrack(belt, dt) {
+    if (this.hull) this.track.scroll(belt, this.hull.velocity.x, dt)
+    return this.track.phase
   }
 
   // --- geometry for the renderer --------------------------------------------
 
-  _wheelCentres(pose, lengths) {
-    return this.wheels.map((wheel, i) => {
-      const centre = wheel.centrePoint(pose, lengths ? lengths[i] : wheel.currentLength)
-      return { x: centre.x, y: centre.y, radius: wheel.radius }
-    })
-  }
-
+  // World-space idler discs (idlers are fixed to the hull, not sprung).
   _idlerDiscs(pose) {
     return IDLER_MOUNTS.map((i) => {
       const p = toWorld(pose.x, pose.y, pose.angle, i.x, i.y)
       return { x: p.x, y: p.y, r: i.radius }
     })
-  }
-
-  currentTrackLoop() {
-    if (!this.alive || !this.hull) return null
-    return this.track.buildLoop(this.pose(), this._wheelCentres(this.pose()))
   }
 
   // Interpolated snapshot for rendering. `alpha` is how far we are between the
@@ -249,12 +235,19 @@ export class Tank {
       angle: mixAngle(this.hull.anglePrev, this.hull.angle, t),
     }
     const lengths = this.wheels.map((wheel) => mix(wheel.previousLength, wheel.currentLength, t))
-    const centres = this._wheelCentres(pose, lengths)
+
+    // Built once and shared: the belt wraps these discs and the renderer draws them.
+    const idlers = this._idlerDiscs(pose)
+    const wheelDiscs = this.wheels.map((wheel, i) => {
+      const centre = wheel.centrePoint(pose, lengths[i])
+      return { x: centre.x, y: centre.y, r: wheel.radius }
+    })
+
     return {
       pose,
-      wheels: this.wheels.map((wheel, i) => wheel.view(pose, t)),
-      idlers: this._idlerDiscs(pose),
-      belt: this.track.buildLoop(pose, this._wheelCentres(pose, lengths)),
+      wheels: this.wheels.map((wheel) => wheel.view(pose, t)),
+      idlers,
+      belt: this.track.buildLoop(idlers.concat(wheelDiscs)),
       trackPhase: this.track.phase,
     }
   }

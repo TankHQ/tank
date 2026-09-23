@@ -4,24 +4,23 @@ import { mix } from './util.js'
 // per-step factor; it is fed the *interpolated* render position so the tank and
 // the world stay locked together on high-refresh displays.
 export class Camera {
-  constructor(config = {}) {
+  constructor() {
     this.x = 0
     this.y = 0
-    this.targetX = 0.42 // where the target sits across the viewport width
-    this.targetY = 0.64 // and down the viewport height
-    this.smoothingX = config.smoothingX ?? 0.12
-    this.smoothingY = config.smoothingY ?? 0.08
-    this.idleSmoothing = config.idleSmoothing ?? 0.05
+    // Where the target sits across the viewport width and down its height.
+    this.targetX = 0.42
+    this.targetY = 0.64
+    this.smoothingX = 0.12
+    this.smoothingY = 0.08
+    this.idleSmoothing = 0.05
     this.shake = 0
-    this.shakeDecay = config.shakeDecay ?? 0.88
+    this.shakeDecay = 0.88
   }
 
   follow(pose, viewportWidth, viewportHeight) {
     if (pose) {
-      const goalX = pose.x - viewportWidth * this.targetX
-      const goalY = pose.y - viewportHeight * this.targetY
-      this.x = mix(this.x, goalX, this.smoothingX)
-      this.y = mix(this.y, goalY, this.smoothingY)
+      this.x = mix(this.x, pose.x - viewportWidth * this.targetX, this.smoothingX)
+      this.y = mix(this.y, pose.y - viewportHeight * this.targetY, this.smoothingY)
     } else {
       this.x = mix(this.x, -viewportWidth * this.targetX, this.idleSmoothing)
     }
@@ -29,8 +28,8 @@ export class Camera {
     if (this.shake < 0.1) this.shake = 0
   }
 
-  addShake(amount, max = 16) {
-    this.shake = Math.min(max, this.shake + amount)
+  addShake(amount) {
+    this.shake = Math.min(16, this.shake + amount)
   }
 
   // Random offset applied this frame, from the current shake energy.

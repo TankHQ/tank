@@ -12,7 +12,7 @@ export class ShellManager {
 
   // Fired from a muzzle position/direction (see Tank.muzzle).
   launch({ x, y, dir }) {
-    const { Bodies, Body, Composite } = this.Matter
+    const { Bodies, Composite } = this.Matter
     const body = Bodies.circle(x, y, 5, {
       density: 0.004,
       friction: 0.3,
@@ -20,8 +20,9 @@ export class ShellManager {
       frictionAir: 0.0015,
       label: 'shell',
       collisionFilter: { category: this.categories.shell, mask: this.categories.ground },
+      // Matter applies option velocity directly, so no separate setVelocity call.
+      velocity: { x: Math.cos(dir) * this._speed, y: Math.sin(dir) * this._speed },
     })
-    Body.setVelocity(body, { x: Math.cos(dir) * this._speed, y: Math.sin(dir) * this._speed })
     Composite.add(this.world, body)
     this.shells.push({ body, life: this._lifeSeconds })
     this.particles.muzzleFlash(x, y, dir)
