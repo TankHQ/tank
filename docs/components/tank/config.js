@@ -5,11 +5,175 @@
 // chassis ends up being. Matter integrates forces as `v += (F/m) * dt^2`, which
 // is why the raw stiffness/damping numbers are small.
 
+// -----------------------------------------------------------------------------
+// RUNNING GEAR  (the single source of truth for the undercarriage)
+// -----------------------------------------------------------------------------
+// Everything to do with the undercarriage is derived from these numbers by
+// `buildRunningGear` below:
+//   * the road-wheel mounts and their spacing,
+//   * the idler ("top wheel") mounts, each placed at a distance and an angle,
+//   * the hull's skirt line, deck and overall length (the sponsons overhang the
+//     belt by `hullOverhang`),
+//   * the suspension travel, and
+//   * the track belt, which is built to wrap whatever discs this produces.
+// Change one number and the whole tank — visual and physical — follows.
+export const RUNNING_GEAR = {
+  // Road wheels: `count` of them, `radius` each, `spacing` apart.
+  wheelCount: 7,
+  wheelRadius: 22,
+  wheelSpacing: 38,
+  wheelMountY: -2, // mount height in body coords (y points down)
+
+  // Idlers ("top wheels"). Each sits on a ray from the hull origin: `distance`
+  // out from the wheel-centre line, `angle` above horizontal (radians). `side`
+  // +1 = front, -1 = rear. Raise `angle` to lift an idler; change `distance` to
+  // slide it inboard or outboard.
+  idlers: [
+    { distance: 154, angle: 0.17, radius: 21, side: 1 },
+    { distance: 154, angle: 0.17, radius: 21, side: -1 },
+  ],
+
+  // Suspension travel, measured from the wheel mount down to the wheel centre.
+  restLength: 38,
+  fullyCompressed: 5,
+  fullyExtended: 58,
+
+  // Track belt.
+  trackClearance: 3.2, // how far the belt sits outside the wheels
+  trackPadLength: 8.5, // target arc spacing between track pads
+  trackMinPads: 24,
+
+  // Hull shape. `hullOverhang` is how far the sponsons project past the belt;
+  // `deckY` is the flat top edge (body coords); the skirt bottom is derived to
+  // cover the top half of the idlers while staying clear of the road wheels.
+  hullOverhang: 30,
+  deckY: -52,
+}
+
+// Area centroid of a polygon, matching how Matter recentres body vertices.
+function polygonCentroid(pts) {
+  let twiceArea = 0
+  let cx = 0
+  let cy = 0
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i]
+    const q = pts[(i + 1) % pts.length]
+    const cross = p.x * q.y - q.x * p.y
+    twiceArea += cross
+    cx += (p.x + q.x) * cross
+    cy += (p.y + q.y) * cross
+  }
+  twiceArea *= 0.5
+  return { x: cx / (6 * twiceArea), y: cy / (6 * twiceArea) }
+}
+
+// Derive every undercarriage dimension from RUNNING_GEAR.
+function buildRunningGear(rg) {
+  const span = (rg.wheelCount - 1) * rg.wheelSpacing
+  const halfSpan = span / 2
+  const wheelCentreY = rg.wheelMountY + rg.restLength
+
+  const wheels = []
+  for (let i = 0; i < rg.wheelCount; i++) {
+    wheels.push({
+      x: -halfSpan + i * rg.wheelSpacing,
+      y: rg.wheelMountY,
+      radius: rg.wheelRadius,
+    })
+  }
+
+  // Idlers are placed on a ray: `distance` out from the hull centre and `angle`
+  // above the wheel-centre line. Their inboard edge is kept clear of the
+  // outermost road wheel, so the layout never overlaps whatever the wheels are.
+  const roadWheelOuter = halfSpan + rg.wheelRadius
+  const idlers = rg.idlers.map((id) => {
+    const rawX = id.distance * Math.cos(id.angle)
+    const x = Math.max(Math.abs(rawX), roadWheelOuter + id.radius * 0.2) * id.side
+    return {
+      x,
+      y: wheelCentreY - id.distance * Math.sin(id.angle),
+      radius: id.radius,
+    }
+  })
+
+  // The skirt bottom sits at the idler centre line, so it hides the top half of
+  // the idlers — but never below the road-wheel tops, which stay fully exposed.
+  const roadWheelTop = wheelCentreY - rg.wheelRadius
+  const skirtY = Math.min(
+    Math.max(...idlers.map((i) => i.y)),
+    roadWheelTop,
+  )
+
+  const trackHalf = Math.max(...idlers.map((i) => Math.abs(i.x) + i.radius)) + rg.trackClearance
+  const hullHalf = trackHalf + rg.hullOverhang
+
+  // Hull outline.
+  const rawHull = [
+    { x: -hullHalf, y: skirtY },
+    { x: -hullHalf, y: rg.deckY + 30 },
+    { x: -hullHalf + 30, y: rg.deckY },
+    { x: hullHalf - 70, y: rg.deckY },
+    { x: hullHalf, y: rg.deckY + 40 },
+    { x: hullHalf, y: skirtY },
+  ]
+
+  // Matter recentres a body's vertices on their centroid and treats
+  // `body.position` as that centroid. So the *whole* running gear must be
+  // expressed in that same centroid-relative frame, or the wheels would end up
+  // offset from the hull by the centroid. Recentre hull, mounts and idlers
+  // together on the hull's centroid.
+  const c = polygonCentroid(rawHull)
+  const hullPoints = rawHull.map((p) => ({ x: p.x - c.x, y: p.y - c.y }))
+  for (const w of wheels) {
+    w.x -= c.x
+    w.y -= c.y
+  }
+  for (const i of idlers) {
+    i.x -= c.x
+    i.y -= c.y
+  }
+
+  return {
+    wheels,
+    idlers,
+    hullPoints,
+    centroid: c,
+    wheelCentreY: wheelCentreY - c.y,
+    skirtY: skirtY - c.y,
+    trackHalf,
+    hullHalf,
+    hullPixelLength: hullHalf * 2,
+  }
+}
+
+export const GEAR = buildRunningGear(RUNNING_GEAR)
+
+// Road wheels: mount position relative to the hull centre, and radius.
+export const WHEEL_MOUNTS = GEAR.wheels
+
+// Idler wheels ("top wheels"): fixed to the chassis (not sprung), placed at a
+// distance and angle by RUNNING_GEAR.idlers.
+export const IDLER_MOUNTS = GEAR.idlers
+
+// Chassis outline, in body-local coordinates (y points down, as in Matter).
+export const HULL_POINTS = GEAR.hullPoints
+
+// Track construction, wrapping whatever discs the running gear produces.
+export const TRACK = {
+  padLength: RUNNING_GEAR.trackPadLength,
+  clearance: RUNNING_GEAR.trackClearance,
+  scrollRate: 16, // track surface speed per px/frame of ground speed
+  minPads: RUNNING_GEAR.trackMinPads,
+}
+
+// -----------------------------------------------------------------------------
+// CONFIG  (chassis, engine, environment)
+// -----------------------------------------------------------------------------
 export const CONFIG = {
-  // World scale: the hull spans 412 px between HULL_POINTS extremes (x -206
-  // to +206), which represents a ~7.93 m tracked vehicle (M1 hull length).
-  // This is what turns simulation pixels into real-world metres for the HUD.
-  pixelsPerMetre: 412 / 7.93,
+  // World scale: the hull spans `hullPixelLength` px, which represents a
+  // ~7.93 m tracked vehicle (M1 hull length). This is what turns simulation
+  // pixels into real-world metres for the HUD. Derived from the running gear.
+  pixelsPerMetre: GEAR.hullPixelLength / 7.93,
 
   // ---------------------------------------------------------------------------
   // SUSPENSION  (how the wheels/springs hold the body up)
@@ -27,13 +191,11 @@ export const CONFIG = {
   // being absorbed at all.
   shockAbsorberDamping: 3,
 
-  // Suspension geometry in pixels, from the wheel mount to the wheel centre.
-  // restLength      : where the wheel sits when parked (spring partly loaded).
-  // fullyCompressed : the hard limit; the body can never sink past this.
-  // fullyExtended   : the longest the wheel can hang when the ground drops away.
-  suspensionRestLength: 38,
-  suspensionFullyCompressedLength: 5,
-  suspensionFullyExtendedLength: 58,
+  // Suspension geometry, taken from the running gear so the mounts and the
+  // wheel centres always agree.
+  suspensionRestLength: RUNNING_GEAR.restLength,
+  suspensionFullyCompressedLength: RUNNING_GEAR.fullyCompressed,
+  suspensionFullyExtendedLength: RUNNING_GEAR.fullyExtended,
 
   // How fast a wheel may stretch back down toward the ground, in px per 60fps
   // frame. This rebound lag is what lets the tank leave the ground over bumps.
@@ -59,9 +221,9 @@ export const CONFIG = {
   // ---------------------------------------------------------------------------
 
   accelerationForce: 0.3, // forward push
-  brakingForce: 0.5,       // braking push
-  reverseForce: 0.35,      // reverse push
-  maximumSpeed: 40,        // top speed in px/frame (~89 km/h)
+  brakingForce: 0.5, // braking push
+  reverseForce: 0.35, // reverse push
+  maximumSpeed: 40, // top speed in px/frame (~89 km/h)
 
   // Grip: a wheel transmits at most `gripLimit * weight on that wheel` before
   // the track slips.
@@ -76,57 +238,53 @@ export const CONFIG = {
   gravity: 1,
 }
 
-// Chassis outline, in body-local coordinates (y points down, as in Matter).
-// A deep slab: the long flat lower edge (y = ~36) is the side skirt, sitting
-// just below the road-wheel centre line so it covers the top half of every
-// wheel and the top run of the track. The nose and tail slope up to the deck.
-// The hull deliberately overhangs the track at both ends (longer than the
-// running gear), as on the reference M1: the sponsons project forward and aft
-// of the idler wheels.
-export const HULL_POINTS = [
-  { x: -196, y: 14 },
-  { x: -206, y: -6 },
-  { x: -186, y: -52 },
-  { x: 150, y: -52 },
-  { x: 196, y: -30 },
-  { x: 206, y: 14 },
-]
+// -----------------------------------------------------------------------------
+// BODY GEOMETRY  (derived from the hull outline; drives the renderer's art)
+// -----------------------------------------------------------------------------
+// The renderer draws the body as vector art rather than a sprite. These anchors
+// are all derived from HULL_POINTS so the art follows any running-gear change.
+const hullMaxX = Math.max(...HULL_POINTS.map((p) => p.x)) // nose
+const hullMinX = Math.min(...HULL_POINTS.map((p) => p.x)) // tail
+const hullMinY = Math.min(...HULL_POINTS.map((p) => p.y)) // deck line (y points down)
+const hullMaxY = Math.max(...HULL_POINTS.map((p) => p.y)) // skirt line
 
-// Road wheels: mount position relative to the hull centre, and radius. Seven of
-// them, large and closely spaced, sitting below the skirt and fully exposed.
-export const WHEEL_MOUNTS = (() => {
-  const count = 7;
-  const radius = 22;
-  const distance = 36;
-  const y = -2;
+export const BODY = {
+  minX: hullMinX,
+  maxX: hullMaxX,
+  deckY: hullMinY,
+  skirtY: hullMaxY,
+  length: hullMaxX - hullMinX,
+  depth: hullMaxY - hullMinY,
+  // Where the road-wheel centres sit in body-local coords, so the renderer can
+  // line the skirt up with the actual running gear.
+  wheelCentreY: GEAR.wheelCentreY,
+}
 
-  const mounts = [];
-  const startX = -((count - 1) * distance) / 2;
-
-  for (let i = 0; i < count; i++) {
-    mounts.push({
-      x: startX + i * distance,
-      y,
-      radius
-    });
+// The turret is a visual overlay on the hull. Its outline is expressed in
+// y-up body-local coordinates (matching the renderer), sized from the hull.
+export const TURRET = (() => {
+  const L = BODY.length
+  const rear = BODY.minX + L * 0.06
+  const front = BODY.minX + L * 0.66
+  const roof = BODY.deckY - L * 0.16 // above the deck (y points down)
+  return {
+    points: [
+      { x: rear, y: BODY.deckY },
+      { x: rear + 4, y: BODY.deckY - L * 0.09 },
+      { x: rear + L * 0.07, y: roof },
+      { x: front - L * 0.34, y: roof },
+      { x: front - L * 0.26, y: BODY.deckY - L * 0.11 },
+      { x: front - L * 0.08, y: BODY.deckY - L * 0.06 },
+      { x: front, y: BODY.deckY },
+    ],
+    roof,
   }
+})()
 
-  return mounts;
-})();
-
-// Idler wheels ("top wheels"): fixed to the chassis (not sprung). Set at the
-// extreme ends and raised, so the side skirt covers roughly their upper half.
-export const IDLER_MOUNTS = [
-  { x: -152, y: 10, radius: 21 },
-  { x: 152, y: 10, radius: 21 },
-]
-
-// Track construction.
-export const TRACK = {
-  padLength: 8.5,   // target arc spacing between track pads
-  clearance: 3.2,   // how far the belt sits outside the wheels
-  scrollRate: 16,   // track surface speed per px/frame of ground speed
-  minPads: 24,
+// Where the barrel tip sits in body-local coords, for spawning shells.
+export const GUN = {
+  muzzleX: hullMaxX + 210,
+  muzzleY: BODY.deckY - 36, // above the deck, since y points down
 }
 
 // Render palette.
@@ -152,3 +310,5 @@ export const PALETTE = {
   wheelRim: '#8c7648',
   wheelHub: '#b2422e',
 }
+
+export { hullMaxX, hullMinX, hullMinY, hullMaxY }

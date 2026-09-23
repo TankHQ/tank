@@ -1,4 +1,4 @@
-import { CONFIG, HULL_POINTS, WHEEL_MOUNTS, IDLER_MOUNTS, TRACK as TRACK_CONFIG } from './config.js'
+import { CONFIG, HULL_POINTS, WHEEL_MOUNTS, IDLER_MOUNTS, TRACK as TRACK_CONFIG, GUN } from './config.js'
 import { clamp, mix, mixAngle, toWorld } from './util.js'
 import { SuspensionWheel } from './SuspensionWheel.js'
 import { Track } from './Track.js'
@@ -41,8 +41,8 @@ export class Tank {
     this.reset()
     const { Bodies, Body, Composite } = this.Matter
 
-    // Sit so every wheel rests at its natural length:
-    // mount.y + restLength + radius = ground height.
+    // Sit so every wheel rests at its natural length. The wheel centres are at
+    // WHEEL_MOUNTS[i].y + restLength, derived from the running gear.
     const mount = WHEEL_MOUNTS[0]
     const hullY = this.terrain.heightAt(x) - (mount.y + CONFIG.suspensionRestLength + mount.radius)
 
@@ -257,8 +257,8 @@ export class Tank {
   muzzle() {
     if (!this.alive || !this.hull) return null
     const dir = this.hull.angle
-    // Tip of the drawn 120 mm barrel (see Renderer MUZZLE_X / GUN_Y).
-    const offset = { x: 420, y: -86 }
+    // Tip of the drawn barrel, derived from the running gear / hull.
+    const offset = { x: GUN.muzzleX, y: GUN.muzzleY }
     const p = toWorld(this.hull.position.x, this.hull.position.y, dir, offset.x, offset.y)
     return { dir, x: p.x, y: p.y }
   }
