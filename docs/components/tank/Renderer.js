@@ -1,4 +1,4 @@
-import { PALETTE, HULL_POINTS, BODY, TURRET, GUN } from './config.js'
+import { PALETTE, HULL_POINTS, BODY, TURRET, GUN, RUNNING_GEAR } from './config.js'
 import { TAU, clamp, mix } from './util.js'
 
 // Turret outline, derived from the hull so it scales with the running gear.
@@ -193,7 +193,7 @@ export class Renderer {
     camo.forEach((blotch, i) => {
       this._blobPath(ctx, blotch.map(([x, y]) => ({ x, y })))
       ctx.fillStyle = PALETTE.camo[(i % (PALETTE.camo.length - 1)) + 1]
-      ctx.globalAlpha = i % 2 ? 0.72 : 0.58
+      ctx.globalAlpha = i % 2 ? 0.5 : 0.38
       ctx.fill()
     })
     ctx.globalAlpha = 1
@@ -279,7 +279,8 @@ export class Renderer {
     ctx.translate(pose.x, pose.y)
     ctx.rotate(pose.angle)
     const L = BODY.length
-    const breechX = BODY.maxX - L * 0.72
+    const R = RUNNING_GEAR.wheelRadius
+    const breechX = BODY.maxX - L * 0.62
     if (this.images.turret) {
       ctx.drawImage(this.images.turret, BODY.minX + L * 0.06, TURRET_ROOF, L * 0.6, BODY.deckY - TURRET_ROOF)
       ctx.restore()
@@ -287,30 +288,30 @@ export class Renderer {
     }
 
     // Main gun: long barrel with a thermal sleeve, fume extractor bulge and a
-    // muzzle reference sensor at the tip.
+    // muzzle reference sensor at the tip. All sizes scale with the wheel radius.
     ctx.save()
     ctx.fillStyle = PALETTE.barrel
     // Breech / mantlet block where the gun meets the turret.
-    ctx.fillRect(breechX, GUN_Y - 14, 52, 28)
+    ctx.fillRect(breechX, GUN_Y - R * 0.75, R * 2.6, R * 1.5)
     ctx.strokeStyle = PALETTE.hullLine
     ctx.lineWidth = 1
-    ctx.strokeRect(breechX, GUN_Y - 14, 52, 28)
+    ctx.strokeRect(breechX, GUN_Y - R * 0.75, R * 2.6, R * 1.5)
     // Barrel.
     ctx.fillStyle = PALETTE.barrel
-    ctx.fillRect(breechX + 42, GUN_Y - 6.5, MUZZLE_X - breechX - 42, 13)
+    ctx.fillRect(breechX + R * 2.2, GUN_Y - R * 0.38, MUZZLE_X - breechX - R * 2.2, R * 0.76)
     // Thermal-sleeve highlight along the top.
     ctx.fillStyle = PALETTE.barrelHi
-    ctx.fillRect(breechX + 48, GUN_Y - 6, MUZZLE_X - breechX - 80, 3)
+    ctx.fillRect(breechX + R * 2.6, GUN_Y - R * 0.34, MUZZLE_X - breechX - R * 4.4, R * 0.18)
     // Fume extractor bulge.
     ctx.fillStyle = PALETTE.barrel
-    ctx.fillRect(MUZZLE_X - 92, GUN_Y - 11, 38, 22)
+    ctx.fillRect(MUZZLE_X - R * 4.2, GUN_Y - R * 0.6, R * 1.7, R * 1.2)
     ctx.strokeStyle = PALETTE.hullLine
-    ctx.strokeRect(MUZZLE_X - 92, GUN_Y - 11, 38, 22)
+    ctx.strokeRect(MUZZLE_X - R * 4.2, GUN_Y - R * 0.6, R * 1.7, R * 1.2)
     // Muzzle brake / reference sensor.
     ctx.fillStyle = PALETTE.barrel
-    ctx.fillRect(MUZZLE_X - 28, GUN_Y - 9, 28, 18)
+    ctx.fillRect(MUZZLE_X - R * 1.3, GUN_Y - R * 0.5, R * 1.3, R)
     ctx.strokeStyle = PALETTE.hullLine
-    ctx.strokeRect(MUZZLE_X - 28, GUN_Y - 9, 28, 18)
+    ctx.strokeRect(MUZZLE_X - R * 1.3, GUN_Y - R * 0.5, R * 1.3, R)
     ctx.restore()
 
     // Wedge turret body in desert camo.

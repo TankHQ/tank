@@ -18,19 +18,22 @@
 //   * the track belt, which is built to wrap whatever discs this produces.
 // Change one number and the whole tank — visual and physical — follows.
 export const RUNNING_GEAR = {
-  // Road wheels: `count` of them, `radius` each, `spacing` apart.
+  // Road wheels: `count` of them, `radius` each, `spacing` apart. These ratios
+  // are taken from the reference M1: spacing is ~2.75x the radius, so the wheels
+  // have clear gaps between them (not overlapping).
   wheelCount: 7,
   wheelRadius: 22,
-  wheelSpacing: 38,
+  wheelSpacing: 60,
   wheelMountY: -2, // mount height in body coords (y points down)
 
   // Idlers ("top wheels"). Each sits on a ray from the hull origin: `distance`
   // out from the wheel-centre line, `angle` above horizontal (radians). `side`
   // +1 = front, -1 = rear. Raise `angle` to lift an idler; change `distance` to
-  // slide it inboard or outboard.
+  // slide it inboard or outboard. Reference idlers are large (~1.4x road wheel)
+  // and sit well above the wheel-centre line.
   idlers: [
-    { distance: 154, angle: 0.17, radius: 21, side: 1 },
-    { distance: 154, angle: 0.17, radius: 21, side: -1 },
+    { distance: 226, angle: 0.145, radius: 31, side: 1 },
+    { distance: 226, angle: 0.145, radius: 31, side: -1 },
   ],
 
   // Suspension travel, measured from the wheel mount down to the wheel centre.
@@ -43,11 +46,13 @@ export const RUNNING_GEAR = {
   trackPadLength: 8.5, // target arc spacing between track pads
   trackMinPads: 24,
 
-  // Hull shape. `hullOverhang` is how far the sponsons project past the belt;
-  // `deckY` is the flat top edge (body coords); the skirt bottom is derived to
-  // cover the top half of the idlers while staying clear of the road wheels.
-  hullOverhang: 30,
-  deckY: -52,
+  // Hull proportions, as fractions of the wheel radius. From the reference:
+  // the deck sits ~4 radii above the wheel centres, the skirt bottom ~0.45
+  // radii above them (so it covers the top of the idlers but clears the road
+  // wheels), and the sponsons overhang the belt by `hullOverhangRatio`.
+  deckAboveHub: 4.0,
+  skirtAboveHub: 0.45,
+  hullOverhangRatio: 0.9,
 }
 
 // Area centroid of a polygon, matching how Matter recentres body vertices.
@@ -96,25 +101,28 @@ function buildRunningGear(rg) {
     }
   })
 
-  // The skirt bottom sits at the idler centre line, so it hides the top half of
-  // the idlers — but never below the road-wheel tops, which stay fully exposed.
-  const roadWheelTop = wheelCentreY - rg.wheelRadius
-  const skirtY = Math.min(
-    Math.max(...idlers.map((i) => i.y)),
-    roadWheelTop,
-  )
+  // Skirt bottom and deck line come from the reference proportions, measured
+  // against the wheel-centre line. The skirt sits just above the wheel centres
+  // so it covers the top of the idlers while the road wheels stay exposed.
+  const skirtY = wheelCentreY - rg.wheelRadius * rg.skirtAboveHub
+  const deckY = wheelCentreY - rg.wheelRadius * rg.deckAboveHub
 
   const trackHalf = Math.max(...idlers.map((i) => Math.abs(i.x) + i.radius)) + rg.trackClearance
-  const hullHalf = trackHalf + rg.hullOverhang
+  const hullHalf = trackHalf + rg.wheelRadius * rg.hullOverhangRatio
 
-  // Hull outline.
+  // Hull outline, following the reference side profile: a near-vertical rear
+  // plate, a long flat deck, a short sloping glacis at the front and a straight
+  // skirt bottom. `hullHalf` is the rear/front extent, `skirtY` the lower edge.
+  const hullMaxX = hullHalf
+  const hullMinX = -hullHalf
+  const glacisStart = hullMaxX - rg.wheelRadius * 2.2
   const rawHull = [
-    { x: -hullHalf, y: skirtY },
-    { x: -hullHalf, y: rg.deckY + 30 },
-    { x: -hullHalf + 30, y: rg.deckY },
-    { x: hullHalf - 70, y: rg.deckY },
-    { x: hullHalf, y: rg.deckY + 40 },
-    { x: hullHalf, y: skirtY },
+    { x: hullMinX, y: skirtY }, // rear lower corner
+    { x: hullMinX, y: deckY + rg.wheelRadius * 1.1 }, // rear plate
+    { x: hullMinX + rg.wheelRadius * 0.55, y: deckY }, // deck rear corner
+    { x: glacisStart, y: deckY }, // deck front
+    { x: hullMaxX, y: deckY + rg.wheelRadius * 1.6 }, // glacis slope
+    { x: hullMaxX, y: skirtY }, // front lower corner
   ]
 
   // Matter recentres a body's vertices on their centroid and treats
@@ -171,9 +179,9 @@ export const TRACK = {
 // -----------------------------------------------------------------------------
 export const CONFIG = {
   // World scale: the hull spans `hullPixelLength` px, which represents a
-  // ~7.93 m tracked vehicle (M1 hull length). This is what turns simulation
-  // pixels into real-world metres for the HUD. Derived from the running gear.
-  pixelsPerMetre: GEAR.hullPixelLength / 7.93,
+  // ~9.8 m tracked vehicle (M1 hull length including sponsons). This turns
+  // simulation pixels into real-world metres for the HUD. Derived from the gear.
+  pixelsPerMetre: GEAR.hullPixelLength / 9.8,
 
   // ---------------------------------------------------------------------------
   // SUSPENSION  (how the wheels/springs hold the body up)
@@ -260,31 +268,37 @@ export const BODY = {
   wheelCentreY: GEAR.wheelCentreY,
 }
 
-// The turret is a visual overlay on the hull. Its outline is expressed in
-// y-up body-local coordinates (matching the renderer), sized from the hull.
+// The turret is a visual overlay on the hull. Its outline is derived from the
+// reference proportions: it spans from ~14% to ~93% of the hull length (nearly
+// the whole hull, as on an M1) and rises ~1.9 wheel radii above the deck, with
+// a long flat roof between a rear slope and a front slope.
 export const TURRET = (() => {
   const L = BODY.length
-  const rear = BODY.minX + L * 0.06
-  const front = BODY.minX + L * 0.66
-  const roof = BODY.deckY - L * 0.16 // above the deck (y points down)
+  const R = RUNNING_GEAR.wheelRadius
+  const rear = BODY.minX + L * 0.14
+  const front = BODY.minX + L * 0.93
+  const roofY = BODY.deckY - R * 1.9
+  const roofRear = rear + R * 2.2
+  const roofFront = front - R * 8.0
   return {
     points: [
       { x: rear, y: BODY.deckY },
-      { x: rear + 4, y: BODY.deckY - L * 0.09 },
-      { x: rear + L * 0.07, y: roof },
-      { x: front - L * 0.34, y: roof },
-      { x: front - L * 0.26, y: BODY.deckY - L * 0.11 },
-      { x: front - L * 0.08, y: BODY.deckY - L * 0.06 },
+      { x: rear + R * 0.6, y: BODY.deckY - R * 1.1 },
+      { x: roofRear, y: roofY },
+      { x: roofFront, y: roofY },
+      { x: roofFront + R * 2.6, y: BODY.deckY - R * 1.1 },
+      { x: front - R * 1.2, y: BODY.deckY - R * 0.4 },
       { x: front, y: BODY.deckY },
     ],
-    roof,
+    roof: roofY,
   }
 })()
 
-// Where the barrel tip sits in body-local coords, for spawning shells.
+// Where the barrel tip sits in body-local coords, for spawning shells. The gun
+// axis sits just above the deck and the barrel projects well past the nose.
 export const GUN = {
-  muzzleX: hullMaxX + 210,
-  muzzleY: BODY.deckY - 36, // above the deck, since y points down
+  muzzleX: hullMaxX + RUNNING_GEAR.wheelRadius * 8.8,
+  muzzleY: BODY.deckY - RUNNING_GEAR.wheelRadius * 0.55,
 }
 
 // Render palette.
@@ -300,14 +314,15 @@ export const PALETTE = {
   soilDeep: '#332c1c',
   track: '#332f28',
   trackHi: '#5c574c',
-  // Desert-camouflage bodywork (M1 Abrams tan).
-  hull: ['#e0cda6', '#cdb489', '#ab9064'],
-  camo: ['#e8d7b0', '#a8814f', '#c1a273', '#8f7247'],
-  barrel: '#c6b085',
-  barrelHi: '#dcc8a0',
-  hullLine: 'rgba(70,52,28,0.65)',
-  wheel: '#c9b58c',
-  wheelRim: '#8c7648',
+  // Desert-camouflage bodywork (M1 Abrams tan). The reference is a pale sand
+  // base with soft mid-tan and darker khaki fields, so keep the contrast gentle.
+  hull: ['#efe0c2', '#e3cfa9', '#d3bd94'],
+  camo: ['#e9d8b8', '#b99a6b', '#cbb185', '#a88a5c'],
+  barrel: '#d3bd94',
+  barrelHi: '#e8dcc0',
+  hullLine: 'rgba(90,70,42,0.55)',
+  wheel: '#dcc9a2',
+  wheelRim: '#b39a70',
   wheelHub: '#b2422e',
 }
 
