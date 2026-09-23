@@ -189,8 +189,11 @@ export class Game {
       this._hudAccumulator = 0
       const hull = this.tank.hull
       this._onHud({
-        speed: hull ? Math.round(Math.abs(hull.velocity.x) * 12) : 0,
-        distance: Math.round(this._dist / 10),
+        // px/frame -> m/s -> km/h, and px -> m, using the world scale.
+        speed: hull
+          ? Math.round(Math.abs(hull.velocity.x) * 60 / CONFIG.pixelsPerMetre * 3.6)
+          : 0,
+        distance: Math.round(this._dist / CONFIG.pixelsPerMetre),
         throttle: this.input.w ? 1 : this.input.s ? -1 : 0,
         airtime: this._airtime,
         fps: this.fps,

@@ -183,20 +183,15 @@ export class Tank {
       gripLimit = CONFIG.rollingResistanceGripLimit
     }
 
+    // Traction is applied at the contact point, below the centre of mass, so
+    // the nose lifting under power and the dive under braking fall out of the
+    // suspension naturally: the hull pitches, the spring loads shift, and the
+    // normal forces redistribute. No extra torque is needed.
     const perWheel = total / grounded.length
-    let applied = 0
     for (const wheel of grounded) {
       const limit = gripLimit * wheel.normalForce
       const force = clamp(perWheel, -limit, limit)
-      applied += force
       Body.applyForce(this.hull, { x: wheel.contactX, y: wheel.contactY }, { x: force, y: 0 })
-    }
-
-    // Weight-transfer moment: traction acts below the centre of mass, so net
-    // forward drive lifts the nose and braking dives it.
-    if (applied !== 0) {
-      const lever = applied > 0 ? CONFIG.accelerationPitchLever : CONFIG.brakingPitchLever
-      this.hull.torque += -applied * lever
     }
   }
 

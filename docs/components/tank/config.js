@@ -6,6 +6,11 @@
 // is why the raw stiffness/damping numbers are small.
 
 export const CONFIG = {
+  // World scale: the hull spans 218 px between HULL_POINTS extremes (x -110
+  // to +108), which represents a ~7.5 m tracked vehicle. This is what turns
+  // simulation pixels into real-world metres for the HUD and tuning.
+  pixelsPerMetre: 218 / 7.5,
+
   // ---------------------------------------------------------------------------
   // SUSPENSION  (how the wheels/springs hold the body up)
   // ---------------------------------------------------------------------------
@@ -15,11 +20,12 @@ export const CONFIG = {
   // where u is compression as a fraction of full travel (0 = fully extended,
   // 1 = fully compressed). The linear term sets the soft ride; the progressive
   // term makes the spring much stiffer near the bump stop.
-  springLinearStiffness: 60,
-  springProgressiveStiffness: 10,
+  springLinearStiffness: 22,
+  springProgressiveStiffness: 0.15,
 
-  // Shock absorbers. 0 = bouncy/springy; 0.03 = settled; 0.06 = taut and heavy.
-  shockAbsorberDamping: 20,
+  // Shock absorbers. Higher = tauter and heavier; too high and bumps stop
+  // being absorbed at all.
+  shockAbsorberDamping: 3,
 
   // Suspension geometry in pixels, from the wheel mount to the wheel centre.
   // restLength      : where the wheel sits when parked (spring partly loaded).
@@ -46,16 +52,16 @@ export const CONFIG = {
   bodyRotationInertiaScale: 1.0,
 
   // Air resistance; also settles any spin once airborne.
-  airResistance: 0.0001,
+  airResistance: 0.002,
 
   // ---------------------------------------------------------------------------
   // ENGINE AND BRAKES  (multiples of the vehicle's weight)
   // ---------------------------------------------------------------------------
 
-  accelerationForce: 1, // forward push
-  brakingForce: 0.8,      // braking push
-  reverseForce: 0.5,     // reverse push
-  maximumSpeed: 30,       // top speed in px/frame
+  accelerationForce: 0.1,  // forward push (~0.1 g, heavy)
+  brakingForce: 0.35,      // braking push
+  reverseForce: 0.12,      // reverse push
+  maximumSpeed: 9,         // top speed in px/frame (~67 km/h)
 
   // Grip: a wheel transmits at most `gripLimit * weight on that wheel` before
   // the track slips.
@@ -64,17 +70,7 @@ export const CONFIG = {
   rollingResistanceGripLimit: 0.7,
 
   // How quickly the tank coasts to a stop with no throttle.
-  coastingDrag: 0.005,
-
-  // ---------------------------------------------------------------------------
-  // WEIGHT TRANSFER  (nose lifting / dipping under power and braking)
-  // ---------------------------------------------------------------------------
-
-  // Traction acts below the centre of mass. These levers scale how strongly the
-  // resulting squat/dive shows. Separate because braking force far exceeds
-  // engine force. 0 = none, higher = more pronounced.
-  accelerationPitchLever: 10,
-  brakingPitchLever: 20,
+  coastingDrag: 0.08,
 
   // Gravity, in Matter's units.
   gravity: 1,
