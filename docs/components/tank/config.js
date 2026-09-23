@@ -1,37 +1,40 @@
 // All tunable numbers and fixed geometry for the tank simulation.
 //
+// The simulation runs in pixels (planck's `Settings.lengthUnitsPerMeter` is left
+// at 1). Speeds are expressed in pixels per 60 Hz frame; planck measures in
+// pixels per second, so the Tank converts where it compares against these.
 // Forces are expressed as multiples of the vehicle's own weight (1.0 = the
-// tank's weight), so the tuning reads the same regardless of how heavy the
-// chassis ends up being. Matter integrates forces as `v += (F/m) * dt^2`, which
-// is why the raw stiffness/damping numbers are small.
+// tank's weight), so the tuning is independent of how heavy the chassis is.
+
+// Collision categories. The hull is deliberately *not* a physical body (the
+// suspension joints hold it up and real wheel bodies carry ground contact), so
+// only wheels, shells and terrain have collision filters.
+export const CATEGORY = {
+  ground: 0x0001,
+  wheel: 0x0002,
+  shell: 0x0008,
+}
 
 export const CONFIG = {
   // ---------------------------------------------------------------------------
-  // SUSPENSION  (how the wheels/springs hold the body up)
+  // SUSPENSION  (how the wheel joints hold the body up)
   // ---------------------------------------------------------------------------
 
-  // Spring force as a multiple of the weight resting on one wheel:
-  //   F = staticLoad * (springLinearStiffness * u + springProgressiveStiffness * u^3)
-  // where u is compression as a fraction of full travel (0 = fully extended,
-  // 1 = fully compressed). The linear term sets the soft ride; the progressive
-  // term makes the spring much stiffer near the bump stop.
-  springLinearStiffness: 20,
-  springProgressiveStiffness: 0.001,
-
-  // Shock absorbers. 0 = bouncy/springy; 0.03 = settled; 0.06 = taut and heavy.
-  shockAbsorberDamping: 0.02,
+  // Wheel joint spring. `frequencyHz` is the bounce rate; `dampingRatio` < 1 is
+  // springy, 1 is critical. These replace the hand-rolled spring/damper.
+  suspensionFrequencyHz: 4.5,
+  suspensionDampingRatio: 0.8,
 
   // Suspension geometry in pixels, from the wheel mount to the wheel centre.
-  // restLength      : where the wheel sits when parked (spring partly loaded).
-  // fullyCompressed : the hard limit; the body can never sink past this.
-  // fullyExtended   : the longest the wheel can hang when the ground drops away.
+  // restLength is where the wheel sits when parked (the joint's neutral point).
+  // travel is the compression span used to scale the HUD gauge.
   suspensionRestLength: 38,
-  suspensionFullyCompressedLength: 10,
-  suspensionFullyExtendedLength: 58,
+  suspensionTravel: 28,
 
-  // How fast a wheel may stretch back down toward the ground, in px per 60fps
-  // frame. This rebound lag is what lets the tank leave the ground over bumps.
-  wheelExtensionRate: 1.5,
+  // Road wheel bodies (planck needs real wheels; the old build used virtual
+  // ones). Density is per wheel; friction is against the terrain.
+  wheelDensity: 0.6,
+  wheelFriction: 1.2,
 
   // ---------------------------------------------------------------------------
   // BODY  (the chassis)
@@ -45,26 +48,27 @@ export const CONFIG = {
   // 0.5 = lively, 0.2 = twitchy, below 0.1 it can flip.
   bodyRotationInertiaScale: 1.5,
 
-  // Air resistance; also settles any spin once airborne.
-  airResistance: 0.002,
+  // Air resistance, and angular damping that settles any spin once airborne.
+  airResistance: 0.02,
+  angularResistance: 0.05,
 
   // ---------------------------------------------------------------------------
   // ENGINE AND BRAKES  (multiples of the vehicle's weight)
   // ---------------------------------------------------------------------------
 
-  accelerationForce: 1.0, // forward push
-  brakingForce: 0.4,      // braking push
-  reverseForce: 0.55,     // reverse push
-  maximumSpeed: 30,       // top speed in px/frame
+  accelerationForce: 1.8, // forward push
+  brakingForce: 1.2,      // braking push
+  reverseForce: 0.9,      // reverse push
+  maximumSpeed: 80,       // top speed in px/frame
 
   // Grip: a wheel transmits at most `gripLimit * weight on that wheel` before
   // the track slips.
-  driveGripLimit: 2.4,
-  brakeGripLimit: 5.0,
-  rollingResistanceGripLimit: 0.7,
+  driveGripLimit: 6.0,
+  brakeGripLimit: 9.0,
+  rollingResistanceGripLimit: 1.5,
 
   // How quickly the tank coasts to a stop with no throttle.
-  coastingDrag: 0.35,
+  coastingDrag: 0.12,
 
   // ---------------------------------------------------------------------------
   // WEIGHT TRANSFER  (nose lifting / dipping under power and braking)
@@ -76,11 +80,11 @@ export const CONFIG = {
   accelerationPitchLever: 10,
   brakingPitchLever: 12,
 
-  // Gravity, in Matter's units.
-  gravity: 1,
+  // Gravity, in px/s^2.
+  gravity: 981,
 }
 
-// Chassis outline, in body-local coordinates (y points down, as in Matter).
+// Chassis outline, in body-local coordinates (y points down, as in planck).
 export const HULL_POINTS = [
   { x: -108, y: 4 },
   { x: 108, y: 4 },

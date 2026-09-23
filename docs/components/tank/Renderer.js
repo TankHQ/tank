@@ -266,9 +266,10 @@ export class Renderer {
     }
     ctx.globalAlpha = 1
     for (const shell of shells) {
+      const p = shell.body.getPosition()
       ctx.save()
-      ctx.translate(shell.body.position.x, shell.body.position.y)
-      ctx.rotate(shell.body.angle)
+      ctx.translate(p.x, p.y)
+      ctx.rotate(shell.body.getAngle())
       ctx.fillStyle = '#d8c48a'
       ctx.fillRect(-5, -2, 10, 4)
       ctx.restore()

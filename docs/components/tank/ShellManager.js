@@ -1,9 +1,10 @@
+import { CATEGORY } from './config.js'
+
 // Projectile shells fired by the cannon, and their impacts.
 export class ShellManager {
-  constructor({ Matter, world, collisionCategories, particles }) {
-    this.Matter = Matter
+  constructor({ planck, world, particles }) {
+    this.planck = planck
     this.world = world
-    this.categories = collisionCategories
     this.particles = particles
     this.shells = []
     this._lifeSeconds = 2.6
@@ -12,18 +13,21 @@ export class ShellManager {
 
   // Fired from a muzzle position/direction (see Tank.muzzle).
   launch({ x, y, dir }) {
-    const { Bodies, Composite } = this.Matter
-    const body = Bodies.circle(x, y, 5, {
+    const { Vec2, Circle } = this.planck
+    const body = this.world.createDynamicBody({
+      position: Vec2(x, y),
+      // Continuous collision so a fast shell cannot tunnel through terrain.
+      bullet: true,
+      linearVelocity: Vec2(Math.cos(dir) * this._speed, Math.sin(dir) * this._speed),
+      angularDamping: 0.1,
+    })
+    body.createFixture(new Circle(5), {
       density: 0.004,
       friction: 0.3,
       restitution: 0.35,
-      frictionAir: 0.0015,
-      label: 'shell',
-      collisionFilter: { category: this.categories.shell, mask: this.categories.ground },
-      // Matter applies option velocity directly, so no separate setVelocity call.
-      velocity: { x: Math.cos(dir) * this._speed, y: Math.sin(dir) * this._speed },
+      filterCategoryBits: CATEGORY.shell,
+      filterMaskBits: CATEGORY.ground,
     })
-    Composite.add(this.world, body)
     this.shells.push({ body, life: this._lifeSeconds })
     this.particles.muzzleFlash(x, y, dir)
   }
@@ -33,15 +37,16 @@ export class ShellManager {
       const shell = this.shells[i]
       shell.life -= dt / 1000
       if (shell.life <= 0) {
-        this.particles.impact(shell.body.position.x, shell.body.position.y)
-        this.Matter.Composite.remove(this.world, shell.body, true)
+        const p = shell.body.getPosition()
+        this.particles.impact(p.x, p.y)
+        this.world.destroyBody(shell.body)
         this.shells.splice(i, 1)
       }
     }
   }
 
   clear() {
-    for (const shell of this.shells) this.Matter.Composite.remove(this.world, shell.body, true)
+    for (const shell of this.shells) this.world.destroyBody(shell.body)
     this.shells.length = 0
   }
 }

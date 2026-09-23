@@ -6,23 +6,14 @@ import { ParticleField } from './ParticleField.js'
 import { ShellManager } from './ShellManager.js'
 import { Renderer } from './Renderer.js'
 
-// Collision categories. The hull and wheels are deliberately *not* physical
-// bodies (the suspension handles ground contact), so only terrain and shells
-// have real collision filters.
-const COLLISION_CATEGORIES = {
-  ground: 0x0001,
-  shell: 0x0008,
-  groundAndShell: 0x0001 | 0x0008,
-}
-
 const FIXED_STEP_MS = 1000 / 60
 const MAX_STEPS_PER_FRAME = 5
 
-// Owns the Matter engine, all the scene objects, and the fixed-timestep game
+// Owns the planck world, all the scene objects, and the fixed-timestep game
 // loop. The Vue component just creates one of these and drives it.
 export class Game {
-  constructor({ Matter, canvas, base }) {
-    this.Matter = Matter
+  constructor({ planck, canvas, base }) {
+    this.planck = planck
     this.running = false
     this._raf = 0
     this._lastTime = 0
@@ -35,23 +26,20 @@ export class Game {
     this.fps = 0
     this._hudAccumulator = 0
 
-    const { Engine, Composite } = Matter
-    this.engine = Engine.create()
-    this.engine.gravity.y = CONFIG.gravity
-    this.world = this.engine.world
+    const { World, Vec2, Settings } = planck
+    // The world runs in pixels, but planck caps a body's movement to
+    // `maxTranslation` units per step (default 2). At 60 Hz that silently caps
+    // every body at 120 px/s, far below the tank's top speed, so raise it.
+    Settings.maxTranslation = 60
+    this.world = new World({ gravity: Vec2(0, CONFIG.gravity), allowSleep: false })
 
-    this.terrain = new Terrain({ Matter, world: this.world, collisionCategories: COLLISION_CATEGORIES })
+    this.terrain = new Terrain({ planck, world: this.world })
     this.terrain.update(0)
 
     this.particles = new ParticleField()
-    this.shells = new ShellManager({
-      Matter,
-      world: this.world,
-      collisionCategories: COLLISION_CATEGORIES,
-      particles: this.particles,
-    })
+    this.shells = new ShellManager({ planck, world: this.world, particles: this.particles })
     this.input = { w: false, s: false }
-    this.tank = new Tank({ Matter, engine: this.engine, world: this.world, terrain: this.terrain, input: this.input })
+    this.tank = new Tank({ planck, world: this.world, terrain: this.terrain, input: this.input })
     this.camera = new Camera()
     this.renderer = new Renderer(canvas, base)
 
@@ -76,8 +64,6 @@ export class Game {
   stop() {
     this.running = false
     cancelAnimationFrame(this._raf)
-    this.Matter.Engine.clear(this.engine)
-    this.Matter.Composite.clear(this.world, false)
   }
 
   resize(rect) {
@@ -145,27 +131,27 @@ export class Game {
 
   _updateEffects(dt) {
     if (this.tank.alive) {
-      const hull = this.tank.hull
-      this._dist = Math.max(this._dist, hull.position.x)
-      const aboveGround = hull.position.y < this.terrain.heightAt(hull.position.x) - 130
+      const hull = this.tank.hull.getPosition()
+      this._dist = Math.max(this._dist, hull.x)
+      const aboveGround = hull.y < this.terrain.heightAt(hull.x) - 130
       this._airtime = aboveGround ? this._airtime + dt / 1000 : 0
 
-      if (Math.abs(hull.angle) > 2.1 || hull.position.y > this.terrain.heightAt(hull.position.x) + 400) {
+      if (Math.abs(this.tank.hull.getAngle()) > 2.1 || hull.y > this.terrain.heightAt(hull.x) + 400) {
+        // Respawning moves the hull; skip the rest of this frame's hull-based
+        // effects so the stale position is never used.
         this.reset()
-      }
-
-      // Trailing exhaust while moving.
-      if (Math.abs(hull.velocity.x) > 0.2) {
+      } else if (Math.abs(this.tank.speedX) > 0.2) {
+        // Trailing exhaust while moving.
         this._dustTimer++
         if (this._dustTimer > 6) {
           this._dustTimer = 0
-          const exhaust = { x: hull.position.x, y: hull.position.y }
-          const cos = Math.cos(hull.angle)
-          const sin = Math.sin(hull.angle)
+          const angle = this.tank.hull.getAngle()
+          const cos = Math.cos(angle)
+          const sin = Math.sin(angle)
           this.particles.exhaust(
-            exhaust.x + cos * -112,
-            exhaust.y + sin * -112 - 28,
-            hull.velocity.x,
+            hull.x + cos * -112,
+            hull.y + sin * -112 - 28,
+            this.tank.speedX,
           )
         }
       }
@@ -189,7 +175,7 @@ export class Game {
       this._hudAccumulator = 0
       const hull = this.tank.hull
       this._onHud({
-        speed: hull ? Math.round(Math.abs(hull.velocity.x) * 12) : 0,
+        speed: hull ? Math.round(Math.abs(this.tank.speedX) * 12) : 0,
         distance: Math.round(this._dist / 10),
         throttle: this.input.w ? 1 : this.input.s ? -1 : 0,
         airtime: this._airtime,
@@ -199,4 +185,3 @@ export class Game {
     }
   }
 }
-

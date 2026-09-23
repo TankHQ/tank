@@ -1,24 +1,19 @@
-import { CONFIG, HULL_POINTS, WHEEL_MOUNTS, IDLER_MOUNTS, TRACK as TRACK_CONFIG } from './config.js'
-import { clamp, mix, mixAngle, toWorld } from './util.js'
-import { SuspensionWheel } from './SuspensionWheel.js'
+import { CONFIG, CATEGORY, HULL_POINTS, WHEEL_MOUNTS, IDLER_MOUNTS, TRACK as TRACK_CONFIG } from './config.js'
+import { clamp } from './util.js'
 import { Track } from './Track.js'
 
-// The tank: one rigid hull, a set of independently sprung virtual wheels, and
-// a track belt.
+// The tank: one rigid hull held up by a set of sprung, driven wheel bodies.
 //
-// Each step:
-//   1. Each wheel casts straight down, resolves its spring length and applies
-//      its suspension force to the hull at the contact point.
-//   2. Traction is applied at those contacts, capped by grip and by how much
-//      weight each wheel carries. That weight transfer is what makes it squat
-//      under power and dive under braking.
-//   3. Matter integrates the hull.
-//   4. A hard constraint guarantees no wheel sinks past its bump stop, so the
-//      hull can never penetrate the terrain.
+// Where the old build computed spring/damper forces by hand and hard-clamped
+// the body out of the ground, planck's WheelJoint now owns the suspension:
+//   * each wheel is a real circle body that collides with the terrain (so the
+//     bump stop is physical, not a positional hack);
+//   * a WheelJoint springs and damps the wheel along its vertical axis;
+//   * traction is still applied as a force at each grounded wheel, preserving
+//     the original weight-transfer tuning.
 export class Tank {
-  constructor({ Matter, engine, world, terrain, input }) {
-    this.Matter = Matter
-    this.engine = engine
+  constructor({ planck, world, terrain, input }) {
+    this.planck = planck
     this.world = world
     this.terrain = terrain
     this.input = input
@@ -27,10 +22,11 @@ export class Tank {
     this.wheels = []
     this.alive = false
 
-    // Weight force per unit mass, taken from Matter's own gravity settings.
-    this.gravityForcePerMass = engine.gravity.y * engine.gravity.scale
+    this.track = new Track({ planck, trackConfig: TRACK_CONFIG })
 
-    this.track = new Track({ Matter, trackConfig: TRACK_CONFIG })
+    // Scratch transform reused by view(); the interpolated values are copied out
+    // before the next body overwrites it, so no per-frame allocation is needed.
+    this._xf = planck.Transform.identity()
   }
 
   // --- lifecycle ------------------------------------------------------------
@@ -38,34 +34,65 @@ export class Tank {
   // Spawn (or respawn) the tank at a world x, resting on its springs.
   spawn(x) {
     this.reset()
-    const { Bodies, Body, Composite } = this.Matter
+    const { Vec2, Polygon, WheelJoint } = this.planck
+    const mount = WHEEL_MOUNTS[0]
 
     // Sit so every wheel rests at its natural length:
     // mount.y + restLength + radius = ground height.
-    const mount = WHEEL_MOUNTS[0]
     const hullY = this.terrain.heightAt(x) - (mount.y + CONFIG.suspensionRestLength + mount.radius)
 
-    this.hull = Bodies.fromVertices(x, hullY, [HULL_POINTS], {
+    this.hull = this.world.createDynamicBody({
+      position: Vec2(x, hullY),
+      linearDamping: CONFIG.airResistance,
+      angularDamping: CONFIG.angularResistance,
+      allowSleep: false,
+    })
+    this.hull.createFixture(new Polygon(HULL_POINTS), {
       density: CONFIG.bodyDensity,
-      frictionAir: CONFIG.airResistance,
-      label: 'hull',
+      friction: 0,
       // The hull never collides with anything; ground contact is handled by the
-      // suspension, which is why it can drive smoothly over a heightfield. A
-      // zero mask disables all collisions, so no category is needed.
-      collisionFilter: { mask: 0 },
+      // wheel bodies, which lets it drive smoothly over a heightfield.
+      filterMaskBits: 0,
     })
     if (CONFIG.bodyRotationInertiaScale !== 1) {
-      Body.setInertia(this.hull, this.hull.inertia * CONFIG.bodyRotationInertiaScale)
+      const mass = { mass: 0, center: Vec2(0, 0), I: 0 }
+      this.hull.getMassData(mass)
+      mass.I *= CONFIG.bodyRotationInertiaScale
+      this.hull.setMassData(mass)
     }
-    Composite.add(this.world, this.hull)
 
-    this.wheels = WHEEL_MOUNTS.map((m) => new SuspensionWheel(m))
+    this.wheels = WHEEL_MOUNTS.map((m) => this._createWheel(m, x, hullY, WheelJoint))
     this.alive = true
-    this._capturePrevious()
+  }
+
+  _createWheel(mount, hullX, hullY, WheelJoint) {
+    const { Circle, Vec2 } = this.planck
+    // Neutral position: directly below the mount at rest length.
+    const anchor = Vec2(hullX + mount.x, hullY + mount.y + CONFIG.suspensionRestLength)
+
+    const body = this.world.createDynamicBody({ position: anchor, allowSleep: false })
+    body.createFixture(new Circle(mount.radius), {
+      density: CONFIG.wheelDensity,
+      friction: CONFIG.wheelFriction,
+      filterCategoryBits: CATEGORY.wheel,
+      filterMaskBits: CATEGORY.ground,
+    })
+
+    // The joint's vertical axis is body A's local +y. A zero-length spring holds
+    // the wheel at the anchor, so the anchor is the neutral wheel centre.
+    const joint = this.world.createJoint(new WheelJoint({
+      frequencyHz: CONFIG.suspensionFrequencyHz,
+      dampingRatio: CONFIG.suspensionDampingRatio,
+    }, this.hull, body, anchor, Vec2(0, 1)))
+
+    return { mount, body, joint, radius: mount.radius, normalForce: 0, contact: false }
   }
 
   reset() {
-    if (this.hull) this.Matter.Composite.remove(this.world, this.hull, true)
+    // Destroying the hull also destroys its joints, but not the wheel bodies on
+    // the far side of those joints, so destroy the wheels explicitly first.
+    for (const wheel of this.wheels) this.world.destroyBody(wheel.body)
+    if (this.hull) this.world.destroyBody(this.hull)
     this.hull = null
     this.wheels = []
     this.alive = false
@@ -76,93 +103,23 @@ export class Tank {
 
   step(dt) {
     if (!this.alive) return
-    this._capturePrevious()
-    this._applySuspension(dt)
     this._applyTraction()
-    this.Matter.Engine.update(this.engine, dt)
-    this._enforceGround()
-    this._settleWheels()
-    this._spinWheels(dt)
+    this.world.step(dt / 1000, 8, 3)
+    this._sampleContacts()
   }
 
-  _pose() {
-    return { x: this.hull.position.x, y: this.hull.position.y, angle: this.hull.angle }
+  // Forward speed of the hull in px per 60 Hz frame. planck reports px/second,
+  // so every speed compared against CONFIG has to be converted.
+  get speedX() {
+    return this.hull.getLinearVelocity().x / 60
   }
 
-  _capturePrevious() {
-    if (!this.hull) return
-    for (const w of this.wheels) w.capturePrevious()
-  }
-
-  // Weight resting on one wheel. Drives the spring rate.
-  _staticLoad() {
-    return (this.hull.mass * this.gravityForcePerMass) / this.wheels.length
-  }
-
-  // Effective mass behind one wheel's share of the motion, used to cap the
-  // damper so the explicit integrator stays stable.
-  _massPerWheel() {
-    return this.hull.mass / this.wheels.length
-  }
-
-  _applySuspension(dt) {
-    const pose = this._pose()
-    const groundY = (x) => this.terrain.heightAt(x)
-    const maxExtensionThisStep = CONFIG.wheelExtensionRate * (dt / (1000 / 60))
-    const staticLoad = this._staticLoad()
-    const massPerWheel = this._massPerWheel()
-    const { Body } = this.Matter
-
-    for (const wheel of this.wheels) {
-      wheel.advance(pose, groundY, maxExtensionThisStep)
-      if (!wheel.contact) continue
-
-      // The hull's downward velocity at the contact point (includes the body's
-      // rotation), which the damper acts against.
-      const mount = wheel.mountPoint(pose)
-      const vDown = this.hull.velocity.y + this.hull.angularVelocity * (mount.x - this.hull.position.x)
-      const force = wheel.suspensionForce(staticLoad, vDown, massPerWheel)
-      wheel.normalForce = force
-      Body.applyForce(this.hull, { x: wheel.contactX, y: wheel.contactY }, { x: 0, y: -force })
-    }
-  }
-
-  // Guarantee no wheel penetrates past its bump stop. The spring can be
-  // overpowered by a fast hit; this is a positional constraint, so it cannot.
-  _enforceGround() {
-    const pose = this._pose()
-    const { Body } = this.Matter
-    const min = CONFIG.suspensionFullyCompressedLength
-
-    let push = 0
-    for (const wheel of this.wheels) {
-      const mount = wheel.mountPoint(pose)
-      const penetration = mount.y + min + wheel.radius - this.terrain.heightAt(mount.x)
-      if (penetration > push) push = penetration
-    }
-    if (push > 0) {
-      // Body.setPosition keeps vertices/bounds consistent; Body.setVelocity is
-      // required because Matter's Verlet integrator ignores a raw field write.
-      Body.setPosition(this.hull, { x: this.hull.position.x, y: this.hull.position.y - push })
-      if (this.hull.velocity.y > 0) {
-        Body.setVelocity(this.hull, { x: this.hull.velocity.x, y: 0 })
-      }
-    }
-  }
-
-  _settleWheels() {
-    const pose = this._pose()
-    const groundY = (x) => this.terrain.heightAt(x)
-    for (const wheel of this.wheels) wheel.settle(pose, groundY)
-  }
-
+  // Traction as a force at each grounded wheel.
   _applyTraction() {
-    const { Body } = this.Matter
-    const grounded = this.wheels.filter((w) => w.contact && w.normalForce > 0)
-    if (!grounded.length) return
-
-    const vx = this.hull.velocity.x
-    const weight = this.hull.mass * this.gravityForcePerMass
+    const { Vec2 } = this.planck
+    const grounded = this.wheels.filter((w) => w.contact)
+    const vx = this.speedX
+    const weight = this.hull.getMass() * CONFIG.gravity
     const { w, s } = this.input
 
     let total = 0
@@ -183,69 +140,96 @@ export class Tank {
       gripLimit = CONFIG.rollingResistanceGripLimit
     }
 
+    if (!grounded.length) return
+
     const perWheel = total / grounded.length
     let applied = 0
     for (const wheel of grounded) {
       const limit = gripLimit * wheel.normalForce
       const force = clamp(perWheel, -limit, limit)
       applied += force
-      Body.applyForce(this.hull, { x: wheel.contactX, y: wheel.contactY }, { x: force, y: 0 })
+      this.hull.applyForce(Vec2(force, 0), wheel.body.getPosition())
     }
 
     // Weight-transfer moment: traction acts below the centre of mass, so net
     // forward drive lifts the nose and braking dives it.
     if (applied !== 0) {
       const lever = applied > 0 ? CONFIG.accelerationPitchLever : CONFIG.brakingPitchLever
-      this.hull.torque += -applied * lever
+      this.hull.applyTorque(-applied * lever)
     }
   }
 
-  _spinWheels(dt) {
-    const groundSpeed = this.hull.velocity.x
-    for (const wheel of this.wheels) wheel.spin(dt, groundSpeed)
+  // Read each wheel's ground normal force (used to cap traction and drive the
+  // HUD compression gauge).
+  _sampleContacts() {
+    const invDt = 60
+    const travel = CONFIG.suspensionTravel
+    for (const wheel of this.wheels) {
+      const edge = wheel.body.getContactList()
+      wheel.contact = edge != null && edge.contact.isTouching()
+      if (wheel.contact) {
+        const reaction = wheel.joint.getReactionForce(invDt)
+        wheel.normalForce = Math.abs(reaction.y)
+      } else {
+        wheel.normalForce = 0
+      }
+      // Translation is 0 at rest and negative as the wheel rises toward the
+      // hull, so compression is the negative translation over the travel span.
+      wheel.compression = clamp(-wheel.joint.getJointTranslation() / travel, 0, 1)
+    }
   }
 
   // Scroll the track for the given belt loop and return the new phase. Called
   // once per rendered frame with wall-clock dt, so scroll speed is
   // display-refresh independent.
   scrollTrack(belt, dt) {
-    if (this.hull) this.track.scroll(belt, this.hull.velocity.x, dt)
+    if (this.hull) this.track.scroll(belt, this.hull.getLinearVelocity().x, dt)
     return this.track.phase
   }
 
   // --- geometry for the renderer --------------------------------------------
 
-  // World-space idler discs (idlers are fixed to the hull, not sprung).
-  _idlerDiscs(pose) {
-    return IDLER_MOUNTS.map((i) => {
-      const p = toWorld(pose.x, pose.y, pose.angle, i.x, i.y)
-      return { x: p.x, y: p.y, r: i.radius }
-    })
+  // The body's interpolated transform between the previous and current physics
+  // step. planck's Sweep.getTransform does this natively (it already blends
+  // c0/a0 -> c/a by beta), so there is no need to hand-roll the lerp.
+  _sweepTransform(body, t, out) {
+    body.m_sweep.getTransform(out, t)
+    return out
   }
 
   // Interpolated snapshot for rendering. `alpha` is how far we are between the
-  // previous and current physics step (0..1). Matter keeps the hull's previous
-  // transform in `positionPrev`/`anglePrev`; wheels keep their own snapshots.
+  // previous and current physics step (0..1).
   view(alpha) {
     if (!this.alive || !this.hull) return null
     const t = clamp(alpha, 0, 1)
-    const pose = {
-      x: mix(this.hull.positionPrev.x, this.hull.position.x, t),
-      y: mix(this.hull.positionPrev.y, this.hull.position.y, t),
-      angle: mixAngle(this.hull.anglePrev, this.hull.angle, t),
-    }
-    const lengths = this.wheels.map((wheel) => mix(wheel.previousLength, wheel.currentLength, t))
+    const { Transform, Vec2 } = this.planck
+    const xf = this._xf
+
+    this._sweepTransform(this.hull, t, xf)
+    const pose = { x: xf.p.x, y: xf.p.y, angle: xf.q.getAngle() }
 
     // Built once and shared: the belt wraps these discs and the renderer draws them.
-    const idlers = this._idlerDiscs(pose)
-    const wheelDiscs = this.wheels.map((wheel, i) => {
-      const centre = wheel.centrePoint(pose, lengths[i])
-      return { x: centre.x, y: centre.y, r: wheel.radius }
+    const idlers = IDLER_MOUNTS.map((i) => {
+      const p = Transform.mul(xf, Vec2(i.x, i.y))
+      return { x: p.x, y: p.y, r: i.radius }
     })
+    const wheels = this.wheels.map((wheel) => {
+      this._sweepTransform(wheel.body, t, xf)
+      return {
+        x: xf.p.x,
+        y: xf.p.y,
+        radius: wheel.radius,
+        // Interpolated spin sampled straight from the body's sweep transform.
+        spinAngle: xf.q.getAngle(),
+        compression: wheel.compression,
+        contact: wheel.contact,
+      }
+    })
+    const wheelDiscs = wheels.map((w) => ({ x: w.x, y: w.y, r: w.radius }))
 
     return {
       pose,
-      wheels: this.wheels.map((wheel) => wheel.view(pose, t)),
+      wheels,
       idlers,
       belt: this.track.buildLoop(idlers.concat(wheelDiscs)),
       trackPhase: this.track.phase,
@@ -255,9 +239,8 @@ export class Tank {
   // The muzzle position and direction for firing.
   muzzle() {
     if (!this.alive || !this.hull) return null
-    const dir = this.hull.angle
-    const offset = { x: 120, y: -18 }
-    const p = toWorld(this.hull.position.x, this.hull.position.y, dir, offset.x, offset.y)
-    return { dir, x: p.x, y: p.y }
+    const { Vec2 } = this.planck
+    const p = this.hull.getWorldPoint(Vec2(120, -18))
+    return { dir: this.hull.getAngle(), x: p.x, y: p.y }
   }
 }

@@ -14,14 +14,14 @@ let game = null
 let detach = () => {}
 
 onMounted(async () => {
-  const mod = await import("matter-js")
-  const Matter = mod.default || mod
+  const mod = await import("planck")
+  const planck = mod.default || mod
 
   const wrap = wrapRef.value
   const canvas = canvasRef.value
   const base = (import.meta.env && import.meta.env.BASE_URL) || "/"
 
-  game = new Game({ Matter, canvas, base })
+  game = new Game({ planck, canvas, base })
   game.onHud((stats) => { hud.value = stats })
   game.start(wrap.getBoundingClientRect())
 

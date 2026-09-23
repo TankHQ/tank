@@ -1,4 +1,4 @@
-import { TAU, distance } from './util.js'
+import { TAU, distance, convexHull } from './util.js'
 
 // The track belt that wraps the wheels.
 //
@@ -8,8 +8,8 @@ import { TAU, distance } from './util.js'
 // segments, so the belt drapes around each wheel and bends smoothly like a
 // chain. The pads then scroll around the loop at ground speed.
 export class Track {
-  constructor({ Matter, trackConfig }) {
-    this._Vertices = Matter.Vertices
+  constructor({ planck, trackConfig }) {
+    this._Math = planck.Math
     this._track = trackConfig
     this.phase = 0
   }
@@ -26,7 +26,7 @@ export class Track {
         points.push({ x: disc.x + Math.cos(a) * r, y: disc.y + Math.sin(a) * r })
       }
     }
-    return this._Vertices.hull(points)
+    return convexHull(points)
   }
 
   // Resample the hull at a fixed arc spacing to get evenly spaced pads, and
@@ -81,7 +81,7 @@ export class Track {
     if (!loop) return
     const period = loop.spacing * loop.count
     this.phase += loop.flowSign * groundSpeed * this._track.scrollRate * (dt / 1000)
-    this.phase = ((this.phase % period) + period) % period
+    this.phase = this._Math.mod(this.phase, period)
   }
 
   reset() {
