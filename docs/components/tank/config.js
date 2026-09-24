@@ -46,8 +46,8 @@ export const RUNNING_GEAR = {
   fullyExtendedRatio: 0.1,
 
   // Track belt.
-  trackClearance: 3.6, // how far the belt sits outside the wheels
-  trackPadLength: 6.8, // target arc spacing between track pads
+  trackClearance: 3.8, // how far the belt sits outside the wheels
+  trackPadLength: 14, // target arc spacing between track pads
   trackMinPads: 24,
 
   // Cannon, measured from the turret's gun anchor (see silhouette.js) and the
@@ -219,8 +219,8 @@ export const CONFIG = {
   // where u is compression as a fraction of full travel (0 = fully extended,
   // 1 = fully compressed). The linear term sets the soft ride; the progressive
   // term makes the spring much stiffer near the bump stop.
-  springLinearStiffness: 22,
-  springProgressiveStiffness: 0.15,
+  springLinearStiffness: 30,
+  springProgressiveStiffness: 1.0,
 
   // Shock absorbers. Higher = tauter and heavier; too high and bumps stop
   // being absorbed at all.
@@ -241,12 +241,12 @@ export const CONFIG = {
   // ---------------------------------------------------------------------------
 
   // Mass per unit area. Higher = harder to accelerate and push around.
-  bodyDensity: 0.8,
+  bodyDensity: 2.0,
 
   // The main dial for how much the body tilts on bumpy ground: the body's
   // rotational inertia is multiplied by this. 1.0 = calm and heavy,
   // 0.5 = lively, 0.2 = twitchy, below 0.1 it can flip.
-  bodyRotationInertiaScale: 0.4,
+  bodyRotationInertiaScale: 0.55,
 
   // Air resistance; also settles any spin once airborne.
   airResistance: 0.002,
@@ -258,7 +258,7 @@ export const CONFIG = {
   accelerationForce: 0.5, // forward push
   brakingForce: 0.9, // braking push
   reverseForce: 0.35, // reverse push
-  maximumSpeed: 50, // top speed in px/frame (~89 km/h)
+  maximumSpeed: 50, // top speed in px/frame
 
   // Grip: a wheel transmits at most `gripLimit * weight on that wheel` before
   // the track slips.
