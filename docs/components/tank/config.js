@@ -351,36 +351,26 @@ export const PALETTE = {
 // -----------------------------------------------------------------------------
 // BACKGROUND  (procedurally generated mountain range)
 // -----------------------------------------------------------------------------
-// A layered ridged-noise backdrop (see Background.js). Each layer is one range
-// at a different depth: `parallax` is how fast it scrolls relative to the
-// camera, `amplitude` its height as a fraction of the canvas, `frequency` the
-// horizontal scale of its peaks, and `seed` offsets it into a different patch
-// of the noise field. Colours run peak (pale, hazy) -> body -> base (dark).
-//
-// `style` picks how the shared height field is rasterised into pixels:
-//   'smooth'  - dense sampling, filled with a haze gradient (soft ridged rock)
-//   'lowpoly' - coarse sampling, one shaded facet per segment (sharp stylised)
-//   'outline' - flat fill plus a bold ridge line (stylised line-art peaks)
+// A layered ridged-noise backdrop (see Background.js) with a sharp, faceted
+// look. Each layer is one range at a different depth: `parallax` is how fast it
+// scrolls relative to the camera, `amplitude` its height as a fraction of the
+// canvas, `frequency` the horizontal scale of its peaks, and `seed` offsets it
+// into a different patch of the noise field. Colours run peak (pale, hazy) ->
+// body -> base (dark).
 export const BACKGROUND = {
-  style: 'smooth',
-
   horizon: 0.72, // fraction of canvas height where the range meets the ground
   octaves: 6,
   persistence: 0.55,
   lacunarity: 2.4,
   sharpness: 2.1, // >1 narrows the peaks, <1 rounds them
-  step: 5, // horizontal sampling resolution in px ('smooth' / 'outline')
   pixelSize: 3, // offscreen pixelation factor (1 = smooth)
 
-  // 'lowpoly' only.
-  facetStep: 26, // segment width in px; larger = fewer, bigger facets
+  // Facets: the height line is sampled every `facetStep` px and each segment is
+  // shaded by its slope. Larger facetStep = fewer, bigger, chunkier facets;
+  // larger facetContrast = harder split between lit and shadowed faces.
+  facetStep: 20,
   lightDir: -0.5, // which way the light leans; slopes toward it are lit
-  facetContrast: 0.28, // strength of the per-face light/shade
-
-  // 'outline' only.
-  outlineWidth: 2.2,
-  outlineColor: 'rgba(58,42,24,0.9)', // bold ridge crease
-  outlineColor2: 'rgba(58,42,24,0.4)', // fainter contour below it
+  facetContrast: 0.5, // strength of the per-face light/shade
 
   layers: [
     // Farthest: high, pale, slow, hazy with distance.
