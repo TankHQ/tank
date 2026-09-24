@@ -269,6 +269,19 @@ export const CONFIG = {
   // How quickly the tank coasts to a stop with no throttle.
   coastingDrag: 0.001,
 
+  // Traction (drive / brake / reverse force) is applied at a point this far
+  // *below* the wheel contact, i.e. below the track. Applying the force low gives
+  // it a moment arm about the centre of mass, so the linear push is unchanged but
+  // the hull pitches hard: throttle lifts the nose (counter-clockwise, weight
+  // back), braking dives it (clockwise, weight forward). Only applied through
+  // wheels that are touching the ground, so it does nothing in mid-air.
+  //
+  // It is deliberately strong. Measured on flat ground, ~100 gives roughly 4-5x
+  // the baseline pitch under power and ~10x on the brakes; beyond ~115 the torque
+  // overcomes the springs and the tank can tumble over bumps, so this is set just
+  // under that with margin.
+  tractionArm: 100,
+
   // Gravity, in Matter's units.
   gravity: 1,
 }
