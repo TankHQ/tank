@@ -1,55 +1,34 @@
-import { PALETTE, HULL_POINTS, BODY, TURRET, GUN, RUNNING_GEAR } from './config.js'
+import { PALETTE, HULL_ART, BODY, TURRET, GUN, CAMO } from './config.js'
 import { TAU, clamp, mix } from './util.js'
 
-// Turret outline, derived from the hull so it scales with the running gear.
+// The drawable hull and turret outlines, straight from the reference SVG.
+const HULL_POINTS = HULL_ART
 const TURRET_POINTS = TURRET.points
 const TURRET_ROOF = TURRET.roof
 
-// Gun axis and barrel tip, derived from the running gear / hull.
 const GUN_Y = GUN.muzzleY
+const GUN_ANCHOR_X = GUN.anchorX
 const MUZZLE_X = GUN.muzzleX
+const BARREL_R = GUN.radius
 
-// Broad, smooth camouflage fields rather than small sharp facets, so the body
-// reads as painted camouflage instead of low-poly shading. Generated across the
-// hull's bounding box so they follow any change to the running gear.
-const camoFields = (minX, maxX, topY, bottomY, cols, rows) => {
-  const fields = []
-  const w = (maxX - minX) / cols
-  const h = (bottomY - topY) / rows
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const x0 = minX + c * w
-      const y0 = topY + r * h
-      const jx = ((c * 7 + r * 3) % 5) / 5 - 0.5
-      const jy = ((c * 2 + r * 5) % 7) / 7 - 0.5
-      const cx = x0 + w * (0.5 + jx * 0.5)
-      const cy = y0 + h * (0.5 + jy * 0.7)
-      fields.push([
-        [cx - w * 0.62, cy],
-        [cx, cy - h * 0.72],
-        [cx + w * 0.66, cy - h * 0.1],
-        [cx + w * 0.44, cy + h * 0.7],
-        [cx - w * 0.5, cy + h * 0.6],
-      ])
-    }
-  }
-  return fields
+// Small helpers for drawing in the body-local frame (y points down).
+const toPoints = (pts) => pts.map((p) => ({ x: p.x, y: p.y }))
+
+// Draw a filled + stroked polygon from an array of [x, y] pairs.
+function path(ctx, pts) {
+  ctx.beginPath()
+  ctx.moveTo(pts[0].x, pts[0].y)
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y)
+  ctx.closePath()
 }
-const HULL_CAMO = camoFields(BODY.minX, BODY.maxX, BODY.deckY, BODY.skirtY, 4, 2)
-const TURRET_CAMO = camoFields(BODY.minX + BODY.length * 0.08, BODY.minX + BODY.length * 0.62, TURRET_ROOF, BODY.deckY, 3, 1)
-
-// Smoke-grenade discharger clusters on the turret side.
-const SMOKE_ROWS = [
-  { x: BODY.minX + BODY.length * 0.17, y: TURRET_ROOF + (BODY.deckY - TURRET_ROOF) * 0.55, n: 6 },
-  { x: BODY.minX + BODY.length * 0.17, y: TURRET_ROOF + (BODY.deckY - TURRET_ROOF) * 0.78, n: 6 },
-]
 
 // Canvas 2D renderer.
 //
 // Everything is drawn from an interpolated `view` snapshot (see Tank.view), not
 // from live physics state, so motion stays smooth above the 60 Hz physics rate.
-// Vector art is used by default; drop body.png / wheel.png / turret.png into
-// docs/public/game/ and they replace the drawn hull/wheel/turret.
+// The hull, turret and camouflage are vector art traced from the reference SVG;
+// drop body.png / wheel.png / turret.png into docs/public/game/ to override the
+// hull, wheels and turret with sprites.
 export class Renderer {
   constructor(canvas, base) {
     this.canvas = canvas
@@ -157,120 +136,54 @@ export class Renderer {
     ctx.stroke()
   }
 
-  _path(ctx, points) {
-    ctx.beginPath()
-    ctx.moveTo(points[0].x, points[0].y)
-    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y)
-    ctx.closePath()
-  }
+  // --- hull and turret ------------------------------------------------------
 
-  // Closed smooth curve through camo control points (Catmull-Rom style), so the
-  // blotches read as soft painted fields rather than sharp polygons.
-  _blobPath(ctx, pts) {
-    const n = pts.length
-    ctx.beginPath()
-    ctx.moveTo((pts[0].x + pts[n - 1].x) / 2, (pts[0].y + pts[n - 1].y) / 2)
-    for (let i = 0; i < n; i++) {
-      const p = pts[i]
-      const q = pts[(i + 1) % n]
-      ctx.quadraticCurveTo(p.x, p.y, (p.x + q.x) / 2, (p.y + q.y) / 2)
-    }
-    ctx.closePath()
-  }
-
-  // Clip to `clip`, paint the base gradient, then lay camo blotches on top.
-  _drawCamoBody(ctx, clip, camo, yTop, yBottom) {
+  // Paint the hull base, then lay the reference camouflage fields over it. Both
+  // are clipped to the hull outline so no field bleeds past the body.
+  _drawHullArt(ctx) {
     ctx.save()
-    this._path(ctx, clip)
+    path(ctx, HULL_POINTS)
     ctx.clip()
-    const g = ctx.createLinearGradient(0, yTop, 0, yBottom)
+
+    const g = ctx.createLinearGradient(0, BODY.deckY, 0, BODY.skirtY)
     g.addColorStop(0, PALETTE.hull[0])
     g.addColorStop(0.6, PALETTE.hull[1])
     g.addColorStop(1, PALETTE.hull[2])
     ctx.fillStyle = g
-    ctx.fillRect(-260, yTop - 60, 600, yBottom - yTop + 120)
+    ctx.fillRect(BODY.minX - 40, BODY.deckY - 40, BODY.length + 80, BODY.depth + 80)
 
-    camo.forEach((blotch, i) => {
-      this._blobPath(ctx, blotch.map(([x, y]) => ({ x, y })))
-      ctx.fillStyle = PALETTE.camo[(i % (PALETTE.camo.length - 1)) + 1]
-      ctx.globalAlpha = i % 2 ? 0.5 : 0.38
+    // The reference camouflage fields, painted as flattened polygons in the
+    // order the source SVG layers them.
+    CAMO.forEach((field) => {
+      path(ctx, toPoints(field.points))
+      ctx.fillStyle = field.fill ?? '#bd9868'
       ctx.fill()
     })
-    ctx.globalAlpha = 1
 
     // Top highlight and lower shadow bands.
-    ctx.fillStyle = 'rgba(255,250,235,0.18)'
-    ctx.fillRect(-260, yTop + 1, 600, 4)
-    ctx.fillStyle = 'rgba(60,40,18,0.28)'
-    ctx.fillRect(-260, yBottom - 6, 600, 6)
+    ctx.fillStyle = 'rgba(255,250,235,0.16)'
+    ctx.fillRect(BODY.minX - 40, BODY.deckY, BODY.length + 80, 4)
+    ctx.fillStyle = 'rgba(60,40,18,0.24)'
+    ctx.fillRect(BODY.minX - 40, BODY.skirtY - 6, BODY.length + 80, 6)
     ctx.restore()
+
+    // Outline on top of the fill.
+    path(ctx, HULL_POINTS)
+    ctx.lineWidth = 2
+    ctx.strokeStyle = PALETTE.hullLine
+    ctx.stroke()
   }
 
   _drawHull(ctx, pose) {
     ctx.save()
     ctx.translate(pose.x, pose.y)
     ctx.rotate(pose.angle)
-    const L = BODY.length
     if (this.images.body) {
-      ctx.drawImage(this.images.body, BODY.minX, BODY.deckY, L, BODY.depth)
+      ctx.drawImage(this.images.body, BODY.minX, BODY.deckY, BODY.length, BODY.depth)
       ctx.restore()
       return
     }
-
-    this._drawCamoBody(ctx, HULL_POINTS, HULL_CAMO, BODY.deckY, BODY.skirtY)
-
-    // Hull outline, with the deck edge picked out.
-    this._path(ctx, HULL_POINTS)
-    ctx.lineWidth = 2
-    ctx.strokeStyle = PALETTE.hullLine
-    ctx.stroke()
-
-    // Side-skirt panel: a band from the skirt line up to the wheel-centre line,
-    // which physically covers the top half of the idler wheels.
-    const SKIRT_TOP = BODY.deckY + BODY.depth * 0.35
-    const SKIRT_BOTTOM = BODY.skirtY
-    const skL = BODY.minX
-    const skR = BODY.maxX
-    ctx.fillStyle = 'rgba(40,28,12,0.16)'
-    ctx.fillRect(skL, SKIRT_TOP, skR - skL, SKIRT_BOTTOM - SKIRT_TOP)
-    ctx.fillStyle = 'rgba(120,92,54,0.4)'
-    ctx.fillRect(skL, SKIRT_TOP - 2, skR - skL, 4)
-    ctx.strokeStyle = 'rgba(80,58,30,0.5)'
-    ctx.lineWidth = 1
-    ctx.strokeRect(skL, SKIRT_TOP - 2, skR - skL, 4)
-
-    // Vertical panel divisions along the skirt (mudguards over each station).
-    ctx.strokeStyle = 'rgba(80,58,30,0.4)'
-    const panels = 8
-    for (let i = 1; i < panels; i++) {
-      const x = skL + (i * (skR - skL)) / panels
-      ctx.beginPath()
-      ctx.moveTo(x, SKIRT_TOP)
-      ctx.lineTo(x, SKIRT_BOTTOM)
-      ctx.stroke()
-    }
-
-    // Stowage bins and grab rails on the upper hull.
-    for (const [bx, bw] of [
-      [BODY.minX + L * 0.22, L * 0.11],
-      [BODY.minX + L * 0.55, L * 0.12],
-    ]) {
-      ctx.fillStyle = 'rgba(90,68,36,0.3)'
-      ctx.fillRect(bx, BODY.deckY + BODY.depth * 0.12, bw, BODY.depth * 0.34)
-      ctx.strokeStyle = 'rgba(80,58,30,0.5)'
-      ctx.strokeRect(bx, BODY.deckY + BODY.depth * 0.12, bw, BODY.depth * 0.34)
-    }
-
-    // Driver's hatch and a headlight at the front.
-    ctx.beginPath()
-    ctx.arc(BODY.minX + L * 0.16, BODY.deckY + BODY.depth * 0.3, BODY.depth * 0.12, 0, TAU)
-    ctx.fillStyle = 'rgba(70,52,26,0.55)'
-    ctx.fill()
-    ctx.beginPath()
-    ctx.arc(BODY.maxX - L * 0.03, SKIRT_TOP - BODY.depth * 0.12, BODY.depth * 0.06, 0, TAU)
-    ctx.fillStyle = 'rgba(240,236,220,0.85)'
-    ctx.fill()
-
+    this._drawHullArt(ctx)
     ctx.restore()
   }
 
@@ -279,105 +192,54 @@ export class Renderer {
     ctx.translate(pose.x, pose.y)
     ctx.rotate(pose.angle)
     const L = BODY.length
-    const R = RUNNING_GEAR.wheelRadius
-    const breechX = BODY.maxX - L * 0.62
     if (this.images.turret) {
       ctx.drawImage(this.images.turret, BODY.minX + L * 0.06, TURRET_ROOF, L * 0.6, BODY.deckY - TURRET_ROOF)
       ctx.restore()
       return
     }
 
-    // Main gun: long barrel with a thermal sleeve, fume extractor bulge and a
-    // muzzle reference sensor at the tip. All sizes scale with the wheel radius.
+    // The cannon, grown forward from the turret's gun anchor. A tapered barrel
+    // with a thermal sleeve, a fume extractor and a muzzle reference sensor.
     ctx.save()
-    ctx.fillStyle = PALETTE.barrel
+    const sleeveEnd = GUN_ANCHOR_X + (MUZZLE_X - GUN_ANCHOR_X) * 0.72
+    const feX = MUZZLE_X - BARREL_R * 5.0
     // Breech / mantlet block where the gun meets the turret.
-    ctx.fillRect(breechX, GUN_Y - R * 0.75, R * 2.6, R * 1.5)
+    ctx.fillStyle = PALETTE.barrel
+    ctx.fillRect(GUN_ANCHOR_X - BARREL_R * 0.4, GUN_Y - BARREL_R * 1.7, BARREL_R * 2.4, BARREL_R * 3.4)
     ctx.strokeStyle = PALETTE.hullLine
     ctx.lineWidth = 1
-    ctx.strokeRect(breechX, GUN_Y - R * 0.75, R * 2.6, R * 1.5)
+    ctx.strokeRect(GUN_ANCHOR_X - BARREL_R * 0.4, GUN_Y - BARREL_R * 1.7, BARREL_R * 2.4, BARREL_R * 3.4)
     // Barrel.
     ctx.fillStyle = PALETTE.barrel
-    ctx.fillRect(breechX + R * 2.2, GUN_Y - R * 0.38, MUZZLE_X - breechX - R * 2.2, R * 0.76)
-    // Thermal-sleeve highlight along the top.
+    ctx.fillRect(GUN_ANCHOR_X + BARREL_R * 1.8, GUN_Y - BARREL_R, sleeveEnd - GUN_ANCHOR_X - BARREL_R * 1.8, BARREL_R * 2)
+    ctx.fillRect(sleeveEnd - BARREL_R * 0.4, GUN_Y - BARREL_R * 0.72, MUZZLE_X - sleeveEnd + BARREL_R * 0.4, BARREL_R * 1.44)
+    // Thermal-sleeve highlight.
     ctx.fillStyle = PALETTE.barrelHi
-    ctx.fillRect(breechX + R * 2.6, GUN_Y - R * 0.34, MUZZLE_X - breechX - R * 4.4, R * 0.18)
+    ctx.fillRect(GUN_ANCHOR_X + BARREL_R * 2.2, GUN_Y - BARREL_R * 0.7, sleeveEnd - GUN_ANCHOR_X - BARREL_R * 3.4, BARREL_R * 0.4)
     // Fume extractor bulge.
     ctx.fillStyle = PALETTE.barrel
-    ctx.fillRect(MUZZLE_X - R * 4.2, GUN_Y - R * 0.6, R * 1.7, R * 1.2)
-    ctx.strokeStyle = PALETTE.hullLine
-    ctx.strokeRect(MUZZLE_X - R * 4.2, GUN_Y - R * 0.6, R * 1.7, R * 1.2)
+    ctx.fillRect(feX, GUN_Y - BARREL_R * 1.5, BARREL_R * 3.6, BARREL_R * 3)
+    ctx.strokeRect(feX, GUN_Y - BARREL_R * 1.5, BARREL_R * 3.6, BARREL_R * 3)
     // Muzzle brake / reference sensor.
-    ctx.fillStyle = PALETTE.barrel
-    ctx.fillRect(MUZZLE_X - R * 1.3, GUN_Y - R * 0.5, R * 1.3, R)
-    ctx.strokeStyle = PALETTE.hullLine
-    ctx.strokeRect(MUZZLE_X - R * 1.3, GUN_Y - R * 0.5, R * 1.3, R)
+    ctx.fillRect(MUZZLE_X - BARREL_R * 1.6, GUN_Y - BARREL_R * 1.25, BARREL_R * 1.6, BARREL_R * 2.5)
+    ctx.strokeRect(MUZZLE_X - BARREL_R * 1.6, GUN_Y - BARREL_R * 1.25, BARREL_R * 1.6, BARREL_R * 2.5)
     ctx.restore()
 
-    // Wedge turret body in desert camo.
-    this._drawCamoBody(ctx, TURRET_POINTS, TURRET_CAMO, TURRET_ROOF, BODY.deckY)
-    this._path(ctx, TURRET_POINTS)
+    // Turret wedge, camo-painted like the hull. The source outline already
+    // carries the roof details (cupola and hatch steps).
+    ctx.save()
+    path(ctx, TURRET_POINTS)
+    ctx.clip()
+    const tg = ctx.createLinearGradient(0, TURRET_ROOF, 0, BODY.deckY)
+    tg.addColorStop(0, PALETTE.hull[0])
+    tg.addColorStop(1, PALETTE.hull[1])
+    ctx.fillStyle = tg
+    ctx.fillRect(BODY.minX, TURRET_ROOF - 20, BODY.length + 20, BODY.deckY - TURRET_ROOF + 40)
+    ctx.restore()
+
+    path(ctx, TURRET_POINTS)
     ctx.lineWidth = 2
     ctx.strokeStyle = PALETTE.hullLine
-    ctx.stroke()
-
-    // Commander's cupola (with vision blocks) and loader's hatch on the roof.
-    const cupolaR = L * 0.045
-    ctx.beginPath()
-    ctx.arc(BODY.minX + L * 0.18, TURRET_ROOF + cupolaR * 0.1, cupolaR, 0, TAU)
-    ctx.fillStyle = PALETTE.hull[1]
-    ctx.fill()
-    ctx.strokeStyle = PALETTE.hullLine
-    ctx.stroke()
-    ctx.fillStyle = 'rgba(50,36,18,0.55)'
-    for (let i = 0; i < 6; i++) {
-      const a = Math.PI + (i + 0.5) * (Math.PI / 6)
-      ctx.beginPath()
-      ctx.arc(
-        BODY.minX + L * 0.18 + Math.cos(a) * cupolaR * 0.6,
-        TURRET_ROOF + cupolaR * 0.1 + Math.sin(a) * cupolaR * 0.6,
-        cupolaR * 0.12,
-        0,
-        TAU,
-      )
-      ctx.fill()
-    }
-    ctx.beginPath()
-    ctx.arc(BODY.minX + L * 0.4, TURRET_ROOF + cupolaR * 0.05, cupolaR * 0.75, 0, TAU)
-    ctx.fillStyle = PALETTE.hull[1]
-    ctx.fill()
-    ctx.strokeStyle = PALETTE.hullLine
-    ctx.stroke()
-
-    // Smoke-grenade discharger clusters on the turret side.
-    ctx.fillStyle = '#4a3a22'
-    for (const row of SMOKE_ROWS) {
-      for (let i = 0; i < row.n; i++) {
-        ctx.beginPath()
-        ctx.arc(row.x + i * 9, row.y, 2.8, 0, TAU)
-        ctx.fill()
-      }
-    }
-
-    // Rear stowage rack and the T-shaped wind sensor mast.
-    const rackX = BODY.minX + L * 0.62
-    ctx.fillStyle = 'rgba(90,68,36,0.55)'
-    ctx.fillRect(rackX, TURRET_ROOF + (BODY.deckY - TURRET_ROOF) * 0.3, L * 0.06, (BODY.deckY - TURRET_ROOF) * 0.75)
-    ctx.strokeStyle = '#6b5633'
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.moveTo(rackX + L * 0.03, TURRET_ROOF + (BODY.deckY - TURRET_ROOF) * 0.3)
-    ctx.lineTo(rackX + L * 0.03, TURRET_ROOF - L * 0.02)
-    ctx.moveTo(rackX + L * 0.01, TURRET_ROOF - L * 0.02)
-    ctx.lineTo(rackX + L * 0.05, TURRET_ROOF - L * 0.02)
-    ctx.stroke()
-
-    // Antenna at the rear of the turret.
-    ctx.strokeStyle = '#4a4a44'
-    ctx.lineWidth = 1.5
-    ctx.beginPath()
-    ctx.moveTo(BODY.minX + L * 0.12, TURRET_ROOF)
-    ctx.lineTo(BODY.minX + L * 0.08, TURRET_ROOF - L * 0.08)
     ctx.stroke()
 
     ctx.restore()
@@ -392,7 +254,8 @@ export class Renderer {
       ctx.restore()
       return
     }
-    // Tyre/rim, then the road-wheel disc, then the red hub cap.
+
+    // Tyre/rim.
     ctx.beginPath()
     ctx.arc(0, 0, radius, 0, TAU)
     ctx.fillStyle = PALETTE.wheel
@@ -401,6 +264,33 @@ export class Renderer {
     ctx.strokeStyle = PALETTE.hullLine
     ctx.stroke()
 
+    if (isIdler) {
+      // Return idlers read as spoked discs: a rim, spokes and a small hub, with
+      // no red cap, so they are clearly the "top wheels" of the reference.
+      ctx.beginPath()
+      ctx.arc(0, 0, radius * 0.82, 0, TAU)
+      ctx.fillStyle = PALETTE.wheelRim
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(80,58,30,0.5)'
+      ctx.lineWidth = 1
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * TAU
+        ctx.beginPath()
+        ctx.moveTo(Math.cos(a) * radius * 0.24, Math.sin(a) * radius * 0.24)
+        ctx.lineTo(Math.cos(a) * radius * 0.78, Math.sin(a) * radius * 0.78)
+        ctx.stroke()
+      }
+      ctx.beginPath()
+      ctx.arc(0, 0, radius * 0.24, 0, TAU)
+      ctx.fillStyle = PALETTE.wheel
+      ctx.fill()
+      ctx.strokeStyle = PALETTE.hullLine
+      ctx.stroke()
+      ctx.restore()
+      return
+    }
+
+    // Road-wheel disc, then the red hub cap.
     ctx.beginPath()
     ctx.arc(0, 0, radius * 0.66, 0, TAU)
     ctx.fillStyle = PALETTE.wheelRim
