@@ -1,6 +1,7 @@
-import { PALETTE, HULL_ART, BODY, TURRET, GUN, CAMO, BODY_TILT, BACKGROUND } from './config.js'
+import { PALETTE, HULL_ART, BODY, TURRET, GUN, CAMO, BACKGROUND } from './config.js'
 import { TAU, clamp, mix } from './util.js'
 import { Background } from './Background.js'
+import { tracksMatrix, bodyMatrix } from './transform.js'
 
 // The drawable hull and turret outlines, straight from the reference SVG.
 const HULL_POINTS = HULL_ART
@@ -14,15 +15,6 @@ const BARREL_R = GUN.radius
 
 // Small helpers for drawing in the body-local frame (y points down).
 const toPoints = (pts) => pts.map((p) => ({ x: p.x, y: p.y }))
-
-// Rotate the body-local frame slightly nose-up about the rear of the hull. This
-// is applied identically to the hull, turret and cannon so they move as one, and
-// it only affects what is drawn — never the physics.
-function applyBodyTilt(ctx) {
-  ctx.translate(BODY_TILT.pivotX, BODY_TILT.pivotY)
-  ctx.rotate(BODY_TILT.angle)
-  ctx.translate(-BODY_TILT.pivotX, -BODY_TILT.pivotY)
-}
 
 // Draw a filled + stroked polygon from an array of [x, y] pairs.
 function path(ctx, pts) {
@@ -172,9 +164,7 @@ export class Renderer {
 
   _drawHull(ctx, pose) {
     ctx.save()
-    ctx.translate(pose.x, pose.y)
-    ctx.rotate(pose.angle)
-    applyBodyTilt(ctx)
+    ctx.transform(...bodyMatrix(pose))
     if (this.images.body) {
       ctx.drawImage(this.images.body, BODY.minX, BODY.deckY, BODY.length, BODY.depth)
       ctx.restore()
@@ -186,9 +176,7 @@ export class Renderer {
 
   _drawTurret(ctx, pose) {
     ctx.save()
-    ctx.translate(pose.x, pose.y)
-    ctx.rotate(pose.angle)
-    applyBodyTilt(ctx)
+    ctx.transform(...bodyMatrix(pose))
     const L = BODY.length
     if (this.images.turret) {
       ctx.drawImage(this.images.turret, BODY.minX + L * 0.06, TURRET_ROOF, L * 0.6, BODY.deckY - TURRET_ROOF)
@@ -401,9 +389,14 @@ export class Renderer {
 
       // Running gear first: the side skirt (part of the hull) is drawn over it
       // so the top half of the wheels and the top run of the track are hidden.
+      // The belt, wheels and idlers share the tracks transform (rotation and
+      // scale about the tank's zero point).
+      ctx.save()
+      ctx.transform(...tracksMatrix(view.pose))
       if (view.belt) this._drawBelt(ctx, view.belt, view.trackPhase)
       for (const idler of view.idlers) this._drawWheel(ctx, idler, idler.spin ?? 0, idler.r, true)
       for (const wheel of view.wheels) this._drawWheel(ctx, wheel, wheel.spinAngle, wheel.radius, false)
+      ctx.restore()
       this._drawHull(ctx, view.pose)
       this._drawTurret(ctx, view.pose)
     }

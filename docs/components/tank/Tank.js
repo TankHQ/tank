@@ -1,5 +1,6 @@
-import { CONFIG, HULL_POINTS, WHEEL_MOUNTS, IDLER_MOUNTS, TRACK as TRACK_CONFIG, GUN, BODY_TILT } from './config.js'
+import { CONFIG, HULL_POINTS, WHEEL_MOUNTS, IDLER_MOUNTS, TRACK as TRACK_CONFIG, GUN } from './config.js'
 import { clamp, mix, mixAngle, toWorld } from './util.js'
+import { bodyMatrix, bodyDirection, apply } from './transform.js'
 import { SuspensionWheel } from './SuspensionWheel.js'
 import { Track } from './Track.js'
 
@@ -258,20 +259,17 @@ export class Tank {
   // The muzzle position and direction for firing.
   muzzle() {
     if (!this.alive || !this.hull) return null
-    // The barrel is drawn with the body's cosmetic nose-up tilt, so the shot
-    // leaves along that same tilted axis and from the tilted muzzle position.
-    // Rotate the body-frame muzzle about the tilt pivot, then apply the hull pose.
-    const a = BODY_TILT.angle
-    const cos = Math.cos(a)
-    const sin = Math.sin(a)
-    const dx = GUN.muzzleX - BODY_TILT.pivotX
-    const dy = GUN.muzzleY - BODY_TILT.pivotY
-    const offset = {
-      x: BODY_TILT.pivotX + cos * dx - sin * dy,
-      y: BODY_TILT.pivotY + sin * dx + cos * dy,
+    // The barrel is drawn with the body render transform (offset, rotation,
+    // scale), so the shot leaves along that same axis and from the drawn muzzle
+    // position. The body's local muzzle point is pushed through the same matrix
+    // the renderer uses, so art and ballistics always agree.
+    const pose = {
+      x: this.hull.position.x,
+      y: this.hull.position.y,
+      angle: this.hull.angle,
     }
-    const dir = this.hull.angle + a
-    const p = toWorld(this.hull.position.x, this.hull.position.y, this.hull.angle, offset.x, offset.y)
+    const p = apply(bodyMatrix(pose), GUN.muzzleX, GUN.muzzleY)
+    const dir = bodyDirection(pose)
     return { dir, x: p.x, y: p.y }
   }
 }

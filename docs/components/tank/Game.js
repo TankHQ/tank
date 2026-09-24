@@ -1,4 +1,4 @@
-import { CONFIG, BODY } from './config.js'
+import { CONFIG, CAMERA, BODY } from './config.js'
 import { Terrain } from './Terrain.js'
 import { Tank } from './Tank.js'
 import { Camera } from './Camera.js'
@@ -129,7 +129,7 @@ export class Game {
     // Normalised speed biases the camera framing: forward pulls the tank left to
     // reveal the road ahead, reverse pushes it right.
     const hull = this.tank.hull
-    const speed01 = hull ? hull.velocity.x / CONFIG.cameraCruiseSpeed : 0
+    const speed01 = hull ? hull.velocity.x / CAMERA.cruiseSpeed : 0
     this.camera.follow(view ? view.pose : null, this.renderer.width, this.renderer.height, speed01)
     this.renderer.render({
       camera: this.camera,

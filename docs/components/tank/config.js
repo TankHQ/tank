@@ -260,11 +260,6 @@ export const CONFIG = {
   reverseForce: 0.35, // reverse push
   maximumSpeed: 50, // top speed in px/frame (~89 km/h)
 
-  // Speed at which the camera reaches its full forward/reverse framing. This is
-  // the tank's real cruise speed, which is well below `maximumSpeed`, so the
-  // framing shift is fully expressed in normal driving.
-  cameraCruiseSpeed: 18,
-
   // Grip: a wheel transmits at most `gripLimit * weight on that wheel` before
   // the track slips.
   driveGripLimit: 2.4,
@@ -302,15 +297,61 @@ export const TURRET = {
   roof: GEAR.turretRoof,
 }
 
-// A small visual nose-up tilt of the whole body (hull, turret and cannon). The
-// reference silhouette leaves the front idler and the top of the track peeking
-// past the glacis, so the body is pivoted counter-clockwise about its rear. The
-// rear stays exactly where it is, while the front edge rises to cover them. It
-// is purely cosmetic: the physics body and the wheels are unaffected.
-export const BODY_TILT = {
-  angle: -0.025, // radians (negative = nose up, as the canvas y axis points down)
-  pivotX: BODY.minX, // rear of the hull
-  pivotY: BODY.skirtY,
+// Rendering transform for the tank, expressed relative to the tank's "zero"
+// position: the physics pose of the hull (`view.pose`). Nothing here affects the
+// simulation, only how the art is placed.
+//
+//   tracks  - the belt, road wheels and idlers. They have no offset (their zero
+//             is their own pose), only a `scale` and a `rotation`. The tracks'
+//             rotation is the tank's baseline orientation: it is applied to the
+//             body too, so the body is oriented *relative to the tracks*.
+//   body    - the hull, turret and cannon. It has an XY `offset` (in the tank
+//             frame), its own `scale`, and a `rotation` added on top of the
+//             tracks'. It rotates about `pivotX/pivotY` (in body coordinates),
+//             which lets the offset art line up with the running gear.
+export const RENDER = {
+  tracks: {
+    scale: 1,
+    rotation: 0,
+  },
+  body: {
+    offsetX: 0,
+    offsetY: 0,
+    scale: 1,
+    rotation: -0.025, // nose-up, relative to the tracks
+    pivotX: BODY.minX, // rotate about the rear of the hull, so the back stays put
+    pivotY: BODY.skirtY,
+  },
+}
+
+// -----------------------------------------------------------------------------
+// CAMERA  (framing and how the view follows the tank)
+// -----------------------------------------------------------------------------
+// The tank's screen position is `viewportWidth * targetX`, so a smaller value
+// places it further left. The camera eases `targetX` from `baseTargetX` toward
+// `forwardTargetX` when driving and `reverseTargetX` when reversing.
+export const CAMERA = {
+  // Where the tank sits across the viewport width (fraction) and down its
+  // height. `baseTargetX` is the resting start; forward/reverse are the extremes
+  // reached at full speed.
+  baseTargetX: 0.42,
+  forwardTargetX: 0.18,
+  reverseTargetX: 0.7,
+  targetY: 0.64,
+
+  // How fast the camera reaches full forward/reverse framing: the tank speed
+  // (px/frame) at which the shift is fully expressed. Lower = it tucks toward
+  // the road ahead sooner.
+  cruiseSpeed: 18,
+
+  // How fast the camera moves to catch up with the tank (per frame, 0..1).
+  // Higher = snappier and tighter; lower = looser, more trailing.
+  smoothingX: 0.12,
+  smoothingY: 0.08,
+  idleSmoothing: 0.05,
+
+  // How quickly the framing shift itself eases toward its target (per frame).
+  framingSmoothing: 0.025,
 }
 
 // Where the barrel sits in body-local coords, for drawing and for spawning
