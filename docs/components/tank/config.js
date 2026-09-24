@@ -315,9 +315,9 @@ export const RENDER = {
     rotation: 0,
   },
   body: {
-    offsetX: 0,
+    offsetX: -10,
     offsetY: 0,
-    scale: 1,
+    scale: 1.05,
     rotation: -0.025, // nose-up, relative to the tracks
     pivotX: BODY.minX, // rotate about the rear of the hull, so the back stays put
     pivotY: BODY.skirtY,
