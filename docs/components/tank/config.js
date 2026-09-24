@@ -241,12 +241,12 @@ export const CONFIG = {
   // ---------------------------------------------------------------------------
 
   // Mass per unit area. Higher = harder to accelerate and push around.
-  bodyDensity: 1,
+  bodyDensity: 0.8,
 
   // The main dial for how much the body tilts on bumpy ground: the body's
   // rotational inertia is multiplied by this. 1.0 = calm and heavy,
   // 0.5 = lively, 0.2 = twitchy, below 0.1 it can flip.
-  bodyRotationInertiaScale: 0.6,
+  bodyRotationInertiaScale: 0.4,
 
   // Air resistance; also settles any spin once airborne.
   airResistance: 0.002,
@@ -255,10 +255,10 @@ export const CONFIG = {
   // ENGINE AND BRAKES  (multiples of the vehicle's weight)
   // ---------------------------------------------------------------------------
 
-  accelerationForce: 0.3, // forward push
-  brakingForce: 0.5, // braking push
+  accelerationForce: 0.5, // forward push
+  brakingForce: 0.9, // braking push
   reverseForce: 0.35, // reverse push
-  maximumSpeed: 40, // top speed in px/frame (~89 km/h)
+  maximumSpeed: 50, // top speed in px/frame (~89 km/h)
 
   // Speed at which the camera reaches its full forward/reverse framing. This is
   // the tank's real cruise speed, which is well below `maximumSpeed`, so the
@@ -272,7 +272,7 @@ export const CONFIG = {
   rollingResistanceGripLimit: 0.7,
 
   // How quickly the tank coasts to a stop with no throttle.
-  coastingDrag: 0.08,
+  coastingDrag: 0.001,
 
   // Gravity, in Matter's units.
   gravity: 1,
@@ -390,4 +390,3 @@ export const BACKGROUND = {
     { parallax: 0.3, amplitude: 0.34, frequency: 0.0029, seed: 257, peak: '#685a43', color: '#514838', base: '#3d372b' },
   ],
 }
-
