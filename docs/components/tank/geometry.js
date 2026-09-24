@@ -123,16 +123,11 @@ function buildRunningGear(rg) {
     turretPoints,
     turretRoof,
     camo: camoFields,
-    centroid: c,
-    deckY: -c.y, // deck line (svgHullMinY maps to y = 0 before recentring)
-    skirtY: skirtY - c.y,
-    wheelCentreY: hubCentreY - c.y,
-    pitchRadius: wheelRadius,
     gun,
   }
 }
 
-export const GEAR = buildRunningGear(RUNNING_GEAR)
+const GEAR = buildRunningGear(RUNNING_GEAR)
 
 // Road wheels: mount position relative to the hull centre, and radius.
 export const WHEEL_MOUNTS = GEAR.wheels
@@ -174,12 +169,10 @@ const hullMaxY = Math.max(...GEAR.hullPoints.map((p) => p.y)) // skirt line
 
 export const BODY = {
   minX: hullMinX,
-  maxX: hullMaxX,
   deckY: hullMinY,
   skirtY: hullMaxY,
   length: hullMaxX - hullMinX,
   depth: hullMaxY - hullMinY,
-  wheelCentreY: GEAR.wheelCentreY,
 }
 
 // Suspension geometry, in pixels, derived from the running gear so the mounts

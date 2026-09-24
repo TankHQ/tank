@@ -30,7 +30,6 @@ export class Game {
     this._accumulator = 0
 
     this._dist = 0
-    this._airtime = 0
     this._fpsAccumulator = 0
     this._fpsFrames = 0
     this.fps = 0
@@ -153,8 +152,6 @@ export class Game {
     if (this.tank.alive) {
       const hull = this.tank.hull
       this._dist = Math.max(this._dist, hull.position.x)
-      const aboveGround = hull.position.y < this.terrain.heightAt(hull.position.x) - 130
-      this._airtime = aboveGround ? this._airtime + dt / 1000 : 0
 
       if (Math.abs(hull.angle) > 2.1 || hull.position.y > this.terrain.heightAt(hull.position.x) + 400) {
         this.reset()
@@ -203,7 +200,6 @@ export class Game {
           : 0,
         distance: Math.round(this._dist / PIXELS_PER_METRE),
         throttle: this.input.w ? 1 : this.input.s ? -1 : 0,
-        airtime: this._airtime,
         fps: this.fps,
         wheels: this.tank.wheels.map((w) => w.compression),
       })

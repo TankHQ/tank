@@ -9,19 +9,19 @@ import { BODY } from './geometry.js'
 // to a single point (for the muzzle). Sharing the builders keeps the drawn art
 // and the shell spawn in exactly the same place.
 
-export const translate = (tx, ty) => [1, 0, 0, 1, tx, ty]
+const translate = (tx, ty) => [1, 0, 0, 1, tx, ty]
 
-export const rotate = (a) => {
+const rotate = (a) => {
   const c = Math.cos(a)
   const s = Math.sin(a)
   return [c, s, -s, c, 0, 0]
 }
 
-export const scale = (s) => [s, 0, 0, s, 0, 0]
+const scale = (s) => [s, 0, 0, s, 0, 0]
 
 // Compose two transforms: map p -> a(b(p)). Canvas `transform()` post-multiplies
 // in the same order, so the renderer and this stay consistent.
-export function compose(a, b) {
+function compose(a, b) {
   return [
     a[0] * b[0] + a[2] * b[1],
     a[1] * b[0] + a[3] * b[1],

@@ -8,7 +8,7 @@ const active = ref(false)
 const started = ref(false)
 const over = ref(false)
 
-const hud = ref({ speed: 0, distance: 0, throttle: 0, airtime: 0, fps: 0, wheels: [] })
+const hud = ref({ speed: 0, distance: 0, throttle: 0, fps: 0, wheels: [] })
 
 let game = null
 let detach = () => {}
