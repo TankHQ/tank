@@ -1,35 +1,32 @@
-// All tunable numbers and fixed geometry for the tank simulation.
+// Tunable settings for the tank simulation. This file holds *only* raw values —
+// numbers, strings and small literal objects. Nothing here is computed: anything
+// derived from these settings lives in `geometry.js` (the tank's shape and
+// running gear) or beside the code that uses it.
 //
 // Forces are expressed as multiples of the vehicle's own weight (1.0 = the
 // tank's weight), so the tuning reads the same regardless of how heavy the
 // chassis ends up being. Matter integrates forces as `v += (F/m) * dt^2`, which
 // is why the raw stiffness/damping numbers are small.
-//
-// The hull and turret outlines come straight from `silhouette.js` (transcribed
-// from the supplied Inkscape reference), scaled into simulation pixels against
-// the running gear below. So the body art and the physics always agree.
-
-import { SVG_MM } from './silhouette.js'
 
 // -----------------------------------------------------------------------------
-// RUNNING GEAR  (the single source of truth for the undercarriage)
+// RUNNING GEAR
 // -----------------------------------------------------------------------------
-// Every dimension here is a ratio of the hull's on-screen length
-// (`hullPixelLength`), measured directly from the reference side view. Keeping
-// them as ratios means the running gear and the SVG body always scale together:
-// the road wheels sit `wheelRadius` under the hull's skirt, the idlers ride
-// `idlerRise` above the wheel-centre line, and so on.
+// Undercarriage dimensions, all expressed as ratios of the hull's on-screen
+// length (`hullPixelLength`) so the running gear and the SVG body always scale
+// together. `geometry.js` turns these into actual pixel positions.
 //
-//   road wheels : 7 in a row, `wheelSpacing` apart
-//   idlers      : one at each end, offset `frontIdlerX` / `rearIdlerX` from the
-//                 hull centre and lifted `idlerRise` above the wheel centres
+//   road wheels : `wheelCount` in a row, `wheelSpacingRatio` apart
+//   idlers      : one at each end, offset `frontIdlerXRatio` / `rearIdlerXRatio`
+//                 from the hull centre and lifted `idlerRiseRatio` above the
+//                 wheel-centre line
 export const RUNNING_GEAR = {
-  // The hull's on-screen length. This is the scale anchor for the whole tank,
-  // and every ratio below is relative to it, so changing this one number
-  // resizes the entire vehicle proportionally.
+  // The hull's on-screen length, in simulation pixels. The scale anchor for the
+  // whole tank: change this one number and the entire vehicle resizes.
   hullPixelLength: 448,
 
-  // --- ratios of hullPixelLength (from the reference) ---
+  // How many metres that hull length represents, for the HUD's real-world units.
+  hullLengthMetres: 9.8,
+
   wheelCount: 7,
   wheelRadiusRatio: 0.0556,
   wheelSpacingRatio: 0.1173,
@@ -49,6 +46,7 @@ export const RUNNING_GEAR = {
   trackClearance: 3.8, // how far the belt sits outside the wheels
   trackPadLength: 14, // target arc spacing between track pads
   trackMinPads: 24,
+  trackScrollRate: 16, // track surface speed per px/frame of ground speed
 
   // Cannon, measured from the turret's gun anchor (see silhouette.js) and the
   // hull nose.
@@ -56,160 +54,10 @@ export const RUNNING_GEAR = {
   barrelRadiusRatio: 0.017, // barrel half-thickness
 }
 
-const SV = SVG_MM
-
-// Bounding box of the SVG hull, used to anchor the scale and the deck line.
-const svgHullMinX = Math.min(...SV.hull.map((p) => p[0]))
-const svgHullMaxX = Math.max(...SV.hull.map((p) => p[0]))
-const svgHullMinY = Math.min(...SV.hull.map((p) => p[1])) // deck line (y points down)
-const svgHullMaxY = Math.max(...SV.hull.map((p) => p[1])) // skirt / belly
-
-// Area centroid of a polygon, matching how Matter recentres body vertices.
-function polygonCentroid(pts) {
-  let twiceArea = 0
-  let cx = 0
-  let cy = 0
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i]
-    const q = pts[(i + 1) % pts.length]
-    const cross = p.x * q.y - q.x * p.y
-    twiceArea += cross
-    cx += (p.x + q.x) * cross
-    cy += (p.y + q.y) * cross
-  }
-  twiceArea *= 0.5
-  return { x: cx / (6 * twiceArea), y: cy / (6 * twiceArea) }
-}
-
-// Derive every undercarriage dimension from RUNNING_GEAR + the SVG silhouette.
-function buildRunningGear(rg) {
-  const L = rg.hullPixelLength
-
-  // Pixels per SVG millimetre: the hull is scaled to `hullPixelLength`.
-  const k = L / (svgHullMaxX - svgHullMinX)
-
-  // SVG (mm) -> raw simulation frame (y down, deck at y = 0).
-  const raw = (p) => ({ x: (p[0] - svgHullMinX) * k, y: (p[1] - svgHullMinY) * k })
-
-  const hullPoints = SV.hull.map(raw)
-  const hullPhysics = SV.hullPhysics.map(raw)
-  const turret = SV.turret.map(raw)
-  // Each camo field is a polygon; pair it with its source fill colour.
-  const camo = SV.camo.map((field, i) => ({
-    fill: SV.camoFills[i % SV.camoFills.length],
-    points: field.map(raw),
-  }))
-
-  // Derived running-gear dimensions (all in simulation pixels).
-  const wheelRadius = rg.wheelRadiusRatio * L
-  const wheelSpacing = rg.wheelSpacingRatio * L
-  const idlerRadius = rg.idlerRadiusRatio * L
-  const hubDrop = rg.hubDropRatio * L
-  const idlerRise = rg.idlerRiseRatio * L
-  const restLength = rg.restLengthRatio * L
-
-  // Deck = top of the hull; skirt = bottom. Both read off the scaled SVG.
-  const skirtY = (svgHullMaxY - svgHullMinY) * k
-  const hubCentreY = skirtY + hubDrop
-
-  // Road wheel mounts, spread evenly about the hull centre. Built in the raw
-  // SVG frame (hull spans 0..hullPixelLength), so they recentre with the hull.
-  const span = (rg.wheelCount - 1) * wheelSpacing
-  const halfSpan = span / 2
-  const hullCentreX = L / 2
-  const wheels = []
-  for (let i = 0; i < rg.wheelCount; i++) {
-    wheels.push({
-      x: hullCentreX - halfSpan + i * wheelSpacing,
-      y: hubCentreY - restLength,
-      radius: wheelRadius,
-    })
-  }
-
-  // Idlers sit at the ends, lifted above the wheel-centre line.
-  const idlers = [
-    { x: hullCentreX + rg.frontIdlerXRatio * L, y: hubCentreY - idlerRise, radius: idlerRadius },
-    { x: hullCentreX + rg.rearIdlerXRatio * L, y: hubCentreY - idlerRise, radius: idlerRadius },
-  ]
-
-  // Matter recentres a body's vertices on their centroid and treats
-  // `body.position` as that centroid, so the whole running gear must live in
-  // that same centroid-relative frame.
-  const c = polygonCentroid(hullPhysics)
-  const rel = (p) => ({ x: p.x - c.x, y: p.y - c.y })
-  const relArr = (arr) => arr.map(rel)
-
-  const hull = relArr(hullPoints)
-  const physics = relArr(hullPhysics)
-  for (const w of wheels) { w.x -= c.x; w.y -= c.y }
-  for (const i of idlers) { i.x -= c.x; i.y -= c.y }
-
-  // The turret and camouflage are in the same frame as the hull, so they get the
-  // same transform. The turret's `roof` is its top edge.
-  const turretPoints = relArr(turret)
-  const turretRoof = Math.min(...turretPoints.map((p) => p.y))
-
-  // Barrel anchor and muzzle in the same local frame.
-  const anchor = rel(raw(SV.gunAnchor))
-  const noseX = Math.max(...hull.map((p) => p.x))
-  const gun = {
-    anchorX: anchor.x,
-    anchorY: anchor.y,
-    muzzleX: noseX + rg.barrelLengthRatio * L,
-    muzzleY: anchor.y,
-  }
-
-  // Camouflage fields, recentred like the hull.
-  const camoFields = camo.map((field) => ({ fill: field.fill, points: relArr(field.points) }))
-
-  return {
-    wheels,
-    idlers,
-    hullPoints: hull,
-    hullPhysics: physics,
-    turretPoints,
-    turretRoof,
-    camo: camoFields,
-    centroid: c,
-    deckY: -c.y, // deck line (svgHullMinY maps to y = 0 before recentring)
-    skirtY: skirtY - c.y,
-    wheelCentreY: hubCentreY - c.y,
-    pitchRadius: wheelRadius,
-    gun,
-  }
-}
-
-export const GEAR = buildRunningGear(RUNNING_GEAR)
-
-// Road wheels: mount position relative to the hull centre, and radius.
-export const WHEEL_MOUNTS = GEAR.wheels
-
-// Idler wheels ("top wheels"): fixed to the chassis (not sprung).
-export const IDLER_MOUNTS = GEAR.idlers
-
-// Chassis outline, in body-local coordinates (y points down, as in Matter).
-export const HULL_POINTS = GEAR.hullPhysics
-
-// The drawable hull outline (higher detail than the physics body).
-export const HULL_ART = GEAR.hullPoints
-
-// Track construction, wrapping whatever discs the running gear produces.
-export const TRACK = {
-  padLength: RUNNING_GEAR.trackPadLength,
-  clearance: RUNNING_GEAR.trackClearance,
-  scrollRate: 16, // track surface speed per px/frame of ground speed
-  minPads: RUNNING_GEAR.trackMinPads,
-}
-
 // -----------------------------------------------------------------------------
 // CONFIG  (chassis, engine, environment)
 // -----------------------------------------------------------------------------
 export const CONFIG = {
-  // World scale: the hull spans `hullPixelLength` px, which represents a
-  // ~9.8 m tracked vehicle (M1 hull length including sponsons). This turns
-  // simulation pixels into real-world metres for the HUD.
-  pixelsPerMetre: RUNNING_GEAR.hullPixelLength / 9.8,
-
   // ---------------------------------------------------------------------------
   // SUSPENSION  (how the wheels/springs hold the body up)
   // ---------------------------------------------------------------------------
@@ -225,12 +73,6 @@ export const CONFIG = {
   // Shock absorbers. Higher = tauter and heavier; too high and bumps stop
   // being absorbed at all.
   shockAbsorberDamping: 3,
-
-  // Suspension geometry, taken from the running gear so the mounts and the
-  // wheel centres always agree.
-  suspensionRestLength: RUNNING_GEAR.restLengthRatio * RUNNING_GEAR.hullPixelLength,
-  suspensionFullyCompressedLength: RUNNING_GEAR.fullyCompressedRatio * RUNNING_GEAR.hullPixelLength,
-  suspensionFullyExtendedLength: RUNNING_GEAR.fullyExtendedRatio * RUNNING_GEAR.hullPixelLength,
 
   // How fast a wheel may stretch back down toward the ground, in px per 60fps
   // frame. This rebound lag is what lets the tank leave the ground over bumps.
@@ -287,41 +129,15 @@ export const CONFIG = {
 }
 
 // -----------------------------------------------------------------------------
-// BODY GEOMETRY  (derived from the silhouette; drives the renderer's art)
+// RENDER TRANSFORM  (how the art is placed relative to the tank's physics pose)
 // -----------------------------------------------------------------------------
-const hullMinX = Math.min(...GEAR.hullPoints.map((p) => p.x))
-const hullMaxX = Math.max(...GEAR.hullPoints.map((p) => p.x))
-const hullMinY = Math.min(...GEAR.hullPoints.map((p) => p.y)) // deck line
-const hullMaxY = Math.max(...GEAR.hullPoints.map((p) => p.y)) // skirt line
-
-export const BODY = {
-  minX: hullMinX,
-  maxX: hullMaxX,
-  deckY: hullMinY,
-  skirtY: hullMaxY,
-  length: hullMaxX - hullMinX,
-  depth: hullMaxY - hullMinY,
-  wheelCentreY: GEAR.wheelCentreY,
-}
-
-// The turret outline (visual overlay on the hull), plus its top edge.
-export const TURRET = {
-  points: GEAR.turretPoints,
-  roof: GEAR.turretRoof,
-}
-
-// Rendering transform for the tank, expressed relative to the tank's "zero"
-// position: the physics pose of the hull (`view.pose`). Nothing here affects the
-// simulation, only how the art is placed.
-//
-//   tracks  - the belt, road wheels and idlers. They have no offset (their zero
-//             is their own pose), only a `scale` and a `rotation`. The tracks'
-//             rotation is the tank's baseline orientation: it is applied to the
-//             body too, so the body is oriented *relative to the tracks*.
-//   body    - the hull, turret and cannon. It has an XY `offset` (in the tank
-//             frame), its own `scale`, and a `rotation` added on top of the
-//             tracks'. It rotates about `pivotX/pivotY` (in body coordinates),
-//             which lets the offset art line up with the running gear.
+//   tracks  - the belt, road wheels and idlers. No offset (their zero is their
+//             own pose), only a `scale` and a `rotation`. The tracks' rotation is
+//             the tank's baseline orientation: it is applied to the body too, so
+//             the body is oriented *relative to the tracks*.
+//   body    - the hull, turret and cannon: an XY `offset`, its own `scale`, and a
+//             `rotation` added on top of the tracks'. It rotates about the rear
+//             of the hull (computed in transform.js).
 export const RENDER = {
   tracks: {
     scale: 1,
@@ -332,8 +148,6 @@ export const RENDER = {
     offsetY: 0,
     scale: 1.05,
     rotation: -0.025, // nose-up, relative to the tracks
-    pivotX: BODY.minX, // rotate about the rear of the hull, so the back stays put
-    pivotY: BODY.skirtY,
   },
 }
 
@@ -367,21 +181,9 @@ export const CAMERA = {
   framingSmoothing: 0.025,
 }
 
-// Where the barrel sits in body-local coords, for drawing and for spawning
-// shells. The gun axis leaves the turret at `anchorX/Y` and projects past the
-// nose to `muzzleX`.
-export const GUN = {
-  anchorX: GEAR.gun.anchorX,
-  anchorY: GEAR.gun.anchorY,
-  muzzleX: GEAR.gun.muzzleX,
-  muzzleY: GEAR.gun.muzzleY,
-  radius: RUNNING_GEAR.barrelRadiusRatio * RUNNING_GEAR.hullPixelLength,
-}
-
-// Camouflage fields painted over the hull, in the shared body-local frame.
-export const CAMO = GEAR.camo
-
-// Render palette.
+// -----------------------------------------------------------------------------
+// PALETTE
+// -----------------------------------------------------------------------------
 export const PALETTE = {
   grassTop: '#8f8155',
   grassDark: '#6b603c',
@@ -401,21 +203,16 @@ export const PALETTE = {
 }
 
 // -----------------------------------------------------------------------------
-// BACKGROUND  (procedurally generated mountain range)
+// BACKGROUND  (sunset sky and mountain ranges)
 // -----------------------------------------------------------------------------
-// A flat, vector-style sunset backdrop (see Background.js): one vertical sky
-// gradient, a low sun, and layered mountain silhouettes.
-//
 //   sky    - top-to-bottom gradient stops (deep dusk -> warm gold at the horizon)
-//   sun    - position/colour of the low sun and its glow. It sits near the ridge
-//            line so the nearer ranges partly overlap it.
+//   sun    - position/colour of the low sun and its glow
 //   layers - mountain ranges, far to near. `parallax` is how fast a range scrolls
 //            relative to the camera, `baseY` where its foot sits (fraction of
 //            canvas height), `amplitude` its height, `frequency` the horizontal
 //            scale of its peaks, and `seed` offsets it into a different patch of
 //            the noise field. Each is filled with a vertical `peak` (top) ->
-//            `base` (foot) gradient. Distant ranges are pale and scroll slowly;
-//            near ones are dark and scroll faster.
+//            `base` (foot) gradient.
 export const BACKGROUND = {
   octaves: 6,
   persistence: 0.55,

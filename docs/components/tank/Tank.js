@@ -1,4 +1,5 @@
-import { CONFIG, HULL_POINTS, WHEEL_MOUNTS, IDLER_MOUNTS, TRACK as TRACK_CONFIG, GUN } from './config.js'
+import { CONFIG } from './config.js'
+import { HULL_POINTS, WHEEL_MOUNTS, IDLER_MOUNTS, TRACK as TRACK_CONFIG, GUN, SUSPENSION } from './geometry.js'
 import { clamp, mix, mixAngle, toWorld } from './util.js'
 import { bodyMatrix, bodyDirection, apply } from './transform.js'
 import { SuspensionWheel } from './SuspensionWheel.js'
@@ -45,7 +46,7 @@ export class Tank {
     // Sit so every wheel rests at its natural length. The wheel centres are at
     // WHEEL_MOUNTS[i].y + restLength, derived from the running gear.
     const mount = WHEEL_MOUNTS[0]
-    const hullY = this.terrain.heightAt(x) - (mount.y + CONFIG.suspensionRestLength + mount.radius)
+    const hullY = this.terrain.heightAt(x) - (mount.y + SUSPENSION.restLength + mount.radius)
 
     this.hull = Bodies.fromVertices(x, hullY, [HULL_POINTS], {
       density: CONFIG.bodyDensity,
@@ -134,7 +135,7 @@ export class Tank {
   _enforceGround() {
     const pose = this._pose()
     const { Body } = this.Matter
-    const min = CONFIG.suspensionFullyCompressedLength
+    const min = SUSPENSION.fullyCompressedLength
 
     let push = 0
     for (const wheel of this.wheels) {

@@ -1,4 +1,5 @@
 import { CONFIG } from './config.js'
+import { SUSPENSION } from './geometry.js'
 import { clamp, mix, toWorld } from './util.js'
 
 // Matter integrates velocity as v += (F/m) * dt^2. A damper proportional to
@@ -20,7 +21,7 @@ export class SuspensionWheel {
     this.radius = mount.radius
 
     // Suspension state.
-    this.currentLength = CONFIG.suspensionRestLength
+    this.currentLength = SUSPENSION.restLength
     this.compression = 0
     this.contact = false
     this.contactX = 0
@@ -68,8 +69,8 @@ export class SuspensionWheel {
   // leave the ground over a sudden drop.
   advance(pose, groundY, maxExtensionThisStep) {
     const target = this.groundContactLength(pose, groundY)
-    const min = CONFIG.suspensionFullyCompressedLength
-    const max = CONFIG.suspensionFullyExtendedLength
+    const min = SUSPENSION.fullyCompressedLength
+    const max = SUSPENSION.fullyExtendedLength
 
     let contact = false
     if (target < min) {
@@ -96,7 +97,7 @@ export class SuspensionWheel {
   // has risen into compress instantly, so it never renders below the terrain.
   settle(pose, groundY) {
     const target = this.groundContactLength(pose, groundY)
-    const min = CONFIG.suspensionFullyCompressedLength
+    const min = SUSPENSION.fullyCompressedLength
     if (target < this.currentLength) {
       this.currentLength = Math.max(min, target)
       this._recordContact(pose, true)
@@ -106,8 +107,8 @@ export class SuspensionWheel {
   }
 
   _recordContact(pose, contact) {
-    const max = CONFIG.suspensionRestLength - CONFIG.suspensionFullyCompressedLength
-    this.compression = clamp((CONFIG.suspensionRestLength - this.currentLength) / max, 0, 1)
+    const max = SUSPENSION.restLength - SUSPENSION.fullyCompressedLength
+    this.compression = clamp((SUSPENSION.restLength - this.currentLength) / max, 0, 1)
     this.contact = contact
     const mount = this.mountPoint(pose)
     this.contactX = mount.x
@@ -125,8 +126,8 @@ export class SuspensionWheel {
   // mass split across the wheels), which keeps the explicit integrator stable
   // at any damping strength.
   suspensionForce(staticLoad, vDown, massPerWheel) {
-    const travel = CONFIG.suspensionRestLength - CONFIG.suspensionFullyCompressedLength
-    const u = clamp((CONFIG.suspensionRestLength - this.currentLength) / travel, 0, 1.6)
+    const travel = SUSPENSION.restLength - SUSPENSION.fullyCompressedLength
+    const u = clamp((SUSPENSION.restLength - this.currentLength) / travel, 0, 1.6)
     const spring = staticLoad * (CONFIG.springLinearStiffness * u + CONFIG.springProgressiveStiffness * u * u * u)
     const wanted = CONFIG.shockAbsorberDamping * vDown
     const maxDamper = (massPerWheel * Math.abs(vDown)) / DT2

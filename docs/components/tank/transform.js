@@ -1,4 +1,5 @@
 import { RENDER } from './config.js'
+import { BODY } from './geometry.js'
 
 // 2D affine transforms, in the same [a, b, c, d, e, f] form canvas uses:
 //   x' = a*x + c*y + e
@@ -53,7 +54,10 @@ export function tracksMatrix(pose) {
 // then an XY offset, a rotation about `pivot` and a scale about that pivot.
 // Rotating about the rear pivot keeps the back of the hull where it lands.
 export function bodyMatrix(pose) {
-  const { offsetX, offsetY, scale: s, rotation, pivotX, pivotY } = RENDER.body
+  const { offsetX, offsetY, scale: s, rotation } = RENDER.body
+  // Rotate about the rear of the hull, so the back of the body stays put.
+  const pivotX = BODY.minX
+  const pivotY = BODY.skirtY
   return chain(
     tankZero(pose),
     rotate(RENDER.tracks.rotation),

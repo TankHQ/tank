@@ -1,4 +1,5 @@
-import { PALETTE, HULL_ART, BODY, TURRET, GUN, CAMO, BACKGROUND } from './config.js'
+import { PALETTE, BACKGROUND } from './config.js'
+import { HULL_ART, BODY, TURRET, GUN, CAMO } from './geometry.js'
 import { TAU, clamp, mix } from './util.js'
 import { Background } from './Background.js'
 import { tracksMatrix, bodyMatrix } from './transform.js'

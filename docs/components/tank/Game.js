@@ -1,4 +1,5 @@
-import { CONFIG, CAMERA, BODY } from './config.js'
+import { CONFIG, CAMERA } from './config.js'
+import { BODY, PIXELS_PER_METRE } from './geometry.js'
 import { Terrain } from './Terrain.js'
 import { Tank } from './Tank.js'
 import { Camera } from './Camera.js'
@@ -198,9 +199,9 @@ export class Game {
       this._onHud({
         // px/frame -> m/s -> km/h, and px -> m, using the world scale.
         speed: hull
-          ? Math.round(Math.abs(hull.velocity.x) * 60 / CONFIG.pixelsPerMetre * 3.6)
+          ? Math.round(Math.abs(hull.velocity.x) * 60 / PIXELS_PER_METRE * 3.6)
           : 0,
-        distance: Math.round(this._dist / CONFIG.pixelsPerMetre),
+        distance: Math.round(this._dist / PIXELS_PER_METRE),
         throttle: this.input.w ? 1 : this.input.s ? -1 : 0,
         airtime: this._airtime,
         fps: this.fps,
