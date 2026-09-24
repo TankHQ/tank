@@ -32,7 +32,12 @@ export class Track {
   // Resample the hull at a fixed arc spacing to get evenly spaced pads, and
   // work out which way the loop flows (so scrolling pushes the right way).
   // `discs` is a list of { x, y, r } in world space.
-  buildLoop(discs) {
+  //
+  // `groundY` (optional) is the terrain heightfield. Where the belt's bottom run
+  // would dip below the terrain — a bump rising between two road wheels — the
+  // pads are pushed up onto the surface, so the track rides over bumps instead
+  // of clipping through them.
+  buildLoop(discs, groundY) {
     const hull = this._outline(discs)
     if (!hull || hull.length < 4) return null
 
@@ -61,7 +66,14 @@ export class Track {
       const t = (target - cumulative[seg]) / segLength
       const a = hull[seg]
       const b = hull[(seg + 1) % n]
-      loop.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })
+      const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
+      // Keep the belt out of the ground: y points down, so a pad below the
+      // surface (larger y) is lifted up to meet it.
+      if (groundY) {
+        const surface = groundY(p.x)
+        if (p.y > surface) p.y = surface
+      }
+      loop.push(p)
     }
 
     // Lowest point on the loop: the tangent there tells us the flow direction,

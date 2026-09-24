@@ -1,4 +1,4 @@
-import { PALETTE, HULL_ART, BODY, TURRET, GUN, CAMO } from './config.js'
+import { PALETTE, HULL_ART, BODY, TURRET, GUN, CAMO, BODY_TILT } from './config.js'
 import { TAU, clamp, mix } from './util.js'
 
 // The drawable hull and turret outlines, straight from the reference SVG.
@@ -13,6 +13,15 @@ const BARREL_R = GUN.radius
 
 // Small helpers for drawing in the body-local frame (y points down).
 const toPoints = (pts) => pts.map((p) => ({ x: p.x, y: p.y }))
+
+// Rotate the body-local frame slightly nose-up about the rear of the hull. This
+// is applied identically to the hull, turret and cannon so they move as one, and
+// it only affects what is drawn — never the physics.
+function applyBodyTilt(ctx) {
+  ctx.translate(BODY_TILT.pivotX, BODY_TILT.pivotY)
+  ctx.rotate(BODY_TILT.angle)
+  ctx.translate(-BODY_TILT.pivotX, -BODY_TILT.pivotY)
+}
 
 // Draw a filled + stroked polygon from an array of [x, y] pairs.
 function path(ctx, pts) {
@@ -178,6 +187,7 @@ export class Renderer {
     ctx.save()
     ctx.translate(pose.x, pose.y)
     ctx.rotate(pose.angle)
+    applyBodyTilt(ctx)
     if (this.images.body) {
       ctx.drawImage(this.images.body, BODY.minX, BODY.deckY, BODY.length, BODY.depth)
       ctx.restore()
@@ -191,6 +201,7 @@ export class Renderer {
     ctx.save()
     ctx.translate(pose.x, pose.y)
     ctx.rotate(pose.angle)
+    applyBodyTilt(ctx)
     const L = BODY.length
     if (this.images.turret) {
       ctx.drawImage(this.images.turret, BODY.minX + L * 0.06, TURRET_ROOF, L * 0.6, BODY.deckY - TURRET_ROOF)
@@ -332,7 +343,7 @@ export class Renderer {
       ctx.translate(p.x, p.y)
       ctx.rotate(angle)
       const L = spacing * 1.28
-      const T = 6.4
+      const T = spacing * 0.75
       ctx.beginPath()
       ctx.roundRect(-L / 2, -T / 2, L, T, 2)
       const g = ctx.createLinearGradient(0, -T / 2, 0, T / 2)
@@ -345,11 +356,11 @@ export class Renderer {
       ctx.lineWidth = 0.7
       ctx.stroke()
       ctx.beginPath()
-      ctx.arc(L / 2 - 1.4, 0, 1.5, 0, TAU)
+      ctx.arc(L / 2 - T * 0.22, 0, T * 0.23, 0, TAU)
       ctx.fillStyle = '#0d0c0b'
       ctx.fill()
       ctx.beginPath()
-      ctx.arc(-L / 2 + 1.4, 0, 1.5, 0, TAU)
+      ctx.arc(-L / 2 + T * 0.22, 0, T * 0.23, 0, TAU)
       ctx.fillStyle = '#0d0c0b'
       ctx.fill()
       ctx.restore()
@@ -398,7 +409,7 @@ export class Renderer {
       ctx.save()
       ctx.globalAlpha = 0.22
       ctx.beginPath()
-      ctx.ellipse(view.pose.x, groundY(view.pose.x) + 4, 104, 12, 0, 0, TAU)
+      ctx.ellipse(view.pose.x, groundY(view.pose.x) + 4, BODY.length * 0.186, BODY.length * 0.021, 0, 0, TAU)
       ctx.fillStyle = '#000'
       ctx.fill()
       ctx.restore()

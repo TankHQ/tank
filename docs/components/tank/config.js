@@ -24,8 +24,10 @@ import { SVG_MM } from './silhouette.js'
 //   idlers      : one at each end, offset `frontIdlerX` / `rearIdlerX` from the
 //                 hull centre and lifted `idlerRise` above the wheel centres
 export const RUNNING_GEAR = {
-  // The hull's on-screen length. This is the scale anchor for the whole tank.
-  hullPixelLength: 560,
+  // The hull's on-screen length. This is the scale anchor for the whole tank,
+  // and every ratio below is relative to it, so changing this one number
+  // resizes the entire vehicle proportionally.
+  hullPixelLength: 448,
 
   // --- ratios of hullPixelLength (from the reference) ---
   wheelCount: 7,
@@ -44,8 +46,8 @@ export const RUNNING_GEAR = {
   fullyExtendedRatio: 0.1,
 
   // Track belt.
-  trackClearance: 4.5, // how far the belt sits outside the wheels
-  trackPadLength: 8.5, // target arc spacing between track pads
+  trackClearance: 3.6, // how far the belt sits outside the wheels
+  trackPadLength: 6.8, // target arc spacing between track pads
   trackMinPads: 24,
 
   // Cannon, measured from the turret's gun anchor (see silhouette.js) and the
@@ -258,6 +260,11 @@ export const CONFIG = {
   reverseForce: 0.35, // reverse push
   maximumSpeed: 40, // top speed in px/frame (~89 km/h)
 
+  // Speed at which the camera reaches its full forward/reverse framing. This is
+  // the tank's real cruise speed, which is well below `maximumSpeed`, so the
+  // framing shift is fully expressed in normal driving.
+  cameraCruiseSpeed: 18,
+
   // Grip: a wheel transmits at most `gripLimit * weight on that wheel` before
   // the track slips.
   driveGripLimit: 2.4,
@@ -293,6 +300,17 @@ export const BODY = {
 export const TURRET = {
   points: GEAR.turretPoints,
   roof: GEAR.turretRoof,
+}
+
+// A small visual nose-up tilt of the whole body (hull, turret and cannon). The
+// reference silhouette leaves the front idler and the top of the track peeking
+// past the glacis, so the body is pivoted counter-clockwise about its rear. The
+// rear stays exactly where it is, while the front edge rises to cover them. It
+// is purely cosmetic: the physics body and the wheels are unaffected.
+export const BODY_TILT = {
+  angle: -0.025, // radians (negative = nose up, as the canvas y axis points down)
+  pivotX: BODY.minX, // rear of the hull
+  pivotY: BODY.skirtY,
 }
 
 // Where the barrel sits in body-local coords, for drawing and for spawning

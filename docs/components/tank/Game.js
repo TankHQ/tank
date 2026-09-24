@@ -1,4 +1,4 @@
-import { CONFIG } from './config.js'
+import { CONFIG, BODY } from './config.js'
 import { Terrain } from './Terrain.js'
 import { Tank } from './Tank.js'
 import { Camera } from './Camera.js'
@@ -126,7 +126,11 @@ export class Game {
     const alpha = this._accumulator / FIXED_STEP_MS
     const view = this.tank.view(alpha)
     if (view) view.trackPhase = this.tank.scrollTrack(view.belt, dt)
-    this.camera.follow(view ? view.pose : null, this.renderer.width, this.renderer.height)
+    // Normalised speed biases the camera framing: forward pulls the tank left to
+    // reveal the road ahead, reverse pushes it right.
+    const hull = this.tank.hull
+    const speed01 = hull ? hull.velocity.x / CONFIG.cameraCruiseSpeed : 0
+    this.camera.follow(view ? view.pose : null, this.renderer.width, this.renderer.height, speed01)
     this.renderer.render({
       camera: this.camera,
       view,
@@ -162,9 +166,11 @@ export class Game {
           const exhaust = { x: hull.position.x, y: hull.position.y }
           const cos = Math.cos(hull.angle)
           const sin = Math.sin(hull.angle)
+          // Exhaust leaves the rear of the hull, so scale it with the body.
+          const rear = BODY.length * 0.2
           this.particles.exhaust(
-            exhaust.x + cos * -112,
-            exhaust.y + sin * -112 - 28,
+            exhaust.x + cos * -rear,
+            exhaust.y + sin * -rear - BODY.depth * 0.42,
             hull.velocity.x,
           )
         }
