@@ -63,33 +63,6 @@ export class Renderer {
     this.canvas.style.height = this.height + 'px'
   }
 
-  // --- background -----------------------------------------------------------
-
-  _drawSky(ctx) {
-    const { width: W, height: H } = this
-    const g = ctx.createLinearGradient(0, 0, 0, H)
-    g.addColorStop(0, PALETTE.sky[0])
-    g.addColorStop(0.42, PALETTE.sky[1])
-    g.addColorStop(0.74, PALETTE.sky[2])
-    g.addColorStop(1, PALETTE.sky[3])
-    ctx.fillStyle = g
-    ctx.fillRect(0, 0, W, H)
-
-    const sunX = W * 0.74
-    const sunY = H * 0.3
-    const sg = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 260)
-    sg.addColorStop(0, 'rgba(255,220,160,0.95)')
-    sg.addColorStop(0.35, 'rgba(255,190,120,0.35)')
-    sg.addColorStop(1, 'rgba(255,190,120,0)')
-    ctx.fillStyle = sg
-    ctx.fillRect(0, 0, W, H)
-
-    ctx.beginPath()
-    ctx.arc(sunX, sunY, 46, 0, TAU)
-    ctx.fillStyle = PALETTE.sun
-    ctx.fill()
-  }
-
   // --- world ----------------------------------------------------------------
 
   _drawTerrain(ctx, groundY, cameraX, cameraY) {
@@ -369,7 +342,6 @@ export class Renderer {
     const { width: W, height: H } = this
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
 
-    this._drawSky(ctx)
     this.background.draw(ctx, camera.x, W, H)
 
     const shake = camera.shakeOffset()

@@ -370,8 +370,6 @@ export const CAMO = GEAR.camo
 
 // Render palette.
 export const PALETTE = {
-  sky: ['#1d2b40', '#3d4f68', '#9a6b46', '#e8b878'],
-  sun: '#ffd9a0',
   grassTop: '#8f8155',
   grassDark: '#6b603c',
   soil: '#4a4029',
@@ -392,32 +390,39 @@ export const PALETTE = {
 // -----------------------------------------------------------------------------
 // BACKGROUND  (procedurally generated mountain range)
 // -----------------------------------------------------------------------------
-// A layered ridged-noise backdrop (see Background.js) with a sharp, faceted
-// look. Each layer is one range at a different depth: `parallax` is how fast it
-// scrolls relative to the camera, `amplitude` its height as a fraction of the
-// canvas, `frequency` the horizontal scale of its peaks, and `seed` offsets it
-// into a different patch of the noise field. Colours run peak (pale, hazy) ->
-// body -> base (dark).
+// A flat, vector-style sunset backdrop (see Background.js): one vertical sky
+// gradient, a low sun, and a few layered mountain silhouettes.
+//
+//   sky    - top-to-bottom gradient stops (deep dusk -> warm gold at the horizon)
+//   sun    - low sun position/colour and its glow
+//   layers - mountain ranges, far to near. `parallax` is how fast a range scrolls
+//            relative to the camera, `baseY` where its foot sits (fraction of
+//            canvas height), `amplitude` its height, `frequency` the horizontal
+//            scale of its peaks, and `seed` offsets it into a different patch of
+//            the noise field. Each is filled with a flat `top` -> `bottom`
+//            gradient, so a distant range is pale and a near one is dark.
 export const BACKGROUND = {
-  horizon: 0.72, // fraction of canvas height where the range meets the ground
   octaves: 6,
   persistence: 0.55,
   lacunarity: 2.4,
-  sharpness: 2.1, // >1 narrows the peaks, <1 rounds them
-  pixelSize: 3, // offscreen pixelation factor (1 = smooth)
+  sharpness: 2.0, // >1 narrows the peaks, <1 rounds them
+  step: 8, // horizontal sampling resolution in px
 
-  // Facets: the height line is sampled every `facetStep` px and each segment is
-  // shaded by its slope. Larger facetStep = fewer, bigger, chunkier facets;
-  // larger facetContrast = harder split between lit and shadowed faces.
-  facetStep: 20,
-  lightDir: -0.5, // which way the light leans; slopes toward it are lit
-  facetContrast: 0.5, // strength of the per-face light/shade
+  sky: ['#241c1a', '#4a3220', '#8a4f22', '#c07a2e', '#e6a94e', '#f7d488'],
+
+  sun: {
+    x: 0.62, // fraction of canvas width
+    y: 0.66, // fraction of canvas height
+    radius: 0.1, // fraction of canvas height
+    color: '#fff2cf',
+    glow: 'rgba(255,196,110,0.55)',
+  },
 
   layers: [
-    // Farthest: high, pale, slow, hazy with distance.
-    { parallax: 0.07, amplitude: 0.5, frequency: 0.0013, seed: 0, peak: '#c6b298', color: '#a5917a', base: '#877661' },
-    { parallax: 0.15, amplitude: 0.42, frequency: 0.002, seed: 121, peak: '#8f7d5f', color: '#726349', base: '#574d3b' },
-    // Nearest: lower, darker, faster.
-    { parallax: 0.3, amplitude: 0.34, frequency: 0.0029, seed: 257, peak: '#685a43', color: '#514838', base: '#3d372b' },
+    // Farthest: high, pale, hazy, slow.
+    { parallax: 0.05, baseY: 0.72, amplitude: 0.42, frequency: 0.0011, seed: 0, top: '#d9a15c', bottom: '#a9743a' },
+    { parallax: 0.12, baseY: 0.78, amplitude: 0.38, frequency: 0.0018, seed: 137, top: '#8a5c33', bottom: '#5a3a20' },
+    // Nearest: low, dark, fast.
+    { parallax: 0.28, baseY: 0.86, amplitude: 0.34, frequency: 0.0026, seed: 271, top: '#45301d', bottom: '#241813' },
   ],
 }
