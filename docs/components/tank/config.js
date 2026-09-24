@@ -331,9 +331,6 @@ export const CAMO = GEAR.camo
 export const PALETTE = {
   sky: ['#1d2b40', '#3d4f68', '#9a6b46', '#e8b878'],
   sun: '#ffd9a0',
-  farHill: '#4c5566',
-  midHill: '#3f4a3f',
-  nearHill: '#333a2f',
   grassTop: '#8f8155',
   grassDark: '#6b603c',
   soil: '#4a4029',
