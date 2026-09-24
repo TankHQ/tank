@@ -356,14 +356,32 @@ export const PALETTE = {
 // camera, `amplitude` its height as a fraction of the canvas, `frequency` the
 // horizontal scale of its peaks, and `seed` offsets it into a different patch
 // of the noise field. Colours run peak (pale, hazy) -> body -> base (dark).
+//
+// `style` picks how the shared height field is rasterised into pixels:
+//   'smooth'  - dense sampling, filled with a haze gradient (soft ridged rock)
+//   'lowpoly' - coarse sampling, one shaded facet per segment (sharp stylised)
+//   'outline' - flat fill plus a bold ridge line (stylised line-art peaks)
 export const BACKGROUND = {
+  style: 'smooth',
+
   horizon: 0.72, // fraction of canvas height where the range meets the ground
   octaves: 6,
   persistence: 0.55,
   lacunarity: 2.4,
   sharpness: 2.1, // >1 narrows the peaks, <1 rounds them
-  step: 5, // horizontal sampling resolution in px
+  step: 5, // horizontal sampling resolution in px ('smooth' / 'outline')
   pixelSize: 3, // offscreen pixelation factor (1 = smooth)
+
+  // 'lowpoly' only.
+  facetStep: 26, // segment width in px; larger = fewer, bigger facets
+  lightDir: -0.5, // which way the light leans; slopes toward it are lit
+  facetContrast: 0.28, // strength of the per-face light/shade
+
+  // 'outline' only.
+  outlineWidth: 2.2,
+  outlineColor: 'rgba(58,42,24,0.9)', // bold ridge crease
+  outlineColor2: 'rgba(58,42,24,0.4)', // fainter contour below it
+
   layers: [
     // Farthest: high, pale, slow, hazy with distance.
     { parallax: 0.07, amplitude: 0.5, frequency: 0.0013, seed: 0, peak: '#c6b298', color: '#a5917a', base: '#877661' },
