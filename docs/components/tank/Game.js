@@ -127,10 +127,11 @@ export class Game {
     const view = this.tank.view(alpha)
     if (view) view.trackPhase = this.tank.scrollTrack(view.belt, dt)
     // Normalised speed biases the camera framing: forward pulls the tank left to
-    // reveal the road ahead, reverse pushes it right.
+    // reveal the road ahead, reverse pushes it right. The frame's wall-clock dt
+    // keeps the camera smoothing framerate-independent.
     const hull = this.tank.hull
     const speed01 = hull ? hull.velocity.x / CAMERA.cruiseSpeed : 0
-    this.camera.follow(view ? view.pose : null, this.renderer.width, this.renderer.height, speed01)
+    this.camera.follow(view ? view.pose : null, this.renderer.width, this.renderer.height, speed01, dt)
     this.renderer.render({
       camera: this.camera,
       view,
