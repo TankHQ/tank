@@ -1,15 +1,14 @@
 import { valueNoise } from './util.js'
 
-// A flat, vector-style sunset backdrop: a unified vertical sky gradient, a low
-// sun, and a few layered mountain silhouettes.
+// A flat, vector-style sunset backdrop: a vertical sky gradient, a low sun, and
+// a few layered mountain silhouettes.
 //
-// It is deliberately cheap and stable:
-//   * the sky is a single vertical gradient;
-//   * each mountain range is a flat silhouette filled with one vertical
-//     gradient, so there are only a handful of gradients per frame (no per-face
-//     shading, no offscreen buffer, no pixelation);
-//   * silhouettes are continuous functions of world x, so they translate
-//     smoothly with the camera instead of being resampled onto a shifting grid.
+// The ranges scroll by rigid translation, not re-sampling. Each range's ridge is
+// sampled on a grid pinned to *world* coordinates (`i * step`); as the camera
+// moves, every vertex shifts to the left by exactly the same amount, so the
+// profile keeps its shape and new vertices simply enter at the edge. (Sampling at
+// fixed screen positions instead would make each vertex slide through the noise
+// field and the silhouette would visibly morph — a sawtooth with moving teeth.)
 //
 // A range is a 1-D height field from seeded value noise. Two tricks turn noise
 // into mountains (see `_ridge`): fractal Brownian motion for the overall mass
@@ -65,28 +64,36 @@ export class Background {
     ctx.fill()
   }
 
-  // One range: a ridge line sampled across the screen, closed down to the
-  // bottom and filled with a flat vertical gradient (top tone -> base tone).
+  // One range: a ridge line sampled on a world-aligned grid, closed down to the
+  // bottom and filled with a vertical gradient (darker at the peak, lighter at
+  // the foot).
   _drawLayer(ctx, W, H, cameraX, layer) {
     const step = this.cfg.step
+    const camWorld = cameraX * layer.parallax
+    const screenX = (worldX) => worldX - camWorld
+    // Vertices sit at fixed world positions, so the profile only translates.
+    const i0 = Math.floor(camWorld / step) - 1
+    const i1 = Math.ceil((camWorld + W) / step) + 1
+
     const baseY = layer.baseY * H
     const amp = layer.amplitude * H
     const sharp = this.cfg.sharpness
 
     ctx.beginPath()
-    ctx.moveTo(-step, baseY)
-    for (let sx = -step; sx <= W + step; sx += step) {
-      const wx = cameraX * layer.parallax + sx
-      const y = baseY - amp * Math.pow(this._ridge(wx, layer), sharp)
-      ctx.lineTo(sx, y)
+    ctx.moveTo(screenX(i0 * step), H + 4)
+    for (let i = i0; i <= i1; i++) {
+      const worldX = i * step
+      const y = baseY - amp * Math.pow(this._ridge(worldX, layer), sharp)
+      ctx.lineTo(screenX(worldX), y)
     }
-    ctx.lineTo(W + step, H + 4)
-    ctx.lineTo(-step, H + 4)
+    ctx.lineTo(screenX(i1 * step), H + 4)
     ctx.closePath()
 
-    const g = ctx.createLinearGradient(0, baseY - amp, 0, H)
-    g.addColorStop(0, layer.top)
-    g.addColorStop(1, layer.bottom)
+    // Gradient spans the visible band (peak -> foot), so the light foot tone is
+    // not wasted below the ground line.
+    const g = ctx.createLinearGradient(0, baseY - amp, 0, baseY)
+    g.addColorStop(0, layer.peak)
+    g.addColorStop(1, layer.base)
     ctx.fillStyle = g
     ctx.fill()
   }

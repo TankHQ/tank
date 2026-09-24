@@ -391,16 +391,18 @@ export const PALETTE = {
 // BACKGROUND  (procedurally generated mountain range)
 // -----------------------------------------------------------------------------
 // A flat, vector-style sunset backdrop (see Background.js): one vertical sky
-// gradient, a low sun, and a few layered mountain silhouettes.
+// gradient, a low sun, and layered mountain silhouettes.
 //
 //   sky    - top-to-bottom gradient stops (deep dusk -> warm gold at the horizon)
-//   sun    - low sun position/colour and its glow
+//   sun    - position/colour of the low sun and its glow. It sits near the ridge
+//            line so the nearer ranges partly overlap it.
 //   layers - mountain ranges, far to near. `parallax` is how fast a range scrolls
 //            relative to the camera, `baseY` where its foot sits (fraction of
 //            canvas height), `amplitude` its height, `frequency` the horizontal
 //            scale of its peaks, and `seed` offsets it into a different patch of
-//            the noise field. Each is filled with a flat `top` -> `bottom`
-//            gradient, so a distant range is pale and a near one is dark.
+//            the noise field. Each is filled with a vertical `peak` (top) ->
+//            `base` (foot) gradient. Distant ranges are pale and scroll slowly;
+//            near ones are dark and scroll faster.
 export const BACKGROUND = {
   octaves: 6,
   persistence: 0.55,
@@ -411,18 +413,19 @@ export const BACKGROUND = {
   sky: ['#241c1a', '#4a3220', '#8a4f22', '#c07a2e', '#e6a94e', '#f7d488'],
 
   sun: {
-    x: 0.62, // fraction of canvas width
-    y: 0.66, // fraction of canvas height
-    radius: 0.1, // fraction of canvas height
+    x: 0.64, // fraction of canvas width
+    y: 0.6, // fraction of canvas height (sits near the ridge, partly hidden)
+    radius: 0.095, // fraction of canvas height
     color: '#fff2cf',
     glow: 'rgba(255,196,110,0.55)',
   },
 
   layers: [
-    // Farthest: high, pale, hazy, slow.
-    { parallax: 0.05, baseY: 0.72, amplitude: 0.42, frequency: 0.0011, seed: 0, top: '#d9a15c', bottom: '#a9743a' },
-    { parallax: 0.12, baseY: 0.78, amplitude: 0.38, frequency: 0.0018, seed: 137, top: '#8a5c33', bottom: '#5a3a20' },
-    // Nearest: low, dark, fast.
-    { parallax: 0.28, baseY: 0.86, amplitude: 0.34, frequency: 0.0026, seed: 271, top: '#45301d', bottom: '#241813' },
+    // Farthest: tall and high, pale, slow. Foot higher on screen (smaller baseY).
+    { parallax: 0.05, baseY: 0.74, amplitude: 0.5, frequency: 0.0011, seed: 0, peak: '#c9a15f', base: '#ecd3a0' },
+    // Middle: intermediate height, mid tone.
+    { parallax: 0.13, baseY: 0.82, amplitude: 0.44, frequency: 0.0018, seed: 137, peak: '#8a6234', base: '#c39a5e' },
+    // Nearest: lower, darkest, fastest.
+    { parallax: 0.3, baseY: 0.9, amplitude: 0.38, frequency: 0.0026, seed: 271, peak: '#3a2718', base: '#6b4a2c' },
   ],
 }
