@@ -350,3 +350,29 @@ export const PALETTE = {
   wheelRim: '#b39a70',
   wheelHub: '#b2422e',
 }
+
+// -----------------------------------------------------------------------------
+// BACKGROUND  (procedurally generated mountain range)
+// -----------------------------------------------------------------------------
+// A layered ridged-noise backdrop (see Background.js). Each layer is one range
+// at a different depth: `parallax` is how fast it scrolls relative to the
+// camera, `amplitude` its height as a fraction of the canvas, `frequency` the
+// horizontal scale of its peaks, and `seed` offsets it into a different patch
+// of the noise field. Colours run peak (pale, hazy) -> body -> base (dark).
+export const BACKGROUND = {
+  horizon: 0.72, // fraction of canvas height where the range meets the ground
+  octaves: 6,
+  persistence: 0.55,
+  lacunarity: 2.4,
+  sharpness: 2.1, // >1 narrows the peaks, <1 rounds them
+  step: 5, // horizontal sampling resolution in px
+  pixelSize: 3, // offscreen pixelation factor (1 = smooth)
+  layers: [
+    // Farthest: high, pale, slow, hazy with distance.
+    { parallax: 0.07, amplitude: 0.5, frequency: 0.0013, seed: 0, peak: '#c6b298', color: '#a5917a', base: '#877661' },
+    { parallax: 0.15, amplitude: 0.42, frequency: 0.002, seed: 121, peak: '#8f7d5f', color: '#726349', base: '#574d3b' },
+    // Nearest: lower, darker, faster.
+    { parallax: 0.3, amplitude: 0.34, frequency: 0.0029, seed: 257, peak: '#685a43', color: '#514838', base: '#3d372b' },
+  ],
+}
+

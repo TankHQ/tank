@@ -1,5 +1,6 @@
-import { PALETTE, HULL_ART, BODY, TURRET, GUN, CAMO, BODY_TILT } from './config.js'
+import { PALETTE, HULL_ART, BODY, TURRET, GUN, CAMO, BODY_TILT, BACKGROUND } from './config.js'
 import { TAU, clamp, mix } from './util.js'
+import { Background } from './Background.js'
 
 // The drawable hull and turret outlines, straight from the reference SVG.
 const HULL_POINTS = HULL_ART
@@ -50,6 +51,7 @@ export class Renderer {
     this._loadImage('body', 'game/body.png')
     this._loadImage('wheel', 'game/wheel.png')
     this._loadImage('turret', 'game/turret.png')
+    this.background = new Background(BACKGROUND)
   }
 
   _loadImage(key, path) {
@@ -93,21 +95,6 @@ export class Renderer {
     ctx.beginPath()
     ctx.arc(sunX, sunY, 46, 0, TAU)
     ctx.fillStyle = PALETTE.sun
-    ctx.fill()
-  }
-
-  _drawHills(ctx, cameraX, parallax, amplitude, baseY, color, frequency) {
-    const { width: W, height: H } = this
-    ctx.beginPath()
-    ctx.moveTo(0, H)
-    for (let x = 0; x <= W; x += 14) {
-      const wx = cameraX * parallax + x
-      const y = baseY + Math.sin(wx * frequency) * amplitude + Math.sin(wx * frequency * 2.3 + 1.1) * amplitude * 0.4
-      ctx.lineTo(x, y)
-    }
-    ctx.lineTo(W, H)
-    ctx.closePath()
-    ctx.fillStyle = color
     ctx.fill()
   }
 
@@ -395,9 +382,7 @@ export class Renderer {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
 
     this._drawSky(ctx)
-    this._drawHills(ctx, camera.x, 0.12, 30, H * 0.58, PALETTE.farHill, 0.0018)
-    this._drawHills(ctx, camera.x, 0.28, 26, H * 0.68, PALETTE.midHill, 0.0026)
-    this._drawHills(ctx, camera.x, 0.5, 20, H * 0.78, PALETTE.nearHill, 0.0034)
+    this.background.draw(ctx, camera.x, W, H)
 
     const shake = camera.shakeOffset()
     ctx.save()
