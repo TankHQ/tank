@@ -31,6 +31,7 @@ tank-tests = { path = "../tank-tests", features = [
     "disable-joins",
     "disable-multiple-statements",
     "disable-ordering",
+    "disable-prepared",
     "disable-references",
 ] }
 testcontainers-modules = { version = "0", features = ["valkey", "redis"] }

@@ -932,7 +932,12 @@ impl_as_value!(
     },
     Value::Interval(Some(v), ..) => {
         let (h, m, s, ns) = v.as_hmsns();
-        time::Time::from_hms_nano(h as _, m, s, ns,)
+        if h < 0 || m < 0 || s < 0 || ns < 0 {
+            return Err(anyhow!(
+                "Cannot convert negative interval `{v:?}` to `time::Time`"
+            ));
+        }
+        time::Time::from_hms_nano(h as _, m as _, s as _, ns as _)
             .map_err(|e| anyhow!("Cannot convert interval `{v:?}` to time: {e:?}"))
     },
     Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),

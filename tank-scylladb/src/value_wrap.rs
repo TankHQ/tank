@@ -10,7 +10,9 @@ use scylla::{
         value::SerializeValue,
         writers::{CellWriter, WrittenCellProof},
     },
-    value::{CqlDecimal, CqlDecimalBorrowed, CqlDuration, CqlTimestamp, CqlVarintBorrowed},
+    value::{
+        CqlDecimal, CqlDecimalBorrowed, CqlDuration, CqlTimestamp, CqlVarint, CqlVarintBorrowed,
+    },
 };
 use std::{
     borrow::Cow,
@@ -96,20 +98,111 @@ impl SerializeValue for ValueWrap {
                     .serialize(ty, writer)
                 }
                 NativeType::Double => do_serialize::<f64>(value, ty, writer),
-                NativeType::Duration => todo!(),
+                NativeType::Duration => {
+                    if self.0.is_null() {
+                        return Ok(writer.set_null());
+                    }
+                    let interval = Interval::try_from_value(value).map_err(|e| {
+                        SerializationError::new(Error::new(ErrorKind::InvalidData, format!("{e}")))
+                    })?;
+                    if interval.months != 0 {
+                        return Err(SerializationError::new(Error::new(
+                            ErrorKind::InvalidData,
+                            "CQL duration cannot represent months",
+                        )));
+                    }
+                    CqlDuration {
+                        months: 0,
+                        days: interval.days as i32,
+                        nanoseconds: interval.nanos as i64,
+                    }
+                    .serialize(ty, writer)
+                }
                 NativeType::Float => do_serialize::<f32>(value, ty, writer),
                 NativeType::Int => do_serialize::<i32>(value, ty, writer),
                 NativeType::BigInt => do_serialize::<i64>(value, ty, writer),
                 NativeType::Text => do_serialize::<String>(value, ty, writer),
-                NativeType::Timestamp => todo!(),
-                NativeType::Inet => todo!(),
+                NativeType::Timestamp => {
+                    if self.0.is_null() {
+                        return Ok(writer.set_null());
+                    }
+                    let date_time = PrimitiveDateTime::try_from_value(value).map_err(|e| {
+                        SerializationError::new(Error::new(ErrorKind::InvalidData, format!("{e}")))
+                    })?;
+                    let millis = date_time.assume_utc().unix_timestamp_nanos() / 1_000_000;
+                    CqlTimestamp(millis as i64).serialize(ty, writer)
+                }
+                NativeType::Inet => {
+                    if self.0.is_null() {
+                        return Ok(writer.set_null());
+                    }
+                    let Value::Varchar(Some(ip), ..) =
+                        value.try_as(&Value::Varchar(None)).map_err(|e| {
+                            SerializationError::new(Error::new(
+                                ErrorKind::InvalidData,
+                                format!("{e}"),
+                            ))
+                        })?
+                    else {
+                        return Err(SerializationError::new(Error::new(
+                            ErrorKind::InvalidData,
+                            "Expected a textual value for a CQL inet column",
+                        )));
+                    };
+                    let ip: std::net::IpAddr = ip.parse().map_err(|e| {
+                        SerializationError::new(Error::new(ErrorKind::InvalidData, format!("{e}")))
+                    })?;
+                    ip.serialize(ty, writer)
+                }
                 NativeType::SmallInt => do_serialize::<i16>(value, ty, writer),
                 NativeType::TinyInt => do_serialize::<i8>(value, ty, writer),
                 NativeType::Time => do_serialize::<Time>(value, ty, writer),
                 NativeType::Timeuuid => do_serialize::<Uuid>(value, ty, writer),
                 NativeType::Uuid => do_serialize::<Uuid>(value, ty, writer),
-                NativeType::Varint => todo!(),
-                _ => todo!(),
+                NativeType::Varint => {
+                    if self.0.is_null() {
+                        return Ok(writer.set_null());
+                    }
+                    let mut bytes = match &value {
+                        Value::UInt64(Some(v)) => {
+                            let mut b = vec![0u8];
+                            b.extend_from_slice(&v.to_be_bytes());
+                            b
+                        }
+                        Value::UInt128(Some(v)) => {
+                            let mut b = vec![0u8];
+                            b.extend_from_slice(&v.to_be_bytes());
+                            b
+                        }
+                        Value::Int128(Some(v)) => v.to_be_bytes().to_vec(),
+                        _ => {
+                            let v = i128::try_from_value(value).map_err(|e| {
+                                SerializationError::new(Error::new(
+                                    ErrorKind::InvalidData,
+                                    format!("{e}"),
+                                ))
+                            })?;
+                            v.to_be_bytes().to_vec()
+                        }
+                    };
+                    while bytes.len() > 1 {
+                        let first = bytes[0];
+                        if (first == 0x00 && bytes[1] & 0x80 == 0)
+                            || (first == 0xFF && bytes[1] & 0x80 != 0)
+                        {
+                            bytes.remove(0);
+                        } else {
+                            break;
+                        }
+                    }
+                    CqlVarint::from_signed_bytes_be(bytes).serialize(ty, writer)
+                }
+                _ => {
+                    return Err(SerializationError::new(Error::new(
+                        ErrorKind::InvalidData,
+                        format!("ScyllaDB does not support serializing {ty:?}"),
+                    )));
+                }
             },
             ColumnType::Collection { frozen: _, typ } => match typ {
                 CollectionType::List(..) => do_serialize::<Vec<ValueWrap>>(value, ty, writer),
@@ -280,7 +373,10 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                         }
                     }),
                 ),
-                NativeType::Inet => todo!(),
+                NativeType::Inet => Value::Varchar(
+                    <Option<std::net::IpAddr> as DeserializeValue>::deserialize(ty, v)?
+                        .map(|v| v.to_string().into()),
+                ),
                 NativeType::Timeuuid => Value::Uuid(DeserializeValue::deserialize(ty, v)?),
                 NativeType::Uuid => Value::Uuid(DeserializeValue::deserialize(ty, v)?),
                 _ => {

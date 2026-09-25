@@ -231,13 +231,24 @@ impl SqlValueWriter for MySQLSqlWriter {
             _ => "'",
         };
         let (h, m, s, ns) = value.as_hmsns();
-        let mut subsecond = ns;
+        let sign = if h < 0 || m < 0 || s < 0 || ns < 0 {
+            "-"
+        } else {
+            ""
+        };
+        let mut subsecond = ns.unsigned_abs();
         let mut width = 9;
         while width > 1 && subsecond % 10 == 0 {
             subsecond /= 10;
             width -= 1;
         }
-        let _ = write!(out, "{d}{h:02}:{m:02}:{s:02}.{subsecond:0width$}{d}");
+        let _ = write!(
+            out,
+            "{d}{sign}{:02}:{:02}:{:02}.{subsecond:0width$}{d}",
+            h.unsigned_abs(),
+            m.unsigned_abs(),
+            s.unsigned_abs(),
+        );
     }
 
     fn write_list(

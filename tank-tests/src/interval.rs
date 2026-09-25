@@ -4,7 +4,7 @@ use crate::silent_logs;
 use std::{pin::pin, sync::LazyLock, time::Duration};
 use tank::{
     Driver, DynQuery, Entity, Executor, Interval, QueryBuilder, QueryResult, RawQuery,
-    RowsAffected, SqlWriter,
+    RowsAffected, SqlWriter, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -118,6 +118,29 @@ pub async fn interval(executor: &mut impl Executor) {
     assert_eq!(value.second, -Interval::from_days(11));
     assert_eq!(value.third, Duration::from_micros(999_999_999));
     value.third += Duration::from_micros(1);
+
+    Intervals::insert_one(
+        executor,
+        &Intervals {
+            pk: 6,
+            first: time::Duration::seconds(-1),
+            second: -Interval::from_mins(30),
+            third: Duration::from_millis(500),
+        },
+    )
+    .await
+    .expect("Could not insert the sub-hour negative interval");
+    let value = Intervals::find_one(executor, expr!(Intervals::pk == 6))
+        .await
+        .expect("Failed to retrieve the sub-hour negative interval")
+        .expect("Missing sub-hour negative interval row");
+    assert_eq!(value.pk, 6);
+    assert_eq!(value.first, time::Duration::seconds(-1));
+    assert_eq!(value.second, -Interval::from_mins(30));
+    assert_eq!(value.third, Duration::from_millis(500));
+    Intervals::delete_many(executor, expr!(Intervals::pk == 6))
+        .await
+        .expect("Could not delete the sub-hour negative interval");
 
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]

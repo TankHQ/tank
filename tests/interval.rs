@@ -269,42 +269,49 @@ mod tests {
 
     #[test]
     fn as_hmsns() {
-        // 02:30:15
-        let interval = Interval::from_hours(2) + Interval::from_mins(30) + Interval::from_secs(15);
-        let (h, m, s, ns) = interval.as_hmsns();
-        assert_eq!(h, 2);
-        assert_eq!(m, 30);
-        assert_eq!(s, 15);
-        assert_eq!(ns, 0);
+        assert_eq!(
+            (Interval::from_hours(2) + Interval::from_mins(30) + Interval::from_secs(15))
+                .as_hmsns(),
+            (2, 30, 15, 0)
+        );
+        assert_eq!(Interval::from_nanos(500).as_hmsns(), (0, 0, 0, 500));
+        // 1 month + 2 days = 768 hours
+        assert_eq!(Interval::new(1, 2, 0).as_hmsns(), (768, 0, 0, 0));
+        assert_eq!(Interval::ZERO.as_hmsns(), (0, 0, 0, 0));
+        assert_eq!((-Interval::from_mins(30)).as_hmsns(), (0, -30, 0, 0));
+        // -01:30:10
+        assert_eq!(
+            (-(Interval::from_hours(1) + Interval::from_mins(30) + Interval::from_secs(15)))
+                .as_hmsns(),
+            (-1, 30, 15, 0)
+        );
+        assert_eq!(
+            (-Interval::from_nanos(5_400_000_000_500)).as_hmsns(),
+            (-1, 30, 0, 500)
+        );
+        // -1 day + 30 minutes = -23:30:00
+        assert_eq!(
+            (Interval::from_days(-1) + Interval::from_mins(30)).as_hmsns(),
+            (-23, 30, 0, 0)
+        );
+        // 1 day - 30 minutes = 23:30:00
+        assert_eq!(
+            (Interval::from_days(1) - Interval::from_mins(30)).as_hmsns(),
+            (23, 30, 0, 0)
+        );
+    }
 
-        // 00:00:00.0000005
-        let interval2 = Interval::from_nanos(500);
-        let (h, m, s, ns) = interval2.as_hmsns();
-        assert_eq!(h, 0);
-        assert_eq!(m, 0);
-        assert_eq!(s, 0);
-        assert_eq!(ns, 500);
-
-        // 1 month + 2 days = 720 + 48 hours = 768 hours
-        let interval3 = Interval::new(1, 2, 0); // 1 month + 2 days
-        let (h, _, _, _) = interval3.as_hmsns();
-        assert_eq!(h, 768); // (months*30 + days) * 24
-
-        // -01:30:15
-        let neg = -(Interval::from_hours(1) + Interval::from_mins(30) + Interval::from_secs(15));
-        let (h, m, s, ns) = neg.as_hmsns();
-        assert_eq!(h, -1);
-        assert_eq!(m, 30);
-        assert_eq!(s, 15);
-        assert_eq!(ns, 0);
-
-        // -01:30:00.0000005
-        let neg2 = -Interval::from_nanos(5_400_000_000_500);
-        let (h, m, s, ns) = neg2.as_hmsns();
-        assert_eq!(h, -1);
-        assert_eq!(m, 30);
-        assert_eq!(s, 0);
-        assert_eq!(ns, 500);
+    #[test]
+    fn total_nanos() {
+        assert_eq!(Interval::ZERO.as_ns(), 0);
+        assert_eq!(
+            Interval::from_months(1).as_ns(),
+            30 * Interval::NANOS_IN_DAY
+        );
+        assert_eq!(
+            (Interval::from_days(-1) + Interval::from_mins(30)).as_ns(),
+            -23 * Interval::NANOS_IN_HOUR - 30 * Interval::NANOS_IN_SEC * 60
+        );
     }
 
     #[test]

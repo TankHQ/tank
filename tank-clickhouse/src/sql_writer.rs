@@ -216,10 +216,7 @@ impl SqlValueWriter for ClickHouseSqlWriter {
     }
 
     fn write_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {
-        let total_nanos: i128 = value.months as i128 * 30 * Interval::NANOS_IN_DAY
-            + value.days as i128 * Interval::NANOS_IN_DAY
-            + value.nanos;
-        self.write_string(context, out, &format!("{total_nanos}ns"));
+        self.write_string(context, out, &format!("{}ns", value.as_ns()));
     }
 
     fn write_timestamp(

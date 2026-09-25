@@ -5,7 +5,8 @@ use rust_decimal::Decimal;
 use std::{pin::pin, sync::LazyLock};
 use tank::{
     Driver, DynQuery, Entity, Executor, FixedDecimal, Interval, QueryBuilder, QueryResult,
-    RawQuery, RowsAffected, SqlWriter, expr, stream::StreamExt,
+    RawQuery, RowsAffected, SqlWriter, expr,
+    stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, Time};
 use tokio::sync::Mutex;

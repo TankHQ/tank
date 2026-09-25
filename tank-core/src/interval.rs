@@ -53,7 +53,7 @@ impl Interval {
         nanos: 0,
     };
 
-    pub const DAYS_IN_MONTH: f64 = 30.0;
+    pub const DAYS_IN_MONTH: i64 = 30;
     pub const DAYS_IN_MONTH_AVG: f64 = 30.436875;
     pub const SECS_IN_DAY: i64 = 60 * 60 * 24;
     pub const NANOS_IN_SEC: i128 = 1_000_000_000;
@@ -162,20 +162,33 @@ impl Interval {
         }
     }
 
-    /// Deconstruct into (hours, minutes, seconds, nanoseconds).
-    pub const fn as_hmsns(&self) -> (i128, u8, u8, u32) {
-        let mut nanos = self.nanos;
-        let mut hours = self.nanos / Self::NANOS_IN_HOUR;
-        nanos %= Self::NANOS_IN_HOUR;
-        hours += ((self.months * 30 + self.days) * 24) as i128;
-        if nanos < 0 {
-            nanos = -nanos;
+    pub const fn as_ns(&self) -> i128 {
+        (self.months as i128)
+            .saturating_mul(Self::DAYS_IN_MONTH as i128)
+            .saturating_mul(Self::NANOS_IN_DAY)
+            .saturating_add((self.days as i128).saturating_mul(Self::NANOS_IN_DAY))
+            .saturating_add(self.nanos)
+    }
+
+    /// Decompose into `(hours, minutes, seconds, nanoseconds)`.
+    ///
+    /// When the interval is negative, only the first non-zero component carries the sign.
+    pub const fn as_hmsns(&self) -> (i128, i8, i8, i32) {
+        let total = self.as_ns();
+        let abs = total.unsigned_abs();
+        let ns = (abs % Self::NANOS_IN_SEC as u128) as i32;
+        let sec = abs / Self::NANOS_IN_SEC as u128;
+        let s = (sec % 60) as i8;
+        let min = sec / 60;
+        let m = (min % 60) as i8;
+        let h = (min / 60) as i128;
+        match total < 0 {
+            true if h > 0 => (-h, m, s, ns),
+            true if m > 0 => (0, -m, s, ns),
+            true if s > 0 => (0, 0, -s, ns),
+            true => (0, 0, 0, -ns),
+            false => (h, m, s, ns),
         }
-        let m = nanos / (60 * Self::NANOS_IN_SEC);
-        nanos %= 60 * Self::NANOS_IN_SEC;
-        let s = nanos / Self::NANOS_IN_SEC;
-        nanos %= Self::NANOS_IN_SEC;
-        (hours, m as _, s as _, nanos as _)
     }
 
     pub const fn is_zero(&self) -> bool {
@@ -329,7 +342,7 @@ impl From<std::time::Duration> for Interval {
 
 impl From<Interval> for std::time::Duration {
     fn from(value: Interval) -> Self {
-        value.as_duration(Interval::DAYS_IN_MONTH)
+        value.as_duration(Interval::DAYS_IN_MONTH as _)
     }
 }
 
@@ -347,7 +360,7 @@ impl From<time::Duration> for Interval {
 
 impl From<Interval> for time::Duration {
     fn from(value: Interval) -> Self {
-        let seconds = ((value.days + value.months * Interval::DAYS_IN_MONTH as i64)
+        let seconds = ((value.days + value.months * Interval::DAYS_IN_MONTH)
             * Interval::SECS_IN_DAY) as i128
             + value.nanos / Interval::NANOS_IN_SEC;
         let nanos = (value.nanos % Interval::NANOS_IN_SEC) as i32;

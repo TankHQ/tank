@@ -22,6 +22,7 @@ mod multiple;
 mod operations;
 mod orders;
 mod other;
+mod prepared;
 mod readme;
 mod requests;
 mod service;
@@ -58,6 +59,7 @@ pub use multiple::*;
 pub use operations::*;
 pub use orders::*;
 pub use other::*;
+pub use prepared::*;
 pub use readme::*;
 pub use requests::*;
 pub use service::*;
@@ -128,6 +130,8 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     do_test!(enums);
     do_test!(custom);
     do_test!(decimals);
+    #[cfg(not(feature = "disable-prepared"))]
+    do_test!(prepared);
     do_test!(requests);
     do_test!(keywords);
     do_test!(identifiers);

@@ -18,7 +18,7 @@ use tank_core::{
 use tank_scylladb::{CassandraConnection, CassandraDriver, ScyllaDBConnection, ScyllaDBDriver};
 use tank_tests::{
     ambiguity, cheat_sheet, custom, decimals, enums, identifiers, interval, kv_storage, limits,
-    metrics, service, simple, trade_multiple, trade_simple, transaction1,
+    metrics, prepared, service, simple, trade_multiple, trade_simple, transaction1,
 };
 use testcontainers_modules::{
     scylladb::ScyllaDB,
@@ -57,6 +57,7 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     do_test!(enums);
     do_test!(custom);
     do_test!(decimals);
+    do_test!(prepared);
     do_test!(identifiers);
     do_test!(cheat_sheet).expect("Cheat Sheet examples test did not succeed");
 }
