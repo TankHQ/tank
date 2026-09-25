@@ -186,6 +186,42 @@ pub trait SqlExpressionWriter: SqlValueWriter {
         {
             return value.lhs.write_query(self.as_dyn(), context, out);
         }
+        if matches!(value.op, BinaryOpType::In | BinaryOpType::NotIn) {
+            // An empty collection cannot be rendered as an (invalid) `IN ()`, so
+            // emit a constant condition rather than letting the list collapse.
+            struct IsEmptyCollection;
+            impl ExpressionVisitor for IsEmptyCollection {
+                fn visit_operand(
+                    &mut self,
+                    _writer: &dyn SqlWriter,
+                    _context: &mut Context,
+                    _out: &mut DynQuery,
+                    value: &Operand,
+                ) -> bool {
+                    match value {
+                        Operand::LitList(values) | Operand::LitTuple(values) => values.is_empty(),
+                        Operand::Variable(Value::Array(Some(values), ..))
+                        | Operand::Value(Value::Array(Some(values), ..)) => values.is_empty(),
+                        Operand::Variable(Value::List(Some(values), ..))
+                        | Operand::Value(Value::List(Some(values), ..)) => values.is_empty(),
+                        _ => false,
+                    }
+                }
+            }
+            if value.rhs.accept_visitor(
+                &mut IsEmptyCollection,
+                self.as_dyn(),
+                context,
+                &mut Default::default(),
+            ) {
+                out.push_str(if value.op == BinaryOpType::In {
+                    "FALSE"
+                } else {
+                    "TRUE"
+                });
+                return;
+            }
+        }
         let (prefix, infix, suffix, lhs_parenthesized, rhs_parenthesized) =
             self.expression_binary_op_fragments(context, value.op);
         let precedence = self.expression_binary_op_precedence(&value.op);

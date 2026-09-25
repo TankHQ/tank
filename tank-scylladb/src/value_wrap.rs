@@ -11,7 +11,8 @@ use scylla::{
         writers::{CellWriter, WrittenCellProof},
     },
     value::{
-        CqlDecimal, CqlDecimalBorrowed, CqlDuration, CqlTimestamp, CqlVarint, CqlVarintBorrowed,
+        Counter, CqlDecimal, CqlDecimalBorrowed, CqlDuration, CqlTimestamp, CqlVarint,
+        CqlVarintBorrowed,
     },
 };
 use std::{
@@ -79,7 +80,12 @@ impl SerializeValue for ValueWrap {
                 NativeType::Ascii => do_serialize::<String>(value, ty, writer),
                 NativeType::Boolean => do_serialize::<bool>(value, ty, writer),
                 NativeType::Blob => do_serialize::<Vec<u8>>(value, ty, writer),
-                NativeType::Counter => do_serialize::<Vec<u8>>(value, ty, writer),
+                NativeType::Counter => {
+                    let v = i64::try_from_value(value).map_err(|e| {
+                        SerializationError::new(Error::new(ErrorKind::InvalidData, format!("{e}")))
+                    })?;
+                    Counter(v).serialize(ty, writer)
+                }
                 NativeType::Date => do_serialize::<Date>(value, ty, writer),
                 NativeType::Decimal => {
                     if self.0.is_null() {
@@ -210,7 +216,13 @@ impl SerializeValue for ValueWrap {
                     do_serialize::<HashMap<ValueWrap, ValueWrap>>(value, ty, writer)
                 }
                 CollectionType::Set(..) => do_serialize::<Vec<ValueWrap>>(value, ty, writer),
-                _ => todo!(),
+                #[allow(unreachable_patterns)]
+                _ => {
+                    return Err(SerializationError::new(Error::new(
+                        ErrorKind::InvalidData,
+                        format!("ScyllaDB does not support serializing {ty:?}"),
+                    )));
+                }
             },
             ColumnType::Vector {
                 typ: _,
@@ -238,8 +250,12 @@ impl SerializeValue for ValueWrap {
                     return Err(error);
                 }
             }
-            ColumnType::Tuple(_) => todo!(),
-            _ => todo!(),
+            _ => {
+                return Err(SerializationError::new(Error::new(
+                    ErrorKind::InvalidData,
+                    format!("ScyllaDB does not support serializing {ty:?}"),
+                )));
+            }
         }
     }
 }

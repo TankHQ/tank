@@ -624,6 +624,25 @@ impl_as_value!(
             ))
         }
         Ok(v.chars().next().unwrap())
+    },
+    value @ (
+        Value::Int8(Some(..), ..)
+        | Value::Int16(Some(..), ..)
+        | Value::Int32(Some(..), ..)
+        | Value::Int64(Some(..), ..)
+        | Value::Int128(Some(..), ..)
+        | Value::UInt8(Some(..), ..)
+        | Value::UInt16(Some(..), ..)
+        | Value::UInt32(Some(..), ..)
+        | Value::UInt64(Some(..), ..)
+        | Value::UInt128(Some(..), ..)
+    ) => {
+        let code = u32::try_from_value(value.clone()).map_err(|_| {
+            anyhow!("Cannot convert {value:?} to char because it is not a valid unicode scalar value")
+        })?;
+        char::from_u32(code).ok_or_else(|| {
+            anyhow!("Cannot convert {value:?} to char because it is not a valid unicode scalar value")
+        })
     }
 );
 

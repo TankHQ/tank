@@ -4,7 +4,9 @@ mod init;
 mod tests {
     use super::init::init;
     use std::{env, path::PathBuf, sync::Mutex};
-    use tank_core::{Connection, ConnectionPool, Driver, PoolConfig};
+    use tank_core::{
+        Connection, ConnectionPool, Driver, Executor, PoolConfig, stream::StreamExt as _,
+    };
     use tank_postgres::{PostgresConnection, PostgresDriver};
     use tank_tests::{execute_tests, init_logs, silent_logs};
     use url::Url;
@@ -35,6 +37,38 @@ mod tests {
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
+        drop(container);
+    }
+
+    #[tokio::test]
+    async fn empty_array() {
+        init_logs();
+        let _guard = MUTEX.lock().unwrap();
+
+        let (url, container) = init(false).await;
+        let container = container.expect("Could not launch the container");
+        let pool = DRIVER
+            .connect_pool(url.into(), PoolConfig::new())
+            .await
+            .expect("Failed to connect");
+        let mut connection = pool.get().await.expect("Could not get a connection");
+
+        let mut stream =
+            std::pin::pin!(connection.fetch(tank_core::RawQuery("SELECT ARRAY[]::int[]".into())));
+        let row = stream
+            .next()
+            .await
+            .expect("No row returned")
+            .expect("Could not decode the empty array");
+        assert_eq!(
+            row.values[0],
+            tank_core::Value::Array(
+                Some(vec![].into()),
+                Box::new(tank_core::Value::Int32(None)),
+                0
+            )
+        );
+
         drop(container);
     }
 

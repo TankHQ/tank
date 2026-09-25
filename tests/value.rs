@@ -517,6 +517,11 @@ mod tests {
         assert!(char::try_from_value(Value::Varchar(Some("".into()))).is_err());
         assert_eq!(char::parse("v").expect("Could not parse char"), 'v');
         assert!(char::parse("").is_err());
+
+        assert_eq!(char::try_from_value(Value::Int32(Some(65))).unwrap(), 'A');
+        assert_eq!(char::try_from_value(Value::UInt8(Some(97))).unwrap(), 'a');
+        assert!(char::try_from_value(Value::Int32(Some(-1))).is_err());
+        assert!(char::try_from_value(Value::Int64(Some(u32::MAX as i64 + 1))).is_err());
     }
 
     #[test]

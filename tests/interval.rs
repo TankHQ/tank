@@ -339,6 +339,16 @@ mod tests {
     }
 
     #[test]
+    fn negative_as_duration() {
+        assert_eq!(Interval::from_mins(-30).as_duration(30.0), Duration::ZERO);
+        assert_eq!((-Interval::from_days(3)).as_duration(30.0), Duration::ZERO);
+        assert_eq!(
+            (Interval::from_days(1) - Interval::from_mins(30)).as_duration(30.0),
+            Duration::from_secs(23 * 3600 + 30 * 60)
+        );
+    }
+
+    #[test]
     fn units_mask_and_unit_value() {
         let interval = Interval::from_years(2);
         let mask = interval.units_mask();
@@ -443,5 +453,14 @@ mod tests {
 
         let duration2: time::Duration = interval.into();
         assert_eq!(duration, duration2);
+    }
+
+    #[test]
+    fn large_and_negative_interval_to_time_duration() {
+        let negative: time::Duration = Interval::from_mins(-30).into();
+        assert_eq!(negative, time::Duration::minutes(-30));
+
+        let huge: time::Duration = Interval::from_months(i64::MAX / 2).into();
+        assert!(huge.whole_seconds() > 0);
     }
 }

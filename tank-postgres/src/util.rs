@@ -177,13 +177,17 @@ pub(crate) fn extract_value(
             let ty = extract_value(inner_ty, None)?;
             if let Some(raw) = raw {
                 let array = array_from_sql(raw)?;
-                let mut values = array
-                    .values()
-                    .map(|v| extract_value(inner_ty, v))
-                    .collect::<Vec<_>>()?;
                 let dimensions = array.dimensions().collect::<Vec<_>>()?;
-                let mut cursor = 0;
-                build_array(&mut cursor, &mut values, &ty, dimensions.iter())?
+                if dimensions.is_empty() {
+                    Value::Array(Some(Vec::new().into()), Box::new(ty), 0)
+                } else {
+                    let mut values = array
+                        .values()
+                        .map(|v| extract_value(inner_ty, v))
+                        .collect::<Vec<_>>()?;
+                    let mut cursor = 0;
+                    build_array(&mut cursor, &mut values, &ty, dimensions.iter())?
+                }
             } else {
                 Value::List(None, Box::new(ty))
             }

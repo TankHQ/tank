@@ -348,6 +348,26 @@ mod tests {
         );
         assert_eq!(query.as_str(), "col NOT IN ('Alice','Bob')");
 
+        // Empty collections must not render an invalid `IN ()` list.
+        let empty: [i32; 0] = [];
+        let expr = expr!(col == #empty as IN);
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "FALSE");
+
+        let expr = expr!(col != #empty as IN);
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "TRUE");
+
         // The literal tuple form keeps working.
         let expr = expr!(col == (1, 3, 5) as IN);
         let mut query = DynQuery::default();

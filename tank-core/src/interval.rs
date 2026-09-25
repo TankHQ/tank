@@ -197,11 +197,17 @@ impl Interval {
 
     /// Convert to `std::time::Duration` (approximate).
     ///
-    /// Uses `days_in_month` for conversion.
-    pub const fn as_duration(&self, days_in_month: f64) -> std::time::Duration {
+    /// Uses `days_in_month` for conversion. Negative intervals saturate to zero.
+    pub fn as_duration(&self, days_in_month: f64) -> std::time::Duration {
         let nanos = (self.months as f64) * days_in_month * (Interval::NANOS_IN_DAY as f64); // months
         let nanos = nanos as i128 + self.days as i128 * Interval::NANOS_IN_DAY; // days
         let nanos = nanos + self.nanos as i128;
+        if nanos <= 0 {
+            log::error!(
+                "Negative inverval `{self:?}` cannot be converted to `std::time::Duration`"
+            );
+            return std::time::Duration::ZERO;
+        }
         let secs = (nanos / Interval::NANOS_IN_SEC) as u64;
         let nanos = (nanos % Interval::NANOS_IN_SEC) as u32;
         std::time::Duration::new(secs, nanos)
@@ -360,10 +366,12 @@ impl From<time::Duration> for Interval {
 
 impl From<Interval> for time::Duration {
     fn from(value: Interval) -> Self {
-        let seconds = ((value.days + value.months * Interval::DAYS_IN_MONTH)
-            * Interval::SECS_IN_DAY) as i128
-            + value.nanos / Interval::NANOS_IN_SEC;
+        let seconds = (value.days as i128)
+            .saturating_add((value.months as i128).saturating_mul(Interval::DAYS_IN_MONTH as i128))
+            .saturating_mul(Interval::SECS_IN_DAY as i128)
+            .saturating_add(value.nanos / Interval::NANOS_IN_SEC);
+        let seconds = seconds.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
         let nanos = (value.nanos % Interval::NANOS_IN_SEC) as i32;
-        time::Duration::new(seconds as i64, nanos)
+        time::Duration::new(seconds, nanos)
     }
 }

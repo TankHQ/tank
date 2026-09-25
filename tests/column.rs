@@ -42,6 +42,33 @@ mod tests {
     }
 
     #[test]
+    fn test_column_default_types() {
+        #[derive(Entity)]
+        struct Defaults {
+            #[tank(default = 0)]
+            a: i64,
+            #[tank(default = 1.5)]
+            b: f64,
+            #[tank(default = 'x')]
+            c: char,
+        }
+
+        let columns = Defaults::columns();
+        assert!(matches!(
+            columns[0].default,
+            tank::DefaultValueType::Value(tank::Value::Int64(Some(0)))
+        ));
+        assert!(matches!(
+            columns[1].default,
+            tank::DefaultValueType::Value(tank::Value::Float64(Some(v))) if v == 1.5
+        ));
+        assert!(matches!(
+            columns[2].default,
+            tank::DefaultValueType::Value(tank::Value::Char(Some('x')))
+        ));
+    }
+
+    #[test]
     fn test_column_def_equality_and_hash() {
         #[derive(Entity)]
         struct TestTable {

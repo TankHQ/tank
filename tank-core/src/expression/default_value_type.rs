@@ -84,3 +84,15 @@ impl From<i64> for DefaultValueType {
         Self::Value(Value::Int64(Some(value)))
     }
 }
+
+impl From<f64> for DefaultValueType {
+    fn from(value: f64) -> Self {
+        Self::Value(Value::Float64(Some(value)))
+    }
+}
+
+impl From<char> for DefaultValueType {
+    fn from(value: char) -> Self {
+        Self::Value(Value::Char(Some(value)))
+    }
+}
