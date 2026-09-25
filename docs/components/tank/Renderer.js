@@ -433,14 +433,15 @@ export class Renderer {
             // Running gear first: the side skirt (part of the hull) is drawn over it
             // so the top half of the wheels and the top run of the track are hidden.
             // The belt, wheels and idlers share the tracks transform (rotation and
-            // scale about the tank's zero point).
+            // scale about the tank's zero point). The sponson sits behind the
+            // wheels, so it is drawn before them.
+            if (!this.images.body) this._drawSponson(ctx, view.pose)
             ctx.save()
             ctx.transform(...tracksMatrix(view.pose))
             if (view.belt) this._drawBelt(ctx, view.belt, view.trackPhase)
             for (const idler of view.idlers) this._drawWheel(ctx, idler, idler.spin ?? 0, idler.r, true)
             for (const wheel of view.wheels) this._drawWheel(ctx, wheel, wheel.spinAngle, wheel.radius, false)
             ctx.restore()
-            if (!this.images.body) this._drawSponson(ctx, view.pose)
             this._drawHull(ctx, view.pose)
             this._drawTurret(ctx, view.pose)
         }

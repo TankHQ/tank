@@ -40,8 +40,11 @@ export const RUNNING_GEAR = {
 
     // The lower hull behind the wheels (the sponson/side-skirt). Its bottom sits
     // this fraction of a wheel diameter below the top of the wheels, so it hangs
-    // down over the upper part of the road wheels. 0.25-0.33 looks right.
-    sponsonDropRatio: 0.3,
+    // down past the upper part of the road wheels.
+    sponsonDropRatio: 0.6,
+    // How much the sponson's lower edge is inset each side, as a fraction of its
+    // width, giving it a trapezoidal taper (bottom shorter than the top).
+    sponsonTaperRatio: 0.18,
 
     restLengthRatio: 0.055,
     fullyCompressedRatio: 0.01,

@@ -116,8 +116,8 @@ function buildRunningGear(rg) {
     const camoFields = camo.map((field) => ({ fill: field.fill, points: relArr(field.points) }))
 
     // The lower side panel behind the road wheels ("sponson"). It hangs from the
-    // hull's belly down to part of the way over the wheels, so it covers their
-    // upper quarter-to-third and hides the gap between them.
+    // hull's belly down over the road wheels, and is trapezoidal: its lower edge
+    // is shorter than its top, inset by `sponsonTaperRatio` each side.
     const wheelTopY = hubCentreY - wheelRadius
     const sponsorBottomY = wheelTopY + 2 * wheelRadius * rg.sponsonDropRatio
     // The belly is the hull's lowest edge; take its two extreme x points.
@@ -126,11 +126,12 @@ function buildRunningGear(rg) {
         .sort((a, b) => a.x - b.x)
     const bellyRear = belly[0]
     const bellyFront = belly[belly.length - 1]
+    const taper = (bellyFront.x - bellyRear.x) * rg.sponsonTaperRatio
     const sponsonRaw = [
-        { x: bellyRear.x, y: bellyRear.y - 3 }, // tuck a little under the hull
-        { x: bellyFront.x, y: bellyFront.y - 3 },
-        { x: bellyFront.x, y: sponsorBottomY },
-        { x: bellyRear.x, y: sponsorBottomY },
+        { x: bellyRear.x, y: bellyRear.y - 3 }, // top-rear, tucked under the hull
+        { x: bellyFront.x, y: bellyFront.y - 3 }, // top-front
+        { x: bellyFront.x - taper, y: sponsorBottomY }, // bottom-front (inset)
+        { x: bellyRear.x + taper, y: sponsorBottomY }, // bottom-rear (inset)
     ]
     const sponson = relArr(sponsonRaw)
 
