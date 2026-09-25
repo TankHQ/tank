@@ -38,6 +38,11 @@ export const RUNNING_GEAR = {
 
     hubDropRatio: 0.0453, // road-wheel centre below the hull skirt line
 
+    // The lower hull behind the wheels (the sponson/side-skirt). Its bottom sits
+    // this fraction of a wheel diameter below the top of the wheels, so it hangs
+    // down over the upper part of the road wheels. 0.25-0.33 looks right.
+    sponsonDropRatio: 0.3,
+
     restLengthRatio: 0.055,
     fullyCompressedRatio: 0.01,
     fullyExtendedRatio: 0.1,
@@ -194,6 +199,14 @@ export const PALETTE = {
     // Desert-camouflage bodywork (M1 Abrams tan): a pale sand base with soft
     // mid-tan and darker khaki fields, taken from the reference.
     hull: ['#efe0c2', '#e0cba6', '#cdb88e'],
+    // Extra camouflage tones for the decorative fields painted over the hull:
+    // a darker khaki, an olive-brown and a deep umber, so the pattern has more
+    // contrast than the reference's gentle tans.
+    camo2: ['#b08a5a', '#8a6a42', '#6f5230'],
+    // Panel/hatch line work and the small rectangular fittings (bins, guards).
+    panel: 'rgba(90,70,42,0.5)',
+    panelFill: '#d8c39c',
+    panelFillDark: '#b89b6e',
     barrel: '#cdb88e',
     barrelHi: '#e8dcc0',
     hullLine: 'rgba(90,70,42,0.55)',

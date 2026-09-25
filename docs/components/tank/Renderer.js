@@ -1,5 +1,5 @@
 import { PALETTE, BACKGROUND } from './config.js'
-import { HULL_ART, BODY, TURRET, GUN, CAMO } from './geometry.js'
+import { HULL_ART, BODY, TURRET, GUN, CAMO, SPONSON, DECOR } from './geometry.js'
 import { TAU, clamp, mix } from './util.js'
 import { Background } from './Background.js'
 import { tracksMatrix, bodyMatrix } from './transform.js'
@@ -23,6 +23,13 @@ function path(ctx, pts) {
     ctx.moveTo(pts[0].x, pts[0].y)
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y)
     ctx.closePath()
+}
+
+// A soft rounded rectangle centred on (cx, cy), for the camouflage blotches.
+function blob(ctx, cx, cy, w, h) {
+    const r = Math.min(w, h) * 0.5
+    ctx.beginPath()
+    ctx.roundRect(cx - w / 2, cy - h / 2, w, h, r)
 }
 
 export class Renderer {
@@ -115,6 +122,32 @@ export class Renderer {
             ctx.fill()
         })
 
+        // A few soft decorative fields in the extra camouflage tones, laid over
+        // the reference camo so the body reads as a busier multi-tone pattern.
+        // Positions are fractions of the body box.
+        const blend = [
+            { c: 0, x: 0.08, y: 0.3, w: 0.24, h: 0.66, a: 0.85 },
+            { c: 1, x: 0.4, y: 0.32, w: 0.28, h: 0.7, a: 0.8 },
+            { c: 2, x: 0.66, y: 0.26, w: 0.24, h: 0.6, a: 0.82 },
+            { c: 1, x: 0.22, y: 0.66, w: 0.32, h: 0.6, a: 0.75 },
+            { c: 2, x: 0.85, y: 0.32, w: 0.2, h: 0.56, a: 0.82 },
+        ]
+        ctx.save()
+        for (const b of blend) {
+            ctx.globalAlpha = b.a
+            ctx.fillStyle = PALETTE.camo2[b.c]
+            // Two overlapping rounded blobs read as one irregular field.
+            blob(ctx, BODY.minX + BODY.length * b.x, BODY.deckY + BODY.depth * b.y, BODY.length * b.w, BODY.depth * b.h)
+            ctx.fill()
+            blob(ctx, BODY.minX + BODY.length * (b.x + b.w * 0.35), BODY.deckY + BODY.depth * (b.y - b.h * 0.12), BODY.length * b.w * 0.7, BODY.depth * b.h * 0.7)
+            ctx.fill()
+        }
+        ctx.restore()
+
+        // Panel line work and the small rectangular fittings typical of the side
+        // profile (stowage bins, driver's hatch, headlight, tow hooks).
+        this._drawDecor(ctx, HULL_POINTS)
+
         // Top highlight and lower shadow bands.
         ctx.fillStyle = 'rgba(255,250,235,0.16)'
         ctx.fillRect(BODY.minX - 40, BODY.deckY, BODY.length + 80, 4)
@@ -127,6 +160,79 @@ export class Renderer {
         ctx.lineWidth = 2
         ctx.strokeStyle = PALETTE.hullLine
         ctx.stroke()
+    }
+
+    // The rectangular fittings on the upper hull, in the body-local frame.
+    _drawDecor(ctx, hull) {
+        const x0 = Math.min(...hull.map((p) => p.x))
+        const y0 = Math.min(...hull.map((p) => p.y))
+        const y1 = Math.max(...hull.map((p) => p.y))
+        // A baseline along the skirt for the foot of the bins.
+        const panelTop = y0 + (y1 - y0) * 0.14
+
+        for (const d of DECOR) {
+            ctx.lineWidth = 1.3
+            ctx.strokeStyle = PALETTE.panel
+            if (d.kind === 'bin') {
+                const grad = ctx.createLinearGradient(0, d.y, 0, d.y + d.h)
+                grad.addColorStop(0, PALETTE.panelFill)
+                grad.addColorStop(1, PALETTE.panelFillDark)
+                ctx.fillStyle = grad
+                ctx.fillRect(d.x, d.y, d.w, d.h)
+                ctx.strokeRect(d.x, d.y, d.w, d.h)
+                // Latch handle.
+                ctx.beginPath()
+                ctx.moveTo(d.x + d.w * 0.2, d.y + d.h * 0.18)
+                ctx.lineTo(d.x + d.w * 0.8, d.y + d.h * 0.18)
+                ctx.stroke()
+            } else if (d.kind === 'hatch') {
+                ctx.beginPath()
+                ctx.arc(d.x, d.y, d.r, 0, TAU)
+                ctx.fillStyle = PALETTE.panelFill
+                ctx.fill()
+                ctx.stroke()
+            } else if (d.kind === 'light') {
+                ctx.beginPath()
+                ctx.arc(d.x, d.y, d.r, 0, TAU)
+                ctx.fillStyle = 'rgba(240,236,220,0.85)'
+                ctx.fill()
+                ctx.stroke()
+            } else if (d.kind === 'hook') {
+                ctx.fillStyle = PALETTE.panelFillDark
+                ctx.fillRect(d.x, d.y, d.w, d.h)
+                ctx.strokeRect(d.x, d.y, d.w, d.h)
+            }
+        }
+
+        // Vertical panel divisions across the side.
+        ctx.strokeStyle = PALETTE.panel
+        ctx.lineWidth = 1
+        const panels = 8
+        for (let i = 1; i < panels; i++) {
+            const x = x0 + (i * (BODY.length)) / panels
+            ctx.beginPath()
+            ctx.moveTo(x, panelTop)
+            ctx.lineTo(x, y1)
+            ctx.stroke()
+        }
+    }
+
+    // The lower side panel behind the wheels, hanging from the hull belly down
+    // over the upper part of the road wheels. Drawn between the wheels and the
+    // hull so it covers the wheel tops and the gap between them.
+    _drawSponson(ctx, pose) {
+        ctx.save()
+        ctx.transform(...bodyMatrix(pose))
+        const grad = ctx.createLinearGradient(0, BODY.skirtY, 0, BODY.skirtY + (BODY.length * 0.05))
+        grad.addColorStop(0, PALETTE.hull[2])
+        grad.addColorStop(1, PALETTE.camo2[1])
+        path(ctx, SPONSON)
+        ctx.fillStyle = grad
+        ctx.fill()
+        ctx.lineWidth = 2
+        ctx.strokeStyle = PALETTE.hullLine
+        ctx.stroke()
+        ctx.restore()
     }
 
     _drawHull(ctx, pose) {
@@ -363,6 +469,7 @@ export class Renderer {
             for (const idler of view.idlers) this._drawWheel(ctx, idler, idler.spin ?? 0, idler.r, true)
             for (const wheel of view.wheels) this._drawWheel(ctx, wheel, wheel.spinAngle, wheel.radius, false)
             ctx.restore()
+            if (!this.images.body) this._drawSponson(ctx, view.pose)
             this._drawHull(ctx, view.pose)
             this._drawTurret(ctx, view.pose)
         }

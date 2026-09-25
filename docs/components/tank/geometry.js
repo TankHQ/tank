@@ -115,6 +115,43 @@ function buildRunningGear(rg) {
     // Camouflage fields, recentred like the hull.
     const camoFields = camo.map((field) => ({ fill: field.fill, points: relArr(field.points) }))
 
+    // The lower side panel behind the road wheels ("sponson"). It hangs from the
+    // hull's belly down to part of the way over the wheels, so it covers their
+    // upper quarter-to-third and hides the gap between them.
+    const wheelTopY = hubCentreY - wheelRadius
+    const sponsorBottomY = wheelTopY + 2 * wheelRadius * rg.sponsonDropRatio
+    // The belly is the hull's lowest edge; take its two extreme x points.
+    const belly = hullPoints
+        .filter((p) => p.y >= skirtY - 1)
+        .sort((a, b) => a.x - b.x)
+    const bellyRear = belly[0]
+    const bellyFront = belly[belly.length - 1]
+    const sponsonRaw = [
+        { x: bellyRear.x, y: bellyRear.y - 3 }, // tuck a little under the hull
+        { x: bellyFront.x, y: bellyFront.y - 3 },
+        { x: bellyFront.x, y: sponsorBottomY },
+        { x: bellyRear.x, y: sponsorBottomY },
+    ]
+    const sponson = relArr(sponsonRaw)
+
+    // Rectangular fittings typical of the side profile: stowage bins on the upper
+    // hull, a driver's hatch, a headlight and a couple of tow hooks. Positions are
+    // fractions of the body box so they scale with the art.
+    const x0 = Math.min(...hull.map((p) => p.x))
+    const x1 = Math.max(...hull.map((p) => p.x))
+    const yTop = Math.min(...hull.map((p) => p.y))
+    const yBot = Math.max(...hull.map((p) => p.y))
+    const W = x1 - x0
+    const D = yBot - yTop
+    const decor = [
+        { kind: 'bin', x: x0 + W * 0.18, y: yTop + D * 0.18, w: W * 0.13, h: D * 0.34 },
+        { kind: 'bin', x: x0 + W * 0.52, y: yTop + D * 0.18, w: W * 0.14, h: D * 0.34 },
+        { kind: 'hatch', x: x0 + W * 0.35, y: yTop + D * 0.3, r: D * 0.13 },
+        { kind: 'light', x: x1 - W * 0.035, y: yTop + D * 0.42, r: D * 0.07 },
+        { kind: 'hook', x: x1 - W * 0.02, y: yBot - D * 0.2, w: W * 0.03, h: D * 0.16 },
+        { kind: 'hook', x: x1 - W * 0.08, y: yBot - D * 0.2, w: W * 0.03, h: D * 0.16 },
+    ]
+
     return {
         wheels,
         idlers,
@@ -123,6 +160,8 @@ function buildRunningGear(rg) {
         turretPoints,
         turretRoof,
         camo: camoFields,
+        sponson,
+        decor,
         gun,
     }
 }
@@ -160,6 +199,11 @@ export const GUN = {
 
 // Camouflage fields painted over the hull, in the shared body-local frame.
 export const CAMO = GEAR.camo
+
+// The lower side panel behind the road wheels, and the small rectangular
+// fittings on the upper hull (see buildRunningGear).
+export const SPONSON = GEAR.sponson
+export const DECOR = GEAR.decor
 
 // Bounding box of the drawable hull, for the renderer's art.
 const hullMinX = Math.min(...GEAR.hullPoints.map((p) => p.x))
