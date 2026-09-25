@@ -86,7 +86,7 @@ pub fn value_to_json(v: &Value) -> Option<JsonValue> {
                 let Some(v) = value_to_json(v) else {
                     return None;
                 };
-                map.insert(k, v)?;
+                map.insert(k, v);
             }
             JsonValue::Object(map)
         }
@@ -97,7 +97,7 @@ pub fn value_to_json(v: &Value) -> Option<JsonValue> {
                 let Some(v) = value_to_json(v) else {
                     return None;
                 };
-                map.insert(k.clone(), v)?;
+                map.insert(k.clone(), v);
             }
             JsonValue::Object(map)
         }
@@ -309,11 +309,26 @@ pub const TRUNCATE_LONG_LIMIT: usize = {
     }
 };
 
+/// Largest byte offset `<= limit` that is a valid UTF-8 character boundary in `value`
+#[doc(hidden)]
+#[inline]
+pub fn truncate_bound(value: &str, limit: usize) -> usize {
+    if value.len() <= limit {
+        return value.len();
+    }
+    let mut end = limit;
+    while end > 0 && !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    end
+}
+
 #[macro_export]
 /// Truncate long strings for logging and error messages purpose.
 ///
-/// Returns a `format_args!` that yields at most 497 characters from the start
-/// of the input followed by `...` when truncation occurred. Minimal overhead.
+/// Returns a `format_args!` that yields at most `TRUNCATE_LONG_LIMIT` bytes from
+/// the start of the input followed by `...` when truncation occurred. Minimal
+/// overhead. Multi-byte characters are not split.
 ///
 /// If true is the second argument, it evaluates the first argument just once.
 ///
@@ -331,7 +346,7 @@ macro_rules! truncate_long {
     ($query:expr) => {
         format_args!(
             "{}{}",
-            &$query[..::std::cmp::min($query.len(), $crate::TRUNCATE_LONG_LIMIT)].trim(),
+            $query[..$crate::truncate_bound(&*$query, $crate::TRUNCATE_LONG_LIMIT)].trim(),
             if $query.len() > $crate::TRUNCATE_LONG_LIMIT {
                 "...\n"
             } else {
@@ -343,7 +358,7 @@ macro_rules! truncate_long {
         let query = $query;
         format!(
             "{}{}",
-            &query[..::std::cmp::min(query.len(), $crate::TRUNCATE_LONG_LIMIT)].trim(),
+            query[..$crate::truncate_bound(&*query, $crate::TRUNCATE_LONG_LIMIT)].trim(),
             if query.len() > $crate::TRUNCATE_LONG_LIMIT {
                 "...\n"
             } else {
