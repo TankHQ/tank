@@ -1,7 +1,7 @@
-use crate::{AsValue, ColumnDef, Driver, DynQuery, TableRef, Value};
+use crate::{AsValue, ColumnDef, Driver, DynQuery, Result, TableRef, Value, anyhow};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
-use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::{Decimal, prelude::ToPrimitive};
 use serde_json::{Map, Number, Value as JsonValue};
 use std::{
     borrow::Cow,
@@ -308,6 +308,19 @@ pub const TRUNCATE_LONG_LIMIT: usize = {
         497
     }
 };
+
+/// Build a `Decimal` from a scaled integer.
+pub fn decimal_from_scaled(mantissa: i128, scale: u32) -> Result<Decimal> {
+    let mut mantissa = mantissa;
+    let mut scale = scale;
+    while scale > Decimal::MAX_SCALE && mantissa % 10 == 0 {
+        mantissa /= 10;
+        scale -= 1;
+    }
+    Decimal::try_from_i128_with_scale(mantissa, scale).map_err(|e| {
+        anyhow!("Could not represent a decimal with scale {scale} (mantissa {mantissa}): {e}")
+    })
+}
 
 /// Largest byte offset `<= limit` that is a valid UTF-8 character boundary in `value`
 #[doc(hidden)]

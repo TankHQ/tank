@@ -1,8 +1,7 @@
 use anyhow::anyhow;
 use klickhouse::{Type, Value as KlValue};
-use rust_decimal::Decimal;
 use std::{borrow::Cow, collections::HashMap, fmt::Write as _};
-use tank_core::{Result, Value};
+use tank_core::{Result, Value, decimal_from_scaled};
 use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
 use uuid::Uuid;
 
@@ -39,7 +38,7 @@ pub(crate) fn extract_value(ty: &Type, val: KlValue) -> Result<Value> {
         KlValue::Decimal32(scale, raw) => {
             let (p, s) = decimal_ps(ty, scale);
             Ok(Value::Decimal(
-                Some(Decimal::from_i128_with_scale(raw as i128, s as u32)),
+                Some(decimal_from_scaled(raw as i128, s as u32)?),
                 p,
                 s,
             ))
@@ -47,7 +46,7 @@ pub(crate) fn extract_value(ty: &Type, val: KlValue) -> Result<Value> {
         KlValue::Decimal64(scale, raw) => {
             let (p, s) = decimal_ps(ty, scale);
             Ok(Value::Decimal(
-                Some(Decimal::from_i128_with_scale(raw as i128, s as u32)),
+                Some(decimal_from_scaled(raw as i128, s as u32)?),
                 p,
                 s,
             ))
@@ -55,7 +54,7 @@ pub(crate) fn extract_value(ty: &Type, val: KlValue) -> Result<Value> {
         KlValue::Decimal128(scale, raw) => {
             let (p, s) = decimal_ps(ty, scale);
             Ok(Value::Decimal(
-                Some(Decimal::from_i128_with_scale(raw, s as u32)),
+                Some(decimal_from_scaled(raw, s as u32)?),
                 p,
                 s,
             ))

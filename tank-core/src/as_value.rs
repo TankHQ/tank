@@ -858,12 +858,7 @@ impl_as_value!(
 /// Parses `$value` against each of the given formats, returning the first
 /// successful parse and advancing `$value` past the consumed input.
 ///
-/// Yields `None` when no format matches, and deliberately never builds an
-/// `anyhow::Error`. `anyhow` captures a backtrace for every error when
-/// `RUST_BACKTRACE`/`RUST_LIB_BACKTRACE` is set, and with a statically linked
-/// chDB `libchdb.a` exports its own `_Unwind_GetIP`, shadowing libgcc's, so the
-/// unwinder used to capture that backtrace crashes. Callers build the error
-/// lazily, only once every alternative has been exhausted.
+/// Yields `None` when no format matches, and deliberately never builds an `anyhow::Error`.
 macro_rules! parse_time {
     ($value: ident, $($formats:literal),+ $(,)?) => {
         'value: {
