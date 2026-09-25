@@ -104,6 +104,25 @@ pub async fn math(executor: &mut impl Executor) {
         .expect("Could not get the result 5");
     assert_eq!(result, [true]);
 
+    // CAST to an integer type: the generated type name must be valid for the
+    // dialect (e.g. MySQL only accepts SIGNED/UNSIGNED, not INTEGER)
+    {
+        let result = executor
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(MathTable::id, (CAST(MathTable::read as i64)) as read))
+                    .from(MathTable::table())
+                    .where_expr(expr!(MathTable::id == 0))
+                    .build(&executor.driver()),
+            )
+            .map_ok(MathTable::from_row)
+            .map(Result::flatten)
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Could not get the CAST result");
+        assert_eq!(result, [MathTable { id: 0, read: 0 }]);
+    }
+
     // LOG10: log base 10 of 1000 should be 3
     #[cfg(not(feature = "disable-log10"))]
     {

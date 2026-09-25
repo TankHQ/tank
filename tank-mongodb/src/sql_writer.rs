@@ -553,7 +553,10 @@ impl SqlExpressionWriter for MongoDBSqlWriter {
                 }
                 .write_query(self, context, out);
             }
-            BinaryOpType::Alias => return value.lhs.write_query(self, context, out),
+            // MongoDB is schemaless, render the operand as-is and let the value flow through
+            BinaryOpType::Cast | BinaryOpType::Alias => {
+                return value.lhs.write_query(self, context, out);
+            }
             _ => {}
         }
         let Some(document) = out

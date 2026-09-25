@@ -69,15 +69,12 @@ pub trait SqlExpressionWriter: SqlValueWriter {
 
     fn expression_binary_op_fragments(
         &self,
-        context: &mut Context,
+        _context: &mut Context,
         op_type: BinaryOpType,
     ) -> (&str, &str, &str, bool, bool) {
         match op_type {
             BinaryOpType::Indexing => ("", "[", "]", false, true),
-            BinaryOpType::Cast => {
-                context.switch_fragment(Fragment::Casting);
-                ("CAST(", " AS ", ")", true, true)
-            }
+            BinaryOpType::Cast => ("CAST(", " AS ", ")", true, true),
             BinaryOpType::Multiplication => ("", " * ", "", false, false),
             BinaryOpType::Division => ("", " / ", "", false, false),
             BinaryOpType::Remainder => ("", " % ", "", false, false),
@@ -105,10 +102,7 @@ pub trait SqlExpressionWriter: SqlValueWriter {
             BinaryOpType::GreaterEqual => ("", " >= ", "", false, false),
             BinaryOpType::And => ("", " AND ", "", false, false),
             BinaryOpType::Or => ("", " OR ", "", false, false),
-            BinaryOpType::Alias => {
-                context.switch_fragment(Fragment::Aliasing);
-                ("", " AS ", "", false, false)
-            }
+            BinaryOpType::Alias => ("", " AS ", "", false, false),
         }
     }
 
@@ -197,10 +191,10 @@ pub trait SqlExpressionWriter: SqlValueWriter {
             value.lhs.write_query(self.as_dyn(), context, out)
         );
         out.push_str(infix);
-        let mut context = context.switch_fragment(if value.op == BinaryOpType::Alias {
-            Fragment::Aliasing
-        } else {
-            context.fragment
+        let mut context = context.switch_fragment(match value.op {
+            BinaryOpType::Cast => Fragment::Casting,
+            BinaryOpType::Alias => Fragment::Aliasing,
+            _ => context.fragment,
         });
         if matches!(value.op, BinaryOpType::In | BinaryOpType::NotIn) {
             // Expands a Rust collection (`#collection as IN`), carried as

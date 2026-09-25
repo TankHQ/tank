@@ -232,10 +232,21 @@ macro_rules! impl_as_value {
                     // SQL Generic floating point value
                     Value::Float64(Some(v), ..) => {
                         if v.is_finite() && v.fract() == 0.0 {
-                            return Self::try_from_value(Value::Int64(Some(v as _)));
+                            let min = <$source>::MIN as f64;
+                            let max = <$source>::MAX as f64;
+                            if v >= min && v <= max {
+                                return Ok(v as $source);
+                            }
                         }
-                        Err(anyhow!("Value {v}: f64 does not fit into a integer"))
+                        Err(anyhow!(
+                            "Value {v}: f64 does not fit into {}",
+                            any::type_name::<Self>(),
+                        ))
                     },
+                    #[allow(unreachable_patterns)]
+                    Value::Float32(Some(v), ..) => {
+                        Self::try_from_value(Value::Float64(Some(v as f64)))
+                    }
                     // This is needed to allow integer keys in maps, in some drivers the maps keys are strings only
                     Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v).with_context(|| {
                         format!("While parsing a {} from `{}`", any::type_name::<Self>(), v)
@@ -281,7 +292,6 @@ macro_rules! impl_as_value {
 impl_as_value!(
     i8,
     Value::Int8,
-    Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Int16(Some(v), ..) => {
         let result = v as i8;
         if result as i16 != v {
@@ -373,9 +383,6 @@ impl_as_value!(
     Value::UInt64(Some(v), ..) => {
         isize::try_from(v).map_err(|_| anyhow!("Value {v}: u64 is out of range for isize"))
     },
-    Value::UInt32(Some(v), ..) => Ok(v as _),
-    Value::UInt16(Some(v), ..) => Ok(v as _),
-    Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
         let make_error = || anyhow!("Value {v}: Decimal does not fit into i64");
         if !v.is_integer() {
