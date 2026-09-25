@@ -88,6 +88,24 @@ mod tests {
             "#}
             .trim()
         );
+
+        let mut sql = DynQuery::default();
+        WRITER.write_select(
+            &mut sql,
+            &QueryBuilder::new()
+                .select(cols!(Orders::customer_id as cid, SUM(Orders::amount)))
+                .from(Orders::table())
+                .group_by(cols!(Orders::customer_id as cid)),
+        );
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                SELECT "customer_id" AS "cid", SUM("amount")
+                FROM "orders"
+                GROUP BY "customer_id";
+            "#}
+            .trim()
+        );
     }
 
     #[test]

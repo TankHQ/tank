@@ -9,7 +9,7 @@ use std::{
     ffi::c_void,
     fmt::{self, Display},
 };
-use tank_core::{error_message_from_ptr, AsValue, Error, Prepared, Result, Value};
+use tank_core::{AsValue, Error, Prepared, Result, Value, error_message_from_ptr};
 
 /// Prepared statement wrapper for DuckDB.
 ///

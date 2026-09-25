@@ -1,16 +1,18 @@
-use crate::{AsValue, ColumnDef, DynQuery, TableRef, Value};
+use crate::{AsValue, ColumnDef, Driver, DynQuery, Result, TableRef, Value, anyhow};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
-use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::{Decimal, prelude::ToPrimitive};
 use serde_json::{Map, Number, Value as JsonValue};
 use std::{
     borrow::Cow,
     cmp::min,
     collections::BTreeMap,
-    ffi::{CStr, CString},
+    ffi::{CStr, CString, c_char},
+    fmt::Write,
     ptr,
 };
 use syn::Path;
+use url::Url;
 
 #[derive(Clone)]
 /// Iterator adapter for two types.
@@ -84,7 +86,7 @@ pub fn value_to_json(v: &Value) -> Option<JsonValue> {
                 let Some(v) = value_to_json(v) else {
                     return None;
                 };
-                map.insert(k, v)?;
+                map.insert(k, v);
             }
             JsonValue::Object(map)
         }
@@ -95,7 +97,7 @@ pub fn value_to_json(v: &Value) -> Option<JsonValue> {
                 let Some(v) = value_to_json(v) else {
                     return None;
                 };
-                map.insert(k.clone(), v)?;
+                map.insert(k.clone(), v);
             }
             JsonValue::Object(map)
         }
@@ -196,7 +198,7 @@ pub fn as_c_string(str: impl Into<Vec<u8>>) -> CString {
     .unwrap_or_default()
 }
 
-pub fn error_message_from_ptr<'a>(ptr: &'a *const i8) -> Cow<'a, str> {
+pub fn error_message_from_ptr<'a>(ptr: &'a *const c_char) -> Cow<'a, str> {
     unsafe {
         if *ptr != ptr::null() {
             CStr::from_ptr(*ptr).to_string_lossy()
@@ -307,11 +309,39 @@ pub const TRUNCATE_LONG_LIMIT: usize = {
     }
 };
 
+/// Build a `Decimal` from a scaled integer.
+pub fn decimal_from_scaled(mantissa: i128, scale: u32) -> Result<Decimal> {
+    let mut mantissa = mantissa;
+    let mut scale = scale;
+    while scale > Decimal::MAX_SCALE && mantissa % 10 == 0 {
+        mantissa /= 10;
+        scale -= 1;
+    }
+    Decimal::try_from_i128_with_scale(mantissa, scale).map_err(|e| {
+        anyhow!("Could not represent a decimal with scale {scale} (mantissa {mantissa}): {e}")
+    })
+}
+
+/// Largest byte offset `<= limit` that is a valid UTF-8 character boundary in `value`
+#[doc(hidden)]
+#[inline]
+pub fn truncate_bound(value: &str, limit: usize) -> usize {
+    if value.len() <= limit {
+        return value.len();
+    }
+    let mut end = limit;
+    while end > 0 && !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    end
+}
+
 #[macro_export]
 /// Truncate long strings for logging and error messages purpose.
 ///
-/// Returns a `format_args!` that yields at most 497 characters from the start
-/// of the input followed by `...` when truncation occurred. Minimal overhead.
+/// Returns a `format_args!` that yields at most `TRUNCATE_LONG_LIMIT` bytes from
+/// the start of the input followed by `...` when truncation occurred. Minimal
+/// overhead. Multi-byte characters are not split.
 ///
 /// If true is the second argument, it evaluates the first argument just once.
 ///
@@ -329,7 +359,7 @@ macro_rules! truncate_long {
     ($query:expr) => {
         format_args!(
             "{}{}",
-            &$query[..::std::cmp::min($query.len(), $crate::TRUNCATE_LONG_LIMIT)].trim(),
+            $query[..$crate::truncate_bound(&*$query, $crate::TRUNCATE_LONG_LIMIT)].trim(),
             if $query.len() > $crate::TRUNCATE_LONG_LIMIT {
                 "...\n"
             } else {
@@ -341,7 +371,7 @@ macro_rules! truncate_long {
         let query = $query;
         format!(
             "{}{}",
-            &query[..::std::cmp::min(query.len(), $crate::TRUNCATE_LONG_LIMIT)].trim(),
+            query[..$crate::truncate_bound(&*query, $crate::TRUNCATE_LONG_LIMIT)].trim(),
             if query.len() > $crate::TRUNCATE_LONG_LIMIT {
                 "...\n"
             } else {
@@ -349,6 +379,59 @@ macro_rules! truncate_long {
             },
         )
     }};
+}
+
+/// Builds a short, log friendly description of a networked connection target:
+/// host, port (when specified) and the first path segment (the
+/// database/keyspace) when present.
+#[inline]
+pub fn describe_url<D: Driver>(url: &Url) -> String {
+    let mut target = String::with_capacity(32);
+    if let Some(host) = url.host_str() {
+        let _ = write!(&mut target, "{host}");
+    }
+    if let Some(port) = url.port() {
+        let _ = write!(&mut target, ":{port}");
+    }
+    if let Some(database) = url
+        .path_segments()
+        .and_then(|mut v| v.find(|s| !s.is_empty()))
+    {
+        let _ = write!(&mut target, "/{}", truncate_long!(database));
+    }
+    target
+}
+
+/// Builds a short, log friendly description of an embedded connection target:
+/// the database path or `:memory:`.
+#[inline]
+pub fn describe_path<D: Driver>(url: &Url) -> String {
+    let mut target = String::with_capacity(32);
+    if url
+        .query_pairs()
+        .any(|(k, v)| k.eq_ignore_ascii_case("mode") && v.eq_ignore_ascii_case("memory"))
+    {
+        let _ = write!(&mut target, ":memory:");
+        return target;
+    }
+    if let Some(path) = url
+        .query_pairs()
+        .find_map(|(k, v)| k.eq_ignore_ascii_case("path").then_some(v))
+    {
+        let _ = write!(&mut target, "{}", truncate_long!(path));
+        return target;
+    }
+    let host = url.host_str().unwrap_or_default();
+    let path = url.path();
+    if host.is_empty() && (path.is_empty() || path == "/") {
+        let _ = write!(&mut target, ":memory:");
+        return target;
+    }
+    let _ = write!(&mut target, "{host}");
+    if !path.is_empty() {
+        let _ = write!(&mut target, "{}", truncate_long!(path));
+    }
+    target
 }
 
 /// Sends the value through the channel and logs in case of error.

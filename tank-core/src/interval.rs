@@ -53,7 +53,7 @@ impl Interval {
         nanos: 0,
     };
 
-    pub const DAYS_IN_MONTH: f64 = 30.0;
+    pub const DAYS_IN_MONTH: i64 = 30;
     pub const DAYS_IN_MONTH_AVG: f64 = 30.436875;
     pub const SECS_IN_DAY: i64 = 60 * 60 * 24;
     pub const NANOS_IN_SEC: i128 = 1_000_000_000;
@@ -141,7 +141,7 @@ impl Interval {
     pub const fn from_weeks(value: i64) -> Self {
         Self {
             months: 0,
-            days: value * 7,
+            days: value.saturating_mul(7),
             nanos: 0,
         }
     }
@@ -156,26 +156,45 @@ impl Interval {
 
     pub const fn from_years(value: i64) -> Self {
         Self {
-            months: value * 12,
+            months: value.saturating_mul(12),
             days: 0,
             nanos: 0,
         }
     }
 
-    /// Deconstruct into (hours, minutes, seconds, nanoseconds).
-    pub const fn as_hmsns(&self) -> (i128, u8, u8, u32) {
-        let mut nanos = self.nanos;
-        let mut hours = self.nanos / Self::NANOS_IN_HOUR;
-        nanos %= Self::NANOS_IN_HOUR;
-        hours += ((self.months * 30 + self.days) * 24) as i128;
-        if nanos < 0 {
-            nanos = -nanos;
+    pub const fn as_ns(&self) -> i128 {
+        (self.months as i128)
+            .saturating_mul(Self::DAYS_IN_MONTH as i128)
+            .saturating_mul(Self::NANOS_IN_DAY)
+            .saturating_add(self.days_nanos())
+    }
+
+    /// Total nanoseconds contributed by `days` and `nanos`, saturating on overflow.
+    pub const fn days_nanos(&self) -> i128 {
+        (self.days as i128)
+            .saturating_mul(Self::NANOS_IN_DAY)
+            .saturating_add(self.nanos)
+    }
+
+    /// Decompose into `(hours, minutes, seconds, nanoseconds)`.
+    ///
+    /// When the interval is negative, only the first non-zero component carries the sign.
+    pub const fn as_hmsns(&self) -> (i128, i8, i8, i32) {
+        let total = self.as_ns();
+        let abs = total.unsigned_abs();
+        let ns = (abs % Self::NANOS_IN_SEC as u128) as i32;
+        let sec = abs / Self::NANOS_IN_SEC as u128;
+        let s = (sec % 60) as i8;
+        let min = sec / 60;
+        let m = (min % 60) as i8;
+        let h = (min / 60) as i128;
+        match total < 0 {
+            true if h > 0 => (-h, m, s, ns),
+            true if m > 0 => (0, -m, s, ns),
+            true if s > 0 => (0, 0, -s, ns),
+            true => (0, 0, 0, -ns),
+            false => (h, m, s, ns),
         }
-        let m = nanos / (60 * Self::NANOS_IN_SEC);
-        nanos %= 60 * Self::NANOS_IN_SEC;
-        let s = nanos / Self::NANOS_IN_SEC;
-        nanos %= Self::NANOS_IN_SEC;
-        (hours, m as _, s as _, nanos as _)
     }
 
     pub const fn is_zero(&self) -> bool {
@@ -184,11 +203,16 @@ impl Interval {
 
     /// Convert to `std::time::Duration` (approximate).
     ///
-    /// Uses `days_in_month` for conversion.
-    pub const fn as_duration(&self, days_in_month: f64) -> std::time::Duration {
-        let nanos = (self.months as f64) * days_in_month * (Interval::NANOS_IN_DAY as f64); // months
-        let nanos = nanos as i128 + self.days as i128 * Interval::NANOS_IN_DAY; // days
-        let nanos = nanos + self.nanos as i128;
+    /// Uses `days_in_month` for conversion. Negative intervals saturate to zero.
+    pub fn as_duration(&self, days_in_month: f64) -> std::time::Duration {
+        let months_nanos = (self.months as f64) * days_in_month * (Interval::NANOS_IN_DAY as f64);
+        let nanos = (months_nanos as i128).saturating_add(self.days_nanos());
+        if nanos <= 0 {
+            log::error!(
+                "Negative inverval `{self:?}` cannot be converted to `std::time::Duration`"
+            );
+            return std::time::Duration::ZERO;
+        }
         let secs = (nanos / Interval::NANOS_IN_SEC) as u64;
         let nanos = (nanos % Interval::NANOS_IN_SEC) as u32;
         std::time::Duration::new(secs, nanos)
@@ -218,7 +242,7 @@ impl Interval {
                 mask |= 1 << 6;
             }
         }
-        let nanos = self.nanos + self.days as i128 * Interval::NANOS_IN_DAY;
+        let nanos = self.days_nanos();
         if nanos != 0 {
             for (i, &(_, factor)) in self.units_and_factors().iter().skip(2).enumerate() {
                 if nanos % factor == 0 {
@@ -243,16 +267,14 @@ impl Interval {
                 .iter()
                 .find_map(|(u, k)| if *u == unit { Some(k) } else { None })
                 .expect("The unit must be present");
-            (self.days as i128 * Interval::NANOS_IN_DAY + self.nanos) / factor
+            self.days_nanos() / factor
         }
     }
 }
 
 impl PartialEq for Interval {
     fn eq(&self, other: &Self) -> bool {
-        self.months == other.months
-            && self.days as i128 * Interval::NANOS_IN_DAY + self.nanos
-                == other.days as i128 * Interval::NANOS_IN_DAY + other.nanos
+        self.months == other.months && self.days_nanos() == other.days_nanos()
     }
 }
 
@@ -261,7 +283,7 @@ impl Eq for Interval {}
 impl Hash for Interval {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.months.hash(state);
-        (self.days as i128 * Interval::NANOS_IN_DAY + self.nanos).hash(state);
+        self.days_nanos().hash(state);
     }
 }
 
@@ -272,10 +294,13 @@ macro_rules! sum_intervals {
         let days = days_total.clamp(i64::MIN as _, i64::MAX as _);
         let mut nanos = $lhs.nanos % Interval::NANOS_IN_DAY $op $rhs.nanos % Interval::NANOS_IN_DAY;
         if days != days_total {
-            nanos += (days_total - days) * Interval::NANOS_IN_DAY;
+            nanos = nanos.saturating_add(
+                days_total.saturating_sub(days).saturating_mul(Interval::NANOS_IN_DAY),
+            );
         }
         Interval {
-            months: $lhs.months $op $rhs.months,
+            months: (($lhs.months as i128) $op ($rhs.months as i128))
+                .clamp(i64::MIN as i128, i64::MAX as i128) as _,
             days: days as _,
             nanos,
         }
@@ -329,7 +354,7 @@ impl From<std::time::Duration> for Interval {
 
 impl From<Interval> for std::time::Duration {
     fn from(value: Interval) -> Self {
-        value.as_duration(Interval::DAYS_IN_MONTH)
+        value.as_duration(Interval::DAYS_IN_MONTH as _)
     }
 }
 
@@ -347,10 +372,12 @@ impl From<time::Duration> for Interval {
 
 impl From<Interval> for time::Duration {
     fn from(value: Interval) -> Self {
-        let seconds = ((value.days + value.months * Interval::DAYS_IN_MONTH as i64)
-            * Interval::SECS_IN_DAY) as i128
-            + value.nanos / Interval::NANOS_IN_SEC;
+        let seconds = (value.days as i128)
+            .saturating_add((value.months as i128).saturating_mul(Interval::DAYS_IN_MONTH as i128))
+            .saturating_mul(Interval::SECS_IN_DAY as i128)
+            .saturating_add(value.nanos / Interval::NANOS_IN_SEC);
+        let seconds = seconds.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
         let nanos = (value.nanos % Interval::NANOS_IN_SEC) as i32;
-        time::Duration::new(seconds as i64, nanos)
+        time::Duration::new(seconds, nanos)
     }
 }

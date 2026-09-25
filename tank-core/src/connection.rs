@@ -1,4 +1,4 @@
-use crate::{Driver, Executor, Result};
+use crate::{Driver, ErrorContext, Executor, Result, truncate_long};
 use anyhow::anyhow;
 use std::{
     borrow::Cow,
@@ -28,22 +28,21 @@ pub trait Connection: Executor {
             url = format!("{scheme}://localhost{}", &host[8..]).into();
             in_memory = true;
         }
-        let mut result = Url::parse(&url)?;
+        let make_context = || format!("While parsing the connection URL:\n{}", truncate_long!(url));
+        let mut result = Url::parse(&url).with_context(make_context)?;
         if in_memory {
             result.query_pairs_mut().append_pair("mode", "memory");
         }
         let names = <Self::Driver as Driver>::NAME;
-        'prefix: {
-            for name in names {
-                let prefix = format!("{}://", name);
-                if url.starts_with(&prefix) {
-                    break 'prefix prefix;
-                }
-            }
-            let error = anyhow!("Connection URL must start with: {}", names.join(", "));
+        if !names
+            .iter()
+            .any(|name| url.starts_with(name) && url[name.len()..].starts_with("://"))
+        {
+            let error = anyhow!("Connection URL must start with: {}", names.join(", "))
+                .context(make_context());
             log::error!("{error:#}");
             return Err(error);
-        };
+        }
         Ok(result)
     }
 

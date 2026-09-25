@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 use tank_core::{ConnectionPool, Driver};
-use tank_tests::{custom, kv_storage, limits, simple};
+use tank_tests::{custom, decimals, kv_storage, limits, simple};
 use testcontainers_modules::{
     testcontainers::{
         ContainerAsync, GenericImage, ImageExt,
@@ -33,6 +33,7 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     limits(connection).await;
     kv_storage(connection).await;
     custom(connection).await;
+    decimals(connection).await;
 }
 
 async fn generate_ssl_files() -> std::io::Result<()> {

@@ -18,7 +18,8 @@ use std::{
 };
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Prepared, Query, QueryResult, RawQuery,
-    Result, Row, RowsAffected, error_message_from_ptr, send_value, stream::Stream, truncate_long,
+    Result, Row, RowsAffected, describe_path, error_message_from_ptr, send_value, stream::Stream,
+    truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -63,18 +64,6 @@ impl SQLiteConnection {
                     SQLITE_BUSY => {
                         continue;
                     }
-                    SQLITE_DONE => {
-                        if sqlite3_stmt_readonly(statement) == 0 {
-                            send_value!(
-                                tx,
-                                Ok(QueryResult::Affected(RowsAffected {
-                                    rows_affected: Some(sqlite3_changes64(connection) as _),
-                                    last_affected_id: Some(sqlite3_last_insert_rowid(connection)),
-                                }))
-                            );
-                        }
-                        break;
-                    }
                     SQLITE_ROW => {
                         let values = match (0..count)
                             .map(|i| extract_value(statement, i))
@@ -93,6 +82,18 @@ impl SQLiteConnection {
                                 values: values,
                             }))
                         )
+                    }
+                    SQLITE_DONE => {
+                        if sqlite3_stmt_readonly(statement) == 0 {
+                            send_value!(
+                                tx,
+                                Ok(QueryResult::Affected(RowsAffected {
+                                    rows_affected: Some(sqlite3_changes64(connection) as _),
+                                    last_affected_id: Some(sqlite3_last_insert_rowid(connection)),
+                                }))
+                            );
+                        }
+                        break;
                     }
                     _ => {
                         send_value!(
@@ -162,16 +163,71 @@ impl SQLiteConnection {
     }
 }
 
+impl Connection for SQLiteConnection {
+    async fn connect(driver: &SQLiteDriver, url: Cow<'static, str>) -> Result<Self> {
+        let url = Self::sanitize_url(driver, url)?;
+        let make_context = || {
+            format!(
+                "While trying to connect to SQLite {}",
+                describe_path::<SQLiteDriver>(&url)
+            )
+        };
+        let connection_string = CString::from_str(&url.as_str().replacen("sqlite://", "file:", 1))
+            .with_context(make_context)?;
+        let mut connection;
+        unsafe {
+            connection = CBox::new(ptr::null_mut(), |p| {
+                if sqlite3_close(p) != SQLITE_OK {
+                    let error = Error::msg(error_message_from_ptr(&sqlite3_errmsg(p)).to_string())
+                        .context("While closing the sqlite connection");
+                    log::error!("{error:#}");
+                }
+            });
+            let rc = sqlite3_open_v2(
+                connection_string.as_ptr(),
+                &mut *connection,
+                SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI,
+                ptr::null(),
+            );
+            if rc != SQLITE_OK {
+                let error =
+                    Error::msg(error_message_from_ptr(&sqlite3_errmsg(*connection)).to_string())
+                        .context(make_context());
+                log::error!("{error:#}");
+                return Err(error);
+            }
+            let rc = sqlite3_exec(
+                *connection,
+                c"PRAGMA foreign_keys = ON".as_ptr(),
+                None,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+            if rc != SQLITE_OK {
+                let error =
+                    Error::msg(error_message_from_ptr(&sqlite3_errmsg(*connection)).to_string())
+                        .context("While enabling foreign key enforcement");
+                log::error!("{error:#}");
+            }
+        }
+        Ok(Self { connection })
+    }
+
+    fn begin(&mut self) -> impl Future<Output = Result<SQLiteTransaction<'_>>> + Send {
+        SQLiteTransaction::new(self)
+    }
+}
+
 impl Executor for SQLiteConnection {
     type Driver = SQLiteDriver;
 
     async fn do_prepare(&mut self, sql: String) -> Result<Query<SQLiteDriver>> {
         let connection = AtomicPtr::new(*self.connection);
-        let context = format!("While preparing the query:\n{}", truncate_long!(sql));
         let prepared = spawn_blocking(move || unsafe {
+            let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
             let connection = connection.load(Ordering::Relaxed);
             let len = sql.len();
-            let sql = CString::new(sql.into_bytes())?;
+            let sql = CString::new(sql.as_bytes())?;
             let mut statement = CBox::new(ptr::null_mut(), |p| {
                 let db = sqlite3_db_handle(p);
                 let rc = sqlite3_finalize(p);
@@ -192,7 +248,7 @@ impl Executor for SQLiteConnection {
             if rc != SQLITE_OK {
                 let error =
                     Error::msg(error_message_from_ptr(&sqlite3_errmsg(connection)).to_string())
-                        .context(context);
+                        .context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
             }
@@ -201,7 +257,7 @@ impl Executor for SQLiteConnection {
                     "Cannot prepare more than one statement at a time (remaining: {})",
                     CStr::from_ptr(tail).to_str().unwrap_or("unprintable")
                 )
-                .context(context);
+                .context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
             }
@@ -216,7 +272,7 @@ impl Executor for SQLiteConnection {
         query: impl AsQuery<SQLiteDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
-        let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
+        let context = format!("While running the query:\n{}", query.as_mut());
         let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
         let connection = AtomicPtr::new(*self.connection);
         let mut owned = mem::take(query.as_mut());
@@ -246,42 +302,5 @@ impl Executor for SQLiteConnection {
             }
             *query.as_mut() = mem::take(&mut join.await?);
         }
-    }
-}
-
-impl Connection for SQLiteConnection {
-    async fn connect(driver: &SQLiteDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = "While trying to connect to SQLite";
-        let url = Self::sanitize_url(driver, url).context(context)?;
-        let connection_string =
-            CString::from_str(&url.as_str().replacen("sqlite://", "file:", 1)).context(context)?;
-        let mut connection;
-        unsafe {
-            connection = CBox::new(ptr::null_mut(), |p| {
-                if sqlite3_close(p) != SQLITE_OK {
-                    let error = Error::msg(error_message_from_ptr(&sqlite3_errmsg(p)).to_string())
-                        .context("While closing the sqlite connection");
-                    log::error!("{error:#}");
-                }
-            });
-            let rc = sqlite3_open_v2(
-                connection_string.as_ptr(),
-                &mut *connection,
-                SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI,
-                ptr::null(),
-            );
-            if rc != SQLITE_OK {
-                let error =
-                    Error::msg(error_message_from_ptr(&sqlite3_errmsg(*connection)).to_string())
-                        .context(context);
-                log::error!("{error:#}");
-                return Err(error);
-            }
-        }
-        Ok(Self { connection })
-    }
-
-    fn begin(&mut self) -> impl Future<Output = Result<SQLiteTransaction<'_>>> + Send {
-        SQLiteTransaction::new(self)
     }
 }

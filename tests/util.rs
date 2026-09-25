@@ -6,8 +6,8 @@ mod tests {
     use tank::{
         Context, Dataset, DeclareTableRef, DynQuery, EitherIterator, Entity, FixedDecimal,
         Fragment, GenericSqlWriter, Interval, QueryBuilder, QueryResult, References, Row,
-        RowsAffected, SqlWriter, TableRef, Value, as_c_string, column_def, consume_while,
-        extract_number, quote_cow, separated_by, value_to_json, write_escaped,
+        RowsAffected, SqlValueWriter, SqlWriter, TableRef, Value, as_c_string, column_def,
+        consume_while, extract_number, quote_cow, separated_by, value_to_json, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, Time, UtcOffset};
 
@@ -455,7 +455,19 @@ mod tests {
             Box::new(Value::Int32(None)),
             Box::new(Value::Int32(None)),
         );
-        assert_eq!(value_to_json(&v), None);
+        assert_eq!(value_to_json(&v), Some(serde_json::json!({"1": 42})));
+
+        let mut map = HashMap::new();
+        map.insert(
+            Value::Varchar(Some("key".into())),
+            Value::Varchar(Some("value".into())),
+        );
+        let v = Value::Map(
+            Some(map),
+            Box::new(Value::Varchar(None)),
+            Box::new(Value::Varchar(None)),
+        );
+        assert_eq!(value_to_json(&v), Some(serde_json::json!({"key": "value"})));
 
         let empty_map: HashMap<Value, Value> = HashMap::new();
         let v2 = Value::Map(
@@ -479,6 +491,21 @@ mod tests {
         let s = Value::Struct(Some(vec![]), vec![], TableRef::new("my_type".into()));
         let result = value_to_json(&s).unwrap();
         assert!(result.is_object());
+
+        // A non-empty struct must serialize its fields (regression: `insert(...)?`
+        // bailed out because the first key was not present yet).
+        let s = Value::Struct(
+            Some(vec![
+                ("name".into(), Value::Varchar(Some("Alice".into()))),
+                ("age".into(), Value::Int32(Some(30))),
+            ]),
+            vec![],
+            TableRef::new("person".into()),
+        );
+        assert_eq!(
+            value_to_json(&s),
+            Some(serde_json::json!({"name": "Alice", "age": 30}))
+        );
     }
 
     #[test]
@@ -810,6 +837,28 @@ mod tests {
 
         let cs2 = as_c_string(vec![104, 0, 105]);
         assert_eq!(cs2.to_str().unwrap(), "h?i");
+    }
+
+    #[test]
+    fn util_truncate_long_multibyte() {
+        use tank::truncate_long;
+
+        assert_eq!(format!("{}", truncate_long!("SELECT 1")), "SELECT 1");
+
+        let long_ascii = "X".repeat(tank::TRUNCATE_LONG_LIMIT + 100);
+        let truncated = format!("{}", truncate_long!(long_ascii));
+        assert!(truncated.ends_with("...\n"));
+        assert_eq!(
+            truncated.trim_end_matches("...\n").trim().len(),
+            tank::TRUNCATE_LONG_LIMIT
+        );
+
+        let long_utf8 = "€".repeat(tank::TRUNCATE_LONG_LIMIT);
+        let truncated = format!("{}", truncate_long!(long_utf8));
+        assert!(truncated.ends_with("...\n"));
+
+        let truncated = format!("{}", truncate_long!(long_utf8.clone(), true));
+        assert!(truncated.ends_with("...\n"));
     }
 
     #[test]

@@ -1,3 +1,6 @@
+> [!NOTE]
+> Just show me the code: [Cheat sheet](00-cheat-sheet.md)
+
 # Introduction
 ###### *Field Manual Section 1* - Mission Briefing
 
@@ -35,6 +38,8 @@ Tank aims to provide a clean ORM design focused on ergonomics, flexibility and b
 - [**tank-sqlite**](https://crates.io/crates/tank-sqlite)
 - [**tank-mysql**](https://crates.io/crates/tank-mysql)
 - [**tank-duckdb**](https://crates.io/crates/tank-duckdb)
+- [**tank-clickhouse**](https://crates.io/crates/tank-clickhouse)
+- [**tank-chdb**](https://crates.io/crates/tank-chdb)
 - [**tank-mongodb**](https://crates.io/crates/tank-mongodb)
 - [**tank-scylladb**](https://crates.io/crates/tank-scylladb)
 - [**tank-valkey**](https://crates.io/crates/tank-valkey)
@@ -53,6 +58,6 @@ Building and maintaining drivers for several database families is a major effort
 
 Sponsorship helps keep Tank maintained, well-tested and moving toward new capabilities faster.
 
-🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**. Tank is independently designed, written and maintained by [barsdeveloper](https://github.com/barsdeveloper).
+🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**. Tank is carefully designed, written and maintained by (human) [barsdeveloper](https://github.com/barsdeveloper).
 
 *Hold the line. Maintain discipline. Tank out.*

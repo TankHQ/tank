@@ -83,6 +83,14 @@ mod tests {
         );
         assert!(i8::try_from_value(128_i32.as_value()).is_err());
         assert!(i8::try_from_value(128_i64.as_value()).is_err());
+        assert_eq!(i8::try_from_value(127_u8.as_value()).unwrap(), 127);
+        assert!(i8::try_from_value(128_u8.as_value()).is_err());
+        assert!(i8::try_from_value(200_u8.as_value()).is_err());
+        assert!(i8::try_from_value(255_u8.as_value()).is_err());
+        assert_eq!(i8::try_from_value((-128_i16).as_value()).unwrap(), -128);
+        assert!(i8::try_from_value(128_i16.as_value()).is_err());
+        assert!(i8::try_from_value((-129_i16).as_value()).is_err());
+        assert!(i8::try_from_value(256_i16.as_value()).is_err());
         assert!(i8::try_from_value(128_i128.as_value()).is_err());
         assert!(i8::try_from_value(127.1.as_value()).is_err());
         assert!(i8::try_from_value(127.1.as_value()).is_err());
@@ -153,6 +161,9 @@ mod tests {
         assert_eq!(i16::try_from_value("-32768".as_value()).unwrap(), -32768);
         assert!(i16::try_from_value(u16::MAX.as_value()).is_err());
         assert!(i16::try_from_value(32768_u16.as_value()).is_err());
+        assert_eq!(i16::try_from_value((-128_i8).as_value()).unwrap(), -128);
+        assert_eq!(i16::try_from_value(127_i8.as_value()).unwrap(), 127);
+        assert_eq!(i16::try_from_value(255_u8.as_value()).unwrap(), 255);
         assert!(i16::parse("hello").is_err());
         assert_eq!(i16::parse("32767").expect("Could not parse i16"), 32767);
         assert_eq!(i16::parse("-32768").expect("Could not parse i16"), -32768);
@@ -237,6 +248,32 @@ mod tests {
         assert!(i64::parse("").is_err());
         assert!(i64::try_from_value(u64::MAX.as_value()).is_err());
         assert!(i64::try_from_value(9223372036854775808_u64.as_value()).is_err());
+    }
+
+    #[test]
+    fn value_float_to_integer() {
+        assert_eq!(i64::try_from_value(5.0_f64.as_value()).unwrap(), 5);
+        assert_eq!(i32::try_from_value((5.0_f32).as_value()).unwrap(), 5);
+        assert_eq!(u8::try_from_value((200.0_f32).as_value()).unwrap(), 200);
+        assert_eq!(i128::try_from_value((-7.0_f64).as_value()).unwrap(), -7);
+
+        assert!(i64::try_from_value(1.5_f64.as_value()).is_err());
+        assert!(i32::try_from_value((1.5_f32).as_value()).is_err());
+        assert!(i64::try_from_value(1e30_f64.as_value()).is_err());
+        assert!(i64::try_from_value(f64::MAX.as_value()).is_err());
+        assert!(u64::try_from_value(1e30_f64.as_value()).is_err());
+        assert!(i32::try_from_value(1e30_f64.as_value()).is_err());
+        assert!(i8::try_from_value(200.0_f64.as_value()).is_err());
+        assert!(i8::try_from_value((-200.0_f64).as_value()).is_err());
+        assert!(i8::try_from_value((200.0_f32).as_value()).is_err());
+        assert!(u32::try_from_value((-1.0_f64).as_value()).is_err());
+
+        let json = |f: f64| serde_json::Value::Number(Number::from_f64(f).unwrap()).as_value();
+        assert_eq!(i128::try_from_value(json(42.0)).unwrap(), 42);
+        assert_eq!(i128::try_from_value(json(-7.0)).unwrap(), -7);
+        assert!(i128::try_from_value(json(1e40)).is_err());
+        assert!(i128::try_from_value(json(-1e40)).is_err());
+        assert!(i64::try_from_value(json(1e30)).is_err());
     }
 
     #[test]
@@ -480,6 +517,11 @@ mod tests {
         assert!(char::try_from_value(Value::Varchar(Some("".into()))).is_err());
         assert_eq!(char::parse("v").expect("Could not parse char"), 'v');
         assert!(char::parse("").is_err());
+
+        assert_eq!(char::try_from_value(Value::Int32(Some(65))).unwrap(), 'A');
+        assert_eq!(char::try_from_value(Value::UInt8(Some(97))).unwrap(), 'a');
+        assert!(char::try_from_value(Value::Int32(Some(-1))).is_err());
+        assert!(char::try_from_value(Value::Int64(Some(u32::MAX as i64 + 1))).is_err());
     }
 
     #[test]
@@ -1054,6 +1096,17 @@ mod tests {
                 .expect("Cannot convert the Value to array of 3 chars"),
             ['x', 'y', 'a']
         );
+
+        assert_eq!(<[char; 1]>::try_from_value("é".as_value()).unwrap(), ['é']);
+        assert_eq!(
+            <[char; 2]>::try_from_value("a€".as_value()).unwrap(),
+            ['a', '€']
+        );
+        assert_eq!(
+            <[char; 2]>::try_from_value("日本".as_value()).unwrap(),
+            ['日', '本']
+        );
+        assert!(<[char; 2]>::try_from_value("a€b".as_value()).is_err());
     }
 
     #[test]
@@ -1809,6 +1862,15 @@ mod tests {
     }
 
     #[test]
+    fn value_null_equality_is_reflexive() {
+        assert_eq!(Value::Null, Value::Null);
+        assert_eq!(Value::Null, Value::Null.clone());
+        let mut set = HashSet::new();
+        set.insert(Value::Null);
+        assert!(set.contains(&Value::Null), "HashSet lost Value::Null");
+    }
+
+    #[test]
     fn value_float_hash_matches_equality() {
         let mut f32_set = HashSet::new();
         f32_set.insert(Value::Float32(Some(0.0)));
@@ -1823,6 +1885,58 @@ mod tests {
         f64_set.insert(Value::Float64(Some(f64::from_bits(0x7ff8_0000_0000_0000))));
         f64_set.insert(Value::Float64(Some(f64::from_bits(0x7ff8_0000_0000_0001))));
         assert_eq!(f64_set.len(), 2);
+    }
+
+    #[test]
+    fn value_collection_hash_matches_equality() {
+        use std::collections::HashSet;
+
+        let a = Value::Array(
+            Some(vec![Value::Int32(Some(1))].into()),
+            Box::new(Value::Decimal(None, 0, 2)),
+            1,
+        );
+        let b = Value::Array(
+            Some(vec![Value::Int32(Some(1))].into()),
+            Box::new(Value::Decimal(None, 10, 2)),
+            1,
+        );
+        let c = Value::Array(
+            Some(vec![Value::Int32(Some(1))].into()),
+            Box::new(Value::Decimal(None, 8, 2)),
+            1,
+        );
+        assert_ne!(a, b);
+        assert_ne!(a, c);
+        assert_ne!(b, c);
+
+        assert_eq!(a, a.clone());
+        let mut set = HashSet::new();
+        set.insert(a.clone());
+        assert!(set.contains(&a));
+
+        // Same for List and Map element types.
+        let l1 = Value::List(
+            Some(vec![Value::Int32(Some(1))]),
+            Box::new(Value::Decimal(None, 0, 2)),
+        );
+        let l2 = Value::List(
+            Some(vec![Value::Int32(Some(1))]),
+            Box::new(Value::Decimal(None, 10, 2)),
+        );
+        assert_ne!(l1, l2);
+
+        let m1 = Value::Map(
+            Some(std::collections::HashMap::new()),
+            Box::new(Value::Decimal(None, 0, 2)),
+            Box::new(Value::Int32(None)),
+        );
+        let m2 = Value::Map(
+            Some(std::collections::HashMap::new()),
+            Box::new(Value::Decimal(None, 10, 2)),
+            Box::new(Value::Int32(None)),
+        );
+        assert_ne!(m1, m2);
     }
 
     #[test]
@@ -2285,5 +2399,28 @@ mod as_value_tests {
         assert_eq!(42_usize.as_value(), Value::UInt64(Some(42)));
         let back: usize = usize::try_from_value(Value::UInt64(Some(42))).unwrap();
         assert_eq!(back, 42);
+
+        // Unsigned sources wider than isize::MAX must not silently wrap around.
+        // On 64-bit these only fit up to isize::MAX; on 32-bit even u32 values
+        // above i32::MAX are out of range, so this asserts the checked path is
+        // taken rather than an unchecked `as` cast.
+        let over_isize = (isize::MAX as u128 + 1) as u64;
+        assert!(isize::try_from_value(over_isize.as_value()).is_err());
+        assert!(isize::try_from_value(u64::MAX.as_value()).is_err());
+        assert_eq!(
+            isize::try_from_value((isize::MAX as u64).as_value()).unwrap(),
+            isize::MAX
+        );
+        // u16/u8 sources always fit into isize on supported targets.
+        assert_eq!(isize::try_from_value(65535_u16.as_value()).unwrap(), 65535);
+        assert_eq!(isize::try_from_value(255_u8.as_value()).unwrap(), 255);
+
+        // usize is checked against u64 on 64-bit targets.
+        assert_eq!(
+            usize::try_from_value(u64::MAX.as_value()).unwrap(),
+            usize::MAX
+        );
+        assert_eq!(usize::try_from_value(255_u8.as_value()).unwrap(), 255);
+        assert_eq!(usize::try_from_value(65535_u16.as_value()).unwrap(), 65535);
     }
 }

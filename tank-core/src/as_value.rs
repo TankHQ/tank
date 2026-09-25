@@ -81,6 +81,34 @@ macro_rules! impl_as_value {
                     $destination(Some(v), ..) => Ok(v as _),
                     $($pat_rest => $expr_rest,)*
                     #[allow(unreachable_patterns)]
+                    Value::Int8(Some(v), ..) => {
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
+                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
+                            return Err(anyhow!(
+                                "Value {v}: i8 is out of range for {}",
+                                any::type_name::<Self>(),
+                            ));
+                        }
+                        Ok(v as $source)
+                    }
+                    #[allow(unreachable_patterns)]
+                    Value::Int16(Some(v), ..) => {
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
+                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
+                            return Err(anyhow!(
+                                "Value {v}: i16 is out of range for {}",
+                                any::type_name::<Self>(),
+                            ));
+                        }
+                        Ok(v as $source)
+                    }
+                    #[allow(unreachable_patterns)]
                     Value::Int32(Some(v), ..) => {
                         let mut max = <$source>::MAX as i128;
                         if max < 0 {
@@ -125,23 +153,112 @@ macro_rules! impl_as_value {
                         Ok(v as _)
                     },
                     #[allow(unreachable_patterns)]
+                    Value::UInt8(Some(v), ..) => {
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
+                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
+                            return Err(anyhow!(
+                                "Value {v}: u8 is out of range for {}",
+                                any::type_name::<Self>(),
+                            ));
+                        }
+                        Ok(v as $source)
+                    }
+                    #[allow(unreachable_patterns)]
+                    Value::UInt16(Some(v), ..) => {
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
+                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
+                            return Err(anyhow!(
+                                "Value {v}: u16 is out of range for {}",
+                                any::type_name::<Self>(),
+                            ));
+                        }
+                        Ok(v as $source)
+                    }
+                    #[allow(unreachable_patterns)]
+                    Value::UInt32(Some(v), ..) => {
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
+                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
+                            return Err(anyhow!(
+                                "Value {v}: u32 is out of range for {}",
+                                any::type_name::<Self>(),
+                            ));
+                        }
+                        Ok(v as $source)
+                    }
+                    #[allow(unreachable_patterns)]
+                    Value::UInt64(Some(v), ..) => {
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
+                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
+                            return Err(anyhow!(
+                                "Value {v}: u64 is out of range for {}",
+                                any::type_name::<Self>(),
+                            ));
+                        }
+                        Ok(v as $source)
+                    }
+                    #[allow(unreachable_patterns)]
+                    Value::UInt128(Some(v), ..) => {
+                        let mut max = <$source>::MAX as i128;
+                        if max < 0 {
+                            max = i128::MAX;
+                        }
+                        // u128 may exceed i128::MAX; guard against wrapping before clamping.
+                        let v128 = if v > i128::MAX as u128 {
+                            i128::MAX
+                        } else {
+                            v as i128
+                        };
+                        if v128.clamp(<$source>::MIN as _, max) != v128 {
+                            return Err(anyhow!(
+                                "Value {v}: u128 is out of range for {}",
+                                any::type_name::<Self>(),
+                            ));
+                        }
+                        Ok(v as $source)
+                    }
+                    #[allow(unreachable_patterns)]
                     // SQL Generic floating point value
                     Value::Float64(Some(v), ..) => {
                         if v.is_finite() && v.fract() == 0.0 {
-                            return Self::try_from_value(Value::Int64(Some(v as _)))
+                            let min = <$source>::MIN as f64;
+                            let max = <$source>::MAX as f64;
+                            if v >= min && v <= max {
+                                return Ok(v as $source);
+                            }
                         }
-                        Err(anyhow!("Value {v}: f64 does not fit into a integer"))
+                        Err(anyhow!(
+                            "Value {v}: f64 does not fit into {}",
+                            any::type_name::<Self>(),
+                        ))
                     },
+                    #[allow(unreachable_patterns)]
+                    Value::Float32(Some(v), ..) => {
+                        Self::try_from_value(Value::Float64(Some(v as f64)))
+                    }
                     // This is needed to allow integer keys in maps, in some drivers the maps keys are strings only
                     Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v).with_context(|| {
                         format!("While parsing a {} from `{}`", any::type_name::<Self>(), v)
                     }),
                     Value::Json(Some(serde_json::Value::Number(v)), ..) => {
                         let integer = v.as_i128().or_else(|| {
-                            if let Some(v) = v.as_f64() && v.fract() == 0.0 {
-                                return Some(v.trunc() as i128);
+                            let f = v.as_f64()?;
+                            if f.fract() == 0.0 && f >= i128::MIN as f64 && f <= i128::MAX as f64 {
+                                Some(f as i128)
+                            } else {
+                                None
                             }
-                            None
                         });
                         let mut max = <$source>::MAX as i128;
                         if max < 0 {
@@ -177,7 +294,6 @@ macro_rules! impl_as_value {
 impl_as_value!(
     i8,
     Value::Int8,
-    Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Int16(Some(v), ..) => {
         let result = v as i8;
         if result as i16 != v {
@@ -208,11 +324,11 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = anyhow!("Value {v}: Decimal does not fit into i32");
+        let make_error = || anyhow!("Value {v}: Decimal does not fit into i32");
         if !v.is_integer() {
-            return Err(error.context("The value is not an integer"));
+            return Err(make_error().context("The value is not an integer"));
         }
-        v.to_i32().ok_or(error)
+        v.to_i32().ok_or_else(make_error)
     }
 );
 
@@ -229,11 +345,11 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = anyhow!("Value {v}: Decimal does not fit into i64");
+        let make_error = || anyhow!("Value {v}: Decimal does not fit into i64");
         if !v.is_integer() {
-            return Err(error.context("The value is not an integer"));
+            return Err(make_error().context("The value is not an integer"));
         }
-        v.to_i64().ok_or(error)
+        v.to_i64().ok_or_else(make_error)
     }
 );
 
@@ -252,11 +368,11 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = anyhow!("Value {v}: Decimal does not fit into i128");
+        let make_error = || anyhow!("Value {v}: Decimal does not fit into i128");
         if !v.is_integer() {
-            return Err(error.context("The value is not an integer"));
+            return Err(make_error().context("The value is not an integer"));
         }
-        v.to_i128().ok_or(error)
+        v.to_i128().ok_or_else(make_error)
     }
 );
 
@@ -269,15 +385,12 @@ impl_as_value!(
     Value::UInt64(Some(v), ..) => {
         isize::try_from(v).map_err(|_| anyhow!("Value {v}: u64 is out of range for isize"))
     },
-    Value::UInt32(Some(v), ..) => Ok(v as _),
-    Value::UInt16(Some(v), ..) => Ok(v as _),
-    Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = anyhow!("Value {v}: Decimal does not fit into i64");
+        let make_error = || anyhow!("Value {v}: Decimal does not fit into i64");
         if !v.is_integer() {
-            return Err(error.context("The value is not an integer"));
+            return Err(make_error().context("The value is not an integer"));
         }
-        v.to_isize().ok_or(error)
+        v.to_isize().ok_or_else(make_error)
     }
 );
 
@@ -285,7 +398,7 @@ impl_as_value!(
     u8,
     Value::UInt8,
     Value::Int16(Some(v), ..) => {
-        v.to_u8().ok_or(anyhow!("Value {v}: i16 is out of range for u8"))
+        v.to_u8().ok_or_else(|| anyhow!("Value {v}: i16 is out of range for u8"))
     }
 );
 
@@ -316,11 +429,11 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = anyhow!("Value {v}: Decimal does not fit into u64");
+        let make_error = || anyhow!("Value {v}: Decimal does not fit into u64");
         if !v.is_integer() {
-            return Err(error.context("The value is not an integer"));
+            return Err(make_error().context("The value is not an integer"));
         }
-        v.to_u64().ok_or(error)
+        v.to_u64().ok_or_else(make_error)
     }
 );
 
@@ -332,11 +445,11 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = anyhow!("Value {v}: Decimal does not fit into u128");
+        let make_error = || anyhow!("Value {v}: Decimal does not fit into u128");
         if !v.is_integer() {
-            return Err(error.context("The value is not an integer"));
+            return Err(make_error().context("The value is not an integer"));
         }
-        v.to_u128().ok_or(error)
+        v.to_u128().ok_or_else(make_error)
     }
 );
 
@@ -347,11 +460,11 @@ impl_as_value!(
     Value::UInt16(Some(v), ..) => Ok(v as _),
     Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
-        let error = anyhow!("Value {v}: Decimal does not fit into u64");
+        let make_error = || anyhow!("Value {v}: Decimal does not fit into usize");
         if !v.is_integer() {
-            return Err(error.context("The value is not an integer"));
+            return Err(make_error().context("The value is not an integer"));
         }
-        v.to_usize().ok_or(error)
+        v.to_usize().ok_or_else(make_error)
     }
 );
 
@@ -511,6 +624,25 @@ impl_as_value!(
             ))
         }
         Ok(v.chars().next().unwrap())
+    },
+    value @ (
+        Value::Int8(Some(..), ..)
+        | Value::Int16(Some(..), ..)
+        | Value::Int32(Some(..), ..)
+        | Value::Int64(Some(..), ..)
+        | Value::Int128(Some(..), ..)
+        | Value::UInt8(Some(..), ..)
+        | Value::UInt16(Some(..), ..)
+        | Value::UInt32(Some(..), ..)
+        | Value::UInt64(Some(..), ..)
+        | Value::UInt128(Some(..), ..)
+    ) => {
+        let code = u32::try_from_value(value.clone()).map_err(|_| {
+            anyhow!("Cannot convert {value:?} to char because it is not a valid unicode scalar value")
+        })?;
+        char::from_u32(code).ok_or_else(|| {
+            anyhow!("Cannot convert {value:?} to char because it is not a valid unicode scalar value")
+        })
     }
 );
 
@@ -567,7 +699,7 @@ impl_as_value!(
     Interval,
     Value::Interval,
     |mut input: &str| {
-        let context = || {
+        let make_context = || {
             anyhow!(
                 "Cannot parse interval from `{}`",
                 truncate_long!(input)
@@ -577,7 +709,7 @@ impl_as_value!(
             Some(v) if *v == '"' || *v == '\'' => {
                 input = &input[1..];
                 if !input.ends_with(*v) {
-                    return Err(context());
+                    return Err(make_context());
                 }
                 input = input.trim_end_matches(*v);
             }
@@ -650,7 +782,7 @@ impl_as_value!(
                 {
                     interval += Interval::from_nanos(count as _)
                 }
-                _ => return Err(context()),
+                _ => return Err(make_context()),
             }
             input = cur.trim_start();
         }
@@ -663,34 +795,34 @@ impl_as_value!(
         let mut time_interval = Interval::ZERO;
         let num = extract_number::<true>(&mut input);
         if !num.is_empty() {
-            let num = num.parse::<u64>().with_context(context)?;
+            let num = num.parse::<u64>().with_context(make_context)?;
             time_interval += Interval::from_hours(num as _);
             if Some(':') == input.chars().next() {
                 input = &input[1..];
                 let num = extract_number::<false>(&mut input).parse::<u64>()?;
                 if input.is_empty() {
-                    return Err(context());
+                    return Err(make_context());
                 }
                 time_interval += Interval::from_mins(num as _);
                 if Some(':') == input.chars().next() {
                     input = &input[1..];
                     let num = extract_number::<false>(&mut input)
                         .parse::<u64>()
-                        .with_context(context)?;
+                        .with_context(make_context)?;
                     time_interval += Interval::from_secs(num as _);
                     if Some('.') == input.chars().next() {
                         input = &input[1..];
                         let len = input.len();
                         let mut num = extract_number::<true>(&mut input)
                             .parse::<i128>()
-                            .with_context(context)?;
+                            .with_context(make_context)?;
                         let magnitude = (len - 1) / 3;
                         num *= 10_i128.pow(2 - (len + 2) as u32 % 3);
                         match magnitude {
                             0 => time_interval += Interval::from_millis(num),
                             1 => time_interval += Interval::from_micros(num),
                             2 => time_interval += Interval::from_nanos(num),
-                            _ => return Err(context()),
+                            _ => return Err(make_context()),
                         }
                     }
                 }
@@ -702,10 +834,11 @@ impl_as_value!(
             }
         }
         if !input.is_empty() {
-            return Err(context());
+            return Err(make_context());
         }
         Ok(interval)
     },
+    Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v),
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
@@ -713,6 +846,7 @@ impl_as_value!(
     std::time::Duration,
     Value::Interval,
     |v| <Interval as AsValue>::parse(v).map(Into::into),
+    Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v),
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
@@ -720,6 +854,7 @@ impl_as_value!(
     time::Duration,
     Value::Interval,
     |v| <Interval as AsValue>::parse(v).map(Into::into),
+    Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v),
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
@@ -739,25 +874,27 @@ impl_as_value!(
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
+/// Parses `$value` against each of the given formats, returning the first
+/// successful parse and advancing `$value` past the consumed input.
+///
+/// Yields `None` when no format matches, and deliberately never builds an `anyhow::Error`.
 macro_rules! parse_time {
     ($value: ident, $($formats:literal),+ $(,)?) => {
         'value: {
-        let context = || anyhow!(
-            "Cannot parse `{}` as {}",
-            truncate_long!($value),
-            any::type_name::<Self>()
-        );
             for format in [$($formats,)+] {
-                let format = parse_borrowed::<2>(format)?;
+                let Ok(format) = parse_borrowed::<2>(format) else {
+                    break 'value None;
+                };
                 let mut parsed = time::parsing::Parsed::new();
                 let remaining = parsed.parse_items($value.as_bytes(), &format);
                 if let Ok(remaining) = remaining {
-                    let result = parsed.try_into().with_context(context)?;
-                    $value = &$value[($value.len() - remaining.len())..];
-                    break 'value Ok(result);
+                    if let Ok(result) = parsed.try_into() {
+                        $value = &$value[($value.len() - remaining.len())..];
+                        break 'value Some(result);
+                    }
                 }
             }
-            Err(context())
+            None
         }
     }
 }
@@ -767,7 +904,8 @@ impl_as_value!(
     Value::Date,
     |input: &str| {
         let mut value = input;
-        let mut result: time::Date = parse_time!(value, "[year]-[month]-[day]")?;
+        let mut result: time::Date = parse_time!(value, "[year]-[month]-[day]")
+            .ok_or_else(|| anyhow!("Cannot parse `{}` as time::Date", truncate_long!(input)))?;
         {
             let mut attempt = value.trim_start();
             let suffix = consume_while(&mut attempt, char::is_ascii_alphabetic);
@@ -804,7 +942,8 @@ impl_as_value!(
             "[hour]:[minute]:[second].[subsecond]",
             "[hour]:[minute]:[second]",
             "[hour]:[minute]",
-        )?;
+        )
+        .ok_or_else(|| anyhow!("Cannot parse `{}` as time::Time", truncate_long!(input)))?;
         if !input.is_empty() {
             return Err(anyhow!("Cannot parse `{}` as time::Time", truncate_long!(input)))
         }
@@ -812,7 +951,12 @@ impl_as_value!(
     },
     Value::Interval(Some(v), ..) => {
         let (h, m, s, ns) = v.as_hmsns();
-        time::Time::from_hms_nano(h as _, m, s, ns,)
+        if h < 0 || m < 0 || s < 0 || ns < 0 {
+            return Err(anyhow!(
+                "Cannot convert negative interval `{v:?}` to `time::Time`"
+            ));
+        }
+        time::Time::from_hms_nano(h as _, m as _, s as _, ns as _)
             .map_err(|e| anyhow!("Cannot convert interval `{v:?}` to time: {e:?}"))
     },
     Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
@@ -831,7 +975,8 @@ impl_as_value!(
             "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond]",
             "[year]-[month]-[day] [hour]:[minute]:[second]",
             "[year]-[month]-[day] [hour]:[minute]",
-        )?;
+        )
+        .ok_or_else(|| anyhow!("Cannot parse `{}` as time::PrimitiveDateTime", truncate_long!(input)))?;
         if !input.is_empty() {
             return Err(anyhow!("Cannot parse `{}` as time::PrimitiveDateTime", truncate_long!(input)))
         }
@@ -860,7 +1005,7 @@ impl_as_value!(
     time::OffsetDateTime,
     Value::TimestampWithTimezone,
     |mut input: &str| {
-        if let Ok::<time::OffsetDateTime, _>(result) = parse_time!(
+        if let Some(result) = parse_time!(
             input,
             "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]",
             "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]",
@@ -1043,9 +1188,10 @@ impl AsValue for chrono::DateTime<chrono::FixedOffset> {
     {
         let value = <time::OffsetDateTime as AsValue>::try_from_value(value)
             .context("Could not create a chrono::DateTime")?;
-        let date = AsValue::try_from_value(value.date().as_value())
+        let utc = value.to_offset(time::UtcOffset::UTC);
+        let date = AsValue::try_from_value(utc.date().as_value())
             .context("Could not convert date part of chrono::DateTime")?;
-        let time = AsValue::try_from_value(value.time().as_value())
+        let time = AsValue::try_from_value(utc.time().as_value())
             .context("Could not convert time part of chrono::DateTime")?;
         let date_time = chrono::NaiveDateTime::new(date, time);
         let offset = chrono::FixedOffset::east_opt(value.offset().whole_seconds())
@@ -1060,11 +1206,15 @@ impl AsValue for chrono::DateTime<chrono::Utc> {
         Value::TimestampWithTimezone(None)
     }
     fn as_value(self) -> Value {
-        let odt = time::OffsetDateTime::from_unix_timestamp_nanos(
-            self.timestamp_nanos_opt().unwrap() as i128,
-        )
-        .unwrap();
-        Value::TimestampWithTimezone(Some(odt))
+        let odt = self
+            .timestamp_nanos_opt()
+            .and_then(|nanos| time::OffsetDateTime::from_unix_timestamp_nanos(nanos as i128).ok());
+        if odt.is_none() {
+            log::error!(
+                "Could not create a Value::TimestampWithTimezone from chrono::DateTime<Utc>: {self:?}",
+            );
+        }
+        Value::TimestampWithTimezone(odt)
     }
     fn try_from_value(value: Value) -> Result<Self> {
         let odt = <time::OffsetDateTime as AsValue>::try_from_value(value)?;
@@ -1093,14 +1243,13 @@ impl AsValue for Decimal {
             Value::UInt8(Some(v), ..) => Ok(Decimal::new(v as i64, 0)),
             Value::UInt16(Some(v), ..) => Ok(Decimal::new(v as i64, 0)),
             Value::UInt32(Some(v), ..) => Ok(Decimal::new(v as i64, 0)),
-            Value::UInt64(Some(v), ..) => {
-                Decimal::from_u64(v).ok_or(anyhow!("Value {v}: u64 does not fit into Decimal"))
-            }
+            Value::UInt64(Some(v), ..) => Decimal::from_u64(v)
+                .ok_or_else(|| anyhow!("Value {v}: u64 does not fit into Decimal")),
             Value::Float32(Some(v), ..) => {
-                Ok(Decimal::from_f32(v).ok_or(anyhow!("Cannot convert {value:?} to Decimal"))?)
+                Decimal::from_f32(v).ok_or_else(|| anyhow!("Cannot convert {value:?} to Decimal"))
             }
             Value::Float64(Some(v), ..) => {
-                Ok(Decimal::from_f64(v).ok_or(anyhow!("Cannot convert {value:?} to Decimal"))?)
+                Decimal::from_f64(v).ok_or_else(|| anyhow!("Cannot convert {value:?} to Decimal"))
             }
             Value::Json(Some(serde_json::Value::Number(v)), ..) => {
                 if let Some(v) = v.as_f64()
@@ -1176,7 +1325,8 @@ impl<T: AsValue, const N: usize> AsValue for [T; N] {
         }
         match value {
             Value::Varchar(Some(v), ..)
-                if matches!(T::as_empty_value(), Value::Char(..)) && v.len() == N =>
+                // Compare by count, not byte (for multi byte characters)
+                if matches!(T::as_empty_value(), Value::Char(..)) && v.chars().count() == N =>
             {
                 convert_iter(v.chars())
             }

@@ -38,13 +38,13 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
     type Driver = ScyllaDBDriver;
 
     async fn do_prepare(&mut self, sql: String) -> Result<Query<ScyllaDBDriver>> {
-        let context = format!("While preparing the query:\n{}", truncate_long!(sql));
+        let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
         let statement = self
             .connection
             .session
-            .prepare(sql)
+            .prepare(sql.as_str())
             .await
-            .with_context(|| context)?;
+            .with_context(make_context)?;
         Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
     }
 

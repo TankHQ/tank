@@ -3,17 +3,10 @@ mod tests {
     use std::borrow::Cow;
     use tank::{
         BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Entity, Expression, Fragment,
-        OpPrecedence, Operand, SqlWriter, UnaryOp, UnaryOpType, Value, expr,
+        GenericSqlWriter, OpPrecedence, Operand, UnaryOp, UnaryOpType, Value, expr,
     };
 
-    struct Writer;
-    impl SqlWriter for Writer {
-        fn as_dyn(&self) -> &dyn SqlWriter {
-            self
-        }
-    }
-
-    const WRITER: Writer = Writer {};
+    const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
     fn test_simple_expressions() {
@@ -26,6 +19,36 @@ mod tests {
             &mut query,
         );
         assert_eq!(query.as_str(), "false");
+
+        let expr = expr!('x');
+        assert!(matches!(expr, Operand::LitStr("x")));
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "'x'");
+
+        let expr = expr!(3000000000);
+        assert!(matches!(expr, Operand::LitInt(3_000_000_000)));
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "3000000000");
+
+        let expr = expr!(170141183460469231731687303715884105727);
+        assert!(matches!(expr, Operand::LitInt(i128::MAX)));
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "170141183460469231731687303715884105727");
 
         let expr = expr!(1 + 2);
         assert!(matches!(
@@ -285,6 +308,78 @@ mod tests {
     }
 
     #[test]
+    fn test_in_with_rust_collections() {
+        // A Rust array evaluated via `#` becomes a `Value::Array`, but `IN`
+        // expects a parenthesized list, not a SQL array literal.
+        let ids = [1, 2, 3, 4, 5];
+        let expr = expr!(col == #ids as IN);
+        assert!(matches!(
+            expr,
+            BinaryOp {
+                op: BinaryOpType::In,
+                lhs: Operand::LitIdent("col"),
+                rhs: Operand::Variable(Value::Array(Some(..), ..)),
+            }
+        ));
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "col IN (1,2,3,4,5)");
+
+        // `Vec` behaves the same way, becoming a `Value::List`.
+        let names = vec!["Alice", "Bob"];
+        let expr = expr!(col != #names as IN);
+        assert!(matches!(
+            expr,
+            BinaryOp {
+                op: BinaryOpType::NotIn,
+                lhs: Operand::LitIdent("col"),
+                rhs: Operand::Variable(Value::List(Some(..), ..)),
+            }
+        ));
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "col NOT IN ('Alice','Bob')");
+
+        // Empty collections must not render an invalid `IN ()` list.
+        let empty: [i32; 0] = [];
+        let expr = expr!(col == #empty as IN);
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "FALSE");
+
+        let expr = expr!(col != #empty as IN);
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "TRUE");
+
+        // The literal tuple form keeps working.
+        let expr = expr!(col == (1, 3, 5) as IN);
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "col IN (1,3,5)");
+    }
+
+    #[test]
     fn test_question_mark_expressions() {
         let expr = expr!(alpha == ? && bravo > ?);
         assert!(matches!(
@@ -328,6 +423,42 @@ mod tests {
         let mut query = DynQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(true), &mut query);
         assert_eq!(query.as_str(), r#""some_table"."the_column" NOT LIKE ?"#);
+    }
+
+    #[test]
+    fn test_current_timestamp_ms_macro() {
+        {
+            use tank::current_timestamp_ms;
+            let expr = expr!(current_timestamp_ms!());
+            assert!(matches!(expr, Operand::CurrentTimestampMs));
+            let mut query = DynQuery::default();
+            expr.write_query(
+                &WRITER,
+                &mut Context::new(Fragment::SqlSelect, false),
+                &mut query,
+            );
+            assert_eq!(query.as_str(), "NOW()");
+
+            let expr = expr!(col > current_timestamp_ms!() - 1000);
+            let mut query = DynQuery::default();
+            expr.write_query(
+                &WRITER,
+                &mut Context::new(Fragment::SqlSelect, false),
+                &mut query,
+            );
+            assert_eq!(query.as_str(), "col > NOW() - 1000");
+        }
+        {
+            let expr = expr!(tank::current_timestamp_ms!());
+            assert!(matches!(expr, Operand::CurrentTimestampMs));
+            let mut query = DynQuery::default();
+            expr.write_query(
+                &WRITER,
+                &mut Context::new(Fragment::SqlSelect, false),
+                &mut query,
+            );
+            assert_eq!(query.as_str(), "NOW()");
+        }
     }
 
     #[test]

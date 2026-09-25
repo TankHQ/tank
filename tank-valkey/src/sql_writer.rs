@@ -3,7 +3,8 @@ use redis::Cmd;
 use std::{borrow::Cow, fmt::Write};
 use tank_core::{
     AsEntity, Context, Dataset, DynQuery, Entity, Expression, Fragment, IsAsterisk, SelectQuery,
-    SqlWriter, TableRef, Value, column_def,
+    SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef,
+    Value, column_def,
 };
 
 pub struct ValkeySqlWriter {
@@ -47,7 +48,7 @@ impl ValkeySqlWriter {
     }
 }
 
-impl SqlWriter for ValkeySqlWriter {
+impl SqlCoreWriter for ValkeySqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -68,10 +69,18 @@ impl SqlWriter for ValkeySqlWriter {
             let _ = write!(out, " {}", value.alias);
         }
     }
+}
+
+impl SqlValueWriter for ValkeySqlWriter {
     fn write_string(&self, _context: &mut Context, out: &mut DynQuery, value: &str) {
         out.push_str(value);
     }
+}
 
+impl SqlFragmentWriter for ValkeySqlWriter {}
+
+impl SqlExpressionWriter for ValkeySqlWriter {}
+impl SqlWriter for ValkeySqlWriter {
     fn write_create_schema<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
     where
         Self: Sized,

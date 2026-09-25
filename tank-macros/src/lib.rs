@@ -262,6 +262,7 @@ pub fn join(input: TokenStream) -> TokenStream {
 /// - `PI` identifiers
 /// - `value != "ab%" as LIKE` pattern matching, it becomes `value NOT LIKE 'ab%'`,
 ///   it also supports `REGEXP` and `GLOB` (actual supports depends on the driver)
+/// - `col == #collection as IN`, it becomes `col IN (1, 2, 3)` instead of a SQL array literal
 /// - `-(-PI) + 2 * (5 % (2 + 1)) == 7 && !(4 < 2)` combination of the previous
 ///
 /// Parentheses obey standard Rust precedence.

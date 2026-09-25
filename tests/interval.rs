@@ -1,15 +1,11 @@
 #[cfg(test)]
 mod tests {
     use std::{collections::HashSet, i64, time::Duration};
-    use tank_core::{AsValue, Context, DynQuery, Fragment, Interval, SqlWriter};
+    use tank_core::{
+        AsValue, Context, DynQuery, Fragment, GenericSqlWriter, Interval, SqlValueWriter,
+    };
 
-    struct Writer;
-    impl SqlWriter for Writer {
-        fn as_dyn(&self) -> &dyn SqlWriter {
-            self
-        }
-    }
-    const WRITER: Writer = Writer {};
+    const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     macro_rules! test_interval {
         ($interval:expr, $expected:literal) => {{
@@ -179,6 +175,50 @@ mod tests {
         // Negative months > 48 should decompose to years
         test_interval!(Interval::from_months(-49), "INTERVAL '-4 YEARS -1 MONTH'");
         test_interval!(Interval::from_months(-24), "INTERVAL '-2 YEARS'");
+
+        // Large values must not overflow when rendered
+        test_interval!(
+            Interval::new(0, i64::MAX, 0),
+            "INTERVAL '9223372036854775807 DAYS'"
+        );
+        test_interval!(
+            Interval::new(0, i64::MIN, 0),
+            "INTERVAL '-9223372036854775808 DAYS'"
+        );
+        test_interval!(
+            Interval::new(0, i64::MAX, i128::MAX),
+            "INTERVAL '170141183460469231731687303715884105727 NANOSECONDS'"
+        );
+        test_interval!(
+            Interval::new(0, i64::MIN, i128::MIN),
+            "INTERVAL '-170141183460469231731687303715884105728 NANOSECONDS'"
+        );
+    }
+
+    #[test]
+    fn write_then_parse_round_trip() {
+        for interval in [
+            Interval::from_years(20_000) + Interval::from_millis(300),
+            Interval::from_months(5) + Interval::from_days(-2) + Interval::from_secs(1),
+            Interval::new(48, 15, 2 * Interval::NANOS_IN_DAY + 1_000_000_000),
+            Interval::from_days(-11),
+            Interval::from_micros(999_999_999),
+        ] {
+            let mut out = DynQuery::default();
+            WRITER.write_value(
+                &mut Context::new(Fragment::None, false),
+                &mut out,
+                &interval.as_value(),
+            );
+            let rendered = out.as_str().into_owned();
+            let body = rendered
+                .strip_prefix("INTERVAL ")
+                .unwrap_or(&rendered)
+                .to_string();
+            let parsed = Interval::try_from_value(tank_core::Value::Varchar(Some(body.into())))
+                .unwrap_or_else(|e| panic!("Could not parse `{rendered}`: {e:#}"));
+            assert_eq!(parsed, interval, "Round-trip failed for `{rendered}`");
+        }
     }
 
     #[test]
@@ -273,42 +313,49 @@ mod tests {
 
     #[test]
     fn as_hmsns() {
-        // 02:30:15
-        let interval = Interval::from_hours(2) + Interval::from_mins(30) + Interval::from_secs(15);
-        let (h, m, s, ns) = interval.as_hmsns();
-        assert_eq!(h, 2);
-        assert_eq!(m, 30);
-        assert_eq!(s, 15);
-        assert_eq!(ns, 0);
+        assert_eq!(
+            (Interval::from_hours(2) + Interval::from_mins(30) + Interval::from_secs(15))
+                .as_hmsns(),
+            (2, 30, 15, 0)
+        );
+        assert_eq!(Interval::from_nanos(500).as_hmsns(), (0, 0, 0, 500));
+        // 1 month + 2 days = 768 hours
+        assert_eq!(Interval::new(1, 2, 0).as_hmsns(), (768, 0, 0, 0));
+        assert_eq!(Interval::ZERO.as_hmsns(), (0, 0, 0, 0));
+        assert_eq!((-Interval::from_mins(30)).as_hmsns(), (0, -30, 0, 0));
+        // -01:30:10
+        assert_eq!(
+            (-(Interval::from_hours(1) + Interval::from_mins(30) + Interval::from_secs(15)))
+                .as_hmsns(),
+            (-1, 30, 15, 0)
+        );
+        assert_eq!(
+            (-Interval::from_nanos(5_400_000_000_500)).as_hmsns(),
+            (-1, 30, 0, 500)
+        );
+        // -1 day + 30 minutes = -23:30:00
+        assert_eq!(
+            (Interval::from_days(-1) + Interval::from_mins(30)).as_hmsns(),
+            (-23, 30, 0, 0)
+        );
+        // 1 day - 30 minutes = 23:30:00
+        assert_eq!(
+            (Interval::from_days(1) - Interval::from_mins(30)).as_hmsns(),
+            (23, 30, 0, 0)
+        );
+    }
 
-        // 00:00:00.0000005
-        let interval2 = Interval::from_nanos(500);
-        let (h, m, s, ns) = interval2.as_hmsns();
-        assert_eq!(h, 0);
-        assert_eq!(m, 0);
-        assert_eq!(s, 0);
-        assert_eq!(ns, 500);
-
-        // 1 month + 2 days = 720 + 48 hours = 768 hours
-        let interval3 = Interval::new(1, 2, 0); // 1 month + 2 days
-        let (h, _, _, _) = interval3.as_hmsns();
-        assert_eq!(h, 768); // (months*30 + days) * 24
-
-        // -01:30:15
-        let neg = -(Interval::from_hours(1) + Interval::from_mins(30) + Interval::from_secs(15));
-        let (h, m, s, ns) = neg.as_hmsns();
-        assert_eq!(h, -1);
-        assert_eq!(m, 30);
-        assert_eq!(s, 15);
-        assert_eq!(ns, 0);
-
-        // -01:30:00.0000005
-        let neg2 = -Interval::from_nanos(5_400_000_000_500);
-        let (h, m, s, ns) = neg2.as_hmsns();
-        assert_eq!(h, -1);
-        assert_eq!(m, 30);
-        assert_eq!(s, 0);
-        assert_eq!(ns, 500);
+    #[test]
+    fn total_nanos() {
+        assert_eq!(Interval::ZERO.as_ns(), 0);
+        assert_eq!(
+            Interval::from_months(1).as_ns(),
+            30 * Interval::NANOS_IN_DAY
+        );
+        assert_eq!(
+            (Interval::from_days(-1) + Interval::from_mins(30)).as_ns(),
+            -23 * Interval::NANOS_IN_HOUR - 30 * Interval::NANOS_IN_SEC * 60
+        );
     }
 
     #[test]
@@ -333,6 +380,16 @@ mod tests {
         let interval3 = Interval::from_secs(1) + Interval::from_nanos(500);
         let duration3 = interval3.as_duration(30.0);
         assert_eq!(duration3, Duration::new(1, 500));
+    }
+
+    #[test]
+    fn negative_as_duration() {
+        assert_eq!(Interval::from_mins(-30).as_duration(30.0), Duration::ZERO);
+        assert_eq!((-Interval::from_days(3)).as_duration(30.0), Duration::ZERO);
+        assert_eq!(
+            (Interval::from_days(1) - Interval::from_mins(30)).as_duration(30.0),
+            Duration::from_secs(23 * 3600 + 30 * 60)
+        );
     }
 
     #[test]
@@ -384,6 +441,30 @@ mod tests {
         );
 
         assert_eq!(Interval::ZERO.units_mask(), 0);
+    }
+
+    #[test]
+    fn large_interval_do_not_overflow() {
+        let extremes = [
+            Interval::new(i64::MIN, 0, 0),
+            Interval::new(i64::MAX, 0, 0),
+            Interval::new(0, i64::MAX, i128::MAX),
+            Interval::new(0, i64::MIN, i128::MIN),
+            Interval::new(i64::MIN, i64::MIN, i128::MIN),
+        ];
+        for interval in extremes {
+            let _ = interval.as_ns();
+            let _ = interval.days_nanos();
+            let _ = interval.units_mask();
+            let _ = interval.unit_value(tank_core::IntervalUnit::Nanosecond);
+            let _ = interval.as_duration(30.0);
+            let _ = -interval;
+            assert_eq!(interval, interval);
+            let mut set = HashSet::new();
+            set.insert(interval);
+            set.insert(interval);
+            assert_eq!(set.len(), 1);
+        }
     }
 
     #[test]
@@ -440,5 +521,37 @@ mod tests {
 
         let duration2: time::Duration = interval.into();
         assert_eq!(duration, duration2);
+    }
+
+    #[test]
+    fn parse_huge_interval_does_not_panic() {
+        use tank_core::AsValue;
+        let parsed = Interval::try_from_value(tank_core::Value::Varchar(Some(
+            "1000000000000000000 years".into(),
+        )));
+        if let Ok(v) = parsed {
+            assert!(v.months >= 0);
+        }
+        let parsed = Interval::try_from_value(tank_core::Value::Varchar(Some(
+            "1000000000000000000 years 1000000000000000000 years".into(),
+        )));
+        if let Ok(v) = parsed {
+            assert!(v.months >= 0);
+        }
+    }
+
+    #[test]
+    fn neg_min_months_does_not_panic() {
+        let value = Interval::new(i64::MIN, 0, 0);
+        let _ = -value;
+    }
+
+    #[test]
+    fn large_and_negative_interval_to_time_duration() {
+        let negative: time::Duration = Interval::from_mins(-30).into();
+        assert_eq!(negative, time::Duration::minutes(-30));
+
+        let huge: time::Duration = Interval::from_months(i64::MAX / 2).into();
+        assert!(huge.whole_seconds() > 0);
     }
 }

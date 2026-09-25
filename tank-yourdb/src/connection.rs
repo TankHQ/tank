@@ -1,7 +1,7 @@
 use crate::{YourDBDriver, YourDBPrepared, YourDBTransaction};
 use std::borrow::Cow;
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result,
+    AsQuery, Connection, Error, Executor, Query, QueryResult, Result,
     stream::{self, Stream},
 };
 use url::Url;
@@ -9,6 +9,18 @@ use url::Url;
 #[derive(Debug)]
 pub struct YourDBConnection {
     pub(crate) url: Url,
+}
+
+impl Connection for YourDBConnection {
+    async fn connect(driver: &YourDBDriver, url: Cow<'static, str>) -> Result<Self> {
+        let url = Self::sanitize_url(driver, url)?;
+        // Establish connection
+        Ok(YourDBConnection { url })
+    }
+
+    async fn begin(&mut self) -> Result<YourDBTransaction<'_>> {
+        Err(anyhow!("Transactions are not supported by YourDB"))
+    }
 }
 
 impl Executor for YourDBConnection {
@@ -24,18 +36,5 @@ impl Executor for YourDBConnection {
         query: impl AsQuery<YourDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         stream::iter([])
-    }
-}
-
-impl Connection for YourDBConnection {
-    async fn connect(driver: &YourDBDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = "While trying to connect to YourDB";
-        let url = Self::sanitize_url(driver, url).context(context)?;
-        // Establish connection
-        Ok(YourDBConnection { url })
-    }
-
-    async fn begin(&mut self) -> Result<YourDBTransaction<'_>> {
-        Err(anyhow!("Transactions are not supported by YourDB"))
     }
 }

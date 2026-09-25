@@ -4,7 +4,9 @@ mod init;
 mod tests {
     use super::init::init;
     use std::{env, path::PathBuf, sync::Mutex};
-    use tank_core::{Connection, ConnectionPool, Driver, PoolConfig};
+    use tank_core::{
+        Connection, ConnectionPool, Driver, Executor, PoolConfig, stream::StreamExt as _,
+    };
     use tank_postgres::{PostgresConnection, PostgresDriver};
     use tank_tests::{execute_tests, init_logs, silent_logs};
     use url::Url;
@@ -39,12 +41,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn empty_array() {
+        init_logs();
+        let _guard = MUTEX.lock().unwrap();
+
+        let (url, container) = init(false).await;
+        let container = container.expect("Could not launch the container");
+        let pool = DRIVER
+            .connect_pool(url.into(), PoolConfig::new())
+            .await
+            .expect("Failed to connect");
+        let mut connection = pool.get().await.expect("Could not get a connection");
+
+        let mut stream =
+            std::pin::pin!(connection.fetch(tank_core::RawQuery("SELECT ARRAY[]::int[]".into())));
+        let row = stream
+            .next()
+            .await
+            .expect("No row returned")
+            .expect("Could not decode the empty array");
+        assert_eq!(
+            row.values[0],
+            tank_core::Value::Array(
+                Some(vec![].into()),
+                Box::new(tank_core::Value::Int32(None)),
+                0
+            )
+        );
+
+        drop(container);
+    }
+
+    #[tokio::test]
     async fn wrong_url() {
         init_logs();
         silent_logs! {
             let pool = DRIVER.connect_pool("mysql://some_url".into(), PoolConfig::new()).await;
             assert!(pool.is_err() || pool.unwrap().get().await.is_err());
         }
+    }
+
+    #[tokio::test]
+    async fn postgresql_url_scheme() {
+        init_logs();
+        let _guard = MUTEX.lock().unwrap();
+
+        let (url, container) = init(false).await;
+        let container = container.expect("Could not launch the container");
+        let url = url.replacen("postgres://", "postgresql://", 1);
+        let pool = DRIVER
+            .connect_pool(url.into(), PoolConfig::new())
+            .await
+            .expect("Failed to build the pool");
+        pool.get()
+            .await
+            .expect("Failed to connect using postgresql://");
+        drop(container);
     }
 
     #[tokio::test]

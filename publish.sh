@@ -9,6 +9,12 @@ cargo publish &&
 cd tank-tests/ &&
 cargo publish &&
 cd ../ &&
+cd tank-clickhouse/ &&
+cargo publish &&
+cd ../ &&
+cd tank-chdb/ &&
+cargo publish &&
+cd ../ &&
 cd tank-duckdb/ &&
 cargo publish &&
 cd ../ &&
