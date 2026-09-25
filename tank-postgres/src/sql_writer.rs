@@ -182,15 +182,12 @@ impl SqlValueWriter for PostgresSqlWriter {
             out,
             &PrimitiveDateTime::new(value.date(), value.time()),
         );
-        let total_minutes = value.offset().whole_minutes();
-        let sign = if total_minutes >= 0 { '+' } else { '-' };
-        let _ = write!(
-            out,
-            "{}{:02}:{:02}",
-            sign,
-            (total_minutes.abs() / 60) as u8,
-            (total_minutes.abs() % 60) as u8
-        );
+        let (h, m, s) = value.offset().as_hms();
+        let sign = if h < 0 || m < 0 || s < 0 { '-' } else { '+' };
+        let _ = write!(out, "{sign}{:02}:{:02}", h.unsigned_abs(), m.unsigned_abs());
+        if s != 0 {
+            let _ = write!(out, ":{:02}", s.unsigned_abs());
+        }
         if value.date().year() <= 0 {
             out.push_str(" BC");
         }

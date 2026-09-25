@@ -1862,6 +1862,15 @@ mod tests {
     }
 
     #[test]
+    fn value_null_equality_is_reflexive() {
+        assert_eq!(Value::Null, Value::Null);
+        assert_eq!(Value::Null, Value::Null.clone());
+        let mut set = HashSet::new();
+        set.insert(Value::Null);
+        assert!(set.contains(&Value::Null), "HashSet lost Value::Null");
+    }
+
+    #[test]
     fn value_float_hash_matches_equality() {
         let mut f32_set = HashSet::new();
         f32_set.insert(Value::Float32(Some(0.0)));
