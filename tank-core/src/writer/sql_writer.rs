@@ -252,7 +252,7 @@ pub trait SqlWriter:
             self.write_create_table_primary_key_fragment(&mut context, out, pk.iter().map(|v| *v));
         }
         for unique in E::unique_defs() {
-            if unique.len() > 1 {
+            if unique.len() > 0 {
                 out.push_str(",\nUNIQUE (");
                 separated_by(
                     out,

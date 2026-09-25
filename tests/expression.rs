@@ -30,6 +30,26 @@ mod tests {
         );
         assert_eq!(query.as_str(), "'x'");
 
+        let expr = expr!(3000000000);
+        assert!(matches!(expr, Operand::LitInt(3_000_000_000)));
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "3000000000");
+
+        let expr = expr!(170141183460469231731687303715884105727);
+        assert!(matches!(expr, Operand::LitInt(i128::MAX)));
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "170141183460469231731687303715884105727");
+
         let expr = expr!(1 + 2);
         assert!(matches!(
             expr,

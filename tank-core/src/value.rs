@@ -290,10 +290,14 @@ impl PartialEq for Value {
             (Self::TimestampWithTimezone(l), Self::TimestampWithTimezone(r)) => l == r,
             (Self::Interval(l), Self::Interval(r)) => l == r,
             (Self::Uuid(l), Self::Uuid(r)) => l == r,
-            (Self::Array(l, ..), Self::Array(r, ..)) => l == r && self.same_type(other),
-            (Self::List(l, ..), Self::List(r, ..)) => l == r && self.same_type(other),
-            (Self::Map(None, ..), Self::Map(None, ..)) => self.same_type(other),
-            (Self::Map(Some(l), ..), Self::Map(Some(r), ..)) => l == r && self.same_type(other),
+            (Self::Array(l, l_ty, l_len), Self::Array(r, r_ty, r_len)) => {
+                l_len == r_len && l_ty == r_ty && l == r
+            }
+            (Self::List(l, l_ty), Self::List(r, r_ty)) => l_ty == r_ty && l == r,
+            (Self::Map(None, l_k, l_v), Self::Map(None, r_k, r_v)) => l_k == r_k && l_v == r_v,
+            (Self::Map(Some(l), l_k, l_v), Self::Map(Some(r), r_k, r_v)) => {
+                l_k == r_k && l_v == r_v && l == r
+            }
             (Self::Map(..), Self::Map(..)) => false,
             (Self::Json(l), Self::Json(r)) => l == r,
             (Self::Struct(l, l_ty, l_name), Self::Struct(r, r_ty, r_name)) => {

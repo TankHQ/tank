@@ -8,7 +8,7 @@ mod tests {
     };
 
     #[derive(Entity)]
-    #[tank(name = "simple_entity", unique = ("a", Self::c), unique = (SomeSimpleEntity::b, "c"))]
+    #[tank(name = "simple_entity", unique = ("a", Self::c), unique = (SomeSimpleEntity::b, "c"), unique = "a")]
     struct SomeSimpleEntity {
         a: i8,
         b: Option<String>,
@@ -93,7 +93,8 @@ mod tests {
                 "b" VARCHAR,
                 "c" USMALLINT NOT NULL UNIQUE,
                 UNIQUE ("a", "c"),
-                UNIQUE ("b", "c"));
+                UNIQUE ("b", "c"),
+                UNIQUE ("a"));
             "#}
             .trim()
         );

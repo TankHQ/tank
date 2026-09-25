@@ -178,7 +178,12 @@ pub trait SqlExpressionWriter: SqlValueWriter {
         out: &mut DynQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) {
-        if value.op == BinaryOpType::Alias && context.fragment == Fragment::SqlSelectOrderBy {
+        if value.op == BinaryOpType::Alias
+            && matches!(
+                context.fragment,
+                Fragment::SqlSelectOrderBy | Fragment::SqlSelectGroupBy
+            )
+        {
             return value.lhs.write_query(self.as_dyn(), context, out);
         }
         let (prefix, infix, suffix, lhs_parenthesized, rhs_parenthesized) =

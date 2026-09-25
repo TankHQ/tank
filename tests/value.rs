@@ -1874,6 +1874,58 @@ mod tests {
     }
 
     #[test]
+    fn value_collection_hash_matches_equality() {
+        use std::collections::HashSet;
+
+        let a = Value::Array(
+            Some(vec![Value::Int32(Some(1))].into()),
+            Box::new(Value::Decimal(None, 0, 2)),
+            1,
+        );
+        let b = Value::Array(
+            Some(vec![Value::Int32(Some(1))].into()),
+            Box::new(Value::Decimal(None, 10, 2)),
+            1,
+        );
+        let c = Value::Array(
+            Some(vec![Value::Int32(Some(1))].into()),
+            Box::new(Value::Decimal(None, 8, 2)),
+            1,
+        );
+        assert_ne!(a, b);
+        assert_ne!(a, c);
+        assert_ne!(b, c);
+
+        assert_eq!(a, a.clone());
+        let mut set = HashSet::new();
+        set.insert(a.clone());
+        assert!(set.contains(&a));
+
+        // Same for List and Map element types.
+        let l1 = Value::List(
+            Some(vec![Value::Int32(Some(1))]),
+            Box::new(Value::Decimal(None, 0, 2)),
+        );
+        let l2 = Value::List(
+            Some(vec![Value::Int32(Some(1))]),
+            Box::new(Value::Decimal(None, 10, 2)),
+        );
+        assert_ne!(l1, l2);
+
+        let m1 = Value::Map(
+            Some(std::collections::HashMap::new()),
+            Box::new(Value::Decimal(None, 0, 2)),
+            Box::new(Value::Int32(None)),
+        );
+        let m2 = Value::Map(
+            Some(std::collections::HashMap::new()),
+            Box::new(Value::Decimal(None, 10, 2)),
+            Box::new(Value::Int32(None)),
+        );
+        assert_ne!(m1, m2);
+    }
+
+    #[test]
     fn value_map_hash_matches_equality() {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};

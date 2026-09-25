@@ -197,7 +197,12 @@ pub fn decode_expression(expr: &Expr) -> TokenStream {
         Expr::Lit(ExprLit { lit: v, .. }) => {
             let v = match v {
                 syn::Lit::Bool(v) => quote! { ::tank::Operand::LitBool(#v) },
-                syn::Lit::Int(v) => quote! { ::tank::Operand::LitInt(#v as _) },
+                syn::Lit::Int(v) => {
+                    let value = v.base10_parse::<i128>().unwrap_or_else(|e| {
+                        panic!("Integer literal is out of range for i128: {e}")
+                    });
+                    quote! { ::tank::Operand::LitInt(#value) }
+                }
                 syn::Lit::Float(v) => quote! { ::tank::Operand::LitFloat(#v as _) },
                 syn::Lit::Str(v) => quote! { ::tank::Operand::LitStr(#v) },
                 syn::Lit::Char(v) => {
