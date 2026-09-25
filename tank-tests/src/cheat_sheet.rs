@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 use anyhow::anyhow;
 use std::{collections::HashMap, str::FromStr, sync::LazyLock};
-use tank::{AsValue, Entity, Result, Value, expr};
+use tank::{AsValue, Entity, Result, Value, current_timestamp_ms, expr};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -154,6 +154,8 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         expr!(EntityExample::unit_id == #uid);
         let regions = ["North", "South"];
         expr!(EntityExample::region == #regions as IN);
+        let one_day_ms = time::Duration::days(1).whole_milliseconds();
+        expr!(current_timestamp_ms!() - #one_day_ms);
     }
 
     {

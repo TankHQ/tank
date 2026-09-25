@@ -406,6 +406,42 @@ mod tests {
     }
 
     #[test]
+    fn test_current_timestamp_ms_macro() {
+        {
+            use tank::current_timestamp_ms;
+            let expr = expr!(current_timestamp_ms!());
+            assert!(matches!(expr, Operand::CurrentTimestampMs));
+            let mut query = DynQuery::default();
+            expr.write_query(
+                &WRITER,
+                &mut Context::new(Fragment::SqlSelect, false),
+                &mut query,
+            );
+            assert_eq!(query.as_str(), "NOW()");
+
+            let expr = expr!(col > current_timestamp_ms!() - 1000);
+            let mut query = DynQuery::default();
+            expr.write_query(
+                &WRITER,
+                &mut Context::new(Fragment::SqlSelect, false),
+                &mut query,
+            );
+            assert_eq!(query.as_str(), "col > NOW() - 1000");
+        }
+        {
+            let expr = expr!(tank::current_timestamp_ms!());
+            assert!(matches!(expr, Operand::CurrentTimestampMs));
+            let mut query = DynQuery::default();
+            expr.write_query(
+                &WRITER,
+                &mut Context::new(Fragment::SqlSelect, false),
+                &mut query,
+            );
+            assert_eq!(query.as_str(), "NOW()");
+        }
+    }
+
+    #[test]
     fn test_complex_expressions() {
         let expr = expr!(90.5 - -0.54 * 2 < 7 / 2);
         assert!(matches!(

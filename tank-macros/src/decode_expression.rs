@@ -4,7 +4,7 @@ use syn::{
     BinOp, Expr, ExprGroup, ExprLit, ExprMacro, ExprPath, LitStr, Macro, Member, Path, Type,
     TypePath, punctuated::Punctuated, spanned::Spanned, token::Comma,
 };
-use tank_core::decode_type;
+use tank_core::{decode_type, matches_path};
 
 fn unwrap_group(expr: &Expr) -> &Expr {
     match expr {
@@ -220,33 +220,13 @@ pub fn decode_expression(expr: &Expr) -> TokenStream {
             mac: Macro { path, tokens, .. },
             ..
         }) => {
-            if path
-                .segments
-                .iter()
-                .map(|v| v.ident.to_string())
-                .eq(["tank", "evaluated"].into_iter())
-            {
+            if matches_path(path, &["tank", "evaluated"]) {
                 quote! { ::tank::Operand::Variable(::tank::AsValue::as_value(#tokens)) }
-            } else if path
-                .segments
-                .iter()
-                .map(|v| v.ident.to_string())
-                .eq(["tank", "asterisk"].into_iter())
-            {
+            } else if matches_path(path, &["tank", "asterisk"]) {
                 quote! { ::tank::Operand::Asterisk }
-            } else if path.segments.iter().map(|v| v.ident.to_string()).eq([
-                "tank",
-                "question_mark",
-            ]
-            .into_iter())
-            {
+            } else if matches_path(path, &["tank", "question_mark"]) {
                 quote! { ::tank::Operand::QuestionMark }
-            } else if path.segments.iter().map(|v| v.ident.to_string()).eq([
-                "tank",
-                "current_timestamp_ms",
-            ]
-            .into_iter())
-            {
+            } else if matches_path(path, &["tank", "current_timestamp_ms"]) {
                 quote! { ::tank::Operand::CurrentTimestampMs }
             } else {
                 quote! { #path!(#tokens) }
