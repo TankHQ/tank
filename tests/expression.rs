@@ -20,6 +20,16 @@ mod tests {
         );
         assert_eq!(query.as_str(), "false");
 
+        let expr = expr!('x');
+        assert!(matches!(expr, Operand::LitStr("x")));
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "'x'");
+
         let expr = expr!(1 + 2);
         assert!(matches!(
             expr,

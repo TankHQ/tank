@@ -200,7 +200,10 @@ pub fn decode_expression(expr: &Expr) -> TokenStream {
                 syn::Lit::Int(v) => quote! { ::tank::Operand::LitInt(#v as _) },
                 syn::Lit::Float(v) => quote! { ::tank::Operand::LitFloat(#v as _) },
                 syn::Lit::Str(v) => quote! { ::tank::Operand::LitStr(#v) },
-                syn::Lit::Char(v) => quote! { ::tank::Operand::LitStr(#v) },
+                syn::Lit::Char(v) => {
+                    let s = LitStr::new(&v.value().to_string(), v.span());
+                    quote! { ::tank::Operand::LitStr(#s) }
+                }
                 _ => panic!(
                     "Unexpected value {:?} in a sql expression",
                     v.into_token_stream()

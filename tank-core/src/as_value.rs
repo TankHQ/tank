@@ -253,10 +253,12 @@ macro_rules! impl_as_value {
                     }),
                     Value::Json(Some(serde_json::Value::Number(v)), ..) => {
                         let integer = v.as_i128().or_else(|| {
-                            if let Some(v) = v.as_f64() && v.fract() == 0.0 {
-                                return Some(v.trunc() as i128);
+                            let f = v.as_f64()?;
+                            if f.fract() == 0.0 && f >= i128::MIN as f64 && f <= i128::MAX as f64 {
+                                Some(f as i128)
+                            } else {
+                                None
                             }
-                            None
                         });
                         let mut max = <$source>::MAX as i128;
                         if max < 0 {
@@ -1299,7 +1301,8 @@ impl<T: AsValue, const N: usize> AsValue for [T; N] {
         }
         match value {
             Value::Varchar(Some(v), ..)
-                if matches!(T::as_empty_value(), Value::Char(..)) && v.len() == N =>
+                // Compare by count, not byte (for multi byte characters)
+                if matches!(T::as_empty_value(), Value::Char(..)) && v.chars().count() == N =>
             {
                 convert_iter(v.chars())
             }

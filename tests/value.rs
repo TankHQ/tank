@@ -259,7 +259,6 @@ mod tests {
 
         assert!(i64::try_from_value(1.5_f64.as_value()).is_err());
         assert!(i32::try_from_value((1.5_f32).as_value()).is_err());
-
         assert!(i64::try_from_value(1e30_f64.as_value()).is_err());
         assert!(i64::try_from_value(f64::MAX.as_value()).is_err());
         assert!(u64::try_from_value(1e30_f64.as_value()).is_err());
@@ -268,6 +267,13 @@ mod tests {
         assert!(i8::try_from_value((-200.0_f64).as_value()).is_err());
         assert!(i8::try_from_value((200.0_f32).as_value()).is_err());
         assert!(u32::try_from_value((-1.0_f64).as_value()).is_err());
+
+        let json = |f: f64| serde_json::Value::Number(Number::from_f64(f).unwrap()).as_value();
+        assert_eq!(i128::try_from_value(json(42.0)).unwrap(), 42);
+        assert_eq!(i128::try_from_value(json(-7.0)).unwrap(), -7);
+        assert!(i128::try_from_value(json(1e40)).is_err());
+        assert!(i128::try_from_value(json(-1e40)).is_err());
+        assert!(i64::try_from_value(json(1e30)).is_err());
     }
 
     #[test]
@@ -1085,6 +1091,17 @@ mod tests {
                 .expect("Cannot convert the Value to array of 3 chars"),
             ['x', 'y', 'a']
         );
+
+        assert_eq!(<[char; 1]>::try_from_value("é".as_value()).unwrap(), ['é']);
+        assert_eq!(
+            <[char; 2]>::try_from_value("a€".as_value()).unwrap(),
+            ['a', '€']
+        );
+        assert_eq!(
+            <[char; 2]>::try_from_value("日本".as_value()).unwrap(),
+            ['日', '本']
+        );
+        assert!(<[char; 2]>::try_from_value("a€b".as_value()).is_err());
     }
 
     #[test]
