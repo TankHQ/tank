@@ -166,7 +166,13 @@ impl Interval {
         (self.months as i128)
             .saturating_mul(Self::DAYS_IN_MONTH as i128)
             .saturating_mul(Self::NANOS_IN_DAY)
-            .saturating_add((self.days as i128).saturating_mul(Self::NANOS_IN_DAY))
+            .saturating_add(self.days_nanos())
+    }
+
+    /// Total nanoseconds contributed by `days` and `nanos`, saturating on overflow.
+    pub const fn days_nanos(&self) -> i128 {
+        (self.days as i128)
+            .saturating_mul(Self::NANOS_IN_DAY)
             .saturating_add(self.nanos)
     }
 
@@ -199,9 +205,8 @@ impl Interval {
     ///
     /// Uses `days_in_month` for conversion. Negative intervals saturate to zero.
     pub fn as_duration(&self, days_in_month: f64) -> std::time::Duration {
-        let nanos = (self.months as f64) * days_in_month * (Interval::NANOS_IN_DAY as f64); // months
-        let nanos = nanos as i128 + self.days as i128 * Interval::NANOS_IN_DAY; // days
-        let nanos = nanos + self.nanos as i128;
+        let months_nanos = (self.months as f64) * days_in_month * (Interval::NANOS_IN_DAY as f64);
+        let nanos = (months_nanos as i128).saturating_add(self.days_nanos());
         if nanos <= 0 {
             log::error!(
                 "Negative inverval `{self:?}` cannot be converted to `std::time::Duration`"
@@ -237,7 +242,7 @@ impl Interval {
                 mask |= 1 << 6;
             }
         }
-        let nanos = self.nanos + self.days as i128 * Interval::NANOS_IN_DAY;
+        let nanos = self.days_nanos();
         if nanos != 0 {
             for (i, &(_, factor)) in self.units_and_factors().iter().skip(2).enumerate() {
                 if nanos % factor == 0 {
@@ -262,16 +267,14 @@ impl Interval {
                 .iter()
                 .find_map(|(u, k)| if *u == unit { Some(k) } else { None })
                 .expect("The unit must be present");
-            (self.days as i128 * Interval::NANOS_IN_DAY + self.nanos) / factor
+            self.days_nanos() / factor
         }
     }
 }
 
 impl PartialEq for Interval {
     fn eq(&self, other: &Self) -> bool {
-        self.months == other.months
-            && self.days as i128 * Interval::NANOS_IN_DAY + self.nanos
-                == other.days as i128 * Interval::NANOS_IN_DAY + other.nanos
+        self.months == other.months && self.days_nanos() == other.days_nanos()
     }
 }
 
@@ -280,7 +283,7 @@ impl Eq for Interval {}
 impl Hash for Interval {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.months.hash(state);
-        (self.days as i128 * Interval::NANOS_IN_DAY + self.nanos).hash(state);
+        self.days_nanos().hash(state);
     }
 }
 

@@ -175,6 +175,50 @@ mod tests {
         // Negative months > 48 should decompose to years
         test_interval!(Interval::from_months(-49), "INTERVAL '-4 YEARS -1 MONTH'");
         test_interval!(Interval::from_months(-24), "INTERVAL '-2 YEARS'");
+
+        // Large values must not overflow when rendered
+        test_interval!(
+            Interval::new(0, i64::MAX, 0),
+            "INTERVAL '9223372036854775807 DAYS'"
+        );
+        test_interval!(
+            Interval::new(0, i64::MIN, 0),
+            "INTERVAL '-9223372036854775808 DAYS'"
+        );
+        test_interval!(
+            Interval::new(0, i64::MAX, i128::MAX),
+            "INTERVAL '170141183460469231731687303715884105727 NANOSECONDS'"
+        );
+        test_interval!(
+            Interval::new(0, i64::MIN, i128::MIN),
+            "INTERVAL '-170141183460469231731687303715884105728 NANOSECONDS'"
+        );
+    }
+
+    #[test]
+    fn write_then_parse_round_trip() {
+        for interval in [
+            Interval::from_years(20_000) + Interval::from_millis(300),
+            Interval::from_months(5) + Interval::from_days(-2) + Interval::from_secs(1),
+            Interval::new(48, 15, 2 * Interval::NANOS_IN_DAY + 1_000_000_000),
+            Interval::from_days(-11),
+            Interval::from_micros(999_999_999),
+        ] {
+            let mut out = DynQuery::default();
+            WRITER.write_value(
+                &mut Context::new(Fragment::None, false),
+                &mut out,
+                &interval.as_value(),
+            );
+            let rendered = out.as_str().into_owned();
+            let body = rendered
+                .strip_prefix("INTERVAL ")
+                .unwrap_or(&rendered)
+                .to_string();
+            let parsed = Interval::try_from_value(tank_core::Value::Varchar(Some(body.into())))
+                .unwrap_or_else(|e| panic!("Could not parse `{rendered}`: {e:#}"));
+            assert_eq!(parsed, interval, "Round-trip failed for `{rendered}`");
+        }
     }
 
     #[test]
@@ -397,6 +441,30 @@ mod tests {
         );
 
         assert_eq!(Interval::ZERO.units_mask(), 0);
+    }
+
+    #[test]
+    fn large_interval_do_not_overflow() {
+        let extremes = [
+            Interval::new(i64::MIN, 0, 0),
+            Interval::new(i64::MAX, 0, 0),
+            Interval::new(0, i64::MAX, i128::MAX),
+            Interval::new(0, i64::MIN, i128::MIN),
+            Interval::new(i64::MIN, i64::MIN, i128::MIN),
+        ];
+        for interval in extremes {
+            let _ = interval.as_ns();
+            let _ = interval.days_nanos();
+            let _ = interval.units_mask();
+            let _ = interval.unit_value(tank_core::IntervalUnit::Nanosecond);
+            let _ = interval.as_duration(30.0);
+            let _ = -interval;
+            assert_eq!(interval, interval);
+            let mut set = HashSet::new();
+            set.insert(interval);
+            set.insert(interval);
+            assert_eq!(set.len(), 1);
+        }
     }
 
     #[test]

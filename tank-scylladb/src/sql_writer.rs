@@ -144,9 +144,9 @@ impl SqlValueWriter for ScyllaDBSqlWriter {
             out.push_str("0s");
         }
         let mut months = value.months;
-        let mut nanos = value.nanos + value.days as i128 * Interval::NANOS_IN_DAY;
+        let mut nanos = value.days_nanos();
         if months != 0 {
-            if months.abs() > 48 || months % 12 == 0 {
+            if months.unsigned_abs() > 48 || months % 12 == 0 {
                 let _ = write!(out, "{}y", months / 12);
                 months = months % 12;
             }
