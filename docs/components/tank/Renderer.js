@@ -25,13 +25,6 @@ function path(ctx, pts) {
     ctx.closePath()
 }
 
-// A soft rounded rectangle centred on (cx, cy), for the camouflage blotches.
-function blob(ctx, cx, cy, w, h) {
-    const r = Math.min(w, h) * 0.5
-    ctx.beginPath()
-    ctx.roundRect(cx - w / 2, cy - h / 2, w, h, r)
-}
-
 export class Renderer {
     constructor(canvas, base) {
         this.canvas = canvas
@@ -122,28 +115,6 @@ export class Renderer {
             ctx.fill()
         })
 
-        // A few soft decorative fields in the extra camouflage tones, laid over
-        // the reference camo so the body reads as a busier multi-tone pattern.
-        // Positions are fractions of the body box.
-        const blend = [
-            { c: 0, x: 0.08, y: 0.3, w: 0.24, h: 0.66, a: 0.85 },
-            { c: 1, x: 0.4, y: 0.32, w: 0.28, h: 0.7, a: 0.8 },
-            { c: 2, x: 0.66, y: 0.26, w: 0.24, h: 0.6, a: 0.82 },
-            { c: 1, x: 0.22, y: 0.66, w: 0.32, h: 0.6, a: 0.75 },
-            { c: 2, x: 0.85, y: 0.32, w: 0.2, h: 0.56, a: 0.82 },
-        ]
-        ctx.save()
-        for (const b of blend) {
-            ctx.globalAlpha = b.a
-            ctx.fillStyle = PALETTE.camo2[b.c]
-            // Two overlapping rounded blobs read as one irregular field.
-            blob(ctx, BODY.minX + BODY.length * b.x, BODY.deckY + BODY.depth * b.y, BODY.length * b.w, BODY.depth * b.h)
-            ctx.fill()
-            blob(ctx, BODY.minX + BODY.length * (b.x + b.w * 0.35), BODY.deckY + BODY.depth * (b.y - b.h * 0.12), BODY.length * b.w * 0.7, BODY.depth * b.h * 0.7)
-            ctx.fill()
-        }
-        ctx.restore()
-
         // Panel line work and the small rectangular fittings typical of the side
         // profile (stowage bins, driver's hatch, headlight, tow hooks).
         this._drawDecor(ctx, HULL_POINTS)
@@ -225,7 +196,7 @@ export class Renderer {
         ctx.transform(...bodyMatrix(pose))
         const grad = ctx.createLinearGradient(0, BODY.skirtY, 0, BODY.skirtY + (BODY.length * 0.05))
         grad.addColorStop(0, PALETTE.hull[2])
-        grad.addColorStop(1, PALETTE.camo2[1])
+        grad.addColorStop(1, PALETTE.panelFillDark)
         path(ctx, SPONSON)
         ctx.fillStyle = grad
         ctx.fill()

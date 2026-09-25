@@ -199,10 +199,6 @@ export const PALETTE = {
     // Desert-camouflage bodywork (M1 Abrams tan): a pale sand base with soft
     // mid-tan and darker khaki fields, taken from the reference.
     hull: ['#efe0c2', '#e0cba6', '#cdb88e'],
-    // Extra camouflage tones for the decorative fields painted over the hull:
-    // a darker khaki, an olive-brown and a deep umber, so the pattern has more
-    // contrast than the reference's gentle tans.
-    camo2: ['#b08a5a', '#8a6a42', '#6f5230'],
     // Panel/hatch line work and the small rectangular fittings (bins, guards).
     panel: 'rgba(90,70,42,0.5)',
     panelFill: '#d8c39c',
