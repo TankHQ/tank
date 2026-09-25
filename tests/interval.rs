@@ -456,6 +456,29 @@ mod tests {
     }
 
     #[test]
+    fn parse_huge_interval_does_not_panic() {
+        use tank_core::AsValue;
+        let parsed = Interval::try_from_value(tank_core::Value::Varchar(Some(
+            "1000000000000000000 years".into(),
+        )));
+        if let Ok(v) = parsed {
+            assert!(v.months >= 0);
+        }
+        let parsed = Interval::try_from_value(tank_core::Value::Varchar(Some(
+            "1000000000000000000 years 1000000000000000000 years".into(),
+        )));
+        if let Ok(v) = parsed {
+            assert!(v.months >= 0);
+        }
+    }
+
+    #[test]
+    fn neg_min_months_does_not_panic() {
+        let value = Interval::new(i64::MIN, 0, 0);
+        let _ = -value;
+    }
+
+    #[test]
     fn large_and_negative_interval_to_time_duration() {
         let negative: time::Duration = Interval::from_mins(-30).into();
         assert_eq!(negative, time::Duration::minutes(-30));

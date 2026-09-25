@@ -141,7 +141,7 @@ impl Interval {
     pub const fn from_weeks(value: i64) -> Self {
         Self {
             months: 0,
-            days: value * 7,
+            days: value.saturating_mul(7),
             nanos: 0,
         }
     }
@@ -156,7 +156,7 @@ impl Interval {
 
     pub const fn from_years(value: i64) -> Self {
         Self {
-            months: value * 12,
+            months: value.saturating_mul(12),
             days: 0,
             nanos: 0,
         }
@@ -291,10 +291,13 @@ macro_rules! sum_intervals {
         let days = days_total.clamp(i64::MIN as _, i64::MAX as _);
         let mut nanos = $lhs.nanos % Interval::NANOS_IN_DAY $op $rhs.nanos % Interval::NANOS_IN_DAY;
         if days != days_total {
-            nanos += (days_total - days) * Interval::NANOS_IN_DAY;
+            nanos = nanos.saturating_add(
+                days_total.saturating_sub(days).saturating_mul(Interval::NANOS_IN_DAY),
+            );
         }
         Interval {
-            months: $lhs.months $op $rhs.months,
+            months: (($lhs.months as i128) $op ($rhs.months as i128))
+                .clamp(i64::MIN as i128, i64::MAX as i128) as _,
             days: days as _,
             nanos,
         }
