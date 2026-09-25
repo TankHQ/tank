@@ -4,7 +4,7 @@ use async_stream::try_stream;
 use postgres_protocol::types::{ArrayDimension, array_from_sql};
 use postgres_types::{FromSql, Kind, Type};
 use rust_decimal::Decimal;
-use std::{error::Error, iter, mem, pin::pin};
+use std::{error::Error, mem, pin::pin};
 use tank_core::{
     ErrorContext, Value,
     stream::{Stream, StreamExt},
@@ -182,8 +182,8 @@ pub(crate) fn extract_value(
                     .map(|v| extract_value(inner_ty, v))
                     .collect::<Vec<_>>()?;
                 let dimensions = array.dimensions().collect::<Vec<_>>()?;
-                let first = build_array(0, &mut values, &ty, dimensions.iter())?;
-                first
+                let mut cursor = 0;
+                build_array(&mut cursor, &mut values, &ty, dimensions.iter())?
             } else {
                 Value::List(None, Box::new(ty))
             }
@@ -193,7 +193,7 @@ pub(crate) fn extract_value(
 }
 
 fn build_array<'a>(
-    begin: usize,
+    cursor: &mut usize,
     values: &mut Vec<Value>,
     element_ty: &Value,
     mut it: impl ExactSizeIterator<Item = &'a ArrayDimension> + Clone,
@@ -201,26 +201,23 @@ fn build_array<'a>(
     let dimension = it.next().expect("Must have one dimension at least");
     let len = dimension.len as u32;
     Ok(if it.len() == 0 {
-        let begin = begin as u32 * len;
-        // Last array
+        let begin = *cursor;
+        let end = begin + len as usize;
+        *cursor = end;
         Value::Array(
-            Some(
-                (begin..(begin + len))
-                    .map(|i| mem::take(&mut values[i as usize]))
-                    .collect(),
-            ),
+            Some((begin..end).map(|i| mem::take(&mut values[i])).collect()),
             Box::new(element_ty.clone()),
             len,
         )
     } else {
-        let first = build_array(begin, values, element_ty, it.clone())?;
-        let nested_ty = first.as_null();
-        let elements = iter::chain(
-            iter::once(Ok(first)),
-            (1..len).map(|i| build_array(i as usize + begin, values, &nested_ty, it.clone())),
-        )
-        .collect::<Result<_, _>>()?;
-        Value::Array(Some(elements), Box::new(nested_ty), len)
+        let mut elements = Vec::with_capacity(len as usize);
+        let mut nested_ty = element_ty.clone();
+        for _ in 0..len {
+            let child = build_array(cursor, values, element_ty, it.clone())?;
+            nested_ty = child.as_null();
+            elements.push(child);
+        }
+        Value::Array(Some(elements.into_boxed_slice()), Box::new(nested_ty), len)
     })
 }
 
