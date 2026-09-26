@@ -233,8 +233,8 @@ macro_rules! impl_as_value {
                     Value::Float64(Some(v), ..) => {
                         if v.is_finite() && v.fract() == 0.0 {
                             let min = <$source>::MIN as f64;
-                            let max = <$source>::MAX as f64;
-                            if v >= min && v <= max {
+                            let max_exclusive = <$source>::MAX as f64 + 1.0;
+                            if v >= min && v < max_exclusive {
                                 return Ok(v as $source);
                             }
                         }
@@ -254,7 +254,8 @@ macro_rules! impl_as_value {
                     Value::Json(Some(serde_json::Value::Number(v)), ..) => {
                         let integer = v.as_i128().or_else(|| {
                             let f = v.as_f64()?;
-                            if f.fract() == 0.0 && f >= i128::MIN as f64 && f <= i128::MAX as f64 {
+                            let max_exclusive = i128::MAX as f64 + 1.0;
+                            if f.fract() == 0.0 && f >= i128::MIN as f64 && f < max_exclusive {
                                 Some(f as i128)
                             } else {
                                 None

@@ -268,6 +268,40 @@ mod tests {
         assert!(i8::try_from_value((200.0_f32).as_value()).is_err());
         assert!(u32::try_from_value((-1.0_f64).as_value()).is_err());
 
+        assert!(i64::try_from_value(9_223_372_036_854_775_808.0_f64.as_value()).is_err());
+        assert!(i64::try_from_value((9_223_372_036_854_775_808.0_f32).as_value()).is_err());
+        assert!(i32::try_from_value(2_147_483_648.0_f64.as_value()).is_err());
+        assert!(i8::try_from_value(128.0_f64.as_value()).is_err());
+        assert!(u64::try_from_value(18_446_744_073_709_551_616.0_f64.as_value()).is_err());
+        assert!(u8::try_from_value(256.0_f64.as_value()).is_err());
+        assert!(
+            i128::try_from_value(
+                170_141_183_460_469_231_731_687_303_715_884_105_728.0_f64.as_value()
+            )
+            .is_err()
+        );
+        assert!(
+            u128::try_from_value(
+                340_282_366_920_938_463_463_374_607_431_768_211_456.0_f64.as_value()
+            )
+            .is_err()
+        );
+        assert_eq!(
+            i64::try_from_value((9_223_372_036_854_775_808.0_f64 - 1024.0).as_value()).unwrap(),
+            9_223_372_036_854_774_784,
+        );
+        assert_eq!(
+            i64::try_from_value((-9_223_372_036_854_775_808.0_f64).as_value()).unwrap(),
+            i64::MIN,
+        );
+        assert_eq!(
+            i8::try_from_value((-128.0_f64).as_value()).unwrap(),
+            i8::MIN
+        );
+        assert!(
+            i64::try_from_value((-9_223_372_036_854_775_808.0_f64 - 2048.0).as_value()).is_err()
+        );
+
         let json = |f: f64| serde_json::Value::Number(Number::from_f64(f).unwrap()).as_value();
         assert_eq!(i128::try_from_value(json(42.0)).unwrap(), 42);
         assert_eq!(i128::try_from_value(json(-7.0)).unwrap(), -7);
@@ -1671,6 +1705,71 @@ mod tests {
     }
 
     #[test]
+    fn value_try_as_remaining_targets() {
+        assert!(Value::Int32(Some(1)).try_as(&Value::Char(None)).is_ok());
+        assert!(
+            Value::Varchar(Some("hi".into()))
+                .try_as(&Value::Char(None))
+                .is_err()
+        );
+        assert_eq!(
+            Value::Int32(Some(5)).try_as(&Value::Varchar(None)).unwrap(),
+            Value::Varchar(Some("5".into()))
+        );
+        assert!(
+            Value::Varchar(Some("zz".into()))
+                .try_as(&Value::Char(None))
+                .is_err()
+        );
+        let d = time::Date::from_calendar_date(2024, time::Month::January, 1).unwrap();
+        assert_eq!(
+            Value::Timestamp(Some(time::PrimitiveDateTime::new(d, time::Time::MIDNIGHT)))
+                .try_as(&Value::Date(None))
+                .unwrap(),
+            Value::Date(Some(d))
+        );
+        let t = time::Time::from_hms(1, 2, 3).unwrap();
+        assert_eq!(
+            t.as_value().try_as(&Value::Time(None)).unwrap(),
+            Value::Time(Some(t))
+        );
+        assert!(
+            Value::Date(Some(d))
+                .try_as(&Value::Timestamp(None))
+                .is_err()
+        );
+        assert_eq!(
+            Value::Timestamp(Some(time::PrimitiveDateTime::new(d, t)))
+                .try_as(&Value::TimestampWithTimezone(None))
+                .unwrap(),
+            Value::TimestampWithTimezone(Some(time::PrimitiveDateTime::new(d, t).assume_utc()))
+        );
+        assert_eq!(
+            Value::Timestamp(Some(time::PrimitiveDateTime::new(d, t)))
+                .try_as(&Value::Timestamp(None))
+                .unwrap(),
+            Value::Timestamp(Some(time::PrimitiveDateTime::new(d, t)))
+        );
+        assert!(
+            Value::Interval(Some(Interval::from_secs(3600)))
+                .try_as(&Value::Time(None))
+                .is_ok()
+        );
+        assert!(
+            Value::Varchar(Some("not uuid".into()))
+                .try_as(&Value::Uuid(None))
+                .is_err()
+        );
+        assert!(Value::Int32(Some(1)).try_as(&Value::Date(None)).is_err());
+        assert_eq!(
+            Value::Blob(Some(vec![1, 2].into()))
+                .try_as(&Value::Blob(None))
+                .unwrap(),
+            Value::Blob(Some(vec![1, 2].into()))
+        );
+    }
+
+    #[test]
     fn value_partial_eq_complex() {
         assert_eq!(
             Value::Float32(Some(f32::NAN)),
@@ -2008,11 +2107,21 @@ fn value_value() {
 
 #[cfg(test)]
 mod as_value_tests {
-    use tank::{AsValue, Value};
+    use quote::ToTokens;
+    use rust_decimal::Decimal;
+    use std::{
+        borrow::Cow,
+        cell::{Cell, RefCell},
+        collections::HashMap,
+        num::*,
+        rc::Rc,
+        sync::{Arc, RwLock},
+    };
+    use tank::{AsValue, TableRef, Value};
+    use tank_core::{FixedDecimal, Interval};
 
     #[test]
     fn nonzero_conversions() {
-        use std::num::*;
         let v = NonZeroI32::new(42).unwrap().as_value();
         assert_eq!(v, Value::Int32(Some(42)));
         let back = NonZeroI32::try_from_value(v).unwrap();
@@ -2063,7 +2172,6 @@ mod as_value_tests {
 
     #[test]
     fn decimal_from_various_types() {
-        use rust_decimal::Decimal;
         assert_eq!(
             Decimal::try_from_value(Value::Int8(Some(5))).unwrap(),
             Decimal::new(5, 0)
@@ -2116,6 +2224,25 @@ mod as_value_tests {
     }
 
     #[test]
+    fn integer_from_json_boundary() {
+        let json =
+            |f: f64| serde_json::Value::Number(serde_json::Number::from_f64(f).unwrap()).as_value();
+        assert!(i64::try_from_value(json(9_223_372_036_854_775_808.0)).is_err());
+        assert!(i32::try_from_value(json(2_147_483_648.0)).is_err());
+        assert!(i8::try_from_value(json(128.0)).is_err());
+        assert!(u64::try_from_value(json(18_446_744_073_709_551_616.0)).is_err());
+        assert!(u8::try_from_value(json(256.0)).is_err());
+        assert!(
+            i128::try_from_value(json(170_141_183_460_469_231_731_687_303_715_884_105_728.0))
+                .is_err()
+        );
+        assert!(
+            u128::try_from_value(json(340_282_366_920_938_463_463_374_607_431_768_211_456.0))
+                .is_err()
+        );
+    }
+
+    #[test]
     fn integer_from_varchar_and_unknown() {
         assert_eq!(
             i32::try_from_value(Value::Varchar(Some("42".into()))).unwrap(),
@@ -2156,7 +2283,6 @@ mod as_value_tests {
 
     #[test]
     fn integer_decimal_conversions() {
-        use rust_decimal::Decimal;
         assert_eq!(
             i32::try_from_value(Value::Decimal(Some(Decimal::new(42, 0)), 0, 0)).unwrap(),
             42
@@ -2250,7 +2376,6 @@ mod as_value_tests {
 
     #[test]
     fn interval_parse() {
-        use tank_core::Interval;
         let i = Interval::parse("'1 year 2 months 3 days'").unwrap();
         assert_eq!(i.months, 14); // 12 + 2
         assert_eq!(i.days, 3);
@@ -2269,12 +2394,37 @@ mod as_value_tests {
             d,
             time::Date::from_calendar_date(2024, time::Month::June, 15).unwrap()
         );
+
+        let bc = <time::Date as AsValue>::parse("0044-03-15 BC").unwrap();
+        assert!(bc.year() < 0);
+        let ad = <time::Date as AsValue>::parse("2024-06-15 AD").unwrap();
+        assert_eq!(ad, d);
+        assert!(<time::Date as AsValue>::parse("2024-06-15 trailing").is_err());
+        assert!(<time::Date as AsValue>::parse("not a date").is_err());
+
+        let ts = time::PrimitiveDateTime::new(d, time::Time::MIDNIGHT);
+        assert_eq!(
+            time::Date::try_from_value(Value::Timestamp(Some(ts))).unwrap(),
+            d
+        );
     }
 
     #[test]
     fn time_parse() {
         let t = <time::Time as AsValue>::parse("14:30:00").unwrap();
         assert_eq!(t, time::Time::from_hms(14, 30, 0).unwrap());
+        assert_eq!(
+            <time::Time as AsValue>::parse("14:30").unwrap(),
+            time::Time::from_hms(14, 30, 0).unwrap()
+        );
+        assert_eq!(
+            <time::Time as AsValue>::parse("14:30:00.5").unwrap(),
+            time::Time::from_hms_nano(14, 30, 0, 500_000_000).unwrap()
+        );
+        assert!(<time::Time as AsValue>::parse("14:30:00 trailing").is_err());
+        assert!(
+            time::Time::try_from_value(Value::Interval(Some(Interval::from_mins(-30)))).is_err()
+        );
     }
 
     #[test]
@@ -2283,12 +2433,27 @@ mod as_value_tests {
         let d = time::Date::from_calendar_date(2024, time::Month::June, 15).unwrap();
         let t = time::Time::from_hms(14, 30, 0).unwrap();
         assert_eq!(ts, time::PrimitiveDateTime::new(d, t));
+        assert_eq!(
+            <time::PrimitiveDateTime as AsValue>::parse("2024-06-15 14:30").unwrap(),
+            time::PrimitiveDateTime::new(d, time::Time::from_hms(14, 30, 0).unwrap())
+        );
+        assert_eq!(
+            <time::PrimitiveDateTime as AsValue>::parse("2024-06-15T14:30:00.5").unwrap(),
+            time::PrimitiveDateTime::new(
+                d,
+                time::Time::from_hms_nano(14, 30, 0, 500_000_000).unwrap()
+            )
+        );
+        assert!(<time::PrimitiveDateTime as AsValue>::parse("2024-06-15T14:30:00 x").is_err());
     }
 
     #[test]
     fn offset_datetime_parse() {
         let odt = <time::OffsetDateTime as AsValue>::parse("2024-06-15T14:30:00+05:00").unwrap();
         assert_eq!(odt.offset().whole_hours(), 5);
+        let utc = <time::OffsetDateTime as AsValue>::parse("2024-06-15T14:30:00").unwrap();
+        assert_eq!(utc.offset().whole_seconds(), 0);
+        assert!(<time::OffsetDateTime as AsValue>::parse("not a timestamp").is_err());
     }
 
     #[test]
@@ -2319,7 +2484,6 @@ mod as_value_tests {
 
     #[test]
     fn time_from_interval() {
-        use tank_core::Interval;
         let t = time::Time::try_from_value(Value::Interval(Some(
             Interval::from_hours(2) + Interval::from_mins(30),
         )))
@@ -2369,7 +2533,6 @@ mod as_value_tests {
 
     #[test]
     fn hashmap_conversions() {
-        use std::collections::HashMap;
         let mut m = HashMap::new();
         m.insert("key".to_string(), 42_i32);
         let v = m.clone().as_value();
@@ -2390,17 +2553,13 @@ mod as_value_tests {
         let back: Box<i32> = Box::try_from_value(Value::Int32(Some(42))).unwrap();
         assert_eq!(*back, 42);
 
-        use std::sync::Arc;
         assert_eq!(Arc::new(42_i32).as_value(), Value::Int32(Some(42)));
 
-        use std::rc::Rc;
         assert_eq!(Rc::new(42_i32).as_value(), Value::Int32(Some(42)));
     }
 
     #[test]
     fn fixed_decimal_round_trip() {
-        use rust_decimal::Decimal;
-        use tank_core::FixedDecimal;
         let fd: FixedDecimal<10, 2> = Decimal::new(1234, 2).into();
         let v = fd.as_value();
         let back: FixedDecimal<10, 2> = FixedDecimal::try_from_value(v).unwrap();
@@ -2439,5 +2598,131 @@ mod as_value_tests {
         );
         assert_eq!(usize::try_from_value(255_u8.as_value()).unwrap(), 255);
         assert_eq!(usize::try_from_value(65535_u16.as_value()).unwrap(), 65535);
+    }
+
+    #[test]
+    fn array_from_varchar_chars() {
+        let v = <[char; 3]>::try_from_value(Value::Varchar(Some("abc".into()))).unwrap();
+        assert_eq!(v, ['a', 'b', 'c']);
+        assert!(<[char; 2]>::try_from_value(Value::Varchar(Some("abc".into()))).is_err());
+        let list = <[i32; 2]>::try_from_value(Value::List(
+            Some(vec![Value::Int32(Some(1)), Value::Int32(Some(2))]),
+            Box::new(Value::Int32(None)),
+        ))
+        .unwrap();
+        assert_eq!(list, [1, 2]);
+        let arr = <[i32; 2]>::try_from_value(Value::Array(
+            Some(vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into()),
+            Box::new(Value::Int32(None)),
+            2,
+        ))
+        .unwrap();
+        assert_eq!(arr, [1, 2]);
+        assert!(
+            <[i32; 3]>::try_from_value(Value::List(
+                Some(vec![Value::Int32(Some(1))]),
+                Box::new(Value::Int32(None))
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn unknown_parse_paths() {
+        assert_eq!(
+            i32::try_from_value(Value::Unknown(Some("42".into()))).unwrap(),
+            42
+        );
+        assert!(i32::try_from_value(Value::Unknown(Some("x".into()))).is_err());
+        assert_eq!(
+            bool::try_from_value(Value::Unknown(Some("true".into()))).unwrap(),
+            true
+        );
+    }
+
+    #[test]
+    fn map_from_json_object() {
+        let json = serde_json::json!({"1": 10, "2": 20});
+        let map: HashMap<i32, i32> = HashMap::try_from_value(Value::Json(Some(json))).unwrap();
+        assert_eq!(map.get(&1), Some(&10));
+        assert!(HashMap::<i32, i32>::try_from_value(Value::Int32(Some(1))).is_err());
+    }
+
+    #[test]
+    fn json_value_conversion() {
+        assert_eq!(
+            serde_json::Value::try_from_value(Value::Json(None)).unwrap(),
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            serde_json::Value::try_from_value(Value::Json(Some(serde_json::json!(1)))).unwrap(),
+            serde_json::json!(1)
+        );
+        assert!(serde_json::Value::try_from_value(Value::Int32(Some(1))).is_err());
+    }
+
+    #[test]
+    fn wrapper_cell_refcell_rwlock() {
+        assert_eq!(Cell::new(5_i32).as_value(), Value::Int32(Some(5)));
+        assert_eq!(RefCell::new(6_i32).as_value(), Value::Int32(Some(6)));
+        assert_eq!(RwLock::new(7_i32).as_value(), Value::Int32(Some(7)));
+        let back: Cell<i32> = Cell::try_from_value(Value::Int32(Some(8))).unwrap();
+        assert_eq!(back.get(), 8);
+        let back: RefCell<i32> = RefCell::try_from_value(Value::Int32(Some(9))).unwrap();
+        assert_eq!(*back.borrow(), 9);
+        let back: RwLock<i32> = RwLock::try_from_value(Value::Int32(Some(10))).unwrap();
+        assert_eq!(*back.read().unwrap(), 10);
+        assert_eq!(*RwLock::<i32>::parse("12").unwrap().read().unwrap(), 12);
+    }
+
+    #[test]
+    fn static_str_and_cow_parse() {
+        assert_eq!(<Cow<'static, str> as AsValue>::parse("hi").unwrap(), "hi");
+        // Owned varchar cannot be assigned to &'static str.
+        assert!(
+            <&'static str>::try_from_value(Value::Varchar(Some(Cow::Owned("x".into())))).is_err()
+        );
+        assert_eq!(
+            <&'static str>::try_from_value(Value::Varchar(Some(Cow::Borrowed("x")))).unwrap(),
+            "x"
+        );
+    }
+
+    #[test]
+    fn value_to_tokens() {
+        let tokens = |v: &Value| v.to_token_stream().to_string();
+        assert_eq!(tokens(&Value::Null), ":: tank :: Value :: Null");
+        assert!(tokens(&Value::Int32(Some(1))).contains("Int32"));
+        assert!(
+            tokens(&Value::Decimal(
+                Some(rust_decimal::Decimal::new(1, 2)),
+                10,
+                2
+            ))
+            .contains("Decimal")
+        );
+        assert!(
+            tokens(&Value::Array(None, Box::new(Value::Int32(None)), 3))
+                .contains("Array (None , Box :: new")
+        );
+        assert!(tokens(&Value::List(None, Box::new(Value::Int32(None)))).contains("List"));
+        assert!(
+            tokens(&Value::Map(
+                None,
+                Box::new(Value::Varchar(None)),
+                Box::new(Value::Int32(None))
+            ))
+            .contains("Map")
+        );
+        assert!(tokens(&Value::Json(None)).contains("Json"));
+        assert!(
+            tokens(&Value::Struct(
+                None,
+                vec![("a".to_string(), Value::Int32(None))],
+                TableRef::new("t".into())
+            ))
+            .contains("Struct")
+        );
+        assert!(tokens(&Value::Unknown(None)).contains("Unknown"));
     }
 }

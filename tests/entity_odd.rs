@@ -4,7 +4,7 @@ mod tests {
     use rust_decimal::{Decimal, prelude::FromPrimitive};
     use std::{borrow::Cow, sync::Arc, time::Duration};
     use tank::{
-        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
+        Action, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
         SqlWriter, TableRef, Value, expr,
     };
 
@@ -212,6 +212,81 @@ mod tests {
                 WHERE "echo" = 5;
             "#}
             .trim()
+        );
+    }
+
+    #[derive(Entity)]
+    #[tank(name = "farms")]
+    struct Farm {
+        #[tank(primary_key)]
+        id: i64,
+        name: String,
+    }
+
+    #[derive(Entity)]
+    #[tank(name = "animals", unique = ("tag", "farm_id"))]
+    struct Animal {
+        #[tank(primary_key)]
+        id: i64,
+        #[tank(unique)]
+        tag: String,
+        #[tank(references = Farm::id)]
+        farm_id: i64,
+        #[tank(
+            references = Farm::id,
+            on_delete = cascade,
+            on_update = restrict
+        )]
+        backup_farm_id: Option<i64>,
+        #[tank(references = farm_zone.stables(tag))]
+        stable_tag: String,
+        #[tank(references = farm_zone.stables(tag), on_delete = set_null, on_update = no_action)]
+        stable_tag2: Option<String>,
+        #[tank(references = farm_zone.stables(tag), on_delete = set_default, on_update = no_action)]
+        stable_tag3: Option<String>,
+    }
+
+    #[test]
+    fn test_references_metadata() {
+        let columns = Animal::columns();
+        let farm_ref = columns[2].references.as_ref().unwrap();
+        assert_eq!(farm_ref.name, "id");
+        assert_eq!(farm_ref.table, "farms");
+        assert!(columns[2].on_delete.is_none());
+        assert!(columns[2].on_update.is_none());
+
+        let backup_ref = columns[3].references.as_ref().unwrap();
+        assert_eq!(backup_ref.name, "id");
+        assert_eq!(backup_ref.table, "farms");
+        assert_eq!(columns[3].on_delete, Some(Action::Cascade));
+        assert_eq!(columns[3].on_update, Some(Action::Restrict));
+        assert_eq!(columns[1].unique, true);
+
+        let stable = columns[4].references.as_ref().unwrap();
+        assert_eq!(stable.name, "tag");
+        assert_eq!(stable.table, "stables");
+        assert_eq!(stable.schema, "farm_zone");
+        assert_eq!(columns[5].on_delete, Some(Action::SetNull));
+        assert_eq!(columns[5].on_update, Some(Action::NoAction));
+        assert_eq!(columns[6].on_delete, Some(Action::SetDefault));
+    }
+
+    #[test]
+    fn test_references_ddl() {
+        let mut query = DynQuery::default();
+        WRITER.write_create_table::<Animal>(&mut query, true);
+        let sql = query.as_str().into_owned();
+        assert!(sql.contains("FOREIGN KEY (\"farm_id\") REFERENCES \"farms\"(\"id\")"));
+        assert!(
+            sql.contains(
+                "FOREIGN KEY (\"backup_farm_id\") REFERENCES \"farms\"(\"id\") ON DELETE CASCADE ON UPDATE RESTRICT"
+            ),
+            "Unexpected DDL: {sql}"
+        );
+        assert!(sql.contains("UNIQUE (\"tag\", \"farm_id\")"));
+        assert!(
+            sql.contains("REFERENCES \"farm_zone\".\"stables\"(\"tag\")"),
+            "Unexpected DDL: {sql}"
         );
     }
 }

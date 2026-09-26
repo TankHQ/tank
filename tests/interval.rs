@@ -343,6 +343,9 @@ mod tests {
             (Interval::from_days(1) - Interval::from_mins(30)).as_hmsns(),
             (23, 30, 0, 0)
         );
+        // Negative sign lands on the first non-zero component.
+        assert_eq!(Interval::from_secs(-1).as_hmsns(), (0, 0, -1, 0));
+        assert_eq!(Interval::from_nanos(-500).as_hmsns(), (0, 0, 0, -500));
     }
 
     #[test]

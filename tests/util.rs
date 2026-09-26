@@ -2,12 +2,18 @@
 mod tests {
     use quote::ToTokens;
     use rust_decimal::Decimal;
-    use std::{borrow::Cow, collections::HashMap, fmt::Write, sync::Arc};
+    use std::{
+        borrow::Cow,
+        collections::{BTreeMap, HashMap},
+        fmt::Write,
+        sync::Arc,
+    };
     use tank::{
         Context, Dataset, DeclareTableRef, DynQuery, EitherIterator, Entity, FixedDecimal,
         Fragment, GenericSqlWriter, Interval, QueryBuilder, QueryResult, References, Row,
         RowsAffected, SqlValueWriter, SqlWriter, TableRef, Value, as_c_string, column_def,
-        consume_while, extract_number, quote_cow, separated_by, value_to_json, write_escaped,
+        consume_while, extract_number, quote_btree_map, quote_cow, quote_option, separated_by,
+        value_to_json, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, Time, UtcOffset};
 
@@ -152,6 +158,17 @@ mod tests {
     }
 
     #[test]
+    fn util_quote_helpers() {
+        let map = BTreeMap::from([("a", "b"), ("c", "d")]);
+        let tokens = quote_btree_map(&map).to_string();
+        assert!(tokens.contains(":: std :: collections :: BTreeMap :: from"));
+        assert!(tokens.contains("\"a\""));
+
+        assert_eq!(quote_option::<&str>(&None).to_string(), "None");
+        assert_eq!(quote_option(&Some("v")).to_string(), "Some (\"v\")");
+    }
+
+    #[test]
     fn row_new_and_accessors() {
         let labels: Arc<[String]> = Arc::from(vec!["id".into(), "name".into()]);
         let values: Box<[Value]> =
@@ -205,6 +222,12 @@ mod tests {
         let row = Row::new(labels, values);
         let rv: Box<[Value]> = row.into();
         assert_eq!(rv.len(), 1);
+
+        let labels: Arc<[String]> = Arc::from(vec!["c".into()]);
+        let values: Box<[Value]> = vec![Value::Boolean(Some(false))].into();
+        let row = Row::new(labels, values);
+        let rv: &Box<[Value]> = (&row).into();
+        assert_eq!(rv[0], Value::Boolean(Some(false)));
     }
 
     #[test]

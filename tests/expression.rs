@@ -428,7 +428,6 @@ mod tests {
     #[test]
     fn test_current_timestamp_ms_macro() {
         {
-            use tank::current_timestamp_ms;
             let expr = expr!(current_timestamp_ms!());
             assert!(matches!(expr, Operand::CurrentTimestampMs));
             let mut query = DynQuery::default();
@@ -792,6 +791,32 @@ mod tests {
         assert_ne!(Operand::LitBool(true), Operand::LitBool(false));
         assert_ne!(Operand::LitBool(true), Operand::LitInt(1));
         assert_ne!(Operand::LitInt(0), Operand::LitInt(1));
+    }
+
+    #[test]
+    fn test_operand_debug() {
+        assert_eq!(format!("{:?}", Operand::Null), "Null");
+        assert_eq!(format!("{:?}", Operand::LitBool(true)), "LitBool(true)");
+        assert_eq!(format!("{:?}", Operand::LitInt(3)), "LitInt(3)");
+        assert_eq!(format!("{:?}", Operand::LitFloat(1.5)), "LitFloat(1.5)");
+        assert_eq!(format!("{:?}", Operand::LitStr("s")), "LitStr(\"s\")");
+        assert_eq!(format!("{:?}", Operand::LitIdent("i")), "LitIdent(\"i\")");
+        assert!(format!("{:?}", Operand::LitField(&["a", "b"])).starts_with("LitField"));
+        assert!(format!("{:?}", Operand::LitList(&[])).starts_with("LitList"));
+        assert!(format!("{:?}", Operand::LitTuple(&[])).starts_with("LitTuple"));
+        assert!(format!("{:?}", Operand::Type(Value::Int32(None))).starts_with("Type"));
+        assert!(format!("{:?}", Operand::Variable(Value::Int32(Some(1)))).starts_with("Variable"));
+        assert!(format!("{:?}", Operand::Value(&Value::Null)).starts_with("Value"));
+        assert_eq!(
+            format!("{:?}", Operand::Call("F", &[])),
+            "Call(\"F\", \"..\")"
+        );
+        assert_eq!(format!("{:?}", Operand::Asterisk), "Asterisk");
+        assert_eq!(format!("{:?}", Operand::QuestionMark), "QuestionMark");
+        assert_eq!(
+            format!("{:?}", Operand::CurrentTimestampMs),
+            "CurrentTimestampMs"
+        );
     }
 
     #[test]

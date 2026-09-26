@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use tank_core::{AsValue, Context, DynQuery, Fragment, Interval, SqlValueWriter};
-    use tank_mysql::MySQLSqlWriter;
+    use tank_core::{AsValue, Context, DynQuery, Fragment, Interval, SqlValueWriter, describe_url};
+    use tank_mysql::{MySQLDriver, MySQLSqlWriter};
+    use url::Url;
 
     fn render(interval: Interval) -> String {
         let writer = MySQLSqlWriter::default();
@@ -35,5 +36,12 @@ mod tests {
             render(Interval::from_days(1) - Interval::from_mins(30)),
             "'23:30:00.0'"
         );
+    }
+
+    #[test]
+    fn describe_url_includes_host_port_and_database() {
+        let url = Url::parse("mysql://user@db.example.com:3307/shop").unwrap();
+        let target = describe_url::<MySQLDriver>(&url);
+        assert_eq!(target, "db.example.com:3307/shop");
     }
 }
