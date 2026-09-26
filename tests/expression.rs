@@ -2,8 +2,9 @@
 mod tests {
     use std::borrow::Cow;
     use tank::{
-        BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Entity, Expression, Fragment,
-        GenericSqlWriter, OpPrecedence, Operand, UnaryOp, UnaryOpType, Value, expr,
+        BinaryOp, BinaryOpType, ColumnRef, Context, DefaultValueType, DynQuery, Entity, Expression,
+        Fragment, GenericSqlWriter, OpPrecedence, Operand, Order, Ordered, UnaryOp, UnaryOpType,
+        Value, expr,
     };
 
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
@@ -872,7 +873,6 @@ mod tests {
 
     #[test]
     fn test_default_value_type() {
-        use tank::DefaultValueType;
         // None
         let dvt = DefaultValueType::None;
         assert!(!dvt.is_set());
@@ -939,7 +939,6 @@ mod tests {
 
     #[test]
     fn test_ordered_expression() {
-        use tank::{Order, Ordered};
         let ordered = Ordered {
             expression: Operand::LitInt(1),
             order: Order::ASC,

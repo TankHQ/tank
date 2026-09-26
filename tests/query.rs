@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod tests {
     use indoc::indoc;
-    use tank::{DynQuery, Entity, GenericSqlWriter, QueryBuilder, SqlWriter, cols, expr};
+    use std::fmt::Write;
+    use tank::{DynQuery, Entity, GenericSqlWriter, QueryBuilder, RawQuery, SqlWriter, cols, expr};
 
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
@@ -480,7 +481,6 @@ mod tests {
 
     #[test]
     fn query_21() {
-        use std::fmt::Write;
         let mut q = DynQuery::default();
         let _ = q.write_str("SELECT 1");
         let s: String = q.into();
@@ -489,7 +489,6 @@ mod tests {
 
     #[test]
     fn query_22() {
-        use tank::RawQuery;
         let rq = RawQuery("SELECT * FROM t".into());
         assert_eq!(format!("{rq}"), "SELECT * FROM t");
     }

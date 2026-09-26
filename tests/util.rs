@@ -13,7 +13,7 @@ mod tests {
         Fragment, GenericSqlWriter, Interval, QueryBuilder, QueryResult, References, Row,
         RowsAffected, SqlValueWriter, SqlWriter, TableRef, Value, as_c_string, column_def,
         consume_while, extract_number, quote_btree_map, quote_cow, quote_option, separated_by,
-        value_to_json, write_escaped,
+        truncate_long, value_to_json, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, Time, UtcOffset};
 
@@ -864,8 +864,6 @@ mod tests {
 
     #[test]
     fn util_truncate_long_multibyte() {
-        use tank::truncate_long;
-
         assert_eq!(format!("{}", truncate_long!("SELECT 1")), "SELECT 1");
 
         let long_ascii = "X".repeat(tank::TRUNCATE_LONG_LIMIT + 100);

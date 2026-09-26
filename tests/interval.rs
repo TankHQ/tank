@@ -2,7 +2,8 @@
 mod tests {
     use std::{collections::HashSet, i64, time::Duration};
     use tank_core::{
-        AsValue, Context, DynQuery, Fragment, GenericSqlWriter, Interval, SqlValueWriter,
+        AsValue, Context, DynQuery, Fragment, GenericSqlWriter, Interval, IntervalUnit,
+        SqlValueWriter, Value,
     };
 
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
@@ -215,7 +216,7 @@ mod tests {
                 .strip_prefix("INTERVAL ")
                 .unwrap_or(&rendered)
                 .to_string();
-            let parsed = Interval::try_from_value(tank_core::Value::Varchar(Some(body.into())))
+            let parsed = Interval::try_from_value(Value::Varchar(Some(body.into())))
                 .unwrap_or_else(|e| panic!("Could not parse `{rendered}`: {e:#}"));
             assert_eq!(parsed, interval, "Round-trip failed for `{rendered}`");
         }
@@ -291,7 +292,6 @@ mod tests {
 
     #[test]
     fn from_bitmask() {
-        use tank_core::IntervalUnit;
         assert_eq!(
             IntervalUnit::from_bitmask(1).unwrap(),
             IntervalUnit::Nanosecond
@@ -400,48 +400,42 @@ mod tests {
         let interval = Interval::from_years(2);
         let mask = interval.units_mask();
         assert_eq!(mask, 1 << 7); // Year bit
-        assert_eq!(interval.unit_value(tank_core::IntervalUnit::Year), 2);
+        assert_eq!(interval.unit_value(IntervalUnit::Year), 2);
 
         let interval2 = Interval::from_months(5);
         let mask = interval2.units_mask();
         assert_eq!(mask, 1 << 6); // Month bit
-        assert_eq!(interval2.unit_value(tank_core::IntervalUnit::Month), 5);
+        assert_eq!(interval2.unit_value(IntervalUnit::Month), 5);
 
         let interval3 = Interval::from_days(3);
         let mask = interval3.units_mask();
         assert_eq!(mask, 1 << 5); // Day bit
-        assert_eq!(interval3.unit_value(tank_core::IntervalUnit::Day), 3);
+        assert_eq!(interval3.unit_value(IntervalUnit::Day), 3);
 
         let interval4 = Interval::from_hours(6);
         let mask = interval4.units_mask();
         assert_eq!(mask, 1 << 4); // Hour bit
-        assert_eq!(interval4.unit_value(tank_core::IntervalUnit::Hour), 6);
+        assert_eq!(interval4.unit_value(IntervalUnit::Hour), 6);
 
         let interval5 = Interval::from_mins(45);
         let mask = interval5.units_mask();
         assert_eq!(mask, 1 << 3); // Minute bit
-        assert_eq!(interval5.unit_value(tank_core::IntervalUnit::Minute), 45);
+        assert_eq!(interval5.unit_value(IntervalUnit::Minute), 45);
 
         let interval6 = Interval::from_secs(10);
         let mask = interval6.units_mask();
         assert_eq!(mask, 1 << 2); // Second bit
-        assert_eq!(interval6.unit_value(tank_core::IntervalUnit::Second), 10);
+        assert_eq!(interval6.unit_value(IntervalUnit::Second), 10);
 
         let interval7 = Interval::from_micros(500);
         let mask = interval7.units_mask();
         assert_eq!(mask, 1 << 1); // Microsecond bit
-        assert_eq!(
-            interval7.unit_value(tank_core::IntervalUnit::Microsecond),
-            500
-        );
+        assert_eq!(interval7.unit_value(IntervalUnit::Microsecond), 500);
 
         let interval8 = Interval::from_nanos(42);
         let mask = interval8.units_mask();
         assert_eq!(mask, 1 << 0); // Nanosecond bit
-        assert_eq!(
-            interval8.unit_value(tank_core::IntervalUnit::Nanosecond),
-            42
-        );
+        assert_eq!(interval8.unit_value(IntervalUnit::Nanosecond), 42);
 
         assert_eq!(Interval::ZERO.units_mask(), 0);
     }
@@ -459,7 +453,7 @@ mod tests {
             let _ = interval.as_ns();
             let _ = interval.days_nanos();
             let _ = interval.units_mask();
-            let _ = interval.unit_value(tank_core::IntervalUnit::Nanosecond);
+            let _ = interval.unit_value(IntervalUnit::Nanosecond);
             let _ = interval.as_duration(30.0);
             let _ = -interval;
             assert_eq!(interval, interval);
@@ -552,14 +546,12 @@ mod tests {
 
     #[test]
     fn parse_huge_interval_does_not_panic() {
-        use tank_core::AsValue;
-        let parsed = Interval::try_from_value(tank_core::Value::Varchar(Some(
-            "1000000000000000000 years".into(),
-        )));
+        let parsed =
+            Interval::try_from_value(Value::Varchar(Some("1000000000000000000 years".into())));
         if let Ok(v) = parsed {
             assert!(v.months >= 0);
         }
-        let parsed = Interval::try_from_value(tank_core::Value::Varchar(Some(
+        let parsed = Interval::try_from_value(Value::Varchar(Some(
             "1000000000000000000 years 1000000000000000000 years".into(),
         )));
         if let Ok(v) = parsed {

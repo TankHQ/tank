@@ -2,7 +2,7 @@
 mod tests {
     use std::path::Path;
     use std::sync::Mutex;
-    use tank_core::{ConnectionPool, Driver, Executor, Value, stream::StreamExt};
+    use tank_core::{ConnectionPool, Driver, Executor, stream::StreamExt};
     use tank_sqlite::SQLiteDriver;
     use tank_tests::{execute_tests, init_logs};
     use tokio::fs;

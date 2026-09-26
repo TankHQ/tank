@@ -2,7 +2,7 @@
 mod tests {
     use tank::{
         Entity, Expression, FindOrder, GenericSqlWriter, IsAggregateFunction, IsAlias, IsAsterisk,
-        IsConstant, IsFalse, IsQuestionMark, IsTrue, Order, expr,
+        IsConstant, IsFalse, IsQuestionMark, IsTrue, Order, cols, expr,
     };
 
     #[derive(Entity)]
@@ -115,7 +115,6 @@ mod tests {
 
     #[test]
     fn visitor_find_order() {
-        use tank::cols;
         let mut out = Default::default();
         let mut ctx = Default::default();
         {

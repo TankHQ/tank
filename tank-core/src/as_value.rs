@@ -5,7 +5,7 @@ use crate::{
 use crate::{month_to_number, number_to_month};
 use anyhow::{Context, anyhow};
 #[cfg(feature = "chrono")]
-use chrono::{Datelike, Timelike};
+use chrono::{Datelike, Offset, Timelike};
 use rust_decimal::{Decimal, prelude::FromPrimitive, prelude::ToPrimitive};
 use std::{
     any,
@@ -1166,7 +1166,6 @@ impl AsValue for chrono::DateTime<chrono::FixedOffset> {
     fn as_value(self) -> Value {
         Value::TimestampWithTimezone(
             'value: {
-                use chrono::Offset;
                 let Ok(date) = AsValue::try_from_value(self.date_naive().as_value()) else {
                     break 'value Err(anyhow!(
                         "Failed to convert the date part from chrono::NaiveDate to time::Date",
