@@ -468,6 +468,30 @@ mod tests {
     }
 
     #[test]
+    fn large_i128_constructors_keep_sign() {
+        for v in [i128::MAX, i128::MIN] {
+            let n = Interval::from_nanos(v);
+            assert_eq!(
+                n.days.signum() as i128,
+                v.signum(),
+                "from_nanos({v}) produced a days count with the wrong sign: {n:?}"
+            );
+            let m = Interval::from_micros(v);
+            assert_eq!(
+                m.days.signum() as i128,
+                v.signum(),
+                "from_micros({v}) produced a days count with the wrong sign: {m:?}"
+            );
+            let ms = Interval::from_millis(v);
+            assert_eq!(
+                ms.days.signum() as i128,
+                v.signum(),
+                "from_millis({v}) produced a days count with the wrong sign: {ms:?}"
+            );
+        }
+    }
+
+    #[test]
     fn hash_interval() {
         let mut set = HashSet::new();
         set.insert(Interval::from_days(1));

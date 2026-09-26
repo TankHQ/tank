@@ -1005,8 +1005,15 @@ impl_as_value!(
     time::OffsetDateTime,
     Value::TimestampWithTimezone,
     |mut input: &str| {
+        let original = input;
         if let Some(result) = parse_time!(
             input,
+            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
+            "[year]-[month]-[day]T[hour]:[minute][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
+            "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
+            "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
+            "[year]-[month]-[day] [hour]:[minute][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
             "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]",
             "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]",
             "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]",
@@ -1020,12 +1027,14 @@ impl_as_value!(
             "[year]-[month]-[day] [hour]:[minute][offset_hour sign:mandatory]:[offset_minute]",
             "[year]-[month]-[day] [hour]:[minute][offset_hour sign:mandatory]",
         ) {
-            return Ok(result);
+            if input.is_empty() {
+                return Ok(result);
+            }
         }
-        if let Ok(result) = <PrimitiveDateTime as AsValue>::parse(input).map(|v| v.assume_utc()) {
-            return Ok(result);
+        if let Ok(result) = <PrimitiveDateTime as AsValue>::parse(original) {
+            return Ok(result.assume_utc());
         }
-        Err(anyhow!("Cannot parse `{}` as time::OffsetDateTime", truncate_long!(input)))
+        Err(anyhow!("Cannot parse `{}` as time::OffsetDateTime", truncate_long!(original)))
     },
     Value::Timestamp(Some(timestamp), ..) => Ok(timestamp.assume_utc()),
     Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),

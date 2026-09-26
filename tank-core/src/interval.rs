@@ -77,10 +77,20 @@ impl Interval {
         }
     }
 
+    const fn saturating_days(days: i128) -> i64 {
+        if days > i64::MAX as i128 {
+            i64::MAX
+        } else if days < i64::MIN as i128 {
+            i64::MIN
+        } else {
+            days as i64
+        }
+    }
+
     pub const fn from_nanos(value: i128) -> Self {
         Self {
             months: 0,
-            days: (value / Self::NANOS_IN_DAY) as _,
+            days: Self::saturating_days(value / Self::NANOS_IN_DAY),
             nanos: (value % Self::NANOS_IN_DAY),
         }
     }
@@ -89,7 +99,7 @@ impl Interval {
         const MICROS_IN_DAY: i128 = (Interval::SECS_IN_DAY * 1_000_000) as _;
         Self {
             months: 0,
-            days: (value / MICROS_IN_DAY) as _,
+            days: Self::saturating_days(value / MICROS_IN_DAY),
             nanos: (value % MICROS_IN_DAY) * 1_000,
         }
     }
@@ -98,7 +108,7 @@ impl Interval {
         const MILLIS_IN_DAY: i128 = (Interval::SECS_IN_DAY * 1_000) as _;
         Self {
             months: 0,
-            days: (value / MILLIS_IN_DAY) as _,
+            days: Self::saturating_days(value / MILLIS_IN_DAY),
             nanos: ((value % MILLIS_IN_DAY) * 1_000_000),
         }
     }

@@ -2292,6 +2292,23 @@ mod as_value_tests {
     }
 
     #[test]
+    fn seconds_offset_datetime() {
+        for (text, seconds) in [
+            ("2024-06-15T14:30:00+00:19:32", 19 * 60 + 32),
+            ("2024-06-15 14:30:00-00:00:45", -(45)),
+            ("2024-06-15T14:30:00+00:19", 19 * 60),
+        ] {
+            let odt = <time::OffsetDateTime as AsValue>::parse(text)
+                .unwrap_or_else(|e| panic!("Could not parse `{text}`: {e:#}"));
+            assert_eq!(
+                odt.offset().whole_seconds(),
+                seconds,
+                "Offset seconds were dropped parsing `{text}`"
+            );
+        }
+    }
+
+    #[test]
     fn uuid_from_varchar() {
         let u = uuid::Uuid::try_from_value(Value::Varchar(Some(
             "550e8400-e29b-41d4-a716-446655440000".into(),

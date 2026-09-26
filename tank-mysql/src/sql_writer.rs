@@ -30,6 +30,21 @@ impl MySQLSqlWriter {
     pub(crate) fn mariadb() -> Self {
         Self { mariadb: true }
     }
+
+    /// Wrap the JSON emitted at `start` in a SQL string literal, escaping the
+    /// characters that would otherwise terminate or alter it.
+    fn quote_json_literal(out: &mut DynQuery, start: usize) {
+        let body = out.buffer().split_off(start);
+        out.push('\'');
+        for c in body.chars() {
+            match c {
+                '\'' => out.push_str("''"),
+                '\\' => out.push_str("\\\\"),
+                c => out.push(c),
+            }
+        }
+        out.push('\'');
+    }
 }
 
 impl SqlCoreWriter for MySQLSqlWriter {
@@ -261,9 +276,7 @@ impl SqlValueWriter for MySQLSqlWriter {
     ) {
         let is_json = matches!(context.fragment, Fragment::Json | Fragment::JsonKey);
         let mut context = context.switch_fragment(Fragment::Json);
-        if !is_json {
-            out.push('\'');
-        }
+        let start = out.len();
         out.push('[');
         separated_by(
             out,
@@ -275,16 +288,14 @@ impl SqlValueWriter for MySQLSqlWriter {
         );
         out.push(']');
         if !is_json {
-            out.push('\'');
+            Self::quote_json_literal(out, start);
         }
     }
 
     fn write_map(&self, context: &mut Context, out: &mut DynQuery, value: &HashMap<Value, Value>) {
         let inside_string = context.fragment == Fragment::Json;
         let mut context = context.switch_fragment(Fragment::Json);
-        if !inside_string {
-            out.push('\'');
-        }
+        let start = out.len();
         out.push('{');
         separated_by(
             out,
@@ -301,7 +312,7 @@ impl SqlValueWriter for MySQLSqlWriter {
         );
         out.push('}');
         if !inside_string {
-            out.push('\'');
+            Self::quote_json_literal(out, start);
         }
     }
 }
