@@ -1,13 +1,14 @@
 use std::collections::BTreeMap;
-use tank_core::{ColumnDef, Context, DynQuery, SqlWriter};
+use tank_core::{ColumnDef Context DynQuery SqlFragmentWriter SqlCoreWriter SqlExpressionWriter SqlValueWriter SqlWriter};
 
 #[derive(Default)]
 pub struct YourDBSqlWriter {}
 
-impl SqlWriter for YourDBSqlWriter {
+impl SqlCoreWriter for YourDBSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
+
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
@@ -23,3 +24,8 @@ impl SqlWriter for YourDBSqlWriter {
         }
     }
 }
+
+impl SqlValueWriter for YourDBSqlWriter {}
+impl SqlExpressionWriter for YourDBSqlWriter {}
+impl SqlFragmentWriter for YourDBSqlWriter {}
+impl SqlWriter for YourDBSqlWriter {}

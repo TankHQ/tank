@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
-use tank::{AsValue, DynQuery, QueryBuilder};
-use tank::{Driver, Entity, Executor, QueryResult, SqlWriter, stream::TryStreamExt};
+use tank::{AsValue, DynQuery, QueryBuilder, SqlWriter};
+use tank::{Driver, Entity, Executor, QueryResult, stream::TryStreamExt};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));

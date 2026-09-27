@@ -16,7 +16,7 @@ bundled = ["libduckdb-sys/bundled"]
 anyhow.workspace = true
 async-stream.workspace = true
 flume = "0"
-libduckdb-sys = "1"
+libduckdb-sys = { version = "1", features = ["buildtime_bindgen"] }
 log.workspace = true
 rust_decimal.workspace = true
 tank-core.workspace = true

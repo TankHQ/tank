@@ -1,12 +1,11 @@
 use crate::{cbox::CBox, duckdb_hugeint_to_i128, duckdb_uhugeint_to_u128};
 use anyhow::anyhow;
 use libduckdb_sys::*;
-use rust_decimal::Decimal;
 use std::{
     ffi::{CStr, c_void},
     ptr, slice,
 };
-use tank_core::{Error, Interval, Result, TableRef, Value};
+use tank_core::{Error, Interval, Result, TableRef, Value, decimal_from_scaled};
 use uuid::Uuid;
 
 pub(crate) fn convert_date(date: duckdb_date_struct) -> Result<time::Date> {
@@ -192,7 +191,7 @@ pub(crate) fn extract_value(
                                 return Err(error);
                             }
                         };
-                        Some(Decimal::from_i128_with_scale(num, scale as u32))
+                        Some(decimal_from_scaled(num, scale as u32)?)
                     } else {
                         None
                     },

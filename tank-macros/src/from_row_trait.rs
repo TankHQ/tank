@@ -54,7 +54,7 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
         let column = &c.name;
         let ident = &c.ident;
         quote! {
-            #ident: #ident.ok_or(__make_error__(#column))?
+            #ident: #ident.ok_or_else(|| __make_error__(#column))?
         }
     });
     let remaining = item

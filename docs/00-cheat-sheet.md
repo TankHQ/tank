@@ -205,7 +205,8 @@ EntityExample::delete_many(
 ## Expressions
 
 ```rust
-use tank::expr;
+use tank::{current_timestamp_ms, expr};
+use time::Duration;
 use uuid::Uuid;
 
 expr!(EntityExample::casualties == 0);
@@ -216,6 +217,10 @@ expr!(EntityExample::callsign != "Alpha%" as LIKE);
 expr!(EntityExample::casualties > ?);
 let uid = Uuid::new_v4();;
 expr!(EntityExample::unit_id == #uid);
+let regions = ["North", "South"];
+expr!(EntityExample::region == #regions as IN);
+let one_day_ms = Duration::days(1).whole_milliseconds();
+expr!(current_timestamp_ms!() - #one_day_ms);
 ```
 
 ## Prepared statement

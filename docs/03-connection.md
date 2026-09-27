@@ -164,6 +164,60 @@ Modes:
 
 The `mode` parameter provides a common syntax for specifying connection access, similar to SQLite. The values map respectively to `access_mode=READ_ONLY`, `access_mode=READ_WRITE`, `access_mode=READ_WRITE` and the special `duckdb://:memory:` path. Additional URL parameters are passed directly to the DuckDB C API. See the full list of supported options on the [DuckDB website](https://duckdb.org/docs/stable/configuration/overview#global-configuration-options).
 
+### ClickHouse
+ClickHouse is your long-range artillery battery: columnar, massively parallel, built to flatten mountains of data into a single decisive figure.
+
+```rust
+use tank::{ConnectionPool, Driver, PoolConfig};
+use tank_clickhouse::ClickHouseDriver;
+
+async fn establish_clickhouse_connection() -> Result<impl ConnectionPool<ClickHouseDriver>> {
+    let driver = ClickHouseDriver::new();
+    let pool = driver
+        .connect_pool(
+            "clickhouse://default@127.0.0.1:9000/default".into(),
+            PoolConfig::new(),
+        )
+        .await?;
+    Ok(pool)
+}
+```
+
+**URL Format**:
+- `clickhouse://user:password@host:port/database`
+
+Every field is optional and falls back to the defaults: host `localhost`, port `9000` (native TCP), user `default`, empty password, database `default`. Additional query parameters are not forwarded to `klickhouse`; use the URL form above for credentials and target database.
+
+> [!NOTE]
+> **No transactions**: ClickHouse is an analytical weapons platform, not an OLTP stronghold. `begin()` returns an error and `commit`/`rollback` are unsupported; issue statements directly against the connection.
+>
+> On connect, Tank arms the session with `allow_experimental_lightweight_delete=1`, `join_use_nulls=1` and `final=1` so deletes, joins and deduplicated reads behave consistently with the rest of the arsenal.
+
+### chDB
+chDB is mobile artillery: long-range firepower embedded in your own line, no emplacement, no supply line.
+
+```rust
+use tank::{ConnectionPool, Driver, PoolConfig};
+use tank_chdb::ChDBDriver;
+
+async fn establish_chdb_connection() -> Result<impl ConnectionPool<ChDBDriver>> {
+    let driver = ChDBDriver::new();
+    let pool = driver
+        .connect_pool("chdb://".into(), PoolConfig::new())
+        .await?;
+    Ok(pool)
+}
+```
+
+**URL Format**:
+- Memory: `chdb://` opens a fresh in-memory database
+- File: `chdb://path/to/database` or `chdb://?path=/path/to/database`
+
+The database path comes from the `path` query parameter, otherwise from the URL path. When neither is supplied, chDB opens in memory and the database lives only for the duration of the connection. The driver reuses the ClickHouse SQL dialect from [`tank-clickhouse`](https://crates.io/crates/tank-clickhouse), streams results in `JSONEachRow` format and parses them row by row.
+
+> [!NOTE]
+> **No transactions**: like its server-backed sibling, chDB does not support `begin()`, `commit` or `rollback`.
+
 ### MongoDB
 MongoDB is your guerrilla special forces unit operating in the "fog of war", gathering intel in whatever format it arrives.
 

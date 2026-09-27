@@ -1,5 +1,5 @@
 use std::fmt::{self, Display, Formatter};
-use tank_core::{AsValue, Prepared, Result};
+use tank_core::{AsValue, Prepared, RawQuery, Result};
 
 #[derive(Debug)]
 pub struct YourDBPrepared {
@@ -7,7 +7,7 @@ pub struct YourDBPrepared {
 }
 
 impl YourDBPrepared {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(_query: RawQuery) -> Self {
         Self { index: 0 }
     }
 }

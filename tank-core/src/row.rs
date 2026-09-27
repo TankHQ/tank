@@ -49,7 +49,7 @@ impl Row {
         self.labels
             .iter()
             .position(|v| v == name)
-            .map(|i| &self.values()[i])
+            .and_then(|i| self.values.get(i))
     }
     /// Returns the number of columns in the row.
     pub fn len(&self) -> usize {

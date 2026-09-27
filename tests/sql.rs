@@ -3,17 +3,14 @@ mod tests {
     use indoc::indoc;
     use rust_decimal::Decimal;
     use std::str::FromStr;
-    use tank::{Context, DynQuery, Entity, Fragment, QueryBuilder, SqlWriter, Value, expr};
+    use tank::{
+        Context, DynQuery, Entity, Fragment, GenericSqlWriter, QueryBuilder, SqlValueWriter,
+        SqlWriter, Value, expr,
+    };
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
 
-    struct Writer;
-    impl SqlWriter for Writer {
-        fn as_dyn(&self) -> &dyn SqlWriter {
-            self
-        }
-    }
-    const WRITER: Writer = Writer {};
+    const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
     fn test_sql_simple_table() {

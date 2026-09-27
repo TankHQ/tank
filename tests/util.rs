@@ -2,12 +2,18 @@
 mod tests {
     use quote::ToTokens;
     use rust_decimal::Decimal;
-    use std::{borrow::Cow, collections::HashMap, fmt::Write, sync::Arc};
+    use std::{
+        borrow::Cow,
+        collections::{BTreeMap, HashMap},
+        fmt::Write,
+        sync::Arc,
+    };
     use tank::{
         Context, Dataset, DeclareTableRef, DynQuery, EitherIterator, Entity, FixedDecimal,
         Fragment, GenericSqlWriter, Interval, QueryBuilder, QueryResult, References, Row,
-        RowsAffected, SqlWriter, TableRef, Value, as_c_string, column_def, consume_while,
-        extract_number, quote_cow, separated_by, value_to_json, write_escaped,
+        RowsAffected, SqlValueWriter, SqlWriter, TableRef, Value, as_c_string, column_def,
+        consume_while, extract_number, quote_btree_map, quote_cow, quote_option, separated_by,
+        truncate_long, value_to_json, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, Time, UtcOffset};
 
@@ -152,6 +158,17 @@ mod tests {
     }
 
     #[test]
+    fn util_quote_helpers() {
+        let map = BTreeMap::from([("a", "b"), ("c", "d")]);
+        let tokens = quote_btree_map(&map).to_string();
+        assert!(tokens.contains(":: std :: collections :: BTreeMap :: from"));
+        assert!(tokens.contains("\"a\""));
+
+        assert_eq!(quote_option::<&str>(&None).to_string(), "None");
+        assert_eq!(quote_option(&Some("v")).to_string(), "Some (\"v\")");
+    }
+
+    #[test]
     fn row_new_and_accessors() {
         let labels: Arc<[String]> = Arc::from(vec!["id".into(), "name".into()]);
         let values: Box<[Value]> =
@@ -205,6 +222,12 @@ mod tests {
         let row = Row::new(labels, values);
         let rv: Box<[Value]> = row.into();
         assert_eq!(rv.len(), 1);
+
+        let labels: Arc<[String]> = Arc::from(vec!["c".into()]);
+        let values: Box<[Value]> = vec![Value::Boolean(Some(false))].into();
+        let row = Row::new(labels, values);
+        let rv: &Box<[Value]> = (&row).into();
+        assert_eq!(rv[0], Value::Boolean(Some(false)));
     }
 
     #[test]
@@ -455,7 +478,19 @@ mod tests {
             Box::new(Value::Int32(None)),
             Box::new(Value::Int32(None)),
         );
-        assert_eq!(value_to_json(&v), None);
+        assert_eq!(value_to_json(&v), Some(serde_json::json!({"1": 42})));
+
+        let mut map = HashMap::new();
+        map.insert(
+            Value::Varchar(Some("key".into())),
+            Value::Varchar(Some("value".into())),
+        );
+        let v = Value::Map(
+            Some(map),
+            Box::new(Value::Varchar(None)),
+            Box::new(Value::Varchar(None)),
+        );
+        assert_eq!(value_to_json(&v), Some(serde_json::json!({"key": "value"})));
 
         let empty_map: HashMap<Value, Value> = HashMap::new();
         let v2 = Value::Map(
@@ -479,6 +514,21 @@ mod tests {
         let s = Value::Struct(Some(vec![]), vec![], TableRef::new("my_type".into()));
         let result = value_to_json(&s).unwrap();
         assert!(result.is_object());
+
+        // A non-empty struct must serialize its fields (regression: `insert(...)?`
+        // bailed out because the first key was not present yet).
+        let s = Value::Struct(
+            Some(vec![
+                ("name".into(), Value::Varchar(Some("Alice".into()))),
+                ("age".into(), Value::Int32(Some(30))),
+            ]),
+            vec![],
+            TableRef::new("person".into()),
+        );
+        assert_eq!(
+            value_to_json(&s),
+            Some(serde_json::json!({"name": "Alice", "age": 30}))
+        );
     }
 
     #[test]
@@ -490,6 +540,88 @@ mod tests {
     #[test]
     fn util_value_to_json_nan_returns_none() {
         assert_eq!(value_to_json(&Value::Float64(Some(f64::NAN))), None);
+    }
+
+    #[test]
+    fn util_value_to_json_unrepresentable_returns_none() {
+        let mut map = HashMap::new();
+        map.insert(
+            Value::Int32(Some(1)),
+            Value::Interval(Some(Interval::from_days(1))),
+        );
+        assert_eq!(
+            value_to_json(&Value::Map(
+                Some(map),
+                Box::new(Value::Int32(None)),
+                Box::new(Value::Interval(None)),
+            )),
+            None
+        );
+
+        let mut map = HashMap::new();
+        map.insert(
+            Value::Interval(Some(Interval::from_days(1))),
+            Value::Int32(Some(1)),
+        );
+        assert_eq!(
+            value_to_json(&Value::Map(
+                Some(map),
+                Box::new(Value::Interval(None)),
+                Box::new(Value::Int32(None)),
+            )),
+            None
+        );
+
+        assert_eq!(
+            value_to_json(&Value::Struct(
+                Some(vec![(
+                    "k".into(),
+                    Value::Interval(Some(Interval::from_days(1)))
+                )]),
+                vec![],
+                TableRef::new("t".into()),
+            )),
+            None
+        );
+        assert_eq!(
+            value_to_json(&Value::Decimal(None, 0, 0)),
+            Some(serde_json::Value::Null)
+        );
+    }
+
+    #[test]
+    fn util_decimal_from_scaled() {
+        assert_eq!(
+            tank::decimal_from_scaled(1234, 2).unwrap(),
+            Decimal::new(1234, 2)
+        );
+        assert_eq!(
+            tank::decimal_from_scaled(200_i128, 29).unwrap(),
+            Decimal::new(20, 28)
+        );
+        assert!(tank::decimal_from_scaled(i128::MAX, 0).is_err());
+    }
+
+    #[test]
+    fn util_month_conversions() {
+        for (number, month) in [
+            (1, Month::January),
+            (2, Month::February),
+            (3, Month::March),
+            (4, Month::April),
+            (5, Month::May),
+            (6, Month::June),
+            (7, Month::July),
+            (8, Month::August),
+            (9, Month::September),
+            (10, Month::October),
+            (11, Month::November),
+            (12, Month::December),
+        ] {
+            assert_eq!(tank::month_to_number!(month), number);
+            assert_eq!(tank::number_to_month!(number, Month::January), month);
+        }
+        assert_eq!(tank::number_to_month!(13, Month::January), Month::January);
     }
 
     #[test]
@@ -813,6 +945,26 @@ mod tests {
     }
 
     #[test]
+    fn util_truncate_long_multibyte() {
+        assert_eq!(format!("{}", truncate_long!("SELECT 1")), "SELECT 1");
+
+        let long_ascii = "X".repeat(tank::TRUNCATE_LONG_LIMIT + 100);
+        let truncated = format!("{}", truncate_long!(long_ascii));
+        assert!(truncated.ends_with("...\n"));
+        assert_eq!(
+            truncated.trim_end_matches("...\n").trim().len(),
+            tank::TRUNCATE_LONG_LIMIT
+        );
+
+        let long_utf8 = "€".repeat(tank::TRUNCATE_LONG_LIMIT);
+        let truncated = format!("{}", truncate_long!(long_utf8));
+        assert!(truncated.ends_with("...\n"));
+
+        let truncated = format!("{}", truncate_long!(long_utf8.clone(), true));
+        assert!(truncated.ends_with("...\n"));
+    }
+
+    #[test]
     fn util_separated_by() {
         let mut out = DynQuery::default();
         separated_by(
@@ -968,5 +1120,23 @@ mod tests {
         let refs = References::<RefTarget>::new(Box::new([]));
         assert_eq!(refs.table_ref().name.as_ref(), "ref_target");
         assert!(refs.columns().is_empty());
+    }
+
+    #[test]
+    fn row_get_column_mismatched_lengths() {
+        let labels: Arc<[String]> = Arc::from(vec!["a".to_string(), "b".to_string()]);
+        let values: Box<[Value]> = vec![Value::Int32(Some(1))].into();
+        let row = Row::new(labels, values);
+        assert_eq!(row.get_column("a"), Some(&Value::Int32(Some(1))));
+        assert_eq!(row.get_column("b"), None);
+    }
+
+    #[test]
+    fn truncate_bound_edges() {
+        assert_eq!(tank::truncate_bound("abc", 10), 3);
+        assert_eq!(tank::truncate_bound("abcdef", 3), 3);
+        assert_eq!(tank::truncate_bound("aé", 2), 1);
+        assert_eq!(tank::truncate_bound("aé", 3), 3);
+        assert_eq!(tank::truncate_bound("", 0), 0);
     }
 }

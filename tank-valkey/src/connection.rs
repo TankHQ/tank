@@ -5,7 +5,7 @@ use redis::{Client, aio::MultiplexedConnection};
 use std::{borrow::Cow, future, mem, sync::Arc};
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Row,
-    RowsAffected, stream::Stream, truncate_long,
+    RowsAffected, describe_url, stream::Stream, truncate_long,
 };
 
 #[derive(Debug)]
@@ -21,14 +21,19 @@ impl Connection for ValkeyConnection {
     where
         Self: Sized,
     {
-        let context = "While trying to connect to Valkey";
-        let url = Self::sanitize_url(driver, url).context(context)?;
+        let url = Self::sanitize_url(driver, url)?;
+        let make_context = || {
+            format!(
+                "While trying to connect to Valkey {}",
+                describe_url::<ValkeyDriver>(&url)
+            )
+        };
         let client = Client::open(url.as_str()).map_err(Error::new)?;
         let connection = client
             .get_multiplexed_async_connection()
             .await
             .map_err(Error::new)
-            .context(context)?;
+            .with_context(make_context)?;
         Ok(Self {
             driver: *driver,
             connection,
@@ -69,7 +74,7 @@ impl Executor for ValkeyConnection {
                 return;
             }
             let pipeline = prepared.make_pipeline();
-            let context = || {
+            let make_context = || {
                 format!(
                     "While executing the query: {}",
                     truncate_long!(format!("{pipeline:?}"))
@@ -79,13 +84,13 @@ impl Executor for ValkeyConnection {
                 .query_async::<redis::Value>(&mut self.connection)
                 .await
                 .map_err(Error::new)
-                .with_context(context)?;
+                .with_context(make_context)?;
             let results = match raw_result {
                 redis::Value::Array(arr) => arr,
                 redis::Value::Nil => vec![],
                 redis::Value::ServerError(err) => {
                     Err(anyhow!("Valkey/Redis server error: {err}"))
-                        .with_context(context)?;
+                        .with_context(make_context)?;
                     return;
                 }
                 other => {
@@ -93,7 +98,7 @@ impl Executor for ValkeyConnection {
                         "Unexpected top-level pipeline response: {:?}",
                         other
                     ))
-                    .with_context(context)?;
+                    .with_context(make_context)?;
                     return;
                 }
             };
@@ -110,7 +115,7 @@ impl Executor for ValkeyConnection {
                     prepared.columns.len(),
                     results.len()
                 ))
-                .with_context(context)?;
+                .with_context(make_context)?;
                 return;
             }
             if results.iter().all(|v| matches!(v, redis::Value::Nil)) {
@@ -134,7 +139,7 @@ impl Executor for ValkeyConnection {
                                 .collect(),
                         )
                     }
-                    let converted: ValueWrap = redis_val.try_into().with_context(context)?;
+                    let converted: ValueWrap = redis_val.try_into().with_context(make_context)?;
                     values.push(converted.0.into_owned());
                 }
             }

@@ -18,7 +18,9 @@ pub(crate) fn extract_value(statement: *mut sqlite3_stmt, index: c_int) -> Resul
             SQLITE_TEXT => {
                 let ptr = sqlite3_column_text(statement, index);
                 let len = sqlite3_column_bytes(statement, index) as usize;
-                String::from_utf8_unchecked((0..len).map(|i| *ptr.add(i)).collect()).as_value()
+                String::from_utf8_lossy(&(0..len).map(|i| *ptr.add(i)).collect::<Vec<u8>>())
+                    .into_owned()
+                    .as_value()
             }
             _ => {
                 return Err(anyhow!("Unexpected column type {column_type}"));

@@ -16,6 +16,7 @@ struct Arrays1 {
     bb: Option<[[f32; 4]; 2]>,
     cc: [[[[i8; 1]; 1]; 3]; 1],
     dd: [[[[[i64; 3]; 1]; 1]; 2]; 1],
+    ee: [[[i32; 3]; 2]; 2],
 }
 
 #[derive(Entity, Debug, PartialEq)]
@@ -57,6 +58,7 @@ pub async fn arrays1(executor: &mut impl Executor) {
                 bb: None,
                 cc: [[[[10]], [[20]], [[30]]]],
                 dd: [[[[[100, 200, 300]]], [[[400, 500, 600]]]]],
+                ee: [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
             },
             Arrays1 {
                 #[cfg(not(feature = "disable-intervals"))]
@@ -68,6 +70,7 @@ pub async fn arrays1(executor: &mut impl Executor) {
                 bb: [[9.9, 8.8, 7.7, 6.6], [5.5, 4.4, 3.3, 2.2]].into(),
                 cc: [[[[1]], [[2]], [[3]]]],
                 dd: [[[[[7, 8, 9]]], [[[10, 11, 12]]]]],
+                ee: [[[13, 14, 15], [16, 17, 18]], [[19, 20, 21], [22, 23, 24]]],
             },
         ],
     )
@@ -93,6 +96,7 @@ pub async fn arrays1(executor: &mut impl Executor) {
                         bb: None,
                         cc: [[[[10]], [[20]], [[30]]]],
                         dd: [[[[[100, 200, 300]]], [[[400, 500, 600]]]]],
+                        ee: [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
                     }
                 );
             } else {
@@ -108,6 +112,7 @@ pub async fn arrays1(executor: &mut impl Executor) {
                         bb: [[9.9, 8.8, 7.7, 6.6], [5.5, 4.4, 3.3, 2.2]].into(),
                         cc: [[[[1]], [[2]], [[3]]]],
                         dd: [[[[[7, 8, 9]]], [[[10, 11, 12]]]]],
+                        ee: [[[13, 14, 15], [16, 17, 18]], [[19, 20, 21], [22, 23, 24]]],
                     }
                 );
             }
@@ -137,6 +142,7 @@ pub async fn arrays1(executor: &mut impl Executor) {
             .into(),
             cc: [[[[1]], [[2]], [[3]]]],
             dd: [[[[[10, 20, 30]]], [[[40, 50, 60]]]]],
+            ee: [[[31, 32, 33], [34, 35, 36]], [[37, 38, 39], [40, 41, 42]]],
         };
         writer.write_insert(&mut query, &[value], false);
         writer.write_select(
@@ -199,6 +205,7 @@ pub async fn arrays1(executor: &mut impl Executor) {
                 .into(),
                 cc: [[[[1]], [[2]], [[3]]]],
                 dd: [[[[[10, 20, 30]]], [[[40, 50, 60]]]]],
+                ee: [[[31, 32, 33], [34, 35, 36]], [[37, 38, 39], [40, 41, 42]]],
             },
         );
     }
