@@ -830,4 +830,36 @@ mod tests {
         );
         assert!(Value::parse("some input").is_err());
     }
+
+    #[test]
+    fn collection_try_as_is_unsupported() {
+        let arr = Value::Array(
+            Some(vec![Value::Int32(Some(1))].into()),
+            Box::new(Value::Int32(None)),
+            1,
+        );
+        assert!(
+            arr.clone()
+                .try_as(&Value::List(None, Box::new(Value::Int32(None))))
+                .is_err()
+        );
+        assert!(
+            arr.clone()
+                .try_as(&Value::Map(
+                    None,
+                    Box::new(Value::Int32(None)),
+                    Box::new(Value::Int32(None))
+                ))
+                .is_err()
+        );
+        let list = Value::List(
+            Some(vec![Value::Int32(Some(1))]),
+            Box::new(Value::Int32(None)),
+        );
+        assert!(
+            list.clone()
+                .try_as(&Value::Array(None, Box::new(Value::Int32(None)), 1))
+                .is_err()
+        );
+    }
 }

@@ -2,7 +2,10 @@
 mod tests {
     use indoc::indoc;
     use std::fmt::Write;
-    use tank::{DynQuery, Entity, GenericSqlWriter, QueryBuilder, RawQuery, SqlWriter, cols, expr};
+    use tank::{
+        DynQuery, Entity, GenericSqlWriter, QueryBuilder, QueryParam, QueryResult, RawQuery,
+        RowsAffected, SqlWriter, cols, expr,
+    };
 
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
@@ -491,5 +494,27 @@ mod tests {
     fn query_22() {
         let rq = RawQuery::new("SELECT * FROM t".into());
         assert_eq!(format!("{rq}"), "SELECT * FROM t");
+    }
+
+    #[test]
+    fn raw_query_helpers() {
+        let mut rq =
+            RawQuery::with_params("SELECT ?".into(), vec![QueryParam { begin: 7, end: 8 }]);
+        assert_eq!(rq.sql, "SELECT ?");
+        assert_eq!(rq.params.len(), 1);
+        rq.clear();
+        assert!(rq.sql.is_empty());
+        assert!(rq.params.is_empty());
+
+        let rq: RawQuery = "hello".to_string().into();
+        let s: String = rq.into();
+        assert_eq!(s, "hello");
+
+        let row = tank::Row::default();
+        assert!(matches!(QueryResult::from(row), QueryResult::Row(_)));
+        assert!(matches!(
+            QueryResult::from(RowsAffected::default()),
+            QueryResult::Affected(_)
+        ));
     }
 }

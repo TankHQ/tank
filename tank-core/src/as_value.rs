@@ -813,18 +813,15 @@ impl_as_value!(
                     time_interval += Interval::from_secs(num as _);
                     if Some('.') == input.chars().next() {
                         input = &input[1..];
-                        let len = input.len();
-                        let mut num = extract_number::<true>(&mut input)
-                            .parse::<i128>()
-                            .with_context(make_context)?;
-                        let magnitude = (len - 1) / 3;
-                        num *= 10_i128.pow(2 - (len + 2) as u32 % 3);
-                        match magnitude {
-                            0 => time_interval += Interval::from_millis(num),
-                            1 => time_interval += Interval::from_micros(num),
-                            2 => time_interval += Interval::from_nanos(num),
-                            _ => return Err(make_context()),
+                        let fraction = extract_number::<false>(&mut input);
+                        if fraction.is_empty() || fraction.len() > 9 {
+                            return Err(anyhow!("Sub-nanosecond precision cannot be represented")).with_context(make_context);
                         }
+                        let nanos = fraction
+                            .parse::<i128>()
+                            .with_context(make_context)?
+                            .saturating_mul(10_i128.pow((9 - fraction.len()) as u32));
+                        time_interval += Interval::from_nanos(nanos);
                     }
                 }
             }

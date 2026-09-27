@@ -63,7 +63,12 @@ impl ClickHousePrepared {
         let mut out = String::with_capacity(self.sql.len() + 16);
         let mut cursor = 0;
         for (i, marker) in self.markers.iter().enumerate() {
-            if marker.begin > marker.end || marker.end > self.sql.len() {
+            if marker.begin > marker.end
+                || marker.end > self.sql.len()
+                || marker.begin < cursor
+                || !self.sql.is_char_boundary(marker.begin)
+                || !self.sql.is_char_boundary(marker.end)
+            {
                 continue;
             }
             out.push_str(&self.sql[cursor..marker.begin]);

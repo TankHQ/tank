@@ -172,6 +172,83 @@ mod tests {
         assert_eq!(u64::try_from_value(Value::UInt32(Some(3))).unwrap(), 3);
         assert_eq!(u128::try_from_value(Value::UInt8(Some(1))).unwrap(), 1);
         assert_eq!(u128::try_from_value(Value::UInt64(Some(9))).unwrap(), 9);
+
+        assert!(i8::try_from_value(Value::Int16(Some(200))).is_err());
+        assert_eq!(i8::try_from_value(Value::Int16(Some(-128))).unwrap(), -128);
+        assert_eq!(i8::try_from_value(Value::Int16(Some(127))).unwrap(), 127);
+        assert!(i8::try_from_value(Value::Int16(Some(128))).is_err());
+        assert!(i8::try_from_value(Value::Int16(Some(-129))).is_err());
+
+        assert!(u16::try_from_value(Value::Int32(Some(70_000))).is_err());
+        assert_eq!(
+            u16::try_from_value(Value::Int32(Some(65_535))).unwrap(),
+            65_535
+        );
+        assert!(u16::try_from_value(Value::Int32(Some(-1))).is_err());
+
+        assert!(u8::try_from_value(Value::Int16(Some(256))).is_err());
+        assert_eq!(u8::try_from_value(Value::Int16(Some(255))).unwrap(), 255);
+
+        assert!(i64::try_from_value(Value::UInt64(Some(u64::MAX))).is_err());
+        assert_eq!(
+            i64::try_from_value(Value::UInt64(Some(i64::MAX as u64))).unwrap(),
+            i64::MAX
+        );
+
+        assert!(i128::try_from_value(Value::UInt128(Some(u128::MAX))).is_err());
+        assert_eq!(
+            i128::try_from_value(Value::UInt128(Some(i128::MAX as u128))).unwrap(),
+            i128::MAX
+        );
+
+        assert_eq!(i128::try_from_value(Value::UInt8(Some(255))).unwrap(), 255);
+        assert_eq!(u8::try_from_value(Value::Int8(Some(42))).unwrap(), 42);
+        assert!(u8::try_from_value(Value::Int8(Some(-1))).is_err());
+    }
+
+    #[test]
+    fn signed_unsigned_boundaries_match_rust_tryfrom() {
+        macro_rules! assert_same {
+            ($target:ty, $value:expr) => {{
+                let value = $value;
+                let expected = <$target as TryFrom<_>>::try_from(match &value {
+                    Value::Int8(Some(v), ..) => *v as i128,
+                    Value::Int16(Some(v), ..) => *v as i128,
+                    Value::Int32(Some(v), ..) => *v as i128,
+                    Value::Int64(Some(v), ..) => *v as i128,
+                    Value::Int128(Some(v), ..) => *v,
+                    Value::UInt8(Some(v), ..) => *v as i128,
+                    Value::UInt16(Some(v), ..) => *v as i128,
+                    Value::UInt32(Some(v), ..) => *v as i128,
+                    Value::UInt64(Some(v), ..) => *v as i128,
+                    Value::UInt128(Some(v), ..) => {
+                        if *v > i128::MAX as u128 {
+                            i128::MAX
+                        } else {
+                            *v as i128
+                        }
+                    }
+                    _ => unreachable!(),
+                });
+                let got = <$target as AsValue>::try_from_value(value);
+                match (expected, got) {
+                    (Ok(e), Ok(g)) => assert_eq!(e, g),
+                    (Err(_), Err(_)) => {}
+                    (e, g) => panic!("Mismatch: {e:?} vs {g:?}"),
+                }
+            }};
+        }
+        assert_same!(i8, Value::Int16(Some(128)));
+        assert_same!(i8, Value::Int16(Some(-129)));
+        assert_same!(i16, Value::Int32(Some(40_000)));
+        assert_same!(i32, Value::Int64(Some(5_000_000_000)));
+        assert_same!(u8, Value::Int16(Some(300)));
+        assert_same!(u16, Value::Int32(Some(70_000)));
+        assert_same!(u32, Value::Int64(Some(5_000_000_000)));
+        assert_same!(i64, Value::Int128(Some(i64::MAX as i128 + 1)));
+        assert_same!(i16, Value::UInt16(Some(40_000)));
+        assert_same!(i32, Value::UInt32(Some(3_000_000_000)));
+        assert_same!(i64, Value::UInt64(Some(u64::MAX)));
     }
 
     #[test]
@@ -531,6 +608,82 @@ mod tests {
             bool::try_from_value(Value::Unknown(Some("true".into()))).unwrap(),
             true
         );
+    }
+
+    #[test]
+    fn decimal_from_json_and_unknown() {
+        let d = Decimal::try_from_value(Value::Json(Some(serde_json::json!(12.5)))).unwrap();
+        assert_eq!(d, Decimal::new(125, 1));
+        assert!(Decimal::try_from_value(Value::Json(Some(serde_json::json!("x")))).is_err());
+        assert!(Decimal::try_from_value(Value::Boolean(Some(true))).is_err());
+
+        assert_eq!(
+            Decimal::try_from_value(Value::Unknown(Some("3.14".into()))).unwrap(),
+            Decimal::new(314, 2)
+        );
+        assert_eq!(
+            Decimal::try_from_value(Value::Varchar(Some("2.5".into()))).unwrap(),
+            Decimal::new(25, 1)
+        );
+        assert_eq!(Decimal::parse("7.25").unwrap(), Decimal::new(725, 2));
+
+        let fd = <FixedDecimal<10, 2> as AsValue>::parse("1.25").unwrap();
+        assert_eq!(fd.0, Decimal::new(125, 2));
+        assert_eq!(
+            FixedDecimal::<10, 2>::as_empty_value(),
+            Value::Decimal(None, 0, 0)
+        );
+    }
+
+    #[test]
+    fn decimal_from_float64_overflow() {
+        assert!(Decimal::try_from_value(Value::Float64(Some(f64::NAN))).is_err());
+        assert!(Decimal::try_from_value(Value::Float64(Some(f64::INFINITY))).is_err());
+        assert_eq!(
+            Decimal::try_from_value(Value::Float64(Some(2.0))).unwrap(),
+            Decimal::new(2, 0)
+        );
+    }
+
+    #[test]
+    fn u128_and_i128_decimal_conversions() {
+        assert_eq!(
+            u128::try_from_value(Value::Decimal(Some(Decimal::new(7, 0)), 0, 0)).unwrap(),
+            7
+        );
+        assert!(u128::try_from_value(Value::Decimal(Some(Decimal::new(15, 1)), 0, 0)).is_err());
+        assert_eq!(
+            i128::try_from_value(Value::Decimal(Some(Decimal::new(9, 0)), 0, 0)).unwrap(),
+            9
+        );
+        assert!(isize::try_from_value(Value::Decimal(Some(Decimal::new(1, 1)), 0, 0)).is_err());
+        assert_eq!(
+            isize::try_from_value(Value::Decimal(Some(Decimal::new(11, 0)), 0, 0)).unwrap(),
+            11
+        );
+        assert_eq!(
+            usize::try_from_value(Value::Decimal(Some(Decimal::new(13, 0)), 0, 0)).unwrap(),
+            13
+        );
+        assert!(u64::try_from_value(Value::Decimal(Some(Decimal::new(1, 1)), 0, 0)).is_err());
+    }
+
+    #[test]
+    fn json_number_integer_boundaries() {
+        assert!(i8::try_from_value(Value::Json(Some(serde_json::json!(1000)))).is_err());
+        assert_eq!(
+            i8::try_from_value(Value::Json(Some(serde_json::json!(-128)))).unwrap(),
+            -128
+        );
+        assert_eq!(
+            i16::try_from_value(Value::Json(Some(serde_json::json!("300")))).unwrap(),
+            300
+        );
+    }
+
+    #[test]
+    fn blob_hex_decode_errors() {
+        assert!(Box::<[u8]>::parse("not-hex").is_err());
     }
 
     #[test]

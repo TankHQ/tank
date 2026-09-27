@@ -3,6 +3,7 @@ mod ambiguity;
 mod arrays1;
 mod arrays2;
 mod binary;
+mod bindings;
 mod books;
 mod cheat_sheet;
 mod complex;
@@ -39,6 +40,7 @@ pub use ambiguity::*;
 pub use arrays1::*;
 pub use arrays2::*;
 pub use binary::*;
+pub use bindings::*;
 pub use books::*;
 pub use cheat_sheet::*;
 pub use complex::*;
@@ -130,8 +132,8 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     do_test!(enums);
     do_test!(custom);
     do_test!(decimals);
-    #[cfg(not(feature = "disable-prepared"))]
     do_test!(prepared);
+    do_test!(bindings);
     do_test!(requests);
     do_test!(keywords);
     do_test!(identifiers);

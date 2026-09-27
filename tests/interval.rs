@@ -573,4 +573,19 @@ mod tests {
         let huge: time::Duration = Interval::from_months(i64::MAX / 2).into();
         assert!(huge.whole_seconds() > 0);
     }
+
+    #[test]
+    fn long_fraction_does_not_panic() {
+        for digits in 1..=40 {
+            let input = format!("12:30:00.{}", "9".repeat(digits));
+            let result = Interval::try_from_value(Value::Varchar(Some(input.into())));
+            if digits <= 9 {
+                assert!(result.is_ok(), "{digits} digits should parse");
+            } else {
+                assert!(result.is_err(), "{digits} digits should be rejected");
+            }
+        }
+        let parsed = Interval::try_from_value(Value::Varchar(Some("00:00:00.5".into()))).unwrap();
+        assert_eq!(parsed, Interval::from_millis(500));
+    }
 }

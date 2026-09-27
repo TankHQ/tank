@@ -963,4 +963,262 @@ mod tests {
         assert_eq!(ident, "'test'");
         assert_eq!(dyn_ref.precedence(&WRITER), 1_000_000);
     }
+
+    #[test]
+    fn test_scalar_expression_impls() {
+        use std::borrow::Cow;
+        use std::sync::Arc;
+        use tank::{FixedDecimal, Interval};
+        use time::{Date, Month, PrimitiveDateTime, Time};
+        use uuid::Uuid;
+
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        let mut render = |e: &dyn Expression| {
+            let mut out = DynQuery::default();
+            e.write_query(&WRITER, &mut ctx, &mut out);
+            out.as_str().into_owned()
+        };
+
+        assert_eq!(render(&1_i8), "1");
+        assert_eq!(render(&2_i64), "2");
+        assert_eq!(render(&3_u32), "3");
+        assert_eq!(render(&4_u64), "4");
+        assert_eq!(render(&1.5_f32), "1.5");
+        assert_eq!(render(&2.5_f64), "2.5");
+        assert_eq!(render(&'z'), "'z'");
+        assert_eq!(
+            render(&Uuid::nil()),
+            "'00000000-0000-0000-0000-000000000000'"
+        );
+        assert_eq!(render(&rust_decimal::Decimal::new(1250, 2)), "12.50");
+        assert!(render(&Interval::from_days(1)).contains("INTERVAL"));
+        assert!(render(&std::time::Duration::from_secs(60)).contains("INTERVAL"));
+        assert!(render(&time::Duration::seconds(60)).contains("INTERVAL"));
+
+        let date = Date::from_calendar_date(2025, Month::June, 15).unwrap();
+        let time = Time::from_hms(10, 30, 0).unwrap();
+        let pdt = PrimitiveDateTime::new(date, time);
+        let odt = pdt.assume_utc();
+        assert!(render(&date).contains("2025-06-15"));
+        assert!(render(&time).contains("10:30"));
+        assert!(render(&pdt).contains("2025-06-15"));
+        assert!(render(&odt).contains("2025-06-15"));
+        let utc = time::UtcDateTime::new(pdt.date(), pdt.time());
+        assert!(render(&utc).contains("2025-06-15"));
+
+        assert_eq!(render(&String::from("hi")), "'hi'");
+        let cow: Cow<'static, str> = Cow::Borrowed("yo");
+        assert_eq!(render(&cow), "'yo'");
+
+        let blob: Box<[u8]> = vec![0xDE, 0xAD].into();
+        let b = render(&blob);
+        assert!(b.contains("DE") && b.contains("AD"), "{b}");
+        let json = serde_json::json!({"a": 1});
+        assert!(render(&json).contains("a"));
+
+        let fd: FixedDecimal<10, 2> = rust_decimal::Decimal::new(1250, 2).into();
+        assert_eq!(render(&fd), "12.50");
+        let arc = Arc::new(7_i32);
+        assert_eq!(render(&arc), "7");
+        let boxed = Box::new(8_i32);
+        assert_eq!(render(&boxed), "8");
+        let some: Option<i32> = Some(9);
+        assert_eq!(render(&some), "9");
+        let none: Option<i32> = None;
+        let _ = render(&none);
+    }
+
+    #[test]
+    fn test_utc_datetime_expression() {
+        use time::{Date, Month, PrimitiveDateTime, Time};
+        let pdt = PrimitiveDateTime::new(
+            Date::from_calendar_date(2025, Month::June, 15).unwrap(),
+            Time::from_hms(10, 30, 0).unwrap(),
+        );
+        let utc = time::UtcDateTime::new(pdt.date(), pdt.time());
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        utc.write_query(&WRITER, &mut ctx, &mut out);
+        assert!(out.as_str().contains("2025-06-15"));
+        assert_eq!(utc.precedence(&WRITER), 0);
+    }
+
+    #[test]
+    fn test_unary_and_ordered_visitors() {
+        use tank::ExpressionVisitor;
+        struct Recorder {
+            saw_unary: bool,
+            saw_ordered: bool,
+        }
+        impl ExpressionVisitor for Recorder {
+            fn visit_unary_op(
+                &mut self,
+                _w: &dyn tank::SqlWriter,
+                _c: &mut Context,
+                _o: &mut DynQuery,
+                _v: &UnaryOp<&dyn Expression>,
+            ) -> bool {
+                self.saw_unary = true;
+                true
+            }
+            fn visit_ordered(
+                &mut self,
+                _w: &dyn tank::SqlWriter,
+                _c: &mut Context,
+                _o: &mut DynQuery,
+                _v: &Ordered<&dyn Expression>,
+            ) -> bool {
+                self.saw_ordered = true;
+                true
+            }
+        }
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        let unary = expr!(!true);
+        let ordered = Ordered {
+            expression: Operand::LitInt(1),
+            order: Order::DESC,
+        };
+
+        let mut rec = Recorder {
+            saw_unary: false,
+            saw_ordered: false,
+        };
+        assert!(unary.accept_visitor(&mut rec, &WRITER, &mut ctx, &mut DynQuery::default()));
+        assert!(rec.saw_unary);
+
+        let mut rec = Recorder {
+            saw_unary: false,
+            saw_ordered: false,
+        };
+        assert!(ordered.accept_visitor(&mut rec, &WRITER, &mut ctx, &mut DynQuery::default()));
+        assert!(rec.saw_ordered);
+    }
+
+    #[test]
+    fn test_ordered_to_tokens_and_rendering() {
+        use quote::ToTokens;
+        assert_eq!(
+            Order::ASC.to_token_stream().to_string(),
+            ":: tank :: Order :: ASC"
+        );
+        assert_eq!(
+            Order::DESC.to_token_stream().to_string(),
+            ":: tank :: Order :: DESC"
+        );
+
+        let ordered = Ordered {
+            expression: Operand::LitIdent("c"),
+            order: Order::DESC,
+        };
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlSelectOrderBy, false);
+        ordered.write_query(&WRITER, &mut ctx, &mut out);
+        assert_eq!(out.as_str(), "c DESC");
+
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        ordered.write_query(&WRITER, &mut ctx, &mut out);
+        assert_eq!(out.as_str(), "c");
+    }
+
+    #[test]
+    fn test_default_value_type_visitor_and_precedence() {
+        use tank::ExpressionVisitor;
+        struct Count;
+        impl ExpressionVisitor for Count {
+            fn visit_operand(
+                &mut self,
+                _w: &dyn tank::SqlWriter,
+                _c: &mut Context,
+                _o: &mut DynQuery,
+                _v: &Operand,
+            ) -> bool {
+                true
+            }
+        }
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        let none = DefaultValueType::None;
+        assert!(!none.accept_visitor(&mut Count, &WRITER, &mut ctx, &mut DynQuery::default()));
+        let value: DefaultValueType = Value::Int32(Some(5)).into();
+        assert!(value.accept_visitor(&mut Count, &WRITER, &mut ctx, &mut DynQuery::default()));
+
+        let f: DefaultValueType = 1.5_f64.into();
+        assert!(f.is_set());
+        let c: DefaultValueType = 'x'.into();
+        assert!(c.is_set());
+
+        let expr_variant = DefaultValueType::Expression(Box::new(Value::Int64(Some(3))));
+        assert_eq!(
+            expr_variant.precedence(&WRITER),
+            Value::Int64(Some(3)).precedence(&WRITER)
+        );
+        let mut out = DynQuery::default();
+        expr_variant.write_query(&WRITER, &mut ctx, &mut out);
+        assert_eq!(out.as_str(), "3");
+        assert!(format!("{expr_variant:?}").contains("Expression"));
+    }
+
+    #[test]
+    fn test_precedence_of_wrapper_expressions() {
+        assert_eq!(String::from("x").precedence(&WRITER), 0);
+        let cow: Cow<'static, str> = Cow::Borrowed("x");
+        assert_eq!(cow.precedence(&WRITER), 0);
+        let blob: Box<[u8]> = vec![1].into();
+        assert_eq!(blob.precedence(&WRITER), 0);
+        assert_eq!(serde_json::json!({"a": 1}).precedence(&WRITER), 0);
+        let fd: tank::FixedDecimal<10, 2> = rust_decimal::Decimal::new(1, 0).into();
+        assert_eq!(fd.precedence(&WRITER), 0);
+        assert_eq!(std::sync::Arc::new(1_i32).precedence(&WRITER), 0);
+        assert_eq!(Box::new(1_i32).precedence(&WRITER), 0);
+        assert_eq!(Some(1_i32).precedence(&WRITER), 0);
+        let op = Operand::LitInt(1);
+        assert_eq!((&op).precedence(&WRITER), op.precedence(&WRITER));
+        let dyn_ref: &dyn Expression = &op;
+        assert_eq!(dyn_ref.precedence(&WRITER), op.precedence(&WRITER));
+    }
+
+    #[test]
+    fn test_wrapper_expression_accept_visitor() {
+        use std::sync::Arc;
+        use tank::ExpressionVisitor;
+        struct Always;
+        impl ExpressionVisitor for Always {
+            fn visit_operand(
+                &mut self,
+                _w: &dyn tank::SqlWriter,
+                _c: &mut Context,
+                _o: &mut DynQuery,
+                _v: &Operand,
+            ) -> bool {
+                true
+            }
+        }
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        let base = expr!(1);
+
+        assert!((&base).accept_visitor(&mut Always, &WRITER, &mut ctx, &mut DynQuery::default()));
+        let dyn_ref: &dyn Expression = &base;
+        assert!(dyn_ref.accept_visitor(&mut Always, &WRITER, &mut ctx, &mut DynQuery::default()));
+        let arc = Arc::new(expr!(1));
+        assert!(arc.accept_visitor(&mut Always, &WRITER, &mut ctx, &mut DynQuery::default()));
+        let boxed = Box::new(expr!(1));
+        assert!(boxed.accept_visitor(&mut Always, &WRITER, &mut ctx, &mut DynQuery::default()));
+
+        let as_dyn: &dyn Expression = (&base).into();
+        assert_eq!(as_dyn.precedence(&WRITER), base.precedence(&WRITER));
+        assert_eq!((&base).as_identifier(&mut ctx), "1");
+    }
+
+    #[test]
+    fn test_binary_op_to_tokens() {
+        use quote::ToTokens;
+        assert_eq!(
+            BinaryOpType::Addition.to_token_stream().to_string(),
+            ":: tank :: BinaryOpType :: \"Addition\""
+        );
+        assert_eq!(
+            BinaryOpType::Alias.to_token_stream().to_string(),
+            ":: tank :: BinaryOpType :: \"Alias\""
+        );
+    }
 }
