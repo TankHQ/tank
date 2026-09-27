@@ -106,8 +106,11 @@ impl Executor for ClickHouseConnection {
         false
     }
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<ClickHouseDriver>> {
-        Ok(Query::Prepared(ClickHousePrepared::new(sql)))
+    async fn do_prepare(
+        &mut self,
+        RawQuery { sql, params }: RawQuery,
+    ) -> Result<Query<ClickHouseDriver>> {
+        Ok(Query::Prepared(ClickHousePrepared::new(sql, params)))
     }
 
     fn run<'s>(
@@ -120,12 +123,19 @@ impl Executor for ClickHouseConnection {
 
         try_stream! {
             let sql = match query.as_mut() {
-                Query::Raw(RawQuery(sql)) => Cow::Borrowed(sql.as_str()),
+                Query::Raw(RawQuery { sql, .. }) => Cow::Borrowed(sql.as_str()),
                 Query::Prepared(prepared) => {
-                    let sql = prepared
+                    let (directive, sql) = prepared
                         .build_sql(&ClickHouseSqlWriter::new())
                         .with_context(|| context.clone())?;
                     prepared.take_params();
+                    if let Some(directive) = directive {
+                        client
+                            .execute(directive)
+                            .await
+                            .map_err(Error::new)
+                            .with_context(|| context.clone())?;
+                    }
                     Cow::Owned(sql)
                 }
             };

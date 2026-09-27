@@ -6,12 +6,85 @@ mod tests {
     use std::sync::Mutex;
     use tank_clickhouse::{ClickHouseConnection, ClickHouseDriver};
     use tank_core::{
-        AsValue, Connection, ConnectionPool, Driver, Executor, PoolConfig, QueryResult,
+        AsValue, Connection, ConnectionPool, Driver, Entity, Executor, PoolConfig, QueryResult,
         stream::TryStreamExt,
     };
     use tank_tests::{init_logs, silent_logs};
 
     static MUTEX: Mutex<()> = Mutex::new(());
+
+    #[tokio::test]
+    async fn prepared_null_and_reuse() {
+        init_logs();
+        let _guard = MUTEX.lock().unwrap();
+
+        #[derive(tank::Entity, Debug, PartialEq, Clone)]
+        #[tank(schema = "testing", name = "prepared_nullable")]
+        struct PreparedNullable {
+            #[tank(primary_key)]
+            id: u64,
+            value: Option<i64>,
+        }
+
+        let (url, container) = init_clickhouse().await;
+        let _container = container.expect("Could not launch the ClickHouse container");
+        let mut connection = ClickHouseConnection::connect(&ClickHouseDriver::new(), url.into())
+            .await
+            .expect("Could not connect");
+        PreparedNullable::drop_table(&mut connection, true, true)
+            .await
+            .unwrap();
+        PreparedNullable::create_table(&mut connection, true, true)
+            .await
+            .unwrap();
+        PreparedNullable::insert_many(
+            &mut connection,
+            [
+                PreparedNullable { id: 1, value: None },
+                PreparedNullable {
+                    id: 2,
+                    value: Some(7),
+                },
+            ],
+        )
+        .await
+        .unwrap();
+
+        // Binding NULL is a real NULL parameter: `value = NULL` matches no row.
+        let mut query = PreparedNullable::prepare_find(
+            &mut connection,
+            tank::expr!(PreparedNullable::value == ?),
+            None,
+        )
+        .await
+        .expect("Could not prepare the query");
+        query
+            .bind(Option::<i64>::None)
+            .expect("Could not bind a NULL");
+        let rows = connection
+            .fetch(&mut query)
+            .and_then(|row| async move { PreparedNullable::from_row(row) })
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Could not query by the NULL value");
+        assert!(rows.is_empty(), "A NULL parameter must not match any row");
+
+        // The same statement must be reusable with a new binding.
+        query.bind(7_i64).expect("Could not rebind the value");
+        let rows = connection
+            .fetch(&mut query)
+            .and_then(|row| async move { PreparedNullable::from_row(row) })
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Could not rerun the prepared query");
+        assert_eq!(
+            rows,
+            [PreparedNullable {
+                id: 2,
+                value: Some(7)
+            }]
+        );
+    }
 
     #[tokio::test]
     async fn url_parameters() {

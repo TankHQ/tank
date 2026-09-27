@@ -5,7 +5,7 @@ mod tests {
     use super::init::init;
     use std::{env, path::PathBuf, sync::Mutex};
     use tank_core::{
-        Connection, ConnectionPool, Driver, Executor, PoolConfig, stream::StreamExt as _,
+        Connection, ConnectionPool, Driver, Executor, PoolConfig, Value, stream::StreamExt as _,
     };
     use tank_postgres::{PostgresConnection, PostgresDriver};
     use tank_tests::{execute_tests, init_logs, silent_logs};
@@ -53,8 +53,7 @@ mod tests {
             .expect("Failed to connect");
         let mut connection = pool.get().await.expect("Could not get a connection");
 
-        let mut stream =
-            std::pin::pin!(connection.fetch(tank_core::RawQuery("SELECT ARRAY[]::int[]".into())));
+        let mut stream = std::pin::pin!(connection.fetch("SELECT ARRAY[]::int[]"));
         let row = stream
             .next()
             .await
@@ -62,11 +61,7 @@ mod tests {
             .expect("Could not decode the empty array");
         assert_eq!(
             row.values[0],
-            tank_core::Value::Array(
-                Some(vec![].into()),
-                Box::new(tank_core::Value::Int32(None)),
-                0
-            )
+            Value::Array(Some(vec![].into()), Box::new(Value::Int32(None)), 0)
         );
 
         drop(container);

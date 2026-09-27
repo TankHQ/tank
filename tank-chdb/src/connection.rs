@@ -125,8 +125,11 @@ impl Executor for ChDBConnection {
         false
     }
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<ChDBDriver>> {
-        Ok(Query::Prepared(ChDBPrepared::new(sql)))
+    async fn do_prepare(
+        &mut self,
+        RawQuery { sql, params }: RawQuery,
+    ) -> Result<Query<ChDBDriver>> {
+        Ok(Query::Prepared(ChDBPrepared::new(sql, params)))
     }
 
     fn run<'s>(
@@ -140,11 +143,25 @@ impl Executor for ChDBConnection {
         let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
         let join = spawn_blocking(move || {
             match &mut owned {
-                Query::Raw(RawQuery(sql)) => Self::do_run(connection, sql, tx),
+                Query::Raw(RawQuery { sql, .. }) => Self::do_run(connection, sql, tx),
                 Query::Prepared(prepared) => match prepared.build_sql(&ChDBSqlWriter::chdb()) {
-                    Ok(sql) => {
+                    Ok((directive, sql)) => {
                         prepared.take_params();
-                        Self::do_run(connection, &sql, tx);
+                        let apply = match directive {
+                            Some(directive) => connection
+                                .lock()
+                                .map_err(|e| anyhow!("chDB connection lock poisoned: {e:#?}"))
+                                .and_then(|lock| {
+                                    lock.query(&directive, OutputFormat::Null)
+                                        .map(|_| ())
+                                        .map_err(|e| anyhow!("chDB query failed: {e:#}"))
+                                }),
+                            None => Ok(()),
+                        };
+                        match apply {
+                            Ok(()) => Self::do_run(connection, &sql, tx),
+                            Err(error) => send_value!(tx, Err(error)),
+                        }
                     }
                     Err(error) => send_value!(tx, Err(error)),
                 },

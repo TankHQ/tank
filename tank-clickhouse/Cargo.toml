@@ -20,6 +20,7 @@ time.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+tank = { path = "..", features = ["chrono"] }
 tank-tests = { path = "../tank-tests", features = [
     "disable-arrays",
     "disable-glob",

@@ -56,9 +56,7 @@ mod tests {
             .await
             .expect("Could not open the database");
         let mut connection = pool.get().await.expect("Could not get a connection");
-        let mut stream = std::pin::pin!(
-            connection.fetch(tank_core::RawQuery("SELECT CAST(x'FF41' AS TEXT)".into()))
-        );
+        let mut stream = std::pin::pin!(connection.fetch("SELECT CAST(x'FF41' AS TEXT)"));
         let row = stream
             .next()
             .await

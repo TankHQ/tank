@@ -23,7 +23,10 @@ impl<'c> PostgresTransaction<'c> {
 impl<'c> Executor for PostgresTransaction<'c> {
     type Driver = PostgresDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<PostgresDriver>> {
+    async fn do_prepare(
+        &mut self,
+        RawQuery { sql, .. }: RawQuery,
+    ) -> Result<Query<PostgresDriver>> {
         Ok(
             PostgresPrepared::new(self.0.prepare(&sql).await.map_err(|e| {
                 let error = Error::new(e);
@@ -39,7 +42,7 @@ impl<'c> Executor for PostgresTransaction<'c> {
     ) -> impl Stream<Item = Result<QueryResult>> + Send {
         let mut query = query.as_query();
         stream_postgres_row_to_tank_row(async move || match query.as_mut() {
-            Query::Raw(RawQuery(sql)) => {
+            Query::Raw(RawQuery { sql, .. }) => {
                 let stream = self
                     .0
                     .query_raw(sql.as_str(), Vec::<ValueWrap>::new())

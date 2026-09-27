@@ -1,6 +1,6 @@
 use crate::{
     ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Query, QueryBuilder,
-    RawQuery, Result, Row, RowValues, RowsAffected, TableRef, future::Either, stream::Stream,
+    Result, Row, RowValues, RowsAffected, TableRef, future::Either, stream::Stream,
     writer::SqlWriter,
 };
 use anyhow::{Context as _, anyhow};
@@ -170,8 +170,8 @@ pub trait Entity: AsEntity + Expression {
         let mut query = DynQuery::default();
         writer.write_select(&mut query, &builder);
         async {
-            if let DynQuery::Raw(RawQuery(sql)) = query {
-                executor.prepare(sql).await
+            if let DynQuery::Raw(raw) = query {
+                executor.prepare(raw).await
             } else {
                 Ok(query.into())
             }

@@ -24,6 +24,7 @@ tank-core.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+tank = { path = "..", features = ["chrono"] }
 tank-tests = { path = "../tank-tests", features = [
     "disable-arrays",
     "disable-infinity",

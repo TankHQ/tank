@@ -1,4 +1,4 @@
-use crate::{Driver, Prepared, Query, RawQuery};
+use crate::{Driver, Prepared, Query, QueryParam, RawQuery};
 use std::{
     any::Any,
     borrow::Cow,
@@ -14,14 +14,14 @@ pub enum DynQuery {
 
 impl DynQuery {
     pub fn new(value: String) -> Self {
-        Self::Raw(RawQuery(value))
+        Self::Raw(RawQuery::new(value))
     }
     pub fn with_capacity(capacity: usize) -> Self {
         Self::new(String::with_capacity(capacity))
     }
     pub fn clear(&mut self) {
         match self {
-            Self::Raw(RawQuery(value)) => value.clear(),
+            Self::Raw(raw) => raw.clear(),
             Self::Prepared(..) => *self = Self::Raw(Default::default()),
         }
     }
@@ -30,10 +30,16 @@ impl DynQuery {
             log::error!("DynQuery::buffer changed the query to raw, deleting the previous content");
             *self = Self::Raw(Default::default())
         }
-        let Self::Raw(RawQuery(value)) = self else {
+        let Self::Raw(RawQuery { sql, .. }) = self else {
             unreachable!();
         };
-        value
+        sql
+    }
+    /// Record the `begin..end` span of a parameter marker written to the buffer.
+    pub fn mark_param(&mut self, param: QueryParam) {
+        if let Self::Raw(RawQuery { params, .. }) = self {
+            params.push(param);
+        }
     }
     pub fn as_prepared<D: Driver>(&mut self) -> Option<&mut D::Prepared> {
         if let Self::Prepared(prepared) = self {
@@ -43,7 +49,7 @@ impl DynQuery {
     }
     pub fn as_str<'s>(&'s self) -> Cow<'s, str> {
         match self {
-            Self::Raw(RawQuery(sql)) => Cow::Borrowed(sql),
+            Self::Raw(RawQuery { sql, .. }) => Cow::Borrowed(sql),
             Self::Prepared(v) => Cow::Owned(format!("{:?}", *v)),
         }
     }
@@ -55,13 +61,13 @@ impl DynQuery {
     }
     pub fn len(&self) -> usize {
         match self {
-            Self::Raw(RawQuery(sql)) => sql.len(),
+            Self::Raw(RawQuery { sql, .. }) => sql.len(),
             Self::Prepared(..) => 0,
         }
     }
     pub fn is_empty(&self) -> bool {
         match self {
-            Self::Raw(RawQuery(sql)) => sql.is_empty(),
+            Self::Raw(RawQuery { sql, .. }) => sql.is_empty(),
             Self::Prepared(..) => true,
         }
     }
@@ -112,7 +118,7 @@ impl<D: Driver> From<DynQuery> for Query<D> {
 impl From<DynQuery> for String {
     fn from(value: DynQuery) -> Self {
         match value {
-            DynQuery::Raw(RawQuery(value)) => value,
+            DynQuery::Raw(RawQuery { sql, .. }) => sql,
             DynQuery::Prepared(value) => format!("{:?}", value),
         }
     }

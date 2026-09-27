@@ -1,6 +1,6 @@
 use crate::{
-    AsEntity, AsQuery, Connection, Driver, Error, Executor, Query, QueryResult, Result, Row,
-    RowsAffected,
+    AsEntity, AsQuery, Connection, Driver, Error, Executor, Query, QueryResult, RawQuery, Result,
+    Row, RowsAffected,
 };
 use anyhow::anyhow;
 use deadpool::managed::{Manager, Metrics, Object, Pool, RecycleResult, Timeouts};
@@ -196,8 +196,8 @@ impl<D: Driver> Executor for PooledConnection<D> {
         self.object.prepare(query)
     }
 
-    fn do_prepare(&mut self, sql: String) -> impl Future<Output = Result<Query<D>>> + Send {
-        self.object.do_prepare(sql)
+    fn do_prepare(&mut self, query: RawQuery) -> impl Future<Output = Result<Query<D>>> + Send {
+        self.object.do_prepare(query)
     }
 
     fn run<'s>(

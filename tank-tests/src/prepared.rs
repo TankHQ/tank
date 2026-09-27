@@ -61,7 +61,44 @@ pub async fn prepared(executor: &mut impl Executor) {
         .expect("Failed to query by the bound u32 key");
     assert_eq!(
         loaded,
-        [entity],
+        [entity.clone()],
         "Bound u32 parameter above i32::MAX did not round-trip"
+    );
+
+    // The same prepared statement must be reusable with a different binding.
+    let mut query =
+        PreparedBinding::prepare_find(executor, expr!(PreparedBinding::id == ?), Some(1))
+            .await
+            .expect("Failed to prepare the reusable query");
+    let mut found: Vec<PreparedBinding> = Vec::new();
+    for expected in [entity.clone(), PreparedBinding { id: 1, value: 2 }] {
+        if expected.id == 1 {
+            expected
+                .save(executor)
+                .await
+                .expect("Failed to save the second entity");
+        }
+        query
+            .bind(expected.id)
+            .expect("Failed to rebind the key parameter");
+        let loaded = executor
+            .fetch(&mut query)
+            .and_then(|row| async move { PreparedBinding::from_row(row) })
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Failed to rerun the prepared query");
+        found.extend(loaded);
+    }
+    found.sort_by_key(|v| v.id);
+    assert_eq!(
+        found,
+        [
+            PreparedBinding { id: 1, value: 2 },
+            PreparedBinding {
+                id: 4_000_000_000,
+                value: -7,
+            },
+        ],
+        "Reusing a prepared query did not re-read the bindings"
     );
 }

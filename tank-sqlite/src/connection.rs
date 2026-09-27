@@ -221,7 +221,7 @@ impl Connection for SQLiteConnection {
 impl Executor for SQLiteConnection {
     type Driver = SQLiteDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<SQLiteDriver>> {
+    async fn do_prepare(&mut self, RawQuery { sql, .. }: RawQuery) -> Result<Query<SQLiteDriver>> {
         let connection = AtomicPtr::new(*self.connection);
         let prepared = spawn_blocking(move || unsafe {
             let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
@@ -278,7 +278,7 @@ impl Executor for SQLiteConnection {
         let mut owned = mem::take(query.as_mut());
         let join = spawn_blocking(move || {
             match &mut owned {
-                Query::Raw(RawQuery(sql)) => {
+                Query::Raw(RawQuery { sql, .. }) => {
                     Self::do_run_unprepared(connection.load(Ordering::Relaxed), sql, tx);
                 }
                 Query::Prepared(prepared) => {

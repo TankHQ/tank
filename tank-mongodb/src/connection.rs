@@ -8,8 +8,8 @@ use async_stream::try_stream;
 use mongodb::{Client, ClientSession, Collection, Database, bson::Bson};
 use std::{borrow::Cow, future, i64};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowsAffected,
-    TableRef, describe_url,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result,
+    RowsAffected, TableRef, describe_url,
     stream::{Stream, TryStreamExt},
     truncate_long,
 };
@@ -99,7 +99,7 @@ impl Executor for MongoDBConnection {
 
     fn do_prepare(
         &mut self,
-        _query: String,
+        _query: RawQuery,
     ) -> impl Future<Output = Result<Query<MongoDBDriver>>> + Send {
         future::ready(Err(anyhow!("MongoDB does not support prepare")))
     }

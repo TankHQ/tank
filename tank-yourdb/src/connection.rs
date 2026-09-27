@@ -1,7 +1,7 @@
 use crate::{YourDBDriver, YourDBPrepared, YourDBTransaction};
 use std::borrow::Cow;
 use tank_core::{
-    AsQuery, Connection, Error, Executor, Query, QueryResult, Result,
+    AsQuery, Connection, Error, Executor, Query, QueryResult, RawQuery, Result,
     stream::{self, Stream},
 };
 use url::Url;
@@ -26,9 +26,9 @@ impl Connection for YourDBConnection {
 impl Executor for YourDBConnection {
     type Driver = YourDBDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<YourDBDriver>> {
+    async fn do_prepare(&mut self, query: RawQuery) -> Result<Query<YourDBDriver>> {
         // Return Err if not supported
-        Ok(Query::Prepared(YourDBPrepared::new()))
+        Ok(Query::Prepared(YourDBPrepared::new(query)))
     }
 
     fn run<'s>(

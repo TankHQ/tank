@@ -37,7 +37,10 @@ impl ScyllaDBTransaction<'_> {
 impl<'c> Executor for ScyllaDBTransaction<'c> {
     type Driver = ScyllaDBDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<ScyllaDBDriver>> {
+    async fn do_prepare(
+        &mut self,
+        RawQuery { sql, .. }: RawQuery,
+    ) -> Result<Query<ScyllaDBDriver>> {
         let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
         let statement = self
             .connection
@@ -58,7 +61,7 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
             query.as_mut()
         );
         match query.as_mut() {
-            Query::Raw(RawQuery(sql)) => {
+            Query::Raw(RawQuery { sql, .. }) => {
                 self.params.push(Default::default());
                 self.batch.append_statement(sql.as_str());
             }

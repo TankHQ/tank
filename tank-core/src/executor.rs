@@ -36,7 +36,7 @@ pub trait Executor: Send {
         let query = mem::take(query.as_mut());
         async {
             match query {
-                Query::Raw(RawQuery(sql)) => self.do_prepare(sql).await,
+                Query::Raw(raw) => self.do_prepare(raw).await,
                 Query::Prepared(..) => Ok(query),
             }
         }
@@ -45,7 +45,7 @@ pub trait Executor: Send {
     /// Internal hook for implementing prepared statement support.
     fn do_prepare(
         &mut self,
-        _sql: String,
+        _query: RawQuery,
     ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
         future::ready(Err(anyhow!(
             "{} does not support prepare",
@@ -124,9 +124,9 @@ impl<S: Executor + ?Sized> Executor for &mut S {
 
     fn do_prepare(
         &mut self,
-        sql: String,
+        query: RawQuery,
     ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
-        (**self).do_prepare(sql)
+        (**self).do_prepare(query)
     }
 
     fn run<'s>(

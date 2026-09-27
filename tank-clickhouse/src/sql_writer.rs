@@ -4,7 +4,7 @@ use std::{
 };
 use tank_core::{
     BinaryOpType, ColumnDef, Context, Dataset, DynQuery, Entity, Fragment, GenericSqlWriter,
-    Interval, PrimaryKeyType, SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter,
+    Interval, PrimaryKeyType, QueryParam, SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter,
     SqlValueWriter, SqlWriter, TableRef, Value, separated_by, write_escaped,
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
@@ -260,6 +260,20 @@ impl SqlValueWriter for ClickHouseSqlWriter {
 }
 
 impl SqlExpressionWriter for ClickHouseSqlWriter {
+    fn write_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
+        let id = context.counter;
+        context.counter += 1;
+        let start = out.len();
+        out.push_str("{p");
+        let _ = write!(out, "{id}");
+        out.push(':');
+        out.push_str("Nullable(String)}");
+        out.mark_param(QueryParam {
+            begin: start,
+            end: out.len(),
+        });
+    }
+
     fn expression_binary_op_fragments(
         &self,
         context: &mut Context,

@@ -489,7 +489,7 @@ mod tests {
 
     #[test]
     fn query_22() {
-        let rq = RawQuery("SELECT * FROM t".into());
+        let rq = RawQuery::new("SELECT * FROM t".into());
         assert_eq!(format!("{rq}"), "SELECT * FROM t");
     }
 }

@@ -320,7 +320,7 @@ impl Connection for DuckDBConnection {
 impl Executor for DuckDBConnection {
     type Driver = DuckDBDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<DuckDBDriver>> {
+    async fn do_prepare(&mut self, RawQuery { sql, .. }: RawQuery) -> Result<Query<DuckDBDriver>> {
         let connection = AtomicPtr::new(*self.connection);
         let prepared = spawn_blocking(move || unsafe {
             let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
@@ -365,7 +365,7 @@ impl Executor for DuckDBConnection {
         let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
         let join = spawn_blocking(move || {
             match &mut owned {
-                Query::Raw(RawQuery(sql)) => {
+                Query::Raw(RawQuery { sql, .. }) => {
                     let str = unsafe { CString::from_vec_unchecked(mem::take(sql).into_bytes()) };
                     Self::do_run_unprepared(connection.load(Ordering::Relaxed), str.as_c_str(), tx);
                     *sql = unsafe { String::from_utf8_unchecked(str.into_bytes()) }

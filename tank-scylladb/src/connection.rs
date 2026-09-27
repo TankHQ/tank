@@ -280,7 +280,10 @@ impl Executor for ScyllaDBConnection {
         false
     }
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<ScyllaDBDriver>> {
+    async fn do_prepare(
+        &mut self,
+        RawQuery { sql, .. }: RawQuery,
+    ) -> Result<Query<ScyllaDBDriver>> {
         let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
         let statement = self
             .session
@@ -300,7 +303,7 @@ impl Executor for ScyllaDBConnection {
             let mut paging_state = PagingState::start();
             loop {
                 let (query_result, paging_state_response) = match query.as_mut() {
-                    Query::Raw(RawQuery(sql)) => {
+                    Query::Raw(RawQuery { sql, .. }) => {
                         self.session
                             .query_single_page(sql.as_str(), &[], paging_state)
                             .await?
@@ -346,10 +349,9 @@ impl Executor for ScyllaDBConnection {
         let context = format!("While fetching the query:\n{}", query.as_mut());
         stream! {
             let stream = match query.as_mut() {
-                Query::Raw(raw) => {
-                    let sql = raw.0.as_str();
+                Query::Raw(RawQuery { sql, .. }) => {
                     self.session
-                        .query_iter(sql, [])
+                        .query_iter(sql.as_str(), [])
                         .await?
                         .rows_stream::<RowWrap>()?
                 }
