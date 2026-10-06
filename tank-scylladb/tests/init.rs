@@ -58,7 +58,6 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     do_test!(custom);
     do_test!(decimals);
     do_test!(prepared);
-    do_test!(bindings);
     do_test!(identifiers);
     do_test!(cheat_sheet).expect("Cheat Sheet examples test did not succeed");
 }

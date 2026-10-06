@@ -160,8 +160,50 @@ h1 .text {
 }
 
 .VPFeature {
+    position: relative;
     box-shadow: 0 0 10px 5px var(--vp-c-bg-alt);
-    border: 1px solid #373634 !important;
+    border: 1px solid rgba(240, 195, 109, 0.2) !important;
+    border-radius: 0 !important;
+}
+
+.VPFeature::before,
+.VPFeature::after {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    opacity: 0;
+    transition: all 0.2s ease-out;
+}
+
+.VPFeature::before {
+    top: 0px;
+    left: 0px;
+    border-top: 2px solid rgba(240, 195, 109, 0);
+    border-left: 2px solid rgba(240, 195, 109, 0);
+}
+
+.VPFeature::after {
+    bottom: 0px;
+    right: 0px;
+    border-bottom: 2px solid rgba(240, 195, 109, 0);
+    border-right: 2px solid rgba(240, 195, 109, 0);
+}
+
+.VPFeature:hover::before {
+    top: -6px;
+    left: -6px;
+    opacity: 1;
+    border-top-color: #f0c36d;
+    border-left-color: #f0c36d;
+}
+
+.VPFeature:hover::after {
+    bottom: -6px;
+    right: -6px;
+    opacity: 1;
+    border-bottom-color: #f0c36d;
+    border-right-color: #f0c36d;
 }
 
 .box {
