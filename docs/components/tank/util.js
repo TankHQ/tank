@@ -1,11 +1,6 @@
-// Small math helpers used across the simulation.
-
 export const TAU = Math.PI * 2
-
 export const clamp = (value, min, max) => (value < min ? min : value > max ? max : value)
-
 export const mix = (a, b, t) => a + (b - a) * t
-
 export const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y)
 
 // Interpolate between two angles along the shortest path (handles wrap-around).
