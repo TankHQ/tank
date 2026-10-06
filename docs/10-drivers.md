@@ -95,6 +95,7 @@ Enable feature flags to disable specific functionality until green.
 ### Feature Flags
 `tank-tests` exposes opt-out switches to avoid testing the driver on unsupported features:
 - `disable-arrays`: fixed-size arrays (example: `[u8; 13]`)
+- `disable-glob`: `GLOB` pattern matching not supported
 - `disable-groups`: `GROUP BY` SQL semantic not supported
 - `disable-infinity`: infinite values for floating point numbers
 - `disable-intervals`: interval / duration value types
@@ -104,6 +105,7 @@ Enable feature flags to disable specific functionality until green.
 - `disable-large-decimals`: decimals beyond IEEE-754 double precision unsupported
 - `disable-large-intervals`: disable testing very large interval values
 - `disable-lists`: dynamic list/array-like collections absent
+- `disable-log10`: `LOG10` math function not supported
 - `disable-maps`: avoid testing `HashMap`, `BTreeMap`
 - `disable-multiple-statements`: statement batching unsupported
 - `disable-nested-collections`: nested collection values unsupported

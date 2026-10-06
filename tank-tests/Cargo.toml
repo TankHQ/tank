@@ -1,6 +1,6 @@
 [package]
 name = "tank-tests"
-description = "Test suide for drivers of Tank: the Rust data layer. This is intended to be used by drivers to implement common unit tests."
+description = "Test suite for drivers of Tank: the Rust data layer. This is intended to be used by drivers to implement common unit tests."
 version.workspace = true
 authors.workspace = true
 license.workspace = true

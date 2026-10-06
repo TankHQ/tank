@@ -47,7 +47,7 @@ use std::collections::HashMap;
 use tank::Entity;
 use uuid::Uuid;
 
-#[derive(Entity, Debug, PartialEq)]
+#[derive(Default, Entity, Debug, PartialEq)]
 #[tank(
     schema = "army",
     name = "deployments",
@@ -215,7 +215,7 @@ expr!(EntityExample::region == "North" || EntityExample::region == "South");
 expr!(EntityExample::callsign == "Alpha%" as LIKE);
 expr!(EntityExample::callsign != "Alpha%" as LIKE);
 expr!(EntityExample::casualties > ?);
-let uid = Uuid::new_v4();;
+let uid = Uuid::new_v4();
 expr!(EntityExample::unit_id == #uid);
 let regions = ["North", "South"];
 expr!(EntityExample::region == #regions as IN);
@@ -269,7 +269,7 @@ let results = connection.fetch(
 
 The `join!` macro builds the `FROM` clause for `QueryBuilder`. Define a result struct that matches the selected columns, then pass the join tree to `.from()`.
 
-Supported keywords: `JOIN`, `INNER JOIN`, `LEFT JOIN`, `LEFT OUTER JOIN`, `RIGHT JOIN`, `RIGHT OUTER JOIN`, `FULL OUTER JOIN`, `CROSS JOIN`, `NATURAL JOIN`.
+Supported keywords: `JOIN`, `INNER JOIN`, `LEFT JOIN`, `LEFT OUTER JOIN`, `RIGHT JOIN`, `RIGHT OUTER JOIN`, `FULL OUTER JOIN`, `OUTER JOIN`, `CROSS JOIN`, `NATURAL JOIN`.
 
 ```rust
 use tank::{

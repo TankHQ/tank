@@ -16,6 +16,8 @@ Use this crate as a starting point when implementing a new driver for Tank.
 
 ## Checklist
 1. Rename `tank-yourdb` to `tank-backendname`
-2. Implement `Driver` trait
+2. Implement the `Driver` trait
 3. Implement `Connection` and `Executor` traits
-4. Implement `SqlWriter` for the dialect
+4. Implement `Transaction` and its `Executor` delegation
+5. Implement `Prepared` for parameter binding
+6. Implement `SqlWriter` for the dialect

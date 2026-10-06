@@ -45,7 +45,6 @@ Tank maps ordinary Rust types (check the table below) to the closest column type
 | `Vec<T>`                  | `T[]`          | ❌        | `JSON` ⚠️                | `JSON` ⚠️                | `T[]`          | `Array(T)`            | `Array`      | `LIST<T>`          | `List`       |
 | `HashMap<K,V>`            | ❌             | ❌        | `JSON` ⚠️                | `JSON` ⚠️                | `MAP(K,V)`     | `Map(K,V)`            | `Document`   | `MAP<K,V>`         | `Hash`       |
 | `BTreeMap<K,V>`           | ❌             | ❌        | `JSON` ⚠️                | `JSON` ⚠️                | `MAP(K,V)`     | `Map(K,V)`            | `Document`   | `MAP<K,V>`         | `Hash`       |
-| `BTreeMap<K,V>`           | ❌             | ❌        | `JSON` ⚠️                | `JSON` ⚠️                | `MAP(K,V)`     | `Map(K,V)`            | `Document`   | `MAP<K,V>`         | `Hash`       |
 </div>
 
 > [!WARNING]
@@ -54,10 +53,13 @@ Tank maps ordinary Rust types (check the table below) to the closest column type
 > The special `isize`/`usize` types map to the native pointer-width integer (64-bit on 64-bit targets, 32-bit on 32-bit targets). For cross-database portability prefer explicit `i64`/`u64` unless you truly need platform width.
 >
 > `tank-chdb` shares the ClickHouse column types above as it runs the same ClickHouse SQL engine.
+>
+> `chrono` types (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `DateTime<Tz>`) are supported behind the `chrono` feature and map to the same column types as their `time` equivalents.
 
 ## Wrapper Types
 Built-in wrappers you can use directly in entities, the SQL type is inferred from the inner type:
 - `Option<T>`: Nullable column.
+- `Cow<T>`
 - `Box<T>`
 - `Cell<T>`
 - `RefCell<T>`
@@ -162,7 +164,7 @@ impl tank::AsValue for MethodWrap {
         }
         // Always call try_as before checking the received value
         match value.try_as(&tank::Value::Varchar(None)) {
-            Ok(tank::Value::Varchar(Some(v), ..)) => {
+            Ok(tank::Value::Varchar(Some(v))) => {
                 let method = Method::from_str(&v).with_context(|| {
                     format!("Could not convert {v:?} into {}", any::type_name::<Method>())
                 })?;

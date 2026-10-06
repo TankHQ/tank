@@ -125,6 +125,7 @@ Parameters:
 - `require_ssl (bool)`: Require secure connection, defaults to false.
 - `ssl_ca`: CA certificate path (falls back to environment variable `MYSQL_SSL_CA`).
 - `ssl_cert`: Client certificate path (falls back to environment variable `MYSQL_SSL_CERT`).
+- `ssl_pass`: Password for the client certificate (falls back to environment variable `MYSQL_SSL_PASS`).
 
 Additional URL parameters are passed directly to the mysql_async API. See the full list of supported options from options structure [Opts](https://docs.rs/mysql_async/latest/mysql_async/struct.Opts.html).
 
@@ -186,7 +187,7 @@ async fn establish_clickhouse_connection() -> Result<impl ConnectionPool<ClickHo
 **URL Format**:
 - `clickhouse://user:password@host:port/database`
 
-Every field is optional and falls back to the defaults: host `localhost`, port `9000` (native TCP), user `default`, empty password, database `default`. Additional query parameters are not forwarded to `klickhouse`; use the URL form above for credentials and target database.
+Every field is optional and falls back to the defaults: host `localhost`, port `9000` (native TCP), user `default`, empty password, database `default`. The only additional query parameter forwarded to `klickhouse` is `tcp_nodelay`, use the URL form above for credentials and target database.
 
 > [!NOTE]
 > **No transactions**: ClickHouse is an analytical weapons platform, not an OLTP stronghold. `begin()` returns an error and `commit`/`rollback` are unsupported; issue statements directly against the connection.
@@ -306,6 +307,7 @@ Parameters:
 - `tcp_nodelay (bool)`: Set the nodelay TCP flag, true by default.
 - `tcp_keepalive_interval (f64)`: Interval between keepalive TCP messages in seconds, by default no keepalive messages are sent.
 - `keepalive_interval (f64)`: Interval in seconds between keepalive CQL messages, the default is 30.
+- `keepalive_timeout (f64)`: Timeout in seconds for keepalive CQL messages.
 - `disallow_shard_aware_port (bool)`: Prevents the driver from connecting to the shard-aware port, even if the node supports it (ScyllaDB only).
 - `compression`: Data compression algorithm, no compression by default:
     - `lz4`
@@ -332,7 +334,7 @@ The parameters are used to create an object of type [`SessionBuilder`](https://d
 
 `driver.connect_pool(...)` returns an opaque `impl ConnectionPool<Driver>` type. The compiler knows the exact concrete type at the call site, but you cannot write its name which means you cannot store it in a struct field.
 
-Use [`into_box()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_box) or [`into_arc()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_arc) to type-erase the pool into a `Box<dyn ConnectionPool<D>>` or `Arc<dyn ConnectionPool<D>>` respectively. The type erased pool is fully heap-allocated, has a stable concrete type, and can be cloned stored anywhere:
+Use [`into_box()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_box) or [`into_arc()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_arc) to type-erase the pool into a `Box<dyn ConnectionPool<D>>` or `Arc<dyn ConnectionPool<D>>` respectively. The type erased pool is fully heap-allocated, has a stable concrete type, and can be cloned and stored anywhere:
 
 ```rust
 use tank::{ConnectionPool, Driver, PoolConfig};
