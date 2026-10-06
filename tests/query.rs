@@ -1,7 +1,11 @@
 #[cfg(test)]
 mod tests {
     use indoc::indoc;
-    use tank::{DynQuery, Entity, GenericSqlWriter, QueryBuilder, SqlWriter, cols, expr};
+    use std::fmt::Write;
+    use tank::{
+        DynQuery, Entity, GenericSqlWriter, QueryBuilder, QueryParam, QueryResult, RawQuery,
+        RowsAffected, SqlWriter, cols, expr,
+    };
 
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
@@ -84,6 +88,24 @@ mod tests {
                 SELECT "customer_id", SUM("amount")
                 FROM "orders"
                 WHERE "status" = 'completed'
+                GROUP BY "customer_id";
+            "#}
+            .trim()
+        );
+
+        let mut sql = DynQuery::default();
+        WRITER.write_select(
+            &mut sql,
+            &QueryBuilder::new()
+                .select(cols!(Orders::customer_id as cid, SUM(Orders::amount)))
+                .from(Orders::table())
+                .group_by(cols!(Orders::customer_id as cid)),
+        );
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                SELECT "customer_id" AS "cid", SUM("amount")
+                FROM "orders"
                 GROUP BY "customer_id";
             "#}
             .trim()
@@ -462,7 +484,6 @@ mod tests {
 
     #[test]
     fn query_21() {
-        use std::fmt::Write;
         let mut q = DynQuery::default();
         let _ = q.write_str("SELECT 1");
         let s: String = q.into();
@@ -471,8 +492,29 @@ mod tests {
 
     #[test]
     fn query_22() {
-        use tank::RawQuery;
-        let rq = RawQuery("SELECT * FROM t".into());
+        let rq = RawQuery::new("SELECT * FROM t".into());
         assert_eq!(format!("{rq}"), "SELECT * FROM t");
+    }
+
+    #[test]
+    fn raw_query_helpers() {
+        let mut rq =
+            RawQuery::with_params("SELECT ?".into(), vec![QueryParam { begin: 7, end: 8 }]);
+        assert_eq!(rq.sql, "SELECT ?");
+        assert_eq!(rq.params.len(), 1);
+        rq.clear();
+        assert!(rq.sql.is_empty());
+        assert!(rq.params.is_empty());
+
+        let rq: RawQuery = "hello".to_string().into();
+        let s: String = rq.into();
+        assert_eq!(s, "hello");
+
+        let row = tank::Row::default();
+        assert!(matches!(QueryResult::from(row), QueryResult::Row(_)));
+        assert!(matches!(
+            QueryResult::from(RowsAffected::default()),
+            QueryResult::Affected(_)
+        ));
     }
 }

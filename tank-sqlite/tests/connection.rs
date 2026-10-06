@@ -1,10 +1,11 @@
 #[cfg(test)]
 mod tests {
     use std::{path::Path, sync::Mutex};
-    use tank_core::Connection;
+    use tank_core::{Connection, describe_path};
     use tank_sqlite::{SQLiteConnection, SQLiteDriver};
     use tank_tests::{init_logs, silent_logs};
     use tokio::fs;
+    use url::Url;
 
     static MUTEX: Mutex<()> = Mutex::new(());
 
@@ -64,5 +65,20 @@ mod tests {
                     .is_err()
             );
         }
+    }
+
+    #[test]
+    fn describe_paths() {
+        let memory = Url::parse("sqlite://localhost?mode=memory").unwrap();
+        assert_eq!(describe_path::<SQLiteDriver>(&memory), ":memory:");
+
+        let explicit = Url::parse("sqlite://localhost?path=/tmp/x.db").unwrap();
+        assert_eq!(describe_path::<SQLiteDriver>(&explicit), "/tmp/x.db");
+
+        let path = Url::parse("sqlite:///tmp/y.db").unwrap();
+        assert!(describe_path::<SQLiteDriver>(&path).ends_with("/tmp/y.db"));
+
+        let bare = Url::parse("sqlite://").unwrap();
+        assert_eq!(describe_path::<SQLiteDriver>(&bare), ":memory:");
     }
 }

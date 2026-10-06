@@ -4,18 +4,11 @@ mod tests {
     use std::borrow::Cow;
     use syn::parse_str;
     use tank::{
-        BinaryOp, BinaryOpType, ColumnRef, Dataset, DeclareTableRef, DynQuery, Entity, Join,
-        JoinType, Operand, SqlWriter, TableRef, join,
+        BinaryOp, BinaryOpType, ColumnRef, Dataset, DeclareTableRef, DynQuery, Entity,
+        GenericSqlWriter, Join, JoinType, Operand, TableRef, join,
     };
 
-    struct Writer;
-    impl SqlWriter for Writer {
-        fn as_dyn(&self) -> &dyn SqlWriter {
-            self
-        }
-    }
-
-    const WRITER: Writer = Writer {};
+    const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[derive(Entity)]
     #[tank(schema = "my_data")]

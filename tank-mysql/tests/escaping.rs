@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use tank_core::{Context, DynQuery, Fragment, SqlWriter};
+    use tank_core::{Context, DynQuery, Fragment, SqlValueWriter};
     use tank_mysql::MySQLSqlWriter;
 
     #[test]

@@ -116,7 +116,7 @@ pub(crate) fn extract_value(
 
 /// Parse a MySQL `TIME` literal (`[-]HH:MM:SS[.ffffff]`) into an interval.
 fn parse_mysql_time(text: &str) -> tank_core::Result<Interval> {
-    let context = || anyhow!("Could not parse the MySQL TIME value `{text}`");
+    let make_context = || anyhow!("Could not parse the MySQL TIME value `{text}`");
     let (negative, text) = match text.strip_prefix('-') {
         Some(rest) => (true, rest),
         None => (false, text),
@@ -125,12 +125,12 @@ fn parse_mysql_time(text: &str) -> tank_core::Result<Interval> {
     let hours: i64 = parts
         .next()
         .and_then(|v| v.parse().ok())
-        .ok_or_else(context)?;
+        .ok_or_else(make_context)?;
     let minutes: i64 = parts
         .next()
         .and_then(|v| v.parse().ok())
-        .ok_or_else(context)?;
-    let seconds = parts.next().ok_or_else(context)?;
+        .ok_or_else(make_context)?;
+    let seconds = parts.next().ok_or_else(make_context)?;
     let (seconds, micros) = match seconds.split_once('.') {
         Some((seconds, fraction)) => {
             let mut fraction = fraction.to_owned();
@@ -139,11 +139,11 @@ fn parse_mysql_time(text: &str) -> tank_core::Result<Interval> {
                 fraction.push('0');
             }
             (
-                seconds.parse::<i64>().map_err(|_| context())?,
+                seconds.parse::<i64>().map_err(|_| make_context())?,
                 fraction.parse::<i64>().unwrap_or(0),
             )
         }
-        None => (seconds.parse::<i64>().map_err(|_| context())?, 0),
+        None => (seconds.parse::<i64>().map_err(|_| make_context())?, 0),
     };
     let result = Interval::from_hours(hours)
         + Interval::from_mins(minutes)

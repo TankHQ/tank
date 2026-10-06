@@ -2,12 +2,50 @@ use crate::{AsValue, Driver, DynQuery, Prepared, Result, Row, RowsAffected, trun
 use anyhow::anyhow;
 use std::fmt::{self, Display};
 
+/// Byte span of a parameter marker inside a built query
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct QueryParam {
+    pub begin: usize,
+    pub end: usize, // exclusive
+}
+
 #[derive(Default, Clone, Debug)]
-pub struct RawQuery(pub String);
+pub struct RawQuery {
+    pub sql: String,
+    pub params: Vec<QueryParam>,
+}
+
+impl RawQuery {
+    pub fn new(sql: String) -> Self {
+        Self {
+            sql,
+            params: Vec::new(),
+        }
+    }
+    pub fn with_params(sql: String, params: Vec<QueryParam>) -> Self {
+        Self { sql, params }
+    }
+    pub fn clear(&mut self) {
+        self.sql.clear();
+        self.params.clear();
+    }
+}
+
+impl From<String> for RawQuery {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<RawQuery> for String {
+    fn from(value: RawQuery) -> Self {
+        value.sql
+    }
+}
 
 impl Display for RawQuery {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", truncate_long!(self.0))
+        write!(f, "{}", truncate_long!(self.sql))
     }
 }
 
@@ -23,7 +61,7 @@ pub enum Query<D: Driver> {
 impl<D: Driver> Query<D> {
     /// New raw query.
     pub fn raw(value: String) -> Self {
-        Query::Raw(RawQuery(value))
+        Query::Raw(value.into())
     }
     /// New prepared query.
     pub fn prepared(value: D::Prepared) -> Self {

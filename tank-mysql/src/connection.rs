@@ -3,7 +3,8 @@ use anyhow::anyhow;
 use core::fmt;
 use mysql_async::{ClientIdentity, Conn, Opts, OptsBuilder};
 use std::{borrow::Cow, env, fmt::Debug, path::PathBuf};
-use tank_core::{Connection, ErrorContext, Result, impl_executor_transaction};
+use tank_core::{Connection, ErrorContext, Result, describe_url, impl_executor_transaction};
+use url::Url;
 
 /// Connection wrapper used by the MySQL/MariaDB driver.
 ///
@@ -18,13 +19,18 @@ pub type MariaDBConnection = MySQLConnection;
 
 impl Connection for MySQLConnection {
     async fn connect(driver: &MySQLDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = "While trying to connect to MySQL";
-        let mut url = Self::sanitize_url(driver, url).context(context)?;
+        let mut url = Self::sanitize_url(driver, url)?;
+        let make_context = |url: &Url| {
+            format!(
+                "While trying to connect to MySQL {}",
+                describe_url::<MySQLDriver>(url)
+            )
+        };
         let mut driver = *driver;
         if url.scheme() == "mariadb" {
             driver.mariadb = true;
         }
-        let mut take_url_param = |key: &str, env_var: &str, remove: bool| {
+        let take_url_param = |url: &mut Url, key: &str, env_var: &str, remove: bool| {
             let value = url
                 .query_pairs()
                 .find_map(|(k, v)| if k == key { Some(v) } else { None })
@@ -35,21 +41,21 @@ impl Connection for MySQLConnection {
                 result
                     .query_pairs_mut()
                     .extend_pairs(url.query_pairs().filter(|(k, _)| k != key));
-                url = result;
+                *url = result;
             };
             value.or_else(|| env::var(env_var).ok().map(Into::into))
         };
-        let ssl_ca = take_url_param("ssl_ca", "MYSQL_SSL_CA", true);
-        let ssl_cert = take_url_param("ssl_cert", "MYSQL_SSL_CERT", true);
-        let ssl_pass = take_url_param("ssl_pass", "MYSQL_SSL_PASS", true);
-        let opts = Opts::from_url(url.as_str()).context(context)?;
+        let ssl_ca = take_url_param(&mut url, "ssl_ca", "MYSQL_SSL_CA", true);
+        let ssl_cert = take_url_param(&mut url, "ssl_cert", "MYSQL_SSL_CERT", true);
+        let ssl_pass = take_url_param(&mut url, "ssl_pass", "MYSQL_SSL_PASS", true);
+        let opts = Opts::from_url(url.as_str()).with_context(|| make_context(&url))?;
         let mut ssl_opts = opts.ssl_opts().cloned();
         let mut opts = OptsBuilder::from_opts(opts);
         if let Some(ssl_ca) = ssl_ca {
             let ca_path = PathBuf::from(ssl_ca);
             if !ca_path.exists() {
                 let error = anyhow!("SSL CA file not found: `{}`", ca_path.to_string_lossy())
-                    .context(context);
+                    .context(make_context(&url));
                 log::error!("{error:#}");
                 return Err(error);
             }
@@ -60,7 +66,7 @@ impl Connection for MySQLConnection {
             let ssl_cert = PathBuf::from(ssl_cert);
             if !ssl_cert.exists() {
                 let error = anyhow!("SSL CERT file not found: `{}`", ssl_cert.to_string_lossy())
-                    .context(context);
+                    .context(make_context(&url));
                 log::error!("{error:#}");
                 return Err(error);
             }
@@ -75,7 +81,7 @@ impl Connection for MySQLConnection {
             );
         }
         opts = opts.ssl_opts(ssl_opts);
-        let connection = Conn::new(opts).await.context(context)?;
+        let connection = Conn::new(opts).await.with_context(|| make_context(&url))?;
         Ok(MySQLConnection {
             conn: MySQLQueryable {
                 executor: connection,

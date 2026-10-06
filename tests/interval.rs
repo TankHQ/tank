@@ -1,15 +1,12 @@
 #[cfg(test)]
 mod tests {
     use std::{collections::HashSet, i64, time::Duration};
-    use tank_core::{AsValue, Context, DynQuery, Fragment, Interval, SqlWriter};
+    use tank_core::{
+        AsValue, Context, DynQuery, Fragment, GenericSqlWriter, Interval, IntervalUnit,
+        SqlValueWriter, Value,
+    };
 
-    struct Writer;
-    impl SqlWriter for Writer {
-        fn as_dyn(&self) -> &dyn SqlWriter {
-            self
-        }
-    }
-    const WRITER: Writer = Writer {};
+    const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     macro_rules! test_interval {
         ($interval:expr, $expected:literal) => {{
@@ -179,6 +176,50 @@ mod tests {
         // Negative months > 48 should decompose to years
         test_interval!(Interval::from_months(-49), "INTERVAL '-4 YEARS -1 MONTH'");
         test_interval!(Interval::from_months(-24), "INTERVAL '-2 YEARS'");
+
+        // Large values must not overflow when rendered
+        test_interval!(
+            Interval::new(0, i64::MAX, 0),
+            "INTERVAL '9223372036854775807 DAYS'"
+        );
+        test_interval!(
+            Interval::new(0, i64::MIN, 0),
+            "INTERVAL '-9223372036854775808 DAYS'"
+        );
+        test_interval!(
+            Interval::new(0, i64::MAX, i128::MAX),
+            "INTERVAL '170141183460469231731687303715884105727 NANOSECONDS'"
+        );
+        test_interval!(
+            Interval::new(0, i64::MIN, i128::MIN),
+            "INTERVAL '-170141183460469231731687303715884105728 NANOSECONDS'"
+        );
+    }
+
+    #[test]
+    fn write_then_parse_round_trip() {
+        for interval in [
+            Interval::from_years(20_000) + Interval::from_millis(300),
+            Interval::from_months(5) + Interval::from_days(-2) + Interval::from_secs(1),
+            Interval::new(48, 15, 2 * Interval::NANOS_IN_DAY + 1_000_000_000),
+            Interval::from_days(-11),
+            Interval::from_micros(999_999_999),
+        ] {
+            let mut out = DynQuery::default();
+            WRITER.write_value(
+                &mut Context::new(Fragment::None, false),
+                &mut out,
+                &interval.as_value(),
+            );
+            let rendered = out.as_str().into_owned();
+            let body = rendered
+                .strip_prefix("INTERVAL ")
+                .unwrap_or(&rendered)
+                .to_string();
+            let parsed = Interval::try_from_value(Value::Varchar(Some(body.into())))
+                .unwrap_or_else(|e| panic!("Could not parse `{rendered}`: {e:#}"));
+            assert_eq!(parsed, interval, "Round-trip failed for `{rendered}`");
+        }
     }
 
     #[test]
@@ -251,7 +292,6 @@ mod tests {
 
     #[test]
     fn from_bitmask() {
-        use tank_core::IntervalUnit;
         assert_eq!(
             IntervalUnit::from_bitmask(1).unwrap(),
             IntervalUnit::Nanosecond
@@ -273,42 +313,52 @@ mod tests {
 
     #[test]
     fn as_hmsns() {
-        // 02:30:15
-        let interval = Interval::from_hours(2) + Interval::from_mins(30) + Interval::from_secs(15);
-        let (h, m, s, ns) = interval.as_hmsns();
-        assert_eq!(h, 2);
-        assert_eq!(m, 30);
-        assert_eq!(s, 15);
-        assert_eq!(ns, 0);
+        assert_eq!(
+            (Interval::from_hours(2) + Interval::from_mins(30) + Interval::from_secs(15))
+                .as_hmsns(),
+            (2, 30, 15, 0)
+        );
+        assert_eq!(Interval::from_nanos(500).as_hmsns(), (0, 0, 0, 500));
+        // 1 month + 2 days = 768 hours
+        assert_eq!(Interval::new(1, 2, 0).as_hmsns(), (768, 0, 0, 0));
+        assert_eq!(Interval::ZERO.as_hmsns(), (0, 0, 0, 0));
+        assert_eq!((-Interval::from_mins(30)).as_hmsns(), (0, -30, 0, 0));
+        // -01:30:10
+        assert_eq!(
+            (-(Interval::from_hours(1) + Interval::from_mins(30) + Interval::from_secs(15)))
+                .as_hmsns(),
+            (-1, 30, 15, 0)
+        );
+        assert_eq!(
+            (-Interval::from_nanos(5_400_000_000_500)).as_hmsns(),
+            (-1, 30, 0, 500)
+        );
+        // -1 day + 30 minutes = -23:30:00
+        assert_eq!(
+            (Interval::from_days(-1) + Interval::from_mins(30)).as_hmsns(),
+            (-23, 30, 0, 0)
+        );
+        // 1 day - 30 minutes = 23:30:00
+        assert_eq!(
+            (Interval::from_days(1) - Interval::from_mins(30)).as_hmsns(),
+            (23, 30, 0, 0)
+        );
+        // Negative sign lands on the first non-zero component.
+        assert_eq!(Interval::from_secs(-1).as_hmsns(), (0, 0, -1, 0));
+        assert_eq!(Interval::from_nanos(-500).as_hmsns(), (0, 0, 0, -500));
+    }
 
-        // 00:00:00.0000005
-        let interval2 = Interval::from_nanos(500);
-        let (h, m, s, ns) = interval2.as_hmsns();
-        assert_eq!(h, 0);
-        assert_eq!(m, 0);
-        assert_eq!(s, 0);
-        assert_eq!(ns, 500);
-
-        // 1 month + 2 days = 720 + 48 hours = 768 hours
-        let interval3 = Interval::new(1, 2, 0); // 1 month + 2 days
-        let (h, _, _, _) = interval3.as_hmsns();
-        assert_eq!(h, 768); // (months*30 + days) * 24
-
-        // -01:30:15
-        let neg = -(Interval::from_hours(1) + Interval::from_mins(30) + Interval::from_secs(15));
-        let (h, m, s, ns) = neg.as_hmsns();
-        assert_eq!(h, -1);
-        assert_eq!(m, 30);
-        assert_eq!(s, 15);
-        assert_eq!(ns, 0);
-
-        // -01:30:00.0000005
-        let neg2 = -Interval::from_nanos(5_400_000_000_500);
-        let (h, m, s, ns) = neg2.as_hmsns();
-        assert_eq!(h, -1);
-        assert_eq!(m, 30);
-        assert_eq!(s, 0);
-        assert_eq!(ns, 500);
+    #[test]
+    fn total_nanos() {
+        assert_eq!(Interval::ZERO.as_ns(), 0);
+        assert_eq!(
+            Interval::from_months(1).as_ns(),
+            30 * Interval::NANOS_IN_DAY
+        );
+        assert_eq!(
+            (Interval::from_days(-1) + Interval::from_mins(30)).as_ns(),
+            -23 * Interval::NANOS_IN_HOUR - 30 * Interval::NANOS_IN_SEC * 60
+        );
     }
 
     #[test]
@@ -336,54 +386,106 @@ mod tests {
     }
 
     #[test]
+    fn negative_as_duration() {
+        assert_eq!(Interval::from_mins(-30).as_duration(30.0), Duration::ZERO);
+        assert_eq!((-Interval::from_days(3)).as_duration(30.0), Duration::ZERO);
+        assert_eq!(
+            (Interval::from_days(1) - Interval::from_mins(30)).as_duration(30.0),
+            Duration::from_secs(23 * 3600 + 30 * 60)
+        );
+    }
+
+    #[test]
     fn units_mask_and_unit_value() {
         let interval = Interval::from_years(2);
         let mask = interval.units_mask();
         assert_eq!(mask, 1 << 7); // Year bit
-        assert_eq!(interval.unit_value(tank_core::IntervalUnit::Year), 2);
+        assert_eq!(interval.unit_value(IntervalUnit::Year), 2);
 
         let interval2 = Interval::from_months(5);
         let mask = interval2.units_mask();
         assert_eq!(mask, 1 << 6); // Month bit
-        assert_eq!(interval2.unit_value(tank_core::IntervalUnit::Month), 5);
+        assert_eq!(interval2.unit_value(IntervalUnit::Month), 5);
 
         let interval3 = Interval::from_days(3);
         let mask = interval3.units_mask();
         assert_eq!(mask, 1 << 5); // Day bit
-        assert_eq!(interval3.unit_value(tank_core::IntervalUnit::Day), 3);
+        assert_eq!(interval3.unit_value(IntervalUnit::Day), 3);
 
         let interval4 = Interval::from_hours(6);
         let mask = interval4.units_mask();
         assert_eq!(mask, 1 << 4); // Hour bit
-        assert_eq!(interval4.unit_value(tank_core::IntervalUnit::Hour), 6);
+        assert_eq!(interval4.unit_value(IntervalUnit::Hour), 6);
 
         let interval5 = Interval::from_mins(45);
         let mask = interval5.units_mask();
         assert_eq!(mask, 1 << 3); // Minute bit
-        assert_eq!(interval5.unit_value(tank_core::IntervalUnit::Minute), 45);
+        assert_eq!(interval5.unit_value(IntervalUnit::Minute), 45);
 
         let interval6 = Interval::from_secs(10);
         let mask = interval6.units_mask();
         assert_eq!(mask, 1 << 2); // Second bit
-        assert_eq!(interval6.unit_value(tank_core::IntervalUnit::Second), 10);
+        assert_eq!(interval6.unit_value(IntervalUnit::Second), 10);
 
         let interval7 = Interval::from_micros(500);
         let mask = interval7.units_mask();
         assert_eq!(mask, 1 << 1); // Microsecond bit
-        assert_eq!(
-            interval7.unit_value(tank_core::IntervalUnit::Microsecond),
-            500
-        );
+        assert_eq!(interval7.unit_value(IntervalUnit::Microsecond), 500);
 
         let interval8 = Interval::from_nanos(42);
         let mask = interval8.units_mask();
         assert_eq!(mask, 1 << 0); // Nanosecond bit
-        assert_eq!(
-            interval8.unit_value(tank_core::IntervalUnit::Nanosecond),
-            42
-        );
+        assert_eq!(interval8.unit_value(IntervalUnit::Nanosecond), 42);
 
         assert_eq!(Interval::ZERO.units_mask(), 0);
+    }
+
+    #[test]
+    fn large_interval_do_not_overflow() {
+        let extremes = [
+            Interval::new(i64::MIN, 0, 0),
+            Interval::new(i64::MAX, 0, 0),
+            Interval::new(0, i64::MAX, i128::MAX),
+            Interval::new(0, i64::MIN, i128::MIN),
+            Interval::new(i64::MIN, i64::MIN, i128::MIN),
+        ];
+        for interval in extremes {
+            let _ = interval.as_ns();
+            let _ = interval.days_nanos();
+            let _ = interval.units_mask();
+            let _ = interval.unit_value(IntervalUnit::Nanosecond);
+            let _ = interval.as_duration(30.0);
+            let _ = -interval;
+            assert_eq!(interval, interval);
+            let mut set = HashSet::new();
+            set.insert(interval);
+            set.insert(interval);
+            assert_eq!(set.len(), 1);
+        }
+    }
+
+    #[test]
+    fn large_i128_constructors_keep_sign() {
+        for v in [i128::MAX, i128::MIN] {
+            let n = Interval::from_nanos(v);
+            assert_eq!(
+                n.days.signum() as i128,
+                v.signum(),
+                "from_nanos({v}) produced a days count with the wrong sign: {n:?}"
+            );
+            let m = Interval::from_micros(v);
+            assert_eq!(
+                m.days.signum() as i128,
+                v.signum(),
+                "from_micros({v}) produced a days count with the wrong sign: {m:?}"
+            );
+            let ms = Interval::from_millis(v);
+            assert_eq!(
+                ms.days.signum() as i128,
+                v.signum(),
+                "from_millis({v}) produced a days count with the wrong sign: {ms:?}"
+            );
+        }
     }
 
     #[test]
@@ -440,5 +542,50 @@ mod tests {
 
         let duration2: time::Duration = interval.into();
         assert_eq!(duration, duration2);
+    }
+
+    #[test]
+    fn parse_huge_interval_does_not_panic() {
+        let parsed =
+            Interval::try_from_value(Value::Varchar(Some("1000000000000000000 years".into())));
+        if let Ok(v) = parsed {
+            assert!(v.months >= 0);
+        }
+        let parsed = Interval::try_from_value(Value::Varchar(Some(
+            "1000000000000000000 years 1000000000000000000 years".into(),
+        )));
+        if let Ok(v) = parsed {
+            assert!(v.months >= 0);
+        }
+    }
+
+    #[test]
+    fn neg_min_months_does_not_panic() {
+        let value = Interval::new(i64::MIN, 0, 0);
+        let _ = -value;
+    }
+
+    #[test]
+    fn large_and_negative_interval_to_time_duration() {
+        let negative: time::Duration = Interval::from_mins(-30).into();
+        assert_eq!(negative, time::Duration::minutes(-30));
+
+        let huge: time::Duration = Interval::from_months(i64::MAX / 2).into();
+        assert!(huge.whole_seconds() > 0);
+    }
+
+    #[test]
+    fn long_fraction_does_not_panic() {
+        for digits in 1..=40 {
+            let input = format!("12:30:00.{}", "9".repeat(digits));
+            let result = Interval::try_from_value(Value::Varchar(Some(input.into())));
+            if digits <= 9 {
+                assert!(result.is_ok(), "{digits} digits should parse");
+            } else {
+                assert!(result.is_err(), "{digits} digits should be rejected");
+            }
+        }
+        let parsed = Interval::try_from_value(Value::Varchar(Some("00:00:00.5".into()))).unwrap();
+        assert_eq!(parsed, Interval::from_millis(500));
     }
 }

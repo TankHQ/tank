@@ -47,7 +47,7 @@ use std::collections::HashMap;
 use tank::Entity;
 use uuid::Uuid;
 
-#[derive(Entity, Debug, PartialEq)]
+#[derive(Default, Entity, Debug, PartialEq)]
 #[tank(
     schema = "army",
     name = "deployments",
@@ -205,7 +205,8 @@ EntityExample::delete_many(
 ## Expressions
 
 ```rust
-use tank::expr;
+use tank::{current_timestamp_ms, expr};
+use time::Duration;
 use uuid::Uuid;
 
 expr!(EntityExample::casualties == 0);
@@ -214,8 +215,12 @@ expr!(EntityExample::region == "North" || EntityExample::region == "South");
 expr!(EntityExample::callsign == "Alpha%" as LIKE);
 expr!(EntityExample::callsign != "Alpha%" as LIKE);
 expr!(EntityExample::casualties > ?);
-let uid = Uuid::new_v4();;
+let uid = Uuid::new_v4();
 expr!(EntityExample::unit_id == #uid);
+let regions = ["North", "South"];
+expr!(EntityExample::region == #regions as IN);
+let one_day_ms = Duration::days(1).whole_milliseconds();
+expr!(current_timestamp_ms!() - #one_day_ms);
 ```
 
 ## Prepared statement
@@ -264,7 +269,7 @@ let results = connection.fetch(
 
 The `join!` macro builds the `FROM` clause for `QueryBuilder`. Define a result struct that matches the selected columns, then pass the join tree to `.from()`.
 
-Supported keywords: `JOIN`, `INNER JOIN`, `LEFT JOIN`, `LEFT OUTER JOIN`, `RIGHT JOIN`, `RIGHT OUTER JOIN`, `FULL OUTER JOIN`, `CROSS JOIN`, `NATURAL JOIN`.
+Supported keywords: `JOIN`, `INNER JOIN`, `LEFT JOIN`, `LEFT OUTER JOIN`, `RIGHT JOIN`, `RIGHT OUTER JOIN`, `FULL OUTER JOIN`, `OUTER JOIN`, `CROSS JOIN`, `NATURAL JOIN`.
 
 ```rust
 use tank::{

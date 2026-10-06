@@ -1,3 +1,8 @@
+---
+description: Create driver
+keywords: create a driver
+---
+
 # Driver Creation
 ###### *Field Manual Section 10* - Armored Engineering
 
@@ -52,13 +57,27 @@ Keep one doctrine in mind: a `Prepared` value is driver-local executable state, 
 <<< @/../tank-yourdb/src/prepared.rs
 
 ### 4. SQL Writer (`SqlWriter`)
+
+The writer has two faces:
+
+- **`SqlWriter`** is the *user-facing* trait. It owns complete statements:
+  - `write_create_table`,
+  - `write_select`,
+  - `write_insert`,
+  - `write_delete`,
+  - `write_drop_table`,
+  - transactions.
+- The rest of the traits writing smaller pieces of a query. This is what **driver authors** implement.
+
 Override only differences from the generic fallback:
 - Identifier quoting style
 - Column type mapping
 - Literal escaping quirks (BLOB, INTERVAL, UUID, arrays)
-- Parameter placeholder (override `write_expression_operand_question_mark`) if not `?`
+- Parameter placeholder (override `write_question_mark`) if not `?`
 - Schema operations (skip if engine lacks schemas like SQLite)
 - Upsert syntax via `write_insert_update_fragment` if divergence
+
+Only `SqlCoreWriter` declares `as_dyn`. It upcasts to the `SqlWriter` view so a fragment can reach any other fragment. Calls between fragments from a default body must go through `self.as_dyn()` so backend overrides are picked up. Calls within the same trait (or to a supertrait) resolve directly. Statements in `SqlWriter` call fragments with plain `self.method()`.
 
 Tip: Start from `tank-core`'s `GenericSqlWriter` implementation; copy then trim.
 
@@ -81,14 +100,17 @@ Enable feature flags to disable specific functionality until green.
 ### Feature Flags
 `tank-tests` exposes opt-out switches to avoid testing the driver on unsupported features:
 - `disable-arrays`: fixed-size arrays (example: `[u8; 13]`)
+- `disable-glob`: `GLOB` pattern matching not supported
 - `disable-groups`: `GROUP BY` SQL semantic not supported
 - `disable-infinity`: infinite values for floating point numbers
 - `disable-intervals`: interval / duration value types
 - `disable-joins`: SQL join semantics
 - `disable-large-integers`: `i128` and `u128` unsupported
+- `disable-large-dates`: very large dates unsupported
 - `disable-large-decimals`: decimals beyond IEEE-754 double precision unsupported
 - `disable-large-intervals`: disable testing very large interval values
 - `disable-lists`: dynamic list/array-like collections absent
+- `disable-log10`: `LOG10` math function not supported
 - `disable-maps`: avoid testing `HashMap`, `BTreeMap`
 - `disable-multiple-statements`: statement batching unsupported
 - `disable-nested-collections`: nested collection values unsupported

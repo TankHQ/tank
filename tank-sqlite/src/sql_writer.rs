@@ -4,8 +4,9 @@ use std::{
     mem,
 };
 use tank_core::{
-    ColumnDef, ColumnRef, Context, DynQuery, Entity, Expression, GenericSqlWriter, SqlWriter,
-    TableRef, Value, write_escaped,
+    ColumnDef, ColumnRef, Context, DynQuery, Entity, Expression, GenericSqlWriter, SqlCoreWriter,
+    SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value,
+    write_escaped,
 };
 
 /// SQL writer for SQLite dialect.
@@ -13,7 +14,7 @@ use tank_core::{
 /// Emits SQLite specific SQL syntax to mantain compatibility with tank operations.
 pub struct SQLiteSqlWriter {}
 
-impl SqlWriter for SQLiteSqlWriter {
+impl SqlCoreWriter for SQLiteSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -107,7 +108,9 @@ impl SqlWriter for SQLiteSqlWriter {
             _ => log::error!("Unexpected tank::Value, SQLite does not support {value:?}"),
         };
     }
+}
 
+impl SqlValueWriter for SQLiteSqlWriter {
     fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
         if value.is_infinite() {
             if value.is_sign_negative() {
@@ -148,10 +151,6 @@ impl SqlWriter for SQLiteSqlWriter {
         out.push('\'');
     }
 
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
-        out.push_str("(unixepoch('subsec') * 1000)");
-    }
-
     fn write_list(
         &self,
         _context: &mut Context,
@@ -171,7 +170,27 @@ impl SqlWriter for SQLiteSqlWriter {
     ) {
         log::error!("SQLite does not support maps");
     }
+}
 
+impl SqlExpressionWriter for SQLiteSqlWriter {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+        out.push_str("(unixepoch('subsec') * 1000)");
+    }
+}
+
+impl SqlFragmentWriter for SQLiteSqlWriter {
+    fn write_column_comments_statements_fragment<E>(
+        &self,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+    ) where
+        Self: Sized,
+        E: Entity,
+    {
+    }
+}
+
+impl SqlWriter for SQLiteSqlWriter {
     fn write_create_schema<E>(&self, _out: &mut DynQuery, _if_not_exists: bool)
     where
         Self: Sized,
@@ -186,12 +205,5 @@ impl SqlWriter for SQLiteSqlWriter {
         E: Entity,
     {
         // SQLite does not support schema
-    }
-
-    fn write_column_comments_statements<E>(&self, _context: &mut Context, _out: &mut DynQuery)
-    where
-        Self: Sized,
-        E: Entity,
-    {
     }
 }

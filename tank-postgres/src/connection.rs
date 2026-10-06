@@ -18,13 +18,14 @@ use std::{
 };
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Transaction,
+    QueryResult, RawQuery, Result, RowsAffected, SqlCoreWriter, Transaction, describe_url,
     future::Either,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
 use tokio::{spawn, task::JoinHandle};
 use tokio_postgres::{NoTls, binary_copy::BinaryCopyInWriter};
+use url::Url;
 
 /// PostgreSQL connection.
 #[derive(Debug)]
@@ -33,22 +34,117 @@ pub struct PostgresConnection {
     pub(crate) handle: JoinHandle<()>,
 }
 
+impl Connection for PostgresConnection {
+    async fn connect(driver: &PostgresDriver, url: Cow<'static, str>) -> Result<Self> {
+        let mut url = Self::sanitize_url(driver, url)?;
+        let make_context = |url: &Url| {
+            format!(
+                "While trying to connect to Postgres {}",
+                describe_url::<PostgresDriver>(url)
+            )
+        };
+        let take_url_param = |url: &mut Url, key: &str, env_var: &str, remove: bool| {
+            let value = url
+                .query_pairs()
+                .find_map(|(k, v)| if k == key { Some(v) } else { None })
+                .map(|v| v.to_string());
+            if remove && let Some(..) = value {
+                let mut result = url.clone();
+                result.set_query(None);
+                result
+                    .query_pairs_mut()
+                    .extend_pairs(url.query_pairs().filter(|(k, _)| k != key));
+                *url = result;
+            };
+            value.or_else(|| env::var(env_var).ok().map(Into::into))
+        };
+        let sslmode =
+            take_url_param(&mut url, "sslmode", "PGSSLMODE", false).unwrap_or("disable".into());
+        let (client, handle) = if sslmode == "disable" {
+            let (client, connection) = tokio_postgres::connect(url.as_str(), NoTls).await?;
+            let handle = spawn(async move {
+                if let Err(error) = connection.await
+                    && !error.is_closed()
+                {
+                    log::error!("Postgres connection error: {:#?}", error);
+                }
+            });
+            (client, handle)
+        } else {
+            let mut builder = SslConnector::builder(SslMethod::tls())?;
+            let path = PathBuf::from_str(
+                take_url_param(&mut url, "sslrootcert", "PGSSLROOTCERT", true)
+                    .as_deref()
+                    .unwrap_or("~/.postgresql/root.crt"),
+            )
+            .with_context(|| make_context(&url))?;
+            if path.exists() {
+                builder.set_ca_file(path)?;
+            }
+            let path = PathBuf::from_str(
+                take_url_param(&mut url, "sslcert", "PGSSLCERT", true)
+                    .as_deref()
+                    .unwrap_or("~/.postgresql/postgresql.crt"),
+            )
+            .with_context(|| make_context(&url))?;
+            if path.exists() {
+                builder.set_certificate_chain_file(path)?;
+            }
+            let path = PathBuf::from_str(
+                take_url_param(&mut url, "sslkey", "PGSSLKEY", true)
+                    .as_deref()
+                    .unwrap_or("~/.postgresql/postgresql.key"),
+            )
+            .with_context(|| make_context(&url))?;
+            if path.exists() {
+                builder.set_private_key_file(path, SslFiletype::PEM)?;
+            }
+            builder.set_verify(SslVerifyMode::PEER);
+            let connector = MakeTlsConnector::new(builder.build());
+            let (client, connection) = tokio_postgres::connect(url.as_str(), connector).await?;
+            let handle = spawn(async move {
+                if let Err(error) = connection.await
+                    && !error.is_closed()
+                {
+                    log::error!("Postgres connection error: {:#?}", error);
+                }
+            });
+            (client, handle)
+        };
+        Ok(Self { client, handle })
+    }
+
+    fn begin(&mut self) -> impl Future<Output = Result<PostgresTransaction<'_>>> + Send {
+        PostgresTransaction::new(self)
+    }
+
+    async fn disconnect(self) -> Result<()> {
+        drop(self.client);
+        if let Err(e) = self.handle.await {
+            let error = Error::new(e).context("While disconnecting from Postgres");
+            log::error!("{error:#}");
+            return Err(error);
+        }
+        Ok(())
+    }
+}
+
 impl Executor for PostgresConnection {
     type Driver = PostgresDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<PostgresDriver>> {
+    async fn do_prepare(
+        &mut self,
+        RawQuery { sql, .. }: RawQuery,
+    ) -> Result<Query<PostgresDriver>> {
         let sql = sql.as_str().trim_end().trim_end_matches(';');
-        Ok(
-            PostgresPrepared::new(self.client.prepare(&sql).await.map_err(|e| {
-                let error = Error::new(e).context(format!(
-                    "While preparing the query:\n{}",
-                    truncate_long!(sql)
-                ));
-                log::error!("{error:#}");
-                error
-            })?)
-            .into(),
-        )
+        let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
+        let prepared = self
+            .client
+            .prepare(sql)
+            .await
+            .map_err(Error::new)
+            .with_context(make_context)?;
+        Ok(PostgresPrepared::new(prepared).into())
     }
 
     fn run<'s>(
@@ -60,7 +156,7 @@ impl Executor for PostgresConnection {
         let mut owned = mem::take(query.as_mut());
         match owned {
             Query::Raw(raw) => Either::Left(try_stream! {
-                let sql = &raw.0;
+                let sql = raw.sql.as_str();
                 {
                     let stream = stream_postgres_simple_query_message_to_tank_query_result(
                         async move || self.client.simple_query_raw(sql).await.map_err(Into::into),
@@ -100,13 +196,14 @@ impl Executor for PostgresConnection {
         let owned = mem::take(query.as_mut());
         stream_postgres_row_to_tank_row(async move || {
             let row_stream = match owned {
-                Query::Raw(RawQuery(sql)) => {
+                Query::Raw(raw) => {
+                    let sql = raw.sql.as_str();
                     let stream = self
                         .client
-                        .query_raw(&sql, Vec::<ValueWrap>::new())
+                        .query_raw(sql, Vec::<ValueWrap>::new())
                         .await
                         .map_err(|e| Error::new(e).context(context.clone()))?;
-                    *query.as_mut() = Query::raw(sql);
+                    *query.as_mut() = Query::Raw(raw);
                     stream
                 }
                 Query::Prepared(mut prepared) => {
@@ -146,7 +243,7 @@ impl Executor for PostgresConnection {
         type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
         let mut iter = entities.into_iter();
         let writer = self.driver().sql_writer();
-        let context = || {
+        let make_context = || {
             format!(
                 "While appending to the table `{}`",
                 E::<It>::table().full_name(writer.separator())
@@ -158,7 +255,7 @@ impl Executor for PostgresConnection {
             .client
             .copy_in(&query.as_str() as &str)
             .await
-            .with_context(context)
+            .with_context(make_context)
         {
             Ok(v) => v,
             Err(e) => {
@@ -196,7 +293,7 @@ impl Executor for PostgresConnection {
             match Pin::as_mut(&mut writer)
                 .write(&refs)
                 .await
-                .with_context(context)
+                .with_context(make_context)
             {
                 Ok(_) => {}
                 Err(e) => {
@@ -207,7 +304,7 @@ impl Executor for PostgresConnection {
             refs.clear();
             values.clear();
         }
-        match writer.finish().await.with_context(context) {
+        match writer.finish().await.with_context(make_context) {
             Ok(v) => Ok(RowsAffected {
                 rows_affected: Some(v),
                 last_affected_id: None,
@@ -217,94 +314,5 @@ impl Executor for PostgresConnection {
                 return Err(e);
             }
         }
-    }
-}
-
-impl Connection for PostgresConnection {
-    async fn connect(driver: &PostgresDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = "While trying to connect to Postgres";
-        let mut url = Self::sanitize_url(driver, url).context(context)?;
-        let mut take_url_param = |key: &str, env_var: &str, remove: bool| {
-            let value = url
-                .query_pairs()
-                .find_map(|(k, v)| if k == key { Some(v) } else { None })
-                .map(|v| v.to_string());
-            if remove && let Some(..) = value {
-                let mut result = url.clone();
-                result.set_query(None);
-                result
-                    .query_pairs_mut()
-                    .extend_pairs(url.query_pairs().filter(|(k, _)| k != key));
-                url = result;
-            };
-            value.or_else(|| env::var(env_var).ok().map(Into::into))
-        };
-        let sslmode = take_url_param("sslmode", "PGSSLMODE", false).unwrap_or("disable".into());
-        let (client, handle) = if sslmode == "disable" {
-            let (client, connection) = tokio_postgres::connect(url.as_str(), NoTls).await?;
-            let handle = spawn(async move {
-                if let Err(error) = connection.await
-                    && !error.is_closed()
-                {
-                    log::error!("Postgres connection error: {:#?}", error);
-                }
-            });
-            (client, handle)
-        } else {
-            let mut builder = SslConnector::builder(SslMethod::tls())?;
-            let path = PathBuf::from_str(
-                take_url_param("sslrootcert", "PGSSLROOTCERT", true)
-                    .as_deref()
-                    .unwrap_or("~/.postgresql/root.crt"),
-            )
-            .context(context)?;
-            if path.exists() {
-                builder.set_ca_file(path)?;
-            }
-            let path = PathBuf::from_str(
-                take_url_param("sslcert", "PGSSLCERT", true)
-                    .as_deref()
-                    .unwrap_or("~/.postgresql/postgresql.crt"),
-            )
-            .context(context)?;
-            if path.exists() {
-                builder.set_certificate_chain_file(path)?;
-            }
-            let path = PathBuf::from_str(
-                take_url_param("sslkey", "PGSSLKEY", true)
-                    .as_deref()
-                    .unwrap_or("~/.postgresql/postgresql.key"),
-            )
-            .context(context)?;
-            if path.exists() {
-                builder.set_private_key_file(path, SslFiletype::PEM)?;
-            }
-            builder.set_verify(SslVerifyMode::PEER);
-            let connector = MakeTlsConnector::new(builder.build());
-            let (client, connection) = tokio_postgres::connect(url.as_str(), connector).await?;
-            let handle = spawn(async move {
-                if let Err(error) = connection.await
-                    && !error.is_closed()
-                {
-                    log::error!("Postgres connection error: {:#?}", error);
-                }
-            });
-            (client, handle)
-        };
-        Ok(Self { client, handle })
-    }
-
-    fn begin(&mut self) -> impl Future<Output = Result<PostgresTransaction<'_>>> + Send {
-        PostgresTransaction::new(self)
-    }
-
-    async fn disconnect(self) -> Result<()> {
-        drop(self.client);
-        if let Err(e) = self.handle.await {
-            let error = Error::new(e).context("While disconnecting from Postgres");
-            log::error!("{error:#}");
-            return Err(error);
-        }
-        Ok(())
     }
 }
