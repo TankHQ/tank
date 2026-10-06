@@ -1,7 +1,6 @@
 // https://vitepress.dev/guide/custom-theme
 import { h } from "vue"
 import DefaultTheme from "vitepress/theme-without-fonts"
-import TankGame from "../../components/TankGame.vue"
 import "./style.css"
 
 /** @type {import("vitepress").Theme} */
@@ -10,7 +9,6 @@ export default {
     Layout: () => {
         return h(DefaultTheme.Layout, null, {
             // https://vitepress.dev/guide/extending-default-theme#layout-slots
-            "home-hero-after": () => h(TankGame),
         })
     },
     enhanceApp({ app, router, siteData }) {
