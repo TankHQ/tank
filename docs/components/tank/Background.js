@@ -1,6 +1,5 @@
 import { valueNoise } from './util.js'
 
-
 export class Background {
     constructor(cfg) {
         this.cfg = cfg

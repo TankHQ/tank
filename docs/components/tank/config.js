@@ -22,7 +22,7 @@
 export const RUNNING_GEAR = {
     // The hull's on-screen length, in simulation pixels. The scale anchor for the
     // whole tank: change this one number and the entire vehicle resizes.
-    hullPixelLength: 448,
+    hullPixelLength: 400,
 
     // How many metres that hull length represents, for the HUD's real-world units.
     hullLengthMetres: 9.8,
@@ -75,8 +75,8 @@ export const CONFIG = {
     // where u is compression as a fraction of full travel (0 = fully extended,
     // 1 = fully compressed). The linear term sets the soft ride; the progressive
     // term makes the spring much stiffer near the bump stop.
-    springLinearStiffness: 25,
-    springProgressiveStiffness: 5,
+    springLinearStiffness: 50,
+    springProgressiveStiffness: 2,
 
     // Shock absorbers. Higher = tauter and heavier; too high and bumps stop
     // being absorbed at all.

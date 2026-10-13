@@ -42,7 +42,7 @@
         <div v-if="currentJoke">
             <p class="title">{{ currentJoke.title }}</p>
             <p class="body">{{ currentJoke.body }}</p>
-            <button @click="setRandomJoke" class="new-joke">Get a joke</button>
+            <button @click="setRandomJoke" class="VPButton medium alt">Get a joke</button>
         </div>
         <div v-else>
             <p>Loading...</p>
@@ -51,8 +51,6 @@
 </template>
 
 <style scoped>
-    .tank-joke {}
-
     .title {
         font-size: 1.25rem;
         font-style: italic;
@@ -63,8 +61,4 @@
         font-size: 1.1rem;
         color: var(--vp-c-text-2);
     }
-
-    .new-joke {}
-
-    .new-joke:hover {}
 </style>

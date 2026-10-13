@@ -1,7 +1,7 @@
 use crate::Result;
 use anyhow::anyhow;
 use std::{
-    hash::Hash,
+    hash::{Hash, Hasher},
     ops::{Add, AddAssign, Neg, Sub, SubAssign},
 };
 
@@ -217,7 +217,7 @@ impl Interval {
     pub fn as_duration(&self, days_in_month: f64) -> std::time::Duration {
         let months_nanos = (self.months as f64) * days_in_month * (Interval::NANOS_IN_DAY as f64);
         let nanos = (months_nanos as i128).saturating_add(self.days_nanos());
-        if nanos <= 0 {
+        if nanos < 0 {
             log::error!(
                 "Negative inverval `{self:?}` cannot be converted to `std::time::Duration`"
             );
@@ -291,7 +291,7 @@ impl PartialEq for Interval {
 impl Eq for Interval {}
 
 impl Hash for Interval {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         self.months.hash(state);
         self.days_nanos().hash(state);
     }
