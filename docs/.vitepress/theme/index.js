@@ -1,19 +1,13 @@
 // https://vitepress.dev/guide/custom-theme
-import { h } from "vue"
 import DefaultTheme from "vitepress/theme-without-fonts"
-import TankGame from "../../components/TankGame.vue"
+import HomeComponents from "../../components/GlobalComponents.js"
 import "./style.css"
 
 /** @type {import("vitepress").Theme} */
 export default {
     extends: DefaultTheme,
-    Layout: () => {
-        return h(DefaultTheme.Layout, null, {
-            // https://vitepress.dev/guide/extending-default-theme#layout-slots
-            "home-hero-after": () => h(TankGame),
-        })
-    },
     enhanceApp({ app, router, siteData }) {
+        app.use(HomeComponents)
         if (typeof window !== 'undefined') {
             const setupStickyTables = () => {
                 const stickyTables = document.querySelectorAll('.sticky-table');

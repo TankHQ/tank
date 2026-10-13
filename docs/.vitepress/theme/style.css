@@ -164,6 +164,36 @@ h1 .text {
     border: 1px solid #373634 !important;
 }
 
+.tk-lead {
+    max-width: 760px;
+    margin: 34px 0 0;
+    font-size: 18px;
+    line-height: 1.75;
+    color: var(--vp-c-text-2);
+    text-align: left;
+}
+
+.tk-lead strong {
+    color: var(--vp-c-text-1);
+}
+
+/* Give the home page a subtle vertical rhythm without touching doc pages. */
+.VPHome .vp-doc h2 {
+    border-top: none;
+    padding-top: 0;
+}
+
+.VPHome .vp-doc .custom-block {
+    margin: 28px 0;
+}
+
+/* Code groups nested in a CodeWindow sit flush inside the frame. */
+.tk-window__body .vp-code-group {
+    box-shadow: none;
+}
+
+
+
 .box {
     display: block !important;
     padding: 1em !important;
