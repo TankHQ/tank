@@ -3,7 +3,7 @@
 use crate::silent_logs;
 use std::{pin::pin, sync::LazyLock, time::Duration};
 use tank::{
-    Context, Driver, DynQuery, Entity, Executor, Fragment, Interval, QueryBuilder, QueryResult,
+    Context, Driver, DynQuery, Entity, Executor, Fragment, Interval, QueryBuilder, QueryResult, Results,
     RawQuery, RowsAffected, SqlValueWriter, SqlWriter, Value, expr,
     stream::{StreamExt, TryStreamExt},
 };
@@ -198,7 +198,8 @@ pub async fn interval(executor: &mut impl Executor) {
                 .from(Intervals::table())
                 .where_expr(true),
         );
-        let mut stream = pin!(executor.run(query));
+        let bundle = executor.run(query).await.unwrap();
+        let mut stream = pin!(bundle.results());
 
         // DELETE
         let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =

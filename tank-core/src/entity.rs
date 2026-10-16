@@ -1,10 +1,10 @@
 use crate::{
     ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Query, QueryBuilder,
-    Result, Row, RowValues, RowsAffected, TableRef, future::Either, stream::Stream,
+    Result, Row, RowOwned, RowValuesOwned, Rows, RowsAffected, TableRef, future::Either,
     writer::SqlWriter,
 };
 use anyhow::{Context as _, anyhow};
-use futures::{FutureExt, StreamExt};
+use futures::{FutureExt, Stream, StreamExt, TryStreamExt, stream};
 use log::Level;
 use std::{
     future::{self, Future},
@@ -46,15 +46,15 @@ pub trait Entity: AsEntity + Expression {
     -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = &'static ColumnDef>>;
 
     /// Full row representation including all persisted columns.
-    fn row_values(&self) -> RowValues;
+    fn row_values(&self) -> RowValuesOwned;
 
     /// Full row representation with column labels.
-    fn row(&self) -> Row {
+    fn row(&self) -> RowOwned {
         Row {
             labels: Self::columns()
                 .into_iter()
                 .map(|v| v.name().to_string())
-                .collect::<Arc<[String]>>(),
+                .collect(),
             values: self.row_values(),
         }
     }
@@ -62,7 +62,7 @@ pub trait Entity: AsEntity + Expression {
     /// Reconstruct `Self` from a labeled row.
     ///
     /// Fails if columns are missing or type conversion fails.
-    fn from_row(row: Row) -> Result<Self>
+    fn from_row(row: Row<'_>) -> Result<Self>
     where
         Self: Sized;
 
@@ -209,9 +209,17 @@ pub trait Entity: AsEntity + Expression {
             .from(Self::table())
             .where_expr(condition)
             .limit(limit);
-        executor
-            .fetch(builder.build(&executor.driver()))
-            .map(|result| result.and_then(Self::from_row))
+        let rows = executor.run(builder.build(&executor.driver()));
+        stream::once(rows)
+            .map_ok(|rows| {
+                stream::unfold((rows, 0usize), |(rows, index)| async move {
+                    match rows.row(index) {
+                        Some(row) => Some((row.and_then(Self::from_row), (rows, index + 1))),
+                        None => None,
+                    }
+                })
+            })
+            .try_flatten()
     }
 
     /// Deletes all entities matching a condition.

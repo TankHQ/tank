@@ -10,7 +10,7 @@ use std::{
 };
 use tank::{
     AsValue, Driver, DynQuery, Entity, Error, Executor, FixedDecimal, Query, QueryBuilder,
-    QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Value, anyhow, cols, expr,
+    QueryResult, RawQuery, Result, Rows, RowsAffected, SqlWriter, Value, anyhow, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Time, macros::date};
@@ -25,10 +25,10 @@ enum SomeEnum {
     SecondValue,
 }
 impl AsValue for SomeEnum {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> tank::ValueOwned {
         Value::Varchar(None)
     }
-    fn as_value(self) -> Value {
+    fn as_value(self) -> tank::ValueOwned {
         match self {
             Self::FirstValue => Value::Varchar(Some("first".into())),
             Self::SecondValue => Value::Varchar(Some("second".into())),
@@ -57,10 +57,10 @@ enum AnotherEnum {
     Delta,
 }
 impl AsValue for AnotherEnum {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> tank::ValueOwned {
         Value::Int8(None)
     }
-    fn as_value(self) -> Value {
+    fn as_value(self) -> tank::ValueOwned {
         match self {
             Self::Alpha => Value::Int8(Some(0)),
             Self::Bravo => Value::Int8(Some(1)),
@@ -155,6 +155,9 @@ pub async fn enums(executor: &mut impl Executor) {
                 .order_by(cols!(Entry::another_enum ASC))
                 .build(&executor.driver()),
         )
+        .await
+        .unwrap()
+        .rows()
         .map_ok(Entry::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()

@@ -1,7 +1,10 @@
 use crate::{MySQLDriver, MySQLPrepared, RowWrap};
 use async_stream::try_stream;
+use mysql_async::prelude::Queryable;
+use std::future::Future;
 use tank_core::{
-    AsQuery, Error, ErrorContext, Executor, Query, RawQuery, Result,
+    AsQuery, Error, ErrorContext, Executor, OwnedResults, Query, QueryResult, QueryResultOwned,
+    RawQuery, Result, Results, RowsAffected,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
@@ -31,8 +34,17 @@ impl<T: mysql_async::prelude::Queryable + Send> Executor for MySQLQueryable<T> {
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<MySQLDriver> + 's,
-    ) -> impl Stream<Item = Result<tank_core::QueryResult>> + Send {
+        query: impl AsQuery<MySQLDriver> + Send + 's,
+    ) -> impl Future<Output = Result<impl Results>> + Send {
+        async move { OwnedResults::from_query_result_stream(self.do_run(query)).await }
+    }
+}
+
+impl<T: Queryable + Send> MySQLQueryable<T> {
+    fn do_run<'s, Q: AsQuery<MySQLDriver> + 's>(
+        &'s mut self,
+        query: Q,
+    ) -> impl Stream<Item = Result<QueryResultOwned>> + Send + 's {
         let mut query = query.as_query();
         let context = format!("While running the query:\n{}", query.as_mut());
         try_stream! {
@@ -43,12 +55,12 @@ impl<T: mysql_async::prelude::Queryable + Send> Executor for MySQLQueryable<T> {
                     while let Some(mut stream) = result.stream::<RowWrap>().await? {
                         while let Some(row) = stream.next().await.transpose()? {
                             rows += 1;
-                            yield tank_core::QueryResult::Row(row.0)
+                            yield QueryResult::Row(row.0)
                         }
                     }
                     let affected = result.affected_rows();
                     if rows == 0 && affected > 0 {
-                        yield tank_core::QueryResult::Affected(tank_core::RowsAffected {
+                        yield QueryResult::Affected(RowsAffected {
                             rows_affected: Some(affected),
                             last_affected_id: result.last_insert_id().map(|v| v as _),
                         });

@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::sync::LazyLock;
 use tank::{
-    AsValue, Entity, Error, Executor, QueryBuilder, Result, Value, anyhow, cols, expr,
+    AsValue, Entity, Error, Executor, QueryBuilder, Result, Rows, Value, anyhow, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -24,11 +24,11 @@ impl HostPort {
 }
 
 impl AsValue for HostPort {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> tank::ValueOwned {
         Value::Varchar(None)
     }
 
-    fn as_value(self) -> Value {
+    fn as_value(self) -> tank::ValueOwned {
         Value::Varchar(Some(format!("{}:{}", self.host, self.port).into()))
     }
 
@@ -120,6 +120,9 @@ pub async fn service(executor: &mut impl Executor) {
 
     let api_by_addr = executor
         .fetch(query)
+        .await
+        .unwrap()
+        .rows()
         .map_ok(Service::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
@@ -162,6 +165,9 @@ pub async fn service(executor: &mut impl Executor) {
                     .order_by(cols!(Service::addr ASC))
                     .build(&executor.driver()),
             )
+            .await
+            .unwrap()
+            .rows()
             .map_ok(Service::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()

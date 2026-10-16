@@ -6,9 +6,9 @@ use serde::{
     ser::{Error as _, SerializeMap},
 };
 use std::borrow::Cow;
-use tank_core::Row;
+use tank_core::{Row, RowOwned};
 
-pub(crate) struct RowWrap<'a>(pub(crate) Cow<'a, Row>);
+pub(crate) struct RowWrap<'a>(pub(crate) Cow<'a, RowOwned>);
 
 impl<'a> TryFrom<Document> for RowWrap<'a> {
     type Error = tank_core::Error;

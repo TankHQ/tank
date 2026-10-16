@@ -1,11 +1,7 @@
 use crate::{
-    PostgresDriver, PostgresPrepared, PostgresTransaction, ValueWrap,
-    util::{
-        postgres_type_to_value, stream_postgres_row_to_tank_row,
-        stream_postgres_simple_query_message_to_tank_query_result, value_to_postgres_type,
-    },
+    PostgresDriver, PostgresPrepared, PostgresResults, PostgresTransaction, ValueWrap,
+    util::{postgres_type_to_value, value_to_postgres_type},
 };
-use async_stream::try_stream;
 use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
 use postgres_openssl::MakeTlsConnector;
 use postgres_types::ToSql;
@@ -18,9 +14,8 @@ use std::{
 };
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, RawQuery, Result, RowsAffected, SqlCoreWriter, Transaction, describe_url,
-    future::Either,
-    stream::{Stream, StreamExt, TryStreamExt},
+    RawQuery, Result, RowsAffected, SqlCoreWriter, describe_url,
+    stream::TryStreamExt,
     truncate_long,
 };
 use tokio::{spawn, task::JoinHandle};
@@ -34,8 +29,7 @@ pub struct PostgresConnection {
     pub(crate) handle: JoinHandle<()>,
 }
 
-impl Connection for PostgresConnection {
-    async fn connect(driver: &PostgresDriver, url: Cow<'static, str>) -> Result<Self> {
+impl Connection for PostgresConnection {    async fn connect(driver: &PostgresDriver, url: Cow<'static, str>) -> Result<Self> {
         let mut url = Self::sanitize_url(driver, url)?;
         let make_context = |url: &Url| {
             format!(
@@ -129,6 +123,73 @@ impl Connection for PostgresConnection {
     }
 }
 
+impl PostgresConnection {
+    /// Runs a single-statement raw query through the typed protocol, so column
+    /// values (arrays in particular) are decoded with full type information.
+    async fn run_typed(
+        &self,
+        sql: &str,
+        context: &str,
+    ) -> Result<PostgresResults> {
+        let rows = self
+            .client
+            .query_raw(sql, Vec::<ValueWrap>::new())
+            .await
+            .map_err(|e| Error::new(e).context(context.to_string()))?;
+        let mut rows = pin!(rows);
+        let mut collected = Vec::new();
+        while let Some(row) = rows.try_next().await? {
+            collected.push(row);
+        }
+        let affected = rows.rows_affected();
+        PostgresResults::new(collected, affected)
+    }
+
+    /// Runs raw SQL through the simple protocol, which (unlike the extended
+    /// protocol) accepts several semicolon-separated statements. Values are
+    /// decoded as text/unknown because the simple protocol carries no type
+    /// information.
+    async fn run_simple(&mut self, sql: &str, context: &str) -> Result<PostgresResults> {
+        let messages = self
+            .client
+            .simple_query_raw(sql)
+            .await
+            .map_err(|e| Error::new(e).context(context.to_string()))?;
+        let mut messages = pin!(messages);
+        let mut labels: Option<tank_core::RowLabels> = None;
+        let mut arena: Vec<tank_core::ValueOwned> = Vec::new();
+        let mut spans: Vec<std::ops::Range<usize>> = Vec::new();
+        let mut row_labels: Vec<tank_core::RowLabels> = Vec::new();
+        let mut items: Vec<crate::rows::Item> = Vec::new();
+        while let Some(message) = messages.try_next().await? {
+            match message {
+                tokio_postgres::SimpleQueryMessage::Row(row) => {
+                    let labels = labels.get_or_insert_with(|| {
+                        row.columns()
+                            .iter()
+                            .map(|c| c.name().to_string())
+                            .collect()
+                    });
+                    let start = arena.len();
+                    let decoded = crate::util::simple_query_row_to_tank_row_owned(labels, row)?;
+                    arena.extend(decoded.values.into_owned());
+                    spans.push(start..arena.len());
+                    row_labels.push(labels.clone());
+                    items.push(crate::rows::Item::Row(spans.len() - 1));
+                }
+                tokio_postgres::SimpleQueryMessage::CommandComplete(rows_affected) => {
+                    items.push(crate::rows::Item::Affected(tank_core::RowsAffected {
+                        rows_affected: Some(rows_affected),
+                        last_affected_id: None,
+                    }));
+                }
+                _ => {}
+            }
+        }
+        Ok(PostgresResults::from_parts(arena, spans, items, row_labels))
+    }
+}
+
 impl Executor for PostgresConnection {
     type Driver = PostgresDriver;
 
@@ -149,67 +210,28 @@ impl Executor for PostgresConnection {
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<PostgresDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
-        let mut query = query.as_query();
-        let context = format!("While running the query:\n{}", query.as_mut());
-        let mut owned = mem::take(query.as_mut());
-        match owned {
-            Query::Raw(raw) => Either::Left(try_stream! {
-                let sql = raw.sql.as_str();
-                {
-                    let stream = stream_postgres_simple_query_message_to_tank_query_result(
-                        async move || self.client.simple_query_raw(sql).await.map_err(Into::into),
-                    );
-                    let mut stream = pin!(stream);
-                    while let Some(value) = stream.next().await.transpose()? {
-                        yield value;
-                    }
-                }
-                *query.as_mut() = Query::Raw(raw);
-            }),
-            Query::Prepared(..) => Either::Right(try_stream! {
-                let mut transaction = self.begin().await?;
-                {
-                    let mut stream = pin!(transaction.run(&mut owned));
-                    while let Some(value) = stream.next().await.transpose()? {
-                        yield value;
-                    }
-                }
-                transaction.commit().await?;
-                *query.as_mut() = mem::take(&mut owned);
-            }),
-        }
-        .map_err(move |e: Error| {
-            let error = e.context(context.clone());
-            log::error!("{error:#}");
-            error
-        })
-    }
-
-    fn fetch<'s>(
-        &'s mut self,
-        query: impl AsQuery<PostgresDriver> + 's,
-    ) -> impl Stream<Item = Result<tank_core::Row>> + Send {
-        let mut query = query.as_query();
-        let context = format!("While fetching the query:\n{}", query.as_mut());
-        let owned = mem::take(query.as_mut());
-        stream_postgres_row_to_tank_row(async move || {
-            let row_stream = match owned {
+        query: impl AsQuery<PostgresDriver> + Send + 's,
+    ) -> impl Future<Output = Result<impl tank_core::Results>> + Send {
+        async move {
+            let mut query = query.as_query();
+            let context = format!("While running the query:\n{}", query.as_mut());
+            let owned = mem::take(query.as_mut());
+            let result: Result<PostgresResults> = match owned {
                 Query::Raw(raw) => {
-                    let sql = raw.sql.as_str();
-                    let stream = self
-                        .client
-                        .query_raw(sql, Vec::<ValueWrap>::new())
-                        .await
-                        .map_err(|e| Error::new(e).context(context.clone()))?;
+                    let result = if crate::util::has_multiple_statements(&raw.sql) {
+                        // The extended protocol cannot run several commands in
+                        // one prepared statement, so multi-statement raw SQL
+                        // goes through the simple protocol.
+                        self.run_simple(&raw.sql, &context).await
+                    } else {
+                        self.run_typed(&raw.sql, &context).await
+                    };
                     *query.as_mut() = Query::Raw(raw);
-                    stream
+                    result
                 }
                 Query::Prepared(mut prepared) => {
                     let mut params = prepared.take_params();
                     let types = prepared.statement.params();
-
                     for (i, param) in params.iter_mut().enumerate() {
                         *param = ValueWrap(Cow::Owned(
                             mem::take(param)
@@ -218,20 +240,26 @@ impl Executor for PostgresConnection {
                                 .try_as(&postgres_type_to_value(&types[i]))?,
                         ));
                     }
-                    let stream = self
+                    let rows = self
                         .client
                         .query_raw(&prepared.statement, params)
                         .await
                         .map_err(|e| Error::new(e).context(context.clone()))?;
+                    let mut rows = pin!(rows);
+                    let mut collected = Vec::new();
+                    while let Some(row) = rows.try_next().await? {
+                        collected.push(row);
+                    }
+                    let affected = rows.rows_affected();
                     *query.as_mut() = Query::Prepared(prepared);
-                    stream
+                    PostgresResults::new(collected, affected)
                 }
             };
-            Ok(row_stream).map_err(|e| {
+            result.map_err(|e| {
                 log::error!("{e:#}");
                 e
             })
-        })
+        }
     }
 
     async fn append<It>(&mut self, entities: It) -> Result<RowsAffected>
@@ -280,6 +308,7 @@ impl Executor for PostgresConnection {
                         entity
                             .as_entity()
                             .row_values()
+                            .into_owned()
                             .into_iter()
                             .map(|v| ValueWrap(Cow::Owned(v))),
                     );

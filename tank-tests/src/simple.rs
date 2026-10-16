@@ -9,7 +9,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use tank::{
-    Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult, RawQuery,
+    Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult, Results, RawQuery,
     RowsAffected, SqlWriter, expr, stream::TryStreamExt,
 };
 use time::{Date, Time, macros::date};
@@ -120,7 +120,8 @@ pub async fn simple(executor: &mut impl Executor) {
                 .where_expr(true),
         );
         {
-            let mut stream = pin!(executor.run(query));
+            let bundle = executor.run(query).await.unwrap();
+        let mut stream = pin!(bundle.results());
             let result = stream
                 .try_next()
                 .await
@@ -238,7 +239,8 @@ pub async fn simple(executor: &mut impl Executor) {
                 .where_expr(true),
         );
         {
-            let mut stream = pin!(executor.run(query));
+            let bundle = executor.run(query).await.unwrap();
+        let mut stream = pin!(bundle.results());
             let Ok(Some(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
                 stream.try_next().await
             else {

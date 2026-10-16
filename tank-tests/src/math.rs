@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 use tank::{
-    AsValue, Entity, Executor, QueryBuilder, Result, cols, expr,
+    AsValue, Entity, Executor, QueryBuilder, Result, Rows, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -37,6 +37,9 @@ pub async fn math(executor: &mut impl Executor) {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
+        .await
+        .unwrap()
+        .rows()
         .map_ok(MathTable::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
@@ -52,6 +55,9 @@ pub async fn math(executor: &mut impl Executor) {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
+        .await
+        .unwrap()
+        .rows()
         .map_ok(MathTable::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
@@ -67,6 +73,9 @@ pub async fn math(executor: &mut impl Executor) {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
+        .await
+        .unwrap()
+        .rows()
         .map_ok(MathTable::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
@@ -82,7 +91,10 @@ pub async fn math(executor: &mut impl Executor) {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
-        .map_ok(|v| bool::try_from_value(v.values.into_iter().nth(1).unwrap()))
+        .await
+        .unwrap()
+        .rows()
+        .map_ok(|v| bool::try_from_value(v.values.iter().cloned().nth(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await
@@ -97,7 +109,10 @@ pub async fn math(executor: &mut impl Executor) {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
-        .map_ok(|v| bool::try_from_value(v.values.into_iter().nth(1).unwrap()))
+        .await
+        .unwrap()
+        .rows()
+        .map_ok(|v| bool::try_from_value(v.values.iter().cloned().nth(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await
@@ -115,6 +130,9 @@ pub async fn math(executor: &mut impl Executor) {
                     .where_expr(expr!(MathTable::id == 0))
                     .build(&executor.driver()),
             )
+            .await
+            .unwrap()
+            .rows()
             .map_ok(MathTable::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()
@@ -134,6 +152,9 @@ pub async fn math(executor: &mut impl Executor) {
                     .where_expr(expr!(MathTable::id == 0))
                     .build(&executor.driver()),
             )
+            .await
+            .unwrap()
+            .rows()
             .map_ok(MathTable::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()

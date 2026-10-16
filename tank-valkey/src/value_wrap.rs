@@ -3,15 +3,15 @@ use redis::{FromRedisValue, RedisWrite, ToRedisArgs};
 use std::{borrow::Cow, collections::HashMap};
 
 #[derive(Default, PartialEq, Eq, Hash, Debug)]
-pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, tank_core::Value>);
+pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, tank_core::Value<'a>>);
 
-impl<'a> From<ValueWrap<'a>> for tank_core::Value {
+impl<'a> From<ValueWrap<'a>> for tank_core::ValueOwned {
     fn from(value: ValueWrap<'a>) -> Self {
-        value.0.into_owned()
+        value.0.into_owned().into_owned()
     }
 }
 
-impl<'a> From<&'a ValueWrap<'a>> for &'a tank_core::Value {
+impl<'a> From<&'a ValueWrap<'a>> for &'a tank_core::Value<'a> {
     fn from(value: &'a ValueWrap<'a>) -> Self {
         match &value.0 {
             Cow::Borrowed(v) => *v,
@@ -20,13 +20,13 @@ impl<'a> From<&'a ValueWrap<'a>> for &'a tank_core::Value {
     }
 }
 
-impl<'a> From<tank_core::Value> for ValueWrap<'a> {
-    fn from(value: tank_core::Value) -> Self {
+impl<'a> From<tank_core::Value<'a>> for ValueWrap<'a> {
+    fn from(value: tank_core::Value<'a>) -> Self {
         Self(Cow::Owned(value))
     }
 }
 
-impl<'a> From<&'a tank_core::Value> for ValueWrap<'a> {
+impl<'a> From<&'a tank_core::Value<'a>> for ValueWrap<'a> {
     fn from(value: &'a tank_core::Value) -> Self {
         Self(Cow::Borrowed(value))
     }
@@ -107,7 +107,7 @@ impl<'a> TryFrom<ValueWrap<'a>> for redis::Value {
     type Error = tank_core::Error;
 
     fn try_from(value: ValueWrap) -> Result<Self, Self::Error> {
-        let value: tank_core::Value = value.into();
+        let value: tank_core::ValueOwned = value.into();
         Ok(match value {
             v if v.is_null() => redis::Value::Nil,
             tank_core::Value::Boolean(Some(v)) => redis::Value::Boolean(v),

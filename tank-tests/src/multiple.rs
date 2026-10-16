@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
 use tank::{AsValue, DynQuery, QueryBuilder, SqlWriter};
-use tank::{Driver, Entity, Executor, QueryResult, stream::TryStreamExt};
+use tank::{Driver, Entity, Executor, QueryResult, Results, stream::TryStreamExt};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -113,8 +113,9 @@ pub async fn multiple(executor: &mut impl Executor) {
             .where_expr(true),
     );
     query.push_str("            \t    \t\t  \n \n \n \t    \n\n\n ");
-    let result = executor
-        .run(query)
+    let bundle = executor.run(query).await.unwrap();
+    let result = bundle
+        .results()
         .try_collect::<Vec<_>>()
         .await
         .expect("Could not run the composite query");

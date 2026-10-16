@@ -48,7 +48,7 @@ mod tests {
         );
         assert!(Value::Json(None).is_null());
         assert!(Value::Json(Some(serde_json::Value::Null)).is_null());
-        assert!(Value::Struct(None, vec![], TableRef::new("t".into()),).is_null());
+        assert!(Value::Struct(None, vec![], Box::new(TableRef::new("t".into()))).is_null());
         assert!(Value::Unknown(None).is_null());
 
         assert!(!Value::Boolean(Some(false)).is_null());
@@ -148,13 +148,13 @@ mod tests {
             Value::Struct(
                 Some(vec![("id".into(), 1_i32.as_value())]),
                 vec![("id".into(), i32::as_empty_value())],
-                TableRef::new("t".into()),
+                Box::new(TableRef::new("t".into())),
             )
             .as_null(),
             Value::Struct(
                 None,
                 vec![("id".into(), i32::as_empty_value())],
-                TableRef::new("t".into()),
+                Box::new(TableRef::new("t".into())),
             )
         );
         assert!(Value::Unknown(Some("x".into())).as_null().is_null());
@@ -199,7 +199,7 @@ mod tests {
             .is_scalar()
         );
         assert!(!Value::Json(None).is_scalar());
-        assert!(!Value::Struct(None, vec![], TableRef::new("t".into())).is_scalar());
+        assert!(!Value::Struct(None, vec![], Box::new(TableRef::new("t".into()))).is_scalar());
     }
 
     #[test]
@@ -579,17 +579,17 @@ mod tests {
             Value::Struct(
                 Some(vec![("a".into(), 1_i32.as_value())]),
                 vec![("a".into(), i32::as_empty_value())],
-                TableRef::new("t".into()),
+                Box::new(TableRef::new("t".into())),
             ),
             Value::Struct(
                 Some(vec![("a".into(), 1_i32.as_value())]),
                 vec![("a".into(), i32::as_empty_value())],
-                TableRef::new("t".into()),
+                Box::new(TableRef::new("t".into())),
             ),
         );
         assert_ne!(
-            Value::Struct(Some(vec![]), vec![], TableRef::new("t1".into()),),
-            Value::Struct(Some(vec![]), vec![], TableRef::new("t2".into()),),
+            Value::Struct(Some(vec![]), vec![], Box::new(TableRef::new("t1".into())),),
+            Value::Struct(Some(vec![]), vec![], Box::new(TableRef::new("t2".into())),),
         );
         assert_eq!(Value::UInt8(Some(1)), Value::UInt8(Some(1)));
         assert_ne!(Value::UInt8(Some(1)), Value::UInt8(Some(2)));
@@ -672,12 +672,12 @@ mod tests {
         set.insert(Value::Struct(
             Some(vec![("a".into(), 1_i32.as_value())]),
             vec![("a".into(), i32::as_empty_value())],
-            TableRef::new("t".into()),
+            Box::new(TableRef::new("t".into())),
         ));
         set.insert(Value::Struct(
             None,
             vec![("a".into(), i32::as_empty_value())],
-            TableRef::new("t2".into()),
+            Box::new(TableRef::new("t2".into())),
         ));
         set.insert(Value::Unknown(Some("x".into())));
         let d = time::Date::from_calendar_date(2024, time::Month::January, 15).unwrap();

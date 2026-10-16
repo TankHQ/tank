@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
 use tank::{
-    AsValue, Dataset, Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, Row,
-    SqlWriter, Value, cols, expr, join,
+    AsValue, Dataset, Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, Results, Row,
+    Rows, SqlWriter, Value, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -190,6 +190,9 @@ pub async fn books(executor: &mut impl Executor) {
                     .order_by(cols!(B.title DESC))
                     .build(&executor.driver()),
             )
+            .await
+            .unwrap()
+            .rows()
             .map_ok(BookAuthorResult::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()
@@ -214,34 +217,39 @@ pub async fn books(executor: &mut impl Executor) {
             Book B LEFT JOIN Author A1 ON B.author == A1.author_id
                 LEFT JOIN Author A2 ON B.co_author == A2.author_id
         );
-        let result = executor
-            .fetch(
-                QueryBuilder::new()
-                    .select(cols!(B.title, A1.name as author, A2.name as co_author))
-                    .from(dataset)
-                    .where_expr(true)
-                    .build(&executor.driver()),
-            )
-            .try_collect::<Vec<Row>>()
-            .await
-            .expect("Failed to query books and authors joined")
-            .into_iter()
-            .map(|row| {
-                let mut iter = row.values.into_iter();
+        let result = {
+            let bundle = executor
+                .fetch(
+                    QueryBuilder::new()
+                        .select(cols!(B.title, A1.name as author, A2.name as co_author))
+                        .from(dataset)
+                        .where_expr(true)
+                        .build(&executor.driver()),
+                )
+                .await
+                .unwrap();
+            bundle
+                .rows()
+                .try_collect::<Vec<Row>>()
+                .await
+                .expect("Failed to query books and authors joined")
+                .into_iter()
+                .map(|row| {
+                let mut iter = row.values.iter().cloned();
                 (
                     match iter.next().unwrap() {
-                        Value::Varchar(Some(v)) => v,
-                        Value::Unknown(Some(v)) => v.into(),
+                        Value::Varchar(Some(v)) => v.into_owned(),
+                        Value::Unknown(Some(v)) => v.into_owned(),
                         v => panic!("Expected 1st value to be non null varchar, found {v:?}"),
                     },
                     match iter.next().unwrap() {
-                        Value::Varchar(Some(v)) => v,
-                        Value::Unknown(Some(v)) => v.into(),
+                        Value::Varchar(Some(v)) => v.into_owned(),
+                        Value::Unknown(Some(v)) => v.into_owned(),
                         v => panic!("Expected 2nd value to be non null varchar, found {v:?}"),
                     },
                     match iter.next().unwrap() {
-                        Value::Varchar(Some(v)) => Some(v),
-                        Value::Unknown(Some(v)) => Some(v.into()),
+                        Value::Varchar(Some(v)) => Some(v.into_owned()),
+                        Value::Unknown(Some(v)) => Some(v.into_owned()),
                         Value::Varchar(None) | Value::Null => None,
                         v => panic!(
                             "Expected 3rd value to be a Some(Value::Varchar(..)) | Value::Unknown(Some(..)) | Some(Value::Null)), found {v:?}",
@@ -249,7 +257,8 @@ pub async fn books(executor: &mut impl Executor) {
                     },
                 )
             })
-            .collect::<HashSet<_>>();
+            .collect::<HashSet<_>>()
+        };
         assert_eq!(
             result,
             HashSet::from_iter([
@@ -287,6 +296,9 @@ pub async fn books(executor: &mut impl Executor) {
                     .where_expr(true)
                     .build(&executor.driver()),
             )
+            .await
+            .unwrap()
+            .rows()
             .and_then(|row| async { Books::from_row(row) })
             .try_collect::<HashSet<_>>()
             .await
@@ -350,6 +362,9 @@ pub async fn books(executor: &mut impl Executor) {
                     .order_by(cols!(Author::name ASC))
                     .build(&executor.driver()),
             )
+            .await
+            .unwrap()
+            .rows()
             .and_then(|row| async move { AsValue::try_from_value((*row.values)[0].clone()) })
             .try_collect::<Vec<String>>()
             .await
@@ -386,7 +401,8 @@ pub async fn books(executor: &mut impl Executor) {
                 .where_expr(expr!(Book::title == "Harry Potter and the Deathly Hallows"))
                 .limit(Some(1)),
         );
-        let mut stream = pin!(executor.run(query));
+        let bundle = executor.run(query).await.unwrap();
+        let mut stream = pin!(bundle.results());
         let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
             panic!("Could not get the first row")
         };

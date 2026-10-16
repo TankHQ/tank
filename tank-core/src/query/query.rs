@@ -148,9 +148,12 @@ impl<D: Driver> AsMut<Query<D>> for Query<D> {
 
 /// Items from `Executor::run`: rows or effects.
 #[derive(Debug)]
-pub enum QueryResult {
+pub enum QueryResult<'a> {
     /// A labeled row
-    Row(Row),
+    Row(Row<'a>),
     /// A modify effect aggregation
     Affected(RowsAffected),
 }
+
+/// Owning query result.
+pub type QueryResultOwned = QueryResult<'static>;

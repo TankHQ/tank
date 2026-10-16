@@ -11,16 +11,20 @@ use scylla::{
     },
 };
 use std::{
-    borrow::Cow, net::IpAddr, num::NonZeroU64, ops::ControlFlow, pin::pin, str::FromStr,
+    borrow::Cow,
+    future::Future,
+    net::IpAddr,
+    num::NonZeroU64,
+    ops::ControlFlow,
+    str::FromStr,
     time::Duration,
 };
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, Row,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, QueryResultOwned, RawQuery, Result,
     describe_url,
-    stream::{Stream, StreamExt, TryStreamExt},
+    stream::{Stream, TryStreamExt},
     truncate_long,
-};
-use tokio::task;
+};use tokio::task;
 
 /// Connection wrapper for ScyllaDB/Cassandra sessions.
 ///
@@ -295,8 +299,19 @@ impl Executor for ScyllaDBConnection {
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<ScyllaDBDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+        query: impl AsQuery<ScyllaDBDriver> + Send + 's,
+    ) -> impl Future<Output = Result<impl tank_core::Results>> + Send {
+        use tank_core::future::FutureExt;
+        async move { tank_core::OwnedResults::from_query_result_stream(self.do_run(query)).await }
+            .boxed()
+    }
+}
+
+impl ScyllaDBConnection {
+    fn do_run<'s, Q: AsQuery<ScyllaDBDriver> + 's>(
+        &'s mut self,
+        query: Q,
+    ) -> impl Stream<Item = Result<QueryResultOwned>> + Send + 's {
         let mut query = query.as_query();
         let context = format!("While running the query:\n{}", query.as_mut());
         stream! {
@@ -332,40 +347,6 @@ impl Executor for ScyllaDBConnection {
                         paging_state = new_paging_state;
                     }
                 }
-            }
-        }
-        .map_err(move |e: Error| {
-            let error = e.context(context.clone());
-            log::error!("{error:#}");
-            error
-        })
-    }
-
-    fn fetch<'s>(
-        &'s mut self,
-        query: impl AsQuery<ScyllaDBDriver> + 's,
-    ) -> impl Stream<Item = Result<Row>> + Send {
-        let mut query = query.as_query();
-        let context = format!("While fetching the query:\n{}", query.as_mut());
-        stream! {
-            let stream = match query.as_mut() {
-                Query::Raw(RawQuery { sql, .. }) => {
-                    self.session
-                        .query_iter(sql.as_str(), [])
-                        .await?
-                        .rows_stream::<RowWrap>()?
-                }
-                Query::Prepared(prepared) => {
-                    let params = prepared.take_params()?;
-                    self.session
-                        .execute_iter(prepared.statement.clone(), params)
-                        .await?
-                        .rows_stream::<RowWrap>()?
-                }
-            };
-            let mut stream = pin!(stream);
-            while let Some(row) = stream.next().await.transpose()? {
-                yield Ok(row.0)
             }
         }
         .map_err(move |e: Error| {

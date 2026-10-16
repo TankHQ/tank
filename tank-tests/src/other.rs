@@ -1,6 +1,6 @@
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    DynQuery, Entity, Executor, QueryBuilder, cols, expr,
+    DynQuery, Entity, Executor, QueryBuilder, Rows, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -40,21 +40,27 @@ pub async fn other(executor: &mut impl Executor) {
     .expect("Could not save a row");
 
     // SELECT NULL
-    let stream = executor
-        .fetch(
-            QueryBuilder::new()
-                .select(cols!(NULL))
-                .from(ATable::table())
-                .where_expr(true)
-                .build(&executor.driver()),
-        )
-        .map_ok(|v| v.values.into_iter().nth(0).unwrap());
-    let value = pin!(stream)
-        .next()
-        .await
-        .expect("No result returned from the stream")
-        .expect("Could not query for NULL");
-    assert!(value.is_null());
+    {
+        let bundle = executor
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(NULL))
+                    .from(ATable::table())
+                    .where_expr(true)
+                    .build(&executor.driver()),
+            )
+            .await
+            .unwrap();
+        let stream = bundle
+            .rows()
+            .map_ok(|v| v.values.iter().cloned().nth(0).unwrap());
+        let value = pin!(stream)
+            .next()
+            .await
+            .expect("No result returned from the stream")
+            .expect("Could not query for NULL");
+        assert!(value.is_null());
+    }
 
     // InsertIntoQueryBuilder::build and build_into should produce identical SQL
     let rows = vec![ATable {

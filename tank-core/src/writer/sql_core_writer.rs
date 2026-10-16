@@ -108,7 +108,7 @@ pub trait SqlCoreWriter: Send {
     }
 
     /// Write SQL type name.
-    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value) {
+    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
         match value {
             Value::Boolean(..) => out.push_str("BOOLEAN"),
             Value::Int8(..) => out.push_str("TINYINT"),

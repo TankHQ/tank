@@ -6,7 +6,7 @@ mod tests {
     use std::sync::Mutex;
     use tank_clickhouse::{ClickHouseConnection, ClickHouseDriver};
     use tank_core::{
-        AsValue, Connection, ConnectionPool, Driver, Entity, Executor, PoolConfig, QueryResult,
+        AsValue, Connection, ConnectionPool, Driver, Entity, Executor, PoolConfig, QueryResult, Results, Rows,
         stream::TryStreamExt,
     };
     use tank_tests::{init_logs, silent_logs};
@@ -61,22 +61,34 @@ mod tests {
         query
             .bind(Option::<i64>::None)
             .expect("Could not bind a NULL");
-        let rows = connection
-            .fetch(&mut query)
-            .and_then(|row| async move { PreparedNullable::from_row(row) })
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not query by the NULL value");
+        let rows = {
+            let bundle = connection
+                .fetch(&mut query)
+                .await
+                .expect("Could not query by the NULL value");
+            bundle
+                .rows()
+                .and_then(|row| async move { PreparedNullable::from_row(row) })
+                .try_collect::<Vec<_>>()
+                .await
+                .expect("Could not query by the NULL value")
+        };
         assert!(rows.is_empty(), "A NULL parameter must not match any row");
 
         // The same statement must be reusable with a new binding.
         query.bind(7_i64).expect("Could not rebind the value");
-        let rows = connection
-            .fetch(&mut query)
-            .and_then(|row| async move { PreparedNullable::from_row(row) })
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not rerun the prepared query");
+        let rows = {
+            let bundle = connection
+                .fetch(&mut query)
+                .await
+                .expect("Could not rerun the prepared query");
+            bundle
+                .rows()
+                .and_then(|row| async move { PreparedNullable::from_row(row) })
+                .try_collect::<Vec<_>>()
+                .await
+                .expect("Could not rerun the prepared query")
+        };
         assert_eq!(
             rows,
             [PreparedNullable {
@@ -108,8 +120,9 @@ mod tests {
             .get()
             .await
             .expect("Could not get a connection without an explicit database");
-        let rows = connection
-            .run("SELECT 1")
+        let bundle = connection.run("SELECT 1").await.unwrap();
+        let rows = bundle
+            .results()
             .try_collect::<Vec<_>>()
             .await
             .expect("Could not run a query on the default database");
@@ -158,10 +171,14 @@ mod tests {
 
         // The driver sets these session settings on connect.
         for (name, expected) in [("join_use_nulls", "1"), ("final", "1")] {
-            let rows = connection
+            let bundle = connection
                 .run(format!(
                     "SELECT value FROM system.settings WHERE name = '{name}'"
                 ))
+                .await
+                .unwrap();
+            let rows = bundle
+                .results()
                 .try_collect::<Vec<_>>()
                 .await
                 .expect("Could not read the session setting");

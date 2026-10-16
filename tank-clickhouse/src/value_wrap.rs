@@ -1,12 +1,12 @@
 use anyhow::anyhow;
 use klickhouse::{Type, Value as KlValue};
 use std::{borrow::Cow, collections::HashMap, fmt::Write as _};
-use tank_core::{Result, Value, decimal_from_scaled};
+use tank_core::{Result, Value, ValueOwned, decimal_from_scaled};
 use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
 use uuid::Uuid;
 
 /// Convert a klickhouse value to a tank value.
-pub(crate) fn extract_value(ty: &Type, val: KlValue) -> Result<Value> {
+pub(crate) fn extract_value(ty: &Type, val: KlValue) -> Result<ValueOwned> {
     match ty {
         Type::Nullable(inner) => {
             return match val {
@@ -174,12 +174,12 @@ pub(crate) fn extract_value(ty: &Type, val: KlValue) -> Result<Value> {
         KlValue::Enum8(v) => Ok(Value::Int8(Some(v))),
         KlValue::Enum16(v) => Ok(Value::Int16(Some(v))),
 
-        other => Ok(Value::Unknown(Some(format!("{other:?}")))),
+        other => Ok(Value::Unknown(Some(format!("{other:?}").into()))),
     }
 }
 
 /// Build a null prototype for nested collection types.
-pub(crate) fn clickhouse_type_to_value(ty: &Type) -> Value {
+pub(crate) fn clickhouse_type_to_value(ty: &Type) -> ValueOwned {
     match ty {
         Type::Int8 => Value::Int8(None),
         Type::Int16 => Value::Int16(None),

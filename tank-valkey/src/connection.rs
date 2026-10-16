@@ -4,10 +4,10 @@ use async_stream::try_stream;
 use redis::{Client, aio::MultiplexedConnection};
 use std::{borrow::Cow, future, mem, sync::Arc};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Row,
-    RowsAffected, describe_url, stream::Stream, truncate_long,
+    AsQuery, Connection, Error, ErrorContext, Executor, OwnedResults, Query, QueryResult,
+    QueryResultOwned, Result, Results, Row, RowsAffected, describe_url, stream::Stream,
+    truncate_long,
 };
-
 #[derive(Debug)]
 pub struct ValkeyConnection {
     driver: ValkeyDriver,
@@ -60,8 +60,17 @@ impl Executor for ValkeyConnection {
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<ValkeyDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+        query: impl AsQuery<ValkeyDriver> + Send + 's,
+    ) -> impl Future<Output = Result<impl Results>> + Send {
+        async move { OwnedResults::from_query_result_stream(self.do_run(query)).await }
+    }
+}
+
+impl ValkeyConnection {
+    fn do_run<'s, Q: AsQuery<ValkeyDriver> + 's>(
+        &'s mut self,
+        query: Q,
+    ) -> impl Stream<Item = Result<QueryResultOwned>> + Send + 's {
         let mut query = query.as_query();
         try_stream! {
             let Query::Prepared(prepared) = query.as_mut() else {

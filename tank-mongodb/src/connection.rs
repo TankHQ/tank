@@ -8,8 +8,8 @@ use async_stream::try_stream;
 use mongodb::{Client, ClientSession, Collection, Database, bson::Bson};
 use std::{borrow::Cow, future, i64};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result,
-    RowsAffected, TableRef, describe_url,
+    AsQuery, Connection, Error, ErrorContext, Executor, OwnedResults, Query, QueryResult,
+    QueryResultOwned, RawQuery, Result, Results, RowsAffected, TableRef, describe_url,
     stream::{Stream, TryStreamExt},
     truncate_long,
 };
@@ -106,8 +106,17 @@ impl Executor for MongoDBConnection {
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<MongoDBDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+        query: impl AsQuery<MongoDBDriver> + Send + 's,
+    ) -> impl Future<Output = Result<impl Results>> + Send {
+        async move { OwnedResults::from_query_result_stream(self.do_run(query)).await }.boxed()
+    }
+}
+
+impl MongoDBConnection {
+    fn do_run<'s, Q: AsQuery<MongoDBDriver> + 's>(
+        &'s mut self,
+        query: Q,
+    ) -> impl Stream<Item = Result<QueryResultOwned>> + Send + 's {
         macro_rules! make_context {
             ($query:expr) => {
                 format!(

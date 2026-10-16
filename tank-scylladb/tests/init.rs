@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use indoc::indoc;
 use rcgen::{
     CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose,
@@ -17,8 +18,8 @@ use tank_core::{
 };
 use tank_scylladb::{CassandraConnection, CassandraDriver, ScyllaDBConnection, ScyllaDBDriver};
 use tank_tests::{
-    ambiguity, bindings, cheat_sheet, custom, decimals, enums, identifiers, interval, kv_storage,
-    limits, metrics, prepared, service, simple, trade_multiple, trade_simple, transaction1,
+    ambiguity, cheat_sheet, custom, decimals, enums, identifiers, interval, kv_storage, limits,
+    metrics, prepared, service, simple, trade_multiple, trade_simple, transaction1,
 };
 use testcontainers_modules::{
     scylladb::ScyllaDB,

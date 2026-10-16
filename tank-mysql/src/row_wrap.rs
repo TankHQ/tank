@@ -1,7 +1,7 @@
 use crate::extract_value;
 use mysql_async::FromRowError;
 
-pub(crate) struct RowWrap(pub(crate) tank_core::Row);
+pub(crate) struct RowWrap(pub(crate) tank_core::RowOwned);
 
 impl mysql_async::prelude::FromRow for RowWrap {
     fn from_row_opt(mut row: mysql_async::Row) -> Result<Self, mysql_async::FromRowError>

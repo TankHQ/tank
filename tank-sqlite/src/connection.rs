@@ -17,9 +17,9 @@ use std::{
     },
 };
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Prepared, Query, QueryResult, RawQuery,
-    Result, Row, RowsAffected, describe_path, error_message_from_ptr, send_value, stream::Stream,
-    truncate_long,
+    AsQuery, Connection, Error, ErrorContext, Executor, OwnedResults, Prepared, Query, QueryResult,
+    QueryResultOwned, RawQuery, Result, Results, Row, RowsAffected, describe_path,
+    error_message_from_ptr, send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -269,8 +269,17 @@ impl Executor for SQLiteConnection {
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<SQLiteDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+        query: impl AsQuery<SQLiteDriver> + Send + 's,
+    ) -> impl Future<Output = Result<impl Results>> + Send {
+        async move { OwnedResults::from_query_result_stream(self.do_run(query)).await }
+    }
+}
+
+impl SQLiteConnection {
+    fn do_run<'s, Q: AsQuery<SQLiteDriver> + 's>(
+        &'s mut self,
+        query: Q,
+    ) -> impl Stream<Item = Result<QueryResultOwned>> + Send + 's {
         let mut query = query.as_query();
         let context = format!("While running the query:\n{}", query.as_mut());
         let (tx, rx) = flume::unbounded::<Result<QueryResult>>();

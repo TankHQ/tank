@@ -1,142 +1,77 @@
 use crate::{ValueWrap, interval_wrap::IntervalWrap};
 use anyhow::anyhow;
-use async_stream::try_stream;
 use postgres_protocol::types::{ArrayDimension, array_from_sql};
 use postgres_types::{FromSql, Kind, Type};
 use rust_decimal::Decimal;
-use std::{error::Error, mem, pin::pin};
-use tank_core::{
-    ErrorContext, Value,
-    stream::{Stream, StreamExt},
-};
+use std::{borrow::Cow, error::Error, mem};
+use tank_core::{RowOwned, Value, ValueOwned};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
-use tokio_postgres::{SimpleQueryMessage, fallible_iterator::FallibleIterator};
+use tokio_postgres::fallible_iterator::FallibleIterator;
 use uuid::Uuid;
 
-pub(crate) fn row_to_tank_row(row: tokio_postgres::Row) -> tank_core::Result<tank_core::RowValues> {
-    (0..row.len())
-        .map(|i| match row.try_get::<_, ValueWrap>(i) {
-            Ok(v) => Ok(v.0.into_owned()),
-            Err(e) => {
-                let col = &row.columns()[i];
-                Err(e).context(format!(
-                    "Unknown type {} for column {} (index: {})",
-                    col.type_(),
-                    col.name(),
-                    i,
-                ))
+/// True if `sql` contains more than one statement.
+///
+/// Semicolons inside single-quoted string literals are ignored. The extended
+/// query protocol used by `query_raw` rejects multi-command strings, so callers
+/// route such queries through the simple protocol instead.
+pub(crate) fn has_multiple_statements(sql: &str) -> bool {
+    let mut statements = 0;
+    let mut in_string = false;
+    let mut chars = sql.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' if in_string => {
+                if chars.peek() == Some(&'\'') {
+                    chars.next();
+                } else {
+                    in_string = false;
+                }
             }
-        })
-        .collect::<tank_core::Result<tank_core::RowValues>>()
+            '\'' => in_string = true,
+            ';' if !in_string => {
+                if chars.clone().any(|c| !c.is_whitespace()) {
+                    statements += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    statements > 0
 }
 
-pub(crate) fn simple_query_row_to_tank_row(
+/// Decodes a simple-query row (raw SQL, no type info) into an owning tank row.
+pub(crate) fn simple_query_row_to_tank_row_owned(
+    labels: &tank_core::RowLabels,
     row: tokio_postgres::SimpleQueryRow,
-) -> tank_core::Result<tank_core::RowValues> {
-    (0..row.len())
-        .map(|i| match row.try_get(i) {
+) -> tank_core::Result<RowOwned> {
+    let mut values = Vec::with_capacity(row.len());
+    for i in 0..row.len() {
+        let value = match row.try_get(i) {
             Ok(Some(v)) => ValueWrap::from_sql(&Type::UNKNOWN, v.as_bytes())
-                .map(|v| v.0.into_owned())
-                .map_err(|e| anyhow!("{e:#}")),
-            Ok(None) => Ok(Value::Null),
+                .map(|v| v.0.into_owned().into_owned())
+                .map_err(|e| anyhow!("{e:#}"))?,
+            Ok(None) => Value::Null,
             Err(..) => {
                 let col = &row.columns()[i];
-                Err(anyhow!(
+                return Err(anyhow!(
                     "Could not deserialize column {} `{}`",
                     i,
                     col.name(),
-                ))
+                ));
             }
-        })
-        .collect::<tank_core::Result<tank_core::RowValues>>()
-}
-
-pub(crate) fn stream_postgres_row_to_tank_row<V, R>(
-    stream: impl AsyncFnOnce() -> tank_core::Result<V>,
-) -> impl Stream<Item = tank_core::Result<R>>
-where
-    V: Stream<Item = Result<tokio_postgres::Row, tokio_postgres::Error>>,
-    R: From<tank_core::Row>,
-{
-    try_stream! {
-        let stream = stream().await?;
-        let mut stream = pin!(stream);
-        let mut labels: Option<tank_core::RowLabels> = None;
-        while let Some(row) = stream.next().await.transpose()? {
-            let labels = labels.get_or_insert_with(|| {
-                row.columns().iter().map(|c| c.name().to_string()).collect()
-            });
-            yield tank_core::Row {
-                labels: labels.clone(),
-                values: row_to_tank_row(row)?,
-            }.into();
-        }
+        };
+        values.push(value);
     }
+    Ok(tank_core::Row {
+        labels: labels.clone(),
+        values: values.into(),
+    })
 }
 
-pub(crate) fn stream_postgres_simple_query_message_to_tank_query_result<V, R>(
-    stream: impl AsyncFnOnce() -> tank_core::Result<V>,
-) -> impl Stream<Item = tank_core::Result<R>>
-where
-    V: Stream<Item = Result<tokio_postgres::SimpleQueryMessage, tokio_postgres::Error>>,
-    R: From<tank_core::QueryResult>,
-{
-    try_stream! {
-        let stream = stream().await?;
-        let mut stream = pin!(stream);
-        let mut labels: Option<tank_core::RowLabels> = None;
-        let mut rows = false;
-        while let Some(entry) = stream.next().await.transpose()? {
-            match entry {
-                SimpleQueryMessage::Row(row) => {
-                    yield tank_core::QueryResult::Row(tank_core::Row {
-                        labels: labels
-                            .as_ref()
-                            .filter(|v| v.len() == row.len())
-                            .ok_or_else(|| {
-                                anyhow!(
-                                    "Row columns names does not match the row currently received",
-                                )
-                            })?
-                            .clone(),
-                        values: simple_query_row_to_tank_row(row)?,
-                    })
-                    .into();
-                }
-                SimpleQueryMessage::CommandComplete(rows_affected) => {
-                    if rows {
-                        // After a set of rows, a CommandComplete is received, ignore it
-                        rows = false;
-                    } else {
-                        yield tank_core::QueryResult::Affected(tank_core::RowsAffected {
-                            rows_affected: Some(rows_affected),
-                            ..Default::default()
-                        })
-                        .into();
-                    }
-                }
-                SimpleQueryMessage::RowDescription(columns) => {
-                    rows = true;
-                    labels = Some(
-                        columns
-                            .into_iter()
-                            .map(|col| col.name().into())
-                            .collect::<tank_core::RowLabels>(),
-                    );
-                    if columns.is_empty() {
-                        log::warn!("The row description contains no columns, this can be expected but it can also be symthon of a wrong query")
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-}
-
-pub(crate) fn extract_value(
+pub(crate) fn extract_value<'a>(
     ty: &Type,
-    raw: Option<&[u8]>,
-) -> Result<Value, Box<dyn Error + Sync + Send>> {
+    raw: Option<&'a [u8]>,
+) -> Result<Value<'a>, Box<dyn Error + Sync + Send>> {
     fn convert<'a, T: FromSql<'a>>(
         ty: &Type,
         raw: Option<&'a [u8]>,
@@ -159,22 +94,40 @@ pub(crate) fn extract_value(
             Type::NUMERIC => Value::Decimal(convert::<Decimal>(ty, raw)?, 0, 0),
             Type::OID => Value::UInt32(convert::<u32>(ty, raw)?),
             Type::VARCHAR | Type::TEXT | Type::NAME | Type::BPCHAR | Type::JSON | Type::XML => {
-                Value::Varchar(convert::<String>(ty, raw)?.map(Into::into))
+                // Borrow the UTF-8 payload directly from the driver buffer.
+                match raw {
+                    Some(raw) => match std::str::from_utf8(raw) {
+                        Ok(s) => Value::Varchar(Some(Cow::Borrowed(s))),
+                        Err(_) => Value::Varchar(convert::<String>(ty, Some(raw))?.map(Into::into)),
+                    },
+                    None => Value::Varchar(None),
+                }
             }
-            Type::BYTEA => Value::Blob(convert::<Vec<u8>>(ty, raw)?.map(Into::into)),
+            Type::BYTEA => match raw {
+                Some(raw) => Value::Blob(Some(Cow::Borrowed(raw))),
+                None => Value::Blob(None),
+            },
             Type::DATE => Value::Date(convert::<Date>(ty, raw)?),
             Type::TIME => Value::Time(convert::<Time>(ty, raw)?),
             Type::TIMESTAMP => Value::Timestamp(convert::<PrimitiveDateTime>(ty, raw)?),
             Type::TIMESTAMPTZ => Value::TimestampWithTimezone(convert::<OffsetDateTime>(ty, raw)?),
             Type::INTERVAL => Value::Interval(convert::<IntervalWrap>(ty, raw)?.map(Into::into)),
             Type::UUID => Value::Uuid(convert::<Uuid>(ty, raw)?),
-            Type::UNKNOWN => Value::Unknown(convert::<String>(ty, raw)?),
+            Type::UNKNOWN => match raw {
+                Some(raw) => match std::str::from_utf8(raw) {
+                    Ok(s) => Value::Unknown(Some(Cow::Borrowed(s))),
+                    Err(_) => Value::Unknown(convert::<String>(ty, Some(raw))?.map(Into::into)),
+                },
+                None => Value::Unknown(None),
+            },
             _ => {
                 return Err(anyhow!("Unexpected {ty} variant for Kind::Simple").into());
             }
         },
         Kind::Array(inner_ty) => {
-            let ty = extract_value(inner_ty, None)?;
+            // Arrays are not on the hot path; own their payloads so the returned
+            // value does not borrow from locals (`dimensions`).
+            let ty = extract_value(inner_ty, None)?.into_owned();
             if let Some(raw) = raw {
                 let array = array_from_sql(raw)?;
                 let dimensions = array.dimensions().collect::<Vec<_>>()?;
@@ -183,10 +136,10 @@ pub(crate) fn extract_value(
                 } else {
                     let mut values = array
                         .values()
-                        .map(|v| extract_value(inner_ty, v))
+                        .map(|v| extract_value(inner_ty, v).map(Value::into_owned))
                         .collect::<Vec<_>>()?;
                     let mut cursor = 0;
-                    build_array(&mut cursor, &mut values, &ty, dimensions.iter())?
+                    build_array(&mut cursor, &mut values, &ty, dimensions.iter().cloned())?
                 }
             } else {
                 Value::List(None, Box::new(ty))
@@ -196,12 +149,12 @@ pub(crate) fn extract_value(
     })
 }
 
-fn build_array<'a>(
+fn build_array(
     cursor: &mut usize,
-    values: &mut Vec<Value>,
-    element_ty: &Value,
-    mut it: impl ExactSizeIterator<Item = &'a ArrayDimension> + Clone,
-) -> Result<Value, Box<dyn Error + Sync + Send>> {
+    values: &mut Vec<ValueOwned>,
+    element_ty: &ValueOwned,
+    mut it: impl ExactSizeIterator<Item = ArrayDimension> + Clone,
+) -> Result<ValueOwned, Box<dyn Error + Sync + Send>> {
     let dimension = it.next().expect("Must have one dimension at least");
     let len = dimension.len as u32;
     Ok(if it.len() == 0 {
@@ -226,9 +179,9 @@ fn build_array<'a>(
 }
 
 pub(crate) fn flatten_array<'a>(
-    values: &'a [Value],
-    mut element_type: &'a Value,
-) -> (Vec<&'a Value>, Vec<ArrayDimension>, Type) {
+    values: &'a [Value<'a>],
+    mut element_type: &'a Value<'a>,
+) -> (Vec<&'a Value<'a>>, Vec<ArrayDimension>, Type) {
     let mut dimensions = Vec::new();
     let mut current_level = values;
     let mut total_capacity = 1;
@@ -261,7 +214,7 @@ pub(crate) fn flatten_array<'a>(
     (collector, dimensions, pg_type)
 }
 
-fn flatten_recursive<'a>(values: &'a [Value], collector: &mut Vec<&'a Value>) {
+fn flatten_recursive<'a>(values: &'a [Value<'a>], collector: &mut Vec<&'a Value<'a>>) {
     for value in values {
         match value {
             Value::Array(Some(inner), ..) => {
@@ -276,7 +229,7 @@ fn flatten_recursive<'a>(values: &'a [Value], collector: &mut Vec<&'a Value>) {
     }
 }
 
-pub fn postgres_type_to_value(ty: &Type) -> Value {
+pub fn postgres_type_to_value(ty: &Type) -> Value<'_> {
     match *ty {
         Type::BOOL => Value::Boolean(None),
         Type::CHAR => Value::Int8(None),

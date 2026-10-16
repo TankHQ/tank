@@ -4,7 +4,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tank::{
-    AsValue, Entity, Executor, Operand, QueryBuilder, Result, cols, expr,
+    AsValue, Entity, Executor, Operand, QueryBuilder, Result, Rows, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
@@ -208,10 +208,14 @@ pub async fn times(executor: &mut impl Executor) {
         .expect("Could not bind the timestamp 1");
     let values = executor
         .fetch(&mut query_timestamp_1)
-        .and_then(|v| async {
+        .await
+        .unwrap()
+        .rows()
+        .and_then(|v| async move {
             PrimitiveDateTime::try_from_value(
                 v.values
-                    .into_iter()
+                    .iter()
+                    .cloned()
                     .next()
                     .expect("Could not get the first column"),
             )
@@ -241,10 +245,14 @@ pub async fn times(executor: &mut impl Executor) {
         .expect("Could not bind the timestamp 1");
     let values = executor
         .fetch(&mut query_timestamp_1)
-        .and_then(|v| async {
+        .await
+        .unwrap()
+        .rows()
+        .and_then(|v| async move {
             NaiveDateTime::try_from_value(
                 v.values
-                    .into_iter()
+                    .iter()
+                    .cloned()
                     .next()
                     .expect("Could not get the first column"),
             )
@@ -288,10 +296,14 @@ pub async fn times(executor: &mut impl Executor) {
         .expect("Could not bind the timestamp 1");
     let values = executor
         .fetch(&mut query_timestamp_2)
-        .and_then(|v| async {
+        .await
+        .unwrap()
+        .rows()
+        .and_then(|v| async move {
             NaiveDateTime::try_from_value(
                 v.values
-                    .into_iter()
+                    .iter()
+                    .cloned()
                     .next()
                     .expect("Could not get the first column"),
             )
@@ -325,10 +337,14 @@ pub async fn times(executor: &mut impl Executor) {
         .expect("Could not prepare the query timestamp 1");
     let values = executor
         .fetch(&mut query_time_1)
-        .and_then(|v| async {
+        .await
+        .unwrap()
+        .rows()
+        .and_then(|v| async move {
             NaiveTime::try_from_value(
                 v.values
-                    .into_iter()
+                    .iter()
+                    .cloned()
                     .next()
                     .expect("Could not get the first column"),
             )
@@ -360,7 +376,10 @@ pub async fn times(executor: &mut impl Executor) {
                 .limit(Some(1))
                 .build(&executor.driver()),
         )
-        .map_ok(|v| u128::try_from_value(v.values.into_iter().nth(0).expect("There is no column")))
+        .await
+        .unwrap()
+        .rows()
+        .map_ok(|v| u128::try_from_value(v.values.iter().cloned().nth(0).expect("There is no column")))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await

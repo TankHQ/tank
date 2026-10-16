@@ -254,7 +254,7 @@ pub trait SqlExpressionWriter: SqlValueWriter {
                         writer: &dyn SqlWriter,
                         context: &mut Context,
                         out: &mut DynQuery,
-                        v: &[Value],
+                        v: &[Value<'_>],
                     ) {
                         writer.write_tuple(
                             context,

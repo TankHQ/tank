@@ -8,8 +8,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tank::{
-    AsValue, Entity, Executor, QueryBuilder, Result, Value, anyhow, current_timestamp_ms, expr,
-    join,
+    AsValue, Entity, Executor, QueryBuilder, Result, Rows, Value, anyhow, current_timestamp_ms,
+    expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -24,10 +24,10 @@ pub enum Method {
     DELETE,
 }
 impl AsValue for Method {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> tank::ValueOwned {
         Value::Varchar(None)
     }
-    fn as_value(self) -> Value {
+    fn as_value(self) -> tank::ValueOwned {
         Value::Varchar(Some(
             match self {
                 Method::GET => "get",
@@ -207,29 +207,29 @@ pub async fn requests(executor: &mut impl Executor) {
         let r5 = Request::new("v1/server/user/new/5".into(), Method::PUT.into());
 
         violated_limits.bind(r1.target.clone()).unwrap();
-        assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
+        assert_eq!(executor.fetch(&mut violated_limits).await.unwrap().rows().count().await, 0);
         r1.save(executor).await.expect("Failed to save r1");
 
         violated_limits.bind(r2.target.clone()).unwrap();
-        assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
+        assert_eq!(executor.fetch(&mut violated_limits).await.unwrap().rows().count().await, 0);
         r2.save(executor).await.expect("Failed to save r2");
 
         violated_limits.bind(r3.target.clone()).unwrap();
-        assert_eq!(executor.fetch(&mut violated_limits).count().await, 1); // Violates [3]
+        assert_eq!(executor.fetch(&mut violated_limits).await.unwrap().rows().count().await, 1); // Violates [3]
 
         // Request 4 fits because it doesn't refer to /user
         violated_limits.bind(r4.target.clone()).unwrap();
-        assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
+        assert_eq!(executor.fetch(&mut violated_limits).await.unwrap().rows().count().await, 0);
         r4.save(executor).await.expect("Failed to save r4");
 
         violated_limits.bind(r5.target.clone()).unwrap();
-        assert_eq!(executor.fetch(&mut violated_limits).count().await, 2); // Violates [1], [3]
+        assert_eq!(executor.fetch(&mut violated_limits).await.unwrap().rows().count().await, 2); // Violates [1], [3]
 
         r1.end();
         r1.save(executor).await.expect("Could not terminate r1");
 
         violated_limits.bind(r3.target.clone()).unwrap();
-        assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
+        assert_eq!(executor.fetch(&mut violated_limits).await.unwrap().rows().count().await, 0);
         r3.save(executor).await.expect("Failed to save r3");
 
         // 3 Running requests
@@ -248,7 +248,7 @@ pub async fn requests(executor: &mut impl Executor) {
         violated_limits
             .bind("v1/server/data/item/999".to_string())
             .unwrap();
-        assert_eq!(executor.fetch(&mut violated_limits).count().await, 2); // Violates [1], [2]
+        assert_eq!(executor.fetch(&mut violated_limits).await.unwrap().rows().count().await, 2); // Violates [1], [2]
 
         for i in 0..4 {
             data_reqs[i].end();
@@ -263,7 +263,7 @@ pub async fn requests(executor: &mut impl Executor) {
         violated_limits
             .bind("v1/server/data/item/999".to_string())
             .unwrap();
-        assert_eq!(executor.fetch(&mut violated_limits).count().await, 1); // Violates [1] still
+        assert_eq!(executor.fetch(&mut violated_limits).await.unwrap().rows().count().await, 1); // Violates [1] still
 
         r2.end();
         r2.save(executor).await.expect("Could not terminate r2");
@@ -276,7 +276,7 @@ pub async fn requests(executor: &mut impl Executor) {
         violated_limits
             .bind("v1/server/data/item/999".to_string())
             .unwrap();
-        assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
+        assert_eq!(executor.fetch(&mut violated_limits).await.unwrap().rows().count().await, 0);
 
         r3.end();
         r3.save(executor).await.expect("Could not terminate r3");
@@ -289,17 +289,17 @@ pub async fn requests(executor: &mut impl Executor) {
         let d2 = Request::new("v1/server/user/del/2".into(), Method::DELETE.into());
 
         violated_limits.bind(d1.target.clone()).unwrap();
-        assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
+        assert_eq!(executor.fetch(&mut violated_limits).await.unwrap().rows().count().await, 0);
         d1.save(executor).await.expect("Failed to save d1");
 
         violated_limits.bind(d2.target.clone()).unwrap();
-        assert_eq!(executor.fetch(&mut violated_limits).count().await, 1); // Violates [4] // Problem here
+        assert_eq!(executor.fetch(&mut violated_limits).await.unwrap().rows().count().await, 1); // Violates [4] // Problem here
 
         d1.end();
         d1.save(executor).await.expect("Failed to end d1");
 
         violated_limits.bind(d2.target.clone()).unwrap();
-        assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
+        assert_eq!(executor.fetch(&mut violated_limits).await.unwrap().rows().count().await, 0);
 
         let mut v2_reqs = vec![];
         for i in 0..5 {
@@ -311,6 +311,6 @@ pub async fn requests(executor: &mut impl Executor) {
         }
 
         violated_limits.bind("v2/resource/new".to_string()).unwrap();
-        assert_eq!(executor.fetch(&mut violated_limits).count().await, 1); // Violates [5]
+        assert_eq!(executor.fetch(&mut violated_limits).await.unwrap().rows().count().await, 1); // Violates [5]
     }
 }

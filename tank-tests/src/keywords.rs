@@ -1,7 +1,7 @@
 use std::pin::pin;
 use std::sync::LazyLock;
 use tank::stream::StreamExt;
-use tank::{AsValue, Entity, Executor, QueryBuilder, Row, cols, expr};
+use tank::{AsValue, Entity, Executor, QueryBuilder, Row, Rows, cols, expr};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -61,15 +61,17 @@ pub async fn keywords(executor: &mut impl Executor) {
     assert_eq!(found_by_where.unwrap(), entity);
 
     {
-        let mut stream = pin!(
-            executor.fetch(
+        let bundle = executor
+            .fetch(
                 QueryBuilder::new()
                     .select(cols!(ReservedWords::group_field, COUNT(*)))
                     .from(ReservedWords::table())
                     .group_by(cols!(ReservedWords::group_field))
-                    .build(&executor.driver())
+                    .build(&executor.driver()),
             )
-        );
+            .await
+            .unwrap();
+        let mut stream = pin!(bundle.rows());
         let row = stream
             .next()
             .await
@@ -89,16 +91,18 @@ pub async fn keywords(executor: &mut impl Executor) {
         }
     }
     {
-        let mut stream_ordered = pin!(
-            executor.fetch(
+        let bundle_ordered = executor
+            .fetch(
                 QueryBuilder::new()
                     .select(ReservedWords::columns())
                     .from(ReservedWords::table())
                     .order_by(cols!(ReservedWords::order_field ASC))
                     .limit(Some(1))
-                    .build(&executor.driver())
+                    .build(&executor.driver()),
             )
-        );
+            .await
+            .unwrap();
+        let mut stream_ordered = pin!(bundle_ordered.rows());
 
         let row_ordered = stream_ordered
             .next()
@@ -119,16 +123,18 @@ pub async fn keywords(executor: &mut impl Executor) {
     };
     entity2.save(executor).await.expect("Saved 2");
     {
-        let mut stream_group = pin!(
-            executor.fetch(
+        let bundle_group = executor
+            .fetch(
                 QueryBuilder::new()
                     .select(cols!(ReservedWords::group_field, COUNT(*)))
                     .from(ReservedWords::table())
                     .group_by(cols!(ReservedWords::group_field))
                     .order_by(cols!(ReservedWords::group_field ASC))
-                    .build(&executor.driver())
+                    .build(&executor.driver()),
             )
-        );
+            .await
+            .unwrap();
+        let mut stream_group = pin!(bundle_group.rows());
 
         let row1 = stream_group.next().await.unwrap().unwrap();
         let Row { values, .. } = row1;

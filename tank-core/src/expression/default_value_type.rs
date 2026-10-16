@@ -1,11 +1,11 @@
-use crate::{Context, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, Value};
+use crate::{Context, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, Value, ValueOwned};
 use std::fmt;
 
 #[derive(Default)]
 pub enum DefaultValueType {
     #[default]
     None,
-    Value(Value),
+    Value(ValueOwned),
     Expression(Box<dyn Expression + Send + Sync>),
 }
 
@@ -61,38 +61,38 @@ impl fmt::Debug for DefaultValueType {
     }
 }
 
-impl From<Value> for DefaultValueType {
-    fn from(value: Value) -> Self {
-        Self::Value(value)
+impl<'a> From<Value<'a>> for DefaultValueType {
+    fn from(value: Value<'a>) -> Self {
+        Self::Value(value.into_owned())
     }
 }
 
 impl From<bool> for DefaultValueType {
     fn from(value: bool) -> Self {
-        Self::Value(Value::Boolean(Some(value)))
+        Self::Value(ValueOwned::Boolean(Some(value)))
     }
 }
 
 impl From<&'static str> for DefaultValueType {
     fn from(value: &'static str) -> Self {
-        Self::Value(Value::Varchar(Some(value.into())))
+        Self::Value(ValueOwned::Varchar(Some(value.into())))
     }
 }
 
 impl From<i64> for DefaultValueType {
     fn from(value: i64) -> Self {
-        Self::Value(Value::Int64(Some(value)))
+        Self::Value(ValueOwned::Int64(Some(value)))
     }
 }
 
 impl From<f64> for DefaultValueType {
     fn from(value: f64) -> Self {
-        Self::Value(Value::Float64(Some(value)))
+        Self::Value(ValueOwned::Float64(Some(value)))
     }
 }
 
 impl From<char> for DefaultValueType {
     fn from(value: char) -> Self {
-        Self::Value(Value::Char(Some(value)))
+        Self::Value(ValueOwned::Char(Some(value)))
     }
 }

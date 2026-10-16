@@ -1,14 +1,10 @@
 use crate::{
-    AsEntity, AsQuery, Driver, DynQuery, Query, QueryResult, RawQuery, Result, Row, RowsAffected,
-    stream::{Stream, StreamExt, TryStreamExt},
-    writer::SqlWriter,
+    AsEntity, AsQuery, Driver, DynQuery, Query, QueryResult, RawQuery, Result, Results, Rows,
+    RowsAffected, stream::StreamExt, writer::SqlWriter,
 };
 use anyhow::anyhow;
 use convert_case::{Case, Casing};
-use std::{
-    future::{self, Future},
-    mem,
-};
+use std::future::{self, Future};
 
 /// Async query execution.
 ///
@@ -33,7 +29,7 @@ pub trait Executor: Send {
         query: impl AsQuery<Self::Driver> + 's,
     ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
         let mut query = query.as_query();
-        let query = mem::take(query.as_mut());
+        let query = std::mem::take(query.as_mut());
         async {
             match query {
                 Query::Raw(raw) => self.do_prepare(raw).await,
@@ -53,40 +49,37 @@ pub trait Executor: Send {
         )))
     }
 
-    /// Executes a query and streams the results (rows or affected counts).
+    /// Executes a query and returns the streamable results (rows or affected counts).
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send;
+        query: impl AsQuery<Self::Driver> + Send + 's,
+    ) -> impl Future<Output = Result<impl Results>> + Send;
 
-    /// Executes a query and streams the resulting rows, ignoring affected counts.
+    /// Executes a query and returns the streamable rows.
     fn fetch<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
-    ) -> impl Stream<Item = Result<Row>> + Send {
-        self.run(query).filter_map(|v| async move {
-            match v {
-                Ok(QueryResult::Row(v)) => Some(Ok(v)),
-                Err(e) => Some(Err(e)),
-                _ => None,
-            }
-        })
+        query: impl AsQuery<Self::Driver> + Send + 's,
+    ) -> impl Future<Output = Result<impl Rows>> + Send {
+        self.run(query)
     }
 
-    /// Executes a query and returns the total number of affected rows.
+    /// Aggregates affected-row counts from the query execution.
     fn execute<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
+        query: impl AsQuery<Self::Driver> + Send + 's,
     ) -> impl Future<Output = Result<RowsAffected>> + Send {
-        self.run(query)
-            .filter_map(|v| async move {
-                match v {
-                    Ok(QueryResult::Affected(v)) => Some(Ok(v)),
-                    Err(e) => Some(Err(e)),
-                    _ => None,
+        let result = self.run(query);
+        async move {
+            let mut affected = RowsAffected::default();
+            let results = result.await?;
+            let mut stream = std::pin::pin!(results.results());
+            while let Some(item) = stream.next().await {
+                if let QueryResult::Affected(a) = item? {
+                    affected.extend([a]);
                 }
-            })
-            .try_collect()
+            }
+            Ok(affected)
+        }
     }
 
     /// Efficiently inserts a collection of entities bypassing regular SQL execution when supported by the driver.
@@ -131,21 +124,21 @@ impl<S: Executor + ?Sized> Executor for &mut S {
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+        query: impl AsQuery<Self::Driver> + Send + 's,
+    ) -> impl Future<Output = Result<impl Results>> + Send {
         (**self).run(query)
     }
 
     fn fetch<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
-    ) -> impl Stream<Item = Result<Row>> + Send {
+        query: impl AsQuery<Self::Driver> + Send + 's,
+    ) -> impl Future<Output = Result<impl Rows>> + Send {
         (**self).fetch(query)
     }
 
     fn execute<'s>(
         &'s mut self,
-        query: impl AsQuery<Self::Driver> + 's,
+        query: impl AsQuery<Self::Driver> + Send + 's,
     ) -> impl Future<Output = Result<RowsAffected>> + Send {
         (**self).execute(query)
     }

@@ -2,7 +2,7 @@
 mod tests {
     use std::path::Path;
     use std::sync::Mutex;
-    use tank_core::{ConnectionPool, Driver, Executor, stream::StreamExt};
+    use tank_core::{ConnectionPool, Driver, Executor, Rows, stream::StreamExt};
     use tank_sqlite::SQLiteDriver;
     use tank_tests::{execute_tests, init_logs};
     use tokio::fs;
@@ -56,7 +56,11 @@ mod tests {
             .await
             .expect("Could not open the database");
         let mut connection = pool.get().await.expect("Could not get a connection");
-        let mut stream = std::pin::pin!(connection.fetch("SELECT CAST(x'FF41' AS TEXT)"));
+        let bundle = connection
+            .fetch("SELECT CAST(x'FF41' AS TEXT)")
+            .await
+            .expect("Could not fetch the invalid UTF-8 text");
+        let mut stream = std::pin::pin!(bundle.rows());
         let row = stream
             .next()
             .await

@@ -1,5 +1,5 @@
 #![allow(unused_imports)]
-use tank::{Entity, Executor, Result, expr, stream::TryStreamExt};
+use tank::{Entity, Executor, Result, Rows, expr, stream::TryStreamExt};
 
 #[derive(Entity, Debug, PartialEq, Clone)]
 #[tank(schema = "testing", name = "prepared_binding")]
@@ -35,6 +35,9 @@ pub async fn prepared(executor: &mut impl Executor) {
         .expect("Failed to bind the key parameter");
     let loaded = executor
         .fetch(query)
+        .await
+        .unwrap()
+        .rows()
         .and_then(|row| async move { PreparedBinding::from_row(row) })
         .try_collect::<Vec<_>>()
         .await
@@ -55,6 +58,9 @@ pub async fn prepared(executor: &mut impl Executor) {
         .expect("Failed to bind the u32 parameter");
     let loaded = executor
         .fetch(query)
+        .await
+        .unwrap()
+        .rows()
         .and_then(|row| async move { PreparedBinding::from_row(row) })
         .try_collect::<Vec<_>>()
         .await
@@ -83,6 +89,9 @@ pub async fn prepared(executor: &mut impl Executor) {
             .expect("Failed to rebind the key parameter");
         let loaded = executor
             .fetch(&mut query)
+            .await
+            .unwrap()
+            .rows()
             .and_then(|row| async move { PreparedBinding::from_row(row) })
             .try_collect::<Vec<_>>()
             .await

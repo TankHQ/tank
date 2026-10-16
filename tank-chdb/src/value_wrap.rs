@@ -1,8 +1,8 @@
 use serde_json::Value as JsonValue;
 use std::{borrow::Cow, sync::Arc};
-use tank_core::{QueryResult, Result, Row, Value};
+use tank_core::{QueryResult, QueryResultOwned, Result, Row, RowLabels, Value, ValueOwned};
 
-fn json_to_tank(value: JsonValue) -> Value {
+fn json_to_tank(value: JsonValue) -> ValueOwned {
     match value {
         JsonValue::Null => Value::Null,
         JsonValue::String(v) => Value::Varchar(Some(Cow::Owned(v))),
@@ -12,8 +12,8 @@ fn json_to_tank(value: JsonValue) -> Value {
 
 pub(crate) struct JsonRowParser {
     pending: Vec<u8>,
-    labels: Option<Arc<[String]>>,
-    object_keys: Option<Arc<[String]>>,
+    labels: Option<RowLabels>,
+    object_keys: Option<RowLabels>,
     header_lines: u8,
     compact: bool,
 }
@@ -31,7 +31,7 @@ impl JsonRowParser {
 
     pub(crate) fn push<F>(&mut self, mut data: &[u8], mut send: F) -> Result<()>
     where
-        F: FnMut(QueryResult),
+        F: FnMut(QueryResultOwned),
     {
         while let Some(index) = data.iter().position(|byte| *byte == b'\n') {
             let line = &data[..index];
@@ -55,7 +55,7 @@ impl JsonRowParser {
 
     pub(crate) fn finish<F>(&mut self, mut send: F) -> Result<()>
     where
-        F: FnMut(QueryResult),
+        F: FnMut(QueryResultOwned),
     {
         if self.pending.is_empty() {
             return Ok(());
@@ -66,7 +66,7 @@ impl JsonRowParser {
 
     fn parse_line<F>(&mut self, line: &[u8], send: &mut F) -> Result<()>
     where
-        F: FnMut(QueryResult),
+        F: FnMut(QueryResultOwned),
     {
         if line.is_empty() {
             return Ok(());
@@ -155,7 +155,7 @@ impl JsonRowParser {
 
     fn emit_object<F>(&mut self, items: &serde_json::Map<String, JsonValue>, send: &mut F)
     where
-        F: FnMut(QueryResult),
+        F: FnMut(QueryResultOwned),
     {
         let Some(labels) = &self.labels else {
             return;

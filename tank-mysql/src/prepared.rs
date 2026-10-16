@@ -6,7 +6,7 @@ use std::{
     fmt::{self, Debug, Display},
     mem,
 };
-use tank_core::{AsValue, Prepared, Result, Value};
+use tank_core::{AsValue, Prepared, Result, ValueOwned};
 
 #[derive(Debug)]
 /// Prepared statement wrapper for MySQL/MariaDB.
@@ -15,7 +15,7 @@ use tank_core::{AsValue, Prepared, Result, Value};
 /// Implements `Prepared` for use by the `Executor` implementations.
 pub struct MySQLPrepared {
     pub(crate) statement: Statement,
-    pub(crate) params: Vec<Value>,
+    pub(crate) params: Vec<ValueOwned>,
     pub(crate) index: u64,
 }
 

@@ -1,10 +1,10 @@
 use crate::{
-    AsEntity, AsQuery, Connection, Driver, Error, Executor, Query, QueryResult, RawQuery, Result,
-    Row, RowsAffected,
+    AsEntity, AsQuery, Connection, Driver, Error, Executor, Query, RawQuery, Result, Results, Rows,
+    RowsAffected,
 };
 use anyhow::anyhow;
 use deadpool::managed::{Manager, Metrics, Object, Pool, RecycleResult, Timeouts};
-use futures::{FutureExt, Stream, future::BoxFuture};
+use futures::{FutureExt, future::BoxFuture};
 use std::{
     borrow::Cow,
     fmt::Debug,
@@ -202,21 +202,21 @@ impl<D: Driver> Executor for PooledConnection<D> {
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<D> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+        query: impl AsQuery<D> + Send + 's,
+    ) -> impl Future<Output = Result<impl Results>> + Send {
         self.object.run(query)
     }
 
     fn fetch<'s>(
         &'s mut self,
-        query: impl AsQuery<D> + 's,
-    ) -> impl Stream<Item = Result<Row>> + Send {
+        query: impl AsQuery<D> + Send + 's,
+    ) -> impl Future<Output = Result<impl Rows>> + Send {
         self.object.fetch(query)
     }
 
     fn execute<'s>(
         &'s mut self,
-        query: impl AsQuery<D> + 's,
+        query: impl AsQuery<D> + Send + 's,
     ) -> impl Future<Output = Result<RowsAffected>> + Send {
         self.object.execute(query)
     }

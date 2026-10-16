@@ -1,11 +1,9 @@
-use crate::{
-    PostgresConnection, PostgresDriver, PostgresPrepared, ValueWrap,
-    util::stream_postgres_row_to_tank_row,
-};
+use crate::{PostgresConnection, PostgresDriver, PostgresPrepared, PostgresResults, ValueWrap};
+use std::borrow::Cow;
 use tank_core::{
-    AsQuery, Error, Executor, Query, QueryResult, RawQuery, Result, Transaction,
-    future::{Either, TryFutureExt},
-    stream::{Stream, TryStreamExt},
+    AsQuery, Error, Executor, Query, RawQuery, Result, Transaction,
+    future::TryFutureExt,
+    stream::TryStreamExt,
 };
 
 /// Postgres transaction.
@@ -36,32 +34,59 @@ impl<'c> Executor for PostgresTransaction<'c> {
             .into(),
         )
     }
+
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<PostgresDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
-        let mut query = query.as_query();
-        stream_postgres_row_to_tank_row(async move || match query.as_mut() {
-            Query::Raw(RawQuery { sql, .. }) => {
-                let stream = self
-                    .0
-                    .query_raw(sql.as_str(), Vec::<ValueWrap>::new())
-                    .await?;
-                Ok(Either::Left(stream))
-            }
-            Query::Prepared(prepared) => {
-                let params = prepared.take_params();
-                let portal = self
-                    .0
-                    .bind_raw(&prepared.statement, params.into_iter())
-                    .await?;
-                Ok(Either::Right(self.0.query_portal_raw(&portal, 0).await?))
-            }
-        })
-        .map_err(|e| {
-            log::error!("{e:#}");
-            e
-        })
+        query: impl AsQuery<PostgresDriver> + Send + 's,
+    ) -> impl Future<Output = Result<impl tank_core::Results>> + Send {
+        async move {
+            let mut query = query.as_query();
+            let context = format!("While running the query:\n{}", query.as_mut());
+            let result: Result<PostgresResults> = match query.as_mut() {
+                Query::Raw(RawQuery { sql, .. }) => {
+                    let rows = self
+                        .0
+                        .query_raw(sql.as_str(), Vec::<ValueWrap>::new())
+                        .await
+                        .map_err(|e| Error::new(e).context(context.clone()))?;
+                    let mut rows = std::pin::pin!(rows);
+                    let mut collected = Vec::new();
+                    while let Some(row) = rows.try_next().await? {
+                        collected.push(row);
+                    }
+                    let affected = rows.rows_affected();
+                    PostgresResults::new(collected, affected)
+                }
+                Query::Prepared(prepared) => {
+                    let mut params = prepared.take_params();
+                    let types = prepared.statement.params();
+                    for (i, param) in params.iter_mut().enumerate() {
+                        *param = ValueWrap(Cow::Owned(
+                            std::mem::take(param)
+                                .0
+                                .into_owned()
+                                .try_as(&crate::util::postgres_type_to_value(&types[i]))?,
+                        ));
+                    }
+                    let rows = self
+                        .0
+                        .query_raw(&prepared.statement, params)
+                        .await
+                        .map_err(|e| Error::new(e).context(context.clone()))?;
+                    let mut rows = std::pin::pin!(rows);
+                    let mut collected = Vec::new();
+                    while let Some(row) = rows.try_next().await? {
+                        collected.push(row);
+                    }
+                    let affected = rows.rows_affected();
+                    PostgresResults::new(collected, affected)
+                }
+            };
+            result.map_err(|e| {
+                log::error!("{e:#}");
+                e
+            })
+        }
     }
 }
 

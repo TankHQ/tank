@@ -45,7 +45,7 @@ syn = { version = "2", features = ["full"] }
 tank = "0"
 tank-core = { version = "0", default-features = false }
 tank-macros = "0"
-time = { version = "0", features = ["macros", "parsing"] }
+time = { version = "0.3", features = ["macros", "parsing"] }
 tokio = { version = "1", features = [
     "fs",
     "macros",

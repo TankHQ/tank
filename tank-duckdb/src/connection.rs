@@ -21,9 +21,9 @@ use std::{
     },
 };
 use tank_core::{
-    AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, RawQuery, Result, Row, RowsAffected, SqlCoreWriter, Value, as_c_string,
-    describe_path, error_message_from_ptr, send_value, stream::Stream, truncate_long,
+    AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, OwnedResults,
+    Query, QueryResult, RawQuery, Result, Results, Row, RowsAffected, SqlCoreWriter, Value,
+    as_c_string, describe_path, error_message_from_ptr, send_value, truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -183,10 +183,7 @@ impl DuckDBConnection {
                         (vector, logical_type, type_id, data, validity, name)
                     })
                     .collect::<Box<[_]>>();
-                let names = info
-                    .iter()
-                    .map(|v| v.5.to_string())
-                    .collect::<Arc<[String]>>();
+                let names = info.iter().map(|v| v.5.to_string()).collect();
                 for row in 0..rows {
                     let columns = (0..cols).map(|col| {
                         let col = col as usize;
@@ -356,34 +353,42 @@ impl Executor for DuckDBConnection {
 
     fn run<'s>(
         &'s mut self,
-        query: impl AsQuery<DuckDBDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> {
-        let mut query = query.as_query();
-        let context = format!("While running the query:\n{}", query.as_mut());
-        let connection = AtomicPtr::new(*self.connection);
-        let mut owned = mem::take(query.as_mut());
-        let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
-        let join = spawn_blocking(move || {
-            match &mut owned {
-                Query::Raw(RawQuery { sql, .. }) => {
-                    let str = unsafe { CString::from_vec_unchecked(mem::take(sql).into_bytes()) };
-                    Self::do_run_unprepared(connection.load(Ordering::Relaxed), str.as_c_str(), tx);
-                    *sql = unsafe { String::from_utf8_unchecked(str.into_bytes()) }
+        query: impl AsQuery<DuckDBDriver> + Send + 's,
+    ) -> impl Future<Output = Result<impl Results>> + Send {
+        async move {
+            let mut query = query.as_query();
+            let context = format!("While running the query:\n{}", query.as_mut());
+            let connection = AtomicPtr::new(*self.connection);
+            let mut owned = mem::take(query.as_mut());
+            let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
+            let join = spawn_blocking(move || {
+                match &mut owned {
+                    Query::Raw(RawQuery { sql, .. }) => {
+                        let str =
+                            unsafe { CString::from_vec_unchecked(mem::take(sql).into_bytes()) };
+                        Self::do_run_unprepared(
+                            connection.load(Ordering::Relaxed),
+                            str.as_c_str(),
+                            tx,
+                        );
+                        *sql = unsafe { String::from_utf8_unchecked(str.into_bytes()) }
+                    }
+                    Query::Prepared(query) => Self::do_run_prepared(query.statement(), tx),
                 }
-                Query::Prepared(query) => Self::do_run_prepared(query.statement(), tx),
-            }
-            owned
-        });
-        try_stream! {
-            while let Ok(result) = rx.recv_async().await {
-                yield result.map_err(|e| {
-                    let error = e.context(context.clone());
-                    log::error!("{error:#}");
-                    error
-                })?;
-            }
-            *query.as_mut() = mem::take(&mut join.await?);
-            query.as_mut().clear_bindings().context(context)?;
+                owned
+            });
+            let stream = try_stream! {
+                while let Ok(result) = rx.recv_async().await {
+                    yield result.map_err(|e| {
+                        let error = e.context(context.clone());
+                        log::error!("{error:#}");
+                        error
+                    })?;
+                }
+                *query.as_mut() = mem::take(&mut join.await?);
+                query.as_mut().clear_bindings().context(context)?;
+            };
+            OwnedResults::from_query_result_stream(stream).await
         }
     }
 
@@ -449,7 +454,7 @@ impl Executor for DuckDBConnection {
             }
             let rows_affected = rows.len() as u64;
             for row in rows {
-                for value in row {
+                for value in row.into_owned() {
                     let rc = match value {
                         Value::Boolean(Some(v), ..) => duckdb_append_bool(*appender, v),
                         Value::Int8(Some(v), ..) => duckdb_append_int8(*appender, v),

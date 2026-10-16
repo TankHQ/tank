@@ -62,7 +62,7 @@ macro_rules! write_float_fn {
 /// Value (literal) rendering for the SQL dialect.
 pub trait SqlValueWriter: SqlCoreWriter {
     /// Write value.
-    fn write_value(&self, context: &mut Context, out: &mut DynQuery, value: &Value) {
+    fn write_value(&self, context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
         let delimiter = if context.fragment == Fragment::JsonKey {
             "\""
         } else {
@@ -361,7 +361,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
         context: &mut Context,
         out: &mut DynQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
-        _ty: Option<&Value>,
+        _ty: Option<&Value<'_>>,
         _is_array: bool,
     ) {
         out.push('[');
@@ -394,7 +394,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
         out.push(')');
     }
 
-    fn write_map(&self, context: &mut Context, out: &mut DynQuery, value: &HashMap<Value, Value>) {
+    fn write_map(&self, context: &mut Context, out: &mut DynQuery, value: &HashMap<Value<'_>, Value<'_>>) {
         out.push('{');
         separated_by(
             out,
@@ -413,7 +413,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
         self.write_string(context, out, &value.to_string());
     }
 
-    fn write_struct(&self, context: &mut Context, out: &mut DynQuery, value: &[(String, Value)]) {
+    fn write_struct(&self, context: &mut Context, out: &mut DynQuery, value: &[(String, Value<'_>)]) {
         out.push('{');
         separated_by(
             out,

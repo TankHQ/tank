@@ -17,10 +17,10 @@ pub struct CustomValues {
 }
 pub struct FpCategoryWrap(pub FpCategory);
 impl AsValue for FpCategoryWrap {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> tank::ValueOwned {
         Value::Varchar(None)
     }
-    fn as_value(self) -> Value {
+    fn as_value(self) -> tank::ValueOwned {
         format!("{:?}", self.0).as_value()
     }
 

@@ -39,7 +39,7 @@ where
     }
 }
 
-pub fn value_to_json(v: &Value) -> Option<JsonValue> {
+pub fn value_to_json(v: &Value<'_>) -> Option<JsonValue> {
     Some(match v {
         _ if v.is_null() => JsonValue::Null,
         Value::Boolean(Some(v), ..) => JsonValue::Bool(*v),
@@ -101,7 +101,7 @@ pub fn value_to_json(v: &Value) -> Option<JsonValue> {
             }
             JsonValue::Object(map)
         }
-        Value::Unknown(Some(v), ..) => JsonValue::String(v.clone()),
+        Value::Unknown(Some(v), ..) => JsonValue::String(v.to_string()),
         _ => {
             return None;
         }
@@ -547,26 +547,21 @@ macro_rules! impl_executor_transaction {
 
             fn run<'s>(
                 &'s mut self,
-                query: impl ::tank_core::AsQuery<Self::Driver> + 's,
-            ) -> impl ::tank_core::stream::Stream<
-                Item = ::tank_core::Result<::tank_core::QueryResult>,
-            > + Send {
+                query: impl ::tank_core::AsQuery<Self::Driver> + Send + 's,
+            ) -> impl Future<Output = ::tank_core::Result<impl ::tank_core::Results>> + Send {
                 self.$connection.run(query)
             }
 
             fn fetch<'s>(
                 &'s mut self,
-                query: impl ::tank_core::AsQuery<Self::Driver> + 's,
-            ) -> impl ::tank_core::stream::Stream<
-                Item = ::tank_core::Result<::tank_core::Row>,
-            > + Send
-            + 's {
+                query: impl ::tank_core::AsQuery<Self::Driver> + Send + 's,
+            ) -> impl Future<Output = ::tank_core::Result<impl ::tank_core::Rows>> + Send {
                 self.$connection.fetch(query)
             }
 
             fn execute<'s>(
                 &'s mut self,
-                query: impl ::tank_core::AsQuery<Self::Driver> + 's,
+                query: impl ::tank_core::AsQuery<Self::Driver> + Send + 's,
             ) -> impl Future<Output = ::tank_core::Result<::tank_core::RowsAffected>> + Send {
                 self.$connection.execute(query)
             }

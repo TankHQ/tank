@@ -10,7 +10,7 @@ mod tests {
         rc::Rc,
         sync::{Arc, RwLock},
     };
-    use tank::{AsValue, TableRef, Value};
+    use tank::{AsValue, TableRef, Value, ValueOwned};
     use tank_core::{FixedDecimal, Interval};
 
     #[test]
@@ -724,19 +724,17 @@ mod tests {
     #[test]
     fn static_str_and_cow_parse() {
         assert_eq!(<Cow<'static, str> as AsValue>::parse("hi").unwrap(), "hi");
-        // Owned varchar cannot be assigned to &'static str.
+        // `&'static str` can never be decoded from a database value.
+        // The payload would have to borrow from the row buffer, whose lifetime is not `'static`.
         assert!(
             <&'static str>::try_from_value(Value::Varchar(Some(Cow::Owned("x".into())))).is_err()
         );
-        assert_eq!(
-            <&'static str>::try_from_value(Value::Varchar(Some(Cow::Borrowed("x")))).unwrap(),
-            "x"
-        );
+        assert!(<&'static str>::try_from_value(Value::Varchar(Some(Cow::Borrowed("x")))).is_err());
     }
 
     #[test]
     fn value_to_tokens() {
-        let tokens = |v: &Value| v.to_token_stream().to_string();
+        let tokens = |v: &ValueOwned| v.to_token_stream().to_string();
         assert_eq!(tokens(&Value::Null), ":: tank :: Value :: Null");
         assert!(tokens(&Value::Int32(Some(1))).contains("Int32"));
         assert!(
@@ -765,7 +763,7 @@ mod tests {
             tokens(&Value::Struct(
                 None,
                 vec![("a".to_string(), Value::Int32(None))],
-                TableRef::new("t".into())
+                Box::new(TableRef::new("t".into()))
             ))
             .contains("Struct")
         );

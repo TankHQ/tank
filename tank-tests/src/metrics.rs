@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::{future, sync::LazyLock};
 use tank::{
-    Entity, Executor, QueryBuilder, cols, expr,
+    Entity, Executor, QueryBuilder, Rows, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, macros::date};
@@ -341,6 +341,9 @@ pub async fn metrics(executor: &mut impl Executor) {
                 .order_by(cols!(Metric::value DESC, Metric::date DESC))
                 .build(&executor.driver()),
         )
+        .await
+        .unwrap()
+        .rows()
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
         .await
@@ -359,6 +362,9 @@ pub async fn metrics(executor: &mut impl Executor) {
                 .order_by(cols!(Metric::value ASC))
                 .build(&executor.driver()),
         )
+        .await
+        .unwrap()
+        .rows()
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
         .await
@@ -376,6 +382,9 @@ pub async fn metrics(executor: &mut impl Executor) {
                 ))
                 .build(&executor.driver()),
         )
+        .await
+        .unwrap()
+        .rows()
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
         .await
@@ -398,6 +407,9 @@ pub async fn metrics(executor: &mut impl Executor) {
     prepared.bind("ES").unwrap().bind("height_cm").unwrap();
     let spain_heights = executor
         .fetch(&mut prepared)
+        .await
+        .unwrap()
+        .rows()
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
         .await
@@ -407,6 +419,9 @@ pub async fn metrics(executor: &mut impl Executor) {
     prepared.bind("NL").unwrap().bind("weight_kg").unwrap();
     let netherlands_weights = executor
         .fetch(&mut prepared)
+        .await
+        .unwrap()
+        .rows()
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
         .await
@@ -416,6 +431,9 @@ pub async fn metrics(executor: &mut impl Executor) {
     prepared.bind("IT").unwrap().bind("weight_kg").unwrap();
     let italy_weights = executor
         .fetch(&mut prepared)
+        .await
+        .unwrap()
+        .rows()
         .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
         .try_collect::<Vec<_>>()
         .await
@@ -443,6 +461,9 @@ pub async fn metrics(executor: &mut impl Executor) {
                     .order_by(cols!(Metric::name ASC, avg DESC))
                     .build(&executor.driver()),
             )
+            .await
+            .unwrap()
+            .rows()
             .map_ok(AverageMetrics::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()
@@ -553,6 +574,9 @@ pub async fn metrics(executor: &mut impl Executor) {
                     .order_by(cols!(max_income DESC, Metric::country ASC))
                     .build(&executor.driver()),
             )
+            .await
+            .unwrap()
+            .rows()
             .map_ok(CountryMaxIncome::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()
@@ -614,6 +638,9 @@ pub async fn metrics(executor: &mut impl Executor) {
                     .order_by(cols!(name ASC))
                     .build(&executor.driver()),
             )
+            .await
+            .unwrap()
+            .rows()
             .map_ok(MetricGlobalStats::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()
@@ -659,6 +686,9 @@ pub async fn metrics(executor: &mut impl Executor) {
                     .order_by(cols!(name ASC))
                     .build(&executor.driver()),
             )
+            .await
+            .unwrap()
+            .rows()
             .map_ok(MetricGlobalStats::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()

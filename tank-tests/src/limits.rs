@@ -4,7 +4,7 @@ use core::f64;
 use rust_decimal::Decimal;
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, FixedDecimal, Interval, QueryBuilder, QueryResult,
+    Driver, DynQuery, Entity, Executor, FixedDecimal, Interval, QueryBuilder, QueryResult, Results,
     RawQuery, RowsAffected, SqlWriter, expr,
     stream::{StreamExt, TryStreamExt},
 };
@@ -346,7 +346,8 @@ pub async fn limits(executor: &mut impl Executor) {
                 .from(Limits::table())
                 .where_expr(expr!(Limits::boolean)),
         );
-        let mut stream = pin!(executor.run(query));
+        let bundle = executor.run(query).await.unwrap();
+        let mut stream = pin!(bundle.results());
         let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
             stream.next().await
         else {

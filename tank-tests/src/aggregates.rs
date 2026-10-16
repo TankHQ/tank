@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use std::{pin::pin, sync::LazyLock};
-use tank::{AsValue, Entity, Row, expr, stream::StreamExt, stream::TryStreamExt};
+use tank::{AsValue, Entity, Row, Rows, expr, stream::StreamExt, stream::TryStreamExt};
 use tank::{Executor, QueryBuilder, cols};
 use tokio::sync::Mutex;
 
@@ -58,15 +58,17 @@ pub async fn aggregates(executor: &mut impl Executor) {
 
     // SELECT COUNT(*), SUM(value)
     {
-        let mut stream = pin!(
-            executor.fetch(
+        let bundle = executor
+            .fetch(
                 QueryBuilder::new()
                     .select(cols!(COUNT(*), SUM(Values::value)))
                     .from(Values::table())
                     .where_expr(true)
-                    .build(&executor.driver())
+                    .build(&executor.driver()),
             )
-        );
+            .await
+            .unwrap();
+        let mut stream = pin!(bundle.rows());
         let count = stream.next().await;
         assert!(
             stream.next().await.is_none(),
@@ -96,15 +98,17 @@ pub async fn aggregates(executor: &mut impl Executor) {
     // SELECT *
     {
         {
-            let stream = pin!(
-                executor.fetch(
+            let bundle = executor
+                .fetch(
                     QueryBuilder::new()
                         .select(cols!(*))
                         .from(Values::table())
                         .where_expr(true)
-                        .build(&executor.driver())
+                        .build(&executor.driver()),
                 )
-            );
+                .await
+                .unwrap();
+            let stream = pin!(bundle.rows());
             let values = stream
                 .map(|row| {
                     let row = row.expect("Error while fetching the row");
@@ -135,22 +139,28 @@ pub async fn aggregates(executor: &mut impl Executor) {
         query
             .bind(EXPECTED_AVG)
             .expect("Could not bind the parameter");
-        let values = executor
-            .fetch(&mut query)
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not fetch rows above average from the prepared statement");
+        {
+            let bundle = executor.fetch(&mut query).await.unwrap();
+            let values = bundle
+                .rows()
+                .try_collect::<Vec<_>>()
+                .await
+                .expect("Could not fetch rows above average from the prepared statement");
+            assert_eq!(values.len(), COUNT as usize / 2);
+        }
         assert!(query.is_prepared());
-        assert_eq!(values.len(), COUNT as usize / 2);
         query
             .clear_bindings()
             .expect("Could not clear the bindings");
         query.bind(0).expect("Could not bind a second time");
-        let values = executor
-            .fetch(&mut query)
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not fetch positive rows from the prepared statement");
-        assert_eq!(values.len(), COUNT as usize);
+        {
+            let bundle = executor.fetch(&mut query).await.unwrap();
+            let values = bundle
+                .rows()
+                .try_collect::<Vec<_>>()
+                .await
+                .expect("Could not fetch positive rows from the prepared statement");
+            assert_eq!(values.len(), COUNT as usize);
+        }
     }
 }

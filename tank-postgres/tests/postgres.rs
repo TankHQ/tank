@@ -5,7 +5,8 @@ mod tests {
     use super::init::init;
     use std::{env, path::PathBuf, sync::Mutex};
     use tank_core::{
-        Connection, ConnectionPool, Driver, Executor, PoolConfig, Value, stream::StreamExt as _,
+        Connection, ConnectionPool, Driver, Executor, PoolConfig, Rows, Value,
+        stream::StreamExt as _,
     };
     use tank_postgres::{PostgresConnection, PostgresDriver};
     use tank_tests::{execute_tests, init_logs, silent_logs};
@@ -53,7 +54,11 @@ mod tests {
             .expect("Failed to connect");
         let mut connection = pool.get().await.expect("Could not get a connection");
 
-        let mut stream = std::pin::pin!(connection.fetch("SELECT ARRAY[]::int[]"));
+        let bundle = connection
+            .fetch("SELECT ARRAY[]::int[]")
+            .await
+            .expect("Could not fetch the empty array");
+        let mut stream = std::pin::pin!(bundle.rows());
         let row = stream
             .next()
             .await

@@ -2,7 +2,7 @@
 #![allow(unused_imports)]
 use std::{pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, Interval, Query, QueryBuilder, QueryResult, RawQuery,
+    Driver, DynQuery, Entity, Executor, Interval, Query, QueryBuilder, QueryResult, Results, RawQuery,
     SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
@@ -19,6 +19,8 @@ struct Container {
 
 pub async fn arrays2(executor: &mut impl Executor) {
     let _ = MUTEX.lock().await;
+    #[cfg(feature = "disable-multiple-statements")]
+    let _ = executor;
 
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
@@ -47,7 +49,8 @@ pub async fn arrays2(executor: &mut impl Executor) {
                 .where_expr(true)
                 .limit(Some(1)),
         );
-        let rows = pin!(executor.run(query).try_filter_map(|v| async move {
+        let bundle = executor.run(query).await.unwrap();
+        let rows = pin!(bundle.results().try_filter_map(|v| async move {
             Ok(match v {
                 QueryResult::Row(v) => Some(v),
                 QueryResult::Affected(..) => None,

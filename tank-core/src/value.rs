@@ -19,7 +19,7 @@ use uuid::Uuid;
 ///
 /// Variants correspond to database column types.
 #[derive(Default, Debug, Clone)]
-pub enum Value {
+pub enum Value<'a> {
     /// SQL NULL.
     #[default]
     Null,
@@ -54,9 +54,9 @@ pub enum Value {
     /// Single character.
     Char(Option<char>),
     /// Variable-length character string.
-    Varchar(Option<Cow<'static, str>>),
+    Varchar(Option<Cow<'a, str>>),
     /// Binary large object.
-    Blob(Option<Box<[u8]>>),
+    Blob(Option<Cow<'a, [u8]>>),
     /// Date value (without time).
     Date(Option<Date>),
     /// Time value (without date).
@@ -70,22 +70,33 @@ pub enum Value {
     /// UUID (Universally Unique Identifier).
     Uuid(Option<Uuid>),
     /// Homogeneous array (values, inner type, length).
-    Array(Option<Box<[Value]>>, Box<Value>, u32),
+    Array(Option<Box<[Value<'a>]>>, Box<Value<'a>>, u32),
     /// Variable-length list (values, inner type).
-    List(Option<Vec<Value>>, Box<Value>),
+    List(Option<Vec<Value<'a>>>, Box<Value<'a>>),
     /// Map (entries, key type, value type).
-    Map(Option<HashMap<Value, Value>>, Box<Value>, Box<Value>),
+    Map(
+        Option<HashMap<Value<'a>, Value<'a>>>,
+        Box<Value<'a>>,
+        Box<Value<'a>>,
+    ),
     /// JSON value.
     Json(Option<JsonValue>),
     /// Named struct (fields, field types, type name).
-    Struct(Option<Vec<(String, Value)>>, Vec<(String, Value)>, TableRef),
+    Struct(
+        Option<Vec<(String, Value<'a>)>>,
+        Vec<(String, Value<'a>)>,
+        Box<TableRef>,
+    ),
     /// Unknown type (usually used when no further information is available).
-    Unknown(Option<String>),
+    Unknown(Option<Cow<'a, str>>),
 }
 
-impl Value {
+/// Owning SQL value, with all payloads owned (`Cow::Owned`) or static scope.
+pub type ValueOwned = Value<'static>;
+
+impl<'a> Value<'a> {
     /// Checks if two values have the same type, ignoring their actual data.
-    pub fn same_type(&self, other: &Self) -> bool {
+    pub fn same_type(&self, other: &Value<'a>) -> bool {
         match (self, other) {
             (Self::Decimal(.., l_width, l_scale), Self::Decimal(.., r_width, r_scale)) => {
                 (*l_width == 0 || *r_width == 0 || l_width == r_width)
@@ -141,7 +152,7 @@ impl Value {
     }
 
     /// Create a value retaining only the type information, with all data set to NULL.
-    pub fn as_null(&self) -> Value {
+    pub fn as_null(&self) -> Value<'a> {
         match self {
             Value::Null => Value::Null,
             Value::Boolean(..) => Value::Boolean(None),
@@ -177,7 +188,7 @@ impl Value {
     }
 
     /// Attempts to convert the value to the type of another value, if they are compatible.
-    pub fn try_as(self, target_type: &Value) -> Result<Value> {
+    pub fn try_as(self, target_type: &Value<'_>) -> Result<Value<'a>> {
         if self.same_type(target_type) {
             return Ok(self);
         }
@@ -252,9 +263,65 @@ impl Value {
             _ => false,
         }
     }
+
+    /// Converts this value into an owning [`ValueOwned`], cloning any borrowed
+    /// payload.
+    pub fn into_owned(self) -> ValueOwned {
+        match self {
+            Value::Null => Value::Null,
+            Value::Boolean(v) => Value::Boolean(v),
+            Value::Int8(v) => Value::Int8(v),
+            Value::Int16(v) => Value::Int16(v),
+            Value::Int32(v) => Value::Int32(v),
+            Value::Int64(v) => Value::Int64(v),
+            Value::Int128(v) => Value::Int128(v),
+            Value::UInt8(v) => Value::UInt8(v),
+            Value::UInt16(v) => Value::UInt16(v),
+            Value::UInt32(v) => Value::UInt32(v),
+            Value::UInt64(v) => Value::UInt64(v),
+            Value::UInt128(v) => Value::UInt128(v),
+            Value::Float32(v) => Value::Float32(v),
+            Value::Float64(v) => Value::Float64(v),
+            Value::Decimal(v, w, s) => Value::Decimal(v, w, s),
+            Value::Char(v) => Value::Char(v),
+            Value::Varchar(v) => Value::Varchar(v.map(|v| Cow::Owned(v.into_owned()))),
+            Value::Blob(v) => Value::Blob(v.map(|v| Cow::Owned(v.into_owned()))),
+            Value::Date(v) => Value::Date(v),
+            Value::Time(v) => Value::Time(v),
+            Value::Timestamp(v) => Value::Timestamp(v),
+            Value::TimestampWithTimezone(v) => Value::TimestampWithTimezone(v),
+            Value::Interval(v) => Value::Interval(v),
+            Value::Uuid(v) => Value::Uuid(v),
+            Value::Array(v, ty, len) => Value::Array(
+                v.map(|v| v.into_vec().into_iter().map(Value::into_owned).collect()),
+                Box::new(ty.into_owned()),
+                len,
+            ),
+            Value::List(v, ty) => Value::List(
+                v.map(|v| v.into_iter().map(Value::into_owned).collect()),
+                Box::new(ty.into_owned()),
+            ),
+            Value::Map(v, k, val) => Value::Map(
+                v.map(|v| {
+                    v.into_iter()
+                        .map(|(k, v)| (k.into_owned(), v.into_owned()))
+                        .collect()
+                }),
+                Box::new(k.into_owned()),
+                Box::new(val.into_owned()),
+            ),
+            Value::Json(v) => Value::Json(v),
+            Value::Struct(v, ty, name) => Value::Struct(
+                v.map(|v| v.into_iter().map(|(k, v)| (k, v.into_owned())).collect()),
+                ty.into_iter().map(|(k, v)| (k, v.into_owned())).collect(),
+                name,
+            ),
+            Value::Unknown(v) => Value::Unknown(v.map(|v| Cow::Owned(v.into_owned()))),
+        }
+    }
 }
 
-impl PartialEq for Value {
+impl<'a> PartialEq for Value<'a> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Null, Self::Null) => true,
@@ -310,7 +377,7 @@ impl PartialEq for Value {
     }
 }
 
-impl Eq for Value {}
+impl<'a> Eq for Value<'a> {}
 
 fn hash_f32_value<H: std::hash::Hasher>(value: f32, state: &mut H) {
     let bits = if value == 0.0 {
@@ -334,10 +401,10 @@ fn hash_f64_value<H: std::hash::Hasher>(value: f64, state: &mut H) {
     bits.hash(state);
 }
 
-fn hash_map_value<H: std::hash::Hasher>(
-    value: &Option<HashMap<Value, Value>>,
-    key_ty: &Value,
-    value_ty: &Value,
+fn hash_map_value<'a, H: std::hash::Hasher>(
+    value: &Option<HashMap<Value<'a>, Value<'a>>>,
+    key_ty: &Value<'a>,
+    value_ty: &Value<'a>,
     state: &mut H,
 ) {
     value.is_some().hash(state);
@@ -358,7 +425,7 @@ fn hash_map_value<H: std::hash::Hasher>(
     value_ty.hash(state);
 }
 
-impl Hash for Value {
+impl<'a> Hash for Value<'a> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         use Value::*;
         discriminant(self).hash(state);
@@ -418,10 +485,14 @@ impl Hash for Value {
     }
 }
 
-impl Display for Value {
+impl<'a> Display for Value<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut out = DynQuery::default();
-        self.write_query(&GenericSqlWriter::new(), &mut Default::default(), &mut out);
+        self.clone().into_owned().write_query(
+            &GenericSqlWriter::new(),
+            &mut Default::default(),
+            &mut out,
+        );
         let _ = f.write_str(out.buffer());
         Ok(())
     }
@@ -431,12 +502,12 @@ impl Display for Value {
 #[derive(Default)]
 pub struct TypeDecoded {
     /// Representative value establishing variant & metadata.
-    pub value: Value,
+    pub value: ValueOwned,
     /// Nullability indicator.
     pub nullable: bool,
 }
 
-impl ToTokens for Value {
+impl<'a> ToTokens for Value<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let ts = match self {
             Value::Null => quote!(::tank::Value::Null),

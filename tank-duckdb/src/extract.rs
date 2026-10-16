@@ -5,7 +5,7 @@ use std::{
     ffi::{CStr, c_void},
     ptr, slice,
 };
-use tank_core::{Error, Interval, Result, TableRef, Value, decimal_from_scaled};
+use tank_core::{Error, Interval, Result, TableRef, Value, ValueOwned, decimal_from_scaled};
 use uuid::Uuid;
 
 pub(crate) fn convert_date(date: duckdb_date_struct) -> Result<time::Date> {
@@ -34,7 +34,7 @@ pub(crate) fn extract_value(
     type_id: u32,
     data: *const c_void,
     validity: *mut u64,
-) -> Result<Value> {
+) -> Result<ValueOwned> {
     unsafe {
         let has_data = !data.is_null()
             || type_id == DUCKDB_TYPE_DUCKDB_TYPE_ARRAY
@@ -164,7 +164,7 @@ pub(crate) fn extract_value(
                 if type_id == DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR {
                     Value::Varchar(value.map(|v| String::from_utf8_lossy(v).into_owned().into()))
                 } else {
-                    Value::Blob(value.map(|v| v.into()))
+                    Value::Blob(value.map(|v| v.to_vec().into()))
                 }
             }
             DUCKDB_TYPE_DUCKDB_TYPE_DECIMAL => {
@@ -315,7 +315,7 @@ pub(crate) fn extract_value(
                 } else {
                     CStr::from_ptr(*name).to_string_lossy()
                 };
-                Value::Struct(value, value_type, TableRef::new(name))
+                Value::Struct(value, value_type, Box::new(TableRef::new(name)))
             }
             DUCKDB_TYPE_DUCKDB_TYPE_MAP => {
                 let k_type = CBox::new(duckdb_map_type_key_type(logical_type), |mut v| {

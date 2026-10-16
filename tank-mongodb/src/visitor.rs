@@ -4,6 +4,7 @@ use std::{borrow::Cow, iter, mem, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
     IsConstant, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp, UnaryOpType, Value,
+    ValueOwned,
 };
 
 pub type AggregateAliases = Arc<Vec<(Bson, String)>>;
@@ -592,7 +593,7 @@ impl<'p, 'a, 'h> ExpressionVisitor for NotRewriter<'p, 'a, 'h> {
 
 #[derive(Default, Debug)]
 pub struct NegateNumber {
-    pub value: Value,
+    pub value: ValueOwned,
 }
 impl ExpressionVisitor for NegateNumber {
     fn visit_operand(

@@ -1,5 +1,6 @@
 use crate::{QueryResult, Value};
 use std::{
+    borrow::Cow,
     iter::{self},
     slice,
     sync::Arc,
@@ -17,20 +18,27 @@ pub struct RowsAffected {
 /// Shared columns labels.
 pub type RowLabels = Arc<[String]>;
 /// Row values matching `RowLabels`.
-pub type RowValues = Box<[Value]>;
+///
+/// A `Cow` so a driver can avoid further memory allocation.
+pub type RowValues<'a> = Cow<'a, [Value<'a>]>;
+/// Owning row values.
+pub type RowValuesOwned = RowValues<'static>;
 
 /// Row with column labels.
 #[derive(Default, Clone, Debug)]
-pub struct Row {
+pub struct Row<'a> {
     /// Shared reference to column names for efficient storage.
     pub labels: RowLabels,
     /// Data values for this specific row.
-    pub values: RowValues,
+    pub values: RowValues<'a>,
 }
 
-impl Row {
+/// Owning row.
+pub type RowOwned = Row<'static>;
+
+impl<'a> Row<'a> {
     /// Creates a new row from labels and values.
-    pub fn new(names: RowLabels, values: RowValues) -> Self {
+    pub fn new(names: RowLabels, values: RowValues<'a>) -> Self {
         Self {
             labels: names,
             values,
@@ -41,11 +49,11 @@ impl Row {
         &self.labels
     }
     /// Accesses the raw values in this row.
-    pub fn values(&self) -> &[Value] {
+    pub fn values(&self) -> &[Value<'a>] {
         &self.values
     }
     /// Retrieves a value by its column name. Returns `None` if the column doesn't exist.
-    pub fn get_column(&self, name: &str) -> Option<&Value> {
+    pub fn get_column(&self, name: &str) -> Option<&Value<'a>> {
         self.labels
             .iter()
             .position(|v| v == name)
@@ -55,21 +63,26 @@ impl Row {
     pub fn len(&self) -> usize {
         self.values.len()
     }
-}
-
-impl<'s> IntoIterator for &'s Row {
-    type Item = (&'s String, &'s Value);
-    type IntoIter = iter::Zip<slice::Iter<'s, String>, slice::Iter<'s, Value>>;
-    fn into_iter(self) -> Self::IntoIter {
-        iter::zip(self.labels.iter(), self.values.iter())
+    /// Converts this row into an owning [`RowOwned`], cloning any borrowed payload.
+    pub fn into_owned(self) -> RowOwned {
+        Row {
+            labels: self.labels,
+            values: Cow::Owned(
+                self.values
+                    .into_owned()
+                    .into_iter()
+                    .map(Value::into_owned)
+                    .collect(),
+            ),
+        }
     }
 }
 
-impl<'s> IntoIterator for &'s mut Row {
-    type Item = (&'s String, &'s mut Value);
-    type IntoIter = iter::Zip<slice::Iter<'s, String>, slice::IterMut<'s, Value>>;
+impl<'s, 'a> IntoIterator for &'s Row<'a> {
+    type Item = (&'s String, &'s Value<'a>);
+    type IntoIter = iter::Zip<slice::Iter<'s, String>, slice::Iter<'s, Value<'a>>>;
     fn into_iter(self) -> Self::IntoIter {
-        iter::zip(self.labels.iter(), self.values.iter_mut())
+        iter::zip(self.labels.iter(), self.values.iter())
     }
 }
 
@@ -88,25 +101,25 @@ impl Extend<RowsAffected> for RowsAffected {
     }
 }
 
-impl From<Row> for RowValues {
-    fn from(value: Row) -> Self {
+impl<'a> From<Row<'a>> for RowValues<'a> {
+    fn from(value: Row<'a>) -> Self {
         value.values
     }
 }
 
-impl<'a> From<&'a Row> for &'a RowValues {
-    fn from(value: &'a Row) -> Self {
+impl<'a> From<&'a Row<'a>> for &'a RowValues<'a> {
+    fn from(value: &'a Row<'a>) -> Self {
         &value.values
     }
 }
 
-impl From<Row> for QueryResult {
-    fn from(value: Row) -> Self {
+impl<'a> From<Row<'a>> for QueryResult<'a> {
+    fn from(value: Row<'a>) -> Self {
         QueryResult::Row(value)
     }
 }
 
-impl From<RowsAffected> for QueryResult {
+impl<'a> From<RowsAffected> for QueryResult<'a> {
     fn from(value: RowsAffected) -> Self {
         QueryResult::Affected(value)
     }

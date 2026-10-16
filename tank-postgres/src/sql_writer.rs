@@ -1,7 +1,8 @@
 use std::{collections::BTreeMap, fmt::Write};
 use tank_core::{
     ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment, SqlCoreWriter,
-    SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, Value, separated_by,
+    SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, Value,
+    separated_by,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 
@@ -55,7 +56,7 @@ impl SqlCoreWriter for PostgresSqlWriter {
         }
     }
 
-    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value) {
+    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
         match value {
             Value::Boolean(..) => out.push_str("BOOLEAN"),
             Value::Int8(..) => out.push_str("SMALLINT"),
@@ -199,7 +200,7 @@ impl SqlValueWriter for PostgresSqlWriter {
         context: &mut Context,
         out: &mut DynQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
-        ty: Option<&Value>,
+        ty: Option<&Value<'_>>,
         _is_array: bool,
     ) {
         out.push_str("ARRAY[");

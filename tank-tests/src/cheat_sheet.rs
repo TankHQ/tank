@@ -13,10 +13,10 @@ pub struct Notes(pub String); // Third party type
 pub struct NotesWrap(pub Notes); // Local wrapper
 
 impl AsValue for NotesWrap {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> tank::ValueOwned {
         Value::Varchar(None)
     }
-    fn as_value(self) -> Value {
+    fn as_value(self) -> tank::ValueOwned {
         Value::Varchar(Some(self.0.0.into()))
     }
     fn try_from_value(value: Value) -> Result<Self> {
@@ -160,7 +160,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     }
 
     {
-        use tank::{Entity, expr, stream::TryStreamExt};
+        use tank::{Entity, Rows, expr, stream::TryStreamExt};
 
         let mut query = EntityExample::prepare_find(
             &mut connection,
@@ -171,6 +171,8 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         query.bind(Uuid::from_str("2f4f97da-0278-4c99-bc22-2b3986aeee85")?)?;
         let entities = connection
             .fetch(&mut query)
+            .await?
+            .rows()
             .map_ok(|row| EntityExample::from_row(row).unwrap())
             .try_collect::<Vec<EntityExample>>()
             .await?;
@@ -179,7 +181,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     }
 
     {
-        use tank::{QueryBuilder, cols, expr, stream::TryStreamExt};
+        use tank::{QueryBuilder, Rows, cols, expr, stream::TryStreamExt};
 
         let uid = entity.unit_id;
         let results = connection
@@ -193,6 +195,8 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                     .limit(Some(50))
                     .build(&connection.driver()),
             )
+            .await?
+            .rows()
             .map_ok(|row| EntityExample::from_row(row).unwrap())
             .try_collect::<Vec<_>>()
             .await?;
@@ -202,7 +206,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     {
         use crate::{Author, AuthorColumnTrait, Book, BookColumnTrait};
         use tank::{
-            Entity, QueryBuilder, cols, expr, join, stream::StreamExt, stream::TryStreamExt,
+            Entity, QueryBuilder, Rows, cols, expr, join, stream::StreamExt, stream::TryStreamExt,
         };
 
         #[derive(Entity, Debug)]
@@ -220,6 +224,8 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                     .order_by(cols!(Book::title ASC))
                     .build(&connection.driver()),
             )
+            .await?
+            .rows()
             .map_ok(BookWithAuthor::from_row)
             .map(Result::flatten)
             .try_collect()
@@ -233,6 +239,8 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                     .where_expr(true)
                     .build(&connection.driver()),
             )
+            .await?
+            .rows()
             .map_ok(BookWithAuthor::from_row)
             .map(Result::flatten)
             .try_collect()
@@ -251,6 +259,8 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                     .where_expr(true)
                     .build(&connection.driver()),
             )
+            .await?
+            .rows()
             .try_collect::<Vec<_>>()
             .await?;
     }

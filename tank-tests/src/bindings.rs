@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use rust_decimal::Decimal;
 use std::sync::LazyLock;
-use tank::{AsValue, Entity, Executor, FixedDecimal, expr, stream::TryStreamExt};
+use tank::{AsValue, Entity, Executor, FixedDecimal, Rows, expr, stream::TryStreamExt};
 use time::{Date, Month, Time};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -134,12 +134,15 @@ pub async fn bindings(executor: &mut impl Executor) {
             .bind(value)
             .unwrap_or_else(|e| panic!("Failed to bind `{name}`: {e:#}"));
     }
-    let loaded = executor
-        .fetch(&mut query)
-        .and_then(|row| async move { BoundTypes::from_row(row) })
-        .try_collect::<Vec<_>>()
-        .await
-        .expect("Failed to fetch the bound row");
+    let loaded = {
+        let bundle = executor.fetch(&mut query).await.unwrap();
+        bundle
+            .rows()
+            .and_then(|row| async move { BoundTypes::from_row(row) })
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Failed to fetch the bound row")
+    };
     assert_eq!(
         loaded.as_slice(),
         std::slice::from_ref(&first),
@@ -168,12 +171,15 @@ pub async fn bindings(executor: &mut impl Executor) {
     ] {
         query.bind(value).expect("Failed to rebind a value");
     }
-    let loaded = executor
-        .fetch(&mut query)
-        .and_then(|row| async move { BoundTypes::from_row(row) })
-        .try_collect::<Vec<_>>()
-        .await
-        .expect("Failed to fetch the rebound row");
+    let loaded = {
+        let bundle = executor.fetch(&mut query).await.unwrap();
+        bundle
+            .rows()
+            .and_then(|row| async move { BoundTypes::from_row(row) })
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Failed to fetch the rebound row")
+    };
     assert_eq!(
         loaded.as_slice(),
         std::slice::from_ref(&second),

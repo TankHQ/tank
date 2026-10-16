@@ -2,7 +2,7 @@
 mod tests {
     use std::{path::Path, sync::Mutex};
     use tank_chdb::{ChDBConnection, ChDBDriver};
-    use tank_core::{Connection, Entity, Executor, stream::TryStreamExt};
+    use tank_core::{Connection, Entity, Executor, Rows, stream::TryStreamExt};
     use tank_tests::{init_logs, silent_logs};
     use tokio::fs;
 
@@ -54,12 +54,18 @@ mod tests {
         query
             .bind(Option::<i64>::None)
             .expect("Could not bind a NULL");
-        let rows = connection
-            .fetch(&mut query)
-            .and_then(|row| async move { PreparedNullable::from_row(row) })
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not query by the NULL value");
+        let rows = {
+            let bundle = connection
+                .fetch(&mut query)
+                .await
+                .expect("Could not query by the NULL value");
+            bundle
+                .rows()
+                .and_then(|row| async move { PreparedNullable::from_row(row) })
+                .try_collect::<Vec<_>>()
+                .await
+                .expect("Could not query by the NULL value")
+        };
         assert!(
             rows.is_empty(),
             "A NULL parameter must not match any row, got {rows:?}"
@@ -77,12 +83,18 @@ mod tests {
         not_null
             .bind(Option::<i64>::None)
             .expect("Could not bind a NULL");
-        let rows = connection
-            .fetch(&mut not_null)
-            .and_then(|row| async move { PreparedNullable::from_row(row) })
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not query by the NULL id");
+        let rows = {
+            let bundle = connection
+                .fetch(&mut not_null)
+                .await
+                .expect("Could not query by the NULL id");
+            bundle
+                .rows()
+                .and_then(|row| async move { PreparedNullable::from_row(row) })
+                .try_collect::<Vec<_>>()
+                .await
+                .expect("Could not query by the NULL id")
+        };
         assert!(
             rows.is_empty(),
             "A NULL parameter must not match any row, got {rows:?}"
@@ -90,12 +102,18 @@ mod tests {
 
         // The same statement must be reusable with a new binding.
         query.bind(7_i64).expect("Could not rebind the value");
-        let rows = connection
-            .fetch(&mut query)
-            .and_then(|row| async move { PreparedNullable::from_row(row) })
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not rerun the prepared query");
+        let rows = {
+            let bundle = connection
+                .fetch(&mut query)
+                .await
+                .expect("Could not rerun the prepared query");
+            bundle
+                .rows()
+                .and_then(|row| async move { PreparedNullable::from_row(row) })
+                .try_collect::<Vec<_>>()
+                .await
+                .expect("Could not rerun the prepared query")
+        };
         assert_eq!(
             rows,
             [PreparedNullable {
@@ -155,8 +173,12 @@ mod tests {
             .execute("INSERT INTO in_memory_table VALUES (1), (2)")
             .await
             .expect("Could not insert the rows");
-        let rows = connection
+        let bundle = connection
             .fetch("SELECT a FROM in_memory_table ORDER BY a")
+            .await
+            .expect("Could not query the table");
+        let rows = bundle
+            .rows()
             .try_collect::<Vec<_>>()
             .await
             .expect("Could not query the table");
@@ -191,8 +213,12 @@ mod tests {
             ChDBConnection::connect(&ChDBDriver::new(), format!("chdb://?path={DB_PATH}").into())
                 .await
                 .expect("Could not reopen the database");
-        let rows = connection
+        let bundle = connection
             .fetch("SELECT a FROM persisted ORDER BY a")
+            .await
+            .expect("Could not query the persisted table");
+        let rows = bundle
+            .rows()
             .try_collect::<Vec<_>>()
             .await
             .expect("Could not query the persisted table");

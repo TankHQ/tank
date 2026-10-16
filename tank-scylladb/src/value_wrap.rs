@@ -20,36 +20,36 @@ use std::{
     collections::{HashMap, HashSet},
     io::{self, Error, ErrorKind},
 };
-use tank_core::{AsValue, Interval, TableRef, Value};
+use tank_core::{AsValue, Interval, TableRef, Value, ValueOwned};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct ValueWrap(pub(crate) Value);
+pub(crate) struct ValueWrap(pub(crate) ValueOwned);
 
-impl From<Value> for ValueWrap {
-    fn from(value: tank_core::Value) -> Self {
+impl From<ValueOwned> for ValueWrap {
+    fn from(value: ValueOwned) -> Self {
         Self(value)
     }
 }
 
-impl From<ValueWrap> for Value {
+impl From<ValueWrap> for ValueOwned {
     fn from(value: ValueWrap) -> Self {
         value.0
     }
 }
 
 impl AsValue for ValueWrap {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> ValueOwned {
         Value::Unknown(None)
     }
 
-    fn as_value(self) -> Value {
+    fn as_value(self) -> ValueOwned {
         self.0
     }
 
-    fn try_from_value(value: Value) -> tank_core::Result<Self> {
-        Ok(Self(value))
+    fn try_from_value(value: Value<'_>) -> tank_core::Result<Self> {
+        Ok(Self(value.into_owned()))
     }
 }
 
@@ -65,7 +65,7 @@ impl SerializeValue for ValueWrap {
             format!("Could not serialize {value:?} as ColumnType::UserDefinedType"),
         ));
         fn do_serialize<'b, V: AsValue + SerializeValue>(
-            value: Value,
+            value: ValueOwned,
             ty: &ColumnType,
             writer: CellWriter<'b>,
         ) -> Result<WrittenCellProof<'b>, SerializationError> {
@@ -461,7 +461,11 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                     .iter()
                     .map(|(name, value)| (name.clone(), value.as_null()))
                     .collect();
-                Value::Struct(if v.is_none() { None } else { Some(fields) }, ty, type_ref)
+                Value::Struct(
+                    if v.is_none() { None } else { Some(fields) },
+                    ty,
+                    Box::new(type_ref),
+                )
             }
             ColumnType::Tuple(elem_types) => Value::Array(
                 <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(ty, v)?

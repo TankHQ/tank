@@ -11,7 +11,7 @@ use std::{borrow::Cow, error::Error};
 use tank_core::Value;
 
 #[derive(Clone, Debug)]
-pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, Value>);
+pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, Value<'a>>);
 
 impl<'a> Default for ValueWrap<'a> {
     fn default() -> Self {
@@ -19,14 +19,14 @@ impl<'a> Default for ValueWrap<'a> {
     }
 }
 
-impl<'a> From<&'a Value> for ValueWrap<'a> {
-    fn from(value: &'a Value) -> Self {
+impl<'a> From<&'a Value<'a>> for ValueWrap<'a> {
+    fn from(value: &'a Value<'a>) -> Self {
         ValueWrap(Cow::Borrowed(value))
     }
 }
 
-impl<'a> From<Value> for ValueWrap<'a> {
-    fn from(value: Value) -> Self {
+impl<'a> From<Value<'a>> for ValueWrap<'a> {
+    fn from(value: Value<'a>) -> Self {
         ValueWrap(Cow::Owned(value))
     }
 }

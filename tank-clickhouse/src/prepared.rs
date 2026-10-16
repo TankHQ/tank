@@ -4,7 +4,7 @@ use std::{
     mem,
 };
 use tank_core::{
-    AsValue, Context, DynQuery, Fragment, Prepared, QueryParam, Result, SqlWriter, Value,
+    AsValue, Context, DynQuery, Fragment, Prepared, QueryParam, Result, SqlWriter, ValueOwned,
 };
 
 /// ClickHouse prepared statement.
@@ -16,7 +16,7 @@ use tank_core::{
 pub struct ClickHousePrepared {
     pub(crate) sql: String,
     pub(crate) markers: Vec<QueryParam>,
-    pub(crate) params: Vec<Value>,
+    pub(crate) params: Vec<ValueOwned>,
     pub(crate) index: u64,
 }
 
@@ -97,7 +97,7 @@ impl ClickHousePrepared {
     }
 
     /// Take the bound parameters, resetting the bind index.
-    pub fn take_params(&mut self) -> Vec<Value> {
+    pub fn take_params(&mut self) -> Vec<ValueOwned> {
         self.index = 0;
         mem::take(&mut self.params)
     }

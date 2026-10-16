@@ -5,7 +5,7 @@ use std::pin::pin;
 use std::{str::FromStr, sync::Arc, sync::LazyLock};
 use tank::QueryBuilder;
 use tank::{
-    AsValue, Dataset, Entity, Executor, FixedDecimal, cols, expr, join,
+    AsValue, Dataset, Entity, Executor, FixedDecimal, Rows, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, PrimitiveDateTime, Time};
@@ -115,6 +115,9 @@ pub async fn shopping(executor: &mut impl Executor) {
                 .order_by(cols!(Product::price ASC))
                 .build(&executor.driver()),
         )
+        .await
+        .unwrap()
+        .rows()
         .map(|r| r.and_then(Product::from_row))
         .try_collect::<Vec<Product>>()
         .await
@@ -186,21 +189,26 @@ pub async fn shopping(executor: &mut impl Executor) {
     User::insert_many(executor, &users)
         .await
         .expect("Could not insert the users");
-    let row = pin!(
-        executor.fetch(
-            QueryBuilder::new()
-                .select(cols!(COUNT(*)))
-                .from(User::table())
-                .where_expr(true)
-                .limit(Some(1))
-                .build(&executor.driver())
-        )
-    )
-    .try_next()
-    .await
-    .expect("Failed to query for count")
-    .expect("Did not return some value");
-    assert_eq!(i64::try_from_value(row.values[0].clone()).unwrap(), 2);
+    let count_value = {
+        let count_bundle = executor
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(COUNT(*)))
+                    .from(User::table())
+                    .where_expr(true)
+                    .limit(Some(1))
+                    .build(&executor.driver()),
+            )
+            .await
+            .unwrap();
+        let row = pin!(count_bundle.rows())
+            .try_next()
+            .await
+            .expect("Failed to query for count")
+            .expect("Did not return some value");
+        i64::try_from_value(row.values[0].clone()).unwrap()
+    };
+    assert_eq!(count_value, 2);
 
     // Cart
     Cart::drop_table(executor, true, false)
@@ -298,6 +306,9 @@ pub async fn shopping(executor: &mut impl Executor) {
                     .order_by(cols!(Product::name ASC, User::name ASC))
                     .build(&executor.driver()),
             )
+            .await
+            .unwrap()
+            .rows()
             .map_ok(Carts::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()
