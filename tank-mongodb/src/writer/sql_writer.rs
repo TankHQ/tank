@@ -14,9 +14,9 @@ use mongodb::{
 };
 use std::{borrow::Cow, iter, mem, sync::Arc};
 use tank_core::{
-    AsEntity, BinaryOpType, Context, Dataset, DynQuery, Entity, ErrorContext, Expression, FindOrder,
-    Fragment, IsAggregateFunction, IsAsterisk, IsConstant, Order, SelectQuery, SqlCoreWriter,
-    SqlWriter, TableRef, truncate_long,
+    AsEntity, BinaryOpType, ColumnDef, Context, Dataset, DynQuery, Entity, ErrorContext,
+    Expression, FindOrder, Fragment, IsAggregateFunction, IsAsterisk, IsConstant, Order,
+    SelectQuery, SqlCoreWriter, SqlWriter, TableRef, truncate_long,
 };
 
 #[derive(Default)]
@@ -98,6 +98,10 @@ impl MongoDBSqlWriter {
 }
 
 impl SqlWriter for MongoDBSqlWriter {
+    fn write_column_comment(&self, _out: &mut DynQuery, _column: &ColumnDef) {
+        // MongoDB does not support columns comments
+    }
+
     fn write_create_schema<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
     where
         Self: Sized,

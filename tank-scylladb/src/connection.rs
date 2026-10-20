@@ -11,20 +11,16 @@ use scylla::{
     },
 };
 use std::{
-    borrow::Cow,
-    future::Future,
-    net::IpAddr,
-    num::NonZeroU64,
-    ops::ControlFlow,
-    str::FromStr,
+    borrow::Cow, future::Future, net::IpAddr, num::NonZeroU64, ops::ControlFlow, str::FromStr,
     time::Duration,
 };
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, QueryResultOwned, RawQuery, Result,
-    describe_url,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, QueryResultOwned,
+    RawQuery, Result, describe_url,
     stream::{Stream, TryStreamExt},
     truncate_long,
-};use tokio::task;
+};
+use tokio::task;
 
 /// Connection wrapper for ScyllaDB/Cassandra sessions.
 ///

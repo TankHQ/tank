@@ -214,9 +214,9 @@ mod tests {
             name: "x".into(),
         };
         assert_eq!(entity.row_values().len(), 2);
-        assert_eq!(entity.row_values()[0], 7.as_value());
+        assert_eq!(entity.row_values().get(0).unwrap(), 7.as_value());
         let row = entity.row();
         assert_eq!(row.names(), &["id", "name"]);
-        assert_eq!(row.values()[1], "x".as_value());
+        assert_eq!(row.values().nth(1).unwrap(), "x".as_value());
     }
 }

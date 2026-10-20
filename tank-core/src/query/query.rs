@@ -1,6 +1,9 @@
-use crate::{AsValue, Driver, DynQuery, Prepared, Result, Row, RowsAffected, truncate_long};
+use crate::{
+    AsValue, Driver, DynQuery, NoSource, Prepared, Result, Row, RowValuesSource, RowsAffected,
+    truncate_long,
+};
 use anyhow::anyhow;
-use std::fmt::{self, Display};
+use std::fmt::{self, Debug, Display, Formatter};
 
 /// Byte span of a parameter marker inside a built query
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -134,8 +137,8 @@ where
 impl<D: Driver> Display for Query<D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Query::Raw(v) => v.fmt(f),
-            Query::Prepared(query) => query.fmt(f),
+            Query::Raw(v) => Display::fmt(v, f),
+            Query::Prepared(query) => Display::fmt(query, f),
         }
     }
 }
@@ -147,13 +150,24 @@ impl<D: Driver> AsMut<Query<D>> for Query<D> {
 }
 
 /// Items from `Executor::run`: rows or effects.
-#[derive(Debug)]
-pub enum QueryResult<'a> {
+///
+/// The `S` parameter is the [`RowValuesSource`](crate::RowValuesSource) of the row values.
+/// Use [`QueryResultOwned`] for materialised results.
+pub enum QueryResult<'a, S: RowValuesSource + ?Sized> {
     /// A labeled row
-    Row(Row<'a>),
+    Row(Row<'a, S>),
     /// A modify effect aggregation
     Affected(RowsAffected),
 }
 
+impl<S: RowValuesSource + ?Sized> Debug for QueryResult<'_, S> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Row(row) => f.debug_tuple("Row").field(row).finish(),
+            Self::Affected(affected) => f.debug_tuple("Affected").field(affected).finish(),
+        }
+    }
+}
+
 /// Owning query result.
-pub type QueryResultOwned = QueryResult<'static>;
+pub type QueryResultOwned = QueryResult<'static, NoSource>;

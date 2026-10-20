@@ -394,7 +394,12 @@ pub trait SqlValueWriter: SqlCoreWriter {
         out.push(')');
     }
 
-    fn write_map(&self, context: &mut Context, out: &mut DynQuery, value: &HashMap<Value<'_>, Value<'_>>) {
+    fn write_map(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &HashMap<Value<'_>, Value<'_>>,
+    ) {
         out.push('{');
         separated_by(
             out,
@@ -413,7 +418,12 @@ pub trait SqlValueWriter: SqlCoreWriter {
         self.write_string(context, out, &value.to_string());
     }
 
-    fn write_struct(&self, context: &mut Context, out: &mut DynQuery, value: &[(String, Value<'_>)]) {
+    fn write_struct(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &[(String, Value<'_>)],
+    ) {
         out.push('{');
         separated_by(
             out,

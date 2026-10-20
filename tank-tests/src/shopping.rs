@@ -206,7 +206,7 @@ pub async fn shopping(executor: &mut impl Executor) {
             .await
             .expect("Failed to query for count")
             .expect("Did not return some value");
-        i64::try_from_value(row.values[0].clone()).unwrap()
+        i64::try_from_value(row.values.get(0).unwrap()).unwrap()
     };
     assert_eq!(count_value, 2);
 

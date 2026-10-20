@@ -16,14 +16,15 @@ use std::{
     mem, ptr,
     str::FromStr,
     sync::{
-        Arc, LazyLock,
+        LazyLock,
         atomic::{AtomicPtr, Ordering},
     },
 };
 use tank_core::{
-    AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, OwnedResults,
-    Query, QueryResult, RawQuery, Result, Results, Row, RowsAffected, SqlCoreWriter, Value,
-    as_c_string, describe_path, error_message_from_ptr, send_value, truncate_long,
+    AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, NoSource,
+    OwnedResults, Query, QueryResult, RawQuery, Result, Results, Row, RowLabels, RowsAffected,
+    SqlCoreWriter, Value, as_c_string, describe_path, error_message_from_ptr, send_value,
+    truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -47,7 +48,7 @@ impl DuckDBConnection {
         &**DATABASE_CACHE
     }
 
-    pub(crate) fn do_run<F>(execute: F, tx: Sender<Result<QueryResult>>)
+    pub(crate) fn do_run<F>(execute: F, tx: Sender<Result<QueryResult<'static, NoSource>>>)
     where
         F: FnOnce(*mut duckdb_result) -> u32,
     {
@@ -87,7 +88,7 @@ impl DuckDBConnection {
     pub(crate) fn do_run_unprepared(
         connection: duckdb_connection,
         sql: &CStr,
-        tx: Sender<Result<QueryResult>>,
+        tx: Sender<Result<QueryResult<'static, NoSource>>>,
     ) {
         unsafe {
             let mut statements =
@@ -130,7 +131,7 @@ impl DuckDBConnection {
 
     pub(crate) fn do_run_prepared(
         prepared: duckdb_prepared_statement,
-        tx: Sender<Result<QueryResult>>,
+        tx: Sender<Result<QueryResult<'static, NoSource>>>,
     ) {
         let tx2 = tx.clone();
         Self::do_run(
@@ -150,7 +151,10 @@ impl DuckDBConnection {
         );
     }
 
-    pub(crate) fn extract_result(result: *mut duckdb_result, tx: Sender<Result<QueryResult>>) {
+    pub(crate) fn extract_result(
+        result: *mut duckdb_result,
+        tx: Sender<Result<QueryResult<'static, NoSource>>>,
+    ) {
         unsafe {
             let is_streaming = duckdb_result_is_streaming(*result);
             loop {
@@ -183,7 +187,7 @@ impl DuckDBConnection {
                         (vector, logical_type, type_id, data, validity, name)
                     })
                     .collect::<Box<[_]>>();
-                let names = info.iter().map(|v| v.5.to_string()).collect();
+                let names: RowLabels = info.iter().map(|v| v.5.to_string()).collect();
                 for row in 0..rows {
                     let columns = (0..cols).map(|col| {
                         let col = col as usize;
@@ -197,9 +201,9 @@ impl DuckDBConnection {
                             info.4,
                         )?)
                     });
-                    match columns.collect::<Result<_>>() {
+                    match columns.collect::<Result<Vec<_>>>() {
                         Ok(values) => {
-                            let row = Row::new(names.clone(), values);
+                            let row = Row::new(names.clone(), values.into());
                             send_value!(tx, Ok(QueryResult::Row(row)));
                         }
                         Err(e) => {
@@ -360,7 +364,7 @@ impl Executor for DuckDBConnection {
             let context = format!("While running the query:\n{}", query.as_mut());
             let connection = AtomicPtr::new(*self.connection);
             let mut owned = mem::take(query.as_mut());
-            let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
+            let (tx, rx) = flume::unbounded::<Result<QueryResult<'static, NoSource>>>();
             let join = spawn_blocking(move || {
                 match &mut owned {
                     Query::Raw(RawQuery { sql, .. }) => {
@@ -454,7 +458,7 @@ impl Executor for DuckDBConnection {
             }
             let rows_affected = rows.len() as u64;
             for row in rows {
-                for value in row.into_owned() {
+                for value in row.iter() {
                     let rc = match value {
                         Value::Boolean(Some(v), ..) => duckdb_append_bool(*appender, v),
                         Value::Int8(Some(v), ..) => duckdb_append_int8(*appender, v),

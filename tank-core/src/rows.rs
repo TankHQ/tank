@@ -1,10 +1,19 @@
-use crate::{QueryResult, Result, Row, RowLabels, RowsAffected, Value, ValueOwned};
+use crate::{
+    NoSource, QueryResult, Result, Row, RowLabels, RowValues, RowValuesSource, RowsAffected, Value,
+    ValueOwned,
+};
 use futures::{Stream, StreamExt, stream};
-use std::borrow::Cow;
 use std::ops::Range;
 
 /// Materialized rows of a query. Provides a borrowing stream.
+///
+/// Each driver names its own [`RowValuesSource`] via the [`Source`](Self::Source)
+/// associated type, so a driver that decodes lazily gets a monomorphised
+/// (non-`dyn`) decode path.
 pub trait Rows: Send + Sync {
+    /// The row-values source produced by [`row`](Self::row).
+    type Source: RowValuesSource + ?Sized;
+
     /// Number of rows in the result set (affected counts are not rows).
     fn len(&self) -> usize;
 
@@ -16,10 +25,10 @@ pub trait Rows: Send + Sync {
     /// Borrows the `index`-th row (affected counts are skipped).
     ///
     /// The returned row borrows from `self`, the caller must not outlive it.
-    fn row(&self, index: usize) -> Option<Result<Row<'_>>>;
+    fn row(&self, index: usize) -> Option<Result<Row<'_, Self::Source>>>;
 
     /// Streams the rows, each borrowing from `self`.
-    fn rows(&self) -> impl Stream<Item = Result<Row<'_>>> + Send {
+    fn rows(&self) -> impl Stream<Item = Result<Row<'_, Self::Source>>> + Send {
         stream::iter((0..self.len()).filter_map(|i| self.row(i)))
     }
 }
@@ -28,7 +37,7 @@ pub trait Rows: Send + Sync {
 /// Provides a borrowing stream.
 pub trait Results: Rows {
     /// Streams the query results, each borrowing from `self`.
-    fn results(&self) -> impl Stream<Item = Result<QueryResult<'_>>> + Send;
+    fn results(&self) -> impl Stream<Item = Result<QueryResult<'_, Self::Source>>> + Send;
 }
 
 /// One ordered entry of an [`OwnedResults`] bundle.
@@ -41,14 +50,6 @@ pub enum OwnedItem {
 }
 
 /// A fully owning [`Results`] implementation.
-///
-/// Every row's values are stored in one flat arena (`Box<[Value]>`) with a
-/// per-row span into it, and the ordered list of items (rows and affected
-/// counts) is stored separately. Each row keeps its own labels, because a
-/// single execution may contain several statements whose result sets have
-/// different columns. The whole result set therefore costs a constant number of
-/// allocations (arena, spans, items, labels) regardless of the number of rows or
-/// columns.
 #[derive(Default, Debug)]
 pub struct OwnedResults {
     arena: Box<[ValueOwned]>,
@@ -64,12 +65,10 @@ impl OwnedResults {
         Self::default()
     }
 
-    /// Collects a query-result stream into a bundle, flattening all rows into a
-    /// single arena.
-    ///
+    /// Collects a query-result stream into a bundle, flattening all rows into a single arena.
     /// Convenience for drivers whose `run` yields `QueryResult`s.
     pub async fn from_query_result_stream(
-        stream: impl Stream<Item = Result<QueryResult<'_>>>,
+        stream: impl Stream<Item = Result<QueryResult<'_, NoSource>>>,
     ) -> Result<Self> {
         let mut arena: Vec<ValueOwned> = Vec::new();
         let mut spans: Vec<Range<usize>> = Vec::new();
@@ -80,7 +79,7 @@ impl OwnedResults {
             match item? {
                 QueryResult::Row(row) => {
                     let start = arena.len();
-                    arena.extend(row.values.into_owned().into_iter().map(Value::into_owned));
+                    arena.extend(row.values.into_owned().iter().map(Value::into_owned));
                     spans.push(start..arena.len());
                     labels.push(row.labels);
                     items.push(OwnedItem::Row(spans.len() - 1));
@@ -98,28 +97,30 @@ impl OwnedResults {
 }
 
 impl Rows for OwnedResults {
+    type Source = NoSource;
+
     fn len(&self) -> usize {
         self.spans.len()
     }
 
-    fn row(&self, index: usize) -> Option<Result<Row<'_>>> {
+    fn row(&self, index: usize) -> Option<Result<Row<'_, Self::Source>>> {
         let span = self.spans.get(index)?;
         Some(Ok(Row {
             labels: self.labels.get(index)?.clone(),
-            values: Cow::Borrowed(&self.arena[span.clone()]),
+            values: RowValues::from(&self.arena[span.clone()]),
         }))
     }
 }
 
 impl Results for OwnedResults {
-    fn results(&self) -> impl Stream<Item = Result<QueryResult<'_>>> + Send {
+    fn results(&self) -> impl Stream<Item = Result<QueryResult<'_, Self::Source>>> + Send {
         let arena = &self.arena;
         let spans = &self.spans;
         let labels = &self.labels;
-        crate::stream::iter(self.items.iter().map(move |item| match item {
+        stream::iter(self.items.iter().map(move |item| match item {
             OwnedItem::Row(index) => Ok(QueryResult::Row(Row {
                 labels: labels[*index].clone(),
-                values: Cow::Borrowed(&arena[spans[*index].clone()]),
+                values: RowValues::from(&arena[spans[*index].clone()]),
             })),
             OwnedItem::Affected(affected) => Ok(QueryResult::Affected(*affected)),
         }))

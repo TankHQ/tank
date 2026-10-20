@@ -213,11 +213,7 @@ pub async fn times(executor: &mut impl Executor) {
         .rows()
         .and_then(|v| async move {
             PrimitiveDateTime::try_from_value(
-                v.values
-                    .iter()
-                    .cloned()
-                    .next()
-                    .expect("Could not get the first column"),
+                v.values().next().expect("Could not get the first column"),
             )
             .map(|v| v.to_string())
         })
@@ -250,11 +246,7 @@ pub async fn times(executor: &mut impl Executor) {
         .rows()
         .and_then(|v| async move {
             NaiveDateTime::try_from_value(
-                v.values
-                    .iter()
-                    .cloned()
-                    .next()
-                    .expect("Could not get the first column"),
+                v.values().next().expect("Could not get the first column"),
             )
             .map(|v| v.to_string())
         })
@@ -301,11 +293,7 @@ pub async fn times(executor: &mut impl Executor) {
         .rows()
         .and_then(|v| async move {
             NaiveDateTime::try_from_value(
-                v.values
-                    .iter()
-                    .cloned()
-                    .next()
-                    .expect("Could not get the first column"),
+                v.values().next().expect("Could not get the first column"),
             )
             .map(|v| v.to_string())
         })
@@ -342,11 +330,7 @@ pub async fn times(executor: &mut impl Executor) {
         .rows()
         .and_then(|v| async move {
             NaiveTime::try_from_value(
-                v.values
-                    .iter()
-                    .cloned()
-                    .next()
-                    .expect("Could not get the first column"),
+                v.values().next().expect("Could not get the first column"),
             )
             .map(|v| v.to_string())
         })
@@ -379,7 +363,9 @@ pub async fn times(executor: &mut impl Executor) {
         .await
         .unwrap()
         .rows()
-        .map_ok(|v| u128::try_from_value(v.values.iter().cloned().nth(0).expect("There is no column")))
+        .map_ok(|v| {
+            u128::try_from_value(v.values().nth(0).expect("There is no column"))
+        })
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await

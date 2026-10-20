@@ -20,8 +20,8 @@ impl mysql_async::prelude::FromRow for RowWrap {
                     .map(|v| v.0.into_owned())
                     .map_err(|_| ())
             })
-            .collect::<Result<tank_core::RowValues, ()>>()
+            .collect::<Result<Vec<_>, ()>>()
             .map_err(|_| FromRowError(row))?;
-        Ok(RowWrap(tank_core::Row::new(names, values)))
+        Ok(RowWrap(tank_core::Row::new(names, values.into())))
     }
 }

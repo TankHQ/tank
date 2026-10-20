@@ -65,7 +65,7 @@ mod tests {
             .expect("No row returned")
             .expect("Could not decode the empty array");
         assert_eq!(
-            row.values[0],
+            row.values.get(0).unwrap(),
             Value::Array(Some(vec![].into()), Box::new(Value::Int32(None)), 0)
         );
 

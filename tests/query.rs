@@ -510,10 +510,10 @@ mod tests {
         let s: String = rq.into();
         assert_eq!(s, "hello");
 
-        let row = tank::Row::default();
+        let row: tank::RowOwned = tank::Row::default();
         assert!(matches!(QueryResult::from(row), QueryResult::Row(_)));
         assert!(matches!(
-            QueryResult::from(RowsAffected::default()),
+            QueryResult::<tank::NoSource>::from(RowsAffected::default()),
             QueryResult::Affected(_)
         ));
     }

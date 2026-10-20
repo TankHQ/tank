@@ -1,4 +1,4 @@
-use crate::{TypeDecoded, ValueOwned, matches_path};
+use crate::{matches_path, TypeDecoded, ValueOwned};
 use quote::ToTokens;
 use std::mem;
 use syn::{
@@ -183,7 +183,10 @@ pub fn decode_type(ty: &Type) -> TypeDecoded {
                                     };
                                     break 'data_type first_type.value;
                                 } else if is_list {
-                                    break 'data_type ValueOwned::List(None, Box::new(first_type.value));
+                                    break 'data_type ValueOwned::List(
+                                        None,
+                                        Box::new(first_type.value),
+                                    );
                                 } else if is_map {
                                     let panic_msg = &format!(
                                         "Type `{}` must have two generic arguments at lease",

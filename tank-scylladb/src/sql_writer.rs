@@ -291,18 +291,11 @@ impl SqlFragmentWriter for ScyllaDBSqlWriter {
         out.push(')');
     }
 
-    fn write_column_comments_statements_fragment<E>(
-        &self,
-        _context: &mut Context,
-        _out: &mut DynQuery,
-    ) where
-        Self: Sized,
-        E: Entity,
-    {
-    }
 }
 
 impl SqlWriter for ScyllaDBSqlWriter {
+    fn write_column_comment(&self, _out: &mut DynQuery, _column: &ColumnDef) {
+    }
     fn write_create_schema<E>(&self, out: &mut DynQuery, if_not_exists: bool)
     where
         Self: Sized,

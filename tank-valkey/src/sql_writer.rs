@@ -233,12 +233,16 @@ impl SqlWriter for ValkeySqlWriter {
                 &mut Default::default(),
             );
             let key = is_pk_condition.key;
+            let row: Vec<(String, Value)> = row
+                .into_iter()
+                .map(|(k, v)| (k.clone(), v))
+                .collect();
             prepared.commands.push(Cmd::hset_multiple(
                 &key,
-                row.into_iter()
+                row.iter()
                     .filter_map(|(k, v)| {
                         if v.is_scalar() && !v.is_null() {
-                            (k, ValueWrap(Cow::Borrowed(v))).into()
+                            (k.as_str(), ValueWrap(Cow::Borrowed(v))).into()
                         } else {
                             None
                         }
@@ -246,7 +250,7 @@ impl SqlWriter for ValkeySqlWriter {
                     .collect::<Vec<_>>()
                     .as_slice(),
             ));
-            for (k, v) in row.into_iter().filter_map(|(k, v)| {
+            for (k, v) in row.iter().filter_map(|(k, v)| {
                 if !v.is_scalar() || v.same_type(&Value::Json(None)) {
                     (k, ValueWrap(Cow::Borrowed(v))).into()
                 } else {

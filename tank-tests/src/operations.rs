@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, QueryBuilder, QueryResult, Results, Result, Rows, RowsAffected,
-    SqlWriter, cols, expr, join,
+    Driver, DynQuery, Entity, Executor, QueryBuilder, QueryResult, Result, Results, Rows,
+    RowsAffected, SqlWriter, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, OffsetDateTime, Time, UtcOffset, macros::date};
@@ -121,7 +121,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
         .fetch(query)
         .await?
         .rows()
-        .map_ok(|row| row.values[0].clone())
+        .map_ok(|row| row.values.get(0).unwrap())
         .try_collect()
         .await?;
 
@@ -154,7 +154,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
         );
         {
             let bundle = executor.run(query).await.unwrap();
-        let mut stream = pin!(bundle.results());
+            let mut stream = pin!(bundle.results());
             while let Some(result) = stream.try_next().await? {
                 match result {
                     QueryResult::Row(row) => log::debug!("Row: {row:?}"),

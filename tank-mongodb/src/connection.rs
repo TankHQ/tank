@@ -6,10 +6,11 @@ use crate::{
 use anyhow::anyhow;
 use async_stream::try_stream;
 use mongodb::{Client, ClientSession, Collection, Database, bson::Bson};
-use std::{borrow::Cow, future, i64};
+use std::{borrow::Cow, future};
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, OwnedResults, Query, QueryResult,
     QueryResultOwned, RawQuery, Result, Results, RowsAffected, TableRef, describe_url,
+    future::FutureExt,
     stream::{Stream, TryStreamExt},
     truncate_long,
 };

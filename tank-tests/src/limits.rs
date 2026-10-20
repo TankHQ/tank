@@ -1,11 +1,10 @@
 #![allow(unused_imports)]
 use crate::silent_logs;
-use core::f64;
 use rust_decimal::Decimal;
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, FixedDecimal, Interval, QueryBuilder, QueryResult, Results,
-    RawQuery, RowsAffected, SqlWriter, expr,
+    Driver, DynQuery, Entity, Executor, FixedDecimal, Interval, QueryBuilder, QueryResult,
+    RawQuery, Results, RowsAffected, SqlWriter, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, Time};

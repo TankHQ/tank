@@ -140,26 +140,6 @@ pub trait SqlFragmentWriter: SqlValueWriter {
     {
     }
 
-    /// Write column comments fragment.
-    fn write_column_comments_statements_fragment<E>(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-    ) where
-        Self: Sized,
-        E: Entity,
-    {
-        let mut context = context.switch_fragment(Fragment::SqlCommentOnColumn);
-        context.current.qualify_columns = true;
-        for c in E::columns().iter().filter(|c| !c.comment.is_empty()) {
-            out.push_str("\nCOMMENT ON COLUMN ");
-            self.write_column_ref(&mut context.current, out, c.into());
-            out.push_str(" IS ");
-            self.write_string(&mut context.current, out, c.comment);
-            out.push(';');
-        }
-    }
-
     /// Write ON CONFLICT DO UPDATE fragment for upsert.
     fn write_insert_update_fragment<'a, E>(
         &self,

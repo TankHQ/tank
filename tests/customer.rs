@@ -137,6 +137,18 @@ mod tests {
                 "values" FLOAT[],
                 "signup_duration" INTERVAL NOT NULL,
                 "recent_purchases" BIGINT[][]);
+            "#}
+            .trim()
+        );
+    }
+
+    #[test]
+    fn test_customer_create_table_comments() {
+        let mut query = DynQuery::default();
+        WRITER.write_column_comments::<Customer>(&mut query);
+        assert_eq!(
+            query.as_str().trim(),
+            indoc! {r#"
                 COMMENT ON COLUMN "customers"."recent_purchases" IS 'List of all the full cart products
                 It''s a list of lists of ids
                 

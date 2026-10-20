@@ -75,7 +75,7 @@ mod tests {
                 .iter()
                 .find_map(|v| match v {
                     QueryResult::Row(row) => {
-                        if row.get_column("name") == Some(&"threads".into()) {
+                        if row.get_column("name") == Some("threads".into()) {
                             row.get_column("value")
                         } else {
                             None
@@ -93,7 +93,7 @@ mod tests {
                 .iter()
                 .find_map(|v| match v {
                     QueryResult::Row(row) => {
-                        if row.get_column("name") == Some(&"max_memory".into()) {
+                        if row.get_column("name") == Some("max_memory".into()) {
                             row.get_column("value")
                         } else {
                             None

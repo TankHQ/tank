@@ -79,8 +79,8 @@ pub async fn keywords(executor: &mut impl Executor) {
             .expect("Query failed");
         let Row { values, .. } = row;
         let group_val =
-            bool::try_from_value(values[0].clone()).expect("Failed to decode group bool");
-        let count_val = i64::try_from_value(values[1].clone()).expect("Failed to decode count");
+            bool::try_from_value(values.get(0).unwrap()).expect("Failed to decode group bool");
+        let count_val = i64::try_from_value(values.get(1).unwrap()).expect("Failed to decode count");
         assert_eq!(group_val, true);
         assert_eq!(count_val, 1);
     }
@@ -138,12 +138,12 @@ pub async fn keywords(executor: &mut impl Executor) {
 
         let row1 = stream_group.next().await.unwrap().unwrap();
         let Row { values, .. } = row1;
-        let g = bool::try_from_value(values[0].clone()).unwrap();
+        let g = bool::try_from_value(values.get(0).unwrap()).unwrap();
         assert_eq!(g, false);
 
         let row2 = stream_group.next().await.unwrap().unwrap();
         let Row { values, .. } = row2;
-        let g = bool::try_from_value(values[0].clone()).unwrap();
+        let g = bool::try_from_value(values.get(0).unwrap()).unwrap();
         assert_eq!(g, true);
     }
 

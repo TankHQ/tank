@@ -6,8 +6,8 @@ mod tests {
     use std::sync::Mutex;
     use tank_clickhouse::{ClickHouseConnection, ClickHouseDriver};
     use tank_core::{
-        AsValue, Connection, ConnectionPool, Driver, Entity, Executor, PoolConfig, QueryResult, Results, Rows,
-        stream::TryStreamExt,
+        AsValue, Connection, ConnectionPool, Driver, Entity, Executor, PoolConfig, QueryResult,
+        Results, Rows, stream::TryStreamExt,
     };
     use tank_tests::{init_logs, silent_logs};
 
@@ -185,7 +185,7 @@ mod tests {
             let value = rows
                 .iter()
                 .find_map(|v| match v {
-                    QueryResult::Row(row) => row.get_column("value").cloned(),
+                    QueryResult::Row(row) => row.get_column("value"),
                     _ => None,
                 })
                 .expect("Could not find the session setting value");

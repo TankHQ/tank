@@ -149,7 +149,9 @@ impl Executor for ChDBConnection {
             let join = spawn_blocking(move || {
                 match &mut owned {
                     Query::Raw(RawQuery { sql, .. }) => Self::do_run(connection, sql, sender),
-                    Query::Prepared(prepared) => match prepared.build_sql(&ChDBSqlWriter::chdb()) {
+                    Query::Prepared(prepared) => match ChDBSqlWriter::chdb()
+                        .build_parameterized_sql(prepared)
+                    {
                         Ok((directive, sql)) => {
                             prepared.take_params();
                             let apply = match directive {

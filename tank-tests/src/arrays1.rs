@@ -2,8 +2,8 @@
 #![allow(unused_imports)]
 use std::{borrow::Cow, pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, Results, RawQuery, SqlWriter,
-    cols, stream::TryStreamExt,
+    Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, RawQuery, Results,
+    SqlWriter, cols, stream::TryStreamExt,
 };
 use tokio::sync::Mutex;
 

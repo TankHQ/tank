@@ -13,19 +13,23 @@ anyhow.workspace = true
 async-stream.workspace = true
 byteorder = "1"
 bytes = "1"
+fallible-iterator = "0"
 log.workspace = true
-native-tls = "0"
-openssl = "0"
-postgres-openssl = "0"
+native-tls = { version = "0", optional = true }
 postgres-protocol = "0"
-postgres-types = "0"
+postgres-types = { version = "0", features = ["with-time-0_3", "with-uuid-1"] }
 rust_decimal = { workspace = true, features = ["db-tokio-postgres"] }
 tank-core.workspace = true
 time.workspace = true
 tokio.workspace = true
-tokio-postgres = { version = "0", features = ["with-time-0_3", "with-uuid-1"] }
+tokio-native-tls = { version = "0", optional = true }
 url.workspace = true
 uuid.workspace = true
+wtx.workspace = true
+
+[features]
+default = ["tls"]
+tls = ["dep:native-tls", "dep:tokio-native-tls"]
 
 [dev-dependencies]
 rcgen.workspace = true

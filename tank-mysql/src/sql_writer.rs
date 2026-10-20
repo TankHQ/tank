@@ -336,16 +336,6 @@ impl SqlFragmentWriter for MySQLSqlWriter {
         self.write_string(&mut context, out, column.comment);
     }
 
-    fn write_column_comments_statements_fragment<E>(
-        &self,
-        _context: &mut Context,
-        _out: &mut DynQuery,
-    ) where
-        Self: Sized,
-        E: Entity,
-    {
-    }
-
     fn write_insert_update_fragment<'a, E>(
         &self,
         context: &mut Context,
@@ -383,4 +373,7 @@ impl SqlFragmentWriter for MySQLSqlWriter {
     }
 }
 
-impl SqlWriter for MySQLSqlWriter {}
+impl SqlWriter for MySQLSqlWriter {
+    fn write_column_comment(&self, _out: &mut DynQuery, _column: &ColumnDef) {
+    }
+}

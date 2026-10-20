@@ -53,7 +53,8 @@ pub async fn init(ssl: bool) -> (String, Option<ContainerAsync<Postgres>>) {
         .with_user("tank-user")
         .with_password("armored")
         .with_startup_timeout(Duration::from_secs(60))
-        .with_log_consumer(TestcontainersLogConsumer);
+        .with_log_consumer(TestcontainersLogConsumer)
+        .with_tag("16-alpine");
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     if ssl {
         generate_ssl_files()

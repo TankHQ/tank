@@ -77,8 +77,8 @@ pub async fn aggregates(executor: &mut impl Executor) {
         let expected = (COUNT as i128, EXPECTED_SUM as i128);
         let actual = match count {
             Some(Ok(Row { values, .. })) => {
-                let a = i128::try_from_value((*values)[0].clone());
-                let b = i128::try_from_value((*values)[1].clone());
+                let a = i128::try_from_value(values.get(0).unwrap());
+                let b = i128::try_from_value(values.get(1).unwrap());
                 match (a, b) {
                     (Ok(a), Ok(b)) => Some((a, b)),
                     (Err(e), _) => panic!("{e}"),
@@ -118,7 +118,7 @@ pub async fn aggregates(executor: &mut impl Executor) {
                         .enumerate()
                         .find_map(|(i, v)| if v == "value" { Some(i) } else { None })
                         .expect("Column `value` is not present");
-                    u32::try_from_value(row.values[i].clone())
+                    u32::try_from_value(row.values.get(i).unwrap())
                         .expect("The result could not be convert back to u32")
                 })
                 .collect::<BTreeSet<_>>()

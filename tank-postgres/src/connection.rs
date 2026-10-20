@@ -1,35 +1,44 @@
 use crate::{
-    PostgresDriver, PostgresPrepared, PostgresResults, PostgresTransaction, ValueWrap,
-    util::{postgres_type_to_value, value_to_postgres_type},
+    PostgresDriver, PostgresPrepared, PostgresTransaction, TankParam,
+    rows::{PostgresResults, PostgresScratch},
+    stream::ConnectionStream,
 };
-use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
-use postgres_openssl::MakeTlsConnector;
-use postgres_types::ToSql;
 use std::{
     borrow::Cow,
-    env, mem,
-    path::PathBuf,
-    pin::{Pin, pin},
+    fmt::{self, Debug, Formatter},
+    future::Future,
+    mem,
     str::FromStr,
 };
-use tank_core::{
-    AsEntity, AsQuery, Connection, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
-    RawQuery, Result, RowsAffected, SqlCoreWriter, describe_url,
-    stream::TryStreamExt,
-    truncate_long,
-};
-use tokio::{spawn, task::JoinHandle};
-use tokio_postgres::{NoTls, binary_copy::BinaryCopyInWriter};
+use tank_core::{AsQuery, Connection, ErrorContext, Executor, Query, RawQuery, Result, describe_url};
 use url::Url;
+use wtx::{
+    database::DbClient as _,
+    database::client::postgres::{ClientBuffer, Config, PostgresClient},
+    net::Uri,
+    rng::{ChaCha20, CryptoSeedableRng as _},
+    tls::{PlaintextCtx, TlsConfig, TlsConnector},
+};
 
-/// PostgreSQL connection.
-#[derive(Debug)]
+/// Concrete `wtx` client type used by this driver.
+pub(crate) type WtxClient = PostgresClient<wtx::Error, ConnectionStream, PlaintextCtx>;
+
+/// PostgreSQL connection backed by `wtx`.
 pub struct PostgresConnection {
-    pub(crate) client: tokio_postgres::Client,
-    pub(crate) handle: JoinHandle<()>,
+    pub(crate) client: WtxClient,
+    /// Reusable decode buffers, cleared and refilled by every query so that a
+    /// steady-state workload performs no per-query allocation.
+    pub(crate) scratch: PostgresScratch,
 }
 
-impl Connection for PostgresConnection {    async fn connect(driver: &PostgresDriver, url: Cow<'static, str>) -> Result<Self> {
+impl Debug for PostgresConnection {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PostgresConnection").finish()
+    }
+}
+
+impl Connection for PostgresConnection {
+    async fn connect(driver: &PostgresDriver, url: Cow<'static, str>) -> Result<Self> {
         let mut url = Self::sanitize_url(driver, url)?;
         let make_context = |url: &Url| {
             format!(
@@ -37,175 +46,74 @@ impl Connection for PostgresConnection {    async fn connect(driver: &PostgresDr
                 describe_url::<PostgresDriver>(url)
             )
         };
-        let take_url_param = |url: &mut Url, key: &str, env_var: &str, remove: bool| {
-            let value = url
-                .query_pairs()
-                .find_map(|(k, v)| if k == key { Some(v) } else { None })
-                .map(|v| v.to_string());
-            if remove && let Some(..) = value {
-                let mut result = url.clone();
-                result.set_query(None);
-                result
-                    .query_pairs_mut()
-                    .extend_pairs(url.query_pairs().filter(|(k, _)| k != key));
-                *url = result;
-            };
-            value.or_else(|| env::var(env_var).ok().map(Into::into))
-        };
-        let sslmode =
-            take_url_param(&mut url, "sslmode", "PGSSLMODE", false).unwrap_or("disable".into());
-        let (client, handle) = if sslmode == "disable" {
-            let (client, connection) = tokio_postgres::connect(url.as_str(), NoTls).await?;
-            let handle = spawn(async move {
-                if let Err(error) = connection.await
-                    && !error.is_closed()
-                {
-                    log::error!("Postgres connection error: {:#?}", error);
-                }
-            });
-            (client, handle)
+        let sslmode = url
+            .query_pairs()
+            .find_map(|(k, v)| (k == "sslmode").then(|| v.to_string()))
+            .or_else(|| std::env::var("PGSSLMODE").ok())
+            .unwrap_or_else(|| "disable".into());
+        let host = url.host_str().unwrap_or("localhost").to_string();
+        let port = url.port().unwrap_or(5432);
+        let stream = if sslmode == "disable" {
+            ConnectionStream::connect_plain(&host, port)
+                .await
+                .with_context(|| make_context(&url))?
         } else {
-            let mut builder = SslConnector::builder(SslMethod::tls())?;
-            let path = PathBuf::from_str(
-                take_url_param(&mut url, "sslrootcert", "PGSSLROOTCERT", true)
-                    .as_deref()
-                    .unwrap_or("~/.postgresql/root.crt"),
-            )
-            .with_context(|| make_context(&url))?;
-            if path.exists() {
-                builder.set_ca_file(path)?;
+            #[cfg(feature = "tls")]
+            {
+                let connector = build_tls_connector(&mut url)?;
+                ConnectionStream::connect_tls(&host, port, connector, &host)
+                    .await
+                    .with_context(|| make_context(&url))?
             }
-            let path = PathBuf::from_str(
-                take_url_param(&mut url, "sslcert", "PGSSLCERT", true)
-                    .as_deref()
-                    .unwrap_or("~/.postgresql/postgresql.crt"),
-            )
-            .with_context(|| make_context(&url))?;
-            if path.exists() {
-                builder.set_certificate_chain_file(path)?;
+            #[cfg(not(feature = "tls"))]
+            {
+                return Err(tank_core::anyhow!(
+                    "TLS is not enabled for this build of tank-postgres (sslmode={sslmode})"
+                )
+                .context(make_context(&url)));
             }
-            let path = PathBuf::from_str(
-                take_url_param(&mut url, "sslkey", "PGSSLKEY", true)
-                    .as_deref()
-                    .unwrap_or("~/.postgresql/postgresql.key"),
-            )
-            .with_context(|| make_context(&url))?;
-            if path.exists() {
-                builder.set_private_key_file(path, SslFiletype::PEM)?;
-            }
-            builder.set_verify(SslVerifyMode::PEER);
-            let connector = MakeTlsConnector::new(builder.build());
-            let (client, connection) = tokio_postgres::connect(url.as_str(), connector).await?;
-            let handle = spawn(async move {
-                if let Err(error) = connection.await
-                    && !error.is_closed()
-                {
-                    log::error!("Postgres connection error: {:#?}", error);
-                }
-            });
-            (client, handle)
         };
-        Ok(Self { client, handle })
+        let mut rng = ChaCha20::from_std_random().map_err(tank_core::Error::new)?;
+        let client_buffer = ClientBuffer::new(usize::MAX, &mut rng);
+        // The URI is rebuilt without tank-specific query params that wtx would
+        // reject.
+        let wtx_uri = sanitize_wtx_uri(&url);
+        let uri = Uri::new(wtx_uri.as_str());
+        let config = Config::from_uri(&uri).map_err(tank_core::Error::new)?;
+        let tls_connector = TlsConnector::new(TlsConfig::plaintext(), rng, stream, uri);
+        let client = PostgresClient::connect(client_buffer, &config, tls_connector)
+            .await
+            .map_err(tank_core::Error::new)
+            .with_context(|| make_context(&url))?;
+        Ok(Self {
+            client,
+            scratch: Default::default(),
+        })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<PostgresTransaction<'_>>> + Send {
         PostgresTransaction::new(self)
-    }
-
-    async fn disconnect(self) -> Result<()> {
-        drop(self.client);
-        if let Err(e) = self.handle.await {
-            let error = Error::new(e).context("While disconnecting from Postgres");
-            log::error!("{error:#}");
-            return Err(error);
-        }
-        Ok(())
-    }
-}
-
-impl PostgresConnection {
-    /// Runs a single-statement raw query through the typed protocol, so column
-    /// values (arrays in particular) are decoded with full type information.
-    async fn run_typed(
-        &self,
-        sql: &str,
-        context: &str,
-    ) -> Result<PostgresResults> {
-        let rows = self
-            .client
-            .query_raw(sql, Vec::<ValueWrap>::new())
-            .await
-            .map_err(|e| Error::new(e).context(context.to_string()))?;
-        let mut rows = pin!(rows);
-        let mut collected = Vec::new();
-        while let Some(row) = rows.try_next().await? {
-            collected.push(row);
-        }
-        let affected = rows.rows_affected();
-        PostgresResults::new(collected, affected)
-    }
-
-    /// Runs raw SQL through the simple protocol, which (unlike the extended
-    /// protocol) accepts several semicolon-separated statements. Values are
-    /// decoded as text/unknown because the simple protocol carries no type
-    /// information.
-    async fn run_simple(&mut self, sql: &str, context: &str) -> Result<PostgresResults> {
-        let messages = self
-            .client
-            .simple_query_raw(sql)
-            .await
-            .map_err(|e| Error::new(e).context(context.to_string()))?;
-        let mut messages = pin!(messages);
-        let mut labels: Option<tank_core::RowLabels> = None;
-        let mut arena: Vec<tank_core::ValueOwned> = Vec::new();
-        let mut spans: Vec<std::ops::Range<usize>> = Vec::new();
-        let mut row_labels: Vec<tank_core::RowLabels> = Vec::new();
-        let mut items: Vec<crate::rows::Item> = Vec::new();
-        while let Some(message) = messages.try_next().await? {
-            match message {
-                tokio_postgres::SimpleQueryMessage::Row(row) => {
-                    let labels = labels.get_or_insert_with(|| {
-                        row.columns()
-                            .iter()
-                            .map(|c| c.name().to_string())
-                            .collect()
-                    });
-                    let start = arena.len();
-                    let decoded = crate::util::simple_query_row_to_tank_row_owned(labels, row)?;
-                    arena.extend(decoded.values.into_owned());
-                    spans.push(start..arena.len());
-                    row_labels.push(labels.clone());
-                    items.push(crate::rows::Item::Row(spans.len() - 1));
-                }
-                tokio_postgres::SimpleQueryMessage::CommandComplete(rows_affected) => {
-                    items.push(crate::rows::Item::Affected(tank_core::RowsAffected {
-                        rows_affected: Some(rows_affected),
-                        last_affected_id: None,
-                    }));
-                }
-                _ => {}
-            }
-        }
-        Ok(PostgresResults::from_parts(arena, spans, items, row_labels))
     }
 }
 
 impl Executor for PostgresConnection {
     type Driver = PostgresDriver;
 
+    /// Postgres' extended protocol rejects multi-command strings, so tank
+    /// issues each statement separately (see `Entity::create_table`).
+    fn accepts_multiple_statements(&self) -> bool {
+        false
+    }
+
     async fn do_prepare(
         &mut self,
         RawQuery { sql, .. }: RawQuery,
     ) -> Result<Query<PostgresDriver>> {
-        let sql = sql.as_str().trim_end().trim_end_matches(';');
-        let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
-        let prepared = self
-            .client
-            .prepare(sql)
-            .await
-            .map_err(Error::new)
-            .with_context(make_context)?;
-        Ok(PostgresPrepared::new(prepared).into())
+        let sql = sql.trim_end().trim_end_matches(';').to_string();
+        // `wtx` prepares lazily on first execution, keyed by the statement hash,
+        // so a prepared handle only needs to carry the SQL and the parameter
+        // types (which are discovered on first run).
+        Ok(PostgresPrepared::new(sql).into())
     }
 
     fn run<'s>(
@@ -214,134 +122,118 @@ impl Executor for PostgresConnection {
     ) -> impl Future<Output = Result<impl tank_core::Results>> + Send {
         async move {
             let mut query = query.as_query();
-            let context = format!("While running the query:\n{}", query.as_mut());
             let owned = mem::take(query.as_mut());
-            let result: Result<PostgresResults> = match owned {
+            let result = match owned {
                 Query::Raw(raw) => {
-                    let result = if crate::util::has_multiple_statements(&raw.sql) {
-                        // The extended protocol cannot run several commands in
-                        // one prepared statement, so multi-statement raw SQL
-                        // goes through the simple protocol.
-                        self.run_simple(&raw.sql, &context).await
-                    } else {
-                        self.run_typed(&raw.sql, &context).await
-                    };
+                    let r = self.run_prepared(&raw.sql, &[]).await;
                     *query.as_mut() = Query::Raw(raw);
-                    result
+                    r
                 }
                 Query::Prepared(mut prepared) => {
-                    let mut params = prepared.take_params();
-                    let types = prepared.statement.params();
-                    for (i, param) in params.iter_mut().enumerate() {
-                        *param = ValueWrap(Cow::Owned(
-                            mem::take(param)
-                                .0
-                                .into_owned()
-                                .try_as(&postgres_type_to_value(&types[i]))?,
-                        ));
-                    }
-                    let rows = self
-                        .client
-                        .query_raw(&prepared.statement, params)
-                        .await
-                        .map_err(|e| Error::new(e).context(context.clone()))?;
-                    let mut rows = pin!(rows);
-                    let mut collected = Vec::new();
-                    while let Some(row) = rows.try_next().await? {
-                        collected.push(row);
-                    }
-                    let affected = rows.rows_affected();
+                    let params = prepared.take_params()?;
+                    let r = self.run_prepared(&prepared.sql, &params).await;
                     *query.as_mut() = Query::Prepared(prepared);
-                    PostgresResults::new(collected, affected)
+                    r
                 }
             };
             result.map_err(|e| {
-                log::error!("{e:#}");
-                e
+                // Built lazily: formatting the query on the happy path would
+                // allocate on every successful run.
+                let error = e.context(format!("While running the query:\n{}", query.as_mut()));
+                log::error!("{error:#}");
+                error
             })
         }
     }
+}
 
-    async fn append<It>(&mut self, entities: It) -> Result<RowsAffected>
-    where
-        It: IntoIterator + Send,
-        It::IntoIter: Send,
-        It::Item: AsEntity,
-    {
-        type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
-        let mut iter = entities.into_iter();
-        let writer = self.driver().sql_writer();
-        let make_context = || {
-            format!(
-                "While appending to the table `{}`",
-                E::<It>::table().full_name(writer.separator())
-            )
-        };
-        let mut query = DynQuery::default();
-        writer.write_copy::<E<It>>(&mut query);
-        let sink = match self
-            .client
-            .copy_in(&query.as_str() as &str)
+impl PostgresConnection {
+    /// Runs one statement through the typed protocol, decoding with full type
+    /// information.
+    ///
+    /// The returned view borrows both the client (whose read buffer holds the
+    /// row bytes) and the scratch (labels and decoders), and decodes each value
+    /// lazily.
+    async fn run_prepared<'s>(
+        &'s mut self,
+        sql: &str,
+        params: &[TankParam],
+    ) -> Result<PostgresResults<'s>> {
+        let stmt = crate::TankStmt::new(sql, params);
+        let PostgresConnection { client, scratch } = self;
+        let records = client
+            .execute_stmt_many(stmt, params, |_| Ok(()))
             .await
-            .with_context(make_context)
-        {
-            Ok(v) => v,
-            Err(e) => {
-                log::error!("{e:#}");
-                return Err(e);
-            }
-        };
-        let types: Vec<_> = E::<It>::columns()
-            .into_iter()
-            .map(|c| value_to_postgres_type(&c.value))
-            .collect();
-        let writer = BinaryCopyInWriter::new(sink, &types);
-        let mut writer = pin!(writer);
-        let columns_len = E::<It>::columns().len();
-        let mut values = Vec::<ValueWrap>::with_capacity(columns_len);
-        let mut refs = Vec::<&(dyn ToSql + Sync)>::with_capacity(columns_len);
-        loop {
-            match iter.next() {
-                None => break,
-                Some(entity) => {
-                    values.extend(
-                        entity
-                            .as_entity()
-                            .row_values()
-                            .into_owned()
-                            .into_iter()
-                            .map(|v| ValueWrap(Cow::Owned(v))),
-                    );
-                }
-            }
-            refs.extend(
-                values
-                    .iter()
-                    .map(|v| unsafe { &*(v as &(dyn ToSql + Sync) as *const _) }),
-            );
-            match Pin::as_mut(&mut writer)
-                .write(&refs)
-                .await
-                .with_context(make_context)
-            {
-                Ok(_) => {}
-                Err(e) => {
-                    log::error!("{e:#}");
-                    return Err(e);
-                }
-            };
-            refs.clear();
-            values.clear();
-        }
-        match writer.finish().await.with_context(make_context) {
-            Ok(v) => Ok(RowsAffected {
-                rows_affected: Some(v),
-                last_affected_id: None,
-            }),
-            Err(e) => {
-                log::error!("{e:#}");
-                return Err(e);
-            }
+            .map_err(tank_core::Error::new)?;
+        scratch.prepare(&records)?;
+        Ok(PostgresResults::new(
+            &records,
+            scratch.labels(),
+            scratch.decoders(),
+        ))
+    }
+}
+
+/// Rebuilds a wtx-acceptable URI: wtx only understands `application_name` and
+/// `channel_binding` query params, so tank-specific ones (`sslmode`, cert
+/// paths, …) are stripped.
+fn sanitize_wtx_uri(url: &Url) -> String {
+    let mut url = url.clone();
+    let kept: Vec<(String, String)> = url
+        .query_pairs()
+        .filter(|(k, _)| k == "application_name" || k == "channel_binding")
+        .map(|(k, v)| (k.into_owned(), v.into_owned()))
+        .collect();
+    url.set_query(None);
+    if !kept.is_empty() {
+        let mut pairs = url.query_pairs_mut();
+        for (k, v) in kept {
+            pairs.append_pair(&k, &v);
         }
     }
+    url.to_string()
+}
+
+/// Builds a `native-tls` connector from the URL, including client certificates
+/// for mutual TLS.
+#[cfg(feature = "tls")]
+fn build_tls_connector(url: &mut Url) -> Result<tokio_native_tls::TlsConnector> {
+    use native_tls::{Certificate, Identity, TlsConnector};
+    let take = |url: &Url, key: &str, env_var: &str| -> Option<String> {
+        url.query_pairs()
+            .find_map(|(k, v)| (k == key).then(|| v.to_string()))
+            .or_else(|| std::env::var(env_var).ok())
+    };
+    let root = take(url, "sslrootcert", "PGSSLROOTCERT")
+        .unwrap_or_else(|| "~/.postgresql/root.crt".into());
+    let cert =
+        take(url, "sslcert", "PGSSLCERT").unwrap_or_else(|| "~/.postgresql/postgresql.crt".into());
+    let key =
+        take(url, "sslkey", "PGSSLKEY").unwrap_or_else(|| "~/.postgresql/postgresql.key".into());
+    let mut builder = TlsConnector::builder();
+    let root_path = expand_home(&root);
+    if root_path.exists() {
+        let pem = std::fs::read(&root_path)?;
+        builder.add_root_certificate(Certificate::from_pem(&pem)?);
+    }
+    let cert_path = expand_home(&cert);
+    let key_path = expand_home(&key);
+    if cert_path.exists() && key_path.exists() {
+        let cert_pem = std::fs::read(&cert_path)?;
+        let key_pem = std::fs::read(&key_path)?;
+        builder.identity(Identity::from_pkcs8(&cert_pem, &key_pem)?);
+    }
+    // Mutual TLS requires the client to trust the server and to verify it.
+    builder.danger_accept_invalid_hostnames(false);
+    Ok(tokio_native_tls::TlsConnector::from(builder.build()?))
+}
+
+#[cfg(feature = "tls")]
+fn expand_home(path: &str) -> std::path::PathBuf {
+    if let Some(rest) = path.strip_prefix("~/")
+        && let Ok(home) = std::env::var("HOME")
+    {
+        return std::path::PathBuf::from_str(&home).unwrap().join(rest);
+    }
+    std::path::PathBuf::from_str(path).unwrap()
 }

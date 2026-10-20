@@ -1,13 +1,17 @@
+use anyhow::anyhow;
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
 };
 use tank_core::{
-    BinaryOpType, ColumnDef, Context, Dataset, DynQuery, Entity, Fragment, GenericSqlWriter,
-    Interval, PrimaryKeyType, QueryParam, SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter,
-    SqlValueWriter, SqlWriter, TableRef, Value, separated_by, write_escaped,
+    BinaryOpType, ColumnDef, Context, Dataset, DynQuery, Entity, Fragment,
+    GenericSqlWriter, Interval, PrimaryKeyType, QueryParam, Result, SqlCoreWriter,
+    SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value,
+    separated_by, write_escaped,
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
+
+use crate::ClickHousePrepared;
 
 /// ClickHouse SQL writer.
 #[derive(Clone, Copy, Debug)]
@@ -32,6 +36,77 @@ impl ClickHouseSqlWriter {
         Self {
             replacing_merge_tree: false,
         }
+    }
+
+    /// Renders a prepared statement into the SQL to execute.
+    ///
+    /// ClickHouse has no wire-level parameter binding.
+    /// The writer emits provisional `{pN:Nullable(String)}` markers and records their offsets.
+    /// See: [`write_question_mark`](SqlExpressionWriter::write_question_mark).
+    /// This turns those markers into the final query with `SET param_pN = ...` directives.
+    pub fn build_parameterized_sql(
+        &self,
+        prepared: &ClickHousePrepared,
+    ) -> Result<(Option<String>, String)> {
+        let markers = prepared.markers();
+        let params = prepared.params();
+        if markers.len() < params.len() {
+            let error = anyhow!("Not enough parameter markers for the bound values");
+            log::error!("{error:#}");
+            return Err(error);
+        }
+        let mut directive: Option<String> = None;
+        for (i, value) in params.iter().enumerate() {
+            let line = directive.get_or_insert_with(String::new);
+            if i == 0 {
+                line.push_str("SET ");
+            } else {
+                line.push_str(", ");
+            }
+            let _ = write!(line, "param_p{i} = ");
+            if value.is_null() {
+                // ClickHouse represents a NULL query parameter as `'\\N'`.
+                line.push_str("'\\\\N'");
+            } else {
+                let mut out = DynQuery::with_capacity(16);
+                self.write_value(&mut Context::fragment(Fragment::SqlSelect), &mut out, value);
+                line.push_str(out.as_str().as_ref());
+            }
+        }
+        let sql = prepared.sql();
+        let mut out = String::with_capacity(sql.len() + 16);
+        let mut cursor = 0;
+        for (i, marker) in markers.iter().enumerate() {
+            if marker.begin > marker.end
+                || marker.end > sql.len()
+                || marker.begin < cursor
+                || !sql.is_char_boundary(marker.begin)
+                || !sql.is_char_boundary(marker.end)
+            {
+                continue;
+            }
+            out.push_str(&sql[cursor..marker.begin]);
+            let _ = write!(out, "{{p{i}:");
+            match params.get(i) {
+                Some(value) if !value.is_null() => {
+                    let mut ty = DynQuery::with_capacity(16);
+                    self.write_column_type(
+                        &mut Context::fragment(Fragment::SqlCreateTable),
+                        &mut ty,
+                        value,
+                    );
+                    out.push_str("Nullable(");
+                    out.push_str(ty.as_str().as_ref());
+                    out.push(')');
+                }
+                // `Nullable(Nothing)` accepts a NULL parameter against any column type.
+                _ => out.push_str("Nullable(Nothing)"),
+            }
+            out.push('}');
+            cursor = marker.end;
+        }
+        out.push_str(&sql[cursor..]);
+        Ok((directive, out))
     }
 }
 
@@ -326,16 +401,6 @@ impl SqlFragmentWriter for ClickHouseSqlWriter {
         }
     }
 
-    fn write_column_comments_statements_fragment<E>(
-        &self,
-        _context: &mut Context,
-        _out: &mut DynQuery,
-    ) where
-        Self: Sized,
-        E: Entity,
-    {
-    }
-
     fn write_insert_update_fragment<'a, E>(
         &self,
         _context: &mut Context,
@@ -349,6 +414,8 @@ impl SqlFragmentWriter for ClickHouseSqlWriter {
 }
 
 impl SqlWriter for ClickHouseSqlWriter {
+    fn write_column_comment(&self, _out: &mut DynQuery, _column: &ColumnDef) {
+    }
     fn write_create_table<E>(&self, out: &mut DynQuery, if_not_exists: bool)
     where
         Self: Sized,

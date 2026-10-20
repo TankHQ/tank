@@ -94,7 +94,7 @@ pub async fn math(executor: &mut impl Executor) {
         .await
         .unwrap()
         .rows()
-        .map_ok(|v| bool::try_from_value(v.values.iter().cloned().nth(1).unwrap()))
+        .map_ok(|v| bool::try_from_value(v.values().nth(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await
@@ -112,7 +112,7 @@ pub async fn math(executor: &mut impl Executor) {
         .await
         .unwrap()
         .rows()
-        .map_ok(|v| bool::try_from_value(v.values.iter().cloned().nth(1).unwrap()))
+        .map_ok(|v| bool::try_from_value(v.values().nth(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await

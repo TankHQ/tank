@@ -1,17 +1,16 @@
 use anyhow::anyhow;
 use std::{
-    fmt::{self, Debug, Display, Write as _},
+    fmt::{self, Display},
     mem,
 };
-use tank_core::{
-    AsValue, Context, DynQuery, Fragment, Prepared, QueryParam, Result, SqlWriter, ValueOwned,
-};
+use tank_core::{AsValue, Prepared, QueryParam, Result, ValueOwned};
 
 /// ClickHouse prepared statement.
 ///
-/// ClickHouse has no wire-level parameter binding: the equivalent is typed query
-/// parameters (`{name:Type}`) fed through `SET param_name = ...`. The writer emits
-/// provisional `{pN:Nullable(String)}` markers and records their offsets
+/// ClickHouse has no wire-level query parameter binding.
+/// The equivalent is typed query parameters (`{name:Type}`) fed through `SET param_name = ...`.
+/// The writer emits provisional `{pN:Nullable(String)}` markers and records their offsets.
+/// [`ClickHouseSqlWriter::build_parameterized_sql`] rewrites them into the final query.
 #[derive(Debug)]
 pub struct ClickHousePrepared {
     pub(crate) sql: String,
@@ -31,69 +30,19 @@ impl ClickHousePrepared {
         }
     }
 
-    /// Build what to execute: an optional single `SET param_pN = ...` directive
-    /// binding every current value, plus the final query with each marker's type
-    /// replaced by the bound value's actual type. Uses the recorded offsets, no
-    /// re-scanning.
-    pub fn build_sql(&self, writer: &impl SqlWriter) -> Result<(Option<String>, String)> {
-        if self.markers.len() < self.params.len() {
-            let error = anyhow!("Not enough parameter markers for the bound values");
-            log::error!("{error:#}");
-            return Err(error);
-        }
-        let mut directive: Option<String> = None;
-        for (i, value) in self.params.iter().enumerate() {
-            let line = directive.get_or_insert_with(String::new);
-            if i == 0 {
-                line.push_str("SET ");
-            } else {
-                line.push_str(", ");
-            }
-            let _ = write!(line, "param_p{i} = ");
-            if value.is_null() {
-                // ClickHouse represents a NULL query parameter as the `'\\N'`
-                // sentinel; a plain `NULL` becomes the string "NULL".
-                line.push_str("'\\\\N'");
-            } else {
-                let mut out = DynQuery::with_capacity(16);
-                writer.write_value(&mut Context::fragment(Fragment::SqlSelect), &mut out, value);
-                line.push_str(out.as_str().as_ref());
-            }
-        }
-        let mut out = String::with_capacity(self.sql.len() + 16);
-        let mut cursor = 0;
-        for (i, marker) in self.markers.iter().enumerate() {
-            if marker.begin > marker.end
-                || marker.end > self.sql.len()
-                || marker.begin < cursor
-                || !self.sql.is_char_boundary(marker.begin)
-                || !self.sql.is_char_boundary(marker.end)
-            {
-                continue;
-            }
-            out.push_str(&self.sql[cursor..marker.begin]);
-            let _ = write!(out, "{{p{i}:");
-            match self.params.get(i) {
-                Some(value) if !value.is_null() => {
-                    let mut ty = DynQuery::with_capacity(16);
-                    writer.write_column_type(
-                        &mut Context::fragment(Fragment::SqlCreateTable),
-                        &mut ty,
-                        value,
-                    );
-                    out.push_str("Nullable(");
-                    out.push_str(ty.as_str().as_ref());
-                    out.push(')');
-                }
-                // `Nullable(Nothing)` is the type that accepts a NULL parameter
-                // against any column type.
-                _ => out.push_str("Nullable(Nothing)"),
-            }
-            out.push('}');
-            cursor = marker.end;
-        }
-        out.push_str(&self.sql[cursor..]);
-        Ok((directive, out))
+    /// The raw SQL with provisional parameter markers.
+    pub fn sql(&self) -> &str {
+        &self.sql
+    }
+
+    /// The byte spans of the provisional parameter markers.
+    pub fn markers(&self) -> &[QueryParam] {
+        &self.markers
+    }
+
+    /// The currently bound values.
+    pub fn params(&self) -> &[ValueOwned] {
+        &self.params
     }
 
     /// Take the bound parameters, resetting the bind index.

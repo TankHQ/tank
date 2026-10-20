@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
 use tank::{
-    AsValue, Dataset, Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, Results, Row,
-    Rows, SqlWriter, Value, cols, expr, join,
+    AsValue, Dataset, Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult,
+    Results, Row, Rows, SqlWriter, Value, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -230,12 +230,12 @@ pub async fn books(executor: &mut impl Executor) {
                 .unwrap();
             bundle
                 .rows()
-                .try_collect::<Vec<Row>>()
+                .try_collect::<Vec<Row<'_, _>>>()
                 .await
                 .expect("Failed to query books and authors joined")
                 .into_iter()
                 .map(|row| {
-                let mut iter = row.values.iter().cloned();
+                let mut iter = row.values();
                 (
                     match iter.next().unwrap() {
                         Value::Varchar(Some(v)) => v.into_owned(),
@@ -365,7 +365,7 @@ pub async fn books(executor: &mut impl Executor) {
             .await
             .unwrap()
             .rows()
-            .and_then(|row| async move { AsValue::try_from_value((*row.values)[0].clone()) })
+            .and_then(|row| async move { AsValue::try_from_value(row.values.get(0).unwrap()) })
             .try_collect::<Vec<String>>()
             .await
             .expect("Could not return the ordered names of the authors");

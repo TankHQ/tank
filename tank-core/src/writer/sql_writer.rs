@@ -305,7 +305,27 @@ pub trait SqlWriter:
             "",
         );
         out.push_str(");");
-        self.write_column_comments_statements_fragment::<E>(&mut context, out);
+    }
+
+    /// Emit `COMMENT ON COLUMN` statements for the entity's documented columns.
+    fn write_column_comments<E>(&self, out: &mut DynQuery)
+    where
+        Self: Sized,
+        E: Entity,
+    {
+        for column in E::columns().iter().filter(|c| !c.comment.is_empty()) {
+            self.write_column_comment(out, column);
+        }
+    }
+
+    /// Emit a single `COMMENT ON COLUMN` statement.
+    fn write_column_comment(&self, out: &mut DynQuery, column: &ColumnDef) {
+        let mut context = Context::new(Fragment::SqlCommentOnColumn, true);
+        out.push_str("\nCOMMENT ON COLUMN ");
+        self.write_column_ref(&mut context, out, column.into());
+        out.push_str(" IS ");
+        self.write_string(&mut context, out, column.comment);
+        out.push(';');
     }
 
     /// Write DROP TABLE statement.

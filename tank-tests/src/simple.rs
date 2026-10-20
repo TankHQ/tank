@@ -4,13 +4,12 @@ use rust_decimal::{Decimal, prelude::FromPrimitive};
 use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
-    i128,
     pin::pin,
     sync::{Arc, LazyLock},
 };
 use tank::{
-    Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult, Results, RawQuery,
-    RowsAffected, SqlWriter, expr, stream::TryStreamExt,
+    Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult, RawQuery,
+    Results, RowsAffected, SqlWriter, expr, stream::TryStreamExt,
 };
 use time::{Date, Time, macros::date};
 use tokio::sync::Mutex;
@@ -121,7 +120,7 @@ pub async fn simple(executor: &mut impl Executor) {
         );
         {
             let bundle = executor.run(query).await.unwrap();
-        let mut stream = pin!(bundle.results());
+            let mut stream = pin!(bundle.results());
             let result = stream
                 .try_next()
                 .await
@@ -240,7 +239,7 @@ pub async fn simple(executor: &mut impl Executor) {
         );
         {
             let bundle = executor.run(query).await.unwrap();
-        let mut stream = pin!(bundle.results());
+            let mut stream = pin!(bundle.results());
             let Ok(Some(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
                 stream.try_next().await
             else {

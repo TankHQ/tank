@@ -1,7 +1,7 @@
 use crate::{
     ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Query, QueryBuilder,
-    Result, Row, RowOwned, RowValuesOwned, Rows, RowsAffected, TableRef, future::Either,
-    writer::SqlWriter,
+    Result, Row, RowOwned, RowValuesOwned, RowValuesSource, Rows, RowsAffected, TableRef,
+    future::Either, writer::SqlWriter,
 };
 use anyhow::{Context as _, anyhow};
 use futures::{FutureExt, Stream, StreamExt, TryStreamExt, stream};
@@ -9,7 +9,6 @@ use log::Level;
 use std::{
     future::{self, Future},
     pin::pin,
-    sync::Arc,
 };
 
 pub trait AsEntity {
@@ -62,7 +61,7 @@ pub trait Entity: AsEntity + Expression {
     /// Reconstruct `Self` from a labeled row.
     ///
     /// Fails if columns are missing or type conversion fails.
-    fn from_row(row: Row<'_>) -> Result<Self>
+    fn from_row<S: RowValuesSource + ?Sized>(row: Row<'_, S>) -> Result<Self>
     where
         Self: Sized;
 
@@ -79,20 +78,30 @@ pub trait Entity: AsEntity + Expression {
         Self: Sized,
     {
         async move {
-            let mut query = DynQuery::with_capacity(2048);
             let writer = executor.driver().sql_writer();
             if create_schema && !Self::table().schema.is_empty() {
+                let mut query = DynQuery::with_capacity(128);
                 writer.write_create_schema::<Self>(&mut query, true);
+                // Some dialects do not support schemas and emit nothing.
+                if !query.is_empty() {
+                    executor.execute(query).await?;
+                }
             }
-            if !executor.accepts_multiple_statements() && !query.is_empty() {
-                let mut q = query.into_query(executor.driver());
-                executor.execute(&mut q).await?;
-                // To reuse the allocated buffer
-                query = q.into();
-                query.clear();
-            }
+            let mut query = DynQuery::with_capacity(2048);
             writer.write_create_table::<Self>(&mut query, if_not_exists);
-            executor.execute(query).await.map(|_| ())
+            if executor.accepts_multiple_statements() {
+                writer.write_column_comments::<Self>(&mut query);
+                return executor.execute(query).await.map(|_| ());
+            }
+            executor.execute(query).await?;
+            for column in Self::columns().iter().filter(|c| !c.comment.is_empty()) {
+                let mut query = DynQuery::with_capacity(256);
+                writer.write_column_comment(&mut query, column);
+                if !query.is_empty() {
+                    executor.execute(query).await?;
+                }
+            }
+            Ok(())
         }
     }
 

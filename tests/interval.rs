@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashSet, i64, time::Duration};
+    use std::{collections::HashSet, time::Duration};
     use tank_core::{
         AsValue, Context, DynQuery, Fragment, GenericSqlWriter, Interval, IntervalUnit,
         SqlValueWriter, Value,

@@ -56,7 +56,7 @@ impl Prepared for ValkeyPrepared {
 }
 
 impl Display for ValkeyPrepared {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ValkeyPrepared {:?}", self.commands)
     }
 }

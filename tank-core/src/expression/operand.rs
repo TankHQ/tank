@@ -2,7 +2,7 @@ use crate::{
     DynQuery, Expression, ExpressionVisitor, OpPrecedence, Value,
     writer::{Context, SqlWriter},
 };
-use std::fmt;
+use std::fmt::{self, Debug, Formatter};
 
 pub enum Operand<'a> {
     Null,
@@ -21,29 +21,6 @@ pub enum Operand<'a> {
     Asterisk,
     QuestionMark,
     CurrentTimestampMs,
-}
-
-impl fmt::Debug for Operand<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Null => f.write_str("Null"),
-            Self::LitBool(v) => f.debug_tuple("LitBool").field(v).finish(),
-            Self::LitInt(v) => f.debug_tuple("LitInt").field(v).finish(),
-            Self::LitFloat(v) => f.debug_tuple("LitFloat").field(v).finish(),
-            Self::LitStr(v) => f.debug_tuple("LitStr").field(v).finish(),
-            Self::LitIdent(v) => f.debug_tuple("LitIdent").field(v).finish(),
-            Self::LitField(v) => f.debug_tuple("LitField").field(v).finish(),
-            Self::LitList(v) => f.debug_tuple("LitList").field(v).finish(),
-            Self::LitTuple(v) => f.debug_tuple("LitTuple").field(v).finish(),
-            Self::Type(v) => f.debug_tuple("Type").field(v).finish(),
-            Self::Variable(v) => f.debug_tuple("Variable").field(v).finish(),
-            Self::Value(v) => f.debug_tuple("Value").field(v).finish(),
-            Self::Call(name, _) => f.debug_tuple("Call").field(name).field(&"..").finish(),
-            Self::Asterisk => f.write_str("Asterisk"),
-            Self::QuestionMark => f.write_str("QuestionMark"),
-            Self::CurrentTimestampMs => f.write_str("CurrentTimestampMs"),
-        }
-    }
 }
 
 impl OpPrecedence for Operand<'_> {
@@ -85,6 +62,29 @@ impl PartialEq for Operand<'_> {
             (Self::QuestionMark, Self::QuestionMark) => true,
             (Self::CurrentTimestampMs, Self::CurrentTimestampMs) => true,
             _ => false,
+        }
+    }
+}
+
+impl Debug for Operand<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Null => f.write_str("Null"),
+            Self::LitBool(v) => f.debug_tuple("LitBool").field(v).finish(),
+            Self::LitInt(v) => f.debug_tuple("LitInt").field(v).finish(),
+            Self::LitFloat(v) => f.debug_tuple("LitFloat").field(v).finish(),
+            Self::LitStr(v) => f.debug_tuple("LitStr").field(v).finish(),
+            Self::LitIdent(v) => f.debug_tuple("LitIdent").field(v).finish(),
+            Self::LitField(v) => f.debug_tuple("LitField").field(v).finish(),
+            Self::LitList(v) => f.debug_tuple("LitList").field(v).finish(),
+            Self::LitTuple(v) => f.debug_tuple("LitTuple").field(v).finish(),
+            Self::Type(v) => f.debug_tuple("Type").field(v).finish(),
+            Self::Variable(v) => f.debug_tuple("Variable").field(v).finish(),
+            Self::Value(v) => f.debug_tuple("Value").field(v).finish(),
+            Self::Call(name, _) => f.debug_tuple("Call").field(name).field(&"..").finish(),
+            Self::Asterisk => f.write_str("Asterisk"),
+            Self::QuestionMark => f.write_str("QuestionMark"),
+            Self::CurrentTimestampMs => f.write_str("CurrentTimestampMs"),
         }
     }
 }

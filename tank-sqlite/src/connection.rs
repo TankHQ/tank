@@ -45,7 +45,7 @@ impl SQLiteConnection {
     pub(crate) fn do_run_prepared(
         connection: *mut sqlite3,
         statement: *mut sqlite3_stmt,
-        tx: Sender<Result<QueryResult>>,
+        tx: Sender<Result<QueryResult<'static, tank_core::NoSource>>>,
     ) {
         unsafe {
             let count = sqlite3_column_count(statement);
@@ -67,7 +67,7 @@ impl SQLiteConnection {
                     SQLITE_ROW => {
                         let values = match (0..count)
                             .map(|i| extract_value(statement, i))
-                            .collect::<Result<_>>()
+                            .collect::<Result<Vec<_>>>()
                         {
                             Ok(value) => value,
                             Err(error) => {
@@ -79,7 +79,7 @@ impl SQLiteConnection {
                             tx,
                             Ok(QueryResult::Row(Row {
                                 labels: labels.clone(),
-                                values: values,
+                                values: values.into(),
                             }))
                         )
                     }
@@ -115,7 +115,7 @@ impl SQLiteConnection {
     pub(crate) fn do_run_unprepared(
         connection: *mut sqlite3,
         sql: &str,
-        tx: Sender<Result<QueryResult>>,
+        tx: Sender<Result<QueryResult<'static, tank_core::NoSource>>>,
     ) {
         unsafe {
             let sql = sql.trim();
@@ -282,7 +282,7 @@ impl SQLiteConnection {
     ) -> impl Stream<Item = Result<QueryResultOwned>> + Send + 's {
         let mut query = query.as_query();
         let context = format!("While running the query:\n{}", query.as_mut());
-        let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
+        let (tx, rx) = flume::unbounded::<Result<QueryResult<'static, tank_core::NoSource>>>();
         let connection = AtomicPtr::new(*self.connection);
         let mut owned = mem::take(query.as_mut());
         let join = spawn_blocking(move || {

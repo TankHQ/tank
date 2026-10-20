@@ -175,7 +175,7 @@ mod tests {
             vec![Value::Int32(Some(1)), Value::Varchar(Some("Alice".into()))].into();
         let row = Row::new(labels.clone(), values);
         assert_eq!(row.names(), &["id", "name"]);
-        assert_eq!(row.values().len(), 2);
+        assert_eq!(row.values().count(), 2);
         assert_eq!(row.len(), 2);
     }
 
@@ -185,10 +185,10 @@ mod tests {
         let values: RowValuesOwned =
             vec![Value::Int32(Some(42)), Value::Varchar(Some("Bob".into()))].into();
         let row = Row::new(labels, values);
-        assert_eq!(row.get_column("id"), Some(&Value::Int32(Some(42))));
+        assert_eq!(row.get_column("id"), Some(Value::Int32(Some(42))));
         assert_eq!(
             row.get_column("name"),
-            Some(&Value::Varchar(Some("Bob".into())))
+            Some(Value::Varchar(Some("Bob".into())))
         );
         assert_eq!(row.get_column("missing"), None);
     }
@@ -196,12 +196,12 @@ mod tests {
     #[test]
     fn row_into_iterator() {
         let labels: RowLabels = Arc::from(vec!["a".into(), "b".into()]);
-        let values: RowValuesOwned = (&[Value::Int32(Some(1)), Value::Int32(Some(2))]).into();
+        let values: RowValuesOwned = vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into();
         let row = Row::new(labels, values);
         let pairs: Vec<_> = (&row).into_iter().collect();
         assert_eq!(pairs.len(), 2);
         assert_eq!(pairs[0].0, "a");
-        assert_eq!(*pairs[0].1, Value::Int32(Some(1)));
+        assert_eq!(pairs[0].1, Value::Int32(Some(1)));
     }
 
     #[test]
@@ -215,7 +215,7 @@ mod tests {
         let labels: RowLabels = Arc::from(vec!["c".into()]);
         let values: RowValuesOwned = vec![Value::Boolean(Some(false))].into();
         let row = Row::new(labels, values);
-        assert_eq!(row.values()[0], Value::Boolean(Some(false)));
+        assert_eq!(row.values().next().unwrap(), Value::Boolean(Some(false)));
     }
 
     #[test]
@@ -271,7 +271,7 @@ mod tests {
             rows_affected: Some(1),
             last_affected_id: None,
         };
-        let result: QueryResult = r.into();
+        let result: QueryResultOwned = r.into();
         assert!(matches!(result, QueryResult::Affected(_)));
     }
 
@@ -1119,7 +1119,7 @@ mod tests {
         let labels: RowLabels = Arc::from(vec!["a".to_string(), "b".to_string()]);
         let values: RowValuesOwned = vec![Value::Int32(Some(1))].into();
         let row = Row::new(labels, values);
-        assert_eq!(row.get_column("a"), Some(&Value::Int32(Some(1))));
+        assert_eq!(row.get_column("a"), Some(Value::Int32(Some(1))));
         assert_eq!(row.get_column("b"), None);
     }
 

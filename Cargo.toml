@@ -55,6 +55,7 @@ tokio = { version = "1", features = [
 url = "2"
 urlencoding = "2"
 uuid = "1"
+wtx = { path = "../wtx/wtx", default-features = false, features = ["crypto-ring", "getrandom", "optimizations", "std", "tokio", "postgres"] }
 
 [package]
 name = "tank"

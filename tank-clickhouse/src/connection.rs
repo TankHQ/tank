@@ -5,7 +5,7 @@ use anyhow::{Error, anyhow};
 use async_stream::try_stream;
 use futures::{StreamExt, TryStreamExt};
 use klickhouse::{Client, ClientOptions};
-use std::{borrow::Cow, fmt, str::FromStr};
+use std::{borrow::Cow, fmt::{self, Debug, Formatter}, str::FromStr};
 use tank_core::{
     AsQuery, Connection, ErrorContext, Executor, OwnedResults, Query, QueryResult,
     QueryResultOwned, RawQuery, Result, Results, Row, RowLabels, describe_url, stream::Stream,
@@ -31,8 +31,8 @@ impl ClickHouseConnection {
             let sql = match query.as_mut() {
                 Query::Raw(RawQuery { sql, .. }) => Cow::Borrowed(sql.as_str()),
                 Query::Prepared(prepared) => {
-                    let (directive, sql) = prepared
-                        .build_sql(&ClickHouseSqlWriter::new())
+                    let (directive, sql) = ClickHouseSqlWriter::new()
+                        .build_parameterized_sql(prepared)
                         .with_context(|| context.clone())?;
                     prepared.take_params();
                     if let Some(directive) = directive {
@@ -200,8 +200,8 @@ impl Executor for ClickHouseConnection {
     }
 }
 
-impl fmt::Debug for ClickHouseConnection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for ClickHouseConnection {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("ClickHouseConnection").finish()
     }
 }

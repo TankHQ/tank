@@ -184,10 +184,12 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
             }
 
             fn row_values(&self) -> ::tank::RowValuesOwned {
-                ::std::borrow::Cow::Owned(vec![#(#row_values),*])
+                ::tank::RowValues::from(vec![#(#row_values),*])
             }
 
-            fn from_row(row: ::tank::Row<'_>) -> ::tank::Result<Self> {
+            fn from_row<__S__: ::tank::RowValuesSource + ?Sized>(
+                row: ::tank::Row<'_, __S__>,
+            ) -> ::tank::Result<Self> {
                 #from_row_factory::<Self>::from_row(row)
             }
         }

@@ -53,7 +53,7 @@ pub async fn other(executor: &mut impl Executor) {
             .unwrap();
         let stream = bundle
             .rows()
-            .map_ok(|v| v.values.iter().cloned().nth(0).unwrap());
+            .map_ok(|v| v.values().nth(0).unwrap());
         let value = pin!(stream)
             .next()
             .await

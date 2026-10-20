@@ -1,5 +1,5 @@
 use serde_json::Value as JsonValue;
-use std::{borrow::Cow, sync::Arc};
+use std::borrow::Cow;
 use tank_core::{QueryResult, QueryResultOwned, Result, Row, RowLabels, Value, ValueOwned};
 
 fn json_to_tank(value: JsonValue) -> ValueOwned {

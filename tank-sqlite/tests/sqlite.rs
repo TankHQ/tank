@@ -66,7 +66,7 @@ mod tests {
             .await
             .expect("No row returned")
             .expect("Could not read the invalid UTF-8 text");
-        let text = format!("{:?}", row.values[0]);
+        let text = format!("{:?}", row.values.get(0).unwrap());
         assert!(text.contains("\\xff") || text.contains("\\u{fffd}") || text.contains('A'));
     }
 

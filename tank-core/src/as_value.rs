@@ -30,10 +30,18 @@ pub trait AsValue {
     fn as_empty_value() -> ValueOwned;
     /// Convert to `ValueOwned`.
     fn as_value(self) -> ValueOwned;
-    /// Convert from a (possibly borrowed) `Value`.
+    /// Convert from a `Value`.
     fn try_from_value(value: Value<'_>) -> Result<Self>
     where
         Self: Sized;
+    /// Convert from a borrowed [`Value`].
+    #[inline]
+    fn try_from_value_ref(value: &Value<'_>) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        Self::try_from_value(value.clone())
+    }
     /// Parse string.
     fn parse(input: impl AsRef<str>) -> Result<Self>
     where
@@ -532,6 +540,13 @@ macro_rules! impl_as_value {
                     )),
                 }
             }
+            fn try_from_value_ref(value: &Value<'_>) -> Result<Self> {
+                // Fast path if the variant is the corrent one
+                if let $destination(Some(v), ..) = value {
+                    return Ok(v.clone().into());
+                }
+                Self::try_from_value(value.clone())
+            }
             fn parse(input: impl AsRef<str>) -> Result<Self> {
                 $extract(input.as_ref())
             }
@@ -701,22 +716,22 @@ impl AsValue for Box<[u8]> {
     }
     fn parse(input: impl AsRef<str>) -> Result<Self> {
         let mut input = input.as_ref();
-    if input.starts_with("\\x") {
-        input = &input[2..];
-    }
-    let filter_x = input.contains('x');
-    let result = if filter_x {
-        hex::decode(input.chars().filter(|c| *c != 'x').collect::<String>())
-    } else {
-        hex::decode(input)
-    }
-    .map(Into::into)
-    .context(format!(
-        "While decoding `{}` as {}",
-        truncate_long!(input),
-        any::type_name::<Self>()
-    ))?;
-    Ok(result)
+        if input.starts_with("\\x") {
+            input = &input[2..];
+        }
+        let filter_x = input.contains('x');
+        let result = if filter_x {
+            hex::decode(input.chars().filter(|c| *c != 'x').collect::<String>())
+        } else {
+            hex::decode(input)
+        }
+        .map(Into::into)
+        .context(format!(
+            "While decoding `{}` as {}",
+            truncate_long!(input),
+            any::type_name::<Self>()
+        ))?;
+        Ok(result)
     }
 }
 
@@ -1525,6 +1540,13 @@ impl<T: AsValue> AsValue for Option<T> {
             None
         } else {
             Some(<T as AsValue>::try_from_value(value)?)
+        })
+    }
+    fn try_from_value_ref(value: &Value<'_>) -> Result<Self> {
+        Ok(if value.is_null() {
+            None
+        } else {
+            Some(<T as AsValue>::try_from_value_ref(value)?)
         })
     }
     fn parse(input: impl AsRef<str>) -> Result<Self>

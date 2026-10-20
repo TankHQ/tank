@@ -53,13 +53,13 @@ pub trait Executor: Send {
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + Send + 's,
-    ) -> impl Future<Output = Result<impl Results>> + Send;
+    ) -> impl Future<Output = Result<impl Results + 's>> + Send;
 
     /// Executes a query and returns the streamable rows.
     fn fetch<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + Send + 's,
-    ) -> impl Future<Output = Result<impl Rows>> + Send {
+    ) -> impl Future<Output = Result<impl Rows + 's>> + Send {
         self.run(query)
     }
 
@@ -125,14 +125,14 @@ impl<S: Executor + ?Sized> Executor for &mut S {
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + Send + 's,
-    ) -> impl Future<Output = Result<impl Results>> + Send {
+    ) -> impl Future<Output = Result<impl Results + 's>> + Send {
         (**self).run(query)
     }
 
     fn fetch<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + Send + 's,
-    ) -> impl Future<Output = Result<impl Rows>> + Send {
+    ) -> impl Future<Output = Result<impl Rows + 's>> + Send {
         (**self).fetch(query)
     }
 

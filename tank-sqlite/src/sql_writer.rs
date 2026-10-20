@@ -179,18 +179,11 @@ impl SqlExpressionWriter for SQLiteSqlWriter {
 }
 
 impl SqlFragmentWriter for SQLiteSqlWriter {
-    fn write_column_comments_statements_fragment<E>(
-        &self,
-        _context: &mut Context,
-        _out: &mut DynQuery,
-    ) where
-        Self: Sized,
-        E: Entity,
-    {
-    }
 }
 
 impl SqlWriter for SQLiteSqlWriter {
+    fn write_column_comment(&self, _out: &mut DynQuery, _column: &ColumnDef) {
+    }
     fn write_create_schema<E>(&self, _out: &mut DynQuery, _if_not_exists: bool)
     where
         Self: Sized,

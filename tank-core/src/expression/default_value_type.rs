@@ -1,5 +1,7 @@
-use crate::{Context, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, Value, ValueOwned};
-use std::fmt;
+use crate::{
+    Context, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, Value, ValueOwned,
+};
+use std::fmt::{self, Debug, Formatter};
 
 #[derive(Default)]
 pub enum DefaultValueType {
@@ -51,16 +53,6 @@ impl Expression for DefaultValueType {
     }
 }
 
-impl fmt::Debug for DefaultValueType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::None => f.write_str("None"),
-            Self::Value(v) => f.debug_tuple("Value").field(v).finish(),
-            Self::Expression(_) => f.debug_tuple("Expression").field(&"..").finish(),
-        }
-    }
-}
-
 impl<'a> From<Value<'a>> for DefaultValueType {
     fn from(value: Value<'a>) -> Self {
         Self::Value(value.into_owned())
@@ -94,5 +86,15 @@ impl From<f64> for DefaultValueType {
 impl From<char> for DefaultValueType {
     fn from(value: char) -> Self {
         Self::Value(ValueOwned::Char(Some(value)))
+    }
+}
+
+impl Debug for DefaultValueType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::None => f.write_str("None"),
+            Self::Value(v) => f.debug_tuple("Value").field(v).finish(),
+            Self::Expression(_) => f.debug_tuple("Expression").field(&"..").finish(),
+        }
     }
 }

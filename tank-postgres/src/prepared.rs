@@ -1,36 +1,30 @@
-use crate::ValueWrap;
+use crate::TankParam;
 use anyhow::anyhow;
-use std::{
-    borrow::Cow,
-    fmt::{self, Debug, Display},
-    mem,
-};
+use std::fmt::{self, Debug, Display};
 use tank_core::{AsValue, Prepared, Result, ValueOwned};
-use tokio_postgres::Statement;
 
 /// Postgres prepared statement.
 #[derive(Debug)]
 pub struct PostgresPrepared {
-    pub(crate) statement: Statement,
+    pub(crate) sql: String,
     pub(crate) params: Vec<ValueOwned>,
     pub(crate) index: u64,
 }
 
 impl PostgresPrepared {
-    pub(crate) fn new(statement: Statement) -> Self {
+    pub(crate) fn new(sql: String) -> Self {
         Self {
-            statement,
+            sql,
             params: Vec::new(),
             index: 0,
         }
     }
 
-    pub(crate) fn take_params(&mut self) -> Vec<ValueWrap<'static>> {
+    /// Encodes the bound values into wtx parameters.
+    pub(crate) fn take_params(&mut self) -> Result<Vec<TankParam>> {
         self.index = 0;
-        mem::take(&mut self.params)
-            .into_iter()
-            .map(|v| ValueWrap(Cow::Owned(v)))
-            .collect()
+        let values = std::mem::take(&mut self.params);
+        TankParam::encode_all(&values)
     }
 }
 
@@ -50,20 +44,21 @@ impl Prepared for PostgresPrepared {
     }
 
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
-        let len = self.statement.params().len();
-        self.params.resize_with(len, Default::default);
-        let target = self.params.get_mut(index as usize).ok_or(anyhow!(
-            "Index {index} cannot be bound, the query has only {len} parameters",
-        ))?;
-        *target = value.as_value();
-        self.index = index + 1;
+        let index = index as usize;
+        if index > self.params.len() {
+            return Err(anyhow!(
+                "Index {index} cannot be bound, only {} parameters are currently bound",
+                self.params.len(),
+            ));
+        }
+        self.params.insert(index, value.as_value());
+        self.index = index as u64 + 1;
         Ok(self)
     }
 }
 
 impl Display for PostgresPrepared {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("PostgresPrepared: ")?;
-        self.statement.fmt(f)
+        write!(f, "PostgresPrepared: {}", self.sql)
     }
 }

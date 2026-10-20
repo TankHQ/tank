@@ -249,6 +249,18 @@ mod tests {
                 "tags" MAP(VARCHAR,VARCHAR),
                 PRIMARY KEY ("trade_id", "execution_time"),
                 FOREIGN KEY ("order_id") REFERENCES "order"("id") ON DELETE SET DEFAULT ON UPDATE RESTRICT);
+            "#}
+            .trim()
+        );
+    }
+
+    #[test]
+    fn test_trade_create_table_comments() {
+        let mut query = DynQuery::default();
+        WRITER.write_column_comments::<Trade>(&mut query);
+        assert_eq!(
+            query.as_str().trim(),
+            indoc! {r#"
                 COMMENT ON COLUMN "trading.company"."trade_execution"."symbol" IS 'Ticker symbol';
                 COMMENT ON COLUMN "trading.company"."trade_execution"."venue" IS 'Exchange';
             "#}

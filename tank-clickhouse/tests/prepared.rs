@@ -23,7 +23,7 @@ mod tests {
         let mut prepared = ClickHousePrepared::new(sql, params);
         prepared.bind(1_i64).unwrap();
         prepared.bind("x").unwrap();
-        let (directive, built) = prepared.build_sql(&writer).unwrap();
+        let (directive, built) = writer.build_parameterized_sql(&prepared).unwrap();
         let directive = directive.expect("bound values must produce a SET directive");
         assert!(directive.starts_with("SET param_p0 = "), "{directive}");
         assert!(directive.contains("param_p1 = "), "{directive}");
@@ -35,7 +35,7 @@ mod tests {
     fn build_sql_without_markers_is_unchanged() {
         let writer = ClickHouseSqlWriter::new();
         let prepared = ClickHousePrepared::new("SELECT 1".to_string(), vec![]);
-        let (directive, built) = prepared.build_sql(&writer).unwrap();
+        let (directive, built) = writer.build_parameterized_sql(&prepared).unwrap();
         assert!(directive.is_none());
         assert_eq!(built, "SELECT 1");
     }
@@ -52,7 +52,7 @@ mod tests {
         let RawQuery { sql, params } = render(&tank::expr!(a == ?));
         let mut prepared = ClickHousePrepared::new(sql, params);
         prepared.bind(Option::<i64>::None).unwrap();
-        let (directive, built) = prepared.build_sql(&writer).unwrap();
+        let (directive, built) = writer.build_parameterized_sql(&prepared).unwrap();
         let directive = directive.expect("a NULL binding still produces a SET directive");
         assert!(directive.contains("'\\\\N'"), "{directive}");
         assert!(built.contains("Nullable(Nothing)"), "{built}");
@@ -65,19 +65,19 @@ mod tests {
         let mut prepared = ClickHousePrepared::new(sql, params);
         prepared.bind_index(10_i32, 1).unwrap();
         prepared.bind_index(20_i32, 0).unwrap();
-        let (_, built) = prepared.build_sql(&writer).unwrap();
+        let (_, built) = writer.build_parameterized_sql(&prepared).unwrap();
         assert!(built.contains("Nullable(Int32)}"), "{built}");
 
         let taken = prepared.take_params();
         assert_eq!(taken.len(), 2);
         assert_eq!(taken[0], Value::Int32(Some(20)));
-        let (directive, built) = prepared.build_sql(&writer).unwrap();
+        let (directive, built) = writer.build_parameterized_sql(&prepared).unwrap();
         assert!(directive.is_none());
         assert!(built.contains("Nullable(Nothing)"), "{built}");
 
         prepared.bind(1_i64).unwrap();
         prepared.clear_bindings().unwrap();
-        let (directive, _) = prepared.build_sql(&writer).unwrap();
+        let (directive, _) = writer.build_parameterized_sql(&prepared).unwrap();
         assert!(directive.is_none());
     }
 
@@ -88,7 +88,7 @@ mod tests {
         let reversed: Vec<QueryParam> = params.into_iter().rev().collect();
         let mut prepared = ClickHousePrepared::new(sql, reversed);
         prepared.bind(1_i64).unwrap();
-        let (_, built) = prepared.build_sql(&writer).unwrap();
+        let (_, built) = writer.build_parameterized_sql(&prepared).unwrap();
         assert!(built.starts_with("a = "), "{built}");
     }
 }
