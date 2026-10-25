@@ -20,15 +20,19 @@ impl AsValue for FpCategoryWrap {
     fn as_empty_value() -> tank::ValueOwned {
         Value::Varchar(None)
     }
-    fn as_value(self) -> tank::ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         format!("{:?}", self.0).as_value()
     }
 
-    fn try_from_value(value: Value) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        let Ok(Value::Varchar(Some(value), ..)) = value.try_as(&Value::Varchar(None)) else {
+        let Ok(Value::Varchar(Some(value), ..)) = value.as_value().try_as(&Value::Varchar(None))
+        else {
             return Err(anyhow!(
                 "Could not convert value into FpCategory (expected a Value::Varchar)"
             ));

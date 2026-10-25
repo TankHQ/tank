@@ -3,25 +3,18 @@ use crate::{
     extract::{extract_name, extract_value},
 };
 use anyhow::anyhow;
-use async_stream::try_stream;
-use flume::Sender;
 use libsqlite3_sys::*;
 use std::{
     borrow::Cow,
     ffi::{CStr, CString, c_char, c_int},
-    mem, ptr,
+    ptr,
     str::FromStr,
-    sync::{
-        Arc,
-        atomic::{AtomicPtr, Ordering},
-    },
+    sync::{Arc, Mutex},
 };
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, OwnedResults, Prepared, Query, QueryResult,
-    QueryResultOwned, RawQuery, Result, Results, Row, RowsAffected, describe_path,
-    error_message_from_ptr, send_value, stream::Stream, truncate_long,
+    AsQuery, Connection, Error, ErrorContext, Executor, Prepared, Query, QueryResult, RawQuery,
+    Result, RowOwned, RowsAffected, describe_path, error_message_from_ptr, truncate_long,
 };
-use tokio::task::spawn_blocking;
 
 /// Wrapper for a SQLite `sqlite3` connection pointer used by the SQLite driver.
 ///
@@ -41,125 +34,179 @@ impl SQLiteConnection {
             )
         }
     }
+}
 
-    pub(crate) fn do_run_prepared(
-        connection: *mut sqlite3,
-        statement: *mut sqlite3_stmt,
-        tx: Sender<Result<QueryResult<'static, tank_core::NoSource>>>,
-    ) {
-        unsafe {
-            let count = sqlite3_column_count(statement);
-            let labels = match (0..count)
-                .map(|i| extract_name(statement, i))
-                .collect::<Result<Arc<[_]>>>()
-            {
-                Ok(labels) => labels,
-                Err(error) => {
-                    send_value!(tx, Err(error.into()));
-                    return;
-                }
-            };
-            loop {
-                match sqlite3_step(statement) {
-                    SQLITE_BUSY => {
-                        continue;
-                    }
-                    SQLITE_ROW => {
-                        let values = match (0..count)
-                            .map(|i| extract_value(statement, i))
-                            .collect::<Result<Vec<_>>>()
-                        {
-                            Ok(value) => value,
-                            Err(error) => {
-                                send_value!(tx, Err(error));
-                                return;
-                            }
-                        };
-                        send_value!(
-                            tx,
-                            Ok(QueryResult::Row(Row {
-                                labels: labels.clone(),
-                                values: values.into(),
-                            }))
-                        )
-                    }
-                    SQLITE_DONE => {
-                        if sqlite3_stmt_readonly(statement) == 0 {
-                            send_value!(
-                                tx,
-                                Ok(QueryResult::Affected(RowsAffected {
-                                    rows_affected: Some(sqlite3_changes64(connection) as _),
-                                    last_affected_id: Some(sqlite3_last_insert_rowid(connection)),
-                                }))
-                            );
+// Both iterator levels own this state. Even a rowset retained after the outer iterator
+// is dropped keeps the connection and prepared query borrowed. All native access is
+// serialized by the mutex; no worker can outlive those borrows.
+struct SQLiteCursor<'s, Q: AsMut<Query<SQLiteDriver>>> {
+    connection: &'s mut SQLiteConnection,
+    query: Q,
+    statement: Option<SQLitePrepared>,
+    offset: usize,
+    generation: usize,
+    active: bool,
+    done: bool,
+    names: Option<Arc<[String]>>,
+}
+
+impl<Q: AsMut<Query<SQLiteDriver>>> SQLiteCursor<'_, Q> {
+    fn statement(&mut self) -> *mut sqlite3_stmt {
+        match self.query.as_mut() {
+            Query::Prepared(prepared) => prepared.statement(),
+            Query::Raw(_) => self
+                .statement
+                .as_ref()
+                .map_or(ptr::null_mut(), |s| s.statement()),
+        }
+    }
+
+    fn error(&mut self) -> Error {
+        Error::msg(self.connection.last_error())
+            .context(format!("While running the query:\n{}", self.query.as_mut()))
+    }
+
+    fn reset(&mut self) {
+        let statement = self.statement();
+        if !statement.is_null() {
+            // A step error is already returned to the caller. Reset reports that same
+            // error again, but still resets the VM, so do not report it twice.
+            unsafe { sqlite3_reset(statement) };
+        }
+        self.active = false;
+        self.names = None;
+        self.statement = None;
+    }
+
+    fn row(&mut self) -> Result<Option<RowOwned>> {
+        if !self.active {
+            return Ok(None);
+        }
+        let statement = self.statement();
+        let result = unsafe {
+            match sqlite3_step(statement) {
+                SQLITE_ROW => (|| {
+                    let count = sqlite3_column_count(statement);
+                    // Read labels after stepping: SQLite may have recompiled the VM.
+                    let names = match &self.names {
+                        Some(names) => names.clone(),
+                        None => {
+                            let names = (0..count)
+                                .map(|i| extract_name(statement, i))
+                                .collect::<Result<Arc<[_]>>>()?;
+                            self.names = Some(names.clone());
+                            names
                         }
+                    };
+                    let values = (0..count)
+                        .map(|i| extract_value(statement, i))
+                        .collect::<Result<Vec<_>>>()?;
+                    Ok(Some(RowOwned { names, values }))
+                })(),
+                SQLITE_DONE => Ok(None),
+                _ => Err(self.error()),
+            }
+        };
+        if !matches!(&result, Ok(Some(_))) {
+            if result.is_err() {
+                self.done = true;
+            }
+            self.reset();
+        }
+        result
+    }
+
+    fn advance(&mut self) -> Result<Option<RowsAffected>> {
+        // Discard one row at a time, including extraction errors, before moving on.
+        while self.row()?.is_some() {}
+        if self.done {
+            return Ok(None);
+        }
+        unsafe {
+            match self.query.as_mut() {
+                Query::Prepared(_) => {
+                    if self.generation != 0 || self.statement().is_null() {
+                        self.done = true;
+                        return Ok(None);
+                    }
+                }
+                Query::Raw(raw) => loop {
+                    if self.offset == raw.sql.len() {
+                        self.done = true;
+                        return Ok(None);
+                    }
+                    let sql = raw.sql.as_ptr().add(self.offset) as *const c_char;
+                    let len = c_int::try_from(raw.sql.len() - self.offset)?;
+                    let mut statement = SQLitePrepared::new(CBox::new(ptr::null_mut(), |p| {
+                        sqlite3_finalize(p);
+                    }));
+                    let mut tail = ptr::null();
+                    let rc = sqlite3_prepare_v2(
+                        *self.connection.connection,
+                        sql,
+                        len,
+                        &mut *statement.statement,
+                        &mut tail,
+                    );
+                    if rc != SQLITE_OK {
+                        self.done = true;
+                        return Err(self.error());
+                    }
+                    self.offset += tail.offset_from(sql) as usize;
+                    if !statement.statement().is_null() {
+                        self.statement = Some(statement);
                         break;
                     }
-                    _ => {
-                        send_value!(
-                            tx,
-                            Err(Error::msg(
-                                error_message_from_ptr(&sqlite3_errmsg(sqlite3_db_handle(
-                                    statement,
-                                )))
-                                .to_string(),
-                            ))
-                        );
+                },
+            }
+            self.generation += 1;
+            self.active = true;
+            let statement = self.statement();
+            if sqlite3_column_count(statement) > 0 {
+                return Ok(None);
+            }
+            let connection = *self.connection.connection;
+            let before = sqlite3_total_changes64(connection);
+            while self.row()?.is_some() {}
+            // changes64 is stale after DDL; total_changes distinguishes it from DML.
+            // Use changes64 rather than the delta to exclude trigger side effects.
+            Ok(Some(RowsAffected {
+                rows_affected: Some(if sqlite3_total_changes64(connection) != before {
+                    sqlite3_changes64(connection) as u64
+                } else {
+                    0
+                }),
+                last_affected_id: Some(sqlite3_last_insert_rowid(connection)),
+            }))
+        }
+    }
+}
+
+impl<Q: AsMut<Query<SQLiteDriver>>> Drop for SQLiteCursor<'_, Q> {
+    fn drop(&mut self) {
+        let statement = self.statement();
+        if self.active && !statement.is_null() && unsafe { sqlite3_stmt_readonly(statement) == 0 } {
+            // Finish an active RETURNING write, but never walk an abandoned SELECT.
+            loop {
+                match self.row() {
+                    Ok(Some(_)) => {}
+                    Ok(None) => break,
+                    Err(error) => {
+                        // Drop cannot return errors; normal row/outer advancement can.
+                        log::error!("While finishing an abandoned SQLite write: {error:#}");
                         break;
                     }
                 }
             }
         }
-    }
-
-    pub(crate) fn do_run_unprepared(
-        connection: *mut sqlite3,
-        sql: &str,
-        tx: Sender<Result<QueryResult<'static, tank_core::NoSource>>>,
-    ) {
-        unsafe {
-            let sql = sql.trim();
-            let mut it = sql.as_ptr() as *const c_char;
-            let mut len = sql.len();
-            loop {
-                let (statement, tail) = {
-                    let mut statement = SQLitePrepared::new(CBox::new(ptr::null_mut(), |p| {
-                        let rc = sqlite3_finalize(p);
-                        if rc != SQLITE_OK {
-                            return;
-                        }
-                    }));
-                    let mut sql_tail = ptr::null();
-                    let rc = sqlite3_prepare_v2(
-                        connection,
-                        it,
-                        len as c_int,
-                        &mut *statement.statement,
-                        &mut sql_tail,
-                    );
-                    if rc != SQLITE_OK {
-                        send_value!(
-                            tx,
-                            Err(Error::msg(
-                                error_message_from_ptr(&sqlite3_errmsg(connection)).to_string(),
-                            ))
-                        );
-                        return;
-                    }
-                    (statement, sql_tail)
-                };
-                Self::do_run_prepared(connection, statement.statement(), tx.clone());
-                len = if tail != ptr::null() {
-                    len - tail.offset_from_unsigned(it)
-                } else {
-                    0
-                };
-                if len == 0 {
-                    break;
+        self.reset();
+        if let Query::Prepared(prepared) = self.query.as_mut() {
+            if !prepared.statement().is_null() {
+                if let Err(error) = prepared.clear_bindings() {
+                    log::error!("{error:#}");
                 }
-                it = tail;
             }
-        };
+        }
     }
 }
 
@@ -186,7 +233,10 @@ impl Connection for SQLiteConnection {
             let rc = sqlite3_open_v2(
                 connection_string.as_ptr(),
                 &mut *connection,
-                SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI,
+                SQLITE_OPEN_READWRITE
+                    | SQLITE_OPEN_CREATE
+                    | SQLITE_OPEN_URI
+                    | SQLITE_OPEN_FULLMUTEX,
                 ptr::null(),
             );
             if rc != SQLITE_OK {
@@ -222,13 +272,15 @@ impl Executor for SQLiteConnection {
     type Driver = SQLiteDriver;
 
     async fn do_prepare(&mut self, RawQuery { sql, .. }: RawQuery) -> Result<Query<SQLiteDriver>> {
-        let connection = AtomicPtr::new(*self.connection);
-        let prepared = spawn_blocking(move || unsafe {
+        let prepared = unsafe {
             let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
-            let connection = connection.load(Ordering::Relaxed);
-            let len = sql.len();
+            let connection = *self.connection;
+            let len = c_int::try_from(sql.len())?;
             let sql = CString::new(sql.as_bytes())?;
-            let mut statement = CBox::new(ptr::null_mut(), |p| {
+            let mut statement = CBox::new(ptr::null_mut(), |p: *mut sqlite3_stmt| {
+                if p.is_null() {
+                    return;
+                }
                 let db = sqlite3_db_handle(p);
                 let rc = sqlite3_finalize(p);
                 if rc != SQLITE_OK {
@@ -238,13 +290,7 @@ impl Executor for SQLiteConnection {
                 }
             });
             let mut tail = ptr::null();
-            let rc = sqlite3_prepare_v2(
-                connection,
-                sql.as_ptr(),
-                len as c_int,
-                &mut *statement,
-                &mut tail,
-            );
+            let rc = sqlite3_prepare_v2(connection, sql.as_ptr(), len, &mut *statement, &mut tail);
             if rc != SQLITE_OK {
                 let error =
                     Error::msg(error_message_from_ptr(&sqlite3_errmsg(connection)).to_string())
@@ -261,55 +307,102 @@ impl Executor for SQLiteConnection {
                 log::error!("{error:#}");
                 return Err(error);
             }
-            Ok(statement)
-        })
-        .await?;
-        Ok(SQLitePrepared::new(prepared?).into())
+            statement
+        };
+        Ok(SQLitePrepared::new(prepared).into())
     }
 
-    fn run<'s>(
+    fn run<'s, Q>(
         &'s mut self,
-        query: impl AsQuery<SQLiteDriver> + Send + 's,
-    ) -> impl Future<Output = Result<impl Results>> + Send {
-        async move { OwnedResults::from_query_result_stream(self.do_run(query)).await }
+        query: Q,
+    ) -> impl Future<Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>>
+    + Send
+    where
+        Q: AsQuery<SQLiteDriver> + Send + 's,
+    {
+        async move {
+            let mut query = query.as_query();
+            if let Query::Raw(raw) = query.as_mut() {
+                if raw.sql.as_bytes().contains(&0) {
+                    return Err(anyhow!("SQLite query contains an interior NUL byte"));
+                }
+            }
+            if let Query::Prepared(prepared) = query.as_mut() {
+                if !prepared.statement().is_null()
+                    && unsafe { sqlite3_db_handle(prepared.statement()) } != *self.connection
+                {
+                    return Err(anyhow!(
+                        "Prepared statement belongs to another SQLite connection"
+                    ));
+                }
+            }
+            let state = Arc::new(Mutex::new(SQLiteCursor {
+                connection: self,
+                query,
+                statement: None,
+                offset: 0,
+                generation: 0,
+                active: false,
+                done: false,
+                names: None,
+            }));
+            Ok(SQLiteResults { state, done: false })
+        }
     }
 }
 
-impl SQLiteConnection {
-    fn do_run<'s, Q: AsQuery<SQLiteDriver> + 's>(
-        &'s mut self,
-        query: Q,
-    ) -> impl Stream<Item = Result<QueryResultOwned>> + Send + 's {
-        let mut query = query.as_query();
-        let context = format!("While running the query:\n{}", query.as_mut());
-        let (tx, rx) = flume::unbounded::<Result<QueryResult<'static, tank_core::NoSource>>>();
-        let connection = AtomicPtr::new(*self.connection);
-        let mut owned = mem::take(query.as_mut());
-        let join = spawn_blocking(move || {
-            match &mut owned {
-                Query::Raw(RawQuery { sql, .. }) => {
-                    Self::do_run_unprepared(connection.load(Ordering::Relaxed), sql, tx);
-                }
-                Query::Prepared(prepared) => {
-                    Self::do_run_prepared(
-                        connection.load(Ordering::Relaxed),
-                        prepared.statement(),
-                        tx,
-                    );
-                    let _ = prepared.clear_bindings();
-                }
+/// Iterator over the rows of one SQLite statement.
+///
+/// Shares state with [`SQLiteResults`]; a generation counter invalidates it once the next statement begins.
+pub struct SQLiteRows<'s, Q: AsMut<Query<SQLiteDriver>>> {
+    state: Arc<Mutex<SQLiteCursor<'s, Q>>>,
+    generation: usize,
+}
+
+impl<Q: AsMut<Query<SQLiteDriver>>> Iterator for SQLiteRows<'_, Q> {
+    type Item = Result<RowOwned>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut cursor = self.state.lock().unwrap();
+        if cursor.generation != self.generation {
+            return None;
+        }
+        cursor.row().transpose()
+    }
+}
+
+/// Statement-level results of a SQLite query.
+pub struct SQLiteResults<'s, Q: AsMut<Query<SQLiteDriver>>> {
+    state: Arc<Mutex<SQLiteCursor<'s, Q>>>,
+    done: bool,
+}
+
+impl<'s, Q: AsMut<Query<SQLiteDriver>>> Iterator for SQLiteResults<'s, Q> {
+    type Item = Result<QueryResult<SQLiteRows<'s, Q>>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+        let mut cursor = self.state.lock().unwrap();
+        match cursor.advance() {
+            Err(error) => {
+                cursor.done = true;
+                self.done = true;
+                Some(Err(error))
             }
-            owned
-        });
-        try_stream! {
-            while let Ok(result) = rx.recv_async().await {
-                yield result.map_err(|e| {
-                    let error = e.context(context.clone());
-                    log::error!("{error:#}");
-                    error
-                })?;
+            Ok(Some(affected)) => Some(Ok(QueryResult::Affected(affected))),
+            Ok(None) if cursor.active => {
+                let generation = cursor.generation;
+                Some(Ok(QueryResult::Rows(SQLiteRows {
+                    state: self.state.clone(),
+                    generation,
+                })))
             }
-            *query.as_mut() = mem::take(&mut join.await?);
+            Ok(None) => {
+                self.done = true;
+                None
+            }
         }
     }
 }

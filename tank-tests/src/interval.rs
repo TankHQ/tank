@@ -4,7 +4,7 @@ use crate::silent_logs;
 use std::{pin::pin, sync::LazyLock, time::Duration};
 use tank::{
     Context, Driver, DynQuery, Entity, Executor, Fragment, Interval, QueryBuilder, QueryResult,
-    RawQuery, Results, RowsAffected, SqlValueWriter, SqlWriter, Value, expr,
+    RawQuery, RowsAffected, SqlValueWriter, SqlWriter, Value, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -199,11 +199,10 @@ pub async fn interval(executor: &mut impl Executor) {
                 .where_expr(true),
         );
         let bundle = executor.run(query).await.unwrap();
-        let mut stream = pin!(bundle.results());
+        let mut stream = bundle;
 
         // DELETE
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
-            stream.next().await
+        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) = stream.next()
         else {
             panic!("Could not get the result of deleting the rows")
         };
@@ -212,8 +211,7 @@ pub async fn interval(executor: &mut impl Executor) {
         }
 
         // INSERT
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
-            stream.next().await
+        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) = stream.next()
         else {
             panic!("Could not get the result of inserting the rows")
         };
@@ -222,16 +220,15 @@ pub async fn interval(executor: &mut impl Executor) {
         }
 
         // SELECT
-        let mut intervals = Vec::new();
-        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
+        let Some(Ok(QueryResult::Rows(rows))) = stream.next() else {
             panic!("Could not get the result of selecting the rows")
         };
-        intervals.push(Intervals::from_row(row).expect("Could not decode the first Intervals row"));
-        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
-            panic!("Could not get the result of selecting the rows")
-        };
-        intervals
-            .push(Intervals::from_row(row).expect("Could not decode the second Intervals row"));
+        let mut intervals = rows
+            .map(|row| Intervals::from_row(row?))
+            .collect::<tank::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(intervals.len(), 2);
+        assert!(stream.next().is_none());
         intervals.sort_by(|a, b| a.pk.cmp(&b.pk));
 
         // Row 1

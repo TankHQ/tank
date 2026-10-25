@@ -2,8 +2,8 @@
 #![allow(unused_imports)]
 use std::{borrow::Cow, pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, RawQuery, Results,
-    SqlWriter, cols, stream::TryStreamExt,
+    Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, RawQuery, SqlWriter,
+    cols, stream::TryStreamExt,
 };
 use tokio::sync::Mutex;
 
@@ -178,18 +178,15 @@ pub async fn arrays1(executor: &mut impl Executor) {
                 .where_expr(true),
         );
         let bundle = executor.run(query).await.unwrap();
-        let rows = pin!(bundle.results().try_filter_map(|v| async move {
-            Ok(match v {
-                QueryResult::Row(v) => Some(v),
+        let rows = bundle
+            .filter_map(|v| match v.unwrap() {
+                QueryResult::Rows(v) => Some(v),
                 QueryResult::Affected(..) => None,
             })
-        }));
-        let rows = rows
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not collect the rows");
+            .flatten();
+        let rows = rows.collect::<tank::Result<Vec<_>>>().unwrap();
 
-        let value = Arrays1::from_row(rows[0].clone()).expect("First must be Arrays1");
+        let value = Arrays1::from_row(&rows[0]).expect("First must be Arrays1");
         assert_eq!(
             value,
             Arrays1 {

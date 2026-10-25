@@ -35,7 +35,7 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
                 Box::new(move |assign: &AssignmentFn| {
                     let assign = assign(&ident, &ty, conversion_type.as_ref());
                     quote! {
-                        if __n__ == #name {
+                        #name => {
                             #assign;
                         }
                     }
@@ -46,7 +46,7 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
             Box::new(move |assign: &AssignmentFn| {
                 let acc = acc(assign);
                 let cur = cur(assign);
-                quote!(#acc else #cur)
+                quote!(#acc #cur)
             }) as ProducerFn
         })
         .unwrap_or(Box::new(|_| TokenStream::new()));
@@ -78,61 +78,63 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
         }
     };
     let field_assignment_default = field_assignment(&|field, ty, conversion_type| {
-        if let Some(conversion_type) = conversion_type {
-            quote!(result.#field = ::std::convert::Into::<#ty>::into(<#conversion_type as ::tank::AsValue>::try_from_value_ref(&__v__)?))
-        } else {
-            quote!(result.#field = <#ty as ::tank::AsValue>::try_from_value_ref(&__v__)?)
-        }
+        let conversion_type = conversion_type.unwrap_or(ty);
+        quote!(result.#field = ::std::convert::Into::<#ty>::into(match __v__ {
+            ::std::borrow::Cow::Owned(__v__) => <#conversion_type as ::tank::AsValue>::try_from_value(__v__),
+            ::std::borrow::Cow::Borrowed(__v__) => <#conversion_type as ::tank::AsValue>::try_from_value(__v__),
+        }?))
     });
     let field_assignment_holder = field_assignment(&|field, ty, conversion_type| {
-        if let Some(conversion_type) = conversion_type {
-            quote!(#field = Some(::std::convert::Into::<#ty>::into(<#conversion_type as ::tank::AsValue>::try_from_value_ref(&__v__)?)))
-        } else {
-            quote!(#field = Some(<#ty as ::tank::AsValue>::try_from_value_ref(&__v__)?))
-        }
+        let conversion_type = conversion_type.unwrap_or(ty);
+        quote!(#field = Some(::std::convert::Into::<#ty>::into(match __v__ {
+            ::std::borrow::Cow::Owned(__v__) => <#conversion_type as ::tank::AsValue>::try_from_value(__v__),
+            ::std::borrow::Cow::Borrowed(__v__) => <#conversion_type as ::tank::AsValue>::try_from_value(__v__),
+        }?)))
     });
     (
         factory_name.clone(),
         quote! {
             trait #trait_name {
-                fn from_row<__S__: ::tank::RowValuesSource + ?Sized>(
-                    row: ::tank::Row<'_, __S__>,
+                fn from_row(
+                    row: &impl ::tank::Row,
                 ) -> ::tank::Result<#struct_name>;
             }
             struct #factory_name<T>(std::marker::PhantomData<T>);
             impl<T: Default + Into<#struct_name>> #factory_name<T> {
                 // Called when T has Default Trait
-                fn from_row<__S__: ::tank::RowValuesSource + ?Sized>(
-                    row: ::tank::Row<'_, __S__>,
+                fn from_row(
+                    row: &impl ::tank::Row,
                 ) -> ::tank::Result<#struct_name> {
                     let mut result = T::default().into();
-                    for (__i__, __n__) in row.labels.iter().enumerate() {
-                        let __v__ = match row.values.get(__i__) {
-                            Some(__v__) => __v__,
-                            None => break,
-                        };
-                        #field_assignment_default
+                    for (__i__, __n__) in row.names().iter().enumerate() {
+                        let Some(__v__) = row.value(__i__) else { break };
+                        #[allow(unreachable_patterns)]
+                        match __n__.as_str() {
+                            #field_assignment_default
+                            _ => {},
+                        }
                     }
                     Ok(result)
                 }
             }
             impl<T> #trait_name for #factory_name<T> {
                 // Called when T doesn't have default trait
-                fn from_row<__S__: ::tank::RowValuesSource + ?Sized>(
-                    row: ::tank::Row<'_, __S__>,
+                fn from_row(
+                    row: &impl ::tank::Row,
                 ) -> ::tank::Result<#struct_name> {
                     #(#fields_holder_declarations)*
-                    for (__i__, __n__) in row.labels.iter().enumerate() {
-                        let __v__ = match row.values.get(__i__) {
-                            Some(__v__) => __v__,
-                            None => break,
-                        };
-                        #field_assignment_holder
-                    }
                     let __make_error__ = |name: &str| ::tank::anyhow!(
                         "Column `{name}` does not exist in the row provided (implement `Default` for {} or get all the columns)",
                         stringify!(#struct_name),
                     );
+                    for (__i__, __n__) in row.names().iter().enumerate() {
+                        let Some(__v__) = row.value(__i__) else { break };
+                        #[allow(unreachable_patterns)]
+                        match __n__.as_str() {
+                            #field_assignment_holder
+                            _ => {},
+                        }
+                    }
                     Ok(#create_result)
                 }
             }

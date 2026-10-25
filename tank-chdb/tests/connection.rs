@@ -2,7 +2,7 @@
 mod tests {
     use std::{path::Path, sync::Mutex};
     use tank_chdb::{ChDBConnection, ChDBDriver};
-    use tank_core::{Connection, Entity, Executor, Rows, stream::TryStreamExt};
+    use tank_core::{Connection, Entity, Executor, QueryResult};
     use tank_tests::{init_logs, silent_logs};
     use tokio::fs;
 
@@ -55,15 +55,16 @@ mod tests {
             .bind(Option::<i64>::None)
             .expect("Could not bind a NULL");
         let rows = {
-            let bundle = connection
-                .fetch(&mut query)
+            let mut results = connection
+                .run(&mut query)
                 .await
                 .expect("Could not query by the NULL value");
-            bundle
-                .rows()
-                .and_then(|row| async move { PreparedNullable::from_row(row) })
-                .try_collect::<Vec<_>>()
-                .await
+            let Some(Ok(QueryResult::Rows(rows))) = results.next() else {
+                panic!("prepared SELECT must return rows, not the internal SET directive");
+            };
+            assert!(results.next().is_none());
+            rows.map(|row| row.and_then(PreparedNullable::from_row))
+                .collect::<tank_core::Result<Vec<_>>>()
                 .expect("Could not query by the NULL value")
         };
         assert!(
@@ -89,10 +90,8 @@ mod tests {
                 .await
                 .expect("Could not query by the NULL id");
             bundle
-                .rows()
-                .and_then(|row| async move { PreparedNullable::from_row(row) })
-                .try_collect::<Vec<_>>()
-                .await
+                .map(|row| row.and_then(PreparedNullable::from_row))
+                .collect::<tank_core::Result<Vec<_>>>()
                 .expect("Could not query by the NULL id")
         };
         assert!(
@@ -108,10 +107,8 @@ mod tests {
                 .await
                 .expect("Could not rerun the prepared query");
             bundle
-                .rows()
-                .and_then(|row| async move { PreparedNullable::from_row(row) })
-                .try_collect::<Vec<_>>()
-                .await
+                .map(|row| row.and_then(PreparedNullable::from_row))
+                .collect::<tank_core::Result<Vec<_>>>()
                 .expect("Could not rerun the prepared query")
         };
         assert_eq!(
@@ -177,12 +174,52 @@ mod tests {
             .fetch("SELECT a FROM in_memory_table ORDER BY a")
             .await
             .expect("Could not query the table");
-        let rows = bundle
-            .rows()
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not query the table");
+        let rows = bundle.collect::<tank_core::Result<Vec<_>>>().unwrap();
         assert_eq!(rows.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn statement_results_classify_reads_and_writes() {
+        let _guard = MUTEX.lock().unwrap();
+        let mut connection = ChDBConnection::connect(&ChDBDriver::new(), "chdb://".into())
+            .await
+            .unwrap();
+        assert!(!connection.accepts_multiple_statements());
+        for sql in [
+            "/* not a SQL prefix */ SELECT number FROM numbers(0)",
+            "WITH 1 AS n SELECT n WHERE 0",
+        ] {
+            let mut results = connection.run(sql).await.unwrap();
+            let Some(Ok(QueryResult::Rows(mut rows))) = results.next() else {
+                panic!("empty SELECT must return rows");
+            };
+            assert!(rows.next().is_none());
+            assert!(results.next().is_none());
+        }
+        for sql in [
+            "CREATE TABLE statement_results (n UInt64) ENGINE = Memory",
+            "INSERT INTO statement_results SELECT number FROM numbers(0)",
+            "INSERT INTO statement_results VALUES (1), (2)",
+        ] {
+            let mut results = connection.run(sql).await.unwrap();
+            let Some(Ok(QueryResult::Affected(affected))) = results.next() else {
+                panic!("write must return effects");
+            };
+            assert_eq!(affected.rows_affected, None);
+            assert!(results.next().is_none());
+        }
+        let mut results = connection
+            .run("SELECT n FROM statement_results")
+            .await
+            .unwrap();
+        let Some(Ok(QueryResult::Rows(rows))) = results.next() else {
+            panic!("SELECT must return one rowset");
+        };
+        assert_eq!(
+            rows.collect::<tank_core::Result<Vec<_>>>().unwrap().len(),
+            2
+        );
+        assert!(results.next().is_none());
     }
 
     #[tokio::test]
@@ -217,11 +254,7 @@ mod tests {
             .fetch("SELECT a FROM persisted ORDER BY a")
             .await
             .expect("Could not query the persisted table");
-        let rows = bundle
-            .rows()
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not query the persisted table");
+        let rows = bundle.collect::<tank_core::Result<Vec<_>>>().unwrap();
         assert_eq!(rows.len(), 2, "Persisted table should survive reconnection");
     }
 }

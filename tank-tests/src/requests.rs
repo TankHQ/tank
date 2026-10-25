@@ -8,8 +8,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tank::{
-    AsValue, Entity, Executor, QueryBuilder, Result, Rows, Value, anyhow, current_timestamp_ms,
-    expr, join,
+    AsValue, Entity, Executor, QueryBuilder, Result, Value, anyhow, current_timestamp_ms, expr,
+    join,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -27,7 +27,10 @@ impl AsValue for Method {
     fn as_empty_value() -> tank::ValueOwned {
         Value::Varchar(None)
     }
-    fn as_value(self) -> tank::ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Varchar(Some(
             match self {
                 Method::GET => "get",
@@ -38,11 +41,11 @@ impl AsValue for Method {
             .into(),
         ))
     }
-    fn try_from_value(value: Value) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        if let Value::Varchar(Some(v)) = value.try_as(&String::as_empty_value())? {
+        if let Value::Varchar(Some(v)) = value.as_value().try_as(&String::as_empty_value())? {
             match &*v {
                 "get" => return Ok(Method::GET),
                 "post" => return Ok(Method::POST),
@@ -212,9 +215,9 @@ pub async fn requests(executor: &mut impl Executor) {
                 .fetch(&mut violated_limits)
                 .await
                 .unwrap()
-                .rows()
-                .count()
-                .await,
+                .collect::<Result<Vec<_>>>()
+                .unwrap()
+                .len(),
             0
         );
         r1.save(executor).await.expect("Failed to save r1");
@@ -225,9 +228,9 @@ pub async fn requests(executor: &mut impl Executor) {
                 .fetch(&mut violated_limits)
                 .await
                 .unwrap()
-                .rows()
-                .count()
-                .await,
+                .collect::<Result<Vec<_>>>()
+                .unwrap()
+                .len(),
             0
         );
         r2.save(executor).await.expect("Failed to save r2");
@@ -238,9 +241,9 @@ pub async fn requests(executor: &mut impl Executor) {
                 .fetch(&mut violated_limits)
                 .await
                 .unwrap()
-                .rows()
-                .count()
-                .await,
+                .collect::<Result<Vec<_>>>()
+                .unwrap()
+                .len(),
             1
         ); // Violates [3]
 
@@ -251,9 +254,9 @@ pub async fn requests(executor: &mut impl Executor) {
                 .fetch(&mut violated_limits)
                 .await
                 .unwrap()
-                .rows()
-                .count()
-                .await,
+                .collect::<Result<Vec<_>>>()
+                .unwrap()
+                .len(),
             0
         );
         r4.save(executor).await.expect("Failed to save r4");
@@ -264,9 +267,9 @@ pub async fn requests(executor: &mut impl Executor) {
                 .fetch(&mut violated_limits)
                 .await
                 .unwrap()
-                .rows()
-                .count()
-                .await,
+                .collect::<Result<Vec<_>>>()
+                .unwrap()
+                .len(),
             2
         ); // Violates [1], [3]
 
@@ -279,9 +282,9 @@ pub async fn requests(executor: &mut impl Executor) {
                 .fetch(&mut violated_limits)
                 .await
                 .unwrap()
-                .rows()
-                .count()
-                .await,
+                .collect::<Result<Vec<_>>>()
+                .unwrap()
+                .len(),
             0
         );
         r3.save(executor).await.expect("Failed to save r3");
@@ -307,9 +310,9 @@ pub async fn requests(executor: &mut impl Executor) {
                 .fetch(&mut violated_limits)
                 .await
                 .unwrap()
-                .rows()
-                .count()
-                .await,
+                .collect::<Result<Vec<_>>>()
+                .unwrap()
+                .len(),
             2
         ); // Violates [1], [2]
 
@@ -331,9 +334,9 @@ pub async fn requests(executor: &mut impl Executor) {
                 .fetch(&mut violated_limits)
                 .await
                 .unwrap()
-                .rows()
-                .count()
-                .await,
+                .collect::<Result<Vec<_>>>()
+                .unwrap()
+                .len(),
             1
         ); // Violates [1] still
 
@@ -353,9 +356,9 @@ pub async fn requests(executor: &mut impl Executor) {
                 .fetch(&mut violated_limits)
                 .await
                 .unwrap()
-                .rows()
-                .count()
-                .await,
+                .collect::<Result<Vec<_>>>()
+                .unwrap()
+                .len(),
             0
         );
 
@@ -375,9 +378,9 @@ pub async fn requests(executor: &mut impl Executor) {
                 .fetch(&mut violated_limits)
                 .await
                 .unwrap()
-                .rows()
-                .count()
-                .await,
+                .collect::<Result<Vec<_>>>()
+                .unwrap()
+                .len(),
             0
         );
         d1.save(executor).await.expect("Failed to save d1");
@@ -388,9 +391,9 @@ pub async fn requests(executor: &mut impl Executor) {
                 .fetch(&mut violated_limits)
                 .await
                 .unwrap()
-                .rows()
-                .count()
-                .await,
+                .collect::<Result<Vec<_>>>()
+                .unwrap()
+                .len(),
             1
         ); // Violates [4] // Problem here
 
@@ -403,9 +406,9 @@ pub async fn requests(executor: &mut impl Executor) {
                 .fetch(&mut violated_limits)
                 .await
                 .unwrap()
-                .rows()
-                .count()
-                .await,
+                .collect::<Result<Vec<_>>>()
+                .unwrap()
+                .len(),
             0
         );
 
@@ -424,9 +427,9 @@ pub async fn requests(executor: &mut impl Executor) {
                 .fetch(&mut violated_limits)
                 .await
                 .unwrap()
-                .rows()
-                .count()
-                .await,
+                .collect::<Result<Vec<_>>>()
+                .unwrap()
+                .len(),
             1
         ); // Violates [5]
     }

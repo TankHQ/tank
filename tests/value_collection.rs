@@ -95,7 +95,7 @@ mod tests {
                 Uuid::from_str("ed31d4ef-82ea-442e-b273-5f5006e55ab1").unwrap(),
             ])
         );
-        assert!(Vec::<String>::try_from_value("hello".into()).is_err());
+        assert!(Vec::<String>::try_from_value("hello").is_err());
         assert_eq!(
             Vec::<char>::try_from_value(['a', 'b', 'c'].as_value())
                 .expect("Cannot convert array to Vec"),

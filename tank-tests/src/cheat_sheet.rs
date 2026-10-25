@@ -16,11 +16,14 @@ impl AsValue for NotesWrap {
     fn as_empty_value() -> tank::ValueOwned {
         Value::Varchar(None)
     }
-    fn as_value(self) -> tank::ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Varchar(Some(self.0.0.into()))
     }
-    fn try_from_value(value: Value) -> Result<Self> {
-        match value.try_as(&Value::Varchar(None)) {
+    fn try_from_value(value: impl AsValue) -> Result<Self> {
+        match value.as_value().try_as(&Value::Varchar(None)) {
             Ok(Value::Varchar(Some(s))) => Ok(NotesWrap(Notes(s.to_string()))),
             _ => Err(anyhow!("Expected Varchar for Notes")),
         }
@@ -160,7 +163,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     }
 
     {
-        use tank::{Entity, Rows, expr, stream::TryStreamExt};
+        use tank::{Entity, expr, stream::TryStreamExt};
 
         let mut query = EntityExample::prepare_find(
             &mut connection,
@@ -172,16 +175,14 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         let entities = connection
             .fetch(&mut query)
             .await?
-            .rows()
-            .map_ok(|row| EntityExample::from_row(row).unwrap())
-            .try_collect::<Vec<EntityExample>>()
-            .await?;
+            .map(|row| EntityExample::from_row(row?))
+            .collect::<Result<Vec<EntityExample>>>()?;
         query.clear_bindings()?;
         query.bind(Uuid::from_str("962f2c1c-7caa-468d-a387-53ed9860c4bf")?)?;
     }
 
     {
-        use tank::{QueryBuilder, Rows, cols, expr, stream::TryStreamExt};
+        use tank::{QueryBuilder, cols, expr, stream::TryStreamExt};
 
         let uid = entity.unit_id;
         let results = connection
@@ -196,17 +197,15 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                     .build(&connection.driver()),
             )
             .await?
-            .rows()
-            .map_ok(|row| EntityExample::from_row(row).unwrap())
-            .try_collect::<Vec<_>>()
-            .await?;
+            .map(|row| EntityExample::from_row(row?))
+            .collect::<Result<Vec<_>>>()?;
     }
 
     #[cfg(not(feature = "disable-joins"))]
     {
         use crate::{Author, AuthorColumnTrait, Book, BookColumnTrait};
         use tank::{
-            Entity, QueryBuilder, Rows, cols, expr, join, stream::StreamExt, stream::TryStreamExt,
+            Entity, QueryBuilder, cols, expr, join, stream::StreamExt, stream::TryStreamExt,
         };
 
         #[derive(Entity, Debug)]
@@ -225,11 +224,8 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                     .build(&connection.driver()),
             )
             .await?
-            .rows()
-            .map_ok(BookWithAuthor::from_row)
-            .map(Result::flatten)
-            .try_collect()
-            .await?;
+            .map(|row| BookWithAuthor::from_row(row?))
+            .collect::<Result<_>>()?;
 
         let rows: Vec<BookWithAuthor> = connection
             .fetch(
@@ -240,18 +236,15 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                     .build(&connection.driver()),
             )
             .await?
-            .rows()
-            .map_ok(BookWithAuthor::from_row)
-            .map(Result::flatten)
-            .try_collect()
-            .await?;
+            .map(|row| BookWithAuthor::from_row(row?))
+            .collect::<Result<_>>()?;
 
         let dataset = join!(
             Book B
                 LEFT JOIN Author A1 ON B.author == A1.author_id
                 LEFT JOIN Author A2 ON B.co_author == A2.author_id
         );
-        let rows = connection
+        let bundle = connection
             .fetch(
                 QueryBuilder::new()
                     .select(cols!(B.title, A1.name as author, A2.name as co_author))
@@ -259,10 +252,8 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                     .where_expr(true)
                     .build(&connection.driver()),
             )
-            .await?
-            .rows()
-            .try_collect::<Vec<_>>()
             .await?;
+        let rows = bundle.collect::<Result<Vec<_>>>()?;
     }
 
     Ok(())

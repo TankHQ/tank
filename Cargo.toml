@@ -72,6 +72,7 @@ tank-macros.workspace = true
 
 [dev-dependencies]
 chrono.workspace = true
+futures.workspace = true
 indoc.workspace = true
 quote.workspace = true
 rust_decimal.workspace = true

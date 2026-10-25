@@ -8,6 +8,7 @@ use tank_core::{AsValue, Prepared, Result, ValueOwned};
 pub struct PostgresPrepared {
     pub(crate) sql: String,
     pub(crate) params: Vec<ValueOwned>,
+    pub(crate) encoded_params: Vec<TankParam>,
     pub(crate) index: u64,
 }
 
@@ -16,15 +17,17 @@ impl PostgresPrepared {
         Self {
             sql,
             params: Vec::new(),
+            encoded_params: Vec::new(),
             index: 0,
         }
     }
 
     /// Encodes the bound values into wtx parameters.
-    pub(crate) fn take_params(&mut self) -> Result<Vec<TankParam>> {
+    pub(crate) fn encode_params(&mut self) -> Result<()> {
         self.index = 0;
-        let values = std::mem::take(&mut self.params);
-        TankParam::encode_all(&values)
+        let result = TankParam::encode_all(&self.params, &mut self.encoded_params);
+        self.params.clear();
+        result
     }
 }
 
@@ -51,7 +54,11 @@ impl Prepared for PostgresPrepared {
                 self.params.len(),
             ));
         }
-        self.params.insert(index, value.as_value());
+        if index == self.params.len() {
+            self.params.push(value.as_value().into_owned());
+        } else {
+            self.params[index] = value.as_value().into_owned();
+        }
         self.index = index as u64 + 1;
         Ok(self)
     }

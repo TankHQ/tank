@@ -1,8 +1,6 @@
 #![allow(dead_code)]
 use indoc::indoc;
-use tank_core::{
-    Connection, ConnectionPool, Driver, Executor, Rows, Transaction, Value, stream::TryStreamExt,
-};
+use tank_core::{Connection, ConnectionPool, Driver, Executor, Row, Transaction, Value};
 
 pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     let mut connection = pool
@@ -44,13 +42,11 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         "})
             .await
             .expect("Failed to query");
-        let users = users_bundle
-            .rows()
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Failed to query");
+        let users = users_bundle.collect::<tank_core::Result<Vec<_>>>().unwrap();
         assert_eq!(users.len(), 2);
-        let Value::Struct(Some(alice), fields, table) = users[0].get_column("info").unwrap() else {
+        let Value::Struct(Some(alice), fields, table) =
+            users[0].get_column("info").unwrap().into_owned()
+        else {
             panic!("Expected the field to be a struct containing some value");
         };
 
@@ -76,7 +72,8 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         assert_eq!(alice[2].0, "email");
         assert_eq!(alice[2].1, Value::Varchar(Some("alice@example.com".into())));
 
-        let Value::Struct(Some(charlie), ..) = users[1].get_column("info").unwrap() else {
+        let Value::Struct(Some(charlie), ..) = users[1].get_column("info").unwrap().into_owned()
+        else {
             panic!("Expected struct for Charlie");
         };
         assert_eq!(charlie[0].1, Value::Varchar(Some("Charlie".into())));
@@ -107,13 +104,11 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
             .fetch("SELECT data FROM complex_items WHERE id = 100")
             .await
             .expect("Failed to query complex items");
-        let items = items_bundle
-            .rows()
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Failed to query complex items");
+        let items = items_bundle.collect::<tank_core::Result<Vec<_>>>().unwrap();
         assert_eq!(items.len(), 1);
-        let Value::Struct(Some(data), fields, _) = items[0].get_column("data").unwrap() else {
+        let Value::Struct(Some(data), fields, _) =
+            items[0].get_column("data").unwrap().into_owned()
+        else {
             panic!("Expected complex struct");
         };
         assert_eq!(fields[0].0, "tags");
@@ -166,14 +161,12 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
             .await
             .expect("Failed to query null_checks");
         let null_rows = null_rows_bundle
-            .rows()
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Failed to query null_checks");
+            .collect::<tank_core::Result<Vec<_>>>()
+            .unwrap();
 
         assert_eq!(null_rows.len(), 2);
 
-        let info_col_1 = null_rows[0].get_column("info").unwrap();
+        let info_col_1 = null_rows[0].get_column("info").unwrap().into_owned();
         if let Value::Struct(None, fields, _) = info_col_1 {
             assert_eq!(
                 fields.len(),
@@ -189,7 +182,7 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
             );
         }
 
-        let info_col_2 = null_rows[1].get_column("info").unwrap();
+        let info_col_2 = null_rows[1].get_column("info").unwrap().into_owned();
         if let Value::Struct(Some(values), _, _) = info_col_2 {
             assert_eq!(values.len(), 2);
             assert_eq!(values[0].0, "name");
@@ -233,16 +226,15 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
             .await
             .expect("Failed to query ts_resolution");
         let ts_rows = ts_rows_bundle
-            .rows()
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Failed to query ts_resolution");
+            .collect::<tank_core::Result<Vec<_>>>()
+            .unwrap();
 
         assert_eq!(ts_rows.len(), 1);
         let expected_date = time::Date::from_calendar_date(2025, time::Month::June, 15).unwrap();
 
         // TIMESTAMP_S: should be 2025-06-15 12:30:45
-        let Value::Timestamp(Some(ts_s)) = ts_rows[0].get_column("ts_s").unwrap() else {
+        let Value::Timestamp(Some(ts_s)) = ts_rows[0].get_column("ts_s").unwrap().into_owned()
+        else {
             panic!("Expected Timestamp for ts_s");
         };
         assert_eq!(
@@ -255,7 +247,8 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         assert_eq!(ts_s.second(), 45, "TIMESTAMP_S second is wrong: got {ts_s}");
 
         // TIMESTAMP_MS: should be 2025-06-15 12:30:45.123
-        let Value::Timestamp(Some(ts_ms)) = ts_rows[0].get_column("ts_ms").unwrap() else {
+        let Value::Timestamp(Some(ts_ms)) = ts_rows[0].get_column("ts_ms").unwrap().into_owned()
+        else {
             panic!("Expected Timestamp for ts_ms");
         };
         assert_eq!(
@@ -266,7 +259,8 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         assert_eq!(ts_ms.hour(), 12, "TIMESTAMP_MS hour is wrong: got {ts_ms}");
 
         // TIMESTAMP_NS: should be 2025-06-15 12:30:45.123456789
-        let Value::Timestamp(Some(ts_ns)) = ts_rows[0].get_column("ts_ns").unwrap() else {
+        let Value::Timestamp(Some(ts_ns)) = ts_rows[0].get_column("ts_ns").unwrap().into_owned()
+        else {
             panic!("Expected Timestamp for ts_ns");
         };
         assert_eq!(

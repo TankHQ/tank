@@ -2,8 +2,8 @@ use crate::{ScyllaDBConnection, ScyllaDBDriver, ScyllaDBPrepared, ValueWrap};
 use scylla::statement::batch::Batch;
 use std::future::Future;
 use tank_core::{
-    AsEntity, AsQuery, Driver, DynQuery, Error, ErrorContext, Executor, Query, RawQuery, Result,
-    RowsAffected, SqlWriter, Transaction, truncate_long,
+    AsEntity, AsQuery, Driver, DynQuery, Error, ErrorContext, Executor, OwnedResults, Query,
+    RawQuery, Result, RowsAffected, SqlWriter, Transaction, truncate_long,
 };
 
 /// Transaction abstraction for ScyllaDB/Cassandra batches.
@@ -34,6 +34,10 @@ impl ScyllaDBTransaction<'_> {
 impl<'c> Executor for ScyllaDBTransaction<'c> {
     type Driver = ScyllaDBDriver;
 
+    fn accepts_multiple_statements(&self) -> bool {
+        false
+    }
+
     async fn do_prepare(
         &mut self,
         RawQuery { sql, .. }: RawQuery,
@@ -48,10 +52,13 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
         Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
     }
 
-    fn run<'s>(
+    fn run<'s, Q>(
         &'s mut self,
-        query: impl AsQuery<ScyllaDBDriver> + Send + 's,
-    ) -> impl Future<Output = Result<impl tank_core::Results>> + Send {
+        query: Q,
+    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Results<'s, Q::Output>>> + Send
+    where
+        Q: AsQuery<ScyllaDBDriver> + Send + 's,
+    {
         async move {
             let mut query = query.as_query();
             let context = format!(
@@ -68,7 +75,7 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
                     self.batch.append_statement(prepared.statement.clone());
                 }
             }
-            Ok(tank_core::OwnedResults::new())
+            Ok(OwnedResults::new(Vec::new()))
         }
     }
 

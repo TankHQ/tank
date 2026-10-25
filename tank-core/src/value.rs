@@ -264,6 +264,62 @@ impl<'a> Value<'a> {
         }
     }
 
+    /// Borrows payloads while rebuilding the containers and metadata owned by `Value`.
+    pub fn reborrow(&self) -> Value<'_> {
+        match self {
+            Value::Null => Value::Null,
+            Value::Boolean(v) => Value::Boolean(*v),
+            Value::Int8(v) => Value::Int8(*v),
+            Value::Int16(v) => Value::Int16(*v),
+            Value::Int32(v) => Value::Int32(*v),
+            Value::Int64(v) => Value::Int64(*v),
+            Value::Int128(v) => Value::Int128(*v),
+            Value::UInt8(v) => Value::UInt8(*v),
+            Value::UInt16(v) => Value::UInt16(*v),
+            Value::UInt32(v) => Value::UInt32(*v),
+            Value::UInt64(v) => Value::UInt64(*v),
+            Value::UInt128(v) => Value::UInt128(*v),
+            Value::Float32(v) => Value::Float32(*v),
+            Value::Float64(v) => Value::Float64(*v),
+            Value::Decimal(v, w, s) => Value::Decimal(*v, *w, *s),
+            Value::Char(v) => Value::Char(*v),
+            Value::Varchar(v) => Value::Varchar(v.as_deref().map(Cow::Borrowed)),
+            Value::Blob(v) => Value::Blob(v.as_deref().map(Cow::Borrowed)),
+            Value::Date(v) => Value::Date(*v),
+            Value::Time(v) => Value::Time(*v),
+            Value::Timestamp(v) => Value::Timestamp(*v),
+            Value::TimestampWithTimezone(v) => Value::TimestampWithTimezone(*v),
+            Value::Interval(v) => Value::Interval(*v),
+            Value::Uuid(v) => Value::Uuid(*v),
+            Value::Array(v, ty, len) => Value::Array(
+                v.as_ref().map(|v| v.iter().map(Value::reborrow).collect()),
+                Box::new(ty.reborrow()),
+                *len,
+            ),
+            Value::List(v, ty) => Value::List(
+                v.as_ref().map(|v| v.iter().map(Value::reborrow).collect()),
+                Box::new(ty.reborrow()),
+            ),
+            Value::Map(v, k, val) => Value::Map(
+                v.as_ref().map(|v| {
+                    v.iter()
+                        .map(|(k, v)| (k.reborrow(), v.reborrow()))
+                        .collect()
+                }),
+                Box::new(k.reborrow()),
+                Box::new(val.reborrow()),
+            ),
+            Value::Json(v) => Value::Json(v.clone()),
+            Value::Struct(v, ty, name) => Value::Struct(
+                v.as_ref()
+                    .map(|v| v.iter().map(|(k, v)| (k.clone(), v.reborrow())).collect()),
+                ty.iter().map(|(k, v)| (k.clone(), v.reborrow())).collect(),
+                name.clone(),
+            ),
+            Value::Unknown(v) => Value::Unknown(v.as_deref().map(Cow::Borrowed)),
+        }
+    }
+
     /// Converts this value into an owning [`ValueOwned`], cloning any borrowed
     /// payload.
     pub fn into_owned(self) -> ValueOwned {

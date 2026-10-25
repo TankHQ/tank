@@ -1,7 +1,4 @@
-use crate::{
-    AsValue, Driver, DynQuery, NoSource, Prepared, Result, Row, RowValuesSource, RowsAffected,
-    truncate_long,
-};
+use crate::{AsValue, Driver, DynQuery, Prepared, Result, RowOwned, truncate_long};
 use anyhow::anyhow;
 use std::fmt::{self, Debug, Display, Formatter};
 
@@ -149,25 +146,55 @@ impl<D: Driver> AsMut<Query<D>> for Query<D> {
     }
 }
 
+/// Result of a modifying operation.
+#[derive(Default, Clone, Copy, Debug)]
+pub struct RowsAffected {
+    /// Number of rows modified (if supported by backend).
+    pub rows_affected: Option<u64>,
+    /// Last inserted or modified ID (driver-dependent).
+    pub last_affected_id: Option<i64>,
+}
+
+impl Extend<RowsAffected> for RowsAffected {
+    fn extend<T: IntoIterator<Item = RowsAffected>>(&mut self, iter: T) {
+        for elem in iter {
+            if self.rows_affected.is_some() || elem.rows_affected.is_some() {
+                self.rows_affected = Some(
+                    self.rows_affected.unwrap_or_default() + elem.rows_affected.unwrap_or_default(),
+                );
+            }
+            if elem.last_affected_id.is_some() {
+                self.last_affected_id = elem.last_affected_id;
+            }
+        }
+    }
+}
+
 /// Items from `Executor::run`: rows or effects.
 ///
-/// The `S` parameter is the [`RowValuesSource`](crate::RowValuesSource) of the row values.
+/// The `R` parameter is the statement's rowset.
 /// Use [`QueryResultOwned`] for materialised results.
-pub enum QueryResult<'a, S: RowValuesSource + ?Sized> {
-    /// A labeled row
-    Row(Row<'a, S>),
+pub enum QueryResult<R> {
+    /// A statement's rows, including an empty rowset.
+    Rows(R),
     /// A modify effect aggregation
     Affected(RowsAffected),
 }
 
-impl<S: RowValuesSource + ?Sized> Debug for QueryResult<'_, S> {
+impl<R: Debug> Debug for QueryResult<R> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Row(row) => f.debug_tuple("Row").field(row).finish(),
+            Self::Rows(rows) => f.debug_tuple("Rows").field(rows).finish(),
             Self::Affected(affected) => f.debug_tuple("Affected").field(affected).finish(),
         }
     }
 }
 
 /// Owning query result.
-pub type QueryResultOwned = QueryResult<'static, NoSource>;
+pub type QueryResultOwned = QueryResult<std::vec::IntoIter<RowOwned>>;
+
+impl<R> From<RowsAffected> for QueryResult<R> {
+    fn from(value: RowsAffected) -> Self {
+        Self::Affected(value)
+    }
+}

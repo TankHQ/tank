@@ -5,7 +5,7 @@ use std::pin::pin;
 use std::{str::FromStr, sync::Arc, sync::LazyLock};
 use tank::QueryBuilder;
 use tank::{
-    AsValue, Dataset, Entity, Executor, FixedDecimal, Rows, cols, expr, join,
+    AsValue, Dataset, Entity, Executor, FixedDecimal, Result, Row, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, PrimitiveDateTime, Time};
@@ -117,10 +117,8 @@ pub async fn shopping(executor: &mut impl Executor) {
         )
         .await
         .unwrap()
-        .rows()
-        .map(|r| r.and_then(Product::from_row))
-        .try_collect::<Vec<Product>>()
-        .await
+        .map(|row| Product::from_row(row?))
+        .collect::<Result<Vec<Product>>>()
         .expect("Could not get the products ordered by increasing price");
     assert!(
         ordered_products.iter().map(|v| &v.name).eq([
@@ -190,7 +188,7 @@ pub async fn shopping(executor: &mut impl Executor) {
         .await
         .expect("Could not insert the users");
     let count_value = {
-        let count_bundle = executor
+        let mut count_bundle = executor
             .fetch(
                 QueryBuilder::new()
                     .select(cols!(COUNT(*)))
@@ -201,12 +199,8 @@ pub async fn shopping(executor: &mut impl Executor) {
             )
             .await
             .unwrap();
-        let row = pin!(count_bundle.rows())
-            .try_next()
-            .await
-            .expect("Failed to query for count")
-            .expect("Did not return some value");
-        i64::try_from_value(row.values.get(0).unwrap()).unwrap()
+        let row = count_bundle.next().expect("Did not return some value");
+        i64::try_from_value(row.unwrap().value(0).unwrap()).unwrap()
     };
     assert_eq!(count_value, 2);
 
@@ -308,11 +302,8 @@ pub async fn shopping(executor: &mut impl Executor) {
             )
             .await
             .unwrap()
-            .rows()
-            .map_ok(Carts::from_row)
-            .map(Result::flatten)
-            .try_collect::<Vec<_>>()
-            .await
+            .map(|row| Carts::from_row(row?))
+            .collect::<Result<Vec<_>>>()
             .expect("Could not get the products ordered by increasing price");
         assert_eq!(
             carts,

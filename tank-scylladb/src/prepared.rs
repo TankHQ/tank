@@ -50,7 +50,7 @@ impl Prepared for ScyllaDBPrepared {
         let target = self.params.get_mut(index as usize).ok_or(anyhow!(
             "Index {index} cannot be bound, the query has only {len} parameters",
         ))?;
-        *target = value.as_value().into();
+        *target = value.as_value().into_owned().into();
         self.index = index + 1;
         Ok(self)
     }

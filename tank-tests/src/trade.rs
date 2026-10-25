@@ -3,7 +3,7 @@ use rust_decimal::Decimal;
 use std::{collections::BTreeMap, pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
     AsValue, Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult,
-    RawQuery, Results, RowsAffected, SqlWriter, Value,
+    RawQuery, RowsAffected, SqlWriter, Value,
     stream::{StreamExt, TryStreamExt},
 };
 use time::macros::datetime;
@@ -373,26 +373,27 @@ pub async fn trade_multiple(executor: &mut impl Executor) {
                 .where_expr(true),
         );
         let bundle = executor.run(query).await.unwrap();
-        let mut stream = pin!(bundle.results());
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
-            stream.next().await
+        let mut stream = bundle;
+        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) = stream.next()
         else {
             panic!("Could not get the result of the first query");
         };
         if let Some(rows_affected) = rows_affected {
             assert_eq!(rows_affected, 5);
         }
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
-            stream.next().await
+        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) = stream.next()
         else {
             panic!("Could not get the result of the first statement");
         };
         if let Some(rows_affected) = rows_affected {
             assert_eq!(rows_affected, 1);
         }
-        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
+        let Some(Ok(QueryResult::Rows(mut rows))) = stream.next() else {
             panic!("Could not get the result of the second statement");
         };
+        let row = rows.next().expect("Expected one selected trade").unwrap();
+        assert!(rows.next().is_none());
+        assert!(stream.next().is_none());
         let trade = Trade::from_row(row).expect("Could not decode the Trade from row");
         assert_eq!(
             trade,

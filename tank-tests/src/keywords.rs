@@ -1,7 +1,7 @@
 use std::pin::pin;
 use std::sync::LazyLock;
 use tank::stream::StreamExt;
-use tank::{AsValue, Entity, Executor, QueryBuilder, Row, Rows, cols, expr};
+use tank::{AsValue, Entity, Executor, QueryBuilder, Row, cols, expr};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -71,16 +71,11 @@ pub async fn keywords(executor: &mut impl Executor) {
             )
             .await
             .unwrap();
-        let mut stream = pin!(bundle.rows());
-        let row = stream
-            .next()
-            .await
-            .expect("Expected a row")
-            .expect("Query failed");
-        let Row { values, .. } = row;
+        let mut stream = bundle;
+        let row = stream.next().expect("Expected a row").unwrap();
         let group_val =
-            bool::try_from_value(values.get(0).unwrap()).expect("Failed to decode group bool");
-        let count_val = i64::try_from_value(values.get(1).unwrap()).expect("Failed to decode count");
+            bool::try_from_value(row.value(0).unwrap()).expect("Failed to decode group bool");
+        let count_val = i64::try_from_value(row.value(1).unwrap()).expect("Failed to decode count");
         assert_eq!(group_val, true);
         assert_eq!(count_val, 1);
     }
@@ -102,13 +97,9 @@ pub async fn keywords(executor: &mut impl Executor) {
             )
             .await
             .unwrap();
-        let mut stream_ordered = pin!(bundle_ordered.rows());
+        let mut stream_ordered = bundle_ordered;
 
-        let row_ordered = stream_ordered
-            .next()
-            .await
-            .expect("Expected row")
-            .expect("Query failed");
+        let row_ordered = stream_ordered.next().expect("Expected row").unwrap();
         let entity_ordered = ReservedWords::from_row(row_ordered).expect("Failed to parse entity");
         assert_eq!(entity_ordered.order_field.as_deref(), Some("asc"));
     }
@@ -134,16 +125,14 @@ pub async fn keywords(executor: &mut impl Executor) {
             )
             .await
             .unwrap();
-        let mut stream_group = pin!(bundle_group.rows());
+        let mut stream_group = bundle_group;
 
-        let row1 = stream_group.next().await.unwrap().unwrap();
-        let Row { values, .. } = row1;
-        let g = bool::try_from_value(values.get(0).unwrap()).unwrap();
+        let row1 = stream_group.next().unwrap().unwrap();
+        let g = bool::try_from_value(row1.value(0).unwrap()).unwrap();
         assert_eq!(g, false);
 
-        let row2 = stream_group.next().await.unwrap().unwrap();
-        let Row { values, .. } = row2;
-        let g = bool::try_from_value(values.get(0).unwrap()).unwrap();
+        let row2 = stream_group.next().unwrap().unwrap();
+        let g = bool::try_from_value(row2.value(0).unwrap()).unwrap();
         assert_eq!(g, true);
     }
 

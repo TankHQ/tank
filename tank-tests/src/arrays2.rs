@@ -3,7 +3,7 @@
 use std::{pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
     Driver, DynQuery, Entity, Executor, Interval, Query, QueryBuilder, QueryResult, RawQuery,
-    Results, SqlWriter,
+    SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -50,16 +50,15 @@ pub async fn arrays2(executor: &mut impl Executor) {
                 .limit(Some(1)),
         );
         let bundle = executor.run(query).await.unwrap();
-        let rows = pin!(bundle.results().try_filter_map(|v| async move {
-            Ok(match v {
-                QueryResult::Row(v) => Some(v),
+        let rows = bundle
+            .filter_map(|v| match v.unwrap() {
+                QueryResult::Rows(v) => Some(v),
                 QueryResult::Affected(..) => None,
             })
-        }));
+            .flatten();
         let rows = rows
-            .map(|v| v.and_then(Container::from_row))
-            .try_collect::<Vec<_>>()
-            .await
+            .map(|row| Container::from_row(row?))
+            .collect::<tank::Result<Vec<_>>>()
             .expect("Coult not execute the query");
         assert_eq!(
             rows,

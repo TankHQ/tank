@@ -1,4 +1,4 @@
-use crate::{PostgresConnection, PostgresDriver, TankParam, rows::PostgresResults};
+use crate::{PostgresConnection, PostgresDriver};
 use std::future::Future;
 use tank_core::{AsQuery, Error, Executor, Query, RawQuery, Result, Transaction};
 use wtx::database::DbClient as _;
@@ -25,6 +25,10 @@ impl<'c> PostgresTransaction<'c> {
 impl<'c> Executor for PostgresTransaction<'c> {
     type Driver = PostgresDriver;
 
+    fn accepts_multiple_statements(&self) -> bool {
+        false
+    }
+
     async fn do_prepare(
         &mut self,
         RawQuery { sql, .. }: RawQuery,
@@ -33,54 +37,33 @@ impl<'c> Executor for PostgresTransaction<'c> {
         Ok(crate::PostgresPrepared::new(sql).into())
     }
 
-    fn run<'s>(
+    fn run<'s, Q>(
         &'s mut self,
-        query: impl AsQuery<PostgresDriver> + Send + 's,
-    ) -> impl Future<Output = Result<impl tank_core::Results>> + Send {
+        query: Q,
+    ) -> impl Future<
+        Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>,
+    > + Send
+    where
+        Q: AsQuery<PostgresDriver> + Send + 's,
+    {
         async move {
             let mut query = query.as_query();
-            let context = format!("While running the query:\n{}", query.as_mut());
-            let owned = std::mem::take(query.as_mut());
-            let result = match owned {
-                Query::Raw(raw) => {
-                    let r = run_on(self.connection, &raw.sql, &[]).await;
-                    *query.as_mut() = Query::Raw(raw);
-                    r
-                }
-                Query::Prepared(mut prepared) => {
-                    let params = prepared.take_params()?;
-                    let r = run_on(self.connection, &prepared.sql, &params).await;
-                    *query.as_mut() = Query::Prepared(prepared);
-                    r
+            let result = match query.as_mut() {
+                Query::Raw(raw) => self.connection.run_prepared(&raw.sql, &[]).await,
+                Query::Prepared(prepared) => {
+                    prepared.encode_params()?;
+                    self.connection
+                        .run_prepared(&prepared.sql, &prepared.encoded_params)
+                        .await
                 }
             };
             result.map_err(|e| {
-                let error = e.context(context.clone());
+                let error = e.context(format!("While running the query:\n{}", query.as_mut()));
                 log::error!("{error:#}");
                 error
             })
         }
     }
-}
-
-/// Runs one statement inside the current transaction.
-async fn run_on<'s>(
-    connection: &'s mut PostgresConnection,
-    sql: &str,
-    params: &[TankParam],
-) -> Result<PostgresResults<'s>> {
-    let stmt = crate::TankStmt::new(sql, params);
-    let PostgresConnection { client, scratch } = connection;
-    let records = client
-        .execute_stmt_many(stmt, params, |_| Ok(()))
-        .await
-        .map_err(Error::new)?;
-    scratch.prepare(&records)?;
-    Ok(PostgresResults::new(
-        &records,
-        scratch.labels(),
-        scratch.decoders(),
-    ))
 }
 
 impl<'c> Transaction<'c> for PostgresTransaction<'c> {

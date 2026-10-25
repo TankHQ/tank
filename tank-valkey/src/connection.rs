@@ -1,11 +1,12 @@
-use crate::{ValkeyDriver, ValkeyTransaction, ValueWrap};
+use crate::{ValkeyDriver, ValkeyPrepared, ValkeyTransaction, ValueWrap};
 use anyhow::anyhow;
 use async_stream::try_stream;
 use redis::{Client, aio::MultiplexedConnection};
 use std::{borrow::Cow, future, mem, sync::Arc};
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, OwnedResults, Query, QueryResult,
-    QueryResultOwned, Result, Results, Row, RowsAffected, describe_url, stream::Stream,
+    QueryResultOwned, Result, RowOwned, RowsAffected, describe_url,
+    stream::{Stream, TryStreamExt},
     truncate_long,
 };
 #[derive(Debug)]
@@ -51,6 +52,10 @@ impl Connection for ValkeyConnection {
 impl Executor for ValkeyConnection {
     type Driver = ValkeyDriver;
 
+    fn accepts_multiple_statements(&self) -> bool {
+        false
+    }
+
     fn driver(&self) -> Self::Driver
     where
         Self: Sized,
@@ -58,11 +63,18 @@ impl Executor for ValkeyConnection {
         self.driver
     }
 
-    fn run<'s>(
+    fn run<'s, Q>(
         &'s mut self,
-        query: impl AsQuery<ValkeyDriver> + Send + 's,
-    ) -> impl Future<Output = Result<impl Results>> + Send {
-        async move { OwnedResults::from_query_result_stream(self.do_run(query)).await }
+        query: Q,
+    ) -> impl Future<Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>>
+    + Send
+    where
+        Q: AsQuery<ValkeyDriver> + Send + 's,
+    {
+        async move {
+            let results = self.do_run(query).try_collect::<Vec<_>>().await?;
+            Ok(OwnedResults::new(results.into_iter().map(Ok).collect()))
+        }
     }
 }
 
@@ -80,6 +92,7 @@ impl ValkeyConnection {
                 return;
             };
             if prepared.is_empty() {
+                yield decode_result(prepared, redis::Value::Nil)?;
                 return;
             }
             let pipeline = prepared.make_pipeline();
@@ -94,69 +107,94 @@ impl ValkeyConnection {
                 .await
                 .map_err(Error::new)
                 .with_context(make_context)?;
-            let results = match raw_result {
-                redis::Value::Array(arr) => arr,
-                redis::Value::Nil => vec![],
-                redis::Value::ServerError(err) => {
-                    Err(anyhow!("Valkey/Redis server error: {err}"))
-                        .with_context(make_context)?;
-                    return;
-                }
-                other => {
-                    Err(anyhow!(
-                        "Unexpected top-level pipeline response: {:?}",
-                        other
-                    ))
-                    .with_context(make_context)?;
-                    return;
-                }
-            };
-            if prepared.columns.is_empty() {
-                yield QueryResult::Affected(RowsAffected {
-                    rows_affected: None,
-                    last_affected_id: None,
-                });
-                return;
-            }
-            if results.len() != prepared.columns.len() {
-                Err(anyhow!(
-                    "Column/result mismatch: {} columns but {} redis results",
-                    prepared.columns.len(),
-                    results.len()
-                ))
-                .with_context(make_context)?;
-                return;
-            }
-            if results.iter().all(|v| matches!(v, redis::Value::Nil)) {
-                return;
-            }
-            let mut labels = Arc::new_zeroed_slice(prepared.columns.len());
-            let mut values = Vec::with_capacity(prepared.columns.len());
-            {
-                let labels_mut = Arc::get_mut(&mut labels).unwrap();
-                for (i, (col, mut redis_val)) in
-                    prepared.columns.iter().zip(results.into_iter()).enumerate()
-                {
-                    labels_mut[i].write(col.name().into());
-                    if let (tank_core::Value::Map(..), redis::Value::Array(array)) =
-                        (&col.value, &mut redis_val)
-                    {
-                        redis_val = redis::Value::Map(
-                            array
-                                .chunks_mut(2)
-                                .map(|v| (mem::take(&mut v[0]), mem::take(&mut v[1])))
-                                .collect(),
-                        )
-                    }
-                    let converted: ValueWrap = redis_val.try_into().with_context(make_context)?;
-                    values.push(converted.0.into_owned());
-                }
-            }
-            let row = QueryResult::Row(Row {
-                labels: unsafe { labels.assume_init() },
-                values: values.into(),
-            });
-            yield row;
+            yield decode_result(prepared, raw_result).with_context(make_context)?;
         }
     }
+}
+
+// A pipeline contains all native commands for one logical query, not one result per command.
+fn decode_result(prepared: &ValkeyPrepared, raw_result: redis::Value) -> Result<QueryResultOwned> {
+    let results = match raw_result {
+        redis::Value::Array(arr) => arr,
+        redis::Value::Nil => vec![],
+        redis::Value::ServerError(err) => {
+            return Err(anyhow!("Valkey/Redis server error: {err}"));
+        }
+        other => {
+            return Err(anyhow!(
+                "Unexpected top-level pipeline response: {:?}",
+                other
+            ));
+        }
+    };
+    if !prepared.returns_rows {
+        return Ok(QueryResult::Affected(RowsAffected {
+            rows_affected: None,
+            last_affected_id: None,
+        }));
+    }
+    if results.is_empty() || results.iter().all(|v| matches!(v, redis::Value::Nil)) {
+        return Ok(QueryResult::Rows(Vec::new().into_iter()));
+    }
+    if prepared.columns.is_empty() {
+        let mut results = results.into_iter();
+        let fields = match (results.next(), results.next()) {
+            (Some(redis::Value::Map(fields)), None) => fields,
+            (Some(redis::Value::Array(fields)), None) if fields.len() % 2 == 0 => {
+                let mut fields = fields.into_iter();
+                std::iter::from_fn(|| Some((fields.next()?, fields.next()?))).collect()
+            }
+            result => return Err(anyhow!("Unexpected HGETALL response: {result:?}")),
+        };
+        if fields.is_empty() {
+            return Ok(QueryResult::Rows(Vec::new().into_iter()));
+        }
+        let mut labels = Vec::with_capacity(fields.len());
+        let mut values = Vec::with_capacity(fields.len());
+        for (label, value) in fields {
+            let label: ValueWrap = label.try_into()?;
+            let tank_core::Value::Varchar(Some(label)) = label.0.into_owned() else {
+                return Err(anyhow!("Expected a string HGETALL field name"));
+            };
+            labels.push(label.into_owned());
+            values.push(ValueWrap::try_from(value)?.0.into_owned().into_owned());
+        }
+        return Ok(QueryResult::Rows(
+            vec![RowOwned::new(labels.into(), values)].into_iter(),
+        ));
+    }
+    if results.len() != prepared.columns.len() {
+        return Err(anyhow!(
+            "Column/result mismatch: {} columns but {} redis results",
+            prepared.columns.len(),
+            results.len()
+        ));
+    }
+    let mut labels = Arc::new_zeroed_slice(prepared.columns.len());
+    let mut values = Vec::with_capacity(prepared.columns.len());
+    {
+        let labels_mut = Arc::get_mut(&mut labels).unwrap();
+        for (i, (col, mut redis_val)) in
+            prepared.columns.iter().zip(results.into_iter()).enumerate()
+        {
+            labels_mut[i].write(col.name().into());
+            if let (tank_core::Value::Map(..), redis::Value::Array(array)) =
+                (&col.value, &mut redis_val)
+            {
+                redis_val = redis::Value::Map(
+                    array
+                        .chunks_mut(2)
+                        .map(|v| (mem::take(&mut v[0]), mem::take(&mut v[1])))
+                        .collect(),
+                )
+            }
+            let converted: ValueWrap = redis_val.try_into()?;
+            values.push(converted.0.into_owned());
+        }
+    }
+    let row = RowOwned {
+        names: unsafe { labels.assume_init() },
+        values,
+    };
+    Ok(QueryResult::Rows(vec![row].into_iter()))
 }

@@ -22,6 +22,6 @@ impl mysql_async::prelude::FromRow for RowWrap {
             })
             .collect::<Result<Vec<_>, ()>>()
             .map_err(|_| FromRowError(row))?;
-        Ok(RowWrap(tank_core::Row::new(names, values.into())))
+        Ok(RowWrap(tank_core::RowOwned::new(names, values)))
     }
 }

@@ -5,13 +5,381 @@ mod tests {
     use std::{
         borrow::Cow,
         cell::{Cell, RefCell},
-        collections::HashMap,
+        collections::{BTreeMap, HashMap, LinkedList, VecDeque},
         num::*,
         rc::Rc,
         sync::{Arc, RwLock},
     };
     use tank::{AsValue, TableRef, Value, ValueOwned};
     use tank_core::{FixedDecimal, Interval};
+
+    #[test]
+    fn borrowed_integer_conversions_match_owned_conversions() {
+        fn check<T: AsValue + std::fmt::Debug + PartialEq>(values: &[Value<'_>]) {
+            for value in values {
+                let owned = T::try_from_value(value.clone());
+                let borrowed = T::try_from_value(value);
+                match (owned, borrowed) {
+                    (Ok(owned), Ok(borrowed)) => assert_eq!(owned, borrowed),
+                    (Err(owned), Err(borrowed)) => {
+                        assert_eq!(owned.to_string(), borrowed.to_string())
+                    }
+                    other => panic!("Borrowed/owned conversion mismatch: {other:?}"),
+                }
+            }
+        }
+
+        let values = [
+            i8::MIN.as_value(),
+            i16::MIN.as_value(),
+            i32::MIN.as_value(),
+            i64::MIN.as_value(),
+            i128::MIN.as_value(),
+            u8::MAX.as_value(),
+            u16::MAX.as_value(),
+            u32::MAX.as_value(),
+            u64::MAX.as_value(),
+            u128::MAX.as_value(),
+            42_i32.as_value(),
+            "123".as_value(),
+            "invalid".as_value(),
+            Value::Null,
+            Value::Int32(None),
+        ];
+        check::<i8>(&values);
+        check::<i16>(&values);
+        check::<i32>(&values);
+        check::<i64>(&values);
+        check::<i128>(&values);
+        check::<isize>(&values);
+        check::<u8>(&values);
+        check::<u16>(&values);
+        check::<u32>(&values);
+        check::<u64>(&values);
+        check::<u128>(&values);
+        check::<usize>(&values);
+        check::<Option<i32>>(&values);
+    }
+
+    fn assert_borrowed_string(value: Value<'_>, expected: &str) {
+        let Value::Varchar(Some(Cow::Borrowed(actual))) = value else {
+            panic!("Expected borrowed varchar, got {value:?}");
+        };
+        assert_eq!(actual, expected);
+        assert_eq!(actual.as_ptr(), expected.as_ptr());
+    }
+
+    #[test]
+    fn nonstatic_strings_and_cows() {
+        let text = String::from("nonstatic");
+        assert_borrowed_string(text.as_str().as_value(), &text);
+        assert_borrowed_string((&text).as_value(), &text);
+        let cow = Cow::Borrowed(text.as_str());
+        assert_borrowed_string(cow.clone().as_value(), &text);
+        assert_borrowed_string((&cow).as_value(), &text);
+        let owned_cow: Cow<'_, str> = Cow::Owned(text.clone());
+        assert_borrowed_string((&owned_cow).as_value(), &owned_cow);
+
+        fn identity<'v>(value: Value<'v>) -> Value<'v> {
+            value.as_value()
+        }
+        assert_borrowed_string(identity(text.as_str().as_value()), &text);
+        let decoded: Cow<'_, str> = Cow::try_from_value(&text).unwrap();
+        assert!(matches!(decoded, Cow::Owned(_)));
+        assert_eq!(decoded, text);
+        let parsed: Cow<'_, str> = <Cow<'_, str> as AsValue>::parse(&text).unwrap();
+        assert!(matches!(parsed, Cow::Owned(_)));
+    }
+
+    #[test]
+    fn owned_string_buffers_move_through_conversions() {
+        let text = String::from("move encoding and decoding without reallocating");
+        let pointer = text.as_ptr();
+        let value = text.as_value();
+        let Value::Varchar(Some(Cow::Owned(ref text))) = value else {
+            panic!("Expected owned varchar");
+        };
+        assert_eq!(text.as_ptr(), pointer);
+        let decoded = String::try_from_value(value).unwrap();
+        assert_eq!(decoded.as_ptr(), pointer);
+        let decoded = String::try_from_value(decoded).unwrap();
+        assert_eq!(decoded.as_ptr(), pointer);
+
+        let value: Cow<'_, Value<'_>> = Cow::Owned(decoded.as_value());
+        let decoded = String::try_from_value(value).unwrap();
+        assert_eq!(decoded.as_ptr(), pointer);
+        let value = decoded.as_value();
+        let borrowed: Cow<'_, Value<'_>> = Cow::Borrowed(&value);
+        let Value::Varchar(Some(ref text)) = value else {
+            panic!("Expected varchar");
+        };
+        assert_borrowed_string(borrowed.as_value(), text);
+        let decoded: ValueOwned = Value::try_from_value(&value).unwrap();
+        assert!(matches!(decoded, Value::Varchar(Some(Cow::Owned(_)))));
+        assert_eq!(decoded, value);
+        assert_eq!(
+            String::try_from_value(Cow::Borrowed(&value)).unwrap(),
+            "move encoding and decoding without reallocating"
+        );
+    }
+
+    #[test]
+    fn nested_reference_encodings_borrow_payloads() {
+        let text = String::from("nested");
+        assert_borrowed_string((&&&text).as_value(), &text);
+        assert_borrowed_string((&&text.as_str()).as_value(), &text);
+        let optional = Some(text.clone());
+        assert_borrowed_string((&optional).as_value(), optional.as_deref().unwrap());
+        let boxed = Box::new(text.clone());
+        assert_borrowed_string((&boxed).as_value(), &boxed);
+        let rc = Rc::new(text.clone());
+        assert_borrowed_string((&rc).as_value(), &rc);
+        let arc = Arc::new(text.clone());
+        assert_borrowed_string((&arc).as_value(), &arc);
+
+        let values = vec![text.clone()];
+        let Value::List(Some(encoded), _) = (&values).as_value() else {
+            panic!("Expected list");
+        };
+        assert_borrowed_string(encoded.into_iter().next().unwrap(), &values[0]);
+        let values = [text.clone()];
+        let Value::Array(Some(encoded), _, 1) = (&values).as_value() else {
+            panic!("Expected array");
+        };
+        assert_borrowed_string(encoded.into_vec().pop().unwrap(), &values[0]);
+        let nested = vec![vec![&text]];
+        assert_eq!(
+            Vec::<Vec<String>>::try_from_value(&nested).unwrap(),
+            vec![vec![text.clone()]]
+        );
+        assert_eq!(<[String; 1]>::try_from_value(&values).unwrap(), values);
+
+        let map = HashMap::from([(text.clone(), text.clone())]);
+        let Value::Map(Some(encoded), _, _) = (&map).as_value() else {
+            panic!("Expected map");
+        };
+        let (key, value) = map.iter().next().unwrap();
+        let (encoded_key, encoded_value) = encoded.into_iter().next().unwrap();
+        assert_borrowed_string(encoded_key, key);
+        assert_borrowed_string(encoded_value, value);
+        let tree = BTreeMap::from([(text.clone(), text.clone())]);
+        assert_eq!(
+            BTreeMap::<String, String>::try_from_value(&tree).unwrap(),
+            tree
+        );
+        let deque = VecDeque::from([text.clone()]);
+        assert_eq!(VecDeque::<String>::try_from_value(&deque).unwrap(), deque);
+        let list = LinkedList::from([text.clone()]);
+        assert_eq!(LinkedList::<String>::try_from_value(&list).unwrap(), list);
+        assert_eq!(Vec::<String>::try_from_value(&values[..]).unwrap(), values);
+    }
+
+    #[test]
+    fn reference_wrappers_copy_or_own_guarded_data() {
+        let cell = Cell::new(42);
+        assert_eq!((&cell).as_value(), Value::Int32(Some(42)));
+        let text = String::from("guarded");
+        let reference_cell = Cell::new(text.as_str());
+        assert_borrowed_string((&reference_cell).as_value(), &text);
+        let cell = RefCell::new(text.as_str());
+        let value = (&cell).as_value();
+        assert!(matches!(value, Value::Varchar(Some(Cow::Owned(_)))));
+        cell.replace("changed");
+        assert_eq!(String::try_from_value(value).unwrap(), text);
+        let lock = RwLock::new(text.as_str());
+        let value = (&lock).as_value();
+        assert!(matches!(value, Value::Varchar(Some(Cow::Owned(_)))));
+        *lock.write().unwrap() = "changed";
+        assert_eq!(String::try_from_value(value).unwrap(), text);
+    }
+
+    #[test]
+    fn byte_containers_keep_list_and_blob_distinct() {
+        let bytes = vec![1_u8, 2, 3];
+        assert!(matches!((&bytes).as_value(), Value::List(..)));
+        assert!(matches!(bytes.as_value(), Value::List(..)));
+        let bytes = vec![1_u8, 2, 3].into_boxed_slice();
+        let Value::Blob(Some(Cow::Borrowed(encoded))) = (&bytes).as_value() else {
+            panic!("Expected borrowed blob");
+        };
+        assert_eq!(encoded.as_ptr(), bytes.as_ptr());
+        assert!(matches!(bytes.as_value(), Value::Blob(Some(Cow::Owned(_)))));
+    }
+
+    #[test]
+    fn owned_targets_decode_borrowed_sources() {
+        let text = String::from("borrowed source");
+        let decoded = String::try_from_value(&text).unwrap();
+        assert_eq!(decoded, text);
+        assert_ne!(decoded.as_ptr(), text.as_ptr());
+        drop(text);
+        let value = decoded.as_value();
+        let decoded = String::try_from_value(&value).unwrap();
+        assert_eq!(decoded, "borrowed source");
+        let Value::Varchar(Some(text)) = &value else {
+            panic!("Expected varchar");
+        };
+        assert_ne!(decoded.as_ptr(), text.as_ptr());
+        drop(value);
+        assert_eq!(decoded, "borrowed source");
+
+        let number = 42_i32;
+        assert_eq!(i32::try_from_value(&number).unwrap(), number);
+    }
+
+    #[test]
+    fn decoding_reference_targets_returns_clear_errors() {
+        fn check<T: AsValue>() {
+            let error = T::try_from_value("temporary".to_string()).err().unwrap();
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "Decoding into {} is not implemented",
+                    std::any::type_name::<T>()
+                )
+            );
+        }
+        check::<&str>();
+        check::<&String>();
+        check::<&Value<'_>>();
+        check::<&i32>();
+        check::<&&str>();
+        check::<&Option<String>>();
+        check::<&Vec<String>>();
+        check::<&Box<[u8]>>();
+        check::<&serde_json::Value>();
+        check::<&Cow<'_, str>>();
+        check::<&Cow<'_, Value<'_>>>();
+        check::<&[String; 1]>();
+        check::<&[String]>();
+        check::<&Cell<i32>>();
+        check::<&RefCell<String>>();
+        check::<&RwLock<String>>();
+    }
+
+    #[test]
+    fn encode_only_owned_types_use_default_decoder() {
+        struct InputOnly(i32);
+
+        impl AsValue for InputOnly {
+            fn as_empty_value() -> ValueOwned {
+                i32::as_empty_value()
+            }
+
+            fn as_value<'a>(self) -> Value<'a>
+            where
+                Self: 'a,
+            {
+                self.0.as_value()
+            }
+        }
+
+        assert_eq!(i32::try_from_value(InputOnly(42)).unwrap(), 42);
+        let error = InputOnly::try_from_value(42).err().unwrap();
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "Decoding into {} is not implemented",
+                std::any::type_name::<InputOnly>()
+            )
+        );
+    }
+
+    #[test]
+    fn reborrow_recursively_preserves_container_payloads_and_metadata() {
+        fn check(original: &Value<'_>, borrowed: &Value<'_>) {
+            assert_eq!(original, borrowed);
+            match (original, borrowed) {
+                (Value::Varchar(Some(a)), Value::Varchar(Some(Cow::Borrowed(b))))
+                | (Value::Unknown(Some(a)), Value::Unknown(Some(Cow::Borrowed(b)))) => {
+                    assert_eq!(a.as_ptr(), b.as_ptr());
+                }
+                (Value::Blob(Some(a)), Value::Blob(Some(Cow::Borrowed(b)))) => {
+                    assert_eq!(a.as_ptr(), b.as_ptr());
+                }
+                (Value::Varchar(Some(_)) | Value::Unknown(Some(_)) | Value::Blob(Some(_)), _) => {
+                    panic!("Payload was not reborrowed");
+                }
+                (Value::Array(a, at, _), Value::Array(b, bt, _)) => {
+                    check(at, bt);
+                    if let (Some(a), Some(b)) = (a, b) {
+                        for (a, b) in a.iter().zip(b.iter()) {
+                            check(a, b);
+                        }
+                    }
+                }
+                (Value::List(a, at), Value::List(b, bt)) => {
+                    check(at, bt);
+                    if let (Some(a), Some(b)) = (a, b) {
+                        for (a, b) in a.iter().zip(b.iter()) {
+                            check(a, b);
+                        }
+                    }
+                }
+                (Value::Map(a, ak, av), Value::Map(b, bk, bv)) => {
+                    check(ak, bk);
+                    check(av, bv);
+                    if let (Some(a), Some(b)) = (a, b) {
+                        for (key, value) in a {
+                            let (bk, bv) = b.get_key_value(key).unwrap();
+                            check(key, bk);
+                            check(value, bv);
+                        }
+                    }
+                }
+                (Value::Struct(a, at, _), Value::Struct(b, bt, _)) => {
+                    for ((_, a), (_, b)) in at.iter().zip(bt) {
+                        check(a, b);
+                    }
+                    if let (Some(a), Some(b)) = (a, b) {
+                        for ((_, a), (_, b)) in a.iter().zip(b) {
+                            check(a, b);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        let text = String::from("metadata and payload");
+        let inner = Value::List(
+            Some(vec![
+                text.clone().as_value(),
+                Value::Blob(Some(Cow::Owned(vec![1, 2]))),
+            ]),
+            Box::new(Value::Unknown(Some(Cow::Owned(text.clone())))),
+        );
+        let map = Value::Map(
+            Some(HashMap::from([(text.clone().as_value(), inner.clone())])),
+            Box::new(text.clone().as_value()),
+            Box::new(inner.clone()),
+        );
+        let array = Value::Array(Some(vec![map.clone()].into()), Box::new(map), 1);
+        let value = Value::Struct(
+            Some(vec![("field".into(), array.clone())]),
+            vec![("field".into(), array)],
+            Box::new(TableRef::new("custom_type".into())),
+        );
+        check(&value, &value.reborrow());
+        check(&value, &(&value).as_value());
+        let cow: Cow<'_, Value<'_>> = Cow::Borrowed(&value);
+        check(&value, &cow.as_value());
+        let borrowed_value = text.as_str().as_value();
+        check(&borrowed_value, &borrowed_value.reborrow());
+        for value in [
+            Value::Null,
+            Value::Int32(Some(42)),
+            Value::Decimal(Some(Decimal::ONE), 10, 2),
+            Value::Json(Some(serde_json::json!({"x": [1, 2]}))),
+            Value::Array(None, Box::new(inner.clone()), 2),
+            Value::List(None, Box::new(inner.clone())),
+            Value::Map(None, Box::new(inner.clone()), Box::new(inner)),
+            Value::Varchar(None),
+            Value::Blob(None),
+            Value::Unknown(None),
+        ] {
+            check(&value, &value.reborrow());
+        }
+    }
 
     #[test]
     fn nonzero_conversions() {

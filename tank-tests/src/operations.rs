@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, QueryBuilder, QueryResult, Result, Results, Rows,
-    RowsAffected, SqlWriter, cols, expr, join,
+    Driver, DynQuery, Entity, Executor, QueryBuilder, QueryResult, Result, Row as _, RowsAffected,
+    SqlWriter, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, OffsetDateTime, Time, UtcOffset, macros::date};
@@ -120,10 +120,8 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     let _messages: Vec<_> = executor
         .fetch(query)
         .await?
-        .rows()
-        .map_ok(|row| row.values.get(0).unwrap())
-        .try_collect()
-        .await?;
+        .map(|row| Ok(row?.value(0).unwrap().into_owned().into_owned()))
+        .collect::<Result<_>>()?;
 
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
@@ -154,10 +152,13 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
         );
         {
             let bundle = executor.run(query).await.unwrap();
-            let mut stream = pin!(bundle.results());
-            while let Some(result) = stream.try_next().await? {
-                match result {
-                    QueryResult::Row(row) => log::debug!("Row: {row:?}"),
+            for result in bundle {
+                match result? {
+                    QueryResult::Rows(rows) => {
+                        for row in rows {
+                            log::debug!("Row: {:?}", row?);
+                        }
+                    }
                     QueryResult::Affected(RowsAffected { rows_affected, .. }) => {
                         log::debug!("Affected rows: {rows_affected:?}")
                     }
@@ -302,19 +303,15 @@ pub async fn advanced_operations(executor: &mut impl Executor) -> Result<()> {
                     .build(&executor.driver()),
             )
             .await?
-            .rows()
             .map(|row| {
-                row.and_then(|row| {
-                    #[derive(Entity)]
-                    struct Row {
-                        message: String,
-                        callsign: String,
-                    }
-                    Row::from_row(row).and_then(|row| Ok((row.message, row.callsign)))
-                })
+                #[derive(Entity)]
+                struct Row {
+                    message: String,
+                    callsign: String,
+                }
+                Row::from_row(row?).map(|row| (row.message, row.callsign))
             })
-            .try_collect::<Vec<_>>()
-            .await?;
+            .collect::<Result<Vec<_>>>()?;
         assert!(
             messages.iter().map(|(a, b)| (a.as_str(), b.as_str())).eq([
                 ("Heavy armor spotted, grid 4C.", "SteelHammer"),

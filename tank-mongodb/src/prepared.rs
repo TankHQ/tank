@@ -78,7 +78,7 @@ impl Prepared for MongoDBPrepared {
             .params
             .get_mut(index as usize)
             .ok_or(anyhow!("Index {index} cannot be bound"))?;
-        *target = value.as_value();
+        *target = value.as_value().into_owned();
         self.index = index + 1;
         Ok(self)
     }

@@ -75,22 +75,28 @@ impl ColumnDecoder {
         }
     }
 
+    /// Keeps common entity fields small enough to fuse decoding and conversion.
+    #[inline(always)]
+    pub(crate) fn value<'a>(&self, raw: &'a [u8]) -> Value<'a> {
+        match self {
+            Self::Int32 => match raw {
+                [a, b, c, d] => Value::Int32(Some(i32::from_be_bytes([*a, *b, *c, *d]))),
+                _ => Value::Null,
+            },
+            Self::Text => match wtx::misc::from_utf8_basic(raw) {
+                Ok(text) => Value::Varchar(Some(Cow::Borrowed(text))),
+                Err(_) => Value::Null,
+            },
+            _ => self.decode(Some(raw)).unwrap_or(Value::Null),
+        }
+    }
+
     /// Decodes one cell with the pre-resolved strategy.
-    #[inline]
     pub(crate) fn decode<'a>(
         &self,
         raw: Option<&'a [u8]>,
     ) -> Result<Value<'a>, Box<dyn Error + Sync + Send>> {
         use postgres_protocol::types;
-        fn scalar<'a, T: FromSql<'a>>(
-            ty: &Type,
-            raw: Option<&'a [u8]>,
-        ) -> Result<Option<T>, Box<dyn Error + Sync + Send>> {
-            Ok(match raw {
-                Some(raw) => Some(T::from_sql(ty, raw)?),
-                None => None,
-            })
-        }
         Ok(match self {
             Self::Bool => Value::Boolean(match raw {
                 Some(raw) => Some(types::bool_from_sql(raw)?),
@@ -125,7 +131,9 @@ impl ColumnDecoder {
                 None => None,
             }),
             Self::Text => match raw {
-                Some(raw) => Value::Varchar(Some(Cow::Borrowed(types::text_from_sql(raw)?))),
+                Some(raw) => Value::Varchar(Some(Cow::Borrowed(
+                    wtx::misc::from_utf8_basic(raw).or_else(|_| types::text_from_sql(raw))?,
+                ))),
                 None => Value::Varchar(None),
             },
             Self::Bytea => match raw {
@@ -133,22 +141,12 @@ impl ColumnDecoder {
                 None => Value::Blob(None),
             },
             Self::Unknown => match raw {
-                Some(raw) => Value::Unknown(Some(Cow::Borrowed(types::text_from_sql(raw)?))),
+                Some(raw) => Value::Unknown(Some(Cow::Borrowed(
+                    wtx::misc::from_utf8_basic(raw).or_else(|_| types::text_from_sql(raw))?,
+                ))),
                 None => Value::Unknown(None),
             },
-            Self::Typed(ty) => match *ty {
-                Type::NUMERIC => Value::Decimal(scalar::<Decimal>(ty, raw)?, 0, 0),
-                Type::DATE => Value::Date(scalar::<Date>(ty, raw)?),
-                Type::TIME => Value::Time(scalar::<Time>(ty, raw)?),
-                Type::TIMESTAMP => Value::Timestamp(scalar::<PrimitiveDateTime>(ty, raw)?),
-                Type::TIMESTAMPTZ => {
-                    Value::TimestampWithTimezone(scalar::<OffsetDateTime>(ty, raw)?)
-                }
-                Type::INTERVAL => Value::Interval(scalar::<IntervalWrap>(ty, raw)?.map(Into::into)),
-                Type::UUID => Value::Uuid(scalar::<Uuid>(ty, raw)?),
-                _ => extract_value_resolved(ty, raw)?,
-            },
-            Self::Generic(ty) => extract_value_resolved(ty, raw)?,
+            Self::Typed(ty) | Self::Generic(ty) => return extract_value_resolved(ty, raw),
         })
     }
 }
@@ -221,8 +219,6 @@ fn extract_value_pg<'a>(
             }
         },
         Kind::Array(inner_ty) => {
-            // Arrays are not on the hot path; own their payloads so the returned
-            // value does not borrow from locals (`dimensions`).
             let ty = extract_value_pg(inner_ty, None)?.into_owned();
             if let Some(raw) = raw {
                 let array = array_from_sql(raw)?;
@@ -232,7 +228,7 @@ fn extract_value_pg<'a>(
                 } else {
                     let mut values = array
                         .values()
-                        .map(|v| extract_value_pg(inner_ty, v).map(Value::into_owned))
+                        .map(|v| extract_value_pg(inner_ty, v))
                         .collect::<Vec<_>>()?;
                     let mut cursor = 0;
                     build_array(&mut cursor, &mut values, &ty, dimensions.iter().cloned())?
@@ -253,12 +249,12 @@ fn extract_value_pg<'a>(
     })
 }
 
-fn build_array(
+fn build_array<'a>(
     cursor: &mut usize,
-    values: &mut Vec<ValueOwned>,
+    values: &mut Vec<Value<'a>>,
     element_ty: &ValueOwned,
     mut it: impl ExactSizeIterator<Item = ArrayDimension> + Clone,
-) -> Result<ValueOwned, Box<dyn Error + Sync + Send>> {
+) -> Result<Value<'a>, Box<dyn Error + Sync + Send>> {
     let dimension = it.next().expect("Must have one dimension at least");
     let len = dimension.len as u32;
     Ok(if it.len() == 0 {

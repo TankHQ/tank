@@ -3,8 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::fmt::Write;
     use tank::{
-        DynQuery, Entity, GenericSqlWriter, QueryBuilder, QueryParam, QueryResult, RawQuery,
-        RowsAffected, SqlWriter, cols, expr,
+        DynQuery, Entity, GenericSqlWriter, QueryBuilder, QueryParam, QueryResult,
+        QueryResultOwned, RawQuery, RowOwned, RowsAffected, SqlWriter, cols, expr,
     };
 
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
@@ -510,11 +510,66 @@ mod tests {
         let s: String = rq.into();
         assert_eq!(s, "hello");
 
-        let row: tank::RowOwned = tank::Row::default();
-        assert!(matches!(QueryResult::from(row), QueryResult::Row(_)));
+        let row = tank::RowOwned::default();
+        let QueryResult::Rows(mut rows) = QueryResult::Rows(vec![row].into_iter()) else {
+            unreachable!()
+        };
+        assert!(rows.next().is_some());
+        assert!(rows.next().is_none());
         assert!(matches!(
-            QueryResult::<tank::NoSource>::from(RowsAffected::default()),
+            QueryResult::<std::vec::IntoIter<tank::RowOwned>>::from(RowsAffected::default()),
             QueryResult::Affected(_)
         ));
+    }
+
+    #[test]
+    fn owned_results_preserve_empty_rowsets_and_statement_boundaries() {
+        let results: Vec<QueryResultOwned> = vec![
+            QueryResult::Rows(Vec::new().into_iter()),
+            QueryResult::Affected(RowsAffected {
+                rows_affected: Some(2),
+                last_affected_id: Some(7),
+            }),
+            QueryResult::Rows(vec![RowOwned::default(), RowOwned::default()].into_iter()),
+        ];
+        assert_eq!(results.len(), 3);
+        assert!(matches!(&results[0], QueryResult::Rows(rows) if rows.len() == 0));
+        assert!(matches!(&results[2], QueryResult::Rows(rows) if rows.len() == 2));
+        assert_eq!(
+            results
+                .into_iter()
+                .filter_map(|result| match result {
+                    QueryResult::Rows(rows) => Some(rows),
+                    QueryResult::Affected(_) => None,
+                })
+                .flatten()
+                .count(),
+            2,
+        );
+    }
+
+    #[test]
+    fn affected_aggregation_skips_rowsets_and_keeps_last_known_id() {
+        let results = [
+            QueryResult::Affected(RowsAffected {
+                rows_affected: Some(2),
+                last_affected_id: Some(7),
+            }),
+            QueryResult::Rows(0..3),
+            QueryResult::Rows(0..0),
+            QueryResult::Affected(RowsAffected::default()),
+            QueryResult::Affected(RowsAffected {
+                rows_affected: Some(4),
+                last_affected_id: Some(9),
+            }),
+        ];
+        let mut affected = RowsAffected::default();
+        for result in results {
+            if let QueryResult::Affected(result) = result {
+                affected.extend([result]);
+            }
+        }
+        assert_eq!(affected.rows_affected, Some(6));
+        assert_eq!(affected.last_affected_id, Some(9));
     }
 }

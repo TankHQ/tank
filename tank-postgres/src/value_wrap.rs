@@ -107,30 +107,45 @@ impl ToSql for ValueSql<'_> {
 pub(crate) struct TankParam {
     pub(crate) ty: Ty,
     pub(crate) is_null: bool,
-    pub(crate) bytes: Vec<u8>,
+    pub(crate) bytes: BytesMut,
 }
 
 impl TankParam {
     fn new(value: &Value<'_>) -> anyhow::Result<Self> {
+        let mut param = Self {
+            ty: Ty::Unknown,
+            is_null: true,
+            bytes: BytesMut::new(),
+        };
+        param.encode_value(value)?;
+        Ok(param)
+    }
+
+    fn encode_value(&mut self, value: &Value<'_>) -> anyhow::Result<()> {
         let pg_ty = value_to_postgres_type(value);
-        let mut buffer = BytesMut::new();
-        let is_null = match ValueSql(value).to_sql(&pg_ty, &mut buffer) {
+        self.bytes.clear();
+        self.is_null = match ValueSql(value).to_sql(&pg_ty, &mut self.bytes) {
             Ok(IsNull::Yes) => true,
             Ok(IsNull::No) => false,
             Err(e) => {
                 return Err(anyhow!("Could not encode parameter {value:?}: {e}"));
             }
         };
-        Ok(Self {
-            ty: ty_to_wtx(pg_ty.oid()),
-            is_null,
-            bytes: buffer.to_vec(),
-        })
+        self.ty = ty_to_wtx(pg_ty.oid());
+        Ok(())
     }
 
     /// Encodes a list of tank values into bindable parameters.
-    pub(crate) fn encode_all(values: &[ValueOwned]) -> anyhow::Result<Vec<Self>> {
-        values.iter().map(Self::new).collect()
+    pub(crate) fn encode_all(values: &[ValueOwned], params: &mut Vec<Self>) -> anyhow::Result<()> {
+        params.truncate(values.len());
+        for (index, value) in values.iter().enumerate() {
+            if let Some(param) = params.get_mut(index) {
+                param.encode_value(value)?;
+            } else {
+                params.push(Self::new(value)?);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -171,15 +186,12 @@ impl Typed<Postgres<wtx::Error>> for TankParam {
 #[derive(Debug)]
 pub(crate) struct TankStmt<'a> {
     pub(crate) sql: &'a str,
-    pub(crate) param_tys: Vec<u32>,
+    params: &'a [TankParam],
 }
 
 impl<'a> TankStmt<'a> {
-    pub(crate) fn new(sql: &'a str, params: &[TankParam]) -> Self {
-        Self {
-            sql,
-            param_tys: params.iter().map(|p| u32::from(p.ty)).collect(),
-        }
+    pub(crate) fn new(sql: &'a str, params: &'a [TankParam]) -> Self {
+        Self { sql, params }
     }
 }
 
@@ -190,7 +202,8 @@ impl wtx::database::StmtCmd for TankStmt<'_> {
 
     fn hash(&self, hasher: &mut impl core::hash::BuildHasher) -> u64 {
         let mut h = hasher.hash_one(self.sql);
-        for ty in &self.param_tys {
+        for param in self.params {
+            let ty = u32::from(param.ty);
             h = h
                 .wrapping_mul(0x100_0000_01b3)
                 .wrapping_add(hasher.hash_one(ty));

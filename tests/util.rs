@@ -11,8 +11,8 @@ mod tests {
     use tank::{
         Context, Dataset, DeclareTableRef, DynQuery, EitherIterator, Entity, FixedDecimal,
         Fragment, GenericSqlWriter, Interval, QueryBuilder, QueryResult, QueryResultOwned,
-        References, Row, RowLabels, RowValuesOwned, RowsAffected, SqlValueWriter, SqlWriter,
-        TableRef, Value, as_c_string, column_def, consume_while, extract_number, quote_btree_map,
+        References, Row, RowLabels, RowOwned, RowsAffected, SqlValueWriter, SqlWriter, TableRef,
+        Value, ValueOwned, as_c_string, column_def, consume_while, extract_number, quote_btree_map,
         quote_cow, quote_option, separated_by, truncate_long, value_to_json, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, Time, UtcOffset};
@@ -171,9 +171,8 @@ mod tests {
     #[test]
     fn row_new_and_accessors() {
         let labels: RowLabels = Arc::from(vec!["id".into(), "name".into()]);
-        let values: RowValuesOwned =
-            vec![Value::Int32(Some(1)), Value::Varchar(Some("Alice".into()))].into();
-        let row = Row::new(labels.clone(), values);
+        let values = vec![Value::Int32(Some(1)), Value::Varchar(Some("Alice".into()))];
+        let row = RowOwned::new(labels.clone(), values);
         assert_eq!(row.names(), &["id", "name"]);
         assert_eq!(row.values().count(), 2);
         assert_eq!(row.len(), 2);
@@ -182,49 +181,55 @@ mod tests {
     #[test]
     fn row_get_column() {
         let labels: RowLabels = Arc::from(vec!["id".into(), "name".into()]);
-        let values: RowValuesOwned =
-            vec![Value::Int32(Some(42)), Value::Varchar(Some("Bob".into()))].into();
-        let row = Row::new(labels, values);
-        assert_eq!(row.get_column("id"), Some(Value::Int32(Some(42))));
+        let values = vec![Value::Int32(Some(42)), Value::Varchar(Some("Bob".into()))];
+        let row = RowOwned::new(labels, values);
         assert_eq!(
-            row.get_column("name"),
+            row.get_column("id").map(Cow::into_owned),
+            Some(Value::Int32(Some(42)))
+        );
+        assert_eq!(
+            row.get_column("name").map(Cow::into_owned),
             Some(Value::Varchar(Some("Bob".into())))
         );
         assert_eq!(row.get_column("missing"), None);
     }
 
     #[test]
-    fn row_into_iterator() {
+    fn row_iterator() {
         let labels: RowLabels = Arc::from(vec!["a".into(), "b".into()]);
-        let values: RowValuesOwned = vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into();
-        let row = Row::new(labels, values);
-        let pairs: Vec<_> = (&row).into_iter().collect();
+        let values = vec![Value::Int32(Some(1)), Value::Int32(Some(2))];
+        let row = RowOwned::new(labels, values);
+        let pairs: Vec<_> = row.iter().collect();
         assert_eq!(pairs.len(), 2);
         assert_eq!(pairs[0].0, "a");
-        assert_eq!(pairs[0].1, Value::Int32(Some(1)));
+        assert_eq!(*pairs[0].1, Value::Int32(Some(1)));
     }
 
     #[test]
-    fn row_values_into() {
+    fn row_values_storage_and_iteration() {
         let labels: RowLabels = Arc::from(vec!["c".into()]);
-        let values: RowValuesOwned = vec![Value::Boolean(Some(true))].into();
-        let row = Row::new(labels, values);
-        let rv: RowValuesOwned = row.into();
+        let values = vec![Value::Boolean(Some(true))];
+        let row = RowOwned::new(labels, values);
+        let rv: Vec<ValueOwned> = row.values;
         assert_eq!(rv.len(), 1);
 
         let labels: RowLabels = Arc::from(vec!["c".into()]);
-        let values: RowValuesOwned = vec![Value::Boolean(Some(false))].into();
-        let row = Row::new(labels, values);
-        assert_eq!(row.values().next().unwrap(), Value::Boolean(Some(false)));
+        let values = vec![Value::Boolean(Some(false))];
+        let row = RowOwned::new(labels, values);
+        assert_eq!(*row.values().next().unwrap(), Value::Boolean(Some(false)));
     }
 
     #[test]
     fn row_to_query_result() {
         let labels: RowLabels = Arc::from(vec!["id".into()]);
-        let values: RowValuesOwned = vec![Value::Int32(Some(1))].into();
-        let row = Row::new(labels, values);
-        let result: QueryResultOwned = row.into();
-        assert!(matches!(result, QueryResult::Row(_)));
+        let values = vec![Value::Int32(Some(1))];
+        let row = RowOwned::new(labels, values);
+        let result: QueryResultOwned = QueryResult::Rows(vec![row].into_iter());
+        let QueryResult::Rows(mut rows) = result else {
+            panic!("Expected a statement rowset")
+        };
+        assert_eq!(rows.next().unwrap().values, vec![Value::Int32(Some(1))]);
+        assert!(rows.next().is_none());
     }
 
     #[test]
@@ -1117,9 +1122,12 @@ mod tests {
     #[test]
     fn row_get_column_mismatched_lengths() {
         let labels: RowLabels = Arc::from(vec!["a".to_string(), "b".to_string()]);
-        let values: RowValuesOwned = vec![Value::Int32(Some(1))].into();
-        let row = Row::new(labels, values);
-        assert_eq!(row.get_column("a"), Some(Value::Int32(Some(1))));
+        let values = vec![Value::Int32(Some(1))];
+        let row = RowOwned::new(labels, values);
+        assert_eq!(
+            row.get_column("a").map(Cow::into_owned),
+            Some(Value::Int32(Some(1)))
+        );
         assert_eq!(row.get_column("b"), None);
     }
 

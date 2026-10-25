@@ -27,7 +27,7 @@ mod tests {
             val,
             time::Date::from_calendar_date(2025, Month::January, 22).unwrap()
         );
-        time::Date::try_from_value("1999-12-12error".into())
+        time::Date::try_from_value("1999-12-12error")
             .expect_err("Should not be able to convert wrong string");
     }
 
@@ -420,7 +420,7 @@ mod tests {
         );
         assert_eq!(
             Uuid::parse_str("6ed80631-c3ec-41a5-9f66-d9c1e5532798").unwrap(),
-            Uuid::try_from_value("6ed80631-c3ec-41a5-9f66-d9c1e5532798".into()).unwrap()
+            Uuid::try_from_value("6ed80631-c3ec-41a5-9f66-d9c1e5532798").unwrap()
         );
     }
 
@@ -482,7 +482,7 @@ mod tests {
             Decimal::try_from_value((-11.29_f64).as_value()).unwrap(),
             Decimal::from_f64(-11.29).unwrap()
         );
-        Decimal::try_from_value("hello".into()).expect_err("Cannot convert a string to decimal");
+        Decimal::try_from_value("hello").expect_err("Cannot convert a string to decimal");
         assert_eq!(Decimal::as_empty_value(), Value::Decimal(None, 0, 0));
         assert_ne!(
             Decimal::as_empty_value(),

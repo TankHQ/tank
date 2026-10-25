@@ -15,7 +15,6 @@ bundled = ["libsqlite3-sys/bundled"]
 [dependencies]
 anyhow.workspace = true
 async-stream.workspace = true
-flume = "0"
 libsqlite3-sys = { version = "0", features = ["buildtime_bindgen"] }
 log.workspace = true
 rust_decimal.workspace = true

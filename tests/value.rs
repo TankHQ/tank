@@ -561,7 +561,7 @@ mod tests {
         let var: String = AsValue::try_from_value(val).unwrap();
         assert_eq!(var, "Hello World!");
         assert_eq!(String::try_from_value('x'.as_value()).unwrap(), "x");
-        assert_eq!(String::try_from_value("hello".into()).unwrap(), "hello");
+        assert_eq!(String::try_from_value("hello").unwrap(), "hello");
         assert_eq!(String::parse("").expect("Could not parse string"), "");
         assert_eq!(
             String::parse("\"\"").expect("Could not parse string"),

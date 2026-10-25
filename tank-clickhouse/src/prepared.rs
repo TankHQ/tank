@@ -78,7 +78,7 @@ impl Prepared for ClickHousePrepared {
             log::error!("{error:#}");
             error
         })?;
-        *target = value.as_value();
+        *target = value.as_value().into_owned();
         self.index = index + 1;
         Ok(self)
     }

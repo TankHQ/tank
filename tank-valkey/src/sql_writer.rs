@@ -2,9 +2,9 @@ use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
 use std::{borrow::Cow, fmt::Write};
 use tank_core::{
-    AsEntity, Context, Dataset, DynQuery, Entity, Expression, Fragment, IsAsterisk, SelectQuery,
-    SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef,
-    Value, column_def,
+    AsEntity, Context, Dataset, DynQuery, Entity, Expression, Fragment, IsAsterisk, Row,
+    SelectQuery, SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter,
+    TableRef, Value, column_def,
 };
 
 pub struct ValkeySqlWriter {
@@ -86,7 +86,7 @@ impl SqlWriter for ValkeySqlWriter {
         Self: Sized,
         E: Entity,
     {
-        Self::prepare_query(out, &mut Default::default());
+        Self::prepare_query(out, &mut Default::default()).returns_rows = false;
     }
 
     fn write_drop_schema<E>(&self, out: &mut DynQuery, _if_exists: bool)
@@ -94,7 +94,7 @@ impl SqlWriter for ValkeySqlWriter {
         Self: Sized,
         E: Entity,
     {
-        Self::prepare_query(out, &mut Default::default());
+        Self::prepare_query(out, &mut Default::default()).returns_rows = false;
     }
 
     fn write_create_table<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
@@ -102,7 +102,7 @@ impl SqlWriter for ValkeySqlWriter {
         Self: Sized,
         E: Entity,
     {
-        Self::prepare_query(out, &mut Default::default());
+        Self::prepare_query(out, &mut Default::default()).returns_rows = false;
     }
 
     fn write_drop_table<E>(&self, out: &mut DynQuery, _if_exists: bool)
@@ -111,7 +111,7 @@ impl SqlWriter for ValkeySqlWriter {
         E: Entity,
     {
         log::error!("Valkey/Redis does not implement drop table, it must be done separately");
-        Self::prepare_query(out, &mut Default::default());
+        Self::prepare_query(out, &mut Default::default()).returns_rows = false;
     }
 
     fn write_select<'a, Data>(&self, out: &mut DynQuery, query: &impl SelectQuery<Data>)
@@ -146,6 +146,7 @@ impl SqlWriter for ValkeySqlWriter {
             return;
         }
         let prepared = Self::prepare_query(out, &mut context);
+        prepared.returns_rows = true;
         let mut columns = query.get_select();
         let columns_count = columns.clone().into_iter().count();
         let key = is_pk_condition.key.as_str();
@@ -219,6 +220,7 @@ impl SqlWriter for ValkeySqlWriter {
         let table = <It::Item as AsEntity>::Entity::table();
         let mut context = Self::make_context(Fragment::SqlInsertInto);
         let prepared = Self::prepare_query(out, &mut context);
+        prepared.returns_rows = false;
         for entity in entities.into_iter() {
             let row = entity.as_entity().row();
             let mut is_pk_condition = IsPKCondition::new(
@@ -233,16 +235,12 @@ impl SqlWriter for ValkeySqlWriter {
                 &mut Default::default(),
             );
             let key = is_pk_condition.key;
-            let row: Vec<(String, Value)> = row
-                .into_iter()
-                .map(|(k, v)| (k.clone(), v))
-                .collect();
             prepared.commands.push(Cmd::hset_multiple(
                 &key,
-                row.iter()
+                Row::iter(&row)
                     .filter_map(|(k, v)| {
                         if v.is_scalar() && !v.is_null() {
-                            (k.as_str(), ValueWrap(Cow::Borrowed(v))).into()
+                            (k, ValueWrap(v)).into()
                         } else {
                             None
                         }
@@ -250,9 +248,9 @@ impl SqlWriter for ValkeySqlWriter {
                     .collect::<Vec<_>>()
                     .as_slice(),
             ));
-            for (k, v) in row.iter().filter_map(|(k, v)| {
+            for (k, v) in Row::iter(&row).filter_map(|(k, v)| {
                 if !v.is_scalar() || v.same_type(&Value::Json(None)) {
-                    (k, ValueWrap(Cow::Borrowed(v))).into()
+                    (k, ValueWrap(v)).into()
                 } else {
                     None
                 }
@@ -319,6 +317,7 @@ impl SqlWriter for ValkeySqlWriter {
             return;
         }
         let prepared = Self::prepare_query(out, &mut context);
+        prepared.returns_rows = false;
         let key = is_pk_condition.key;
         prepared.commands.push(Cmd::del(&key));
         for column in E::columns().iter().filter(|c| !c.value.is_scalar()) {

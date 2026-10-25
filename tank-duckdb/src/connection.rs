@@ -1,19 +1,17 @@
 use crate::{
     DuckDBPrepared, DuckDBTransaction, cbox::CBox, date_to_duckdb_date, decimal_to_duckdb_decimal,
-    driver::DuckDBDriver, extract::extract_value, i128_to_duckdb_hugeint,
-    interval_to_duckdb_interval, offsetdatetime_to_duckdb_timestamp,
-    primitive_date_time_to_duckdb_timestamp, tank_value_to_duckdb_logical_type,
-    tank_value_to_duckdb_value, time_to_duckdb_time, u128_to_duckdb_uhugeint,
+    driver::DuckDBDriver, i128_to_duckdb_hugeint, interval_to_duckdb_interval,
+    offsetdatetime_to_duckdb_timestamp, primitive_date_time_to_duckdb_timestamp,
+    tank_value_to_duckdb_logical_type, tank_value_to_duckdb_value, time_to_duckdb_time,
+    u128_to_duckdb_uhugeint,
 };
 use anyhow::anyhow;
-use async_stream::try_stream;
-use flume::Sender;
 use libduckdb_sys::*;
 use std::{
     borrow::Cow,
     ffi::{CStr, CString, c_char, c_void},
     fmt::{self, Debug, Formatter},
-    mem, ptr,
+    ptr,
     str::FromStr,
     sync::{
         LazyLock,
@@ -21,9 +19,8 @@ use std::{
     },
 };
 use tank_core::{
-    AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, NoSource,
-    OwnedResults, Query, QueryResult, RawQuery, Result, Results, Row, RowLabels, RowsAffected,
-    SqlCoreWriter, Value, as_c_string, describe_path, error_message_from_ptr, send_value,
+    AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query, RawQuery,
+    Result, RowsAffected, SqlCoreWriter, Value, as_c_string, describe_path, error_message_from_ptr,
     truncate_long,
 };
 use tokio::task::spawn_blocking;
@@ -46,174 +43,6 @@ impl DuckDBConnection {
                 )
             });
         &**DATABASE_CACHE
-    }
-
-    pub(crate) fn do_run<F>(execute: F, tx: Sender<Result<QueryResult<'static, NoSource>>>)
-    where
-        F: FnOnce(*mut duckdb_result) -> u32,
-    {
-        unsafe {
-            let result: duckdb_result = mem::zeroed();
-            let mut result = CBox::new(result, |mut r| duckdb_destroy_result(&mut r));
-            let rc = execute(&mut *result);
-            if rc != duckdb_state_DuckDBSuccess {
-                send_value!(
-                    tx,
-                    Err(Error::msg(
-                        error_message_from_ptr(&duckdb_result_error(&mut *result)).to_string(),
-                    ))
-                );
-                return;
-            }
-            let statement_type = duckdb_result_statement_type(*result);
-            #[allow(non_upper_case_globals)]
-            if matches!(
-                statement_type,
-                duckdb_statement_type_DUCKDB_STATEMENT_TYPE_SELECT
-            ) {
-                Self::extract_result(&mut *result, tx);
-            } else {
-                let rows_affected = duckdb_rows_changed(&mut *result);
-                send_value!(
-                    tx,
-                    Ok(QueryResult::Affected(RowsAffected {
-                        rows_affected: Some(rows_affected),
-                        ..Default::default()
-                    }))
-                );
-            }
-        }
-    }
-
-    pub(crate) fn do_run_unprepared(
-        connection: duckdb_connection,
-        sql: &CStr,
-        tx: Sender<Result<QueryResult<'static, NoSource>>>,
-    ) {
-        unsafe {
-            let mut statements =
-                CBox::new(ptr::null_mut(), |mut p| duckdb_destroy_extracted(&mut p));
-            let count = duckdb_extract_statements(connection, sql.as_ptr(), &mut *statements);
-            if count == 0 {
-                send_value!(
-                    tx,
-                    Err(Error::msg(
-                        error_message_from_ptr(&duckdb_extract_statements_error(*statements))
-                            .to_string(),
-                    ))
-                );
-                return;
-            }
-            for i in 0..count {
-                let mut prepared = DuckDBPrepared::new(CBox::new(ptr::null_mut(), |mut p| {
-                    duckdb_destroy_prepare(&mut p)
-                }));
-                let rc = duckdb_prepare_extracted_statement(
-                    connection,
-                    *statements,
-                    i,
-                    &mut *prepared.statement,
-                );
-                if rc != duckdb_state_DuckDBSuccess {
-                    send_value!(
-                        tx,
-                        Err(Error::msg(
-                            error_message_from_ptr(&duckdb_prepare_error(prepared.statement()))
-                                .to_string(),
-                        ))
-                    );
-                    return;
-                }
-                Self::do_run_prepared(prepared.statement(), tx.clone());
-            }
-        }
-    }
-
-    pub(crate) fn do_run_prepared(
-        prepared: duckdb_prepared_statement,
-        tx: Sender<Result<QueryResult<'static, NoSource>>>,
-    ) {
-        let tx2 = tx.clone();
-        Self::do_run(
-            |result| unsafe {
-                let rc = duckdb_execute_prepared_streaming(prepared, result);
-                if rc != duckdb_state_DuckDBSuccess {
-                    send_value!(
-                        tx2,
-                        Err(Error::msg(
-                            error_message_from_ptr(&duckdb_result_error(result)).to_string(),
-                        ))
-                    );
-                }
-                rc
-            },
-            tx,
-        );
-    }
-
-    pub(crate) fn extract_result(
-        result: *mut duckdb_result,
-        tx: Sender<Result<QueryResult<'static, NoSource>>>,
-    ) {
-        unsafe {
-            let is_streaming = duckdb_result_is_streaming(*result);
-            loop {
-                let chunk = CBox::new(
-                    if is_streaming {
-                        duckdb_stream_fetch_chunk(*result)
-                    } else {
-                        duckdb_fetch_chunk(*result)
-                    },
-                    |mut v| duckdb_destroy_data_chunk(&mut v),
-                );
-                if chunk.is_null() {
-                    return;
-                }
-                let rows = duckdb_data_chunk_get_size(*chunk);
-                let cols = duckdb_data_chunk_get_column_count(*chunk);
-                let info = (0..cols)
-                    .map(|i| {
-                        let vector = duckdb_data_chunk_get_vector(*chunk, i);
-                        let logical_type =
-                            CBox::new(duckdb_vector_get_column_type(vector), |mut l| {
-                                duckdb_destroy_logical_type(&mut l)
-                            });
-                        let type_id = duckdb_get_type_id(*logical_type);
-                        let data = duckdb_vector_get_data(vector);
-                        let validity = duckdb_vector_get_validity(vector);
-                        let name = CStr::from_ptr(duckdb_column_name(&mut *result, i))
-                            .to_str()
-                            .unwrap();
-                        (vector, logical_type, type_id, data, validity, name)
-                    })
-                    .collect::<Box<[_]>>();
-                let names: RowLabels = info.iter().map(|v| v.5.to_string()).collect();
-                for row in 0..rows {
-                    let columns = (0..cols).map(|col| {
-                        let col = col as usize;
-                        let info = &info[col];
-                        Ok(extract_value(
-                            info.0,
-                            row as usize,
-                            *info.1,
-                            info.2,
-                            info.3,
-                            info.4,
-                        )?)
-                    });
-                    match columns.collect::<Result<Vec<_>>>() {
-                        Ok(values) => {
-                            let row = Row::new(names.clone(), values.into());
-                            send_value!(tx, Ok(QueryResult::Row(row)));
-                        }
-                        Err(e) => {
-                            send_value!(tx, Err(e));
-                            return;
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -355,45 +184,15 @@ impl Executor for DuckDBConnection {
         Ok(DuckDBPrepared::new(prepared?).into())
     }
 
-    fn run<'s>(
+    fn run<'s, Q>(
         &'s mut self,
-        query: impl AsQuery<DuckDBDriver> + Send + 's,
-    ) -> impl Future<Output = Result<impl Results>> + Send {
-        async move {
-            let mut query = query.as_query();
-            let context = format!("While running the query:\n{}", query.as_mut());
-            let connection = AtomicPtr::new(*self.connection);
-            let mut owned = mem::take(query.as_mut());
-            let (tx, rx) = flume::unbounded::<Result<QueryResult<'static, NoSource>>>();
-            let join = spawn_blocking(move || {
-                match &mut owned {
-                    Query::Raw(RawQuery { sql, .. }) => {
-                        let str =
-                            unsafe { CString::from_vec_unchecked(mem::take(sql).into_bytes()) };
-                        Self::do_run_unprepared(
-                            connection.load(Ordering::Relaxed),
-                            str.as_c_str(),
-                            tx,
-                        );
-                        *sql = unsafe { String::from_utf8_unchecked(str.into_bytes()) }
-                    }
-                    Query::Prepared(query) => Self::do_run_prepared(query.statement(), tx),
-                }
-                owned
-            });
-            let stream = try_stream! {
-                while let Ok(result) = rx.recv_async().await {
-                    yield result.map_err(|e| {
-                        let error = e.context(context.clone());
-                        log::error!("{error:#}");
-                        error
-                    })?;
-                }
-                *query.as_mut() = mem::take(&mut join.await?);
-                query.as_mut().clear_bindings().context(context)?;
-            };
-            OwnedResults::from_query_result_stream(stream).await
-        }
+        query: Q,
+    ) -> impl Future<Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>>
+    + Send
+    where
+        Q: AsQuery<DuckDBDriver> + Send + 's,
+    {
+        async move { crate::streaming::Statements::new(self, query.as_query()) }
     }
 
     async fn append<It>(&mut self, rows: It) -> Result<RowsAffected>
@@ -458,7 +257,7 @@ impl Executor for DuckDBConnection {
             }
             let rows_affected = rows.len() as u64;
             for row in rows {
-                for value in row.iter() {
+                for value in row {
                     let rc = match value {
                         Value::Boolean(Some(v), ..) => duckdb_append_bool(*appender, v),
                         Value::Int8(Some(v), ..) => duckdb_append_int8(*appender, v),

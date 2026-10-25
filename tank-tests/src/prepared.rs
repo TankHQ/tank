@@ -1,5 +1,5 @@
 #![allow(unused_imports)]
-use tank::{Entity, Executor, Result, Rows, expr, stream::TryStreamExt};
+use tank::{Entity, Executor, Result, expr, stream::TryStreamExt};
 
 #[derive(Entity, Debug, PartialEq, Clone)]
 #[tank(schema = "testing", name = "prepared_binding")]
@@ -37,10 +37,8 @@ pub async fn prepared(executor: &mut impl Executor) {
         .fetch(query)
         .await
         .unwrap()
-        .rows()
-        .and_then(|row| async move { PreparedBinding::from_row(row) })
-        .try_collect::<Vec<_>>()
-        .await
+        .map(|row| PreparedBinding::from_row(row?))
+        .collect::<Result<Vec<_>>>()
         .expect("Failed to query by the bound key");
     assert_eq!(
         loaded,
@@ -60,10 +58,8 @@ pub async fn prepared(executor: &mut impl Executor) {
         .fetch(query)
         .await
         .unwrap()
-        .rows()
-        .and_then(|row| async move { PreparedBinding::from_row(row) })
-        .try_collect::<Vec<_>>()
-        .await
+        .map(|row| PreparedBinding::from_row(row?))
+        .collect::<Result<Vec<_>>>()
         .expect("Failed to query by the bound u32 key");
     assert_eq!(
         loaded,
@@ -91,10 +87,8 @@ pub async fn prepared(executor: &mut impl Executor) {
             .fetch(&mut query)
             .await
             .unwrap()
-            .rows()
-            .and_then(|row| async move { PreparedBinding::from_row(row) })
-            .try_collect::<Vec<_>>()
-            .await
+            .map(|row| PreparedBinding::from_row(row?))
+            .collect::<Result<Vec<_>>>()
             .expect("Failed to rerun the prepared query");
         found.extend(loaded);
     }

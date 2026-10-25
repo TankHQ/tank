@@ -1,5 +1,5 @@
 use std::sync::LazyLock;
-use tank::{Entity, Executor, Rows, expr, stream::TryStreamExt};
+use tank::{Entity, Executor, expr};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -53,11 +53,7 @@ pub async fn binary(executor: &mut impl Executor) {
         .expect("Failed to bind the binary payload");
     let loaded = {
         let bundle = executor.fetch(&mut query).await.unwrap();
-        let rows = bundle
-            .rows()
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Failed to fetch the bound binary payload");
+        let rows = bundle.collect::<tank::Result<Vec<_>>>().unwrap();
         assert_eq!(rows.len(), 1, "Expected exactly one match for the payload");
         BinaryFields::from_row(rows.into_iter().next().unwrap())
             .expect("Failed to decode the bound binary payload")

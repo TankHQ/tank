@@ -1,5 +1,6 @@
 use crate::{ScyllaDBConnection, ScyllaDBPrepared, ScyllaDBSqlWriter, ScyllaDBTransaction};
-use tank_core::Driver;
+use std::convert::AsMut;
+use tank_core::{Driver, OwnedResults, OwnedRowIter, Query, RowOwned};
 
 /// Driver entry for ScyllaDB/Cassandra backends.
 ///
@@ -20,6 +21,16 @@ impl Driver for ScyllaDBDriver {
     type SqlWriter = ScyllaDBSqlWriter;
     type Prepared = ScyllaDBPrepared;
     type Transaction<'c> = ScyllaDBTransaction<'c>;
+
+    type Row<'s> = RowOwned;
+    type Rows<'s, O>
+        = OwnedRowIter
+    where
+        O: AsMut<Query<Self>> + Send + 's;
+    type Results<'s, O>
+        = OwnedResults
+    where
+        O: AsMut<Query<Self>> + Send + 's;
 
     const NAME: &'static [&'static str] = &["scylladb", "cassandra"];
     fn sql_writer(&self) -> Self::SqlWriter {

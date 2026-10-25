@@ -24,23 +24,23 @@ use std::{
 use time::{PrimitiveDateTime, UtcDateTime, format_description::parse_borrowed};
 use uuid::Uuid;
 
-/// Bidirectional conversion between Rust types and `ValueOwned`.
+/// Converts Rust inputs to values and decodes supported destination types.
 pub trait AsValue {
     /// Return NULL variant.
     fn as_empty_value() -> ValueOwned;
-    /// Convert to `ValueOwned`.
-    fn as_value(self) -> ValueOwned;
-    /// Convert from a `Value`.
-    fn try_from_value(value: Value<'_>) -> Result<Self>
+    /// Convert to a value, retaining borrows for at most the lifetime of `Self`.
+    fn as_value<'a>(self) -> Value<'a>
     where
-        Self: Sized;
-    /// Convert from a borrowed [`Value`].
-    #[inline]
-    fn try_from_value_ref(value: &Value<'_>) -> Result<Self>
+        Self: 'a;
+    /// Decode into `Self`; input-only implementations can use the default.
+    fn try_from_value(_value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        Self::try_from_value(value.clone())
+        Err(anyhow!(
+            "Decoding into {} is not implemented",
+            any::type_name::<Self>()
+        ))
     }
     /// Parse string.
     fn parse(input: impl AsRef<str>) -> Result<Self>
@@ -55,18 +55,33 @@ pub trait AsValue {
     }
 }
 
-impl AsValue for ValueOwned {
+impl AsValue for Value<'_> {
     fn as_empty_value() -> ValueOwned {
         Value::Null
     }
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         self
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        Ok(value.into_owned())
+        Ok(value.as_value().into_owned())
+    }
+}
+
+impl AsValue for &Value<'_> {
+    fn as_empty_value() -> ValueOwned {
+        Value::as_empty_value()
+    }
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        self.reborrow()
     }
 }
 
@@ -82,10 +97,11 @@ macro_rules! impl_as_value {
             fn as_empty_value() -> ValueOwned {
                 $destination(None)
             }
-            fn as_value(self) -> ValueOwned {
+            fn as_value<'a>(self) -> Value<'a> where Self: 'a {
                 $destination(Some(self as _))
             }
-            fn try_from_value(value: Value<'_>) -> Result<Self> {
+            fn try_from_value(value: impl AsValue) -> Result<Self> {
+                let value = value.as_value();
                 match value {
                     $destination(Some(v), ..) => Ok(v as _),
                     $($pat_rest => $expr_rest,)*
@@ -298,6 +314,14 @@ macro_rules! impl_as_value {
                 input.as_ref().parse::<Self>().map_err(Into::into)
             }
         }
+        impl AsValue for &$source {
+            fn as_empty_value() -> ValueOwned {
+                <$source>::as_empty_value()
+            }
+            fn as_value<'a>(self) -> Value<'a> where Self: 'a {
+                (*self).as_value()
+            }
+        }
     };
 }
 
@@ -484,14 +508,28 @@ macro_rules! impl_as_value {
             fn as_empty_value() -> ValueOwned {
                 <$helper as AsValue>::as_empty_value()
             }
-            fn as_value(self) -> ValueOwned {
+            fn as_value<'a>(self) -> Value<'a>
+            where
+                Self: 'a,
+            {
                 AsValue::as_value(Into::<$helper>::into(self))
             }
-            fn try_from_value(value: Value<'_>) -> Result<Self>
+            fn try_from_value(value: impl AsValue) -> Result<Self>
             where
                 Self: Sized,
             {
                 Ok(<$helper as AsValue>::try_from_value(value)?.try_into()?)
+            }
+        }
+        impl AsValue for &$source {
+            fn as_empty_value() -> ValueOwned {
+                <$source>::as_empty_value()
+            }
+            fn as_value<'a>(self) -> Value<'a>
+            where
+                Self: 'a,
+            {
+                (*self).as_value()
             }
         }
     };
@@ -511,15 +549,46 @@ impl_as_value!(NonZeroU128, u128);
 impl_as_value!(NonZeroUsize, usize);
 
 macro_rules! impl_as_value {
-    ($source:ty, $destination:path, $extract:expr $(, $pat_rest:pat => $expr_rest:expr)* $(,)?) => {
+    (@reference $source:ty) => {
+        impl AsValue for &$source {
+            fn as_empty_value() -> ValueOwned {
+                <$source>::as_empty_value()
+            }
+            fn as_value<'a>(self) -> Value<'a> where Self: 'a {
+                (*self).as_value()
+            }
+        }
+    };
+    (@copy $source:ty { $($body:tt)* }) => {
+        impl AsValue for $source { $($body)* }
+        impl_as_value!(@reference $source);
+    };
+    (String, $($rest:tt)*) => {
+        impl_as_value!(@owned String, $($rest)*);
+        impl AsValue for &String {
+            fn as_empty_value() -> ValueOwned {
+                String::as_empty_value()
+            }
+            fn as_value<'a>(self) -> Value<'a> where Self: 'a {
+                self.as_str().as_value()
+            }
+        }
+    };
+    ($source:ty, $($rest:tt)*) => {
+        impl_as_value!(@owned $source, $($rest)*);
+        impl_as_value!(@reference $source);
+    };
+    (@owned $source:ty, $destination:path, $extract:expr $(, $pat_rest:pat => $expr_rest:expr)* $(,)?) => {
         impl AsValue for $source {
             fn as_empty_value() -> ValueOwned {
                 $destination(None)
             }
-            fn as_value(self) -> ValueOwned {
+            fn as_value<'a>(self) -> Value<'a> where Self: 'a {
                 $destination(Some(self.into()))
             }
-            fn try_from_value(value: Value<'_>) -> Result<Self> {
+            #[inline]
+            fn try_from_value(value: impl AsValue) -> Result<Self> {
+                let value = value.as_value();
                 match value {
                     $destination(Some(v), ..) => Ok(v.into()),
                     $($pat_rest => $expr_rest,)*
@@ -539,13 +608,6 @@ macro_rules! impl_as_value {
                         any::type_name::<Self>(),
                     )),
                 }
-            }
-            fn try_from_value_ref(value: &Value<'_>) -> Result<Self> {
-                // Fast path if the variant is the corrent one
-                if let $destination(Some(v), ..) = value {
-                    return Ok(v.clone().into());
-                }
-                Self::try_from_value(value.clone())
             }
             fn parse(input: impl AsRef<str>) -> Result<Self> {
                 $extract(input.as_ref())
@@ -693,17 +755,33 @@ impl_as_value!(
     Value::Json(Some(serde_json::Value::String(v)), ..) => Ok(v),
 );
 
+impl AsValue for &str {
+    fn as_empty_value() -> ValueOwned {
+        String::as_empty_value()
+    }
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        Value::Varchar(Some(self.into()))
+    }
+}
+
 impl AsValue for Box<[u8]> {
     fn as_empty_value() -> ValueOwned {
         Value::Blob(None)
     }
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Blob(Some(Cow::Owned(self.into_vec())))
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
+        let value = value.as_value();
         match value {
             Value::Blob(Some(v), ..) => Ok(v.into_owned().into_boxed_slice()),
             Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
@@ -732,6 +810,18 @@ impl AsValue for Box<[u8]> {
             any::type_name::<Self>()
         ))?;
         Ok(result)
+    }
+}
+
+impl AsValue for &Box<[u8]> {
+    fn as_empty_value() -> ValueOwned {
+        Box::<[u8]>::as_empty_value()
+    }
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        Value::Blob(Some(Cow::Borrowed(self)))
     }
 }
 
@@ -1023,20 +1113,23 @@ impl_as_value!(
     Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
-impl AsValue for UtcDateTime {
+impl_as_value! { @copy UtcDateTime {
     fn as_empty_value() -> ValueOwned {
         time::PrimitiveDateTime::as_empty_value()
     }
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         PrimitiveDateTime::new(self.date(), self.time()).as_value()
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
         PrimitiveDateTime::try_from_value(value).map(|v| Self::new(v.date(), v.time()))
     }
-}
+} }
 
 impl_as_value!(
     time::OffsetDateTime,
@@ -1079,11 +1172,14 @@ impl_as_value!(
 );
 
 #[cfg(feature = "chrono")]
-impl AsValue for chrono::NaiveDate {
+impl_as_value! { @copy chrono::NaiveDate {
     fn as_empty_value() -> ValueOwned {
         Value::Date(None)
     }
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Date(
             'date: {
                 time::Date::from_calendar_date(
@@ -1102,7 +1198,7 @@ impl AsValue for chrono::NaiveDate {
             .ok(),
         )
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -1115,14 +1211,17 @@ impl AsValue for chrono::NaiveDate {
         )
         .context("Could not create chrono::NaiveDate: from_ymd_opt returned None")
     }
-}
+} }
 
 #[cfg(feature = "chrono")]
-impl AsValue for chrono::NaiveTime {
+impl_as_value! { @copy chrono::NaiveTime {
     fn as_empty_value() -> ValueOwned {
         Value::Time(None)
     }
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Time(
             time::Time::from_hms_nano(
                 self.hour() as _,
@@ -1136,7 +1235,7 @@ impl AsValue for chrono::NaiveTime {
             .ok(),
         )
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -1150,14 +1249,17 @@ impl AsValue for chrono::NaiveTime {
         )
         .context("Could not create chrono::NaiveTime: from_hms_nano_opt returned None")
     }
-}
+} }
 
 #[cfg(feature = "chrono")]
-impl AsValue for chrono::NaiveDateTime {
+impl_as_value! { @copy chrono::NaiveDateTime {
     fn as_empty_value() -> ValueOwned {
         Value::Timestamp(None)
     }
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Timestamp(
             'value: {
                 let Ok(date) = AsValue::try_from_value(self.date().as_value()) else {
@@ -1180,7 +1282,7 @@ impl AsValue for chrono::NaiveDateTime {
             .ok(),
         )
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -1192,14 +1294,17 @@ impl AsValue for chrono::NaiveDateTime {
             .context("Could not convert time part of chrono::NaiveDateTime")?;
         Ok(Self::new(date, time))
     }
-}
+} }
 
 #[cfg(feature = "chrono")]
-impl AsValue for chrono::DateTime<chrono::FixedOffset> {
+impl_as_value! { @copy chrono::DateTime<chrono::FixedOffset> {
     fn as_empty_value() -> ValueOwned {
         Value::TimestampWithTimezone(None)
     }
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::TimestampWithTimezone(
             'value: {
                 let Ok(date) = AsValue::try_from_value(self.date_naive().as_value()) else {
@@ -1227,7 +1332,7 @@ impl AsValue for chrono::DateTime<chrono::FixedOffset> {
             .ok(),
         )
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -1243,14 +1348,17 @@ impl AsValue for chrono::DateTime<chrono::FixedOffset> {
             .context("Could not convert UTC offset part of chrono::DateTime")?;
         Ok(Self::from_naive_utc_and_offset(date_time, offset))
     }
-}
+} }
 
 #[cfg(feature = "chrono")]
-impl AsValue for chrono::DateTime<chrono::Utc> {
+impl_as_value! { @copy chrono::DateTime<chrono::Utc> {
     fn as_empty_value() -> ValueOwned {
         Value::TimestampWithTimezone(None)
     }
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         let odt = self
             .timestamp_nanos_opt()
             .and_then(|nanos| time::OffsetDateTime::from_unix_timestamp_nanos(nanos as i128).ok());
@@ -1261,7 +1369,7 @@ impl AsValue for chrono::DateTime<chrono::Utc> {
         }
         Value::TimestampWithTimezone(odt)
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self> {
+    fn try_from_value(value: impl AsValue) -> Result<Self> {
         let odt = <time::OffsetDateTime as AsValue>::try_from_value(value)?;
         let utc_odt = odt.to_offset(time::UtcOffset::UTC);
         let secs = utc_odt.unix_timestamp();
@@ -1269,16 +1377,20 @@ impl AsValue for chrono::DateTime<chrono::Utc> {
         Self::from_timestamp(secs, nanos)
             .ok_or_else(|| anyhow!("Timestamp out of range for chrono::DateTime<Utc>"))
     }
-}
+} }
 
-impl AsValue for Decimal {
+impl_as_value! { @copy Decimal {
     fn as_empty_value() -> ValueOwned {
         Value::Decimal(None, 0, 0)
     }
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Decimal(Some(self), 0, self.scale() as _)
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self> {
+    fn try_from_value(value: impl AsValue) -> Result<Self> {
+        let value = value.as_value();
         match value {
             Value::Decimal(Some(v), ..) => Ok(v),
             Value::Int8(Some(v), ..) => Ok(Decimal::new(v as i64, 0)),
@@ -1321,16 +1433,19 @@ impl AsValue for Decimal {
             )
         })?)
     }
-}
+} }
 
 impl<const W: u8, const S: u8> AsValue for FixedDecimal<W, S> {
     fn as_empty_value() -> ValueOwned {
         Decimal::as_empty_value()
     }
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Decimal(Some(self.0), W, self.0.scale() as _)
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -1341,18 +1456,34 @@ impl<const W: u8, const S: u8> AsValue for FixedDecimal<W, S> {
     }
 }
 
+impl<const W: u8, const S: u8> AsValue for &FixedDecimal<W, S> {
+    fn as_empty_value() -> ValueOwned {
+        FixedDecimal::<W, S>::as_empty_value()
+    }
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        Value::Decimal(Some(self.0), W, self.0.scale() as _)
+    }
+}
+
 impl<T: AsValue, const N: usize> AsValue for [T; N] {
     fn as_empty_value() -> ValueOwned {
         Value::Array(None, Box::new(T::as_empty_value()), N as u32)
     }
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Array(
             Some(self.into_iter().map(AsValue::as_value).collect()),
             Box::new(T::as_empty_value()),
             N as u32,
         )
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self> {
+    fn try_from_value(value: impl AsValue) -> Result<Self> {
+        let value = value.as_value();
         fn convert_iter<T: AsValue, const N: usize>(
             iter: impl IntoIterator<Item: AsValue>,
         ) -> Result<[T; N]> {
@@ -1376,10 +1507,10 @@ impl<T: AsValue, const N: usize> AsValue for [T; N] {
                 convert_iter(v.chars())
             }
             Value::List(Some(v), ..) if v.len() == N => {
-                convert_iter(v.into_iter().map(Value::into_owned))
+                convert_iter(v)
             }
             Value::Array(Some(v), ..) if v.len() == N => {
-                convert_iter(v.into_vec().into_iter().map(Value::into_owned))
+                convert_iter(v.into_vec())
             }
             Value::Json(Some(serde_json::Value::Array(v))) if v.len() == N => {
                 convert_iter(v.into_iter())
@@ -1393,19 +1524,55 @@ impl<T: AsValue, const N: usize> AsValue for [T; N] {
     }
 }
 
+impl<'r, T, const N: usize> AsValue for &'r [T; N]
+where
+    &'r T: AsValue,
+{
+    fn as_empty_value() -> ValueOwned {
+        Value::Array(None, Box::new(<&'r T>::as_empty_value()), N as u32)
+    }
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        Value::Array(
+            Some(self.iter().map(AsValue::as_value).collect()),
+            Box::new(<&'r T>::as_empty_value()),
+            N as u32,
+        )
+    }
+}
+
 macro_rules! impl_as_value {
+    (@reference $source:ty) => {
+        impl<'r, T> AsValue for &'r $source where &'r T: AsValue {
+            fn as_empty_value() -> ValueOwned {
+                Value::List(None, Box::new(<&'r T>::as_empty_value()))
+            }
+            fn as_value<'a>(self) -> Value<'a> where Self: 'a {
+                Value::List(
+                    Some(self.iter().map(AsValue::as_value).collect()),
+                    Box::new(<&'r T>::as_empty_value()),
+                )
+            }
+        }
+    };
     ($source:ident) => {
         impl<T: AsValue> AsValue for $source<T> {
             fn as_empty_value() -> ValueOwned {
                 Value::List(None, Box::new(T::as_empty_value()))
             }
-            fn as_value(self) -> ValueOwned {
+            fn as_value<'a>(self) -> Value<'a>
+            where
+                Self: 'a,
+            {
                 Value::List(
                     Some(self.into_iter().map(AsValue::as_value).collect()),
                     Box::new(T::as_empty_value()),
                 )
             }
-            fn try_from_value(value: Value<'_>) -> Result<Self> {
+            fn try_from_value(value: impl AsValue) -> Result<Self> {
+                let value = value.as_value();
                 match value {
                     Value::List(None, ..) => Ok(Default::default()),
                     Value::List(Some(v), ..) => Ok(v
@@ -1427,11 +1594,13 @@ macro_rules! impl_as_value {
                 }
             }
         }
+        impl_as_value!(@reference $source<T>);
     };
 }
 impl_as_value!(Vec);
 impl_as_value!(VecDeque);
 impl_as_value!(LinkedList);
+impl_as_value!(@reference [T]);
 
 macro_rules! impl_as_value {
     ($source:ident, $($key_trait:ident),+) => {
@@ -1439,7 +1608,7 @@ macro_rules! impl_as_value {
             fn as_empty_value() -> ValueOwned {
                 Value::Map(None, K::as_empty_value().into(), V::as_empty_value().into())
             }
-            fn as_value(self) -> ValueOwned {
+            fn as_value<'a>(self) -> Value<'a> where Self: 'a {
                 Value::Map(
                     Some(
                         self.into_iter()
@@ -1450,7 +1619,8 @@ macro_rules! impl_as_value {
                     V::as_empty_value().into(),
                 )
             }
-            fn try_from_value(value: Value<'_>) -> Result<Self> {
+            fn try_from_value(value: impl AsValue) -> Result<Self> {
+                let value = value.as_value();
                 match value {
                     Value::Map(None, ..) => Ok(Default::default()),
                     Value::Map(Some(v), ..) => {
@@ -1482,36 +1652,42 @@ macro_rules! impl_as_value {
                 }
             }
         }
+        impl<'r, K, V> AsValue for &'r $source<K, V>
+        where
+            &'r K: AsValue,
+            &'r V: AsValue,
+        {
+            fn as_empty_value() -> ValueOwned {
+                Value::Map(
+                    None,
+                    Box::new(<&'r K>::as_empty_value()),
+                    Box::new(<&'r V>::as_empty_value()),
+                )
+            }
+            fn as_value<'a>(self) -> Value<'a> where Self: 'a {
+                Value::Map(
+                    Some(self.iter().map(|(k, v)| (k.as_value(), v.as_value())).collect()),
+                    Box::new(<&'r K>::as_empty_value()),
+                    Box::new(<&'r V>::as_empty_value()),
+                )
+            }
+        }
     }
 }
 impl_as_value!(BTreeMap, Ord);
 impl_as_value!(HashMap, Eq, Hash);
 
-impl AsValue for &'static str {
+impl AsValue for Cow<'_, str> {
     fn as_empty_value() -> ValueOwned {
         Value::Varchar(None)
     }
-    fn as_value(self) -> ValueOwned {
-        Value::Varchar(Some(self.into()))
-    }
-    fn try_from_value(_value: Value<'_>) -> Result<Self>
+    fn as_value<'a>(self) -> Value<'a>
     where
-        Self: Sized,
+        Self: 'a,
     {
-        Err(anyhow!(
-            "Cannot assign a `&'static str` with data fetched from the database. Please consider `Cow<'static, str>` instead, can still use `&'static str` for data insertion purpose.",
-        ))
-    }
-}
-
-impl AsValue for Cow<'static, str> {
-    fn as_empty_value() -> ValueOwned {
-        Value::Varchar(None)
-    }
-    fn as_value(self) -> ValueOwned {
         Value::Varchar(Some(self.into()))
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -1525,28 +1701,68 @@ impl AsValue for Cow<'static, str> {
     }
 }
 
+impl AsValue for &Cow<'_, str> {
+    fn as_empty_value() -> ValueOwned {
+        <Cow<'_, str>>::as_empty_value()
+    }
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        Value::Varchar(Some(Cow::Borrowed(self)))
+    }
+}
+
+impl AsValue for Cow<'_, Value<'_>> {
+    fn as_empty_value() -> ValueOwned {
+        Value::Null
+    }
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        match self {
+            Cow::Owned(value) => value,
+            Cow::Borrowed(value) => value.reborrow(),
+        }
+    }
+    fn try_from_value(value: impl AsValue) -> Result<Self> {
+        Ok(Cow::Owned(value.as_value().into_owned()))
+    }
+}
+
+impl AsValue for &Cow<'_, Value<'_>> {
+    fn as_empty_value() -> ValueOwned {
+        <Cow<'_, Value<'_>>>::as_empty_value()
+    }
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        self.as_ref().reborrow()
+    }
+}
+
 impl<T: AsValue> AsValue for Option<T> {
     fn as_empty_value() -> ValueOwned {
         T::as_empty_value()
     }
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         match self {
             Some(v) => v.as_value(),
             None => T::as_empty_value(),
         }
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self> {
+    #[inline(always)]
+    fn try_from_value(value: impl AsValue) -> Result<Self> {
+        let value = value.as_value();
         Ok(if value.is_null() {
             None
         } else {
             Some(<T as AsValue>::try_from_value(value)?)
-        })
-    }
-    fn try_from_value_ref(value: &Value<'_>) -> Result<Self> {
-        Ok(if value.is_null() {
-            None
-        } else {
-            Some(<T as AsValue>::try_from_value_ref(value)?)
         })
     }
     fn parse(input: impl AsRef<str>) -> Result<Self>
@@ -1562,15 +1778,36 @@ impl<T: AsValue> AsValue for Option<T> {
     }
 }
 
+impl<'r, T> AsValue for &'r Option<T>
+where
+    &'r T: AsValue,
+{
+    fn as_empty_value() -> ValueOwned {
+        <&'r T>::as_empty_value()
+    }
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        match self {
+            Some(value) => value.as_value(),
+            None => <&'r T>::as_empty_value(),
+        }
+    }
+}
+
 // TODO: Use the macro below once box_into_inner is stabilized
 impl<T: AsValue> AsValue for Box<T> {
     fn as_empty_value() -> ValueOwned {
         T::as_empty_value()
     }
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         (*self).as_value()
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self> {
+    fn try_from_value(value: impl AsValue) -> Result<Self> {
         Ok(Self::new(<T as AsValue>::try_from_value(value)?))
     }
     fn parse(input: impl AsRef<str>) -> Result<Self>
@@ -1581,16 +1818,34 @@ impl<T: AsValue> AsValue for Box<T> {
     }
 }
 
+impl<'r, T> AsValue for &'r Box<T>
+where
+    &'r T: AsValue,
+{
+    fn as_empty_value() -> ValueOwned {
+        <&'r T>::as_empty_value()
+    }
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        self.as_ref().as_value()
+    }
+}
+
 macro_rules! impl_as_value {
     ($source:ident) => {
-        impl<T: AsValue + ToOwned<Owned = impl AsValue>> AsValue for $source<T> {
+        impl<T: AsValue> AsValue for $source<T> {
             fn as_empty_value() -> ValueOwned {
                 T::as_empty_value()
             }
-            fn as_value(self) -> ValueOwned {
+            fn as_value<'a>(self) -> Value<'a>
+            where
+                Self: 'a,
+            {
                 $source::<T>::into_inner(self).as_value()
             }
-            fn try_from_value(value: Value<'_>) -> Result<Self> {
+            fn try_from_value(value: impl AsValue) -> Result<Self> {
                 Ok($source::new(<T as AsValue>::try_from_value(value)?))
             }
         }
@@ -1598,18 +1853,50 @@ macro_rules! impl_as_value {
 }
 // impl_as_value!(Box);
 impl_as_value!(Cell);
+
+impl<T: AsValue + Copy> AsValue for &Cell<T> {
+    fn as_empty_value() -> ValueOwned {
+        T::as_empty_value()
+    }
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        self.get().as_value()
+    }
+}
+
 impl_as_value!(RefCell);
+
+impl<T> AsValue for &RefCell<T>
+where
+    for<'r> &'r T: AsValue,
+{
+    fn as_empty_value() -> ValueOwned {
+        <&T>::as_empty_value()
+    }
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        // A borrow of the guarded data must not escape the guard.
+        (&*self.borrow()).as_value().into_owned()
+    }
+}
 
 impl<T: AsValue> AsValue for RwLock<T> {
     fn as_empty_value() -> ValueOwned {
         T::as_empty_value()
     }
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         self.into_inner()
             .expect("Error occurred while trying to take the content of the RwLock")
             .as_value()
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self> {
+    fn try_from_value(value: impl AsValue) -> Result<Self> {
         Ok(RwLock::new(<T as AsValue>::try_from_value(value)?))
     }
     fn parse(input: impl AsRef<str>) -> Result<Self>
@@ -1620,18 +1907,40 @@ impl<T: AsValue> AsValue for RwLock<T> {
     }
 }
 
+impl<T> AsValue for &RwLock<T>
+where
+    for<'r> &'r T: AsValue,
+{
+    fn as_empty_value() -> ValueOwned {
+        <&T>::as_empty_value()
+    }
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        (&*self
+            .read()
+            .expect("Error occurred while trying to read the RwLock"))
+            .as_value()
+            .into_owned()
+    }
+}
+
 macro_rules! impl_as_value {
     ($source:ident) => {
         impl<T: AsValue + ToOwned<Owned = impl AsValue>> AsValue for $source<T> {
             fn as_empty_value() -> ValueOwned {
                 T::as_empty_value()
             }
-            fn as_value(self) -> ValueOwned {
+            fn as_value<'a>(self) -> Value<'a>
+            where
+                Self: 'a,
+            {
                 $source::try_unwrap(self)
                     .map(|v| v.as_value())
-                    .unwrap_or_else(|v| v.as_ref().to_owned().as_value())
+                    .unwrap_or_else(|v| v.as_ref().to_owned().as_value().into_owned())
             }
-            fn try_from_value(value: Value<'_>) -> Result<Self> {
+            fn try_from_value(value: impl AsValue) -> Result<Self> {
                 Ok($source::new(<T as AsValue>::try_from_value(value)?))
             }
             fn parse(input: impl AsRef<str>) -> Result<Self>
@@ -1639,6 +1948,20 @@ macro_rules! impl_as_value {
                 Self: Sized,
             {
                 T::parse(input).map(Self::new)
+            }
+        }
+        impl<'r, T> AsValue for &'r $source<T>
+        where
+            &'r T: AsValue,
+        {
+            fn as_empty_value() -> ValueOwned {
+                <&'r T>::as_empty_value()
+            }
+            fn as_value<'a>(self) -> Value<'a>
+            where
+                Self: 'a,
+            {
+                self.as_ref().as_value()
             }
         }
     };
@@ -1650,13 +1973,17 @@ impl AsValue for serde_json::Value {
     fn as_empty_value() -> ValueOwned {
         Value::Json(None)
     }
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Json(Some(self))
     }
-    fn try_from_value(value: Value<'_>) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
+        let value = value.as_value();
         Ok(if let Value::Json(v) = value {
             match v {
                 Some(v) => v,
@@ -1667,5 +1994,32 @@ impl AsValue for serde_json::Value {
                 "Cannot convert non json tank::Value to serde_json::Value",
             ));
         })
+    }
+}
+
+impl AsValue for &serde_json::Value {
+    fn as_empty_value() -> ValueOwned {
+        serde_json::Value::as_empty_value()
+    }
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        Value::Json(Some(self.clone()))
+    }
+}
+
+impl<'r, T: ?Sized> AsValue for &&'r T
+where
+    &'r T: AsValue,
+{
+    fn as_empty_value() -> ValueOwned {
+        <&'r T>::as_empty_value()
+    }
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        (*self).as_value()
     }
 }

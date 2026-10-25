@@ -1,6 +1,7 @@
 //! chDB driver for `tank`.
 mod connection;
 mod driver;
+mod native;
 mod prepared;
 mod streaming;
 mod transaction;

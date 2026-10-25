@@ -1,8 +1,5 @@
-use std::{pin::pin, sync::LazyLock};
-use tank::{
-    DynQuery, Entity, Executor, QueryBuilder, Rows, cols, expr,
-    stream::{StreamExt, TryStreamExt},
-};
+use std::sync::LazyLock;
+use tank::{DynQuery, Entity, Executor, QueryBuilder, Row, cols, expr};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -51,14 +48,15 @@ pub async fn other(executor: &mut impl Executor) {
             )
             .await
             .unwrap();
-        let stream = bundle
-            .rows()
-            .map_ok(|v| v.values().nth(0).unwrap());
-        let value = pin!(stream)
-            .next()
-            .await
-            .expect("No result returned from the stream")
-            .expect("Could not query for NULL");
+        let mut stream = bundle.map(|v| {
+            v.unwrap()
+                .values()
+                .nth(0)
+                .unwrap()
+                .into_owned()
+                .into_owned()
+        });
+        let value = stream.next().expect("No result returned from the stream");
         assert!(value.is_null());
     }
 

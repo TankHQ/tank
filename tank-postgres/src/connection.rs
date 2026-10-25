@@ -1,16 +1,18 @@
 use crate::{
     PostgresDriver, PostgresPrepared, PostgresTransaction, TankParam,
-    rows::{PostgresResults, PostgresScratch},
+    rows::{PostgresRows, PostgresScratch},
     stream::ConnectionStream,
 };
 use std::{
     borrow::Cow,
     fmt::{self, Debug, Formatter},
     future::Future,
-    mem,
     str::FromStr,
 };
-use tank_core::{AsQuery, Connection, ErrorContext, Executor, Query, RawQuery, Result, describe_url};
+use tank_core::{
+    AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, RowsAffected,
+    describe_url,
+};
 use url::Url;
 use wtx::{
     database::DbClient as _,
@@ -116,24 +118,23 @@ impl Executor for PostgresConnection {
         Ok(PostgresPrepared::new(sql).into())
     }
 
-    fn run<'s>(
+    fn run<'s, Q>(
         &'s mut self,
-        query: impl AsQuery<PostgresDriver> + Send + 's,
-    ) -> impl Future<Output = Result<impl tank_core::Results>> + Send {
+        query: Q,
+    ) -> impl Future<
+        Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>,
+    > + Send
+    where
+        Q: AsQuery<PostgresDriver> + Send + 's,
+    {
         async move {
             let mut query = query.as_query();
-            let owned = mem::take(query.as_mut());
-            let result = match owned {
-                Query::Raw(raw) => {
-                    let r = self.run_prepared(&raw.sql, &[]).await;
-                    *query.as_mut() = Query::Raw(raw);
-                    r
-                }
-                Query::Prepared(mut prepared) => {
-                    let params = prepared.take_params()?;
-                    let r = self.run_prepared(&prepared.sql, &params).await;
-                    *query.as_mut() = Query::Prepared(prepared);
-                    r
+            let result = match query.as_mut() {
+                Query::Raw(raw) => self.run_prepared(&raw.sql, &[]).await,
+                Query::Prepared(prepared) => {
+                    prepared.encode_params()?;
+                    self.run_prepared(&prepared.sql, &prepared.encoded_params)
+                        .await
                 }
             };
             result.map_err(|e| {
@@ -154,11 +155,11 @@ impl PostgresConnection {
     /// The returned view borrows both the client (whose read buffer holds the
     /// row bytes) and the scratch (labels and decoders), and decodes each value
     /// lazily.
-    async fn run_prepared<'s>(
+    pub(crate) async fn run_prepared<'s>(
         &'s mut self,
         sql: &str,
         params: &[TankParam],
-    ) -> Result<PostgresResults<'s>> {
+    ) -> Result<crate::rows::PostgresResults<'s>> {
         let stmt = crate::TankStmt::new(sql, params);
         let PostgresConnection { client, scratch } = self;
         let records = client
@@ -166,11 +167,19 @@ impl PostgresConnection {
             .await
             .map_err(tank_core::Error::new)?;
         scratch.prepare(&records)?;
-        Ok(PostgresResults::new(
-            &records,
-            scratch.labels(),
-            scratch.decoders(),
-        ))
+        let result = if records.columns().is_some() {
+            QueryResult::Rows(PostgresRows::new(
+                records,
+                scratch.labels(),
+                scratch.decoders(),
+            ))
+        } else {
+            QueryResult::Affected(RowsAffected {
+                rows_affected: Some(records.rows_affected()),
+                last_affected_id: None,
+            })
+        };
+        Ok(crate::rows::PostgresResults::new(Ok(result)))
     }
 }
 

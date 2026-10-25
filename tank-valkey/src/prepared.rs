@@ -6,6 +6,7 @@ use tank_core::{AsValue, ColumnDef, Prepared, Result};
 pub struct ValkeyPrepared {
     pub(crate) commands: Vec<Cmd>,
     pub(crate) columns: Vec<&'static ColumnDef>,
+    pub(crate) returns_rows: bool,
 }
 
 impl ValkeyPrepared {

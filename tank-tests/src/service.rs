@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::sync::LazyLock;
 use tank::{
-    AsValue, Entity, Error, Executor, QueryBuilder, Result, Rows, Value, anyhow, cols, expr,
+    AsValue, Entity, Error, Executor, QueryBuilder, Result, Value, anyhow, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -28,16 +28,19 @@ impl AsValue for HostPort {
         Value::Varchar(None)
     }
 
-    fn as_value(self) -> tank::ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Varchar(Some(format!("{}:{}", self.host, self.port).into()))
     }
 
-    fn try_from_value(value: Value) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
         // Always call try_as before checking the received value
-        match value.try_as(&Value::Varchar(None)) {
+        match value.as_value().try_as(&Value::Varchar(None)) {
             Ok(Value::Varchar(Some(v))) => {
                 let make_context = || anyhow!("Failed to parse HostPort from value `{v}`");
                 let (host, port) = v.split_once(':').ok_or_else(make_context)?;
@@ -122,11 +125,8 @@ pub async fn service(executor: &mut impl Executor) {
         .fetch(query)
         .await
         .unwrap()
-        .rows()
-        .map_ok(Service::from_row)
-        .map(Result::flatten)
-        .try_collect::<Vec<_>>()
-        .await
+        .map(|row| Service::from_row(row?))
+        .collect::<Result<Vec<_>>>()
         .expect("Failed to query by addr");
     assert_eq!(
         api_by_addr,
@@ -167,11 +167,8 @@ pub async fn service(executor: &mut impl Executor) {
             )
             .await
             .unwrap()
-            .rows()
-            .map_ok(Service::from_row)
-            .map(Result::flatten)
-            .try_collect::<Vec<_>>()
-            .await
+            .map(|row| Service::from_row(row?))
+            .collect::<Result<Vec<_>>>()
             .expect("Failed to select ordered services");
 
         assert_eq!(

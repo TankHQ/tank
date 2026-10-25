@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
 use tank::{
-    AsValue, Dataset, Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult,
-    Results, Row, Rows, SqlWriter, Value, cols, expr, join,
+    AsValue, Dataset, Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, Result,
+    Row, SqlWriter, Value, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -192,11 +192,8 @@ pub async fn books(executor: &mut impl Executor) {
             )
             .await
             .unwrap()
-            .rows()
-            .map_ok(BookAuthorResult::from_row)
-            .map(Result::flatten)
-            .try_collect::<Vec<_>>()
-            .await
+            .map(|row| BookAuthorResult::from_row(row?))
+            .collect::<Result<Vec<_>>>()
             .expect("Failed to query books and authors joined");
         assert_eq!(
             result,
@@ -229,27 +226,20 @@ pub async fn books(executor: &mut impl Executor) {
                 .await
                 .unwrap();
             bundle
-                .rows()
-                .try_collect::<Vec<Row<'_, _>>>()
-                .await
-                .expect("Failed to query books and authors joined")
-                .into_iter()
                 .map(|row| {
+                let row = row.unwrap();
                 let mut iter = row.values();
                 (
-                    match iter.next().unwrap() {
-                        Value::Varchar(Some(v)) => v.into_owned(),
-                        Value::Unknown(Some(v)) => v.into_owned(),
+                    match iter.next().unwrap().as_ref() {
+                        Value::Varchar(Some(v)) | Value::Unknown(Some(v)) => v.to_string(),
                         v => panic!("Expected 1st value to be non null varchar, found {v:?}"),
                     },
-                    match iter.next().unwrap() {
-                        Value::Varchar(Some(v)) => v.into_owned(),
-                        Value::Unknown(Some(v)) => v.into_owned(),
+                    match iter.next().unwrap().as_ref() {
+                        Value::Varchar(Some(v)) | Value::Unknown(Some(v)) => v.to_string(),
                         v => panic!("Expected 2nd value to be non null varchar, found {v:?}"),
                     },
-                    match iter.next().unwrap() {
-                        Value::Varchar(Some(v)) => Some(v.into_owned()),
-                        Value::Unknown(Some(v)) => Some(v.into_owned()),
+                    match iter.next().unwrap().as_ref() {
+                        Value::Varchar(Some(v)) | Value::Unknown(Some(v)) => Some(v.to_string()),
                         Value::Varchar(None) | Value::Null => None,
                         v => panic!(
                             "Expected 3rd value to be a Some(Value::Varchar(..)) | Value::Unknown(Some(..)) | Some(Value::Null)), found {v:?}",
@@ -298,10 +288,8 @@ pub async fn books(executor: &mut impl Executor) {
             )
             .await
             .unwrap()
-            .rows()
-            .and_then(|row| async { Books::from_row(row) })
-            .try_collect::<HashSet<_>>()
-            .await
+            .map(|row| Books::from_row(row?))
+            .collect::<Result<HashSet<_>>>()
             .expect("Could not return the books");
         assert_eq!(
             books,
@@ -364,10 +352,8 @@ pub async fn books(executor: &mut impl Executor) {
             )
             .await
             .unwrap()
-            .rows()
-            .and_then(|row| async move { AsValue::try_from_value(row.values.get(0).unwrap()) })
-            .try_collect::<Vec<String>>()
-            .await
+            .map(|row| AsValue::try_from_value(row?.value(0).unwrap()))
+            .collect::<Result<Vec<String>>>()
             .expect("Could not return the ordered names of the authors");
         assert_eq!(
             authors,
@@ -402,10 +388,12 @@ pub async fn books(executor: &mut impl Executor) {
                 .limit(Some(1)),
         );
         let bundle = executor.run(query).await.unwrap();
-        let mut stream = pin!(bundle.results());
-        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
+        let mut stream = bundle;
+        let Some(Ok(QueryResult::Rows(mut rows))) = stream.next() else {
             panic!("Could not get the first row")
         };
+        let row = rows.next().expect("Expected the first book").unwrap();
+        assert!(rows.next().is_none());
         let book = Book::from_row(row).expect("Could not get the book from row");
         assert_eq!(
             book,
@@ -418,9 +406,11 @@ pub async fn books(executor: &mut impl Executor) {
                 year: 2002,
             }
         );
-        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
+        let Some(Ok(QueryResult::Rows(mut rows))) = stream.next() else {
             panic!("Could not get the second row")
         };
+        let row = rows.next().expect("Expected the second book").unwrap();
+        assert!(rows.next().is_none());
         let book = Book::from_row(row).expect("Could not get the book from row");
         assert_eq!(
             book,
@@ -434,8 +424,8 @@ pub async fn books(executor: &mut impl Executor) {
             }
         );
         assert!(
-            stream.next().await.is_none(),
-            "The stream should return only two rows"
+            stream.next().is_none(),
+            "There should be only two statement results"
         )
     }
 }

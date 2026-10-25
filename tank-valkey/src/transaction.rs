@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use redis::{Cmd, Pipeline};
 use std::future;
-use tank_core::{AsQuery, Executor, OwnedResults, Query, Result, Results, Transaction};
+use tank_core::{AsQuery, Driver, Executor, OwnedResults, Query, Result, Transaction};
 
 use crate::{ValkeyConnection, ValkeyDriver};
 
@@ -13,10 +13,17 @@ pub struct ValkeyTransaction<'c> {
 impl<'c> Executor for ValkeyTransaction<'c> {
     type Driver = ValkeyDriver;
 
-    fn run<'s>(
+    fn accepts_multiple_statements(&self) -> bool {
+        false
+    }
+
+    fn run<'s, Q>(
         &'s mut self,
-        query: impl AsQuery<ValkeyDriver> + Send + 's,
-    ) -> impl Future<Output = Result<impl Results>> + Send {
+        query: Q,
+    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Results<'s, Q::Output>>> + Send
+    where
+        Q: AsQuery<ValkeyDriver> + Send + 's,
+    {
         async move {
             let mut query = query.as_query();
             let Query::Prepared(prepared) = query.as_mut() else {
@@ -25,7 +32,7 @@ impl<'c> Executor for ValkeyTransaction<'c> {
                 ));
             };
             self.commands.extend(prepared.commands.iter().cloned());
-            Ok(OwnedResults::new())
+            Ok(OwnedResults::new(Vec::new()))
         }
     }
 }

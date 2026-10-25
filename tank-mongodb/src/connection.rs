@@ -9,8 +9,7 @@ use mongodb::{Client, ClientSession, Collection, Database, bson::Bson};
 use std::{borrow::Cow, future};
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, OwnedResults, Query, QueryResult,
-    QueryResultOwned, RawQuery, Result, Results, RowsAffected, TableRef, describe_url,
-    future::FutureExt,
+    QueryResultOwned, RawQuery, Result, RowsAffected, TableRef, describe_url,
     stream::{Stream, TryStreamExt},
     truncate_long,
 };
@@ -98,6 +97,10 @@ impl Connection for MongoDBConnection {
 impl Executor for MongoDBConnection {
     type Driver = MongoDBDriver;
 
+    fn accepts_multiple_statements(&self) -> bool {
+        false
+    }
+
     fn do_prepare(
         &mut self,
         _query: RawQuery,
@@ -105,11 +108,18 @@ impl Executor for MongoDBConnection {
         future::ready(Err(anyhow!("MongoDB does not support prepare")))
     }
 
-    fn run<'s>(
+    fn run<'s, Q>(
         &'s mut self,
-        query: impl AsQuery<MongoDBDriver> + Send + 's,
-    ) -> impl Future<Output = Result<impl Results>> + Send {
-        async move { OwnedResults::from_query_result_stream(self.do_run(query)).await }.boxed()
+        query: Q,
+    ) -> impl Future<Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>>
+    + Send
+    where
+        Q: AsQuery<MongoDBDriver> + Send + 's,
+    {
+        async move {
+            let results = self.do_run(query).try_collect::<Vec<_>>().await?;
+            Ok(OwnedResults::new(results.into_iter().map(Ok).collect()))
+        }
     }
 }
 
@@ -155,9 +165,10 @@ impl MongoDBConnection {
                     if let Some(session) = &mut self.session {
                         operation = operation.session(session);
                     }
+                    let mut rows = Vec::new();
                     match operation.await {
                         Ok(Some(v)) => {
-                            yield QueryResult::Row(v.0.into_owned())
+                            rows.push(v.0.into_owned());
                         }
                         Ok(None) => {}
                         Err(e) => {
@@ -165,6 +176,7 @@ impl MongoDBConnection {
                             return;
                         }
                     }
+                    yield QueryResult::Rows(rows.into_iter());
                 }
 
                 Payload::FindMany(FindManyPayload {
@@ -183,14 +195,16 @@ impl MongoDBConnection {
                         .with_options(options)
                         .await
                         .with_context(|| make_context!(payload))?;
+                    let mut rows = Vec::new();
                     while let Some(result) = stream
                         .next(session)
                         .await
                         .transpose()
                         .with_context(|| make_context!(payload))?
                     {
-                        yield QueryResult::Row(result.0.into_owned());
+                        rows.push(result.0.into_owned());
                     }
+                    yield QueryResult::Rows(rows.into_iter());
                 }
 
                 Payload::FindMany(FindManyPayload {
@@ -207,13 +221,15 @@ impl MongoDBConnection {
                         .with_options(options)
                         .await
                         .with_context(|| make_context!(payload))?;
+                    let mut rows = Vec::new();
                     while let Some(result) = stream
                         .try_next()
                         .await
                         .with_context(|| make_context!(payload))?
                     {
-                        yield QueryResult::Row(result.0.into_owned());
+                        rows.push(result.0.into_owned());
                     }
+                    yield QueryResult::Rows(rows.into_iter());
                 }
 
                 Payload::InsertOne(InsertOnePayload {
@@ -328,6 +344,7 @@ impl MongoDBConnection {
                         operation = operation.session(session);
                     }
                     operation.await.with_context(|| make_context!(payload))?;
+                    yield QueryResult::Affected(RowsAffected::default());
                 }
 
                 Payload::DropCollection(DropCollectionPayload { table, .. }) => {
@@ -337,10 +354,12 @@ impl MongoDBConnection {
                         operation = operation.session(session);
                     }
                     operation.await.with_context(|| make_context!(payload))?;
+                    yield QueryResult::Affected(RowsAffected::default());
                 }
 
                 Payload::CreateDatabase(..) => {
                     // No database creating needed (it is created automatically)
+                    yield QueryResult::Affected(RowsAffected::default());
                 }
 
                 Payload::DropDatabase(DropDatabasePayload { table, .. }) => {
@@ -350,6 +369,7 @@ impl MongoDBConnection {
                         operation = operation.session(session);
                     }
                     operation.await.with_context(|| make_context!(payload))?;
+                    yield QueryResult::Affected(RowsAffected::default());
                 }
 
                 Payload::Aggregate(AggregatePayload {
@@ -368,6 +388,7 @@ impl MongoDBConnection {
                         .with_options(options)
                         .await
                         .with_context(|| make_context!(payload))?;
+                    let mut rows = Vec::new();
                     while let Some(result) = stream
                         .next(session)
                         .await
@@ -376,8 +397,9 @@ impl MongoDBConnection {
                     {
                         let row: RowWrap =
                             result.try_into().with_context(|| make_context!(payload))?;
-                        yield QueryResult::Row(row.0.into_owned());
+                        rows.push(row.0.into_owned());
                     }
+                    yield QueryResult::Rows(rows.into_iter());
                 }
 
                 Payload::Aggregate(AggregatePayload {
@@ -394,6 +416,7 @@ impl MongoDBConnection {
                         .with_options(options)
                         .await
                         .with_context(|| make_context!(payload))?;
+                    let mut rows = Vec::new();
                     while let Some(result) = stream
                         .try_next()
                         .await
@@ -401,8 +424,9 @@ impl MongoDBConnection {
                     {
                         let row: RowWrap =
                             result.try_into().with_context(|| make_context!(payload))?;
-                        yield QueryResult::Row(row.0.into_owned());
+                        rows.push(row.0.into_owned());
                     }
+                    yield QueryResult::Rows(rows.into_iter());
                 }
 
                 Payload::Batch(BatchPayload { batch, options, .. }) => {

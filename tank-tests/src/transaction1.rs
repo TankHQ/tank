@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 use tank::{
-    Connection, Entity, QueryBuilder, Rows, Transaction, cols,
+    Connection, Entity, QueryBuilder, Transaction, cols,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -104,11 +104,7 @@ pub async fn transaction1(connection: &mut impl Connection) {
             )
             .await
             .unwrap();
-        let entities = entities_bundle
-            .rows()
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not select EntityA rows");
+        let entities = entities_bundle.collect::<tank::Result<Vec<_>>>().unwrap();
         assert!(entities.is_empty());
     }
 
@@ -123,11 +119,7 @@ pub async fn transaction1(connection: &mut impl Connection) {
             )
             .await
             .unwrap();
-        let entities = entities_bundle
-            .rows()
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not select EntityB rows");
+        let entities = entities_bundle.collect::<tank::Result<Vec<_>>>().unwrap();
         assert!(entities.is_empty());
     }
 

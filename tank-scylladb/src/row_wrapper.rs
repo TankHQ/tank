@@ -7,7 +7,7 @@ use scylla::{
     errors::{DeserializationError, TypeCheckError},
     frame::response::result::ColumnSpec,
 };
-use tank_core::{Row, RowOwned};
+use tank_core::RowOwned;
 
 pub(crate) struct RowWrap(pub(crate) RowOwned);
 
@@ -24,6 +24,6 @@ impl<'frame, 'metadata> DeserializeRow<'frame, 'metadata> for RowWrap {
             .map(|v| v.map(|v| ValueWrap::deserialize(v.spec.typ(), v.slice).map(|v| v.0)))
             .collect::<Result<_, _>>()
             .flatten()?;
-        Ok(RowWrap(Row::new(names, values.into())))
+        Ok(RowWrap(RowOwned::new(names, values)))
     }
 }

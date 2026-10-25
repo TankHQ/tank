@@ -4383,6 +4383,7 @@ name = "tank"
 version = "0.44.0"
 dependencies = [
  "chrono",
+ "futures",
  "indoc",
  "quote",
  "rust_decimal",
@@ -4399,9 +4400,7 @@ name = "tank-chdb"
 version = "0.44.0"
 dependencies = [
  "anyhow",
- "async-stream",
  "chdb-rust",
- "flume",
  "log",
  "serde_json",
  "tank",
@@ -4581,7 +4580,6 @@ version = "0.44.0"
 dependencies = [
  "anyhow",
  "async-stream",
- "flume",
  "libsqlite3-sys",
  "log",
  "rust_decimal",

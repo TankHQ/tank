@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use rust_decimal::Decimal;
 use std::sync::LazyLock;
-use tank::{AsValue, Entity, Executor, FixedDecimal, Rows, expr, stream::TryStreamExt};
+use tank::{AsValue, Entity, Executor, FixedDecimal, expr, stream::TryStreamExt};
 use time::{Date, Month, Time};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -137,10 +137,8 @@ pub async fn bindings(executor: &mut impl Executor) {
     let loaded = {
         let bundle = executor.fetch(&mut query).await.unwrap();
         bundle
-            .rows()
-            .and_then(|row| async move { BoundTypes::from_row(row) })
-            .try_collect::<Vec<_>>()
-            .await
+            .map(|row| BoundTypes::from_row(row?))
+            .collect::<tank::Result<Vec<_>>>()
             .expect("Failed to fetch the bound row")
     };
     assert_eq!(
@@ -174,10 +172,8 @@ pub async fn bindings(executor: &mut impl Executor) {
     let loaded = {
         let bundle = executor.fetch(&mut query).await.unwrap();
         bundle
-            .rows()
-            .and_then(|row| async move { BoundTypes::from_row(row) })
-            .try_collect::<Vec<_>>()
-            .await
+            .map(|row| BoundTypes::from_row(row?))
+            .collect::<tank::Result<Vec<_>>>()
             .expect("Failed to fetch the rebound row")
     };
     assert_eq!(

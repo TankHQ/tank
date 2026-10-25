@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
 use tank::{AsValue, DynQuery, QueryBuilder, SqlWriter};
-use tank::{Driver, Entity, Executor, QueryResult, Results, stream::TryStreamExt};
+use tank::{Driver, Entity, Executor, QueryResult, Row, cols, expr};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -84,7 +84,8 @@ pub async fn multiple(executor: &mut impl Executor) {
         &QueryBuilder::new()
             .select([Three::string])
             .from(Three::table())
-            .where_expr(true),
+            .where_expr(true)
+            .order_by(cols!(Three::string ASC)),
     );
     // 10
     writer.write_insert(
@@ -102,7 +103,8 @@ pub async fn multiple(executor: &mut impl Executor) {
         &QueryBuilder::new()
             .select([One::a1, One::string, One::c1])
             .from(One::table())
-            .where_expr(true),
+            .where_expr(true)
+            .order_by(cols!(One::string ASC)),
     );
     // 12
     writer.write_select(
@@ -110,85 +112,151 @@ pub async fn multiple(executor: &mut impl Executor) {
         &QueryBuilder::new()
             .select([Two::a2, Two::string])
             .from(Two::table())
-            .where_expr(true),
+            .where_expr(true)
+            .order_by(cols!(Two::string ASC)),
     );
+    // 13: An empty SELECT still contributes a statement result.
+    writer.write_select(
+        &mut query,
+        &QueryBuilder::new()
+            .select([Two::a2, Two::string])
+            .from(Two::table())
+            .where_expr(false),
+    );
+    // 14: A write that affects no rows must not disappear either.
+    writer.write_delete::<Two>(&mut query, expr!(Two::a2 == 0));
     query.push_str("            \t    \t\t  \n \n \n \t    \n\n\n ");
-    let bundle = executor.run(query).await.unwrap();
-    let result = bundle
-        .results()
-        .try_collect::<Vec<_>>()
+    let mut query = <DynQuery as tank::AsQuery<_>>::as_query(query);
+    let result = executor
+        .run(&mut query)
         .await
-        .expect("Could not run the composite query");
-    // 12 statements but one select returns 3 rows and another one returns 2 rows (12 - 2 + 3 + 2 = 15)
-    assert_eq!(result.len(), 15);
-    let mut result = result
+        .unwrap()
+        .map(|result| {
+            Ok(match result? {
+                QueryResult::Rows(rows) => {
+                    QueryResult::Rows(rows.collect::<tank::Result<Vec<_>>>()?)
+                }
+                QueryResult::Affected(affected) => QueryResult::Affected(affected),
+            })
+        })
+        .collect::<tank::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(result.len(), 14, "Exactly one result per SQL statement");
+    for (index, result) in result.iter().enumerate() {
+        assert_eq!(
+            matches!(result, QueryResult::Rows(_)),
+            [8, 10, 11, 12].contains(&index),
+            "Unexpected result kind for statement {}",
+            index + 1,
+        );
+    }
+    let result = result
         .into_iter()
-        .filter_map(|v| match v {
-            QueryResult::Row(row) => Some(row),
-            QueryResult::Affected(..) => None,
+        .enumerate()
+        .flat_map(|(index, result)| match result {
+            QueryResult::Rows(rows) => {
+                assert_eq!(
+                    rows.len(),
+                    match index {
+                        8 => 2,
+                        10 => 1,
+                        11 => 3,
+                        12 => 0,
+                        _ => unreachable!(),
+                    }
+                );
+                rows
+            }
+            QueryResult::Affected(affected) => {
+                if index == 13 {
+                    if let Some(count) = affected.rows_affected {
+                        assert_eq!(count, 0);
+                    }
+                }
+                Vec::new()
+            }
         })
         .collect::<Vec<_>>();
+    let expected = result
+        .iter()
+        .map(|row| String::try_from_value(row.get_column("string").unwrap()).unwrap())
+        .collect::<Vec<_>>();
+    drop(result);
+    let mut result = executor
+        .fetch(&mut query)
+        .await
+        .unwrap()
+        .collect::<tank::Result<Vec<_>>>()
+        .unwrap();
+    let projected = result
+        .iter()
+        .map(|row| String::try_from_value(row.get_column("string").unwrap()).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        projected, expected,
+        "fetch flattens all statement rowsets in order"
+    );
     result.sort_by(|a, b| {
         let a = a
             .get_column("string")
-            .map(|v| String::try_from_value(v.clone()))
+            .map(String::try_from_value)
             .expect("Does not have column \"string\"")
             .expect("The column called `string` is not a VARCHAR");
         let b = b
             .get_column("string")
-            .map(|v| String::try_from_value(v.clone()))
+            .map(String::try_from_value)
             .expect("Does not have column \"string\"")
             .expect("The column called `string` is not a VARCHAR");
         a.cmp(&b)
     });
     assert_eq!(result.len(), 6);
     let mut result = result.into_iter().peekable();
-    assert_eq!(*result.peek().unwrap().labels, ["a2", "string"]);
+    assert_eq!(result.peek().unwrap().names(), ["a2", "string"]);
     assert_eq!(
-        Two::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
+        Two::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         Two {
             a2: 21,
             string: "aaa".into()
         }
     );
     result.next();
-    assert_eq!(*result.peek().unwrap().labels, ["a2", "string"]);
+    assert_eq!(result.peek().unwrap().names(), ["a2", "string"]);
     assert_eq!(
-        Two::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
+        Two::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         Two {
             a2: 22,
             string: "bbb".into()
         }
     );
     result.next();
-    assert_eq!(*result.peek().unwrap().labels, ["string"]);
+    assert_eq!(result.peek().unwrap().names(), ["string"]);
     assert_eq!(
-        Three::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
+        Three::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         Three {
             string: "ccc".into(),
         }
     );
     result.next();
-    assert_eq!(*result.peek().unwrap().labels, ["string"]);
+    assert_eq!(result.peek().unwrap().names(), ["string"]);
     assert_eq!(
-        Three::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
+        Three::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         Three {
             string: "ddd".into(),
         }
     );
     result.next();
-    assert_eq!(*result.peek().unwrap().labels, ["a2", "string"]);
+    assert_eq!(result.peek().unwrap().names(), ["a2", "string"]);
     assert_eq!(
-        Two::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
+        Two::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         Two {
             a2: 23,
             string: "eee".into()
         }
     );
     result.next();
-    assert_eq!(*result.peek().unwrap().labels, ["a1", "string", "c1"]);
+    assert_eq!(result.peek().unwrap().names(), ["a1", "string", "c1"]);
     assert_eq!(
-        One::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
+        One::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         One {
             a1: 11,
             string: "zzz".into(),
@@ -196,4 +264,10 @@ pub async fn multiple(executor: &mut impl Executor) {
         }
     );
     result.next();
+    assert!(result.next().is_none());
+    drop(result);
+    let affected = executor.execute(&mut query).await.unwrap();
+    if let Some(count) = affected.rows_affected {
+        assert_eq!(count, 6, "execute counts writes, not the six selected rows");
+    }
 }

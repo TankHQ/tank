@@ -1,5 +1,5 @@
 use crate::{
-    AsEntity, AsQuery, Connection, Driver, Error, Executor, Query, RawQuery, Result, Results, Rows,
+    AsEntity, AsQuery, Connection, Driver, Error, Executor, Fetched, Query, RawQuery, Result,
     RowsAffected,
 };
 use anyhow::anyhow;
@@ -200,24 +200,37 @@ impl<D: Driver> Executor for PooledConnection<D> {
         self.object.do_prepare(query)
     }
 
-    fn run<'s>(
+    fn run<'s, Q>(
         &'s mut self,
-        query: impl AsQuery<D> + Send + 's,
-    ) -> impl Future<Output = Result<impl Results>> + Send {
+        query: Q,
+    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Results<'s, Q::Output>>> + Send
+    where
+        Q: AsQuery<D> + Send + 's,
+    {
         self.object.run(query)
     }
 
-    fn fetch<'s>(
+    fn fetch<'s, Q>(
         &'s mut self,
-        query: impl AsQuery<D> + Send + 's,
-    ) -> impl Future<Output = Result<impl Rows>> + Send {
+        query: Q,
+    ) -> impl Future<Output = Result<Fetched<'s, Self::Driver, Q::Output>>> + Send
+    where
+        Q: AsQuery<D> + Send + 's,
+        Q: 's,
+        Q::Output: 's,
+    {
         self.object.fetch(query)
     }
 
-    fn execute<'s>(
+    fn execute<'s, Q>(
         &'s mut self,
-        query: impl AsQuery<D> + Send + 's,
-    ) -> impl Future<Output = Result<RowsAffected>> + Send {
+        query: Q,
+    ) -> impl Future<Output = Result<RowsAffected>> + Send
+    where
+        Q: AsQuery<D> + Send + 's,
+        Q: 's,
+        Q::Output: 's,
+    {
         self.object.execute(query)
     }
 

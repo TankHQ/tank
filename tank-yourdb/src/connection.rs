@@ -1,8 +1,7 @@
 use crate::{YourDBDriver, YourDBPrepared, YourDBTransaction};
 use std::borrow::Cow;
 use tank_core::{
-    AsQuery, Connection, Error, Executor, Query, QueryResult, RawQuery, Result,
-    stream::{self, Stream},
+    AsQuery, Connection, Error, Executor, OwnedResults, Query, RawQuery, Result,
 };
 use url::Url;
 
@@ -19,7 +18,7 @@ impl Connection for YourDBConnection {
     }
 
     async fn begin(&mut self) -> Result<YourDBTransaction<'_>> {
-        Err(anyhow!("Transactions are not supported by YourDB"))
+        Err(Error::msg("Transactions are not supported by YourDB"))
     }
 }
 
@@ -31,10 +30,14 @@ impl Executor for YourDBConnection {
         Ok(Query::Prepared(YourDBPrepared::new(query)))
     }
 
-    fn run<'s>(
+    fn run<'s, Q>(
         &'s mut self,
-        query: impl AsQuery<YourDBDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
-        stream::iter([])
+        _query: Q,
+    ) -> impl Future<Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>>
+    + Send
+    where
+        Q: AsQuery<YourDBDriver> + Send + 's,
+    {
+        async { Ok(OwnedResults::new(Vec::new())) }
     }
 }

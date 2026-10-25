@@ -44,12 +44,15 @@ impl AsValue for ValueWrap {
         Value::Unknown(None)
     }
 
-    fn as_value(self) -> ValueOwned {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         self.0
     }
 
-    fn try_from_value(value: Value<'_>) -> tank_core::Result<Self> {
-        Ok(Self(value.into_owned()))
+    fn try_from_value(value: impl AsValue) -> tank_core::Result<Self> {
+        Ok(Self(value.as_value().into_owned()))
     }
 }
 

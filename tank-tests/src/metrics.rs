@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::{future, sync::LazyLock};
 use tank::{
-    Entity, Executor, QueryBuilder, Rows, cols, expr,
+    Entity, Executor, QueryBuilder, Result, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, macros::date};
@@ -343,10 +343,8 @@ pub async fn metrics(executor: &mut impl Executor) {
         )
         .await
         .unwrap()
-        .rows()
-        .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
-        .try_collect::<Vec<_>>()
-        .await
+        .map(|v| MetricValue::from_row(v?).map(|v| v.value))
+        .collect::<Result<Vec<_>>>()
         .expect("Coult not get the Italy height values");
     assert_eq!(heights, [178.0]);
 
@@ -364,10 +362,8 @@ pub async fn metrics(executor: &mut impl Executor) {
         )
         .await
         .unwrap()
-        .rows()
-        .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
-        .try_collect::<Vec<_>>()
-        .await
+        .map(|v| MetricValue::from_row(v?).map(|v| v.value))
+        .collect::<Result<Vec<_>>>()
         .expect("Could not get IT incomes");
     assert_eq!(italy_incomes, [56000.0, 61000.0, 68000.0, 72000.0]);
 
@@ -384,10 +380,8 @@ pub async fn metrics(executor: &mut impl Executor) {
         )
         .await
         .unwrap()
-        .rows()
-        .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
-        .try_collect::<Vec<_>>()
-        .await
+        .map(|v| MetricValue::from_row(v?).map(|v| v.value))
+        .collect::<Result<Vec<_>>>()
         .expect("Could not get latest UK income");
     assert_eq!(latest_income, [102000.0]);
 
@@ -409,10 +403,8 @@ pub async fn metrics(executor: &mut impl Executor) {
         .fetch(&mut prepared)
         .await
         .unwrap()
-        .rows()
-        .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
-        .try_collect::<Vec<_>>()
-        .await
+        .map(|v| MetricValue::from_row(v?).map(|v| v.value))
+        .collect::<Result<Vec<_>>>()
         .expect("Could not fetch sophie heights");
     assert_eq!(spain_heights, [162.0]);
 
@@ -421,10 +413,8 @@ pub async fn metrics(executor: &mut impl Executor) {
         .fetch(&mut prepared)
         .await
         .unwrap()
-        .rows()
-        .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
-        .try_collect::<Vec<_>>()
-        .await
+        .map(|v| MetricValue::from_row(v?).map(|v| v.value))
+        .collect::<Result<Vec<_>>>()
         .expect("Could not fetch sophie heights");
     assert_eq!(netherlands_weights, [82.5, 81.0]);
 
@@ -433,10 +423,8 @@ pub async fn metrics(executor: &mut impl Executor) {
         .fetch(&mut prepared)
         .await
         .unwrap()
-        .rows()
-        .and_then(|v| future::ready(MetricValue::from_row(v).map(|v| v.value)))
-        .try_collect::<Vec<_>>()
-        .await
+        .map(|v| MetricValue::from_row(v?).map(|v| v.value))
+        .collect::<Result<Vec<_>>>()
         .expect("Could not fetch sophie heights");
     assert_eq!(italy_weights, [80.5, 78.0, 64.2, 62.5]);
 
@@ -463,11 +451,8 @@ pub async fn metrics(executor: &mut impl Executor) {
             )
             .await
             .unwrap()
-            .rows()
-            .map_ok(AverageMetrics::from_row)
-            .map(Result::flatten)
-            .try_collect::<Vec<_>>()
-            .await
+            .map(|row| AverageMetrics::from_row(row?))
+            .collect::<Result<Vec<_>>>()
             .expect("Could not get the products ordered by increasing price");
         assert_eq!(
             averages,
@@ -576,11 +561,8 @@ pub async fn metrics(executor: &mut impl Executor) {
             )
             .await
             .unwrap()
-            .rows()
-            .map_ok(CountryMaxIncome::from_row)
-            .map(Result::flatten)
-            .try_collect::<Vec<_>>()
-            .await
+            .map(|row| CountryMaxIncome::from_row(row?))
+            .collect::<Result<Vec<_>>>()
             .expect("Could not get max incomes per country");
 
         assert_eq!(
@@ -640,11 +622,8 @@ pub async fn metrics(executor: &mut impl Executor) {
             )
             .await
             .unwrap()
-            .rows()
-            .map_ok(MetricGlobalStats::from_row)
-            .map(Result::flatten)
-            .try_collect::<Vec<_>>()
-            .await
+            .map(|row| MetricGlobalStats::from_row(row?))
+            .collect::<Result<Vec<_>>>()
             .expect("Could not get global metric stats");
 
         assert_eq!(
@@ -688,11 +667,8 @@ pub async fn metrics(executor: &mut impl Executor) {
             )
             .await
             .unwrap()
-            .rows()
-            .map_ok(MetricGlobalStats::from_row)
-            .map(Result::flatten)
-            .try_collect::<Vec<_>>()
-            .await
+            .map(|row| MetricGlobalStats::from_row(row?))
+            .collect::<Result<Vec<_>>>()
             .expect("Could not get heavy metric stats");
 
         assert_eq!(

@@ -1,130 +1,134 @@
-use anyhow::anyhow;
-use chdb_rust::connection::Connection as ChConnection;
-use std::{ffi::c_char, slice};
-use tank_core::{Result, error_message_from_ptr};
+use crate::{
+    native::{NativeConnection, NativeResult},
+    parse_result,
+};
+use anyhow::{anyhow, ensure};
+use std::sync::Arc;
+use tank_core::{QueryResult, Result, RowOwned};
+use tokio::sync::{Mutex, OwnedMutexGuard};
 
-enum ChdbConnection {}
-enum ChdbResult {}
-
-unsafe extern "C" {
-    fn chdb_stream_query_n(
-        connection: *mut ChdbConnection,
-        query: *const c_char,
-        query_len: usize,
-        format: *const c_char,
-        format_len: usize,
-    ) -> *mut ChdbResult;
-    fn chdb_stream_fetch_result(
-        connection: *mut ChdbConnection,
-        result: *mut ChdbResult,
-    ) -> *mut ChdbResult;
-    fn chdb_stream_cancel_query(connection: *mut ChdbConnection, result: *mut ChdbResult);
-    fn chdb_result_buffer(result: *mut ChdbResult) -> *mut c_char;
-    fn chdb_result_length(result: *mut ChdbResult) -> usize;
-    fn chdb_result_error(result: *mut ChdbResult) -> *const c_char;
-    fn chdb_destroy_query_result(result: *mut ChdbResult);
+pub struct ChDBRows {
+    stream: Option<NativeStream>,
+    rows: std::vec::IntoIter<RowOwned>,
+    context: String,
+    schema_seen: bool,
 }
 
-pub(crate) struct ChDBStream {
-    connection: *mut ChdbConnection,
-    result: *mut ChdbResult,
-    finished: bool,
+struct NativeStream {
+    handle: NativeResult,
+    connection: OwnedMutexGuard<NativeConnection>,
 }
 
-unsafe impl Send for ChDBStream {}
+impl Drop for NativeStream {
+    fn drop(&mut self) {
+        // Cancel before destroying the handle, including on parse errors and
+        // early rowset/future drop. Keep exclusive access until both are gone.
+        self.connection.cancel(&self.handle);
+    }
+}
 
-impl ChDBStream {
-    pub(crate) fn start(connection: &ChConnection, sql: &str) -> Result<Self> {
-        // `chdb_rust::Connection` wraps `*mut *mut chdb_connection_` in a private field.
-        let connection: *mut ChdbConnection =
-            unsafe { **(connection as *const ChConnection).cast::<*mut *mut ChdbConnection>() };
-        let sql = sql.trim().trim_end_matches(';').trim_end();
-        let format = b"JSONEachRow";
-        let result = unsafe {
-            chdb_stream_query_n(
-                connection,
-                sql.as_ptr().cast(),
-                sql.len(),
-                format.as_ptr().cast(),
-                format.len(),
-            )
+pub(crate) fn execute(
+    connection: Arc<Mutex<NativeConnection>>,
+    directive: Option<&str>,
+    sql: &str,
+    context: String,
+) -> Result<QueryResult<ChDBRows>> {
+    let mut native = connection.blocking_lock_owned();
+    if let Some(directive) = directive {
+        native.query(directive, c"Null")?;
+    }
+    let handle = native.stream(sql)?;
+    if let Some(error) = handle.error() {
+        // chDB 26.5 ClientBase::processTextAsSingleQuery rejects non-SELECT
+        // ASTs here, before processParsedSingleQuery. No other error may retry.
+        let mut rejection =
+            format!("Code: 36. DB::Exception: Streaming query is not supported for query: {sql}");
+        if !rejection.ends_with('.') {
+            rejection.push('.');
+        }
+        rejection.push_str(" (BAD_ARGUMENTS)");
+        ensure!(
+            error == rejection,
+            "chDB streaming initialization failed: {error}"
+        );
+        drop(handle);
+        let result = native.query(sql, c"JSONCompact")?;
+        return Ok(match parse_result(result.data()?)? {
+            QueryResult::Affected(affected) => QueryResult::Affected(affected),
+            QueryResult::Rows(rows) => QueryResult::Rows(ChDBRows {
+                stream: None,
+                rows,
+                context,
+                schema_seen: true,
+            }),
+        });
+    }
+    let mut rows = ChDBRows {
+        stream: Some(NativeStream {
+            connection: native,
+            handle,
+        }),
+        rows: Vec::new().into_iter(),
+        context,
+        schema_seen: false,
+    };
+    // In 26.5 cancel-before-first-fetch hangs. Prime exactly one native chunk
+    // before transferring ownership, so even an unconsumed rowset can cancel.
+    rows.fetch_chunk()?;
+    Ok(QueryResult::Rows(rows))
+}
+
+impl ChDBRows {
+    fn fetch_chunk(&mut self) -> Result<()> {
+        let Some(stream) = self.stream.as_mut() else {
+            return Ok(());
         };
-        if result.is_null() {
-            return Err(anyhow!("chDB streaming query returned no result"));
+        let chunk = (|| -> Result<_> {
+            let chunk = stream.connection.fetch(&stream.handle)?;
+            if chunk.data()?.is_empty() {
+                ensure!(
+                    self.schema_seen && chunk.is_finished(),
+                    "chDB SELECT ended without a schema-bearing result"
+                );
+                return Ok(None);
+            }
+            let QueryResult::Rows(rows) = parse_result(chunk.data()?)? else {
+                return Err(anyhow!("chDB SELECT chunk is missing its schema"));
+            };
+            Ok(Some((rows, chunk.is_finished())))
+        })();
+        match chunk {
+            Ok(Some((rows, finished))) => {
+                self.schema_seen = true;
+                self.rows = rows;
+                if finished {
+                    self.stream.take();
+                }
+            }
+            Ok(None) => {
+                self.stream.take();
+            }
+            Err(error) => {
+                self.stream.take();
+                return Err(error.context(self.context.clone()));
+            }
         }
-        let error = unsafe { chdb_result_error(result) };
-        if !error.is_null() {
-            let error = anyhow!(
-                "chDB streaming query failed: {}",
-                error_message_from_ptr(&error)
-            );
-            unsafe { chdb_destroy_query_result(result) };
-            return Err(error);
-        }
-        Ok(Self {
-            connection,
-            result,
-            finished: false,
-        })
-    }
-
-    pub(crate) fn next(&mut self) -> Result<Option<ChDBChunk>> {
-        if self.finished {
-            return Ok(None);
-        }
-        let chunk = unsafe { chdb_stream_fetch_result(self.connection, self.result) };
-        if chunk.is_null() {
-            self.finished = true;
-            return Ok(None);
-        }
-        let error = unsafe { chdb_result_error(chunk) };
-        if !error.is_null() {
-            let error = anyhow!(
-                "chDB streaming fetch failed: {}",
-                error_message_from_ptr(&error)
-            );
-            unsafe { chdb_destroy_query_result(chunk) };
-            self.finished = true;
-            return Err(error);
-        }
-        if unsafe { chdb_result_length(chunk) } == 0 {
-            unsafe { chdb_destroy_query_result(chunk) };
-            self.finished = true;
-            return Ok(None);
-        }
-        Ok(Some(ChDBChunk { result: chunk }))
+        Ok(())
     }
 }
 
-impl Drop for ChDBStream {
-    fn drop(&mut self) {
-        if self.result.is_null() {
-            return;
-        }
-        if !self.finished {
-            unsafe { chdb_stream_cancel_query(self.connection, self.result) };
-        }
-        unsafe { chdb_destroy_query_result(self.result) };
-    }
-}
+impl Iterator for ChDBRows {
+    type Item = Result<RowOwned>;
 
-pub(crate) struct ChDBChunk {
-    result: *mut ChdbResult,
-}
-
-impl ChDBChunk {
-    pub(crate) fn data(&self) -> &[u8] {
-        let buffer = unsafe { chdb_result_buffer(self.result) };
-        let length = unsafe { chdb_result_length(self.result) };
-        if buffer.is_null() || length == 0 {
-            return &[];
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(row) = self.rows.next() {
+                return Some(Ok(row));
+            }
+            self.stream.as_ref()?;
+            if let Err(error) = self.fetch_chunk() {
+                return Some(Err(error));
+            }
         }
-        unsafe { slice::from_raw_parts(buffer.cast(), length) }
-    }
-}
-
-impl Drop for ChDBChunk {
-    fn drop(&mut self) {
-        unsafe { chdb_destroy_query_result(self.result) };
     }
 }

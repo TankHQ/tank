@@ -14,9 +14,7 @@ bundled = ["chdb-rust/static"]
 
 [dependencies]
 anyhow.workspace = true
-async-stream.workspace = true
-chdb-rust = { version = "1.4", default-features = false }
-flume = "0"
+chdb-rust = { version = "=1.4.0", default-features = false }
 log.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 tank-clickhouse = { version = "0", path = "../tank-clickhouse" }

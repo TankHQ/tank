@@ -15,8 +15,8 @@ use std::{
     time::Duration,
 };
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, QueryResultOwned,
-    RawQuery, Result, describe_url,
+    AsQuery, Connection, Error, ErrorContext, Executor, OwnedResults, Query, QueryResult,
+    QueryResultOwned, RawQuery, Result, describe_url,
     stream::{Stream, TryStreamExt},
     truncate_long,
 };
@@ -293,13 +293,18 @@ impl Executor for ScyllaDBConnection {
         Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
     }
 
-    fn run<'s>(
+    fn run<'s, Q>(
         &'s mut self,
-        query: impl AsQuery<ScyllaDBDriver> + Send + 's,
-    ) -> impl Future<Output = Result<impl tank_core::Results>> + Send {
-        use tank_core::future::FutureExt;
-        async move { tank_core::OwnedResults::from_query_result_stream(self.do_run(query)).await }
-            .boxed()
+        query: Q,
+    ) -> impl Future<Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>>
+    + Send
+    where
+        Q: AsQuery<ScyllaDBDriver> + Send + 's,
+    {
+        async move {
+            let results = self.do_run(query).try_collect::<Vec<_>>().await?;
+            Ok(OwnedResults::new(results.into_iter().map(Ok).collect()))
+        }
     }
 }
 
@@ -312,6 +317,12 @@ impl ScyllaDBConnection {
         let context = format!("While running the query:\n{}", query.as_mut());
         stream! {
             let mut paging_state = PagingState::start();
+            let params = match query.as_mut() {
+                Query::Prepared(prepared) => prepared.take_params()?,
+                Query::Raw(_) => Vec::new(),
+            };
+            let mut rows = Vec::new();
+            let mut is_rows = false;
             loop {
                 let (query_result, paging_state_response) = match query.as_mut() {
                     Query::Raw(RawQuery { sql, .. }) => {
@@ -320,20 +331,16 @@ impl ScyllaDBConnection {
                             .await?
                     }
                     Query::Prepared(prepared) => {
-                        let params = prepared.take_params()?;
                         self.session
-                            .execute_single_page(&prepared.statement, params, paging_state)
+                            .execute_single_page(&prepared.statement, &params, paging_state)
                             .await?
                     }
                 };
                 if query_result.is_rows() {
+                    is_rows = true;
                     for row in query_result.into_rows_result()?.rows::<RowWrap>()? {
-                        let row = row?.0;
-                        yield Ok(QueryResult::Row(row));
+                        rows.push(row?.0);
                     }
-                } else {
-                    // The driver does not give the number of affected rows
-                    yield Ok(QueryResult::Affected(Default::default()));
                 }
                 match paging_state_response.into_paging_control_flow() {
                     ControlFlow::Break(..) => {
@@ -344,6 +351,12 @@ impl ScyllaDBConnection {
                     }
                 }
             }
+            yield Ok(if is_rows {
+                QueryResult::Rows(rows.into_iter())
+            } else {
+                // The driver does not give the number of affected rows.
+                QueryResult::Affected(Default::default())
+            });
         }
         .map_err(move |e: Error| {
             let error = e.context(context.clone());

@@ -442,7 +442,7 @@ pub fn describe_path<D: Driver>(url: &Url) -> String {
 ///
 /// *Example*:
 /// ```ignore
-/// send_value!(tx, Ok(QueryResult::Row(row)));
+/// send_value!(tx, Ok(QueryResult::Rows(rows.into_iter())));
 /// ```
 
 #[macro_export]
@@ -545,24 +545,45 @@ macro_rules! impl_executor_transaction {
                 self.$connection.do_prepare(query)
             }
 
-            fn run<'s>(
+            fn run<'s, Q>(
                 &'s mut self,
-                query: impl ::tank_core::AsQuery<Self::Driver> + Send + 's,
-            ) -> impl Future<Output = ::tank_core::Result<impl ::tank_core::Results>> + Send {
+                query: Q,
+            ) -> impl Future<
+                Output = ::tank_core::Result<
+                    <Self::Driver as ::tank_core::Driver>::Results<'s, Q::Output>,
+                >,
+            > + Send
+            where
+                Q: ::tank_core::AsQuery<Self::Driver> + Send + 's,
+            {
                 self.$connection.run(query)
             }
 
-            fn fetch<'s>(
+            fn fetch<'s, Q>(
                 &'s mut self,
-                query: impl ::tank_core::AsQuery<Self::Driver> + Send + 's,
-            ) -> impl Future<Output = ::tank_core::Result<impl ::tank_core::Rows>> + Send {
+                query: Q,
+            ) -> impl Future<
+                Output = ::tank_core::Result<
+                    ::tank_core::Fetched<'s, Self::Driver, Q::Output>,
+                >,
+            > + Send
+            where
+                Q: ::tank_core::AsQuery<Self::Driver> + Send + 's,
+                Q: 's,
+                Q::Output: 's,
+            {
                 self.$connection.fetch(query)
             }
 
-            fn execute<'s>(
+            fn execute<'s, Q>(
                 &'s mut self,
-                query: impl ::tank_core::AsQuery<Self::Driver> + Send + 's,
-            ) -> impl Future<Output = ::tank_core::Result<::tank_core::RowsAffected>> + Send {
+                query: Q,
+            ) -> impl Future<Output = ::tank_core::Result<::tank_core::RowsAffected>> + Send
+            where
+                Q: ::tank_core::AsQuery<Self::Driver> + Send + 's,
+                Q: 's,
+                Q::Output: 's,
+            {
                 self.$connection.execute(query)
             }
 

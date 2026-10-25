@@ -5,10 +5,14 @@ use anyhow::{Error, anyhow};
 use async_stream::try_stream;
 use futures::{StreamExt, TryStreamExt};
 use klickhouse::{Client, ClientOptions};
-use std::{borrow::Cow, fmt::{self, Debug, Formatter}, str::FromStr};
+use std::{
+    borrow::Cow,
+    fmt::{self, Debug, Formatter},
+    str::FromStr,
+};
 use tank_core::{
-    AsQuery, Connection, ErrorContext, Executor, OwnedResults, Query, QueryResult,
-    QueryResultOwned, RawQuery, Result, Results, Row, RowLabels, describe_url, stream::Stream,
+    AsQuery, Connection, ErrorContext, Executor, OwnedResults, Query, QueryResult, QueryResultOwned,
+    RawQuery, Result, RowLabels, RowOwned, describe_url, stream::Stream,
 };
 
 /// ClickHouse connection wrapper.
@@ -51,6 +55,7 @@ impl ClickHouseConnection {
                 .map_err(Error::new)
                 .with_context(|| context.clone())?;
             let mut got_rows = false;
+            let mut rows = Vec::new();
             while let Some(block) = stream
                 .next()
                 .await
@@ -83,10 +88,12 @@ impl ClickHouseConnection {
                                 .with_context(|| context.clone())
                         })
                         .collect::<Result<Vec<_>>>()?;
-                    yield QueryResult::Row(Row::new(names.clone(), values.into()));
+                    rows.push(RowOwned::new(names.clone(), values));
                 }
             }
-            if !got_rows {
+            if got_rows {
+                yield QueryResult::Rows(rows.into_iter());
+            } else {
                 yield QueryResult::Affected(Default::default());
             }
         }
@@ -192,11 +199,18 @@ impl Executor for ClickHouseConnection {
         Ok(Query::Prepared(ClickHousePrepared::new(sql, params)))
     }
 
-    fn run<'s>(
+    fn run<'s, Q>(
         &'s mut self,
-        query: impl AsQuery<ClickHouseDriver> + Send + 's,
-    ) -> impl Future<Output = Result<impl Results>> + Send {
-        async move { OwnedResults::from_query_result_stream(self.do_run(query)).await }
+        query: Q,
+    ) -> impl Future<Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>>
+    + Send
+    where
+        Q: AsQuery<ClickHouseDriver> + Send + 's,
+    {
+        async move {
+            let results = self.do_run(query).try_collect::<Vec<_>>().await?;
+            Ok(OwnedResults::new(results.into_iter().map(Ok).collect()))
+        }
     }
 }
 

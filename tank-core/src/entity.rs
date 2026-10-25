@@ -1,7 +1,6 @@
 use crate::{
     ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Query, QueryBuilder,
-    Result, Row, RowOwned, RowValuesOwned, RowValuesSource, Rows, RowsAffected, TableRef,
-    future::Either, writer::SqlWriter,
+    Result, Row, RowOwned, RowsAffected, TableRef, ValueOwned, future::Either, writer::SqlWriter,
 };
 use anyhow::{Context as _, anyhow};
 use futures::{FutureExt, Stream, StreamExt, TryStreamExt, stream};
@@ -45,23 +44,23 @@ pub trait Entity: AsEntity + Expression {
     -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = &'static ColumnDef>>;
 
     /// Full row representation including all persisted columns.
-    fn row_values(&self) -> RowValuesOwned;
+    fn row_values(&self) -> Vec<ValueOwned>;
 
     /// Full row representation with column labels.
     fn row(&self) -> RowOwned {
-        Row {
-            labels: Self::columns()
-                .into_iter()
+        RowOwned::new(
+            Self::columns()
+                .iter()
                 .map(|v| v.name().to_string())
                 .collect(),
-            values: self.row_values(),
-        }
+            self.row_values(),
+        )
     }
 
     /// Reconstruct `Self` from a labeled row.
     ///
     /// Fails if columns are missing or type conversion fails.
-    fn from_row<S: RowValuesSource + ?Sized>(row: Row<'_, S>) -> Result<Self>
+    fn from_row(row: impl Row) -> Result<Self>
     where
         Self: Sized;
 
@@ -218,16 +217,9 @@ pub trait Entity: AsEntity + Expression {
             .from(Self::table())
             .where_expr(condition)
             .limit(limit);
-        let rows = executor.run(builder.build(&executor.driver()));
+        let rows = executor.fetch(builder.build(&executor.driver()));
         stream::once(rows)
-            .map_ok(|rows| {
-                stream::unfold((rows, 0usize), |(rows, index)| async move {
-                    match rows.row(index) {
-                        Some(row) => Some((row.and_then(Self::from_row), (rows, index + 1))),
-                        None => None,
-                    }
-                })
-            })
+            .map_ok(|rows| stream::iter(rows.map(|row| row.and_then(Self::from_row))))
             .try_flatten()
     }
 

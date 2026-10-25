@@ -1,5 +1,8 @@
 use std::collections::BTreeMap;
-use tank_core::{ColumnDef Context DynQuery SqlFragmentWriter SqlCoreWriter SqlExpressionWriter SqlValueWriter SqlWriter};
+use tank_core::{
+    ColumnDef, Context, DynQuery, SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter,
+    SqlValueWriter, SqlWriter,
+};
 
 #[derive(Default)]
 pub struct YourDBSqlWriter {}
