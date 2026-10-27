@@ -5,10 +5,25 @@ mod tests {
     use std::{
         borrow::Cow,
         cell::{Cell, RefCell},
+        mem,
         rc::Rc,
         sync::Arc,
     };
     use tank_core::{AsValue, Value};
+
+    #[test]
+    fn value_layout_is_compact() {
+        assert!(
+            mem::size_of::<Value<'_>>() <= 32,
+            "Value grew to {} bytes; it must stay <= 32",
+            mem::size_of::<Value<'_>>(),
+        );
+        assert!(
+            mem::align_of::<Value<'_>>() <= 16,
+            "Value alignment grew to {}; it must stay <= 16",
+            mem::align_of::<Value<'_>>(),
+        );
+    }
 
     #[test]
     fn value_none() {

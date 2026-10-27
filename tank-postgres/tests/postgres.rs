@@ -10,8 +10,8 @@ mod tests {
         sync::{Arc, Mutex},
     };
     use tank_core::{
-        AsValue, Connection, ConnectionPool, Driver, Entity, Executor, PoolConfig, QueryResult,
-        Row, Transaction, Value,
+        AsValue, CollectionType, Connection, ConnectionPool, Driver, Entity, Executor, PoolConfig,
+        QueryResult, Row, Transaction, Value,
     };
     use tank_postgres::{PostgresConnection, PostgresDriver};
     use tank_tests::{Author, PreparedBinding, execute_tests, init_logs, silent_logs};
@@ -134,7 +134,13 @@ mod tests {
         let row = bundle.next().expect("No row returned").unwrap();
         assert_eq!(
             row.value(0).unwrap().into_owned(),
-            Value::Array(Some(vec![].into()), Box::new(Value::Int32(None)), 0)
+            Value::Array(
+                Some(vec![].into()),
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 0,
+                }),
+            )
         );
 
         drop(container);
@@ -215,10 +221,10 @@ mod tests {
             Some(Cow::Owned(Value::Blob(Some(Cow::Borrowed([0, 17, 255])))))
         ));
         {
-            let Value::Array(Some(strings), _, 2) = row.value(3).unwrap().into_owned() else {
+            let Value::Array(Some(strings), ..) = row.value(3).unwrap().into_owned() else {
                 panic!("Expected a two-dimensional array");
             };
-            let Value::Array(Some(first), _, 2) = &strings[0] else {
+            let Value::Array(Some(first), ..) = &strings[0] else {
                 panic!("Expected the first nested array");
             };
             assert!(matches!(

@@ -179,8 +179,8 @@ impl SqlWriter for ValkeySqlWriter {
             let ty = &column_def.value;
             match ty {
                 v if v.is_scalar() => prepared.commands.push(Cmd::hget(key, id)),
-                Value::Array(.., ty, _) | Value::List(.., ty) => {
-                    if !ty.is_scalar() {
+                Value::Array(.., t) | Value::List(.., t) => {
+                    if !t.element.is_scalar() {
                         log::error!(
                             "Valkey/Redis can only query lists with scalar values, found: {ty:?}"
                         );
@@ -192,8 +192,8 @@ impl SqlWriter for ValkeySqlWriter {
                         -1,
                     ));
                 }
-                Value::Map(.., k_ty, v_ty) => {
-                    if !k_ty.is_scalar() || !v_ty.is_scalar() {
+                Value::Map(.., t) => {
+                    if !t.key.is_scalar() || !t.value.is_scalar() {
                         log::error!(
                             "Valkey/Redis can only query maps with scalar key and value (they are encoded as HSET), found: {ty:?}"
                         );
@@ -258,12 +258,11 @@ impl SqlWriter for ValkeySqlWriter {
                 let key = format!("{key}{}{k}", self.separator);
                 let value = v.0.as_ref();
                 match value {
-                    Value::Array(Some(v), ..) if !v.is_empty() => prepared
-                        .commands
-                        .push(Cmd::rpush(key, ValueWrap(Cow::Borrowed(value)))),
-                    Value::List(Some(v), ..) if !v.is_empty() => prepared
-                        .commands
-                        .push(Cmd::rpush(key, ValueWrap(Cow::Borrowed(value)))),
+                    Value::Array(Some(v), ..) | Value::List(Some(v), ..) if !v.is_empty() => {
+                        prepared
+                            .commands
+                            .push(Cmd::rpush(key, ValueWrap(Cow::Borrowed(value))))
+                    }
                     Value::Map(Some(v), ..) if !v.is_empty() => {
                         prepared.commands.push(Cmd::hset_multiple(
                             key,

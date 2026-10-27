@@ -1,4 +1,4 @@
-use crate::{matches_path, TypeDecoded, ValueOwned};
+use crate::{CollectionType, MapType, TypeDecoded, ValueOwned, matches_path};
 use quote::ToTokens;
 use std::mem;
 use syn::{
@@ -185,7 +185,10 @@ pub fn decode_type(ty: &Type) -> TypeDecoded {
                                 } else if is_list {
                                     break 'data_type ValueOwned::List(
                                         None,
-                                        Box::new(first_type.value),
+                                        Box::new(CollectionType {
+                                            element: first_type.value,
+                                            len: 0,
+                                        }),
                                     );
                                 } else if is_map {
                                     let panic_msg = &format!(
@@ -200,8 +203,10 @@ pub fn decode_type(ty: &Type) -> TypeDecoded {
                                     let second_type = decode_type(second_type);
                                     break 'data_type ValueOwned::Map(
                                         None,
-                                        Box::new(first_type.value),
-                                        Box::new(second_type.value),
+                                        Box::new(MapType {
+                                            key: first_type.value,
+                                            value: second_type.value,
+                                        }),
                                     );
                                 }
                             } else {
@@ -228,11 +233,13 @@ pub fn decode_type(ty: &Type) -> TypeDecoded {
         {
             break 'data_type ValueOwned::Array(
                 None,
-                Box::new(decode_type(&*elem).value),
-                len.base10_parse().expect(&format!(
-                    "Expected an integer literal array length in `{}`",
-                    ty.to_token_stream().to_string()
-                )),
+                Box::new(CollectionType {
+                    element: decode_type(&*elem).value,
+                    len: len.base10_parse().expect(&format!(
+                        "Expected an integer literal array length in `{}`",
+                        ty.to_token_stream().to_string()
+                    )),
+                }),
             );
         } else if let Type::Slice(TypeSlice { elem, .. }) = ty {
             let element_type = decode_type(&*elem);
@@ -245,7 +252,13 @@ pub fn decode_type(ty: &Type) -> TypeDecoded {
             ) {
                 break 'data_type ValueOwned::Blob(None);
             }
-            break 'data_type ValueOwned::List(None, Box::new(decode_type(&*elem).value));
+            break 'data_type ValueOwned::List(
+                None,
+                Box::new(CollectionType {
+                    element: decode_type(&*elem).value,
+                    len: 0,
+                }),
+            );
         } else {
             panic!("Unexpected type `{}`", ty.to_token_stream().to_string())
         }

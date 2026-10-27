@@ -5,7 +5,10 @@ use std::{
     ffi::{CStr, c_void},
     ptr, slice,
 };
-use tank_core::{Error, Interval, Result, TableRef, Value, ValueOwned, decimal_from_scaled};
+use tank_core::{
+    CollectionType, Error, Interval, MapType, Result, StructType, TableRef, Value, ValueOwned,
+    decimal_from_scaled,
+};
 use uuid::Uuid;
 
 pub(crate) fn convert_date(date: duckdb_date_struct) -> Result<time::Date> {
@@ -89,13 +92,13 @@ pub(crate) fn extract_value(
             }),
             DUCKDB_TYPE_DUCKDB_TYPE_HUGEINT => Value::Int128(if is_valid {
                 let data = *(data as *const duckdb_hugeint).add(row);
-                duckdb_hugeint_to_i128(&data).into()
+                Some(duckdb_hugeint_to_i128(&data).into())
             } else {
                 None
             }),
             DUCKDB_TYPE_DUCKDB_TYPE_UHUGEINT => Value::UInt128(if is_valid {
                 let data = *(data as *const duckdb_uhugeint).add(row);
-                duckdb_uhugeint_to_u128(&data).into()
+                Some(duckdb_uhugeint_to_u128(&data).into())
             } else {
                 None
             }),
@@ -269,17 +272,18 @@ pub(crate) fn extract_value(
                 } else {
                     None
                 };
+                let values = value
+                    .map(Iterator::collect::<Result<_>>)
+                    .transpose()?
+                    .map(|v: Vec<ValueOwned>| v.into_boxed_slice());
+                let t = Box::new(CollectionType {
+                    element: element_type,
+                    len: if is_array { len as u32 } else { 0 },
+                });
                 if is_array {
-                    Value::Array(
-                        value.map(Iterator::collect::<Result<_>>).transpose()?,
-                        element_type.into(),
-                        len as u32,
-                    )
+                    Value::Array(values, t)
                 } else {
-                    Value::List(
-                        value.map(Iterator::collect::<Result<_>>).transpose()?,
-                        element_type.into(),
-                    )
+                    Value::List(values, t)
                 }
             }
             DUCKDB_TYPE_DUCKDB_TYPE_STRUCT => {
@@ -306,7 +310,11 @@ pub(crate) fn extract_value(
                     .iter()
                     .map(|(k, v)| (k.clone(), v.as_null()))
                     .collect();
-                let value = if is_valid { Some(entries) } else { None };
+                let value = if is_valid {
+                    Some(entries.into_boxed_slice())
+                } else {
+                    None
+                };
                 let name = CBox::new(duckdb_logical_type_get_alias(logical_type), |ptr| {
                     duckdb_free(ptr as _)
                 });
@@ -315,7 +323,13 @@ pub(crate) fn extract_value(
                 } else {
                     CStr::from_ptr(*name).to_string_lossy()
                 };
-                Value::Struct(value, value_type, Box::new(TableRef::new(name)))
+                Value::Struct(
+                    value,
+                    Box::new(StructType {
+                        types: value_type,
+                        name: TableRef::new(name),
+                    }),
+                )
             }
             DUCKDB_TYPE_DUCKDB_TYPE_MAP => {
                 let k_type = CBox::new(duckdb_map_type_key_type(logical_type), |mut v| {
@@ -348,9 +362,15 @@ pub(crate) fn extract_value(
                 } else {
                     None
                 };
-                let k_type = extract_value(keys, 0, *k_type, k_id, ptr::null(), ptr::null_mut())?;
-                let v_type = extract_value(vals, 0, *v_type, v_id, ptr::null(), ptr::null_mut())?;
-                Value::Map(value, k_type.into(), v_type.into())
+                let key_t = extract_value(keys, 0, *k_type, k_id, ptr::null(), ptr::null_mut())?;
+                let value_t = extract_value(vals, 0, *v_type, v_id, ptr::null(), ptr::null_mut())?;
+                Value::Map(
+                    value.map(Box::new),
+                    Box::new(MapType {
+                        key: key_t,
+                        value: value_t,
+                    }),
+                )
             }
             DUCKDB_TYPE_DUCKDB_TYPE_UUID => Value::Uuid(if is_valid {
                 let data = &*(data as *const duckdb_uhugeint).add(row);
@@ -388,9 +408,5 @@ pub(crate) fn extract_value(
 }
 
 fn convert_interval(value: duckdb_interval) -> Interval {
-    Interval::new(
-        value.months as _,
-        value.days as _,
-        value.micros as i128 * 1_000,
-    )
+    Interval::new(value.months, value.days, value.micros * 1_000)
 }

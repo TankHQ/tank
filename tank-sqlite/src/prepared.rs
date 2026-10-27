@@ -87,7 +87,7 @@ impl Prepared for SQLitePrepared {
                 Value::Int128(Some(v), ..) => sqlite3_bind_int64(
                     statement,
                     index,
-                    sqlite3_int64::try_from(v).map_err(|_| {
+                    sqlite3_int64::try_from(*v).map_err(|_| {
                         anyhow!(
                             "Cannot bind i128 value `{v}` into sqlite integer because it's out of bounds"
                         )
@@ -114,7 +114,7 @@ impl Prepared for SQLitePrepared {
                 Value::UInt128(Some(v), ..) => sqlite3_bind_int64(
                     statement,
                     index,
-                    sqlite3_int64::try_from(v).map_err(|_| {
+                    sqlite3_int64::try_from(*v).map_err(|_| {
                         anyhow!(
                             "Cannot bind u128 value `{v}` into sqlite integer because it's out of bounds"
                         )

@@ -136,7 +136,7 @@ mod tests {
             Interval {
                 months: 12,
                 days: 15,
-                nanos: Interval::NANOS_IN_DAY * 2
+                nanos: (Interval::NANOS_IN_DAY * 2) as i64
             },
             "INTERVAL '1 YEAR 17 DAYS'"
         );
@@ -144,7 +144,7 @@ mod tests {
             Interval {
                 months: 48,
                 days: 15,
-                nanos: Interval::NANOS_IN_DAY * 2 + 1_000_000_000
+                nanos: (Interval::NANOS_IN_DAY * 2 + 1_000_000_000) as i64
             },
             "INTERVAL '4 YEARS 1468801 SECONDS'"
         );
@@ -179,20 +179,20 @@ mod tests {
 
         // Large values must not overflow when rendered
         test_interval!(
-            Interval::new(0, i64::MAX, 0),
-            "INTERVAL '9223372036854775807 DAYS'"
+            Interval::new(0, i32::MAX, 0),
+            "INTERVAL '2147483647 DAYS'"
         );
         test_interval!(
-            Interval::new(0, i64::MIN, 0),
-            "INTERVAL '-9223372036854775808 DAYS'"
+            Interval::new(0, i32::MIN, 0),
+            "INTERVAL '-2147483648 DAYS'"
         );
         test_interval!(
-            Interval::new(0, i64::MAX, i128::MAX),
-            "INTERVAL '170141183460469231731687303715884105727 NANOSECONDS'"
+            Interval::new(0, i32::MAX, i64::MAX),
+            "INTERVAL '185551810472836854775807 NANOSECONDS'"
         );
         test_interval!(
-            Interval::new(0, i64::MIN, i128::MIN),
-            "INTERVAL '-170141183460469231731687303715884105728 NANOSECONDS'"
+            Interval::new(0, i32::MIN, i64::MIN),
+            "INTERVAL '-185551810559236854775808 NANOSECONDS'"
         );
     }
 
@@ -201,7 +201,7 @@ mod tests {
         for interval in [
             Interval::from_years(20_000) + Interval::from_millis(300),
             Interval::from_months(5) + Interval::from_days(-2) + Interval::from_secs(1),
-            Interval::new(48, 15, 2 * Interval::NANOS_IN_DAY + 1_000_000_000),
+            Interval::new(48, 15, (2 * Interval::NANOS_IN_DAY + 1_000_000_000) as i64),
             Interval::from_days(-11),
             Interval::from_micros(999_999_999),
         ] {
@@ -234,12 +234,12 @@ mod tests {
             Interval::from_millis(950_400_001)
         );
 
-        let almost_max_days = Interval::from_days(i64::MAX - 1);
+        let almost_max_days = Interval::from_days((i32::MAX - 1) as i64);
         assert_eq!(
             almost_max_days + Interval::from_nanos(Interval::NANOS_IN_DAY),
             Interval {
                 months: 0,
-                days: i64::MAX,
+                days: i32::MAX,
                 nanos: 0,
             }
         );
@@ -247,8 +247,8 @@ mod tests {
             almost_max_days + Interval::from_nanos(Interval::NANOS_IN_DAY) + Interval::from_days(1),
             Interval {
                 months: 0,
-                days: i64::MAX,
-                nanos: Interval::NANOS_IN_DAY,
+                days: i32::MAX,
+                nanos: Interval::NANOS_IN_DAY as i64,
             }
         );
 
@@ -256,12 +256,12 @@ mod tests {
             Interval {
                 months: 12,
                 days: 45,
-                nanos: Interval::NANOS_IN_DAY * 10 + 15,
+                nanos: (Interval::NANOS_IN_DAY * 10 + 15) as i64,
             } + Interval::from_micros(1)
                 - Interval {
                     months: 9,
                     days: 1,
-                    nanos: Interval::NANOS_IN_DAY,
+                    nanos: Interval::NANOS_IN_DAY as i64,
                 },
             Interval {
                 months: 3,   // 12 - 9
@@ -443,11 +443,11 @@ mod tests {
     #[test]
     fn large_interval_do_not_overflow() {
         let extremes = [
-            Interval::new(i64::MIN, 0, 0),
-            Interval::new(i64::MAX, 0, 0),
-            Interval::new(0, i64::MAX, i128::MAX),
-            Interval::new(0, i64::MIN, i128::MIN),
-            Interval::new(i64::MIN, i64::MIN, i128::MIN),
+            Interval::new(i32::MIN, 0, 0),
+            Interval::new(i32::MAX, 0, 0),
+            Interval::new(0, i32::MAX, i64::MAX),
+            Interval::new(0, i32::MIN, i64::MIN),
+            Interval::new(i32::MIN, i32::MIN, i64::MIN),
         ];
         for interval in extremes {
             let _ = interval.as_ns();
@@ -526,7 +526,7 @@ mod tests {
         let duration = Duration::from_secs(90000); // 1 day + 3600 secs
         let interval: Interval = duration.into();
         assert_eq!(interval.days, 1);
-        assert_eq!(interval.nanos, 3600 * Interval::NANOS_IN_SEC);
+        assert_eq!(interval.nanos, (3600 * Interval::NANOS_IN_SEC) as i64);
         assert_eq!(interval.months, 0);
 
         let d2: Duration = interval.into();
@@ -561,7 +561,7 @@ mod tests {
 
     #[test]
     fn neg_min_months_does_not_panic() {
-        let value = Interval::new(i64::MIN, 0, 0);
+        let value = Interval::new(i32::MIN, 0, 0);
         let _ = -value;
     }
 

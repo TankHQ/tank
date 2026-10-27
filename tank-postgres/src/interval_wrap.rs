@@ -16,11 +16,11 @@ impl ToSql for IntervalWrap {
         if !matches!(*ty, Type::INTERVAL) {
             return Err(anyhow!("Cannot write Interval into type: {}", ty).into());
         }
-        let micros_all = self.0.nanos / 1000;
+        let micros_all = self.0.nanos as i128 / 1000;
         let micros = micros_all.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
         let days = (self.0.days as i128 + (micros_all - micros as i128) / Interval::MICROS_IN_DAY)
             .clamp(i32::MIN as i128, i32::MAX as i128) as i32;
-        let months = self.0.months.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        let months = self.0.months;
         out.put_i64(micros);
         out.put_i32(days);
         out.put_i32(months);
@@ -44,9 +44,9 @@ impl<'a> FromSql<'a> for IntervalWrap {
         }
         let mut result = IntervalWrap(Default::default());
         let mut raw = Cursor::new(raw);
-        result.0.nanos = raw.read_i64::<NetworkEndian>()? as i128 * 1000;
-        result.0.days = raw.read_i32::<NetworkEndian>()? as i64;
-        result.0.months = raw.read_i32::<NetworkEndian>()? as i64;
+        result.0.nanos = raw.read_i64::<NetworkEndian>()? * 1000;
+        result.0.days = raw.read_i32::<NetworkEndian>()?;
+        result.0.months = raw.read_i32::<NetworkEndian>()?;
         Ok(result)
     }
 

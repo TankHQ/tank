@@ -16,6 +16,14 @@ pub trait Row: Debug + Send + Sync {
     /// Number of columns.
     fn len(&self) -> usize;
 
+    /// True if the labels equal `expected` in order.
+    ///
+    /// Lets `from_row` decode positionally when a projection matches the entity.
+    fn names_match(&self, expected: &[&str]) -> bool {
+        let names = self.names();
+        names.len() == expected.len() && names.iter().zip(expected).all(|(name, want)| name == want)
+    }
+
     /// Borrows a stored value or returns a freshly decoded value.
     /// SQL NULL is a `Value`; `None` means no value at this index.
     fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>>;

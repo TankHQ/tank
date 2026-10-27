@@ -6,7 +6,7 @@ mod tests {
         str::FromStr,
     };
     use tank::TableRef;
-    use tank_core::{AsValue, Value};
+    use tank_core::{AsValue, CollectionType, StructType, Value};
     use uuid::Uuid;
 
     #[test]
@@ -107,12 +107,12 @@ mod tests {
             LinkedList::<bool>::new()
         );
         assert_eq!(
-            VecDeque::<bool>::try_from_value(Value::List(None, Value::Boolean(None).into()))
+            VecDeque::<bool>::try_from_value(Value::List(None, Box::new(CollectionType { element: Value::Boolean(None), len: 0 })))
                 .expect("Cannot convert Value to LinkedList"),
             VecDeque::<bool>::new()
         );
         assert_eq!(
-            Vec::<bool>::try_from_value(Value::List(None, Value::Boolean(None).into()))
+            Vec::<bool>::try_from_value(Value::List(None, Box::new(CollectionType { element: Value::Boolean(None), len: 0 })))
                 .expect("Cannot convert null list to Vector"),
             Vec::<bool>::new()
         );
@@ -143,14 +143,18 @@ mod tests {
     #[test]
     fn value_struct_placeholder() {
         let s = Value::Struct(
-            Some(vec![("id".into(), 1_i32.as_value())]),
-            vec![("id".into(), i32::as_empty_value())],
-            Box::new(TableRef::new("special_type_t".into())),
+            Some(vec![("id".into(), 1_i32.as_value())].into()),
+            Box::new(StructType {
+                types: vec![("id".into(), i32::as_empty_value())],
+                name: TableRef::new("special_type_t".into()),
+            }),
         );
         let s_diff = Value::Struct(
-            Some(vec![("id".into(), 2_i32.as_value())]),
-            vec![("id".into(), i32::as_empty_value())],
-            Box::new(TableRef::new("special_type_t".into())),
+            Some(vec![("id".into(), 2_i32.as_value())].into()),
+            Box::new(StructType {
+                types: vec![("id".into(), i32::as_empty_value())],
+                name: TableRef::new("special_type_t".into()),
+            }),
         );
         assert_ne!(s, s_diff);
     }

@@ -44,18 +44,17 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
             .expect("Failed to query");
         let users = users_bundle.collect::<tank_core::Result<Vec<_>>>().unwrap();
         assert_eq!(users.len(), 2);
-        let Value::Struct(Some(alice), fields, table) =
-            users[0].get_column("info").unwrap().into_owned()
+        let Value::Struct(Some(alice), t) = users[0].get_column("info").unwrap().into_owned()
         else {
             panic!("Expected the field to be a struct containing some value");
         };
 
         assert_eq!(
-            table.name, "",
+            t.name.name, "",
             "TableRef name should be empty for anonymous struct"
         );
         assert_eq!(
-            *fields,
+            t.types,
             [
                 ("name".to_string(), Value::Varchar(None)),
                 ("age".to_string(), Value::Int32(None)),
@@ -106,12 +105,10 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
             .expect("Failed to query complex items");
         let items = items_bundle.collect::<tank_core::Result<Vec<_>>>().unwrap();
         assert_eq!(items.len(), 1);
-        let Value::Struct(Some(data), fields, _) =
-            items[0].get_column("data").unwrap().into_owned()
-        else {
+        let Value::Struct(Some(data), t) = items[0].get_column("data").unwrap().into_owned() else {
             panic!("Expected complex struct");
         };
-        assert_eq!(fields[0].0, "tags");
+        assert_eq!(t.types[0].0, "tags");
         let tags_val = &data[0].1;
         match tags_val {
             Value::List(Some(list), _inner_type) => {
@@ -119,16 +116,16 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
                 assert_eq!(list[0], Value::Varchar(Some("urgent".into())));
                 assert_eq!(list[1], Value::Varchar(Some("work".into())));
             }
-            Value::Array(Some(arr), _inner_type, _len) => {
+            Value::Array(Some(arr), _inner_type) => {
                 assert_eq!(arr.len(), 2);
                 assert_eq!(arr[0], Value::Varchar(Some("urgent".into())));
             }
             _ => panic!("Expected List or Array for tags, got {:?}", tags_val),
         }
 
-        assert_eq!(fields[1].0, "meta");
+        assert_eq!(t.types[1].0, "meta");
         let meta_val = &data[1].1;
-        if let Value::Struct(Some(meta_fields), _meta_type, _) = meta_val {
+        if let Value::Struct(Some(meta_fields), _meta_type) = meta_val {
             assert_eq!(meta_fields[0].0, "priority");
             assert_eq!(meta_fields[0].1, Value::Int32(Some(1)));
             assert_eq!(meta_fields[1].0, "label");
@@ -167,14 +164,14 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         assert_eq!(null_rows.len(), 2);
 
         let info_col_1 = null_rows[0].get_column("info").unwrap().into_owned();
-        if let Value::Struct(None, fields, _) = info_col_1 {
+        if let Value::Struct(None, t) = info_col_1 {
             assert_eq!(
-                fields.len(),
+                t.types.len(),
                 2,
                 "Should preserve schema even for NULL struct value"
             );
-            assert_eq!(fields[0].0, "name");
-            assert_eq!(fields[1].0, "score");
+            assert_eq!(t.types[0].0, "name");
+            assert_eq!(t.types[1].0, "score");
         } else {
             panic!(
                 "Expected NULL struct for row 1 (Value::Struct(None, ..)), got {:?}",
@@ -183,7 +180,7 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         }
 
         let info_col_2 = null_rows[1].get_column("info").unwrap().into_owned();
-        if let Value::Struct(Some(values), _, _) = info_col_2 {
+        if let Value::Struct(Some(values), ..) = info_col_2 {
             assert_eq!(values.len(), 2);
             assert_eq!(values[0].0, "name");
             assert_eq!(

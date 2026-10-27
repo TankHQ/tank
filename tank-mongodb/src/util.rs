@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use mongodb::bson::{self, Binary, Bson, Document, spec::BinarySubtype};
 use std::{borrow::Cow, cell::OnceCell, collections::HashMap};
-use tank_core::{AsValue, Result, Value, ValueOwned};
+use tank_core::{AsValue, CollectionType, MapType, Result, Value, ValueOwned};
 use time::PrimitiveDateTime;
 
 pub fn value_to_bson(v: &Value<'_>) -> Result<Bson> {
@@ -49,10 +49,7 @@ pub fn value_to_bson(v: &Value<'_>) -> Result<Bson> {
             subtype: BinarySubtype::Uuid,
             bytes: v.as_bytes().to_vec(),
         }),
-        Value::Array(Some(v), ..) => {
-            Bson::Array(v.iter().map(value_to_bson).collect::<Result<_>>()?)
-        }
-        Value::List(Some(v), ..) => {
+        Value::Array(Some(v), ..) | Value::List(Some(v), ..) => {
             Bson::Array(v.iter().map(value_to_bson).collect::<Result<_>>()?)
         }
         Value::Map(Some(v), ..) => {
@@ -114,12 +111,12 @@ pub fn bson_to_value(bson: &Bson) -> Result<ValueOwned> {
         Bson::Array(arr) => {
             let values = arr.iter().map(bson_to_value).collect::<Result<Box<_>>>()?;
             let len = values.len();
-            let array_type = Box::new(if let Some(first) = values.first() {
+            let element = if let Some(first) = values.first() {
                 first.as_null()
             } else {
                 Value::Unknown(None)
-            });
-            Value::Array(Some(values), array_type, len as _)
+            };
+            Value::Array(Some(values), Box::new(CollectionType { element, len: len as u32 }))
         }
         Bson::Document(doc) => {
             let mut map = HashMap::new();
@@ -139,9 +136,11 @@ pub fn bson_to_value(bson: &Bson) -> Result<ValueOwned> {
                 map.insert(k, v);
             }
             Value::Map(
-                Some(map),
-                Box::new(k_type.take().unwrap_or(Value::Unknown(None))),
-                Box::new(v_type.take().unwrap_or(Value::Unknown(None))),
+                Some(Box::new(map)),
+                Box::new(MapType {
+                    key: k_type.take().unwrap_or(Value::Unknown(None)),
+                    value: v_type.take().unwrap_or(Value::Unknown(None)),
+                }),
             )
         }
         Bson::ObjectId(id) => {

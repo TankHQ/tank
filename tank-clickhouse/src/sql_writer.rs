@@ -4,10 +4,9 @@ use std::{
     fmt::Write,
 };
 use tank_core::{
-    BinaryOpType, ColumnDef, Context, Dataset, DynQuery, Entity, Fragment,
-    GenericSqlWriter, Interval, PrimaryKeyType, QueryParam, Result, SqlCoreWriter,
-    SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value,
-    separated_by, write_escaped,
+    BinaryOpType, ColumnDef, Context, Dataset, DynQuery, Entity, Fragment, GenericSqlWriter,
+    Interval, PrimaryKeyType, QueryParam, Result, SqlCoreWriter, SqlExpressionWriter,
+    SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value, separated_by, write_escaped,
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
 
@@ -218,16 +217,16 @@ impl SqlCoreWriter for ClickHouseSqlWriter {
                 out.push_str("DateTime64(9,'UTC')")
             }
             Value::Uuid(..) => out.push_str("UUID"),
-            Value::Array(_, inner, _) | Value::List(_, inner) => {
+            Value::Array(_, t) | Value::List(_, t) => {
                 out.push_str("Array(");
-                self.write_column_type(context, out, inner);
+                self.write_column_type(context, out, &t.element);
                 out.push(')');
             }
-            Value::Map(_, key, val) => {
+            Value::Map(_, t) => {
                 out.push_str("Map(");
-                self.write_column_type(context, out, key);
+                self.write_column_type(context, out, &t.key);
                 out.push(',');
-                self.write_column_type(context, out, val);
+                self.write_column_type(context, out, &t.value);
                 out.push(')');
             }
             _ => log::error!("Unexpected tank::Value, ClickHouse does not support {value:?}"),
@@ -414,8 +413,7 @@ impl SqlFragmentWriter for ClickHouseSqlWriter {
 }
 
 impl SqlWriter for ClickHouseSqlWriter {
-    fn write_column_comment(&self, _out: &mut DynQuery, _column: &ColumnDef) {
-    }
+    fn write_column_comment(&self, _out: &mut DynQuery, _column: &ColumnDef) {}
     fn write_create_table<E>(&self, out: &mut DynQuery, if_not_exists: bool)
     where
         Self: Sized,

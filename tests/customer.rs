@@ -55,20 +55,20 @@ mod tests {
         assert_eq!(columns[4].column_ref.schema, "");
         assert!(matches!(
             columns[0].value,
-            Value::List(_, ref ty) if matches!(**ty, Value::UInt64(..))
+            Value::List(.., ref t) if matches!(t.element, Value::UInt64(..))
         ));
         assert!(matches!(
             columns[1].value,
-            Value::List(.., ref ty) if matches!(**ty, Value::Varchar(..))
+            Value::List(.., ref t) if matches!(t.element, Value::Varchar(..))
         ));
         assert!(matches!(
             columns[2].value,
-            Value::List(.., ref ty) if matches!(**ty, Value::Float32(..))
+            Value::List(.., ref t) if matches!(t.element, Value::Float32(..))
         ));
         assert!(matches!(columns[3].value, Value::Interval(..)));
         assert!(matches!(
             columns[4].value,
-            Value::List(.., ref ty) if matches!(**ty, Value::List(.., ref ty) if matches!(**ty, Value::Int64(..))),
+            Value::List(.., ref t) if matches!(t.element, Value::List(.., ref t2) if matches!(t2.element, Value::Int64(..))),
         ));
         assert_eq!(columns[0].nullable, false);
         assert_eq!(columns[1].nullable, true);
@@ -78,7 +78,7 @@ mod tests {
         assert!(matches!(columns[0].default, DefaultValueType::None));
         assert!(matches!(
             columns[1].default,
-            DefaultValueType::Value(Value::Array(Some(..), .., 2))
+            DefaultValueType::Value(Value::Array(Some(..), ref t)) if t.len == 2
         ));
         assert!(matches!(columns[2].default, DefaultValueType::None));
         assert!(matches!(columns[3].default, DefaultValueType::None));

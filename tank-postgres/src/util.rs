@@ -5,7 +5,7 @@ use postgres_protocol::types::{ArrayDimension, array_from_sql};
 use postgres_types::{FromSql, Kind, Type};
 use rust_decimal::Decimal;
 use std::{borrow::Cow, error::Error, mem};
-use tank_core::{Value, ValueOwned};
+use tank_core::{CollectionType, Value, ValueOwned};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
 use wtx::database::client::postgres::Ty;
@@ -219,22 +219,25 @@ fn extract_value_pg<'a>(
             }
         },
         Kind::Array(inner_ty) => {
-            let ty = extract_value_pg(inner_ty, None)?.into_owned();
+            let t = extract_value_pg(inner_ty, None)?.into_owned();
             if let Some(raw) = raw {
                 let array = array_from_sql(raw)?;
                 let dimensions = array.dimensions().collect::<Vec<_>>()?;
                 if dimensions.is_empty() {
-                    Value::Array(Some(Vec::new().into()), Box::new(ty), 0)
+                    Value::Array(
+                        Some(Vec::new().into()),
+                        Box::new(CollectionType { element: t, len: 0 }),
+                    )
                 } else {
                     let mut values = array
                         .values()
                         .map(|v| extract_value_pg(inner_ty, v))
                         .collect::<Vec<_>>()?;
                     let mut cursor = 0;
-                    build_array(&mut cursor, &mut values, &ty, dimensions.iter().cloned())?
+                    build_array(&mut cursor, &mut values, &t, dimensions.iter().cloned())?
                 }
             } else {
-                Value::List(None, Box::new(ty))
+                Value::List(None, Box::new(CollectionType { element: t, len: 0 }))
             }
         }
         // Pseudo types (e.g. `unknown`, `record`) and enums have no dedicated
@@ -263,18 +266,26 @@ fn build_array<'a>(
         *cursor = end;
         Value::Array(
             Some((begin..end).map(|i| mem::take(&mut values[i])).collect()),
-            Box::new(element_ty.clone()),
-            len,
+            Box::new(CollectionType {
+                element: element_ty.clone(),
+                len,
+            }),
         )
     } else {
         let mut elements = Vec::with_capacity(len as usize);
-        let mut nested_ty = element_ty.clone();
+        let mut nested_t = element_ty.clone();
         for _ in 0..len {
             let child = build_array(cursor, values, element_ty, it.clone())?;
-            nested_ty = child.as_null();
+            nested_t = child.as_null();
             elements.push(child);
         }
-        Value::Array(Some(elements.into_boxed_slice()), Box::new(nested_ty), len)
+        Value::Array(
+            Some(elements.into_boxed_slice()),
+            Box::new(CollectionType {
+                element: nested_t,
+                len,
+            }),
+        )
     })
 }
 
@@ -297,14 +308,15 @@ pub(crate) fn flatten_array<'a>(
             break;
         }
         match current_level.first() {
-            Some(Value::Array(Some(inner), ..)) => current_level = inner,
-            Some(Value::List(Some(inner), ..)) => current_level = inner.as_slice(),
+            Some(Value::Array(Some(inner), ..) | Value::List(Some(inner), ..)) => {
+                current_level = inner
+            }
             _ => break,
         }
     }
     loop {
         match element_type {
-            Value::Array(.., element, _) | Value::List(.., element) => element_type = element,
+            Value::Array(.., t) | Value::List(.., t) => element_type = &t.element,
             _ => break,
         }
     }
@@ -317,10 +329,7 @@ pub(crate) fn flatten_array<'a>(
 fn flatten_recursive<'a>(values: &'a [Value<'a>], collector: &mut Vec<&'a Value<'a>>) {
     for value in values {
         match value {
-            Value::Array(Some(inner), ..) => {
-                flatten_recursive(inner, collector);
-            }
-            Value::List(Some(inner), ..) => {
+            Value::Array(Some(inner), ..) | Value::List(Some(inner), ..) => {
                 flatten_recursive(inner, collector);
             }
             Value::Array(None, ..) | Value::List(None, ..) => {}
@@ -355,35 +364,40 @@ pub fn value_to_postgres_type(value: &Value) -> Type {
         Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ,
         Value::Interval(..) => Type::INTERVAL,
         Value::Uuid(..) => Type::UUID,
-        Value::Array(.., element, _) | Value::List(.., element) => match **element {
-            Value::Boolean(..) => Type::BOOL_ARRAY,
-            Value::Int8(..) => Type::INT2_ARRAY,
-            Value::Int16(..) => Type::INT2_ARRAY,
-            Value::Int32(..) => Type::INT4_ARRAY,
-            Value::Int64(..) => Type::INT8_ARRAY,
-            Value::Int128(..) => Type::NUMERIC_ARRAY,
-            Value::UInt8(..) => Type::INT2_ARRAY,
-            Value::UInt16(..) => Type::INT4_ARRAY,
-            Value::UInt32(..) => Type::INT8_ARRAY,
-            Value::UInt64(..) => Type::NUMERIC_ARRAY,
-            Value::UInt128(..) => Type::NUMERIC_ARRAY,
-            Value::Float32(..) => Type::FLOAT4_ARRAY,
-            Value::Float64(..) => Type::FLOAT8_ARRAY,
-            Value::Decimal(..) => Type::NUMERIC_ARRAY,
-            Value::Char(..) => Type::BPCHAR_ARRAY,
-            Value::Varchar(..) => Type::TEXT_ARRAY,
-            Value::Blob(..) => Type::BYTEA_ARRAY,
-            Value::Date(..) => Type::DATE_ARRAY,
-            Value::Time(..) => Type::TIME_ARRAY,
-            Value::Timestamp(..) => Type::TIMESTAMP_ARRAY,
-            Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ_ARRAY,
-            Value::Interval(..) => Type::INTERVAL_ARRAY,
-            Value::Uuid(..) => Type::UUID_ARRAY,
-            Value::Array(..) | Value::List(..) => value_to_postgres_type(element),
-            Value::Map(..) | Value::Json(..) | Value::Struct(..) => Type::JSON_ARRAY,
-            _ => Type::UNKNOWN,
-        },
+        Value::Array(.., t) | Value::List(.., t) => array_type_of(&t.element),
         Value::Map(..) | Value::Json(..) | Value::Struct(..) => Type::JSON,
+        _ => Type::UNKNOWN,
+    }
+}
+
+/// Postgres array type for a scalar element type.
+fn array_type_of(element: &Value<'_>) -> Type {
+    match element {
+        Value::Boolean(..) => Type::BOOL_ARRAY,
+        Value::Int8(..) => Type::INT2_ARRAY,
+        Value::Int16(..) => Type::INT2_ARRAY,
+        Value::Int32(..) => Type::INT4_ARRAY,
+        Value::Int64(..) => Type::INT8_ARRAY,
+        Value::Int128(..) => Type::NUMERIC_ARRAY,
+        Value::UInt8(..) => Type::INT2_ARRAY,
+        Value::UInt16(..) => Type::INT4_ARRAY,
+        Value::UInt32(..) => Type::INT8_ARRAY,
+        Value::UInt64(..) => Type::NUMERIC_ARRAY,
+        Value::UInt128(..) => Type::NUMERIC_ARRAY,
+        Value::Float32(..) => Type::FLOAT4_ARRAY,
+        Value::Float64(..) => Type::FLOAT8_ARRAY,
+        Value::Decimal(..) => Type::NUMERIC_ARRAY,
+        Value::Char(..) => Type::BPCHAR_ARRAY,
+        Value::Varchar(..) => Type::TEXT_ARRAY,
+        Value::Blob(..) => Type::BYTEA_ARRAY,
+        Value::Date(..) => Type::DATE_ARRAY,
+        Value::Time(..) => Type::TIME_ARRAY,
+        Value::Timestamp(..) => Type::TIMESTAMP_ARRAY,
+        Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ_ARRAY,
+        Value::Interval(..) => Type::INTERVAL_ARRAY,
+        Value::Uuid(..) => Type::UUID_ARRAY,
+        Value::Array(..) | Value::List(..) => value_to_postgres_type(element),
+        Value::Map(..) | Value::Json(..) | Value::Struct(..) => Type::JSON_ARRAY,
         _ => Type::UNKNOWN,
     }
 }

@@ -265,14 +265,14 @@ impl Executor for DuckDBConnection {
                         Value::Int32(Some(v), ..) => duckdb_append_int32(*appender, v),
                         Value::Int64(Some(v), ..) => duckdb_append_int64(*appender, v),
                         Value::Int128(Some(v), ..) => {
-                            duckdb_append_hugeint(*appender, i128_to_duckdb_hugeint(v))
+                            duckdb_append_hugeint(*appender, i128_to_duckdb_hugeint(*v))
                         }
                         Value::UInt8(Some(v), ..) => duckdb_append_uint8(*appender, v),
                         Value::UInt16(Some(v), ..) => duckdb_append_uint16(*appender, v),
                         Value::UInt32(Some(v), ..) => duckdb_append_uint32(*appender, v),
                         Value::UInt64(Some(v), ..) => duckdb_append_uint64(*appender, v),
                         Value::UInt128(Some(v), ..) => {
-                            duckdb_append_uhugeint(*appender, u128_to_duckdb_uhugeint(v))
+                            duckdb_append_uhugeint(*appender, u128_to_duckdb_uhugeint(*v))
                         }
                         Value::Float32(Some(v), ..) => duckdb_append_float(*appender, v),
                         Value::Float64(Some(v), ..) => duckdb_append_double(*appender, v),
@@ -320,44 +320,32 @@ impl Executor for DuckDBConnection {
                             *appender,
                             duckdb_create_uuid(u128_to_duckdb_uhugeint(v.as_u128())),
                         ),
-                        Value::List(Some(ref v), ty) => {
-                            let logical_type = tank_value_to_duckdb_logical_type(&ty);
+                        Value::List(Some(ref v), ref ty) | Value::Array(Some(ref v), ref ty) => {
+                            let logical_type = tank_value_to_duckdb_logical_type(&ty.element);
                             let values = v
                                 .iter()
                                 .map(|v| tank_value_to_duckdb_value(v))
                                 .collect::<Vec<_>>();
                             let mut values = values.iter().map(|v| **v).collect::<Vec<_>>();
+                            let is_array = matches!(value, Value::Array(..));
                             let value = CBox::new(
-                                duckdb_create_list_value(
-                                    *logical_type,
-                                    values.as_mut_ptr(),
-                                    v.len() as u64,
-                                ),
+                                if is_array {
+                                    duckdb_create_array_value(
+                                        *logical_type,
+                                        values.as_mut_ptr(),
+                                        ty.len as u64,
+                                    )
+                                } else {
+                                    duckdb_create_list_value(
+                                        *logical_type,
+                                        values.as_mut_ptr(),
+                                        v.len() as u64,
+                                    )
+                                },
                                 |mut p| duckdb_destroy_value(&mut p),
                             );
                             if value.is_null() {
-                                let error = anyhow!("Could not create list value");
-                                log::error!("{error:#}");
-                                return Err(error);
-                            }
-                            duckdb_append_value(*appender, *value)
-                        }
-                        Value::Array(Some(ref v), ty, len) => {
-                            let logical_type = tank_value_to_duckdb_logical_type(&*ty);
-                            let values = v
-                                .iter()
-                                .map(|v| tank_value_to_duckdb_value(v))
-                                .collect::<Vec<_>>();
-                            let value = CBox::new(
-                                duckdb_create_array_value(
-                                    *logical_type,
-                                    values.iter().map(|v| **v).collect::<Vec<_>>().as_mut_ptr(),
-                                    len as u64,
-                                ),
-                                |mut p| duckdb_destroy_value(&mut p),
-                            );
-                            if value.is_null() {
-                                let error = anyhow!("Could not create array value");
+                                let error = anyhow!("Could not create collection value");
                                 log::error!("{error:#}");
                                 return Err(error);
                             }

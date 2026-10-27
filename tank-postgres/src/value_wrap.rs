@@ -31,12 +31,12 @@ impl ToSql for ValueSql<'_> {
             Value::Int16(v) => v.to_sql(ty, out),
             Value::Int32(v) => v.to_sql(ty, out),
             Value::Int64(v) => v.to_sql(ty, out),
-            Value::Int128(v) => v.map(Decimal::from_i128).to_sql(ty, out),
+            Value::Int128(v) => v.as_deref().copied().map(Decimal::from_i128).to_sql(ty, out),
             Value::UInt8(v) => v.map(|v| v as i16).to_sql(ty, out),
             Value::UInt16(v) => v.map(|v| v as i32).to_sql(ty, out),
             Value::UInt32(v) => v.map(|v| v as i64).to_sql(ty, out),
             Value::UInt64(v) => v.map(Decimal::from_u64).to_sql(ty, out),
-            Value::UInt128(v) => v.map(Decimal::from_u128).to_sql(ty, out),
+            Value::UInt128(v) => v.as_deref().copied().map(Decimal::from_u128).to_sql(ty, out),
             Value::Float32(v) => v.to_sql(ty, out),
             Value::Float64(v) => v.to_sql(ty, out),
             Value::Decimal(v, _, _) => v.to_sql(ty, out),
@@ -49,26 +49,9 @@ impl ToSql for ValueSql<'_> {
             Value::TimestampWithTimezone(v) => v.to_sql(ty, out),
             Value::Interval(v) => v.map(IntervalWrap).to_sql(ty, out),
             Value::Uuid(v) => v.to_sql(ty, out),
-            Value::Array(v, element, ..) => match v {
+            Value::Array(v, element) | Value::List(v, element) => match v {
                 Some(v) => {
-                    let (vector, dimensions, element_type) = flatten_array(&**v, element);
-                    array_to_sql(
-                        dimensions,
-                        element_type.oid(),
-                        vector.into_iter().map(|v| ValueSql(v)),
-                        |e, w| match e.to_sql(&element_type, w)? {
-                            IsNull::No => Ok(postgres_protocol::IsNull::No),
-                            IsNull::Yes => Ok(postgres_protocol::IsNull::Yes),
-                        },
-                        out,
-                    )?;
-                    Ok(IsNull::No)
-                }
-                None => None::<Vec<ValueSql>>.to_sql(ty, out),
-            },
-            Value::List(v, element) => match v {
-                Some(v) => {
-                    let (vector, dimensions, element_type) = flatten_array(v.as_slice(), element);
+                    let (vector, dimensions, element_type) = flatten_array(v, &element.element);
                     array_to_sql(
                         dimensions,
                         element_type.oid(),

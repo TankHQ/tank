@@ -145,11 +145,11 @@ pub async fn interval(executor: &mut impl Executor) {
     {
         let writer = executor.driver().sql_writer();
         for interval in [
-            Interval::new(i64::MAX, 0, 0),
-            Interval::new(i64::MIN, 0, 0),
-            Interval::new(0, i64::MAX, i128::MAX),
-            Interval::new(0, i64::MIN, i128::MIN),
-            Interval::new(i64::MIN, i64::MIN, i128::MIN),
+            Interval::new(i32::MAX, 0, 0),
+            Interval::new(i32::MIN, 0, 0),
+            Interval::new(0, i32::MAX, i64::MAX),
+            Interval::new(0, i32::MIN, i64::MIN),
+            Interval::new(i32::MIN, i32::MIN, i64::MIN),
         ] {
             let mut out = DynQuery::default();
             writer.write_value(

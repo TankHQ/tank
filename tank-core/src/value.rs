@@ -34,7 +34,7 @@ pub enum Value<'a> {
     /// 64-bit signed integer.
     Int64(Option<i64>),
     /// 128-bit signed integer.
-    Int128(Option<i128>),
+    Int128(Option<Box<i128>>),
     /// 8-bit unsigned integer.
     UInt8(Option<u8>),
     /// 16-bit unsigned integer.
@@ -44,7 +44,7 @@ pub enum Value<'a> {
     /// 64-bit unsigned integer.
     UInt64(Option<u64>),
     /// 128-bit unsigned integer.
-    UInt128(Option<u128>),
+    UInt128(Option<Box<u128>>),
     /// 32-bit floating point number.
     Float32(Option<f32>),
     /// 64-bit floating point number.
@@ -69,26 +69,45 @@ pub enum Value<'a> {
     Interval(Option<Interval>),
     /// UUID (Universally Unique Identifier).
     Uuid(Option<Uuid>),
-    /// Homogeneous array (values, inner type, length).
-    Array(Option<Box<[Value<'a>]>>, Box<Value<'a>>, u32),
-    /// Variable-length list (values, inner type).
-    List(Option<Vec<Value<'a>>>, Box<Value<'a>>),
-    /// Map (entries, key type, value type).
-    Map(
-        Option<HashMap<Value<'a>, Value<'a>>>,
-        Box<Value<'a>>,
-        Box<Value<'a>>,
-    ),
+    /// Homogeneous array (values, element type info).
+    Array(Option<Box<[Value<'a>]>>, Box<CollectionType<'a>>),
+    /// Variable-length list (values, element type info).
+    List(Option<Box<[Value<'a>]>>, Box<CollectionType<'a>>),
+    /// Map (entries, key and value types).
+    Map(Option<Box<HashMap<Value<'a>, Value<'a>>>>, Box<MapType<'a>>),
     /// JSON value.
     Json(Option<JsonValue>),
-    /// Named struct (fields, field types, type name).
-    Struct(
-        Option<Vec<(String, Value<'a>)>>,
-        Vec<(String, Value<'a>)>,
-        Box<TableRef>,
-    ),
+    /// Named struct (fields, field types and table name).
+    Struct(Option<Box<[(String, Value<'a>)]>>, Box<StructType<'a>>),
     /// Unknown type (usually used when no further information is available).
     Unknown(Option<Cow<'a, str>>),
+}
+
+/// Collection element type and fixed length, shared by [`Value::Array`] and [`Value::List`].
+#[derive(Debug, Clone)]
+pub struct CollectionType<'a> {
+    /// Element type.
+    pub element: Value<'a>,
+    /// Fixed length (0 for a variable-length collection).
+    pub len: u32,
+}
+
+/// Map key and value types.
+#[derive(Debug, Clone)]
+pub struct MapType<'a> {
+    /// Key type.
+    pub key: Value<'a>,
+    /// Value type.
+    pub value: Value<'a>,
+}
+
+/// Struct field types and table reference.
+#[derive(Debug, Clone)]
+pub struct StructType<'a> {
+    /// Field types.
+    pub types: Vec<(String, Value<'a>)>,
+    /// Table reference.
+    pub name: TableRef,
 }
 
 /// Owning SQL value, with all payloads owned (`Cow::Owned`) or static scope.
@@ -102,12 +121,21 @@ impl<'a> Value<'a> {
                 (*l_width == 0 || *r_width == 0 || l_width == r_width)
                     && (*l_scale == 0 || *r_scale == 0 || l_scale == r_scale)
             }
-            (Self::Array(.., l_type, l_len), Self::Array(.., r_type, r_len)) => {
-                l_len == r_len && l_type.same_type(&r_type)
+            (Self::Array(.., l_type), Self::Array(.., r_type)) => {
+                l_type.len == r_type.len && l_type.element.same_type(&r_type.element)
             }
-            (Self::List(.., l), Self::List(.., r)) => l.same_type(r),
-            (Self::Map(.., l_key, l_value), Self::Map(.., r_key, r_value)) => {
-                l_key.same_type(r_key) && l_value.same_type(&r_value)
+            (Self::List(.., l), Self::List(.., r)) => {
+                l.len == r.len && l.element.same_type(&r.element)
+            }
+            (Self::Map(.., l_type), Self::Map(.., r_type)) => {
+                l_type.key.same_type(&r_type.key) && l_type.value.same_type(&r_type.value)
+            }
+            (Self::Struct(.., l_type), Self::Struct(.., r_type)) => {
+                l_type.name == r_type.name
+                    && l_type.types.len() == r_type.types.len()
+                    && l_type.types.iter().zip(r_type.types.iter()).all(
+                        |((l_name, l_t), (r_name, r_t))| l_name == r_name && l_t.same_type(r_t),
+                    )
             }
             _ => discriminant(self) == discriminant(other),
         }
@@ -178,11 +206,11 @@ impl<'a> Value<'a> {
             Value::TimestampWithTimezone(..) => Value::TimestampWithTimezone(None),
             Value::Interval(..) => Value::Interval(None),
             Value::Uuid(..) => Value::Uuid(None),
-            Value::Array(.., t, len) => Value::Array(None, t.clone(), *len),
+            Value::Array(.., t) => Value::Array(None, t.clone()),
             Value::List(.., t) => Value::List(None, t.clone()),
-            Value::Map(.., k, v) => Value::Map(None, k.clone(), v.clone()),
+            Value::Map(.., t) => Value::Map(None, t.clone()),
             Value::Json(..) => Value::Json(None),
-            Value::Struct(.., ty, name) => Value::Struct(None, ty.clone(), name.clone()),
+            Value::Struct(.., t) => Value::Struct(None, t.clone()),
             Value::Unknown(..) => Value::Unknown(None),
         }
     }
@@ -217,10 +245,8 @@ impl<'a> Value<'a> {
                 OffsetDateTime::try_from_value(self).map(AsValue::as_value)
             }
             Value::Interval(..) => Interval::try_from_value(self).map(AsValue::as_value),
-            Value::Uuid(..) => Uuid::try_from_value(self).map(AsValue::as_value),
-            // Value::Array(.., ty, len) => {
-            //     Box::<[Value]>::try_from_value(self).map(AsValue::as_value)
-            // }
+            // Value::Uuid(..) => Uuid::try_from_value(self).map(AsValue::as_value),
+            // Value::Array(.., t, len) => Box::<[Value]>::try_from_value(self).map(AsValue::as_value),
             // Value::List(..) => Box::<[Value]>::try_from_value(self).map(AsValue::as_value),
             // Value::Map(..) => Date::try_from_value(self).map(AsValue::as_value),
             _ => {
@@ -273,12 +299,12 @@ impl<'a> Value<'a> {
             Value::Int16(v) => Value::Int16(*v),
             Value::Int32(v) => Value::Int32(*v),
             Value::Int64(v) => Value::Int64(*v),
-            Value::Int128(v) => Value::Int128(*v),
+            Value::Int128(v) => Value::Int128(v.as_deref().map(|v| Box::new(*v))),
             Value::UInt8(v) => Value::UInt8(*v),
             Value::UInt16(v) => Value::UInt16(*v),
             Value::UInt32(v) => Value::UInt32(*v),
             Value::UInt64(v) => Value::UInt64(*v),
-            Value::UInt128(v) => Value::UInt128(*v),
+            Value::UInt128(v) => Value::UInt128(v.as_deref().map(|v| Box::new(*v))),
             Value::Float32(v) => Value::Float32(*v),
             Value::Float64(v) => Value::Float64(*v),
             Value::Decimal(v, w, s) => Value::Decimal(*v, *w, *s),
@@ -291,30 +317,50 @@ impl<'a> Value<'a> {
             Value::TimestampWithTimezone(v) => Value::TimestampWithTimezone(*v),
             Value::Interval(v) => Value::Interval(*v),
             Value::Uuid(v) => Value::Uuid(*v),
-            Value::Array(v, ty, len) => Value::Array(
-                v.as_ref().map(|v| v.iter().map(Value::reborrow).collect()),
-                Box::new(ty.reborrow()),
-                *len,
-            ),
-            Value::List(v, ty) => Value::List(
-                v.as_ref().map(|v| v.iter().map(Value::reborrow).collect()),
-                Box::new(ty.reborrow()),
-            ),
-            Value::Map(v, k, val) => Value::Map(
-                v.as_ref().map(|v| {
-                    v.iter()
-                        .map(|(k, v)| (k.reborrow(), v.reborrow()))
-                        .collect()
+            Value::Array(v, t) => Value::Array(
+                v.as_ref()
+                    .map(|v| v.iter().map(Value::reborrow).collect::<Box<[_]>>()),
+                Box::new(CollectionType {
+                    element: t.element.reborrow(),
+                    len: t.len,
                 }),
-                Box::new(k.reborrow()),
-                Box::new(val.reborrow()),
+            ),
+            Value::List(v, t) => Value::List(
+                v.as_ref()
+                    .map(|v| v.iter().map(Value::reborrow).collect::<Box<[_]>>()),
+                Box::new(CollectionType {
+                    element: t.element.reborrow(),
+                    len: t.len,
+                }),
+            ),
+            Value::Map(v, t) => Value::Map(
+                v.as_ref().map(|v| {
+                    Box::new(
+                        v.iter()
+                            .map(|(k, v)| (k.reborrow(), v.reborrow()))
+                            .collect(),
+                    )
+                }),
+                Box::new(MapType {
+                    key: t.key.reborrow(),
+                    value: t.value.reborrow(),
+                }),
             ),
             Value::Json(v) => Value::Json(v.clone()),
-            Value::Struct(v, ty, name) => Value::Struct(
-                v.as_ref()
-                    .map(|v| v.iter().map(|(k, v)| (k.clone(), v.reborrow())).collect()),
-                ty.iter().map(|(k, v)| (k.clone(), v.reborrow())).collect(),
-                name.clone(),
+            Value::Struct(v, t) => Value::Struct(
+                v.as_ref().map(|v| {
+                    v.iter()
+                        .map(|(k, v)| (k.clone(), v.reborrow()))
+                        .collect::<Box<[_]>>()
+                }),
+                Box::new(StructType {
+                    types: t
+                        .types
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.reborrow()))
+                        .collect(),
+                    name: t.name.clone(),
+                }),
             ),
             Value::Unknown(v) => Value::Unknown(v.as_deref().map(Cow::Borrowed)),
         }
@@ -348,29 +394,49 @@ impl<'a> Value<'a> {
             Value::TimestampWithTimezone(v) => Value::TimestampWithTimezone(v),
             Value::Interval(v) => Value::Interval(v),
             Value::Uuid(v) => Value::Uuid(v),
-            Value::Array(v, ty, len) => Value::Array(
+            Value::Array(v, t) => Value::Array(
                 v.map(|v| v.into_vec().into_iter().map(Value::into_owned).collect()),
-                Box::new(ty.into_owned()),
-                len,
-            ),
-            Value::List(v, ty) => Value::List(
-                v.map(|v| v.into_iter().map(Value::into_owned).collect()),
-                Box::new(ty.into_owned()),
-            ),
-            Value::Map(v, k, val) => Value::Map(
-                v.map(|v| {
-                    v.into_iter()
-                        .map(|(k, v)| (k.into_owned(), v.into_owned()))
-                        .collect()
+                Box::new(CollectionType {
+                    element: t.element.into_owned(),
+                    len: t.len,
                 }),
-                Box::new(k.into_owned()),
-                Box::new(val.into_owned()),
+            ),
+            Value::List(v, t) => Value::List(
+                v.map(|v| v.into_vec().into_iter().map(Value::into_owned).collect()),
+                Box::new(CollectionType {
+                    element: t.element.into_owned(),
+                    len: t.len,
+                }),
+            ),
+            Value::Map(v, t) => Value::Map(
+                v.map(|v| {
+                    Box::new(
+                        v.into_iter()
+                            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+                            .collect(),
+                    )
+                }),
+                Box::new(MapType {
+                    key: t.key.into_owned(),
+                    value: t.value.into_owned(),
+                }),
             ),
             Value::Json(v) => Value::Json(v),
-            Value::Struct(v, ty, name) => Value::Struct(
-                v.map(|v| v.into_iter().map(|(k, v)| (k, v.into_owned())).collect()),
-                ty.into_iter().map(|(k, v)| (k, v.into_owned())).collect(),
-                name,
+            Value::Struct(v, t) => Value::Struct(
+                v.map(|v| {
+                    v.into_vec()
+                        .into_iter()
+                        .map(|(k, v)| (k, v.into_owned()))
+                        .collect()
+                }),
+                Box::new(StructType {
+                    types: t
+                        .types
+                        .into_iter()
+                        .map(|(k, v)| (k, v.into_owned()))
+                        .collect(),
+                    name: t.name,
+                }),
             ),
             Value::Unknown(v) => Value::Unknown(v.map(|v| Cow::Owned(v.into_owned()))),
         }
@@ -414,18 +480,18 @@ impl<'a> PartialEq for Value<'a> {
             (Self::TimestampWithTimezone(l), Self::TimestampWithTimezone(r)) => l == r,
             (Self::Interval(l), Self::Interval(r)) => l == r,
             (Self::Uuid(l), Self::Uuid(r)) => l == r,
-            (Self::Array(l, l_ty, l_len), Self::Array(r, r_ty, r_len)) => {
-                l_len == r_len && l_ty == r_ty && l == r
+            (Self::Array(l, l_t), Self::Array(r, r_t)) => {
+                l_t.len == r_t.len && l_t.element == r_t.element && l == r
             }
-            (Self::List(l, l_ty), Self::List(r, r_ty)) => l_ty == r_ty && l == r,
-            (Self::Map(None, l_k, l_v), Self::Map(None, r_k, r_v)) => l_k == r_k && l_v == r_v,
-            (Self::Map(Some(l), l_k, l_v), Self::Map(Some(r), r_k, r_v)) => {
-                l_k == r_k && l_v == r_v && l == r
+            (Self::List(l, l_t), Self::List(r, r_t)) => {
+                l_t.len == r_t.len && l_t.element == r_t.element && l == r
             }
-            (Self::Map(..), Self::Map(..)) => false,
+            (Self::Map(l, l_t), Self::Map(r, r_t)) => {
+                l_t.key == r_t.key && l_t.value == r_t.value && l == r
+            }
             (Self::Json(l), Self::Json(r)) => l == r,
-            (Self::Struct(l, l_ty, l_name), Self::Struct(r, r_ty, r_name)) => {
-                l_name == r_name && l == r && l_ty == r_ty
+            (Self::Struct(l, l_t), Self::Struct(r, r_t)) => {
+                l_t.name == r_t.name && l == r && l_t.types == r_t.types
             }
             (Self::Unknown(l), Self::Unknown(r)) => l == r,
             _ => false,
@@ -458,9 +524,9 @@ fn hash_f64_value<H: std::hash::Hasher>(value: f64, state: &mut H) {
 }
 
 fn hash_map_value<'a, H: std::hash::Hasher>(
-    value: &Option<HashMap<Value<'a>, Value<'a>>>,
-    key_ty: &Value<'a>,
-    value_ty: &Value<'a>,
+    value: &Option<Box<HashMap<Value<'a>, Value<'a>>>>,
+    key_t: &Value<'a>,
+    value_t: &Value<'a>,
     state: &mut H,
 ) {
     value.is_some().hash(state);
@@ -477,8 +543,8 @@ fn hash_map_value<'a, H: std::hash::Hasher>(
         entry_hashes.sort_unstable();
         entry_hashes.hash(state);
     }
-    key_ty.hash(state);
-    value_ty.hash(state);
+    key_t.hash(state);
+    value_t.hash(state);
 }
 
 impl<'a> Hash for Value<'a> {
@@ -517,24 +583,25 @@ impl<'a> Hash for Value<'a> {
             TimestampWithTimezone(v) => v.hash(state),
             Interval(v) => v.hash(state),
             Uuid(v) => v.hash(state),
-            Array(v, typ, len) => {
+            Array(v, t) => {
                 v.hash(state);
-                typ.hash(state);
-                len.hash(state);
+                t.element.hash(state);
+                t.len.hash(state);
             }
-            List(v, typ) => {
+            List(v, t) => {
                 v.hash(state);
-                typ.hash(state);
+                t.element.hash(state);
+                t.len.hash(state);
             }
-            Map(v, key, val) => hash_map_value(v, key, val, state),
+            Map(v, t) => hash_map_value(v, &t.key, &t.value, state),
             Json(v) => v.hash(state),
-            Struct(v, t, name) => {
+            Struct(v, t) => {
                 match v {
                     Some(v) => v.hash(state),
                     None => {}
                 }
-                t.hash(state);
-                name.hash(state);
+                t.types.hash(state);
+                t.name.hash(state);
             }
             Unknown(v) => v.hash(state),
         }
@@ -592,22 +659,38 @@ impl<'a> ToTokens for Value<'a> {
             Value::TimestampWithTimezone(..) => quote!(::tank::Value::TimestampWithTimezone(None)),
             Value::Interval(..) => quote!(::tank::Value::Interval(None)),
             Value::Uuid(..) => quote!(::tank::Value::Uuid(None)),
-            Value::Array(.., inner, size) => {
-                quote!(::tank::Value::Array(None, Box::new(#inner), #size))
+            Value::Array(.., t) => {
+                let element = t.element.to_token_stream();
+                let len = t.len;
+                quote!(::tank::Value::Array(
+                    None,
+                    Box::new(::tank::CollectionType { element: #element, len: #len }),
+                ))
             }
-            Value::List(.., inner) => {
-                let inner = inner.as_ref().to_token_stream();
-                quote!(::tank::Value::List(None, Box::new(#inner)))
+            Value::List(.., t) => {
+                let element = t.element.to_token_stream();
+                let len = t.len;
+                quote!(::tank::Value::List(
+                    None,
+                    Box::new(::tank::CollectionType { element: #element, len: #len }),
+                ))
             }
-            Value::Map(.., key, value) => {
-                let key = key.as_ref().to_token_stream();
-                let value = value.as_ref().to_token_stream();
-                quote!(::tank::Value::Map(None, Box::new(#key), Box::new(#value)))
+            Value::Map(.., t) => {
+                let key = t.key.to_token_stream();
+                let value = t.value.to_token_stream();
+                quote!(::tank::Value::Map(
+                    None,
+                    Box::new(::tank::MapType { key: #key, value: #value }),
+                ))
             }
             Value::Json(..) => quote!(::tank::Value::Json(None)),
-            Value::Struct(.., ty, name) => {
-                let values = ty.into_iter().map(|(k, v)| quote!((#k.into(), #v)));
-                quote!(::tank::Value::Struct(None, vec!(#(#values),*), #name))
+            Value::Struct(.., t) => {
+                let types = t.types.iter().map(|(k, v)| quote!((#k.into(), #v)));
+                let name = &t.name;
+                quote!(::tank::Value::Struct(
+                    None,
+                    Box::new(::tank::StructType { types: vec!(#(#types),*), name: #name }),
+                ))
             }
             Value::Unknown(..) => quote!(::tank::Value::Unknown(None)),
         };

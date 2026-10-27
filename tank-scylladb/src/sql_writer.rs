@@ -61,25 +61,25 @@ impl SqlCoreWriter for ScyllaDBSqlWriter {
             Value::TimestampWithTimezone(..) => out.push_str("TIMESTAMP"),
             Value::Interval(..) => out.push_str("DURATION"),
             Value::Uuid(..) => out.push_str("UUID"),
-            Value::Array(.., inner, size) => {
-                if matches!(inner.as_ref(), Value::Char(..)) {
+            Value::Array(.., t) => {
+                if matches!(t.element, Value::Char(..)) {
                     out.push_str("ASCII");
                 } else {
                     out.push_str("VECTOR<");
-                    self.write_column_type(context, out, inner);
-                    let _ = write!(out, ",{size}>");
+                    self.write_column_type(context, out, &t.element);
+                    let _ = write!(out, ",{}>", t.len);
                 }
             }
-            Value::List(.., inner) => {
+            Value::List(.., t) => {
                 out.push_str("LIST<");
-                self.write_column_type(context, out, inner);
+                self.write_column_type(context, out, &t.element);
                 out.push('>');
             }
-            Value::Map(.., key, value) => {
+            Value::Map(.., t) => {
                 out.push_str("MAP<");
-                self.write_column_type(context, out, key);
+                self.write_column_type(context, out, &t.key);
                 out.push(',');
-                self.write_column_type(context, out, value);
+                self.write_column_type(context, out, &t.value);
                 out.push('>');
             }
             Value::Json(..) => out.push_str("TEXT"),

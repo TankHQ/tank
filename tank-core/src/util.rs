@@ -47,12 +47,12 @@ pub fn value_to_json(v: &Value<'_>) -> Option<JsonValue> {
         Value::Int16(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
         Value::Int32(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
         Value::Int64(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
-        Value::Int128(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
+        Value::Int128(Some(v), ..) => JsonValue::Number(Number::from_i128(**v)?),
         Value::UInt8(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
         Value::UInt16(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
         Value::UInt32(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
         Value::UInt64(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
-        Value::UInt128(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
+        Value::UInt128(Some(v), ..) => JsonValue::Number(Number::from_u128(**v)?),
         Value::Float32(Some(v), ..) => JsonValue::Number(Number::from_f64(*v as _)?),
         Value::Float64(Some(v), ..) => JsonValue::Number(Number::from_f64(*v as _)?),
         Value::Decimal(Some(v), ..) => JsonValue::Number(Number::from_f64(v.to_f64()?)?),
@@ -71,10 +71,7 @@ pub fn value_to_json(v: &Value<'_>) -> Option<JsonValue> {
             return None;
         }
         Value::Uuid(Some(v), ..) => JsonValue::String(v.to_string()),
-        Value::Array(Some(v), ..) => {
-            JsonValue::Array(v.iter().map(value_to_json).collect::<Option<_>>()?)
-        }
-        Value::List(Some(v), ..) => {
+        Value::Array(Some(v), ..) | Value::List(Some(v), ..) => {
             JsonValue::Array(v.iter().map(value_to_json).collect::<Option<_>>()?)
         }
         Value::Map(Some(v), ..) => {

@@ -12,7 +12,7 @@ mod tests {
         Context, Dataset, DeclareTableRef, DynQuery, EitherIterator, Entity, FixedDecimal,
         Fragment, GenericSqlWriter, Interval, QueryBuilder, QueryResult, QueryResultOwned,
         References, Row, RowLabels, RowOwned, RowsAffected, SqlValueWriter, SqlWriter, TableRef,
-        Value, ValueOwned, as_c_string, column_def, consume_while, extract_number, quote_btree_map,
+        Value, ValueOwned, CollectionType, MapType, StructType, as_c_string, column_def, consume_while, extract_number, quote_btree_map,
         quote_cow, quote_option, separated_by, truncate_long, value_to_json, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, Time, UtcOffset};
@@ -356,7 +356,7 @@ mod tests {
             Some(serde_json::json!(123456789))
         );
         assert_eq!(
-            value_to_json(&Value::Int128(Some(999))),
+            value_to_json(&Value::Int128(Some(Box::new(999)))),
             Some(serde_json::json!(999))
         );
         assert_eq!(
@@ -376,7 +376,7 @@ mod tests {
             Some(serde_json::json!(200))
         );
         assert_eq!(
-            value_to_json(&Value::UInt128(Some(300))),
+            value_to_json(&Value::UInt128(Some(Box::new(300)))),
             Some(serde_json::json!(300))
         );
         assert_eq!(
@@ -443,21 +443,14 @@ mod tests {
 
     #[test]
     fn util_value_to_json_array_and_list() {
-        let arr = Value::Array(
-            Some(vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into()),
-            Box::new(Value::Int32(None)),
-            2,
-        );
+        let arr = Value::Array(Some(vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into()), Box::new(CollectionType { element: Value::Int32(None), len: 2 }));
         let result = value_to_json(&arr).unwrap();
         assert_eq!(result, serde_json::json!([1, 2]));
 
-        let list = Value::List(
-            Some(vec![
+        let list = Value::List(Some(vec![
                 Value::Varchar(Some("a".into())),
                 Value::Varchar(Some("b".into())),
-            ]),
-            Box::new(Value::Varchar(None)),
-        );
+            ].into()), Box::new(CollectionType { element: Value::Varchar(None), len: 0 }));
         let result = value_to_json(&list).unwrap();
         assert_eq!(result, serde_json::json!(["a", "b"]));
     }
@@ -466,11 +459,7 @@ mod tests {
     fn util_value_to_json_map() {
         let mut map = HashMap::new();
         map.insert(Value::Int32(Some(1)), Value::Int32(Some(42)));
-        let v = Value::Map(
-            Some(map),
-            Box::new(Value::Int32(None)),
-            Box::new(Value::Int32(None)),
-        );
+        let v = Value::Map(Some(map.into()), Box::new(MapType { key: Value::Int32(None), value: Value::Int32(None) }));
         assert_eq!(value_to_json(&v), Some(serde_json::json!({"1": 42})));
 
         let mut map = HashMap::new();
@@ -478,19 +467,11 @@ mod tests {
             Value::Varchar(Some("key".into())),
             Value::Varchar(Some("value".into())),
         );
-        let v = Value::Map(
-            Some(map),
-            Box::new(Value::Varchar(None)),
-            Box::new(Value::Varchar(None)),
-        );
+        let v = Value::Map(Some(map.into()), Box::new(MapType { key: Value::Varchar(None), value: Value::Varchar(None) }));
         assert_eq!(value_to_json(&v), Some(serde_json::json!({"key": "value"})));
 
         let empty_map: HashMap<Value, Value> = HashMap::new();
-        let v2 = Value::Map(
-            Some(empty_map),
-            Box::new(Value::Varchar(None)),
-            Box::new(Value::Int32(None)),
-        );
+        let v2 = Value::Map(Some(empty_map.into()), Box::new(MapType { key: Value::Varchar(None), value: Value::Int32(None) }));
         let result = value_to_json(&v2).unwrap();
         assert!(result.is_object());
     }
@@ -504,24 +485,16 @@ mod tests {
 
     #[test]
     fn util_value_to_json_struct() {
-        let s = Value::Struct(
-            Some(vec![]),
-            vec![],
-            Box::new(TableRef::new("my_type".into())),
-        );
+        let s = Value::Struct(Some(vec![].into()), Box::new(StructType { types: vec![], name: TableRef::new("my_type".into()) }));
         let result = value_to_json(&s).unwrap();
         assert!(result.is_object());
 
         // A non-empty struct must serialize its fields (regression: `insert(...)?`
         // bailed out because the first key was not present yet).
-        let s = Value::Struct(
-            Some(vec![
+        let s = Value::Struct(Some(vec![
                 ("name".into(), Value::Varchar(Some("Alice".into()))),
                 ("age".into(), Value::Int32(Some(30))),
-            ]),
-            vec![],
-            Box::new(TableRef::new("person".into())),
-        );
+            ].into()), Box::new(StructType { types: vec![], name: TableRef::new("person".into()) }));
         assert_eq!(
             value_to_json(&s),
             Some(serde_json::json!({"name": "Alice", "age": 30}))
@@ -547,11 +520,7 @@ mod tests {
             Value::Interval(Some(Interval::from_days(1))),
         );
         assert_eq!(
-            value_to_json(&Value::Map(
-                Some(map),
-                Box::new(Value::Int32(None)),
-                Box::new(Value::Interval(None)),
-            )),
+            value_to_json(&Value::Map(Some(map.into()), Box::new(MapType { key: Value::Int32(None), value: Value::Interval(None) }))),
             None
         );
 
@@ -561,23 +530,15 @@ mod tests {
             Value::Int32(Some(1)),
         );
         assert_eq!(
-            value_to_json(&Value::Map(
-                Some(map),
-                Box::new(Value::Interval(None)),
-                Box::new(Value::Int32(None)),
-            )),
+            value_to_json(&Value::Map(Some(map.into()), Box::new(MapType { key: Value::Interval(None), value: Value::Int32(None) }))),
             None
         );
 
         assert_eq!(
-            value_to_json(&Value::Struct(
-                Some(vec![(
+            value_to_json(&Value::Struct(Some(vec![(
                     "k".into(),
                     Value::Interval(Some(Interval::from_days(1)))
-                )]),
-                vec![],
-                Box::new(TableRef::new("t".into())),
-            )),
+                )].into()), Box::new(StructType { types: vec![], name: TableRef::new("t".into()) }))),
             None
         );
         assert_eq!(
@@ -699,11 +660,7 @@ mod tests {
         let mut q = DynQuery::default();
         let mut map = HashMap::new();
         map.insert(Value::Varchar(Some("key1".into())), Value::Int32(Some(100)));
-        let map_val = Value::Map(
-            Some(map),
-            Box::new(Value::Varchar(None)),
-            Box::new(Value::Int32(None)),
-        );
+        let map_val = Value::Map(Some(map.into()), Box::new(MapType { key: Value::Varchar(None), value: Value::Int32(None) }));
         writer.write_value(&mut Default::default(), &mut q, &map_val);
         let s = q.as_str().to_string();
         assert!(s.contains("key1"));
@@ -714,14 +671,10 @@ mod tests {
     fn sql_writer_write_struct_value() {
         let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
-        let struct_val = Value::Struct(
-            Some(vec![
+        let struct_val = Value::Struct(Some(vec![
                 ("name".into(), Value::Varchar(Some("Alice".into()))),
                 ("age".into(), Value::Int32(Some(30))),
-            ]),
-            vec![],
-            Box::new(TableRef::new("person".into())),
-        );
+            ].into()), Box::new(StructType { types: vec![], name: TableRef::new("person".into()) }));
         writer.write_value(&mut Default::default(), &mut q, &struct_val);
         let s = q.as_str().to_string();
         assert!(s.contains("Alice"));

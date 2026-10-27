@@ -124,7 +124,7 @@ mod tests {
         assert!(matches!(columns[2].value, Value::Varchar(..)));
         assert!(matches!(
             columns[3].value,
-            Value::Array(_, ref ty, 12) if matches!(**ty, Value::Char(..))
+            Value::Array(_, ref t) if t.len == 12 && matches!(t.element, Value::Char(..))
         ));
         assert!(matches!(columns[4].value, Value::Decimal(..)));
         assert!(matches!(columns[5].value, Value::UInt32(..)));
@@ -134,12 +134,12 @@ mod tests {
         assert!(matches!(columns[9].value, Value::Varchar(..)));
         assert!(matches!(
             columns[10].value,
-            Value::List(_, ref ty) if matches!(**ty, Value::Int64(..))
+            Value::List(.., ref t) if matches!(t.element, Value::Int64(..))
         ));
         assert!(matches!(columns[11].value, Value::Blob(..)));
         assert!(matches!(
             columns[12].value,
-            Value::Map(_, ref k_ty, ref v_ty) if matches!(**k_ty, Value::Varchar(..)) && matches!(**v_ty, Value::Varchar(..))
+            Value::Map(_, ref t) if matches!(t.key, Value::Varchar(..)) && matches!(t.value, Value::Varchar(..))
         ));
         assert_eq!(columns[0].nullable, false);
         assert_eq!(columns[1].nullable, false);

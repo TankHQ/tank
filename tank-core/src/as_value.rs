@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use crate::{
-    Error, FixedDecimal, Interval, Result, Value, ValueOwned, consume_while, extract_number,
-    truncate_long,
+    CollectionType, Error, FixedDecimal, Interval, MapType, Result, Value, ValueOwned,
+    consume_while, extract_number, truncate_long,
 };
 use crate::{month_to_number, number_to_month};
 use anyhow::{Context, anyhow};
@@ -98,12 +98,58 @@ macro_rules! impl_as_value {
                 $destination(None)
             }
             fn as_value<'a>(self) -> Value<'a> where Self: 'a {
-                $destination(Some(self as _))
+                trait Wrap<T> {
+                    fn wrap(self) -> T;
+                }
+                impl<T> Wrap<T> for T {
+                    fn wrap(self) -> T {
+                        self.into()
+                    }
+                }
+                impl<T> Wrap<Box<T>> for T {
+                    fn wrap(self) -> Box<T> {
+                        self.into()
+                    }
+                }
+                impl Wrap<i64> for isize {
+                    fn wrap(self) -> i64 {
+                        self as _
+                    }
+                }
+                impl Wrap<u64> for usize {
+                    fn wrap(self) -> u64 {
+                        self as _
+                    }
+                }
+                $destination(Some(Wrap::wrap(self)))
             }
             fn try_from_value(value: impl AsValue) -> Result<Self> {
+                trait Unwrap<T> {
+                    fn unwrap(self) -> T;
+                }
+                impl<T> Unwrap<T> for T {
+                    fn unwrap(self) -> T {
+                        self
+                    }
+                }
+                impl<T> Unwrap<T> for Box<T> {
+                    fn unwrap(self) -> T {
+                        *self
+                    }
+                }
+                impl Unwrap<isize> for i64 {
+                    fn unwrap(self) -> isize {
+                        self as _
+                    }
+                }
+                impl Unwrap<usize> for u64 {
+                    fn unwrap(self) -> usize {
+                        self as _
+                    }
+                }
                 let value = value.as_value();
                 match value {
-                    $destination(Some(v), ..) => Ok(v as _),
+                    $destination(Some(v), ..) => Ok(Unwrap::unwrap(v)),
                     $($pat_rest => $expr_rest,)*
                     #[allow(unreachable_patterns)]
                     Value::Int8(Some(v), ..) => {
@@ -165,6 +211,7 @@ macro_rules! impl_as_value {
                     #[allow(unreachable_patterns)]
                     // SQL VARINT becomes i128
                     Value::Int128(Some(v), ..) => {
+                        let v = *v;
                         let mut max = <$source>::MAX as i128;
                         if max < 0 {
                             max = i128::MAX;
@@ -235,6 +282,7 @@ macro_rules! impl_as_value {
                     }
                     #[allow(unreachable_patterns)]
                     Value::UInt128(Some(v), ..) => {
+                        let v = *v;
                         let mut max = <$source>::MAX as i128;
                         if max < 0 {
                             max = i128::MAX;
@@ -325,38 +373,13 @@ macro_rules! impl_as_value {
     };
 }
 
-impl_as_value!(
-    i8,
-    Value::Int8,
-    Value::Int16(Some(v), ..) => {
-        let result = v as i8;
-        if result as i16 != v {
-            return Err(anyhow!("Value {v}: i16 is out of range for i8"));
-        }
-        Ok(result)
-    },
-);
+impl_as_value!(i8, Value::Int8);
 
-impl_as_value!(
-    i16,
-    Value::Int16,
-    Value::Int8(Some(v), ..) => Ok(v as _),
-    Value::UInt16(Some(v), ..) => {
-        i16::try_from(v).map_err(|_| anyhow!("Value {v}: u16 is out of range for i16"))
-    },
-    Value::UInt8(Some(v), ..) => Ok(v as _),
-);
+impl_as_value!(i16, Value::Int16);
 
 impl_as_value!(
     i32,
     Value::Int32,
-    Value::Int16(Some(v), ..) => Ok(v as _),
-    Value::Int8(Some(v), ..) => Ok(v as _),
-    Value::UInt32(Some(v), ..) => {
-        i32::try_from(v).map_err(|_| anyhow!("Value {v}: u32 is out of range for i32"))
-    },
-    Value::UInt16(Some(v), ..) => Ok(v as _),
-    Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
         let make_error = || anyhow!("Value {v}: Decimal does not fit into i32");
         if !v.is_integer() {
@@ -369,15 +392,6 @@ impl_as_value!(
 impl_as_value!(
     i64,
     Value::Int64,
-    Value::Int32(Some(v), ..) => Ok(v as _),
-    Value::Int16(Some(v), ..) => Ok(v as _),
-    Value::Int8(Some(v), ..) => Ok(v as _),
-    Value::UInt64(Some(v), ..) => {
-        i64::try_from(v).map_err(|_| anyhow!("Value {v}: u64 is out of range for i64"))
-    },
-    Value::UInt32(Some(v), ..) => Ok(v as _),
-    Value::UInt16(Some(v), ..) => Ok(v as _),
-    Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
         let make_error = || anyhow!("Value {v}: Decimal does not fit into i64");
         if !v.is_integer() {
@@ -390,17 +404,9 @@ impl_as_value!(
 impl_as_value!(
     i128,
     Value::Int128,
-    Value::Int64(Some(v), ..) => Ok(v as _),
-    Value::Int32(Some(v), ..) => Ok(v as _),
-    Value::Int16(Some(v), ..) => Ok(v as _),
-    Value::Int8(Some(v), ..) => Ok(v as _),
     Value::UInt128(Some(v), ..) => {
-        i128::try_from(v).map_err(|_| anyhow!("Value {v}: u128 is out of range for i128"))
+        i128::try_from(*v).map_err(|_| anyhow!("Value {v}: u128 is out of range for i128"))
     },
-    Value::UInt64(Some(v), ..) => Ok(v as _),
-    Value::UInt32(Some(v), ..) => Ok(v as _),
-    Value::UInt16(Some(v), ..) => Ok(v as _),
-    Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
         let make_error = || anyhow!("Value {v}: Decimal does not fit into i128");
         if !v.is_integer() {
@@ -413,14 +419,8 @@ impl_as_value!(
 impl_as_value!(
     isize,
     Value::Int64,
-    Value::Int32(Some(v), ..) => Ok(v as _),
-    Value::Int16(Some(v), ..) => Ok(v as _),
-    Value::Int8(Some(v), ..) => Ok(v as _),
-    Value::UInt64(Some(v), ..) => {
-        isize::try_from(v).map_err(|_| anyhow!("Value {v}: u64 is out of range for isize"))
-    },
     Value::Decimal(Some(v), ..) => {
-        let make_error = || anyhow!("Value {v}: Decimal does not fit into i64");
+        let make_error = || anyhow!("Value {v}: Decimal does not fit into isize");
         if !v.is_integer() {
             return Err(make_error().context("The value is not an integer"));
         }
@@ -428,40 +428,15 @@ impl_as_value!(
     }
 );
 
-impl_as_value!(
-    u8,
-    Value::UInt8,
-    Value::Int16(Some(v), ..) => {
-        v.to_u8().ok_or_else(|| anyhow!("Value {v}: i16 is out of range for u8"))
-    }
-);
+impl_as_value!(u8, Value::UInt8);
 
-impl_as_value!(
-    u16,
-    Value::UInt16,
-    Value::UInt8(Some(v), ..) => Ok(v as _),
-    Value::Int32(Some(v), ..) => {
-        let result = v as u16;
-        if result as i32 != v {
-            return Err(anyhow!("Value {v}: i32 is out of range for u16"));
-        }
-        Ok(result)
-    }
-);
+impl_as_value!(u16, Value::UInt16);
 
-impl_as_value!(
-    u32,
-    Value::UInt32,
-    Value::UInt16(Some(v), ..) => Ok(v as _),
-    Value::UInt8(Some(v), ..) => Ok(v as _),
-);
+impl_as_value!(u32, Value::UInt32);
 
 impl_as_value!(
     u64,
     Value::UInt64,
-    Value::UInt32(Some(v), ..) => Ok(v as _),
-    Value::UInt16(Some(v), ..) => Ok(v as _),
-    Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
         let make_error = || anyhow!("Value {v}: Decimal does not fit into u64");
         if !v.is_integer() {
@@ -474,10 +449,6 @@ impl_as_value!(
 impl_as_value!(
     u128,
     Value::UInt128,
-    Value::UInt64(Some(v), ..) => Ok(v as _),
-    Value::UInt32(Some(v), ..) => Ok(v as _),
-    Value::UInt16(Some(v), ..) => Ok(v as _),
-    Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
         let make_error = || anyhow!("Value {v}: Decimal does not fit into u128");
         if !v.is_integer() {
@@ -490,9 +461,6 @@ impl_as_value!(
 impl_as_value!(
     usize,
     Value::UInt64,
-    Value::UInt32(Some(v), ..) => Ok(v as _),
-    Value::UInt16(Some(v), ..) => Ok(v as _),
-    Value::UInt8(Some(v), ..) => Ok(v as _),
     Value::Decimal(Some(v), ..) => {
         let make_error = || anyhow!("Value {v}: Decimal does not fit into usize");
         if !v.is_integer() {
@@ -630,12 +598,12 @@ impl_as_value!(
     Value::Int16(Some(v), ..) => Ok(v != 0),
     Value::Int32(Some(v), ..) => Ok(v != 0),
     Value::Int64(Some(v), ..) => Ok(v != 0),
-    Value::Int128(Some(v), ..) => Ok(v != 0),
+    Value::Int128(Some(v), ..) => Ok(*v != 0),
     Value::UInt8(Some(v), ..) => Ok(v != 0),
     Value::UInt16(Some(v), ..) => Ok(v != 0),
     Value::UInt32(Some(v), ..) => Ok(v != 0),
     Value::UInt64(Some(v), ..) => Ok(v != 0),
-    Value::UInt128(Some(v), ..) => Ok(v != 0),
+    Value::UInt128(Some(v), ..) => Ok(*v != 0),
     Value::Json(Some(serde_json::Value::Bool(v)), ..) => Ok(v),
     Value::Json(Some(serde_json::Value::Number(v)), ..) => {
         let n = v.as_i64();
@@ -1470,7 +1438,13 @@ impl<const W: u8, const S: u8> AsValue for &FixedDecimal<W, S> {
 
 impl<T: AsValue, const N: usize> AsValue for [T; N] {
     fn as_empty_value() -> ValueOwned {
-        Value::Array(None, Box::new(T::as_empty_value()), N as u32)
+        Value::Array(
+            None,
+            Box::new(CollectionType {
+                element: T::as_empty_value(),
+                len: N as u32,
+            }),
+        )
     }
     fn as_value<'a>(self) -> Value<'a>
     where
@@ -1478,8 +1452,10 @@ impl<T: AsValue, const N: usize> AsValue for [T; N] {
     {
         Value::Array(
             Some(self.into_iter().map(AsValue::as_value).collect()),
-            Box::new(T::as_empty_value()),
-            N as u32,
+            Box::new(CollectionType {
+                element: T::as_empty_value(),
+                len: N as u32,
+            }),
         )
     }
     fn try_from_value(value: impl AsValue) -> Result<Self> {
@@ -1529,7 +1505,13 @@ where
     &'r T: AsValue,
 {
     fn as_empty_value() -> ValueOwned {
-        Value::Array(None, Box::new(<&'r T>::as_empty_value()), N as u32)
+        Value::Array(
+            None,
+            Box::new(CollectionType {
+                element: <&'r T>::as_empty_value(),
+                len: N as u32,
+            }),
+        )
     }
     fn as_value<'a>(self) -> Value<'a>
     where
@@ -1537,8 +1519,10 @@ where
     {
         Value::Array(
             Some(self.iter().map(AsValue::as_value).collect()),
-            Box::new(<&'r T>::as_empty_value()),
-            N as u32,
+            Box::new(CollectionType {
+                element: <&'r T>::as_empty_value(),
+                len: N as u32,
+            }),
         )
     }
 }
@@ -1547,12 +1531,15 @@ macro_rules! impl_as_value {
     (@reference $source:ty) => {
         impl<'r, T> AsValue for &'r $source where &'r T: AsValue {
             fn as_empty_value() -> ValueOwned {
-                Value::List(None, Box::new(<&'r T>::as_empty_value()))
+                Value::List(
+                    None,
+                    Box::new(CollectionType { element: <&'r T>::as_empty_value(), len: 0 }),
+                )
             }
             fn as_value<'a>(self) -> Value<'a> where Self: 'a {
                 Value::List(
                     Some(self.iter().map(AsValue::as_value).collect()),
-                    Box::new(<&'r T>::as_empty_value()),
+                    Box::new(CollectionType { element: <&'r T>::as_empty_value(), len: 0 }),
                 )
             }
         }
@@ -1560,7 +1547,10 @@ macro_rules! impl_as_value {
     ($source:ident) => {
         impl<T: AsValue> AsValue for $source<T> {
             fn as_empty_value() -> ValueOwned {
-                Value::List(None, Box::new(T::as_empty_value()))
+                Value::List(
+                    None,
+                    Box::new(CollectionType { element: T::as_empty_value(), len: 0 }),
+                )
             }
             fn as_value<'a>(self) -> Value<'a>
             where
@@ -1568,7 +1558,7 @@ macro_rules! impl_as_value {
             {
                 Value::List(
                     Some(self.into_iter().map(AsValue::as_value).collect()),
-                    Box::new(T::as_empty_value()),
+                    Box::new(CollectionType { element: T::as_empty_value(), len: 0 }),
                 )
             }
             fn try_from_value(value: impl AsValue) -> Result<Self> {
@@ -1606,17 +1596,25 @@ macro_rules! impl_as_value {
     ($source:ident, $($key_trait:ident),+) => {
         impl<K: AsValue $(+ $key_trait)+, V: AsValue> AsValue for $source<K, V> {
             fn as_empty_value() -> ValueOwned {
-                Value::Map(None, K::as_empty_value().into(), V::as_empty_value().into())
+                Value::Map(
+                    None,
+                    Box::new(MapType {
+                        key: K::as_empty_value(),
+                        value: V::as_empty_value(),
+                    }),
+                )
             }
             fn as_value<'a>(self) -> Value<'a> where Self: 'a {
                 Value::Map(
-                    Some(
+                    Some(Box::new(
                         self.into_iter()
                             .map(|(k, v)| (k.as_value(), v.as_value()))
                             .collect(),
-                    ),
-                    K::as_empty_value().into(),
-                    V::as_empty_value().into(),
+                    )),
+                    Box::new(MapType {
+                        key: K::as_empty_value(),
+                        value: V::as_empty_value(),
+                    }),
                 )
             }
             fn try_from_value(value: impl AsValue) -> Result<Self> {
@@ -1660,15 +1658,21 @@ macro_rules! impl_as_value {
             fn as_empty_value() -> ValueOwned {
                 Value::Map(
                     None,
-                    Box::new(<&'r K>::as_empty_value()),
-                    Box::new(<&'r V>::as_empty_value()),
+                    Box::new(MapType {
+                        key: <&'r K>::as_empty_value(),
+                        value: <&'r V>::as_empty_value(),
+                    }),
                 )
             }
             fn as_value<'a>(self) -> Value<'a> where Self: 'a {
                 Value::Map(
-                    Some(self.iter().map(|(k, v)| (k.as_value(), v.as_value())).collect()),
-                    Box::new(<&'r K>::as_empty_value()),
-                    Box::new(<&'r V>::as_empty_value()),
+                    Some(Box::new(
+                        self.iter().map(|(k, v)| (k.as_value(), v.as_value())).collect(),
+                    )),
+                    Box::new(MapType {
+                        key: <&'r K>::as_empty_value(),
+                        value: <&'r V>::as_empty_value(),
+                    }),
                 )
             }
         }

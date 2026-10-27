@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use klickhouse::{Type, Value as KlValue};
 use std::{borrow::Cow, collections::HashMap, fmt::Write as _};
-use tank_core::{Result, Value, ValueOwned, decimal_from_scaled};
+use tank_core::{CollectionType, MapType, Result, Value, ValueOwned, decimal_from_scaled};
 use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
 use uuid::Uuid;
 
@@ -21,19 +21,19 @@ pub(crate) fn extract_value(ty: &Type, val: KlValue) -> Result<ValueOwned> {
     match val {
         KlValue::Null => Ok(Value::Null),
 
-        KlValue::Int8(v) => Ok(Value::Int8(Some(v))),
-        KlValue::Int16(v) => Ok(Value::Int16(Some(v))),
-        KlValue::Int32(v) => Ok(Value::Int32(Some(v))),
-        KlValue::Int64(v) => Ok(Value::Int64(Some(v))),
-        KlValue::Int128(v) => Ok(Value::Int128(Some(v))),
-        KlValue::UInt8(v) => Ok(Value::UInt8(Some(v))),
-        KlValue::UInt16(v) => Ok(Value::UInt16(Some(v))),
-        KlValue::UInt32(v) => Ok(Value::UInt32(Some(v))),
-        KlValue::UInt64(v) => Ok(Value::UInt64(Some(v))),
-        KlValue::UInt128(v) => Ok(Value::UInt128(Some(v))),
+        KlValue::Int8(v) => Ok(Value::Int8(Some(v.into()))),
+        KlValue::Int16(v) => Ok(Value::Int16(Some(v.into()))),
+        KlValue::Int32(v) => Ok(Value::Int32(Some(v.into()))),
+        KlValue::Int64(v) => Ok(Value::Int64(Some(v.into()))),
+        KlValue::Int128(v) => Ok(Value::Int128(Some(v.into()))),
+        KlValue::UInt8(v) => Ok(Value::UInt8(Some(v.into()))),
+        KlValue::UInt16(v) => Ok(Value::UInt16(Some(v.into()))),
+        KlValue::UInt32(v) => Ok(Value::UInt32(Some(v.into()))),
+        KlValue::UInt64(v) => Ok(Value::UInt64(Some(v.into()))),
+        KlValue::UInt128(v) => Ok(Value::UInt128(Some(v.into()))),
 
-        KlValue::Float32(v) => Ok(Value::Float32(Some(v))),
-        KlValue::Float64(v) => Ok(Value::Float64(Some(v))),
+        KlValue::Float32(v) => Ok(Value::Float32(Some(v.into()))),
+        KlValue::Float64(v) => Ok(Value::Float64(Some(v.into()))),
 
         KlValue::Decimal32(scale, raw) => {
             let (p, s) = decimal_ps(ty, scale);
@@ -152,7 +152,7 @@ pub(crate) fn extract_value(ty: &Type, val: KlValue) -> Result<ValueOwned> {
                         .map(|e| extract_value(inner_ty, e))
                         .collect::<Result<_>>()?,
                 ),
-                Box::new(clickhouse_type_to_value(inner_ty)),
+                Box::new(CollectionType { element: clickhouse_type_to_value(inner_ty), len: 0 }),
             ))
         }
 
@@ -165,9 +165,11 @@ pub(crate) fn extract_value(ty: &Type, val: KlValue) -> Result<ValueOwned> {
                 map.insert(extract_value(key_ty, k)?, extract_value(val_ty, v)?);
             }
             Ok(Value::Map(
-                Some(map),
-                Box::new(clickhouse_type_to_value(key_ty)),
-                Box::new(clickhouse_type_to_value(val_ty)),
+                Some(Box::new(map)),
+                Box::new(MapType {
+                    key: clickhouse_type_to_value(key_ty),
+                    value: clickhouse_type_to_value(val_ty),
+                }),
             ))
         }
 
@@ -214,11 +216,16 @@ pub(crate) fn clickhouse_type_to_value(ty: &Type) -> ValueOwned {
             }
         }
         Type::Nullable(inner) | Type::LowCardinality(inner) => clickhouse_type_to_value(inner),
-        Type::Array(inner) => Value::List(None, Box::new(clickhouse_type_to_value(inner))),
+        Type::Array(inner) => Value::List(
+            None,
+            Box::new(CollectionType { element: clickhouse_type_to_value(inner), len: 0 }),
+        ),
         Type::Map(k, v) => Value::Map(
             None,
-            Box::new(clickhouse_type_to_value(k)),
-            Box::new(clickhouse_type_to_value(v)),
+            Box::new(MapType {
+                key: clickhouse_type_to_value(k),
+                value: clickhouse_type_to_value(v),
+            }),
         ),
         _ => Value::Unknown(None),
     }

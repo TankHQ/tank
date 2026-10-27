@@ -1,5 +1,5 @@
 use crate::{
-    AsEntity, AsQuery, Driver, DynQuery, Query, QueryResult, RawQuery, Result, RowOwned,
+    AsEntity, AsQuery, Driver, DynQuery, Error, Query, QueryResult, RawQuery, Result, RowOwned,
     RowsAffected, writer::SqlWriter,
 };
 use anyhow::anyhow;
@@ -80,6 +80,8 @@ where
 {
     inner: D::Results<'s, O>,
     current: Option<D::Rows<'s, O>>,
+    /// Leading statement error captured while priming the first row set.
+    pending: Option<Error>,
 }
 
 impl<'s, D, O> Fetched<'s, D, O>
@@ -88,10 +90,30 @@ where
     O: AsMut<Query<D>> + Send + 's,
 {
     /// Wraps the statement-level results produced by [`Executor::run`].
-    pub fn new(inner: D::Results<'s, O>) -> Self {
+    ///
+    /// Primes the first row set so [`size_hint`](Iterator::size_hint) can report
+    /// the row count before iteration, letting `collect` preallocate.
+    pub fn new(mut inner: D::Results<'s, O>) -> Self {
+        let mut current = None;
+        let mut pending = None;
+        loop {
+            match inner.next() {
+                Some(Ok(QueryResult::Rows(rows))) => {
+                    current = Some(rows);
+                    break;
+                }
+                Some(Ok(QueryResult::Affected(_))) => {}
+                Some(Err(error)) => {
+                    pending = Some(error);
+                    break;
+                }
+                None => break,
+            }
+        }
         Self {
             inner,
-            current: None,
+            current,
+            pending,
         }
     }
 }
@@ -104,6 +126,9 @@ where
     type Item = Result<D::Row<'s>>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if let Some(error) = self.pending.take() {
+            return Some(Err(error));
+        }
         loop {
             if let Some(rows) = self.current.as_mut() {
                 match rows.next() {
@@ -117,6 +142,16 @@ where
                 Err(error) => return Some(Err(error)),
             }
         }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        // Further statements may follow, so only the primed row set bounds the count.
+        let lower = match (&self.pending, &self.current) {
+            (Some(_), _) => 1,
+            (None, Some(rows)) => rows.size_hint().0,
+            (None, None) => 0,
+        };
+        (lower, None)
     }
 }
 

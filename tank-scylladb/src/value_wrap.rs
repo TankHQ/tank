@@ -20,7 +20,10 @@ use std::{
     collections::{HashMap, HashSet},
     io::{self, Error, ErrorKind},
 };
-use tank_core::{AsValue, Interval, TableRef, Value, ValueOwned};
+use tank_core::{
+    AsValue, CollectionType as TankCollectionType, Interval, MapType, StructType, TableRef, Value,
+    ValueOwned,
+};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
 
@@ -269,21 +272,21 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
     }
 
     fn deserialize(
-        ty: &'metadata ColumnType<'metadata>,
+        column_t: &'metadata ColumnType<'metadata>,
         v: Option<FrameSlice<'frame>>,
     ) -> Result<Self, DeserializationError> {
-        let value = match ty {
+        let value = match column_t {
             ColumnType::Native(native_type) => match native_type {
-                NativeType::Boolean => Value::Boolean(DeserializeValue::deserialize(ty, v)?),
-                NativeType::TinyInt => Value::Int8(DeserializeValue::deserialize(ty, v)?),
-                NativeType::SmallInt => Value::Int16(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Int => Value::Int32(DeserializeValue::deserialize(ty, v)?),
-                NativeType::BigInt => Value::Int64(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Counter => Value::Int64(DeserializeValue::deserialize(ty, v)?),
+                NativeType::Boolean => Value::Boolean(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::TinyInt => Value::Int8(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::SmallInt => Value::Int16(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::Int => Value::Int32(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::BigInt => Value::Int64(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::Counter => Value::Int64(DeserializeValue::deserialize(column_t, v)?),
                 NativeType::Varint => {
                     let mut unsigned = false;
                     let value = if let Some(varint) =
-                        <Option<CqlVarintBorrowed> as DeserializeValue>::deserialize(ty, v)?
+                        <Option<CqlVarintBorrowed> as DeserializeValue>::deserialize(column_t, v)?
                     {
                         let mut bytes = varint.as_signed_bytes_be_slice();
                         let mut len = bytes.len();
@@ -307,16 +310,16 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                         None
                     };
                     if unsigned {
-                        Value::UInt128(value.map(|v| v as _))
+                        Value::UInt128(value.map(|v| Box::new(v as u128)))
                     } else {
-                        Value::Int128(value)
+                        Value::Int128(value.map(Box::new))
                     }
                 }
-                NativeType::Float => Value::Float32(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Double => Value::Float64(DeserializeValue::deserialize(ty, v)?),
+                NativeType::Float => Value::Float32(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::Double => Value::Float64(DeserializeValue::deserialize(column_t, v)?),
                 NativeType::Decimal => {
                     if let Some(d) =
-                        <Option<CqlDecimalBorrowed> as DeserializeValue>::deserialize(ty, v)?
+                        <Option<CqlDecimalBorrowed> as DeserializeValue>::deserialize(column_t, v)?
                     {
                         let error = |details: Cow<'_, str>| {
                             DeserializationError::new(io::Error::new(
@@ -364,18 +367,19 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                     }
                 }
                 NativeType::Ascii => Value::Varchar(
-                    <Option<String> as DeserializeValue>::deserialize(ty, v)?.map(Into::into),
+                    <Option<String> as DeserializeValue>::deserialize(column_t, v)?.map(Into::into),
                 ),
                 NativeType::Text => Value::Varchar(
-                    <Option<String> as DeserializeValue>::deserialize(ty, v)?.map(Into::into),
+                    <Option<String> as DeserializeValue>::deserialize(column_t, v)?.map(Into::into),
                 ),
                 NativeType::Blob => Value::Blob(
-                    <Option<Vec<u8>> as DeserializeValue>::deserialize(ty, v)?.map(Into::into),
+                    <Option<Vec<u8>> as DeserializeValue>::deserialize(column_t, v)?
+                        .map(Into::into),
                 ),
-                NativeType::Date => Value::Date(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Time => Value::Time(DeserializeValue::deserialize(ty, v)?),
+                NativeType::Date => Value::Date(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::Time => Value::Time(DeserializeValue::deserialize(column_t, v)?),
                 NativeType::Timestamp => Value::Timestamp(
-                    <Option<CqlTimestamp> as DeserializeValue>::deserialize(ty, v)?
+                    <Option<CqlTimestamp> as DeserializeValue>::deserialize(column_t, v)?
                         .map(|v| {
                             OffsetDateTime::from_unix_timestamp_nanos((v.0 as i128) * 1_000_000)
                                 .map(|v| PrimitiveDateTime::new(v.date(), v.time()))
@@ -384,7 +388,7 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                         .map_err(DeserializationError::new)?,
                 ),
                 NativeType::Duration => Value::Interval(
-                    <Option<CqlDuration> as DeserializeValue>::deserialize(ty, v)?.map(|v| {
+                    <Option<CqlDuration> as DeserializeValue>::deserialize(column_t, v)?.map(|v| {
                         Interval {
                             months: v.months as _,
                             days: v.days as _,
@@ -393,51 +397,61 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                     }),
                 ),
                 NativeType::Inet => Value::Varchar(
-                    <Option<std::net::IpAddr> as DeserializeValue>::deserialize(ty, v)?
+                    <Option<std::net::IpAddr> as DeserializeValue>::deserialize(column_t, v)?
                         .map(|v| v.to_string().into()),
                 ),
-                NativeType::Timeuuid => Value::Uuid(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Uuid => Value::Uuid(DeserializeValue::deserialize(ty, v)?),
+                NativeType::Timeuuid => Value::Uuid(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::Uuid => Value::Uuid(DeserializeValue::deserialize(column_t, v)?),
                 _ => {
                     let error = DeserializationError::new(std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
-                        format!("Unexpected type {ty:?} from ScyllaDB"),
+                        format!("Unexpected type {column_t:?} from ScyllaDB"),
                     ));
                     log::error!("{error:#}");
                     return Err(error);
                 }
             },
-            ColumnType::Collection { frozen: _, typ } => match typ {
+            ColumnType::Collection { frozen: _, typ: t } => match t {
                 CollectionType::List(elem_type) => Value::List(
-                    <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(ty, v)?
+                    <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(column_t, v)?
                         .map(|v| v.into_iter().map(|v| v.0).collect()),
-                    Self::deserialize(elem_type, None)?.0.into(),
+                    Box::new(TankCollectionType {
+                        element: Self::deserialize(elem_type, None)?.0,
+                        len: 0,
+                    }),
                 ),
                 CollectionType::Map(k_type, v_type) => Value::Map(
                     <Option<HashMap<ValueWrap, ValueWrap>> as DeserializeValue>::deserialize(
-                        ty, v,
+                        column_t, v,
                     )?
-                    .map(|v| v.into_iter().map(|(k, v)| (k.0, v.0)).collect()),
-                    Self::deserialize(k_type, None)?.0.into(),
-                    Self::deserialize(v_type, None)?.0.into(),
+                    .map(|v| Box::new(v.into_iter().map(|(k, v)| (k.0, v.0)).collect())),
+                    Box::new(MapType {
+                        key: Self::deserialize(k_type, None)?.0,
+                        value: Self::deserialize(v_type, None)?.0,
+                    }),
                 ),
-                CollectionType::Set(elem_type) => Value::List(
-                    <Option<HashSet<ValueWrap>> as DeserializeValue>::deserialize(ty, v)?
+                CollectionType::Set(element_t) => Value::List(
+                    <Option<HashSet<ValueWrap>> as DeserializeValue>::deserialize(column_t, v)?
                         .map(|v| v.into_iter().map(|v| v.0).collect()),
-                    Self::deserialize(elem_type, None)?.0.into(),
+                    Box::new(TankCollectionType {
+                        element: Self::deserialize(element_t, None)?.0,
+                        len: 0,
+                    }),
                 ),
                 _ => {
                     return Err(DeserializationError::new(Error::new(
                         ErrorKind::InvalidData,
-                        format!("Unexpected collection type {ty:?}"),
+                        format!("Unexpected collection type {column_t:?}"),
                     )));
                 }
             },
             ColumnType::Vector { typ, dimensions } => Value::Array(
-                <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(ty, v)?
+                <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(column_t, v)?
                     .map(|v| v.into_iter().map(|v| v.0).collect()),
-                Self::deserialize(typ, None)?.0.into(),
-                *dimensions as _,
+                Box::new(TankCollectionType {
+                    element: Self::deserialize(typ, None)?.0,
+                    len: *dimensions as _,
+                }),
             ),
             ColumnType::UserDefinedType {
                 frozen: _,
@@ -450,7 +464,7 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                     columns: Default::default(),
                     primary_key: Default::default(),
                 };
-                let fields = UdtIterator::deserialize(ty, v)?
+                let fields = UdtIterator::deserialize(column_t, v)?
                     .map(|((name, ty), res)| {
                         res.and_then(|v| {
                             let val = Option::<ValueWrap>::deserialize(ty, v.flatten())?
@@ -460,26 +474,34 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                         })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let ty = fields
+                let t = fields
                     .iter()
                     .map(|(name, value)| (name.clone(), value.as_null()))
                     .collect();
                 Value::Struct(
-                    if v.is_none() { None } else { Some(fields) },
-                    ty,
-                    Box::new(type_ref),
+                    if v.is_none() {
+                        None
+                    } else {
+                        Some(fields.into_boxed_slice())
+                    },
+                    Box::new(StructType {
+                        types: t,
+                        name: type_ref,
+                    }),
                 )
             }
-            ColumnType::Tuple(elem_types) => Value::Array(
-                <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(ty, v)?
+            ColumnType::Tuple(types) => Value::Array(
+                <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(column_t, v)?
                     .map(|v| v.into_iter().map(|v| v.0).collect()),
-                Value::Unknown(None).into(),
-                elem_types.len() as _,
+                Box::new(TankCollectionType {
+                    element: Value::Unknown(None),
+                    len: types.len() as _,
+                }),
             ),
             _ => {
                 return Err(DeserializationError::new(Error::new(
                     ErrorKind::InvalidData,
-                    format!("Unexpected type {ty:?}"),
+                    format!("Unexpected type {column_t:?}"),
                 )));
             }
         };

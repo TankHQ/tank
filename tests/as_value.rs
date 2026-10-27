@@ -10,7 +10,7 @@ mod tests {
         rc::Rc,
         sync::{Arc, RwLock},
     };
-    use tank::{AsValue, TableRef, Value, ValueOwned};
+    use tank::{AsValue, CollectionType, MapType, StructType, TableRef, Value, ValueOwned};
     use tank_core::{FixedDecimal, Interval};
 
     #[test]
@@ -143,7 +143,7 @@ mod tests {
         };
         assert_borrowed_string(encoded.into_iter().next().unwrap(), &values[0]);
         let values = [text.clone()];
-        let Value::Array(Some(encoded), _, 1) = (&values).as_value() else {
+        let Value::Array(Some(encoded), ..) = (&values).as_value() else {
             panic!("Expected array");
         };
         assert_borrowed_string(encoded.into_vec().pop().unwrap(), &values[0]);
@@ -155,7 +155,7 @@ mod tests {
         assert_eq!(<[String; 1]>::try_from_value(&values).unwrap(), values);
 
         let map = HashMap::from([(text.clone(), text.clone())]);
-        let Value::Map(Some(encoded), _, _) = (&map).as_value() else {
+        let Value::Map(Some(encoded), _) = (&map).as_value() else {
             panic!("Expected map");
         };
         let (key, value) = map.iter().next().unwrap();
@@ -300,35 +300,35 @@ mod tests {
                 (Value::Varchar(Some(_)) | Value::Unknown(Some(_)) | Value::Blob(Some(_)), _) => {
                     panic!("Payload was not reborrowed");
                 }
-                (Value::Array(a, at, _), Value::Array(b, bt, _)) => {
-                    check(at, bt);
+                (Value::Array(a, a_t), Value::Array(b, b_t)) => {
+                    check(&a_t.element, &b_t.element);
                     if let (Some(a), Some(b)) = (a, b) {
                         for (a, b) in a.iter().zip(b.iter()) {
                             check(a, b);
                         }
                     }
                 }
-                (Value::List(a, at), Value::List(b, bt)) => {
-                    check(at, bt);
+                (Value::List(a, a_t), Value::List(b, b_t)) => {
+                    check(&a_t.element, &b_t.element);
                     if let (Some(a), Some(b)) = (a, b) {
                         for (a, b) in a.iter().zip(b.iter()) {
                             check(a, b);
                         }
                     }
                 }
-                (Value::Map(a, ak, av), Value::Map(b, bk, bv)) => {
-                    check(ak, bk);
-                    check(av, bv);
+                (Value::Map(a, a_t), Value::Map(b, b_t)) => {
+                    check(&a_t.key, &b_t.key);
+                    check(&a_t.value, &b_t.value);
                     if let (Some(a), Some(b)) = (a, b) {
-                        for (key, value) in a {
+                        for (key, value) in a.iter() {
                             let (bk, bv) = b.get_key_value(key).unwrap();
                             check(key, bk);
                             check(value, bv);
                         }
                     }
                 }
-                (Value::Struct(a, at, _), Value::Struct(b, bt, _)) => {
-                    for ((_, a), (_, b)) in at.iter().zip(bt) {
+                (Value::Struct(a, a_t), Value::Struct(b, b_t)) => {
+                    for ((_, a), (_, b)) in a_t.types.iter().zip(&b_t.types) {
                         check(a, b);
                     }
                     if let (Some(a), Some(b)) = (a, b) {
@@ -342,22 +342,41 @@ mod tests {
         }
         let text = String::from("metadata and payload");
         let inner = Value::List(
-            Some(vec![
-                text.clone().as_value(),
-                Value::Blob(Some(Cow::Owned(vec![1, 2]))),
-            ]),
-            Box::new(Value::Unknown(Some(Cow::Owned(text.clone())))),
+            Some(
+                vec![
+                    text.clone().as_value(),
+                    Value::Blob(Some(Cow::Owned(vec![1, 2]))),
+                ]
+                .into(),
+            ),
+            Box::new(CollectionType {
+                element: Value::Unknown(Some(Cow::Owned(text.clone()))),
+                len: 0,
+            }),
         );
         let map = Value::Map(
-            Some(HashMap::from([(text.clone().as_value(), inner.clone())])),
-            Box::new(text.clone().as_value()),
-            Box::new(inner.clone()),
+            Some(Box::new(HashMap::from([(
+                text.clone().as_value(),
+                inner.clone(),
+            )]))),
+            Box::new(MapType {
+                key: text.clone().as_value(),
+                value: inner.clone(),
+            }),
         );
-        let array = Value::Array(Some(vec![map.clone()].into()), Box::new(map), 1);
+        let array = Value::Array(
+            Some(vec![map.clone()].into()),
+            Box::new(CollectionType {
+                element: map,
+                len: 1,
+            }),
+        );
         let value = Value::Struct(
-            Some(vec![("field".into(), array.clone())]),
-            vec![("field".into(), array)],
-            Box::new(TableRef::new("custom_type".into())),
+            Some(vec![("field".into(), array.clone())].into()),
+            Box::new(StructType {
+                types: vec![("field".into(), array)],
+                name: TableRef::new("custom_type".into()),
+            }),
         );
         check(&value, &value.reborrow());
         check(&value, &(&value).as_value());
@@ -370,9 +389,27 @@ mod tests {
             Value::Int32(Some(42)),
             Value::Decimal(Some(Decimal::ONE), 10, 2),
             Value::Json(Some(serde_json::json!({"x": [1, 2]}))),
-            Value::Array(None, Box::new(inner.clone()), 2),
-            Value::List(None, Box::new(inner.clone())),
-            Value::Map(None, Box::new(inner.clone()), Box::new(inner)),
+            Value::Array(
+                None,
+                Box::new(CollectionType {
+                    element: inner.clone(),
+                    len: 2,
+                }),
+            ),
+            Value::List(
+                None,
+                Box::new(CollectionType {
+                    element: inner.clone(),
+                    len: 0,
+                }),
+            ),
+            Value::Map(
+                None,
+                Box::new(MapType {
+                    key: inner.clone(),
+                    value: inner,
+                }),
+            ),
             Value::Varchar(None),
             Value::Blob(None),
             Value::Unknown(None),
@@ -406,8 +443,14 @@ mod tests {
         assert_eq!(bool::try_from_value(Value::UInt16(Some(0))).unwrap(), false);
         assert_eq!(bool::try_from_value(Value::UInt32(Some(1))).unwrap(), true);
         assert_eq!(bool::try_from_value(Value::UInt64(Some(0))).unwrap(), false);
-        assert_eq!(bool::try_from_value(Value::UInt128(Some(1))).unwrap(), true);
-        assert_eq!(bool::try_from_value(Value::Int128(Some(0))).unwrap(), false);
+        assert_eq!(
+            bool::try_from_value(Value::UInt128(Some(Box::new(1)))).unwrap(),
+            true
+        );
+        assert_eq!(
+            bool::try_from_value(Value::Int128(Some(Box::new(0)))).unwrap(),
+            false
+        );
 
         assert_eq!(bool::parse("true").unwrap(), true);
         assert_eq!(bool::parse("false").unwrap(), false);
@@ -532,7 +575,7 @@ mod tests {
         assert_eq!(i64::try_from_value(Value::UInt64(Some(4))).unwrap(), 4);
         assert_eq!(i128::try_from_value(Value::UInt8(Some(1))).unwrap(), 1);
         assert_eq!(
-            i128::try_from_value(Value::UInt128(Some(999))).unwrap(),
+            i128::try_from_value(Value::UInt128(Some(Box::new(999)))).unwrap(),
             999
         );
         assert_eq!(u64::try_from_value(Value::UInt8(Some(1))).unwrap(), 1);
@@ -563,9 +606,9 @@ mod tests {
             i64::MAX
         );
 
-        assert!(i128::try_from_value(Value::UInt128(Some(u128::MAX))).is_err());
+        assert!(i128::try_from_value(Value::UInt128(Some(Box::new(u128::MAX)))).is_err());
         assert_eq!(
-            i128::try_from_value(Value::UInt128(Some(i128::MAX as u128))).unwrap(),
+            i128::try_from_value(Value::UInt128(Some(Box::new(i128::MAX as u128)))).unwrap(),
             i128::MAX
         );
 
@@ -584,16 +627,16 @@ mod tests {
                     Value::Int16(Some(v), ..) => *v as i128,
                     Value::Int32(Some(v), ..) => *v as i128,
                     Value::Int64(Some(v), ..) => *v as i128,
-                    Value::Int128(Some(v), ..) => *v,
+                    Value::Int128(Some(v), ..) => **v,
                     Value::UInt8(Some(v), ..) => *v as i128,
                     Value::UInt16(Some(v), ..) => *v as i128,
                     Value::UInt32(Some(v), ..) => *v as i128,
                     Value::UInt64(Some(v), ..) => *v as i128,
                     Value::UInt128(Some(v), ..) => {
-                        if *v > i128::MAX as u128 {
+                        if **v > i128::MAX as u128 {
                             i128::MAX
                         } else {
-                            *v as i128
+                            **v as i128
                         }
                     }
                     _ => unreachable!(),
@@ -613,7 +656,7 @@ mod tests {
         assert_same!(u8, Value::Int16(Some(300)));
         assert_same!(u16, Value::Int32(Some(70_000)));
         assert_same!(u32, Value::Int64(Some(5_000_000_000)));
-        assert_same!(i64, Value::Int128(Some(i64::MAX as i128 + 1)));
+        assert_same!(i64, Value::Int128(Some(Box::new(i64::MAX as i128 + 1))));
         assert_same!(i16, Value::UInt16(Some(40_000)));
         assert_same!(i32, Value::UInt32(Some(3_000_000_000)));
         assert_same!(i64, Value::UInt64(Some(u64::MAX)));
@@ -944,22 +987,30 @@ mod tests {
         assert_eq!(v, ['a', 'b', 'c']);
         assert!(<[char; 2]>::try_from_value(Value::Varchar(Some("abc".into()))).is_err());
         let list = <[i32; 2]>::try_from_value(Value::List(
-            Some(vec![Value::Int32(Some(1)), Value::Int32(Some(2))]),
-            Box::new(Value::Int32(None)),
+            Some(vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into()),
+            Box::new(CollectionType {
+                element: Value::Int32(None),
+                len: 0,
+            }),
         ))
         .unwrap();
         assert_eq!(list, [1, 2]);
         let arr = <[i32; 2]>::try_from_value(Value::Array(
             Some(vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into()),
-            Box::new(Value::Int32(None)),
-            2,
+            Box::new(CollectionType {
+                element: Value::Int32(None),
+                len: 2,
+            }),
         ))
         .unwrap();
         assert_eq!(arr, [1, 2]);
         assert!(
             <[i32; 3]>::try_from_value(Value::List(
-                Some(vec![Value::Int32(Some(1))]),
-                Box::new(Value::Int32(None))
+                Some(vec![Value::Int32(Some(1))].into()),
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 0
+                })
             ))
             .is_err()
         );
@@ -1114,15 +1165,32 @@ mod tests {
             .contains("Decimal")
         );
         assert!(
-            tokens(&Value::Array(None, Box::new(Value::Int32(None)), 3))
-                .contains("Array (None , Box :: new")
+            tokens(&Value::Array(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 3
+                })
+            ))
+            .contains("Array (None , Box :: new")
         );
-        assert!(tokens(&Value::List(None, Box::new(Value::Int32(None)))).contains("List"));
+        assert!(
+            tokens(&Value::List(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 0
+                })
+            ))
+            .contains("List")
+        );
         assert!(
             tokens(&Value::Map(
                 None,
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None))
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None)
+                })
             ))
             .contains("Map")
         );
@@ -1130,8 +1198,10 @@ mod tests {
         assert!(
             tokens(&Value::Struct(
                 None,
-                vec![("a".to_string(), Value::Int32(None))],
-                Box::new(TableRef::new("t".into()))
+                Box::new(StructType {
+                    types: vec![("a".to_string(), Value::Int32(None))],
+                    name: TableRef::new("t".into())
+                })
             ))
             .contains("Struct")
         );

@@ -630,7 +630,7 @@ impl ExpressionVisitor for NegateNumber {
                     return true;
                 }
                 Value::Int128(Some(v)) => {
-                    self.value = (-v).as_value();
+                    self.value = (-**v).as_value();
                     return true;
                 }
                 Value::Float32(Some(v)) => {
@@ -665,7 +665,7 @@ impl ExpressionVisitor for NegateNumber {
                     return true;
                 }
                 Value::Int128(Some(v)) => {
-                    self.value = (-v).as_value();
+                    self.value = (-**v).as_value();
                     return true;
                 }
                 Value::Float32(Some(v)) => {
