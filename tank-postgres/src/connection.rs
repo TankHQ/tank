@@ -1,6 +1,6 @@
 use crate::{
     PostgresDriver, PostgresPrepared, PostgresTransaction, TankParam,
-    rows::{PostgresRows, PostgresScratch},
+    rows::{PostgresResults, PostgresRows, PostgresScratch},
     stream::ConnectionStream,
 };
 use std::{
@@ -10,8 +10,8 @@ use std::{
     str::FromStr,
 };
 use tank_core::{
-    AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, RowsAffected,
-    describe_url,
+    AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result,
+    RowsAffected, describe_url,
 };
 use url::Url;
 use wtx::{
@@ -121,9 +121,7 @@ impl Executor for PostgresConnection {
     fn run<'s, Q>(
         &'s mut self,
         query: Q,
-    ) -> impl Future<
-        Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>,
-    > + Send
+    ) -> impl Future<Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>> + Send
     where
         Q: AsQuery<PostgresDriver> + Send + 's,
     {
@@ -160,26 +158,24 @@ impl PostgresConnection {
         sql: &str,
         params: &[TankParam],
     ) -> Result<crate::rows::PostgresResults<'s>> {
-        let stmt = crate::TankStmt::new(sql, params);
-        let PostgresConnection { client, scratch } = self;
-        let records = client
-            .execute_stmt_many(stmt, params, |_| Ok(()))
+        let records = self
+            .client
+            .execute_stmt_many(crate::TankStmt::new(sql, params), params, |_| Ok(()))
             .await
             .map_err(tank_core::Error::new)?;
-        scratch.prepare(&records)?;
-        let result = if records.columns().is_some() {
+        self.scratch.prepare(&records);
+        Ok(PostgresResults::new(Ok(if records.columns().is_some() {
             QueryResult::Rows(PostgresRows::new(
                 records,
-                scratch.labels(),
-                scratch.decoders(),
+                &self.scratch.labels,
+                &self.scratch.decoders,
             ))
         } else {
             QueryResult::Affected(RowsAffected {
                 rows_affected: Some(records.rows_affected()),
                 last_affected_id: None,
             })
-        };
-        Ok(crate::rows::PostgresResults::new(Ok(result)))
+        })))
     }
 }
 

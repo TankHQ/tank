@@ -28,7 +28,7 @@ impl OwnedRowIter {
 impl Iterator for OwnedRowIter {
     type Item = Result<RowOwned>;
 
-    #[inline]
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(Ok)
     }
@@ -56,7 +56,7 @@ impl OwnedResults {
 impl Iterator for OwnedResults {
     type Item = Result<QueryResult<OwnedRowIter>>;
 
-    #[inline]
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         Some(match self.inner.next()? {
             Ok(QueryResult::Rows(rows)) => Ok(QueryResult::Rows(OwnedRowIter { inner: rows })),
@@ -93,27 +93,31 @@ where
     ///
     /// Primes the first row set so [`size_hint`](Iterator::size_hint) can report
     /// the row count before iteration, letting `collect` preallocate.
+    #[inline(always)]
     pub fn new(mut inner: D::Results<'s, O>) -> Self {
-        let mut current = None;
-        let mut pending = None;
-        loop {
-            match inner.next() {
-                Some(Ok(QueryResult::Rows(rows))) => {
-                    current = Some(rows);
-                    break;
+        for item in &mut inner {
+            match item {
+                Ok(QueryResult::Rows(rows)) => {
+                    return Self {
+                        inner,
+                        current: Some(rows),
+                        pending: None,
+                    };
                 }
-                Some(Ok(QueryResult::Affected(_))) => {}
-                Some(Err(error)) => {
-                    pending = Some(error);
-                    break;
+                Ok(QueryResult::Affected(_)) => {}
+                Err(error) => {
+                    return Self {
+                        inner,
+                        current: None,
+                        pending: Some(error),
+                    };
                 }
-                None => break,
             }
         }
         Self {
             inner,
-            current,
-            pending,
+            current: None,
+            pending: None,
         }
     }
 }
@@ -125,33 +129,41 @@ where
 {
     type Item = Result<D::Row<'s>>;
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
+        if let Some(row) = self.current.as_mut().and_then(Iterator::next) {
+            return Some(row);
+        }
+        self.current = None;
         if let Some(error) = self.pending.take() {
             return Some(Err(error));
         }
-        loop {
-            if let Some(rows) = self.current.as_mut() {
-                match rows.next() {
-                    Some(row) => return Some(row),
-                    None => self.current = None,
+        for item in &mut self.inner {
+            match item {
+                Ok(QueryResult::Rows(mut rows)) => {
+                    if let Some(row) = rows.next() {
+                        self.current = Some(rows);
+                        return Some(row);
+                    }
                 }
-            }
-            match self.inner.next()? {
-                Ok(QueryResult::Rows(rows)) => self.current = Some(rows),
                 Ok(QueryResult::Affected(_)) => {}
                 Err(error) => return Some(Err(error)),
             }
         }
+        None
     }
 
+    #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
         // Further statements may follow, so only the primed row set bounds the count.
-        let lower = match (&self.pending, &self.current) {
-            (Some(_), _) => 1,
-            (None, Some(rows)) => rows.size_hint().0,
-            (None, None) => 0,
-        };
-        (lower, None)
+        (
+            match (&self.pending, &self.current) {
+                (Some(_), _) => 1,
+                (None, Some(rows)) => rows.size_hint().0,
+                (None, None) => 0,
+            },
+            None,
+        )
     }
 }
 

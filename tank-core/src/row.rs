@@ -16,14 +16,6 @@ pub trait Row: Debug + Send + Sync {
     /// Number of columns.
     fn len(&self) -> usize;
 
-    /// True if the labels equal `expected` in order.
-    ///
-    /// Lets `from_row` decode positionally when a projection matches the entity.
-    fn names_match(&self, expected: &[&str]) -> bool {
-        let names = self.names();
-        names.len() == expected.len() && names.iter().zip(expected).all(|(name, want)| name == want)
-    }
-
     /// Borrows a stored value or returns a freshly decoded value.
     /// SQL NULL is a `Value`; `None` means no value at this index.
     fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>>;
@@ -63,30 +55,37 @@ pub trait Row: Debug + Send + Sync {
 }
 
 impl<R: Row + ?Sized> Row for &R {
+    #[inline(always)]
     fn names(&self) -> &[String] {
         (**self).names()
     }
 
+    #[inline(always)]
     fn len(&self) -> usize {
         (**self).len()
     }
 
+    #[inline(always)]
     fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>> {
         (**self).value(index)
     }
 
+    #[inline(always)]
     fn is_empty(&self) -> bool {
         (**self).is_empty()
     }
 
+    #[inline(always)]
     fn get_column(&self, name: &str) -> Option<Cow<'_, Value<'_>>> {
         (**self).get_column(name)
     }
 
+    #[inline(always)]
     fn values(&self) -> impl Iterator<Item = Cow<'_, Value<'_>>> {
         (**self).values()
     }
 
+    #[inline(always)]
     fn iter(&self) -> impl Iterator<Item = (&str, Cow<'_, Value<'_>>)> {
         (**self).iter()
     }
@@ -115,18 +114,22 @@ impl Debug for RowOwned {
 }
 
 impl Row for RowOwned {
+    #[inline(always)]
     fn names(&self) -> &[String] {
         &self.names
     }
 
+    #[inline(always)]
     fn len(&self) -> usize {
         self.values.len()
     }
 
+    #[inline(always)]
     fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>> {
         self.values.get(index).map(Cow::Borrowed)
     }
 
+    #[inline(always)]
     fn into_owned(self) -> RowOwned {
         self
     }

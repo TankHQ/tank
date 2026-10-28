@@ -142,6 +142,7 @@ impl<'a> Value<'a> {
     }
 
     /// Checks if the value is NULL.
+    #[inline(always)]
     pub fn is_null(&self) -> bool {
         match self {
             Value::Null
@@ -171,8 +172,7 @@ impl<'a> Value<'a> {
             | Value::Array(None, ..)
             | Value::List(None, ..)
             | Value::Map(None, ..)
-            | Value::Json(None, ..)
-            | Value::Json(Some(serde_json::Value::Null), ..)
+            | Value::Json(None | Some(JsonValue::Null), ..)
             | Value::Struct(None, ..)
             | Value::Unknown(None, ..) => true,
             _ => false,
@@ -287,82 +287,6 @@ impl<'a> Value<'a> {
             | Value::Uuid(..)
             | Value::Unknown(..) => true,
             _ => false,
-        }
-    }
-
-    /// Borrows payloads while rebuilding the containers and metadata owned by `Value`.
-    pub fn reborrow(&self) -> Value<'_> {
-        match self {
-            Value::Null => Value::Null,
-            Value::Boolean(v) => Value::Boolean(*v),
-            Value::Int8(v) => Value::Int8(*v),
-            Value::Int16(v) => Value::Int16(*v),
-            Value::Int32(v) => Value::Int32(*v),
-            Value::Int64(v) => Value::Int64(*v),
-            Value::Int128(v) => Value::Int128(v.as_deref().map(|v| Box::new(*v))),
-            Value::UInt8(v) => Value::UInt8(*v),
-            Value::UInt16(v) => Value::UInt16(*v),
-            Value::UInt32(v) => Value::UInt32(*v),
-            Value::UInt64(v) => Value::UInt64(*v),
-            Value::UInt128(v) => Value::UInt128(v.as_deref().map(|v| Box::new(*v))),
-            Value::Float32(v) => Value::Float32(*v),
-            Value::Float64(v) => Value::Float64(*v),
-            Value::Decimal(v, w, s) => Value::Decimal(*v, *w, *s),
-            Value::Char(v) => Value::Char(*v),
-            Value::Varchar(v) => Value::Varchar(v.as_deref().map(Cow::Borrowed)),
-            Value::Blob(v) => Value::Blob(v.as_deref().map(Cow::Borrowed)),
-            Value::Date(v) => Value::Date(*v),
-            Value::Time(v) => Value::Time(*v),
-            Value::Timestamp(v) => Value::Timestamp(*v),
-            Value::TimestampWithTimezone(v) => Value::TimestampWithTimezone(*v),
-            Value::Interval(v) => Value::Interval(*v),
-            Value::Uuid(v) => Value::Uuid(*v),
-            Value::Array(v, t) => Value::Array(
-                v.as_ref()
-                    .map(|v| v.iter().map(Value::reborrow).collect::<Box<[_]>>()),
-                Box::new(CollectionType {
-                    element: t.element.reborrow(),
-                    len: t.len,
-                }),
-            ),
-            Value::List(v, t) => Value::List(
-                v.as_ref()
-                    .map(|v| v.iter().map(Value::reborrow).collect::<Box<[_]>>()),
-                Box::new(CollectionType {
-                    element: t.element.reborrow(),
-                    len: t.len,
-                }),
-            ),
-            Value::Map(v, t) => Value::Map(
-                v.as_ref().map(|v| {
-                    Box::new(
-                        v.iter()
-                            .map(|(k, v)| (k.reborrow(), v.reborrow()))
-                            .collect(),
-                    )
-                }),
-                Box::new(MapType {
-                    key: t.key.reborrow(),
-                    value: t.value.reborrow(),
-                }),
-            ),
-            Value::Json(v) => Value::Json(v.clone()),
-            Value::Struct(v, t) => Value::Struct(
-                v.as_ref().map(|v| {
-                    v.iter()
-                        .map(|(k, v)| (k.clone(), v.reborrow()))
-                        .collect::<Box<[_]>>()
-                }),
-                Box::new(StructType {
-                    types: t
-                        .types
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.reborrow()))
-                        .collect(),
-                    name: t.name.clone(),
-                }),
-            ),
-            Value::Unknown(v) => Value::Unknown(v.as_deref().map(Cow::Borrowed)),
         }
     }
 

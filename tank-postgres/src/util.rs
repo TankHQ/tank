@@ -146,20 +146,9 @@ impl ColumnDecoder {
                 ))),
                 None => Value::Unknown(None),
             },
-            Self::Typed(ty) | Self::Generic(ty) => return extract_value_resolved(ty, raw),
+            Self::Typed(ty) | Self::Generic(ty) => return extract_value_pg(ty, raw),
         })
     }
-}
-
-/// Decodes a value whose canonical `postgres_types::Type` is already resolved.
-///
-/// Resolving the type once per column (rather than per cell) avoids a repeated
-/// OID lookup on the hot path.
-pub(crate) fn extract_value_resolved<'a>(
-    ty: &Type,
-    raw: Option<&'a [u8]>,
-) -> Result<Value<'a>, Box<dyn Error + Sync + Send>> {
-    extract_value_pg(ty, raw)
 }
 
 fn extract_value_pg<'a>(
@@ -364,40 +353,35 @@ pub fn value_to_postgres_type(value: &Value) -> Type {
         Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ,
         Value::Interval(..) => Type::INTERVAL,
         Value::Uuid(..) => Type::UUID,
-        Value::Array(.., t) | Value::List(.., t) => array_type_of(&t.element),
+        Value::Array(.., t) | Value::List(.., t) => match &t.element {
+            Value::Boolean(..) => Type::BOOL_ARRAY,
+            Value::Int8(..) => Type::INT2_ARRAY,
+            Value::Int16(..) => Type::INT2_ARRAY,
+            Value::Int32(..) => Type::INT4_ARRAY,
+            Value::Int64(..) => Type::INT8_ARRAY,
+            Value::Int128(..) => Type::NUMERIC_ARRAY,
+            Value::UInt8(..) => Type::INT2_ARRAY,
+            Value::UInt16(..) => Type::INT4_ARRAY,
+            Value::UInt32(..) => Type::INT8_ARRAY,
+            Value::UInt64(..) => Type::NUMERIC_ARRAY,
+            Value::UInt128(..) => Type::NUMERIC_ARRAY,
+            Value::Float32(..) => Type::FLOAT4_ARRAY,
+            Value::Float64(..) => Type::FLOAT8_ARRAY,
+            Value::Decimal(..) => Type::NUMERIC_ARRAY,
+            Value::Char(..) => Type::BPCHAR_ARRAY,
+            Value::Varchar(..) => Type::TEXT_ARRAY,
+            Value::Blob(..) => Type::BYTEA_ARRAY,
+            Value::Date(..) => Type::DATE_ARRAY,
+            Value::Time(..) => Type::TIME_ARRAY,
+            Value::Timestamp(..) => Type::TIMESTAMP_ARRAY,
+            Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ_ARRAY,
+            Value::Interval(..) => Type::INTERVAL_ARRAY,
+            Value::Uuid(..) => Type::UUID_ARRAY,
+            Value::Array(..) | Value::List(..) => value_to_postgres_type(&t.element),
+            Value::Map(..) | Value::Json(..) | Value::Struct(..) => Type::JSON_ARRAY,
+            _ => Type::UNKNOWN,
+        },
         Value::Map(..) | Value::Json(..) | Value::Struct(..) => Type::JSON,
-        _ => Type::UNKNOWN,
-    }
-}
-
-/// Postgres array type for a scalar element type.
-fn array_type_of(element: &Value<'_>) -> Type {
-    match element {
-        Value::Boolean(..) => Type::BOOL_ARRAY,
-        Value::Int8(..) => Type::INT2_ARRAY,
-        Value::Int16(..) => Type::INT2_ARRAY,
-        Value::Int32(..) => Type::INT4_ARRAY,
-        Value::Int64(..) => Type::INT8_ARRAY,
-        Value::Int128(..) => Type::NUMERIC_ARRAY,
-        Value::UInt8(..) => Type::INT2_ARRAY,
-        Value::UInt16(..) => Type::INT4_ARRAY,
-        Value::UInt32(..) => Type::INT8_ARRAY,
-        Value::UInt64(..) => Type::NUMERIC_ARRAY,
-        Value::UInt128(..) => Type::NUMERIC_ARRAY,
-        Value::Float32(..) => Type::FLOAT4_ARRAY,
-        Value::Float64(..) => Type::FLOAT8_ARRAY,
-        Value::Decimal(..) => Type::NUMERIC_ARRAY,
-        Value::Char(..) => Type::BPCHAR_ARRAY,
-        Value::Varchar(..) => Type::TEXT_ARRAY,
-        Value::Blob(..) => Type::BYTEA_ARRAY,
-        Value::Date(..) => Type::DATE_ARRAY,
-        Value::Time(..) => Type::TIME_ARRAY,
-        Value::Timestamp(..) => Type::TIMESTAMP_ARRAY,
-        Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ_ARRAY,
-        Value::Interval(..) => Type::INTERVAL_ARRAY,
-        Value::Uuid(..) => Type::UUID_ARRAY,
-        Value::Array(..) | Value::List(..) => value_to_postgres_type(element),
-        Value::Map(..) | Value::Json(..) | Value::Struct(..) => Type::JSON_ARRAY,
         _ => Type::UNKNOWN,
     }
 }

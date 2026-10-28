@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 use crate::{
-    CollectionType, Error, FixedDecimal, Interval, MapType, Result, Value, ValueOwned,
+    CollectionType, Error, FixedDecimal, Interval, MapType, Result, StructType, Value, ValueOwned,
     consume_while, extract_number, truncate_long,
 };
 use crate::{month_to_number, number_to_month};
@@ -14,6 +14,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::{BTreeMap, HashMap, LinkedList, VecDeque},
     hash::Hash,
+    mem,
     num::{
         NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI128, NonZeroIsize, NonZeroU8,
         NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128, NonZeroUsize,
@@ -59,12 +60,14 @@ impl AsValue for Value<'_> {
     fn as_empty_value() -> ValueOwned {
         Value::Null
     }
+    #[inline(always)]
     fn as_value<'a>(self) -> Value<'a>
     where
         Self: 'a,
     {
         self
     }
+    #[inline(always)]
     fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
@@ -81,281 +84,188 @@ impl AsValue for &Value<'_> {
     where
         Self: 'a,
     {
-        self.reborrow()
+        match self {
+            Value::Null => Value::Null,
+            Value::Boolean(v) => Value::Boolean(*v),
+            Value::Int8(v) => Value::Int8(*v),
+            Value::Int16(v) => Value::Int16(*v),
+            Value::Int32(v) => Value::Int32(*v),
+            Value::Int64(v) => Value::Int64(*v),
+            Value::Int128(v) => Value::Int128(v.as_deref().copied().map(Box::new)),
+            Value::UInt8(v) => Value::UInt8(*v),
+            Value::UInt16(v) => Value::UInt16(*v),
+            Value::UInt32(v) => Value::UInt32(*v),
+            Value::UInt64(v) => Value::UInt64(*v),
+            Value::UInt128(v) => Value::UInt128(v.as_deref().copied().map(Box::new)),
+            Value::Float32(v) => Value::Float32(*v),
+            Value::Float64(v) => Value::Float64(*v),
+            Value::Decimal(v, w, s) => Value::Decimal(*v, *w, *s),
+            Value::Char(v) => Value::Char(*v),
+            Value::Varchar(v) => Value::Varchar(v.as_deref().map(Cow::Borrowed)),
+            Value::Blob(v) => Value::Blob(v.as_deref().map(Cow::Borrowed)),
+            Value::Date(v) => Value::Date(*v),
+            Value::Time(v) => Value::Time(*v),
+            Value::Timestamp(v) => Value::Timestamp(*v),
+            Value::TimestampWithTimezone(v) => Value::TimestampWithTimezone(*v),
+            Value::Interval(v) => Value::Interval(*v),
+            Value::Uuid(v) => Value::Uuid(*v),
+            Value::Array(v, t) => Value::Array(
+                v.as_ref()
+                    .map(|v| v.iter().map(AsValue::as_value).collect()),
+                Box::new(CollectionType {
+                    element: (&t.element).as_value(),
+                    len: t.len,
+                }),
+            ),
+            Value::List(v, t) => Value::List(
+                v.as_ref()
+                    .map(|v| v.iter().map(AsValue::as_value).collect()),
+                Box::new(CollectionType {
+                    element: (&t.element).as_value(),
+                    len: t.len,
+                }),
+            ),
+            Value::Map(v, t) => Value::Map(
+                v.as_ref().map(|v| {
+                    Box::new(
+                        v.iter()
+                            .map(|(k, v)| (k.as_value(), v.as_value()))
+                            .collect(),
+                    )
+                }),
+                Box::new(MapType {
+                    key: (&t.key).as_value(),
+                    value: (&t.value).as_value(),
+                }),
+            ),
+            Value::Json(v) => Value::Json(v.clone()),
+            Value::Struct(v, t) => Value::Struct(
+                v.as_ref()
+                    .map(|v| v.iter().map(|(k, v)| (k.clone(), v.as_value())).collect()),
+                Box::new(StructType {
+                    types: t
+                        .types
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.as_value()))
+                        .collect(),
+                    name: t.name.clone(),
+                }),
+            ),
+            Value::Unknown(v) => Value::Unknown(v.as_deref().map(Cow::Borrowed)),
+        }
     }
 }
 
 impl<'a> From<&'a str> for Value<'a> {
+    #[inline(always)]
     fn from(value: &'a str) -> Self {
         Value::Varchar(Some(Cow::Borrowed(value)))
     }
 }
 
 macro_rules! impl_as_value {
+    (@box $source:ty, $destination:path $(, $pat_rest:pat => $expr_rest:expr)* $(,)?) => {
+        impl_as_value!(@impl $source, $destination, |s| Box::new(s), ($destination(Some(v), ..)) => *v $(, $pat_rest => $expr_rest)*);
+    };
     ($source:ty, $destination:path $(, $pat_rest:pat => $expr_rest:expr)* $(,)?) => {
+        impl_as_value!(@impl $source, $destination, |s| s as _, (val @ $destination(Some(v), ..)) => { mem::forget(val); v as _ } $(, $pat_rest => $expr_rest)*);
+    };
+    (@impl $source:ty, $destination:path, |$s:ident| $wrap:expr, ($fast_pat:pat) => $unwrap:expr $(, $pat_rest:pat => $expr_rest:expr)* $(,)?) => {
         impl AsValue for $source {
             fn as_empty_value() -> ValueOwned {
                 $destination(None)
             }
+            #[inline(always)]
             fn as_value<'a>(self) -> Value<'a> where Self: 'a {
-                trait Wrap<T> {
-                    fn wrap(self) -> T;
-                }
-                impl<T> Wrap<T> for T {
-                    fn wrap(self) -> T {
-                        self.into()
-                    }
-                }
-                impl<T> Wrap<Box<T>> for T {
-                    fn wrap(self) -> Box<T> {
-                        self.into()
-                    }
-                }
-                impl Wrap<i64> for isize {
-                    fn wrap(self) -> i64 {
-                        self as _
-                    }
-                }
-                impl Wrap<u64> for usize {
-                    fn wrap(self) -> u64 {
-                        self as _
-                    }
-                }
-                $destination(Some(Wrap::wrap(self)))
+                let $s = self;
+                $destination(Some($wrap))
             }
+            #[inline(always)]
             fn try_from_value(value: impl AsValue) -> Result<Self> {
-                trait Unwrap<T> {
-                    fn unwrap(self) -> T;
-                }
-                impl<T> Unwrap<T> for T {
-                    fn unwrap(self) -> T {
-                        self
-                    }
-                }
-                impl<T> Unwrap<T> for Box<T> {
-                    fn unwrap(self) -> T {
-                        *self
-                    }
-                }
-                impl Unwrap<isize> for i64 {
-                    fn unwrap(self) -> isize {
-                        self as _
-                    }
-                }
-                impl Unwrap<usize> for u64 {
-                    fn unwrap(self) -> usize {
-                        self as _
-                    }
-                }
-                let value = value.as_value();
-                match value {
-                    $destination(Some(v), ..) => Ok(Unwrap::unwrap(v)),
-                    $($pat_rest => $expr_rest,)*
-                    #[allow(unreachable_patterns)]
-                    Value::Int8(Some(v), ..) => {
-                        let mut max = <$source>::MAX as i128;
-                        if max < 0 {
-                            max = i128::MAX;
-                        }
-                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
-                            return Err(anyhow!(
-                                "Value {v}: i8 is out of range for {}",
-                                any::type_name::<Self>(),
-                            ));
-                        }
-                        Ok(v as $source)
-                    }
-                    #[allow(unreachable_patterns)]
-                    Value::Int16(Some(v), ..) => {
-                        let mut max = <$source>::MAX as i128;
-                        if max < 0 {
-                            max = i128::MAX;
-                        }
-                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
-                            return Err(anyhow!(
-                                "Value {v}: i16 is out of range for {}",
-                                any::type_name::<Self>(),
-                            ));
-                        }
-                        Ok(v as $source)
-                    }
-                    #[allow(unreachable_patterns)]
-                    Value::Int32(Some(v), ..) => {
-                        let mut max = <$source>::MAX as i128;
-                        if max < 0 {
-                            max = i128::MAX;
-                        }
-                        if (v as i128).clamp(<$source>::MIN as _, max as _) != v as i128 {
-                            return Err(anyhow!(
-                                "Value {v}: i32 is out of range for {}",
-                                any::type_name::<Self>(),
-                            ));
-                        }
-                        Ok(v as $source)
-                    }
-                    #[allow(unreachable_patterns)]
-                    // SQL INTEGER becomes i64
-                    Value::Int64(Some(v), ..) => {
-                        let mut max = <$source>::MAX as i128;
-                        if max < 0 {
-                            max = i128::MAX;
-                        }
-                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
-                            return Err(anyhow!(
-                                "Value {v}: i64 is out of range for {}",
-                                any::type_name::<Self>(),
-                            ));
-                        }
-                        Ok(v as $source)
-                    }
-                    #[allow(unreachable_patterns)]
-                    // SQL VARINT becomes i128
-                    Value::Int128(Some(v), ..) => {
-                        let v = *v;
-                        let mut max = <$source>::MAX as i128;
-                        if max < 0 {
-                            max = i128::MAX;
-                        }
-                        if v.clamp(<$source>::MIN as _, max) != v as i128 {
-                            return Err(anyhow!(
-                                "Value {v}: i128 is out of range for {}",
-                                any::type_name::<Self>(),
-                            ));
-                        }
-                        Ok(v as _)
-                    },
-                    #[allow(unreachable_patterns)]
-                    Value::UInt8(Some(v), ..) => {
-                        let mut max = <$source>::MAX as i128;
-                        if max < 0 {
-                            max = i128::MAX;
-                        }
-                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
-                            return Err(anyhow!(
-                                "Value {v}: u8 is out of range for {}",
-                                any::type_name::<Self>(),
-                            ));
-                        }
-                        Ok(v as $source)
-                    }
-                    #[allow(unreachable_patterns)]
-                    Value::UInt16(Some(v), ..) => {
-                        let mut max = <$source>::MAX as i128;
-                        if max < 0 {
-                            max = i128::MAX;
-                        }
-                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
-                            return Err(anyhow!(
-                                "Value {v}: u16 is out of range for {}",
-                                any::type_name::<Self>(),
-                            ));
-                        }
-                        Ok(v as $source)
-                    }
-                    #[allow(unreachable_patterns)]
-                    Value::UInt32(Some(v), ..) => {
-                        let mut max = <$source>::MAX as i128;
-                        if max < 0 {
-                            max = i128::MAX;
-                        }
-                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
-                            return Err(anyhow!(
-                                "Value {v}: u32 is out of range for {}",
-                                any::type_name::<Self>(),
-                            ));
-                        }
-                        Ok(v as $source)
-                    }
-                    #[allow(unreachable_patterns)]
-                    Value::UInt64(Some(v), ..) => {
-                        let mut max = <$source>::MAX as i128;
-                        if max < 0 {
-                            max = i128::MAX;
-                        }
-                        if (v as i128).clamp(<$source>::MIN as _, max) != v as i128 {
-                            return Err(anyhow!(
-                                "Value {v}: u64 is out of range for {}",
-                                any::type_name::<Self>(),
-                            ));
-                        }
-                        Ok(v as $source)
-                    }
-                    #[allow(unreachable_patterns)]
-                    Value::UInt128(Some(v), ..) => {
-                        let v = *v;
-                        let mut max = <$source>::MAX as i128;
-                        if max < 0 {
-                            max = i128::MAX;
-                        }
-                        // u128 may exceed i128::MAX; guard against wrapping before clamping.
-                        let v128 = if v > i128::MAX as u128 {
-                            i128::MAX
-                        } else {
-                            v as i128
-                        };
-                        if v128.clamp(<$source>::MIN as _, max) != v128 {
-                            return Err(anyhow!(
-                                "Value {v}: u128 is out of range for {}",
-                                any::type_name::<Self>(),
-                            ));
-                        }
-                        Ok(v as $source)
-                    }
-                    #[allow(unreachable_patterns)]
-                    // SQL Generic floating point value
-                    Value::Float64(Some(v), ..) => {
-                        if v.is_finite() && v.fract() == 0.0 {
-                            let min = <$source>::MIN as f64;
-                            let max_exclusive = <$source>::MAX as f64 + 1.0;
-                            if v >= min && v < max_exclusive {
-                                return Ok(v as $source);
+                #[cold]
+                #[inline(never)]
+                fn fallback(value: Value<'_>) -> Result<$source> {
+                    match value {
+                        $($pat_rest => $expr_rest,)*
+                        Value::Int8(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                            anyhow!("Value {v}: i8 is out of range for {}", any::type_name::<$source>())
+                        }),
+                        Value::Int16(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                            anyhow!("Value {v}: i16 is out of range for {}", any::type_name::<$source>())
+                        }),
+                        Value::Int32(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                            anyhow!("Value {v}: i32 is out of range for {}", any::type_name::<$source>())
+                        }),
+                        Value::Int64(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                            anyhow!("Value {v}: i64 is out of range for {}", any::type_name::<$source>())
+                        }),
+                        Value::Int128(Some(v), ..) => <$source>::try_from(*v).map_err(|_| {
+                            anyhow!("Value {v}: i128 is out of range for {}", any::type_name::<$source>())
+                        }),
+                        Value::UInt8(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                            anyhow!("Value {v}: u8 is out of range for {}", any::type_name::<$source>())
+                        }),
+                        Value::UInt16(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                            anyhow!("Value {v}: u16 is out of range for {}", any::type_name::<$source>())
+                        }),
+                        Value::UInt32(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                            anyhow!("Value {v}: u32 is out of range for {}", any::type_name::<$source>())
+                        }),
+                        Value::UInt64(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                            anyhow!("Value {v}: u64 is out of range for {}", any::type_name::<$source>())
+                        }),
+                        Value::UInt128(Some(v), ..) => <$source>::try_from(*v).map_err(|_| {
+                            anyhow!("Value {v}: u128 is out of range for {}", any::type_name::<$source>())
+                        }),
+                        Value::Float64(Some(v), ..) => {
+                            if v.is_finite() && v.fract() == 0.0 {
+                                let min = <$source>::MIN as f64;
+                                let max_exclusive = <$source>::MAX as f64 + 1.0;
+                                if v >= min && v < max_exclusive {
+                                    return Ok(v as $source);
+                                }
                             }
+                            Err(anyhow!(
+                                "Value {v}: f64 does not fit into {}",
+                                any::type_name::<$source>(),
+                            ))
                         }
-                        Err(anyhow!(
-                            "Value {v}: f64 does not fit into {}",
-                            any::type_name::<Self>(),
-                        ))
-                    },
-                    #[allow(unreachable_patterns)]
-                    Value::Float32(Some(v), ..) => {
-                        Self::try_from_value(Value::Float64(Some(v as f64)))
-                    }
-                    // This is needed to allow integer keys in maps, in some drivers the maps keys are strings only
-                    Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v).with_context(|| {
-                        format!("While parsing a {} from `{}`", any::type_name::<Self>(), v)
-                    }),
-                    Value::Json(Some(serde_json::Value::Number(v)), ..) => {
-                        let integer = v.as_i128().or_else(|| {
-                            let f = v.as_f64()?;
-                            let max_exclusive = i128::MAX as f64 + 1.0;
-                            if f.fract() == 0.0 && f >= i128::MIN as f64 && f < max_exclusive {
-                                Some(f as i128)
-                            } else {
-                                None
+                        Value::Float32(Some(v), ..) => {
+                            <$source>::try_from_value(Value::Float64(Some(v as f64)))
+                        }
+                        Value::Varchar(Some(ref v), ..) => <$source as AsValue>::parse(v).with_context(|| {
+                            format!("While parsing a {} from `{}`", any::type_name::<$source>(), v)
+                        }),
+                        Value::Json(Some(serde_json::Value::Number(v)), ..) => {
+                            let integer = v.as_i128().or_else(|| {
+                                let f = v.as_f64()?;
+                                let max_exclusive = i128::MAX as f64 + 1.0;
+                                (f.fract() == 0.0 && f >= i128::MIN as f64 && f < max_exclusive)
+                                    .then_some(f as i128)
+                            });
+                            if let Some(v) = integer
+                                && let Ok(v) = <$source>::try_from(v)
+                            {
+                                return Ok(v);
                             }
-                        });
-                        let mut max = <$source>::MAX as i128;
-                        if max < 0 {
-                            max = i128::MAX;
+                            Err(anyhow!(
+                                "Value {v} from json number is out of range for {} (extracted integer is: {integer:?})",
+                                any::type_name::<$source>(),
+                            ))
                         }
-                        if let Some(v) = integer
-                            && v.clamp(<$source>::MIN as _, max) == v as i128 {
-                            return Ok(v as $source);
-                        }
-                        Err(anyhow!(
-                            "Value {v} from json number is out of range for {} (extracted integer is: {integer:?})",
-                            any::type_name::<Self>(),
-                        ))
+                        Value::Json(Some(serde_json::Value::String(ref v)), ..) => <$source as AsValue>::parse(v),
+                        Value::Unknown(Some(ref v), ..) => <$source>::parse(v).with_context(|| {
+                            format!("While parsing a {} from `{}`", any::type_name::<$source>(), v)
+                        }),
+                        _ => Err(anyhow!(
+                            "Cannot convert {value:?} to {}",
+                            any::type_name::<$source>(),
+                        )),
                     }
-                    // This is needed to allow integer keys in maps, in some drivers the maps are json objects
-                    Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
-                    Value::Unknown(Some(ref v), ..) => Self::parse(v).with_context(|| {
-                        format!("While parsing a {} from `{}`", any::type_name::<Self>(), v)
-                    }),
-                    _ => Err(anyhow!(
-                        "Cannot convert {value:?} to {}",
-                        any::type_name::<Self>(),
-                    )),
+                }
+                match value.as_value() {
+                    $fast_pat => Ok($unwrap),
+                    other => fallback(other),
                 }
             }
             fn parse(input: impl AsRef<str>) -> Result<Self> {
@@ -366,6 +276,7 @@ macro_rules! impl_as_value {
             fn as_empty_value() -> ValueOwned {
                 <$source>::as_empty_value()
             }
+            #[inline(always)]
             fn as_value<'a>(self) -> Value<'a> where Self: 'a {
                 (*self).as_value()
             }
@@ -402,11 +313,8 @@ impl_as_value!(
 );
 
 impl_as_value!(
-    i128,
+    @box i128,
     Value::Int128,
-    Value::UInt128(Some(v), ..) => {
-        i128::try_from(*v).map_err(|_| anyhow!("Value {v}: u128 is out of range for i128"))
-    },
     Value::Decimal(Some(v), ..) => {
         let make_error = || anyhow!("Value {v}: Decimal does not fit into i128");
         if !v.is_integer() {
@@ -447,7 +355,7 @@ impl_as_value!(
 );
 
 impl_as_value!(
-    u128,
+    @box u128,
     Value::UInt128,
     Value::Decimal(Some(v), ..) => {
         let make_error = || anyhow!("Value {v}: Decimal does not fit into u128");
@@ -522,6 +430,7 @@ macro_rules! impl_as_value {
             fn as_empty_value() -> ValueOwned {
                 <$source>::as_empty_value()
             }
+            #[inline(always)]
             fn as_value<'a>(self) -> Value<'a> where Self: 'a {
                 (*self).as_value()
             }
@@ -531,50 +440,62 @@ macro_rules! impl_as_value {
         impl AsValue for $source { $($body)* }
         impl_as_value!(@reference $source);
     };
-    (String, $($rest:tt)*) => {
-        impl_as_value!(@owned String, $($rest)*);
+    (String, $destination:path, $($rest:tt)*) => {
+        impl_as_value!(@owned String, ($destination(Some(v), ..)) => v.into(), $destination, $($rest)*);
         impl AsValue for &String {
             fn as_empty_value() -> ValueOwned {
                 String::as_empty_value()
             }
+            #[inline(always)]
             fn as_value<'a>(self) -> Value<'a> where Self: 'a {
                 self.as_str().as_value()
             }
         }
     };
-    ($source:ty, $($rest:tt)*) => {
-        impl_as_value!(@owned $source, $($rest)*);
+    ($source:ty, $destination:path, $($rest:tt)*) => {
+        impl_as_value!(@owned $source, (val @ $destination(Some(v), ..)) => { mem::forget(val); v.into() }, $destination, $($rest)*);
         impl_as_value!(@reference $source);
     };
-    (@owned $source:ty, $destination:path, $extract:expr $(, $pat_rest:pat => $expr_rest:expr)* $(,)?) => {
+    (@owned $source:ty, ($fast_pat:pat) => $unwrap:expr, $destination:path, $extract:expr $(, $pat_rest:pat => $expr_rest:expr)* $(,)?) => {
         impl AsValue for $source {
             fn as_empty_value() -> ValueOwned {
                 $destination(None)
             }
+            #[inline(always)]
             fn as_value<'a>(self) -> Value<'a> where Self: 'a {
                 $destination(Some(self.into()))
             }
-            #[inline]
+            #[inline(always)]
             fn try_from_value(value: impl AsValue) -> Result<Self> {
-                let value = value.as_value();
-                match value {
-                    $destination(Some(v), ..) => Ok(v.into()),
-                    $($pat_rest => $expr_rest,)*
-                    #[allow(unreachable_patterns)]
-                    Value::Varchar(Some(ref v), ..) => {
-                        <Self as AsValue>::parse(v).with_context(|| {
-                            format!("While parsing a {} from `{}`", any::type_name::<Self>(), v)
-                        })
+                #[cold]
+                #[inline(never)]
+                fn fallback(value: Value<'_>) -> Result<$source> {
+                    match value {
+                        $($pat_rest => $expr_rest,)*
+                        #[allow(unreachable_patterns)]
+                        Value::Varchar(Some(ref v), ..) => {
+                            <$source as AsValue>::parse(v).with_context(|| {
+                                format!("While parsing a {} from `{}`", any::type_name::<$source>(), v)
+                            })
+                        }
+                        #[allow(unreachable_patterns)]
+                        Value::Json(Some(serde_json::Value::String(ref v)), ..) => {
+                            <$source as AsValue>::parse(v)
+                        }
+                        Value::Unknown(Some(ref v), ..) => {
+                            <$source as AsValue>::parse(v).with_context(|| {
+                                format!("While parsing a {} from `{}`", any::type_name::<$source>(), v)
+                            })
+                        }
+                        _ => Err(anyhow!(
+                            "Cannot convert {value:?} to {}",
+                            any::type_name::<$source>(),
+                        )),
                     }
-                    Value::Unknown(Some(ref v), ..) => {
-                        <Self as AsValue>::parse(v).with_context(|| {
-                            format!("While parsing a {} from `{}`", any::type_name::<Self>(), v)
-                        })
-                    }
-                    _ => Err(anyhow!(
-                        "Cannot convert {value:?} to {}",
-                        any::type_name::<Self>(),
-                    )),
+                }
+                match value.as_value() {
+                    $fast_pat => Ok($unwrap),
+                    other => fallback(other),
                 }
             }
             fn parse(input: impl AsRef<str>) -> Result<Self> {
@@ -933,24 +854,18 @@ impl_as_value!(
         }
         Ok(interval)
     },
-    Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v),
-    Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
 impl_as_value!(
     std::time::Duration,
     Value::Interval,
     |v| <Interval as AsValue>::parse(v).map(Into::into),
-    Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v),
-    Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
 impl_as_value!(
     time::Duration,
     Value::Interval,
     |v| <Interval as AsValue>::parse(v).map(Into::into),
-    Value::Varchar(Some(ref v), ..) => <Self as AsValue>::parse(v),
-    Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
 impl_as_value!(
@@ -965,8 +880,6 @@ impl_as_value!(
         })?;
         Ok(uuid)
     },
-    Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
-    Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
 /// Parses `$value` against each of the given formats, returning the first
@@ -1018,14 +931,12 @@ impl_as_value!(
         }
         Ok(result)
     },
-    Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
     Value::Timestamp(Some(v), ..) => {
         if v.time() != time::Time::MIDNIGHT {
             return Err(anyhow!("Timestamp {v:?} cannot be converted to date because the time part is not midnight"))
         }
         Ok(v.date())
     },
-    Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
 impl_as_value!(
@@ -1054,8 +965,6 @@ impl_as_value!(
         time::Time::from_hms_nano(h as _, m as _, s as _, ns as _)
             .map_err(|e| anyhow!("Cannot convert interval `{v:?}` to time: {e:?}"))
     },
-    Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
-    Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
 impl_as_value!(
@@ -1077,8 +986,6 @@ impl_as_value!(
         }
         Ok(result)
     },
-    Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
-    Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
 impl_as_value! { @copy UtcDateTime {
@@ -1135,8 +1042,6 @@ impl_as_value!(
         Err(anyhow!("Cannot parse `{}` as time::OffsetDateTime", truncate_long!(original)))
     },
     Value::Timestamp(Some(timestamp), ..) => Ok(timestamp.assume_utc()),
-    Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
-    Value::Json(Some(serde_json::Value::String(ref v)), ..) => <Self as AsValue>::parse(v),
 );
 
 #[cfg(feature = "chrono")]
@@ -1482,15 +1387,8 @@ impl<T: AsValue, const N: usize> AsValue for [T; N] {
             {
                 convert_iter(v.chars())
             }
-            Value::List(Some(v), ..) if v.len() == N => {
-                convert_iter(v)
-            }
-            Value::Array(Some(v), ..) if v.len() == N => {
-                convert_iter(v.into_vec())
-            }
-            Value::Json(Some(serde_json::Value::Array(v))) if v.len() == N => {
-                convert_iter(v.into_iter())
-            }
+            Value::List(Some(v), ..) | Value::Array(Some(v), ..) if v.len() == N => convert_iter(v),
+            Value::Json(Some(serde_json::Value::Array(v))) if v.len() == N => convert_iter(v),
             Value::Unknown(Some(v)) => <Self as AsValue>::parse(v),
             _ => Err(anyhow!(
                 "Cannot convert {value:?} to array {}",
@@ -1565,18 +1463,12 @@ macro_rules! impl_as_value {
                 let value = value.as_value();
                 match value {
                     Value::List(None, ..) => Ok(Default::default()),
-                    Value::List(Some(v), ..) => Ok(v
-                        .into_iter()
-                        .map(|v| Ok::<_, Error>(<T as AsValue>::try_from_value(v)?))
-                        .collect::<Result<_>>()?),
-                    Value::Array(Some(v), ..) => Ok(v
-                        .into_iter()
-                        .map(|v| Ok::<_, Error>(<T as AsValue>::try_from_value(v)?))
-                        .collect::<Result<_>>()?),
-                    Value::Json(Some(serde_json::Value::Array(v)), ..) => Ok(v
-                        .into_iter()
-                        .map(|v| Ok::<_, Error>(<T as AsValue>::try_from_value(v.as_value())?))
-                        .collect::<Result<_>>()?),
+                    Value::List(Some(v), ..) | Value::Array(Some(v), ..) => {
+                        v.into_iter().map(T::try_from_value).collect()
+                    }
+                    Value::Json(Some(serde_json::Value::Array(v)), ..) => {
+                        v.into_iter().map(T::try_from_value).collect()
+                    }
                     _ => Err(anyhow!(
                         "Cannot convert {value:?} to {}",
                         any::type_name::<Self>(),
@@ -1621,32 +1513,18 @@ macro_rules! impl_as_value {
                 let value = value.as_value();
                 match value {
                     Value::Map(None, ..) => Ok(Default::default()),
-                    Value::Map(Some(v), ..) => {
-                        Ok(v.into_iter()
-                            .map(|(k, v)| {
-                                Ok((
-                                    <K as AsValue>::try_from_value(k)?,
-                                    <V as AsValue>::try_from_value(v)?,
-                                ))
-                            })
-                            .collect::<Result<_>>()?)
-                    }
-                    Value::Json(Some(serde_json::Value::Object(v)), ..) => {
-                        Ok(v.into_iter()
-                            .map(|(k, v)| {
-                                Ok((
-                                    <K as AsValue>::try_from_value(serde_json::Value::String(k).as_value())?,
-                                    <V as AsValue>::try_from_value(v.as_value())?,
-                                ))
-                            })
-                            .collect::<Result<_>>()?)
-                    }
-                    _=> {
-                        Err(anyhow!(
-                            "Cannot convert {value:?} to {}",
-                            any::type_name::<Self>(),
-                        ))
-                    }
+                    Value::Map(Some(v), ..) => v
+                        .into_iter()
+                        .map(|(k, v)| Ok((K::try_from_value(k)?, V::try_from_value(v)?)))
+                        .collect(),
+                    Value::Json(Some(serde_json::Value::Object(v)), ..) => v
+                        .into_iter()
+                        .map(|(k, v)| Ok((K::try_from_value(k)?, V::try_from_value(v)?)))
+                        .collect(),
+                    _ => Err(anyhow!(
+                        "Cannot convert {value:?} to {}",
+                        any::type_name::<Self>(),
+                    )),
                 }
             }
         }
@@ -1685,12 +1563,14 @@ impl AsValue for Cow<'_, str> {
     fn as_empty_value() -> ValueOwned {
         Value::Varchar(None)
     }
+    #[inline(always)]
     fn as_value<'a>(self) -> Value<'a>
     where
         Self: 'a,
     {
         Value::Varchar(Some(self.into()))
     }
+    #[inline(always)]
     fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
@@ -1709,6 +1589,7 @@ impl AsValue for &Cow<'_, str> {
     fn as_empty_value() -> ValueOwned {
         <Cow<'_, str>>::as_empty_value()
     }
+    #[inline(always)]
     fn as_value<'a>(self) -> Value<'a>
     where
         Self: 'a,
@@ -1721,15 +1602,17 @@ impl AsValue for Cow<'_, Value<'_>> {
     fn as_empty_value() -> ValueOwned {
         Value::Null
     }
+    #[inline(always)]
     fn as_value<'a>(self) -> Value<'a>
     where
         Self: 'a,
     {
         match self {
             Cow::Owned(value) => value,
-            Cow::Borrowed(value) => value.reborrow(),
+            Cow::Borrowed(value) => value.as_value(),
         }
     }
+    #[inline(always)]
     fn try_from_value(value: impl AsValue) -> Result<Self> {
         Ok(Cow::Owned(value.as_value().into_owned()))
     }
@@ -1739,11 +1622,12 @@ impl AsValue for &Cow<'_, Value<'_>> {
     fn as_empty_value() -> ValueOwned {
         <Cow<'_, Value<'_>>>::as_empty_value()
     }
+    #[inline(always)]
     fn as_value<'a>(self) -> Value<'a>
     where
         Self: 'a,
     {
-        self.as_ref().reborrow()
+        self.as_ref().as_value()
     }
 }
 
@@ -1751,6 +1635,7 @@ impl<T: AsValue> AsValue for Option<T> {
     fn as_empty_value() -> ValueOwned {
         T::as_empty_value()
     }
+    #[inline(always)]
     fn as_value<'a>(self) -> Value<'a>
     where
         Self: 'a,
@@ -1762,12 +1647,17 @@ impl<T: AsValue> AsValue for Option<T> {
     }
     #[inline(always)]
     fn try_from_value(value: impl AsValue) -> Result<Self> {
-        let value = value.as_value();
-        Ok(if value.is_null() {
-            None
-        } else {
-            Some(<T as AsValue>::try_from_value(value)?)
-        })
+        match value.as_value() {
+            val @ Value::Null => {
+                mem::forget(val);
+                Ok(None)
+            }
+            val => Ok(if val.is_null() {
+                None
+            } else {
+                Some(<T as AsValue>::try_from_value(val)?)
+            }),
+        }
     }
     fn parse(input: impl AsRef<str>) -> Result<Self>
     where

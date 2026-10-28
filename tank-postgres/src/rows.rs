@@ -16,51 +16,41 @@ use wtx::database::client::postgres::{PostgresRecord, PostgresRecords};
 #[derive(Default, Debug)]
 pub(crate) struct PostgresScratch {
     /// Per-column decoders of the current statement, resolved once per query.
-    decoders: Vec<crate::util::ColumnDecoder>,
+    pub(crate) decoders: Vec<crate::util::ColumnDecoder>,
     /// Labels of the current statement, reused while consecutive queries share
     /// the same column set (the common case for a prepared statement).
-    cached_labels: RowLabels,
+    pub(crate) labels: RowLabels,
 }
 
 impl PostgresScratch {
     /// Resolves the labels and per-column decoders of a result set in place.
-    pub(crate) fn prepare<E>(&mut self, records: &PostgresRecords<'_, E>) -> Result<()>
+    pub(crate) fn prepare<E>(&mut self, records: &PostgresRecords<'_, E>)
     where
         E: From<wtx::Error>,
     {
         self.decoders.clear();
-        for (_, ty) in records.columns().into_iter().flatten() {
-            self.decoders.push(crate::util::ColumnDecoder::from_type(
-                &crate::util::wtx_ty_to_pg_type(ty),
-            ));
-        }
-        let cached = &self.cached_labels;
-        let matches = records
-            .columns()
-            .into_iter()
-            .flatten()
-            .zip(cached.iter())
-            .all(|((name, _), label)| name == label)
-            && records.columns().into_iter().flatten().count() == cached.len();
-        if !matches {
-            self.cached_labels = records
+        self.decoders.extend(
+            records
+                .columns()
+                .into_iter()
+                .flatten()
+                .map(|(_, ty)| crate::util::ColumnDecoder::from_type(&crate::util::wtx_ty_to_pg_type(ty))),
+        );
+        if self.decoders.len() != self.labels.len()
+            || !records
+                .columns()
+                .into_iter()
+                .flatten()
+                .zip(self.labels.iter())
+                .all(|((name, _), label)| name == label)
+        {
+            self.labels = records
                 .columns()
                 .into_iter()
                 .flatten()
                 .map(|(name, _)| name.to_string())
                 .collect();
         }
-        Ok(())
-    }
-
-    /// The labels resolved by the last [`prepare`](Self::prepare).
-    pub(crate) fn labels(&self) -> &RowLabels {
-        &self.cached_labels
-    }
-
-    /// The decoders resolved by the last [`prepare`](Self::prepare).
-    pub(crate) fn decoders(&self) -> &[crate::util::ColumnDecoder] {
-        &self.decoders
     }
 }
 
@@ -84,10 +74,12 @@ impl fmt::Debug for PostgresRow<'_> {
 }
 
 impl Row for PostgresRow<'_> {
+    #[inline(always)]
     fn names(&self) -> &[String] {
         self.labels
     }
 
+    #[inline(always)]
     fn len(&self) -> usize {
         self.decoders.len()
     }
@@ -159,6 +151,7 @@ impl<'s> Iterator for PostgresRows<'s> {
         }))
     }
 
+    #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.records.len() - self.index;
         (remaining, Some(remaining))
@@ -174,6 +167,7 @@ pub struct PostgresResults<'s> {
 
 impl<'s> PostgresResults<'s> {
     /// Builds the one-shot results from the resolved row set.
+    #[inline(always)]
     pub(crate) fn new(result: Result<QueryResult<PostgresRows<'s>>>) -> Self {
         Self { result: Some(result) }
     }
@@ -182,10 +176,12 @@ impl<'s> PostgresResults<'s> {
 impl<'s> Iterator for PostgresResults<'s> {
     type Item = Result<QueryResult<PostgresRows<'s>>>;
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         self.result.take()
     }
 
+    #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = usize::from(self.result.is_some());
         (remaining, Some(remaining))

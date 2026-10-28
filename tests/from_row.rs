@@ -4,7 +4,7 @@ mod tests {
         borrow::Cow,
         cell::{Cell, RefCell},
         sync::{
-            Arc, Weak,
+            Arc, Mutex, Weak,
             atomic::{AtomicUsize, Ordering},
         },
     };
@@ -719,5 +719,51 @@ mod tests {
             None
         );
         assert_eq!(source.counts(), [2]);
+    }
+
+    #[test]
+    fn from_row_moves_owned_string_buffers_without_reallocating() {
+        #[derive(Debug, Entity)]
+        struct OwnedStrings {
+            required: String,
+            optional: Option<String>,
+        }
+
+        #[derive(Debug)]
+        struct MovingRow {
+            names: RowLabels,
+            cells: Mutex<[Option<ValueOwned>; 2]>,
+        }
+
+        impl Row for MovingRow {
+            fn names(&self) -> &[String] {
+                &self.names
+            }
+
+            fn len(&self) -> usize {
+                2
+            }
+
+            fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>> {
+                self.cells
+                    .lock()
+                    .unwrap()
+                    .get_mut(index)?
+                    .take()
+                    .map(Cow::Owned)
+            }
+        }
+
+        let required = String::from("owned required string buffer");
+        let optional = String::from("owned optional string buffer");
+        let required_ptr = required.as_ptr();
+        let optional_ptr = optional.as_ptr();
+        let decoded = OwnedStrings::from_row(MovingRow {
+            names: ["required".into(), "optional".into()].into(),
+            cells: std::sync::Mutex::new([Some(required.as_value()), Some(optional.as_value())]),
+        })
+        .unwrap();
+        assert_eq!(decoded.required.as_ptr(), required_ptr);
+        assert_eq!(decoded.optional.as_deref().unwrap().as_ptr(), optional_ptr);
     }
 }

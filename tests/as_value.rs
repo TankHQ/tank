@@ -378,12 +378,11 @@ mod tests {
                 name: TableRef::new("custom_type".into()),
             }),
         );
-        check(&value, &value.reborrow());
         check(&value, &(&value).as_value());
         let cow: Cow<'_, Value<'_>> = Cow::Borrowed(&value);
         check(&value, &cow.as_value());
         let borrowed_value = text.as_str().as_value();
-        check(&borrowed_value, &borrowed_value.reborrow());
+        check(&borrowed_value, &(&borrowed_value).as_value());
         for value in [
             Value::Null,
             Value::Int32(Some(42)),
@@ -414,7 +413,7 @@ mod tests {
             Value::Blob(None),
             Value::Unknown(None),
         ] {
-            check(&value, &value.reborrow());
+            check(&value, &(&value).as_value());
         }
     }
 

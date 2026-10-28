@@ -155,16 +155,19 @@ pub(crate) fn tank_value_to_duckdb_value(value: &Value) -> CBox<duckdb_value> {
                 Value::Interval(Some(v)) => duckdb_create_interval(interval_to_duckdb_interval(v)),
                 Value::Uuid(Some(v)) => duckdb_create_uuid(u128_to_duckdb_uhugeint(v.as_u128())),
                 Value::Array(Some(v), t) | Value::List(Some(v), t) => {
-                    let values = v
-                        .iter()
-                        .map(|v| tank_value_to_duckdb_value(v))
-                        .collect::<Vec<_>>();
-                    let ptr = values.iter().map(|v| **v).collect::<Vec<_>>().as_mut_ptr();
-                    let logical_type = *tank_value_to_duckdb_logical_type(&t.element);
+                    let values = v.iter().map(tank_value_to_duckdb_value).collect::<Vec<_>>();
                     if matches!(value, Value::Array(..)) {
-                        duckdb_create_array_value(logical_type, ptr, t.len as u64)
+                        duckdb_create_array_value(
+                            *tank_value_to_duckdb_logical_type(&t.element),
+                            values.iter().map(|v| **v).collect::<Vec<_>>().as_mut_ptr(),
+                            t.len as u64,
+                        )
                     } else {
-                        duckdb_create_list_value(logical_type, ptr, values.len() as u64)
+                        duckdb_create_list_value(
+                            *tank_value_to_duckdb_logical_type(&t.element),
+                            values.iter().map(|v| **v).collect::<Vec<_>>().as_mut_ptr(),
+                            values.len() as u64,
+                        )
                     }
                 }
                 Value::Map(Some(v), ..) => {

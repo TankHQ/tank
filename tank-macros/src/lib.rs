@@ -187,10 +187,11 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 vec![#(#row_values),*]
             }
 
+            #[inline(always)]
             fn from_row(
                 row: impl ::tank::Row,
             ) -> ::tank::Result<Self> {
-                #from_row_factory::<Self>::from_row(&row)
+                #from_row_factory::<Self>::from_row(row)
             }
         }
 

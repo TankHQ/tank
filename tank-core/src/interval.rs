@@ -79,21 +79,10 @@ impl Interval {
         }
     }
 
-    const fn saturating_days(days: i128) -> i32 {
-        if days > i32::MAX as i128 {
+    const fn saturating_i32(value: i128) -> i32 {
+        if value > i32::MAX as i128 {
             i32::MAX
-        } else if days < i32::MIN as i128 {
-            i32::MIN
-        } else {
-            days as i32
-        }
-    }
-
-    /// Saturating `i64` to `i32` narrowing, used by the component constructors.
-    const fn saturating_i32(value: i64) -> i32 {
-        if value > i32::MAX as i64 {
-            i32::MAX
-        } else if value < i32::MIN as i64 {
+        } else if value < i32::MIN as i128 {
             i32::MIN
         } else {
             value as i32
@@ -103,7 +92,7 @@ impl Interval {
     pub const fn from_nanos(value: i128) -> Self {
         Self {
             months: 0,
-            days: Self::saturating_days(value / Self::NANOS_IN_DAY),
+            days: Self::saturating_i32(value / Self::NANOS_IN_DAY),
             nanos: (value % Self::NANOS_IN_DAY) as _,
         }
     }
@@ -112,7 +101,7 @@ impl Interval {
         const MICROS_IN_DAY: i128 = (Interval::SECS_IN_DAY * 1_000_000) as _;
         Self {
             months: 0,
-            days: Self::saturating_days(value / MICROS_IN_DAY),
+            days: Self::saturating_i32(value / MICROS_IN_DAY),
             nanos: ((value % MICROS_IN_DAY) * 1_000) as _,
         }
     }
@@ -121,7 +110,7 @@ impl Interval {
         const MILLIS_IN_DAY: i128 = (Interval::SECS_IN_DAY * 1_000) as _;
         Self {
             months: 0,
-            days: Self::saturating_days(value / MILLIS_IN_DAY),
+            days: Self::saturating_i32(value / MILLIS_IN_DAY),
             nanos: ((value % MILLIS_IN_DAY) * 1_000_000) as _,
         }
     }
@@ -129,26 +118,24 @@ impl Interval {
     pub const fn from_secs(value: i64) -> Self {
         Self {
             months: 0,
-            days: Self::saturating_i32(value / Self::SECS_IN_DAY),
+            days: Self::saturating_i32((value / Self::SECS_IN_DAY) as _),
             nanos: ((value % Self::SECS_IN_DAY) * 1_000_000_000) as _,
         }
     }
 
     pub const fn from_mins(value: i64) -> Self {
         const MINS_IN_DAYS: i64 = 60 * 24;
-        let days = value / MINS_IN_DAYS;
-        let nanos = (value % MINS_IN_DAYS) * Interval::NANOS_IN_SEC as i64 * 60;
         Self {
             months: 0,
-            days: Self::saturating_i32(days),
-            nanos,
+            days: Self::saturating_i32((value / MINS_IN_DAYS) as _),
+            nanos: (value % MINS_IN_DAYS) * Interval::NANOS_IN_SEC as i64 * 60,
         }
     }
 
     pub const fn from_hours(value: i64) -> Self {
         Self {
             months: 0,
-            days: Self::saturating_i32(value / 24),
+            days: Self::saturating_i32((value / 24) as _),
             nanos: (value % 24) * Interval::NANOS_IN_HOUR as i64,
         }
     }
@@ -156,7 +143,7 @@ impl Interval {
     pub const fn from_days(value: i64) -> Self {
         Self {
             months: 0,
-            days: Self::saturating_i32(value),
+            days: Self::saturating_i32(value as _),
             nanos: 0,
         }
     }
@@ -164,14 +151,14 @@ impl Interval {
     pub const fn from_weeks(value: i64) -> Self {
         Self {
             months: 0,
-            days: Self::saturating_i32(value.saturating_mul(7)),
+            days: Self::saturating_i32(value.saturating_mul(7) as _),
             nanos: 0,
         }
     }
 
     pub const fn from_months(value: i64) -> Self {
         Self {
-            months: Self::saturating_i32(value),
+            months: Self::saturating_i32(value as _),
             days: 0,
             nanos: 0,
         }
@@ -179,7 +166,7 @@ impl Interval {
 
     pub const fn from_years(value: i64) -> Self {
         Self {
-            months: Self::saturating_i32(value.saturating_mul(12)),
+            months: Self::saturating_i32(value.saturating_mul(12) as _),
             days: 0,
             nanos: 0,
         }
@@ -231,9 +218,7 @@ impl Interval {
         let months_nanos = (self.months as f64) * days_in_month * (Interval::NANOS_IN_DAY as f64);
         let nanos = (months_nanos as i128).saturating_add(self.days_nanos());
         if nanos < 0 {
-            log::error!(
-                "Negative inverval `{self:?}` cannot be converted to `Duration`"
-            );
+            log::error!("Negative inverval `{self:?}` cannot be converted to `Duration`");
             return Duration::ZERO;
         }
         let secs = (nanos / Interval::NANOS_IN_SEC) as u64;
@@ -367,7 +352,8 @@ impl From<Duration> for Interval {
     fn from(value: Duration) -> Self {
         Self {
             months: 0,
-            days: Self::saturating_i32(value.as_secs() as i64 / Interval::SECS_IN_DAY),
+            days: (value.as_secs() as i64 / Interval::SECS_IN_DAY)
+                .clamp(i32::MIN as _, i32::MAX as _) as _,
             nanos: ((value.as_secs() as i64 % Interval::SECS_IN_DAY) as i128
                 * Interval::NANOS_IN_SEC
                 + value.subsec_nanos() as i128) as _,
@@ -386,7 +372,7 @@ impl From<time::Duration> for Interval {
         let seconds = value.whole_seconds();
         Self {
             months: 0,
-            days: Self::saturating_i32(seconds / Interval::SECS_IN_DAY),
+            days: (seconds / Interval::SECS_IN_DAY).clamp(i32::MIN as _, i32::MAX as _) as _,
             nanos: (seconds % Interval::SECS_IN_DAY) * Interval::NANOS_IN_SEC as i64
                 + value.subsec_nanoseconds() as i64,
         }
@@ -395,12 +381,15 @@ impl From<time::Duration> for Interval {
 
 impl From<Interval> for time::Duration {
     fn from(value: Interval) -> Self {
-        let seconds = (value.days as i128)
-            .saturating_add((value.months as i128).saturating_mul(Interval::DAYS_IN_MONTH as i128))
-            .saturating_mul(Interval::SECS_IN_DAY as i128)
-            .saturating_add(value.nanos as i128 / Interval::NANOS_IN_SEC);
-        let seconds = seconds.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
-        let nanos = (value.nanos as i128 % Interval::NANOS_IN_SEC) as i32;
-        time::Duration::new(seconds, nanos)
+        Self::new(
+            (value.days as i128)
+                .saturating_add(
+                    (value.months as i128).saturating_mul(Interval::DAYS_IN_MONTH as i128),
+                )
+                .saturating_mul(Interval::SECS_IN_DAY as i128)
+                .saturating_add(value.nanos as i128 / Interval::NANOS_IN_SEC)
+                .clamp(i64::MIN as i128, i64::MAX as i128) as i64,
+            (value.nanos as i128 % Interval::NANOS_IN_SEC) as i32,
+        )
     }
 }
