@@ -168,10 +168,12 @@ macro_rules! impl_as_value {
         impl_as_value!(@impl $source, $destination, |s| Box::new(s), ($destination(Some(v), ..)) => *v $(, $pat_rest => $expr_rest)*);
     };
     ($source:ty, $destination:path $(, $pat_rest:pat => $expr_rest:expr)* $(,)?) => {
+        // Bind and `forget` `val` so `Copy` payloads skip `Value` drop glue.
         impl_as_value!(@impl $source, $destination, |s| s as _, (val @ $destination(Some(v), ..)) => { mem::forget(val); v as _ } $(, $pat_rest => $expr_rest)*);
     };
     (@impl $source:ty, $destination:path, |$s:ident| $wrap:expr, ($fast_pat:pat) => $unwrap:expr $(, $pat_rest:pat => $expr_rest:expr)* $(,)?) => {
         impl AsValue for $source {
+            #[inline(always)]
             fn as_empty_value() -> ValueOwned {
                 $destination(None)
             }
@@ -184,7 +186,11 @@ macro_rules! impl_as_value {
             fn try_from_value(value: impl AsValue) -> Result<Self> {
                 #[cold]
                 #[inline(never)]
-                fn fallback(value: Value<'_>) -> Result<$source> {
+                // Pass `&mut` + `mem::take` instead of by-value `Value` so LLVM does not
+                // coalesce the match scrutinee into a `byval` stack slot on the hot path,
+                // then `forget` the `Value::Null` left behind to omit inline drop glue.
+                fn fallback(value: &mut Value<'_>) -> Result<$source> {
+                    let value = mem::take(value);
                     match value {
                         $($pat_rest => $expr_rest,)*
                         Value::Int8(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
@@ -265,7 +271,11 @@ macro_rules! impl_as_value {
                 }
                 match value.as_value() {
                     $fast_pat => Ok($unwrap),
-                    other => fallback(other),
+                    mut other => {
+                        let res = fallback(&mut other);
+                        mem::forget(other);
+                        res
+                    }
                 }
             }
             fn parse(input: impl AsRef<str>) -> Result<Self> {
@@ -381,8 +391,9 @@ impl_as_value!(
 macro_rules! impl_as_value {
     ($source:ty, $helper:path) => {
         impl AsValue for $source {
+            #[inline(always)]
             fn as_empty_value() -> ValueOwned {
-                <$helper as AsValue>::as_empty_value()
+                <$helper>::as_empty_value()
             }
             fn as_value<'a>(self) -> Value<'a>
             where
@@ -441,7 +452,16 @@ macro_rules! impl_as_value {
         impl_as_value!(@reference $source);
     };
     (String, $destination:path, $($rest:tt)*) => {
-        impl_as_value!(@owned String, ($destination(Some(v), ..)) => v.into(), $destination, $($rest)*);
+        impl_as_value!(
+            @owned String,
+            ($destination(Some(v), ..)) => match v {
+                // Match `Cow` variant directly so `to_owned()` inlines instead of calling `<String as From<Cow<str>>>::from`.
+                Cow::Borrowed(v) => v.to_owned(),
+                Cow::Owned(v) => v,
+            },
+            $destination,
+            $($rest)*
+        );
         impl AsValue for &String {
             fn as_empty_value() -> ValueOwned {
                 String::as_empty_value()
@@ -453,11 +473,13 @@ macro_rules! impl_as_value {
         }
     };
     ($source:ty, $destination:path, $($rest:tt)*) => {
+        // Bind and `forget` `val` so `Copy` payloads skip `Value` drop glue.
         impl_as_value!(@owned $source, (val @ $destination(Some(v), ..)) => { mem::forget(val); v.into() }, $destination, $($rest)*);
         impl_as_value!(@reference $source);
     };
     (@owned $source:ty, ($fast_pat:pat) => $unwrap:expr, $destination:path, $extract:expr $(, $pat_rest:pat => $expr_rest:expr)* $(,)?) => {
         impl AsValue for $source {
+            #[inline(always)]
             fn as_empty_value() -> ValueOwned {
                 $destination(None)
             }
@@ -469,7 +491,11 @@ macro_rules! impl_as_value {
             fn try_from_value(value: impl AsValue) -> Result<Self> {
                 #[cold]
                 #[inline(never)]
-                fn fallback(value: Value<'_>) -> Result<$source> {
+                // Pass `&mut` + `mem::take` instead of by-value `Value` so LLVM does not
+                // coalesce the match scrutinee into a `byval` stack slot on the hot path,
+                // then `forget` the `Value::Null` left behind to omit inline drop glue.
+                fn fallback(value: &mut Value<'_>) -> Result<$source> {
+                    let value = mem::take(value);
                     match value {
                         $($pat_rest => $expr_rest,)*
                         #[allow(unreachable_patterns)]
@@ -495,7 +521,11 @@ macro_rules! impl_as_value {
                 }
                 match value.as_value() {
                     $fast_pat => Ok($unwrap),
-                    other => fallback(other),
+                    mut other => {
+                        let res = fallback(&mut other);
+                        mem::forget(other);
+                        res
+                    }
                 }
             }
             fn parse(input: impl AsRef<str>) -> Result<Self> {
@@ -657,6 +687,7 @@ impl AsValue for &str {
 }
 
 impl AsValue for Box<[u8]> {
+    #[inline(always)]
     fn as_empty_value() -> ValueOwned {
         Value::Blob(None)
     }
@@ -714,173 +745,153 @@ impl AsValue for &Box<[u8]> {
     }
 }
 
-impl_as_value!(
-    Interval,
-    Value::Interval,
-    |mut input: &str| {
-        let make_context = || {
-            anyhow!(
-                "Cannot parse interval from `{}`",
-                truncate_long!(input)
-            )
-        };
-        match input.chars().peekable().peek() {
-            Some(v) if *v == '"' || *v == '\'' => {
-                input = &input[1..];
-                if !input.ends_with(*v) {
-                    return Err(make_context());
-                }
-                input = input.trim_end_matches(*v);
+impl_as_value!(Interval, Value::Interval, |mut input: &str| {
+    let make_context = || anyhow!("Cannot parse interval from `{}`", truncate_long!(input));
+    match input.chars().peekable().peek() {
+        Some(v) if *v == '"' || *v == '\'' => {
+            input = &input[1..];
+            if !input.ends_with(*v) {
+                return Err(make_context());
             }
-            _ => {}
-        };
-        let mut interval = Interval::ZERO;
-        loop {
-            let mut cur = input;
-            let Ok(count) = extract_number::<true>(&mut cur).parse::<i128>() else {
-                break;
-            };
-            cur = cur.trim_start();
-            let unit = consume_while(&mut cur, char::is_ascii_alphabetic);
-            if unit.is_empty() {
-                break;
-            }
-            match unit {
-                x if x.eq_ignore_ascii_case("y")
-                    || x.eq_ignore_ascii_case("year")
-                    || x.eq_ignore_ascii_case("years") =>
-                {
-                    interval += Interval::from_years(count as _)
-                }
-                x if x.eq_ignore_ascii_case("mon")
-                    || x.eq_ignore_ascii_case("mons")
-                    || x.eq_ignore_ascii_case("month")
-                    || x.eq_ignore_ascii_case("months") =>
-                {
-                    interval += Interval::from_months(count as _)
-                }
-                x if x.eq_ignore_ascii_case("d")
-                    || x.eq_ignore_ascii_case("day")
-                    || x.eq_ignore_ascii_case("days") =>
-                {
-                    interval += Interval::from_days(count as _)
-                }
-                x if x.eq_ignore_ascii_case("h")
-                    || x.eq_ignore_ascii_case("hour")
-                    || x.eq_ignore_ascii_case("hours") =>
-                {
-                    interval += Interval::from_hours(count as _)
-                }
-                x if x.eq_ignore_ascii_case("min")
-                    || x.eq_ignore_ascii_case("mins")
-                    || x.eq_ignore_ascii_case("minute")
-                    || x.eq_ignore_ascii_case("minutes") =>
-                {
-                    interval += Interval::from_mins(count as _)
-                }
-                x if x.eq_ignore_ascii_case("s")
-                    || x.eq_ignore_ascii_case("sec")
-                    || x.eq_ignore_ascii_case("secs")
-                    || x.eq_ignore_ascii_case("second")
-                    || x.eq_ignore_ascii_case("seconds") =>
-                {
-                    interval += Interval::from_secs(count as _)
-                }
-                x if x.eq_ignore_ascii_case("micro")
-                    || x.eq_ignore_ascii_case("micros")
-                    || x.eq_ignore_ascii_case("microsecond")
-                    || x.eq_ignore_ascii_case("microseconds") =>
-                {
-                    interval += Interval::from_micros(count as _)
-                }
-                x if x.eq_ignore_ascii_case("ns")
-                    || x.eq_ignore_ascii_case("nano")
-                    || x.eq_ignore_ascii_case("nanos")
-                    || x.eq_ignore_ascii_case("nanosecond")
-                    || x.eq_ignore_ascii_case("nanoseconds") =>
-                {
-                    interval += Interval::from_nanos(count as _)
-                }
-                _ => return Err(make_context()),
-            }
-            input = cur.trim_start();
+            input = input.trim_end_matches(*v);
         }
-        let neg = if Some('-') == input.chars().next() {
-            input = input[1..].trim_ascii_start();
-            true
-        } else {
-            false
+        _ => {}
+    };
+    let mut interval = Interval::ZERO;
+    loop {
+        let mut cur = input;
+        let Ok(count) = extract_number::<true>(&mut cur).parse::<i128>() else {
+            break;
         };
-        let mut time_interval = Interval::ZERO;
-        let num = extract_number::<true>(&mut input);
-        if !num.is_empty() {
-            let num = num.parse::<u64>().with_context(make_context)?;
-            time_interval += Interval::from_hours(num as _);
+        cur = cur.trim_start();
+        let unit = consume_while(&mut cur, char::is_ascii_alphabetic);
+        if unit.is_empty() {
+            break;
+        }
+        match unit {
+            x if x.eq_ignore_ascii_case("y")
+                || x.eq_ignore_ascii_case("year")
+                || x.eq_ignore_ascii_case("years") =>
+            {
+                interval += Interval::from_years(count as _)
+            }
+            x if x.eq_ignore_ascii_case("mon")
+                || x.eq_ignore_ascii_case("mons")
+                || x.eq_ignore_ascii_case("month")
+                || x.eq_ignore_ascii_case("months") =>
+            {
+                interval += Interval::from_months(count as _)
+            }
+            x if x.eq_ignore_ascii_case("d")
+                || x.eq_ignore_ascii_case("day")
+                || x.eq_ignore_ascii_case("days") =>
+            {
+                interval += Interval::from_days(count as _)
+            }
+            x if x.eq_ignore_ascii_case("h")
+                || x.eq_ignore_ascii_case("hour")
+                || x.eq_ignore_ascii_case("hours") =>
+            {
+                interval += Interval::from_hours(count as _)
+            }
+            x if x.eq_ignore_ascii_case("min")
+                || x.eq_ignore_ascii_case("mins")
+                || x.eq_ignore_ascii_case("minute")
+                || x.eq_ignore_ascii_case("minutes") =>
+            {
+                interval += Interval::from_mins(count as _)
+            }
+            x if x.eq_ignore_ascii_case("s")
+                || x.eq_ignore_ascii_case("sec")
+                || x.eq_ignore_ascii_case("secs")
+                || x.eq_ignore_ascii_case("second")
+                || x.eq_ignore_ascii_case("seconds") =>
+            {
+                interval += Interval::from_secs(count as _)
+            }
+            x if x.eq_ignore_ascii_case("micro")
+                || x.eq_ignore_ascii_case("micros")
+                || x.eq_ignore_ascii_case("microsecond")
+                || x.eq_ignore_ascii_case("microseconds") =>
+            {
+                interval += Interval::from_micros(count as _)
+            }
+            x if x.eq_ignore_ascii_case("ns")
+                || x.eq_ignore_ascii_case("nano")
+                || x.eq_ignore_ascii_case("nanos")
+                || x.eq_ignore_ascii_case("nanosecond")
+                || x.eq_ignore_ascii_case("nanoseconds") =>
+            {
+                interval += Interval::from_nanos(count as _)
+            }
+            _ => return Err(make_context()),
+        }
+        input = cur.trim_start();
+    }
+    let neg = if Some('-') == input.chars().next() {
+        input = input[1..].trim_ascii_start();
+        true
+    } else {
+        false
+    };
+    let mut time_interval = Interval::ZERO;
+    let num = extract_number::<true>(&mut input);
+    if !num.is_empty() {
+        let num = num.parse::<u64>().with_context(make_context)?;
+        time_interval += Interval::from_hours(num as _);
+        if Some(':') == input.chars().next() {
+            input = &input[1..];
+            let num = extract_number::<false>(&mut input).parse::<u64>()?;
+            if input.is_empty() {
+                return Err(make_context());
+            }
+            time_interval += Interval::from_mins(num as _);
             if Some(':') == input.chars().next() {
                 input = &input[1..];
-                let num = extract_number::<false>(&mut input).parse::<u64>()?;
-                if input.is_empty() {
-                    return Err(make_context());
-                }
-                time_interval += Interval::from_mins(num as _);
-                if Some(':') == input.chars().next() {
+                let num = extract_number::<false>(&mut input)
+                    .parse::<u64>()
+                    .with_context(make_context)?;
+                time_interval += Interval::from_secs(num as _);
+                if Some('.') == input.chars().next() {
                     input = &input[1..];
-                    let num = extract_number::<false>(&mut input)
-                        .parse::<u64>()
-                        .with_context(make_context)?;
-                    time_interval += Interval::from_secs(num as _);
-                    if Some('.') == input.chars().next() {
-                        input = &input[1..];
-                        let fraction = extract_number::<false>(&mut input);
-                        if fraction.is_empty() || fraction.len() > 9 {
-                            return Err(anyhow!("Sub-nanosecond precision cannot be represented")).with_context(make_context);
-                        }
-                        let nanos = fraction
-                            .parse::<i128>()
-                            .with_context(make_context)?
-                            .saturating_mul(10_i128.pow((9 - fraction.len()) as u32));
-                        time_interval += Interval::from_nanos(nanos);
+                    let fraction = extract_number::<false>(&mut input);
+                    if fraction.is_empty() || fraction.len() > 9 {
+                        return Err(anyhow!("Sub-nanosecond precision cannot be represented"))
+                            .with_context(make_context);
                     }
+                    let nanos = fraction
+                        .parse::<i128>()
+                        .with_context(make_context)?
+                        .saturating_mul(10_i128.pow((9 - fraction.len()) as u32));
+                    time_interval += Interval::from_nanos(nanos);
                 }
             }
-            if neg {
-                interval -= time_interval;
-            } else {
-                interval += time_interval;
-            }
         }
-        if !input.is_empty() {
-            return Err(make_context());
+        if neg {
+            interval -= time_interval;
+        } else {
+            interval += time_interval;
         }
-        Ok(interval)
-    },
-);
+    }
+    if !input.is_empty() {
+        return Err(make_context());
+    }
+    Ok(interval)
+},);
 
-impl_as_value!(
-    std::time::Duration,
-    Value::Interval,
-    |v| <Interval as AsValue>::parse(v).map(Into::into),
-);
+impl_as_value!(std::time::Duration, Value::Interval, |v| {
+    <Interval as AsValue>::parse(v).map(Into::into)
+},);
 
-impl_as_value!(
-    time::Duration,
-    Value::Interval,
-    |v| <Interval as AsValue>::parse(v).map(Into::into),
-);
+impl_as_value!(time::Duration, Value::Interval, |v| {
+    <Interval as AsValue>::parse(v).map(Into::into)
+},);
 
-impl_as_value!(
-    Uuid,
-    Value::Uuid,
-    |input: &str| {
-        let uuid = Uuid::parse_str(input).with_context(|| {
-            format!(
-                "Cannot parse a uuid value from `{}`",
-                truncate_long!(input)
-            )
-        })?;
-        Ok(uuid)
-    },
-);
+impl_as_value!(Uuid, Value::Uuid, |input: &str| {
+    let uuid = Uuid::parse_str(input)
+        .with_context(|| format!("Cannot parse a uuid value from `{}`", truncate_long!(input)))?;
+    Ok(uuid)
+},);
 
 /// Parses `$value` against each of the given formats, returning the first
 /// successful parse and advancing `$value` past the consumed input.
@@ -980,15 +991,24 @@ impl_as_value!(
             "[year]-[month]-[day] [hour]:[minute]:[second]",
             "[year]-[month]-[day] [hour]:[minute]",
         )
-        .ok_or_else(|| anyhow!("Cannot parse `{}` as time::PrimitiveDateTime", truncate_long!(input)))?;
+        .ok_or_else(|| {
+            anyhow!(
+                "Cannot parse `{}` as time::PrimitiveDateTime",
+                truncate_long!(input)
+            )
+        })?;
         if !input.is_empty() {
-            return Err(anyhow!("Cannot parse `{}` as time::PrimitiveDateTime", truncate_long!(input)))
+            return Err(anyhow!(
+                "Cannot parse `{}` as time::PrimitiveDateTime",
+                truncate_long!(input)
+            ));
         }
         Ok(result)
     },
 );
 
 impl_as_value! { @copy UtcDateTime {
+    #[inline(always)]
     fn as_empty_value() -> ValueOwned {
         time::PrimitiveDateTime::as_empty_value()
     }
@@ -1253,6 +1273,7 @@ impl_as_value! { @copy chrono::DateTime<chrono::Utc> {
 } }
 
 impl_as_value! { @copy Decimal {
+    #[inline(always)]
     fn as_empty_value() -> ValueOwned {
         Value::Decimal(None, 0, 0)
     }
@@ -1309,6 +1330,7 @@ impl_as_value! { @copy Decimal {
 } }
 
 impl<const W: u8, const S: u8> AsValue for FixedDecimal<W, S> {
+    #[inline(always)]
     fn as_empty_value() -> ValueOwned {
         Decimal::as_empty_value()
     }
@@ -1560,6 +1582,7 @@ impl_as_value!(BTreeMap, Ord);
 impl_as_value!(HashMap, Eq, Hash);
 
 impl AsValue for Cow<'_, str> {
+    #[inline(always)]
     fn as_empty_value() -> ValueOwned {
         Value::Varchar(None)
     }
@@ -1632,6 +1655,7 @@ impl AsValue for &Cow<'_, Value<'_>> {
 }
 
 impl<T: AsValue> AsValue for Option<T> {
+    #[inline(always)]
     fn as_empty_value() -> ValueOwned {
         T::as_empty_value()
     }
@@ -1647,16 +1671,36 @@ impl<T: AsValue> AsValue for Option<T> {
     }
     #[inline(always)]
     fn try_from_value(value: impl AsValue) -> Result<Self> {
+        #[cold]
+        #[inline(never)]
+        fn is_null(value: &Value<'_>) -> bool {
+            value.is_null()
+        }
         match value.as_value() {
             val @ Value::Null => {
+                // Suppress `Value` drop glue once `val` is known to be `Value::Null`.
                 mem::forget(val);
                 Ok(None)
             }
-            val => Ok(if val.is_null() {
-                None
-            } else {
-                Some(<T as AsValue>::try_from_value(val)?)
-            }),
+            val => {
+                // Compare against `T::as_empty_value()`'s constant discriminant so LLVM
+                // constant-folds `val.is_null()` to `T`'s single variant instead of a
+                // 28-entry jump table, outlining cross-variant checks to `is_null`.
+                let empty = T::as_empty_value();
+                let same = mem::discriminant(&val) == mem::discriminant(&empty);
+                if !matches!(
+                    empty,
+                    Value::Array(..) | Value::List(..) | Value::Map(..) | Value::Struct(..)
+                ) {
+                    // Scalar empty values own no heap data; forgetting elides drop glue.
+                    mem::forget(empty);
+                }
+                Ok(if same && !val.is_null() || !is_null(&val) {
+                    Some(<T as AsValue>::try_from_value(val)?)
+                } else {
+                    None
+                })
+            }
         }
     }
     fn parse(input: impl AsRef<str>) -> Result<Self>

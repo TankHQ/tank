@@ -131,26 +131,36 @@ where
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(row) = self.current.as_mut().and_then(Iterator::next) {
-            return Some(row);
-        }
-        self.current = None;
-        if let Some(error) = self.pending.take() {
-            return Some(Err(error));
-        }
-        for item in &mut self.inner {
-            match item {
-                Ok(QueryResult::Rows(mut rows)) => {
-                    if let Some(row) = rows.next() {
-                        self.current = Some(rows);
-                        return Some(row);
-                    }
-                }
-                Ok(QueryResult::Affected(_)) => {}
-                Err(error) => return Some(Err(error)),
+        // Keep statement-boundary advancement out of the per-row hot loop.
+        #[cold]
+        #[inline(never)]
+        fn fallback<'s, D, O>(fetched: &mut Fetched<'s, D, O>) -> Option<Result<D::Row<'s>>>
+        where
+            D: Driver + 's,
+            O: AsMut<Query<D>> + Send + 's,
+        {
+            fetched.current = None;
+            if let Some(error) = fetched.pending.take() {
+                return Some(Err(error));
             }
+            for item in &mut fetched.inner {
+                match item {
+                    Ok(QueryResult::Rows(mut rows)) => {
+                        if let Some(row) = rows.next() {
+                            fetched.current = Some(rows);
+                            return Some(row);
+                        }
+                    }
+                    Ok(QueryResult::Affected(_)) => {}
+                    Err(error) => return Some(Err(error)),
+                }
+            }
+            None
         }
-        None
+        self.current
+            .as_mut()
+            .and_then(Iterator::next)
+            .or_else(|| fallback(self))
     }
 
     #[inline(always)]

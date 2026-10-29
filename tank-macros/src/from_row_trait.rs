@@ -75,7 +75,9 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
                         #[allow(unreachable_patterns)]
                         match __n__.as_bytes() {
                             #(#field_assignment_default)*
-                            _ => {},
+                            // Move `__v__` in every arm so MIR omits a dynamic drop flag,
+                            // allowing LLVM SROA to keep `__v__` in registers.
+                            _ => drop(__v__),
                         }
                     }
                     Ok(result)
@@ -97,7 +99,9 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
                         #[allow(unreachable_patterns)]
                         match __n__.as_bytes() {
                             #(#field_assignment_holder)*
-                            _ => {},
+                            // Move `__v__` in every arm so MIR omits a dynamic drop flag,
+                            // allowing LLVM SROA to keep `__v__` in registers.
+                            _ => drop(__v__),
                         }
                     }
                     Ok(#struct_name {
