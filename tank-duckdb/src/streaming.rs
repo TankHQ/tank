@@ -4,7 +4,6 @@ use libduckdb_sys::*;
 use std::{
     ffi::{CStr, CString},
     mem, ptr,
-    sync::{Arc, Mutex},
 };
 use tank_core::{
     Error, Query, QueryResult, Result, RowLabels, RowOwned, RowsAffected, error_message_from_ptr,
@@ -238,14 +237,7 @@ impl<Q: AsMut<Query<DuckDBDriver>>> Drop for Execution<'_, Q> {
 }
 
 pub struct Statements<'s, Q: AsMut<Query<DuckDBDriver>>> {
-    // Both iterators may move between threads, but all native access is serialized.
-    // The shared state retains the exclusive connection/query borrows until both die.
-    execution: Arc<Mutex<Execution<'s, Q>>>,
-}
-
-pub struct Rows<'s, Q: AsMut<Query<DuckDBDriver>>> {
-    execution: Arc<Mutex<Execution<'s, Q>>>,
-    generation: u64,
+    execution: Execution<'s, Q>,
 }
 
 impl<'s, Q: AsMut<Query<DuckDBDriver>>> Statements<'s, Q> {
@@ -277,7 +269,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Statements<'s, Q> {
             None
         };
         Ok(Self {
-            execution: Arc::new(Mutex::new(Execution {
+            execution: Execution {
                 rows: None,
                 prepared: None,
                 extracted,
@@ -288,39 +280,29 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Statements<'s, Q> {
                 index: 0,
                 generation: 0,
                 finished: false,
-            })),
+            },
         })
     }
 }
 
 impl<'s, Q: AsMut<Query<DuckDBDriver>>> Iterator for Statements<'s, Q> {
-    type Item = Result<QueryResult<Rows<'s, Q>>>;
+    type Item = Result<QueryResult<RowOwned>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut execution = self.execution.lock().unwrap();
-        match execution.next_statement() {
-            Ok(Some(Statement::Rows)) => Some(Ok(QueryResult::Rows(Rows {
-                execution: Arc::clone(&self.execution),
-                generation: execution.generation,
-            }))),
-            Ok(Some(Statement::Affected(affected))) => Some(Ok(QueryResult::Affected(affected))),
-            Ok(None) => None,
-            Err(error) => Some(Err(execution.fail(error))),
-        }
-    }
-}
-
-impl<Q: AsMut<Query<DuckDBDriver>>> Iterator for Rows<'_, Q> {
-    type Item = Result<RowOwned>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut execution = self.execution.lock().unwrap();
-        if self.generation != execution.generation {
-            return None;
-        }
-        match execution.next_row() {
-            Ok(row) => row.map(Ok),
-            Err(error) => Some(Err(execution.fail(error))),
+        loop {
+            match self.execution.next_row() {
+                Ok(Some(row)) => return Some(Ok(QueryResult::Row(row))),
+                Ok(None) => {}
+                Err(error) => return Some(Err(self.execution.fail(error))),
+            }
+            match self.execution.next_statement() {
+                Ok(Some(Statement::Rows)) => {}
+                Ok(Some(Statement::Affected(affected))) => {
+                    return Some(Ok(QueryResult::Affected(affected)));
+                }
+                Ok(None) => return None,
+                Err(error) => return Some(Err(self.execution.fail(error))),
+            }
         }
     }
 }

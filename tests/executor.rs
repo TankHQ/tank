@@ -5,12 +5,13 @@ use std::{
     any::Any,
     borrow::Cow,
     fmt,
-    future::Future,
+    pin::pin,
     sync::atomic::{AtomicUsize, Ordering},
 };
 use tank::{
     AsQuery, AsValue, Connection, Driver, Executor, GenericSqlWriter, Prepared, QueryResult, Result,
     RowOwned, RowsAffected, Transaction, anyhow,
+    stream::{self, Stream, StreamExt},
 };
 
 #[derive(Clone, Debug, Default)]
@@ -44,82 +45,48 @@ impl Driver for TestDriver {
     type Transaction<'c> = TestExecutor;
     const NAME: &'static [&'static str] = &["test"];
 
-    type Row<'s> = RowOwned;
-    type Rows<'s, O>
-        = TestRows<'s>
-    where
-        O: AsMut<tank::Query<Self>> + Send + 's;
-    type Results<'s, O>
-        = TestResults<'s>
-    where
-        O: AsMut<tank::Query<Self>> + Send + 's;
-
     fn sql_writer(&self) -> GenericSqlWriter {
         GenericSqlWriter::new()
     }
 }
 
-/// Rows of one test statement, counting each row as it is consumed.
-struct TestRows<'s> {
-    inner: std::vec::IntoIter<Result<RowOwned>>,
-    consumed: &'s AtomicUsize,
-}
-
-impl Iterator for TestRows<'_> {
-    type Item = Result<RowOwned>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let row = self.inner.next()?;
-        self.consumed.fetch_add(1, Ordering::SeqCst);
-        Some(row)
-    }
-}
-
-/// Statement-level results of a test query.
+/// Flat stream results of a test query, counting each row as it is consumed.
 struct TestResults<'s> {
-    inner: std::vec::IntoIter<Result<QueryResult<std::vec::IntoIter<Result<RowOwned>>>>>,
+    inner: std::vec::IntoIter<Result<QueryResult<RowOwned>>>,
     consumed: &'s AtomicUsize,
 }
 
-impl<'s> Iterator for TestResults<'s> {
-    type Item = Result<QueryResult<TestRows<'s>>>;
+impl Iterator for TestResults<'_> {
+    type Item = Result<QueryResult<RowOwned>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Some(match self.inner.next()? {
-            Ok(QueryResult::Rows(rows)) => Ok(QueryResult::Rows(TestRows {
-                inner: rows,
-                consumed: self.consumed,
-            })),
-            Ok(QueryResult::Affected(affected)) => Ok(QueryResult::Affected(affected)),
-            Err(error) => Err(error),
-        })
+        let item = self.inner.next()?;
+        if matches!(item, Ok(QueryResult::Row(_))) {
+            self.consumed.fetch_add(1, Ordering::SeqCst);
+        }
+        Some(item)
     }
 }
 
 #[derive(Debug, Default)]
 struct TestExecutor {
-    results: Vec<Result<QueryResult<std::vec::IntoIter<Result<RowOwned>>>>>,
+    results: Vec<Result<QueryResult<RowOwned>>>,
     consumed: AtomicUsize,
 }
 
 impl Executor for TestExecutor {
     type Driver = TestDriver;
 
-    fn run<'s, Q>(
+    fn run<'s>(
         &'s mut self,
-        _: Q,
-    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Results<'s, Q::Output>>> + Send
-    where
-        Q: AsQuery<TestDriver> + Send + 's,
-    {
+        _: impl AsQuery<TestDriver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult<impl tank::Row + 's>>> + Send {
         let results = std::mem::take(&mut self.results);
         let consumed = &self.consumed;
-        async move {
-            Ok(TestResults {
-                inner: results.into_iter(),
-                consumed,
-            })
-        }
+        stream::iter(TestResults {
+            inner: results.into_iter(),
+            consumed,
+        })
     }
 }
 
@@ -147,26 +114,25 @@ impl Executor for TestExecutor {
             let mut executor = TestExecutor {
                 results: vec![
                     Ok(QueryResult::Affected(RowsAffected::default())),
-                    Ok(QueryResult::Rows(
-                        vec![Ok(RowOwned::default()), Err(anyhow!("late row error"))].into_iter(),
-                    )),
-                    Err(anyhow!("late statement error")),
-                    Ok(QueryResult::Rows(vec![Ok(RowOwned::default())].into_iter())),
+                    Ok(QueryResult::Row(RowOwned::default())),
+                    Err(anyhow!("Late row error")),
+                    Err(anyhow!("Late statement error")),
+                    Ok(QueryResult::Row(RowOwned::default())),
                 ],
                 ..Default::default()
             };
-            let mut rows = (&mut executor).fetch("").await.unwrap();
-            assert!(rows.next().unwrap().is_ok());
+            let mut rows = pin!((&mut executor).fetch(""));
+            assert!(rows.next().await.unwrap().is_ok());
             assert_eq!(
-                rows.next().unwrap().err().unwrap().to_string(),
-                "late row error"
+                rows.next().await.unwrap().err().unwrap().to_string(),
+                "Late row error"
             );
             assert_eq!(
-                rows.next().unwrap().err().unwrap().to_string(),
-                "late statement error"
+                rows.next().await.unwrap().err().unwrap().to_string(),
+                "Late statement error"
             );
-            assert!(rows.next().unwrap().is_ok());
-            assert!(rows.next().is_none());
+            assert!(rows.next().await.unwrap().is_ok());
+            assert!(rows.next().await.is_none());
         });
     }
 
@@ -174,36 +140,32 @@ impl Executor for TestExecutor {
     fn execute_propagates_late_row_and_statement_errors() {
         block_on(async {
             for row_error in [true, false] {
-                let mut rows = vec![Ok(RowOwned::default())];
+                let mut results = vec![
+                    Ok(QueryResult::Affected(RowsAffected {
+                        rows_affected: Some(2),
+                        last_affected_id: Some(7),
+                    })),
+                    Ok(QueryResult::Row(RowOwned::default())),
+                ];
                 if row_error {
-                    rows.push(Err(anyhow!("late row error")));
+                    results.push(Err(anyhow!("Late row error")));
+                } else {
+                    results.push(Err(anyhow!("Late statement error")));
                 }
                 let mut executor = TestExecutor {
-                    results: vec![
-                        Ok(QueryResult::Affected(RowsAffected {
-                            rows_affected: Some(2),
-                            last_affected_id: Some(7),
-                        })),
-                        Ok(QueryResult::Rows(rows.into_iter())),
-                    ],
+                    results,
                     ..Default::default()
                 };
-                if !row_error {
-                    executor.results.push(Err(anyhow!("late statement error")));
-                }
                 let error = (&mut executor).execute("").await.unwrap_err();
                 assert_eq!(
                     error.to_string(),
                     if row_error {
-                        "late row error"
+                        "Late row error"
                     } else {
-                        "late statement error"
+                        "Late statement error"
                     }
                 );
-                assert_eq!(
-                    executor.consumed.load(Ordering::SeqCst),
-                    if row_error { 2 } else { 1 }
-                );
+                assert_eq!(executor.consumed.load(Ordering::SeqCst), 1);
             }
         });
     }
@@ -213,15 +175,13 @@ impl Executor for TestExecutor {
         block_on(async {
             let mut executor = TestExecutor {
                 results: vec![
-                    Ok(QueryResult::Rows(
-                        vec![Ok(RowOwned::default()), Ok(RowOwned::default())].into_iter(),
-                    )),
+                    Ok(QueryResult::Row(RowOwned::default())),
+                    Ok(QueryResult::Row(RowOwned::default())),
                     Ok(QueryResult::Affected(RowsAffected {
                         rows_affected: Some(2),
                         last_affected_id: Some(7),
                     })),
-                    Ok(QueryResult::Rows(Vec::new().into_iter())),
-                    Ok(QueryResult::Rows(vec![Ok(RowOwned::default())].into_iter())),
+                    Ok(QueryResult::Row(RowOwned::default())),
                     Ok(QueryResult::Affected(RowsAffected {
                         rows_affected: Some(4),
                         last_affected_id: Some(9),

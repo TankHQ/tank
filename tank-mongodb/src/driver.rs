@@ -1,6 +1,5 @@
 use crate::{MongoDBConnection, MongoDBPrepared, MongoDBSqlWriter, MongoDBTransaction};
-use std::convert::AsMut;
-use tank_core::{Driver, OwnedResults, OwnedRowIter, Query, RowOwned};
+use tank_core::Driver;
 
 /// MongoDB driver.
 #[derive(Default, Clone, Copy, Debug)]
@@ -16,16 +15,6 @@ impl Driver for MongoDBDriver {
     type SqlWriter = MongoDBSqlWriter;
     type Prepared = MongoDBPrepared;
     type Transaction<'c> = MongoDBTransaction<'c>;
-
-    type Row<'s> = RowOwned;
-    type Rows<'s, O>
-        = OwnedRowIter
-    where
-        O: AsMut<Query<Self>> + Send + 's;
-    type Results<'s, O>
-        = OwnedResults
-    where
-        O: AsMut<Query<Self>> + Send + 's;
 
     const NAME: &'static [&'static str] = &["mongodb"];
     fn sql_writer(&self) -> Self::SqlWriter {

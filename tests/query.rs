@@ -511,52 +511,49 @@ mod tests {
         assert_eq!(s, "hello");
 
         let row = tank::RowOwned::default();
-        let QueryResult::Rows(mut rows) = QueryResult::Rows(vec![row].into_iter()) else {
+        let QueryResult::Row(_row) = QueryResult::Row(row) else {
             unreachable!()
         };
-        assert!(rows.next().is_some());
-        assert!(rows.next().is_none());
         assert!(matches!(
-            QueryResult::<std::vec::IntoIter<tank::RowOwned>>::from(RowsAffected::default()),
+            QueryResult::<tank::RowOwned>::from(RowsAffected::default()),
             QueryResult::Affected(_)
         ));
     }
 
     #[test]
-    fn owned_results_preserve_empty_rowsets_and_statement_boundaries() {
+    fn owned_results_preserve_rows_and_affected() {
         let results: Vec<QueryResultOwned> = vec![
-            QueryResult::Rows(Vec::new().into_iter()),
             QueryResult::Affected(RowsAffected {
                 rows_affected: Some(2),
                 last_affected_id: Some(7),
             }),
-            QueryResult::Rows(vec![RowOwned::default(), RowOwned::default()].into_iter()),
+            QueryResult::Row(RowOwned::default()),
+            QueryResult::Row(RowOwned::default()),
         ];
         assert_eq!(results.len(), 3);
-        assert!(matches!(&results[0], QueryResult::Rows(rows) if rows.len() == 0));
-        assert!(matches!(&results[2], QueryResult::Rows(rows) if rows.len() == 2));
+        assert!(matches!(&results[0], QueryResult::Affected(_)));
+        assert!(matches!(&results[1], QueryResult::Row(_)));
         assert_eq!(
             results
                 .into_iter()
                 .filter_map(|result| match result {
-                    QueryResult::Rows(rows) => Some(rows),
+                    QueryResult::Row(row) => Some(row),
                     QueryResult::Affected(_) => None,
                 })
-                .flatten()
                 .count(),
             2,
         );
     }
 
     #[test]
-    fn affected_aggregation_skips_rowsets_and_keeps_last_known_id() {
+    fn affected_aggregation_skips_rows_and_keeps_last_known_id() {
         let results = [
             QueryResult::Affected(RowsAffected {
                 rows_affected: Some(2),
                 last_affected_id: Some(7),
             }),
-            QueryResult::Rows(0..3),
-            QueryResult::Rows(0..0),
+            QueryResult::Row(0),
+            QueryResult::Row(1),
             QueryResult::Affected(RowsAffected::default()),
             QueryResult::Affected(RowsAffected {
                 rows_affected: Some(4),

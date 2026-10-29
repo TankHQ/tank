@@ -11,8 +11,8 @@ use std::{
     str::FromStr,
 };
 use tank_core::{
-    AsQuery, Connection, ErrorContext, Executor, OwnedResults, Query, QueryResult, QueryResultOwned,
-    RawQuery, Result, RowLabels, RowOwned, describe_url, stream::Stream,
+    AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, Row,
+    RowLabels, RowOwned, describe_url, stream::Stream,
 };
 
 /// ClickHouse connection wrapper.
@@ -20,88 +20,6 @@ use tank_core::{
 /// Holds the underlying `klickhouse::Client` and implements the tank_core::Connection`/`Executor` APIs
 pub struct ClickHouseConnection {
     pub(crate) client: Client,
-}
-
-impl ClickHouseConnection {
-    fn do_run<'s, Q: AsQuery<ClickHouseDriver> + 's>(
-        &'s mut self,
-        query: Q,
-    ) -> impl Stream<Item = Result<QueryResultOwned>> + Send + 's {
-        let mut query = query.as_query();
-        let context = format!("While running the query:\n{}", query.as_mut());
-        let client = self.client.clone();
-
-        try_stream! {
-            let sql = match query.as_mut() {
-                Query::Raw(RawQuery { sql, .. }) => Cow::Borrowed(sql.as_str()),
-                Query::Prepared(prepared) => {
-                    let (directive, sql) = ClickHouseSqlWriter::new()
-                        .build_parameterized_sql(prepared)
-                        .with_context(|| context.clone())?;
-                    prepared.take_params();
-                    if let Some(directive) = directive {
-                        client
-                            .execute(directive)
-                            .await
-                            .map_err(Error::new)
-                            .with_context(|| context.clone())?;
-                    }
-                    Cow::Owned(sql)
-                }
-            };
-            let mut stream = client
-                .query_raw(sql.as_ref())
-                .await
-                .map_err(Error::new)
-                .with_context(|| context.clone())?;
-            let mut got_rows = false;
-            let mut rows = Vec::new();
-            while let Some(block) = stream
-                .next()
-                .await
-                .transpose()
-                .map_err(Error::new)
-                .with_context(|| context.clone())?
-            {
-                if block.column_types.is_empty() {
-                    continue;
-                }
-                got_rows = true;
-                if block.rows == 0 {
-                    continue;
-                }
-                let names: RowLabels = block
-                    .column_types
-                    .keys()
-                    .map(|n| n.rsplit('.').next().unwrap_or(n).to_owned())
-                    .collect();
-                let columns: Vec<(&klickhouse::Type, &Vec<klickhouse::Value>)> = block
-                    .column_types
-                    .values()
-                    .zip(block.column_data.values())
-                    .collect();
-                for row_idx in 0..block.rows as usize {
-                    let values = columns
-                        .iter()
-                        .map(|(ty, column)| {
-                            extract_value(ty, column[row_idx].clone())
-                                .with_context(|| context.clone())
-                        })
-                        .collect::<Result<Vec<_>>>()?;
-                    rows.push(RowOwned::new(names.clone(), values));
-                }
-            }
-            if got_rows {
-                yield QueryResult::Rows(rows.into_iter());
-            } else {
-                yield QueryResult::Affected(Default::default());
-            }
-        }
-        .map_err(move |e| {
-            log::error!("{e:#}");
-            e
-        })
-    }
 }
 
 impl Connection for ClickHouseConnection {
@@ -199,18 +117,81 @@ impl Executor for ClickHouseConnection {
         Ok(Query::Prepared(ClickHousePrepared::new(sql, params)))
     }
 
-    fn run<'s, Q>(
+    fn run<'s>(
         &'s mut self,
-        query: Q,
-    ) -> impl Future<Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>>
-    + Send
-    where
-        Q: AsQuery<ClickHouseDriver> + Send + 's,
-    {
-        async move {
-            let results = self.do_run(query).try_collect::<Vec<_>>().await?;
-            Ok(OwnedResults::new(results.into_iter().map(Ok).collect()))
+        query: impl AsQuery<ClickHouseDriver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
+        let mut query = query.as_query();
+        let context = format!("While running the query:\n{}", query.as_mut());
+        let client = self.client.clone();
+
+        try_stream! {
+            let sql = match query.as_mut() {
+                Query::Raw(RawQuery { sql, .. }) => Cow::Borrowed(sql.as_str()),
+                Query::Prepared(prepared) => {
+                    let (directive, sql) = ClickHouseSqlWriter::new()
+                        .build_parameterized_sql(prepared)
+                        .with_context(|| context.clone())?;
+                    prepared.take_params();
+                    if let Some(directive) = directive {
+                        client
+                            .execute(directive)
+                            .await
+                            .map_err(Error::new)
+                            .with_context(|| context.clone())?;
+                    }
+                    Cow::Owned(sql)
+                }
+            };
+            let mut stream = client
+                .query_raw(sql.as_ref())
+                .await
+                .map_err(Error::new)
+                .with_context(|| context.clone())?;
+            let mut got_rows = false;
+            while let Some(block) = stream
+                .next()
+                .await
+                .transpose()
+                .map_err(Error::new)
+                .with_context(|| context.clone())?
+            {
+                if block.column_types.is_empty() {
+                    continue;
+                }
+                got_rows = true;
+                if block.rows == 0 {
+                    continue;
+                }
+                let names: RowLabels = block
+                    .column_types
+                    .keys()
+                    .map(|n| n.rsplit('.').next().unwrap_or(n).to_owned())
+                    .collect();
+                let columns: Vec<(&klickhouse::Type, &Vec<klickhouse::Value>)> = block
+                    .column_types
+                    .values()
+                    .zip(block.column_data.values())
+                    .collect();
+                for row_idx in 0..block.rows as usize {
+                    let values = columns
+                        .iter()
+                        .map(|(ty, column)| {
+                            extract_value(ty, column[row_idx].clone())
+                                .with_context(|| context.clone())
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    yield QueryResult::Row(RowOwned::new(names.clone(), values));
+                }
+            }
+            if !got_rows {
+                yield QueryResult::Affected(Default::default());
+            }
         }
+        .map_err(move |e| {
+            log::error!("{e:#}");
+            e
+        })
     }
 }
 

@@ -341,10 +341,9 @@ pub async fn metrics(executor: &mut impl Executor) {
                 .order_by(cols!(Metric::value DESC, Metric::date DESC))
                 .build(&executor.driver()),
         )
-        .await
-        .unwrap()
         .map(|v| MetricValue::from_row(v?).map(|v| v.value))
-        .collect::<Result<Vec<_>>>()
+        .try_collect::<Vec<_>>()
+        .await
         .expect("Coult not get the Italy height values");
     assert_eq!(heights, [178.0]);
 
@@ -360,10 +359,9 @@ pub async fn metrics(executor: &mut impl Executor) {
                 .order_by(cols!(Metric::value ASC))
                 .build(&executor.driver()),
         )
-        .await
-        .unwrap()
         .map(|v| MetricValue::from_row(v?).map(|v| v.value))
-        .collect::<Result<Vec<_>>>()
+        .try_collect::<Vec<_>>()
+        .await
         .expect("Could not get IT incomes");
     assert_eq!(italy_incomes, [56000.0, 61000.0, 68000.0, 72000.0]);
 
@@ -378,10 +376,9 @@ pub async fn metrics(executor: &mut impl Executor) {
                 ))
                 .build(&executor.driver()),
         )
-        .await
-        .unwrap()
         .map(|v| MetricValue::from_row(v?).map(|v| v.value))
-        .collect::<Result<Vec<_>>>()
+        .try_collect::<Vec<_>>()
+        .await
         .expect("Could not get latest UK income");
     assert_eq!(latest_income, [102000.0]);
 
@@ -401,30 +398,27 @@ pub async fn metrics(executor: &mut impl Executor) {
     prepared.bind("ES").unwrap().bind("height_cm").unwrap();
     let spain_heights = executor
         .fetch(&mut prepared)
-        .await
-        .unwrap()
         .map(|v| MetricValue::from_row(v?).map(|v| v.value))
-        .collect::<Result<Vec<_>>>()
+        .try_collect::<Vec<_>>()
+        .await
         .expect("Could not fetch sophie heights");
     assert_eq!(spain_heights, [162.0]);
 
     prepared.bind("NL").unwrap().bind("weight_kg").unwrap();
     let netherlands_weights = executor
         .fetch(&mut prepared)
-        .await
-        .unwrap()
         .map(|v| MetricValue::from_row(v?).map(|v| v.value))
-        .collect::<Result<Vec<_>>>()
+        .try_collect::<Vec<_>>()
+        .await
         .expect("Could not fetch sophie heights");
     assert_eq!(netherlands_weights, [82.5, 81.0]);
 
     prepared.bind("IT").unwrap().bind("weight_kg").unwrap();
     let italy_weights = executor
         .fetch(&mut prepared)
-        .await
-        .unwrap()
         .map(|v| MetricValue::from_row(v?).map(|v| v.value))
-        .collect::<Result<Vec<_>>>()
+        .try_collect::<Vec<_>>()
+        .await
         .expect("Could not fetch sophie heights");
     assert_eq!(italy_weights, [80.5, 78.0, 64.2, 62.5]);
 
@@ -449,10 +443,9 @@ pub async fn metrics(executor: &mut impl Executor) {
                     .order_by(cols!(Metric::name ASC, avg DESC))
                     .build(&executor.driver()),
             )
-            .await
-            .unwrap()
             .map(|row| AverageMetrics::from_row(row?))
-            .collect::<Result<Vec<_>>>()
+            .try_collect::<Vec<_>>()
+            .await
             .expect("Could not get the products ordered by increasing price");
         assert_eq!(
             averages,
@@ -559,10 +552,9 @@ pub async fn metrics(executor: &mut impl Executor) {
                     .order_by(cols!(max_income DESC, Metric::country ASC))
                     .build(&executor.driver()),
             )
-            .await
-            .unwrap()
             .map(|row| CountryMaxIncome::from_row(row?))
-            .collect::<Result<Vec<_>>>()
+            .try_collect::<Vec<_>>()
+            .await
             .expect("Could not get max incomes per country");
 
         assert_eq!(
@@ -620,10 +612,9 @@ pub async fn metrics(executor: &mut impl Executor) {
                     .order_by(cols!(name ASC))
                     .build(&executor.driver()),
             )
-            .await
-            .unwrap()
             .map(|row| MetricGlobalStats::from_row(row?))
-            .collect::<Result<Vec<_>>>()
+            .try_collect::<Vec<_>>()
+            .await
             .expect("Could not get global metric stats");
 
         assert_eq!(
@@ -665,10 +656,9 @@ pub async fn metrics(executor: &mut impl Executor) {
                     .order_by(cols!(name ASC))
                     .build(&executor.driver()),
             )
-            .await
-            .unwrap()
             .map(|row| MetricGlobalStats::from_row(row?))
-            .collect::<Result<Vec<_>>>()
+            .try_collect::<Vec<_>>()
+            .await
             .expect("Could not get heavy metric stats");
 
         assert_eq!(

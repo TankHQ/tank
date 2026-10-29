@@ -1,6 +1,6 @@
 use crate::{
     PostgresDriver, PostgresPrepared, PostgresTransaction, TankParam,
-    rows::{PostgresResults, PostgresRows, PostgresScratch},
+    rows::{PostgresResults, PostgresRows, PostgresScratch, PostgresStream},
     stream::ConnectionStream,
 };
 use std::{
@@ -10,8 +10,8 @@ use std::{
     str::FromStr,
 };
 use tank_core::{
-    AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result,
-    RowsAffected, describe_url,
+    AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, Row,
+    RowsAffected, describe_url, stream::Stream,
 };
 use url::Url;
 use wtx::{
@@ -118,15 +118,12 @@ impl Executor for PostgresConnection {
         Ok(PostgresPrepared::new(sql).into())
     }
 
-    fn run<'s, Q>(
+    fn run<'s>(
         &'s mut self,
-        query: Q,
-    ) -> impl Future<Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>> + Send
-    where
-        Q: AsQuery<PostgresDriver> + Send + 's,
-    {
-        async move {
-            let mut query = query.as_query();
+        query: impl AsQuery<PostgresDriver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
+        let mut query = query.as_query();
+        PostgresStream::new(async move {
             let result = match query.as_mut() {
                 Query::Raw(raw) => self.run_prepared(&raw.sql, &[]).await,
                 Query::Prepared(prepared) => {
@@ -142,7 +139,29 @@ impl Executor for PostgresConnection {
                 log::error!("{error:#}");
                 error
             })
-        }
+        })
+    }
+
+    fn fetch<'s>(
+        &'s mut self,
+        query: impl AsQuery<PostgresDriver> + 's,
+    ) -> impl Stream<Item = Result<impl Row + 's>> + Send {
+        let mut query = query.as_query();
+        PostgresStream::new(async move {
+            let result = match query.as_mut() {
+                Query::Raw(raw) => self.fetch_prepared(&raw.sql, &[]).await,
+                Query::Prepared(prepared) => {
+                    prepared.encode_params()?;
+                    self.fetch_prepared(&prepared.sql, &prepared.encoded_params)
+                        .await
+                }
+            };
+            result.map_err(|e| {
+                let error = e.context(format!("While running the query:\n{}", query.as_mut()));
+                log::error!("{error:#}");
+                error
+            })
+        })
     }
 }
 
@@ -157,25 +176,45 @@ impl PostgresConnection {
         &'s mut self,
         sql: &str,
         params: &[TankParam],
-    ) -> Result<crate::rows::PostgresResults<'s>> {
+    ) -> Result<PostgresResults<'s>> {
         let records = self
             .client
             .execute_stmt_many(crate::TankStmt::new(sql, params), params, |_| Ok(()))
             .await
             .map_err(tank_core::Error::new)?;
-        self.scratch.prepare(&records);
-        Ok(PostgresResults::new(Ok(if records.columns().is_some() {
-            QueryResult::Rows(PostgresRows::new(
+        Ok(if records.columns().is_some() {
+            self.scratch.prepare(&records);
+            PostgresResults::rows(PostgresRows::new(
                 records,
                 &self.scratch.labels,
                 &self.scratch.decoders,
             ))
         } else {
-            QueryResult::Affected(RowsAffected {
+            PostgresResults::affected(RowsAffected {
                 rows_affected: Some(records.rows_affected()),
                 last_affected_id: None,
             })
-        })))
+        })
+    }
+
+    pub(crate) async fn fetch_prepared<'s>(
+        &'s mut self,
+        sql: &str,
+        params: &[TankParam],
+    ) -> Result<PostgresRows<'s>> {
+        let records = self
+            .client
+            .execute_stmt_many(crate::TankStmt::new(sql, params), params, |_| Ok(()))
+            .await
+            .map_err(tank_core::Error::new)?;
+        if records.columns().is_some() {
+            self.scratch.prepare(&records);
+        }
+        Ok(PostgresRows::new(
+            records,
+            &self.scratch.labels,
+            &self.scratch.decoders,
+        ))
     }
 }
 

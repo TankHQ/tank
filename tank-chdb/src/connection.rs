@@ -4,8 +4,9 @@ use crate::{
 use anyhow::anyhow;
 use std::{borrow::Cow, mem, sync::Arc};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, Row,
     describe_path,
+    stream::{self, Stream, TryStreamExt},
 };
 use tokio::{sync::Mutex, task::spawn_blocking};
 
@@ -76,16 +77,12 @@ impl Executor for ChDBConnection {
         Ok(Query::Prepared(ChDBPrepared::new(sql, params)))
     }
 
-    fn run<'s, Q>(
+    fn run<'s>(
         &'s mut self,
-        query: Q,
-    ) -> impl Future<Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>>
-    + Send
-    where
-        Q: AsQuery<ChDBDriver> + Send + 's,
-    {
-        async move {
-            let mut query = query.as_query();
+        query: impl AsQuery<ChDBDriver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
+        let mut query = query.as_query();
+        stream::once(async move {
             let context = format!("While running the query:\n{}", query.as_mut());
             let connection = Arc::clone(&self.connection);
             let mut owned = mem::take(query.as_mut());
@@ -108,31 +105,12 @@ impl Executor for ChDBConnection {
             let (owned, result) = join.await?;
             *query.as_mut() = owned;
             query.as_mut().clear_bindings().context(context.clone())?;
-            Ok(ChDBResults {
-                inner: Some(result.map_err(|e| {
-                    let error = e.context(context.clone());
-                    log::error!("{error:#}");
-                    error
-                })),
+            result.map(stream::iter).map_err(|e| {
+                let error = e.context(context);
+                log::error!("{error:#}");
+                error
             })
-        }
-    }
-}
-
-/// Statement-level results of a chDB query (one statement per call).
-pub struct ChDBResults {
-    inner: Option<Result<QueryResult<streaming::ChDBRows>>>,
-}
-
-impl Iterator for ChDBResults {
-    type Item = Result<QueryResult<streaming::ChDBRows>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.take()
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = usize::from(self.inner.is_some());
-        (remaining, Some(remaining))
+        })
+        .try_flatten()
     }
 }

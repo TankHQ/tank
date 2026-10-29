@@ -1,6 +1,6 @@
 use crate::{
     native::{NativeConnection, NativeResult},
-    parse_result,
+    value_wrap::{ParsedChunk, parse_result},
 };
 use anyhow::{anyhow, ensure};
 use std::sync::Arc;
@@ -27,12 +27,28 @@ impl Drop for NativeStream {
     }
 }
 
+pub(crate) enum ChDBOutput {
+    Rows(ChDBRows),
+    Affected(Option<tank_core::RowsAffected>),
+}
+
+impl Iterator for ChDBOutput {
+    type Item = Result<QueryResult<RowOwned>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Rows(rows) => rows.next(),
+            Self::Affected(affected) => affected.take().map(|a| Ok(QueryResult::Affected(a))),
+        }
+    }
+}
+
 pub(crate) fn execute(
     connection: Arc<Mutex<NativeConnection>>,
     directive: Option<&str>,
     sql: &str,
     context: String,
-) -> Result<QueryResult<ChDBRows>> {
+) -> Result<ChDBOutput> {
     let mut native = connection.blocking_lock_owned();
     if let Some(directive) = directive {
         native.query(directive, c"Null")?;
@@ -49,13 +65,13 @@ pub(crate) fn execute(
         rejection.push_str(" (BAD_ARGUMENTS)");
         ensure!(
             error == rejection,
-            "chDB streaming initialization failed: {error}"
+            "ChDB streaming initialization failed: {error}"
         );
         drop(handle);
         let result = native.query(sql, c"JSONCompact")?;
         return Ok(match parse_result(result.data()?)? {
-            QueryResult::Affected(affected) => QueryResult::Affected(affected),
-            QueryResult::Rows(rows) => QueryResult::Rows(ChDBRows {
+            ParsedChunk::Affected(affected) => ChDBOutput::Affected(Some(affected)),
+            ParsedChunk::Rows(rows) => ChDBOutput::Rows(ChDBRows {
                 stream: None,
                 rows,
                 context,
@@ -75,7 +91,7 @@ pub(crate) fn execute(
     // In 26.5 cancel-before-first-fetch hangs. Prime exactly one native chunk
     // before transferring ownership, so even an unconsumed rowset can cancel.
     rows.fetch_chunk()?;
-    Ok(QueryResult::Rows(rows))
+    Ok(ChDBOutput::Rows(rows))
 }
 
 impl ChDBRows {
@@ -88,12 +104,12 @@ impl ChDBRows {
             if chunk.data()?.is_empty() {
                 ensure!(
                     self.schema_seen && chunk.is_finished(),
-                    "chDB SELECT ended without a schema-bearing result"
+                    "ChDB SELECT ended without a schema-bearing result"
                 );
                 return Ok(None);
             }
-            let QueryResult::Rows(rows) = parse_result(chunk.data()?)? else {
-                return Err(anyhow!("chDB SELECT chunk is missing its schema"));
+            let ParsedChunk::Rows(rows) = parse_result(chunk.data()?)? else {
+                return Err(anyhow!("ChDB SELECT chunk is missing its schema"));
             };
             Ok(Some((rows, chunk.is_finished())))
         })();
@@ -118,12 +134,12 @@ impl ChDBRows {
 }
 
 impl Iterator for ChDBRows {
-    type Item = Result<RowOwned>;
+    type Item = Result<QueryResult<RowOwned>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(row) = self.rows.next() {
-                return Some(Ok(row));
+                return Some(Ok(QueryResult::Row(row)));
             }
             self.stream.as_ref()?;
             if let Err(error) = self.fetch_chunk() {

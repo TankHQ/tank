@@ -345,27 +345,26 @@ pub async fn limits(executor: &mut impl Executor) {
                 .from(Limits::table())
                 .where_expr(expr!(Limits::boolean)),
         );
-        let bundle = executor.run(query).await.unwrap();
-        let mut stream = bundle;
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) = stream.next()
+        let mut stream = pin!(executor.run(query));
+        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
+            stream.next().await
         else {
             panic!("Could not get the result of the first statement");
         };
         if let Some(rows_affected) = rows_affected {
             assert_eq!(rows_affected, 1, "Should have deleted one row");
         }
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) = stream.next()
+        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
+            stream.next().await
         else {
             panic!("Could not get the result of the second statement");
         };
         if let Some(rows_affected) = rows_affected {
             assert_eq!(rows_affected, 2, "Should have inserted two rows");
         }
-        let Some(Ok(QueryResult::Rows(mut rows))) = stream.next() else {
+        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
             panic!("Could not get the row of the third statement");
         };
-        let row = rows.next().expect("Expected the minimals row").unwrap();
-        assert!(rows.next().is_none());
         let loaded = Limits::from_row(row).expect("Could not decode the Limits from minimals row");
         assert_eq!(loaded.boolean, false);
         assert_eq!(loaded.int8, -127);
@@ -394,12 +393,10 @@ pub async fn limits(executor: &mut impl Executor) {
             loaded.date,
             Date::from_calendar_date(-2000, Month::January, 01).unwrap()
         );
-        let Some(Ok(QueryResult::Rows(mut rows))) = stream.next() else {
+        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
             panic!("Could not get the row of the third statement");
         };
-        let row = rows.next().expect("Expected the maximals row").unwrap();
-        assert!(rows.next().is_none());
-        assert!(stream.next().is_none());
+        assert!(stream.next().await.is_none());
         let loaded = Limits::from_row(row).expect("Could not decode the Limits from maximals row");
         assert_eq!(loaded.boolean, true);
         assert_eq!(loaded.int8, 127);

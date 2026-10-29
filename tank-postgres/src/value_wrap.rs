@@ -67,7 +67,7 @@ impl ToSql for ValueSql<'_> {
                 None => None::<Vec<ValueSql>>.to_sql(ty, out),
             },
             _ => Err(anyhow!(
-                "tank::Value variant `{:?}` is not supported by Postgres",
+                "Value variant `{:?}` is not supported by Postgres",
                 self.0
             )
             .into()),

@@ -198,11 +198,11 @@ pub async fn interval(executor: &mut impl Executor) {
                 .from(Intervals::table())
                 .where_expr(true),
         );
-        let bundle = executor.run(query).await.unwrap();
-        let mut stream = bundle;
+        let mut stream = pin!(executor.run(query));
 
         // DELETE
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) = stream.next()
+        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
+            stream.next().await
         else {
             panic!("Could not get the result of deleting the rows")
         };
@@ -211,7 +211,8 @@ pub async fn interval(executor: &mut impl Executor) {
         }
 
         // INSERT
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) = stream.next()
+        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
+            stream.next().await
         else {
             panic!("Could not get the result of inserting the rows")
         };
@@ -220,15 +221,17 @@ pub async fn interval(executor: &mut impl Executor) {
         }
 
         // SELECT
-        let Some(Ok(QueryResult::Rows(rows))) = stream.next() else {
+        let mut intervals = Vec::new();
+        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
             panic!("Could not get the result of selecting the rows")
         };
-        let mut intervals = rows
-            .map(|row| Intervals::from_row(row?))
-            .collect::<tank::Result<Vec<_>>>()
-            .unwrap();
-        assert_eq!(intervals.len(), 2);
-        assert!(stream.next().is_none());
+        intervals.push(Intervals::from_row(row).expect("Could not decode the first Intervals row"));
+        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
+            panic!("Could not get the result of selecting the rows")
+        };
+        intervals
+            .push(Intervals::from_row(row).expect("Could not decode the second Intervals row"));
+        assert!(stream.next().await.is_none());
         intervals.sort_by(|a, b| a.pk.cmp(&b.pk));
 
         // Row 1

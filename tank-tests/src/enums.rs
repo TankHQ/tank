@@ -160,10 +160,10 @@ pub async fn enums(executor: &mut impl Executor) {
                 .order_by(cols!(Entry::another_enum ASC))
                 .build(&executor.driver()),
         )
+        .map_ok(Entry::from_row)
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
         .await
-        .unwrap()
-        .map(|row| Entry::from_row(row?))
-        .collect::<Result<Vec<_>>>()
         .expect("Could not query multiple entities");
     assert_eq!(
         entries,

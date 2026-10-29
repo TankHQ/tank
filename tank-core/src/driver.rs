@@ -1,14 +1,11 @@
 use crate::{
-    Connection, ConnectionPool, DBConnectionManager, Error, PoolConfig, Prepared, Query,
-    QueryResult, Result, Row, Transaction, writer::SqlWriter,
+    Connection, ConnectionPool, DBConnectionManager, Error, PoolConfig, Prepared, Result,
+    Transaction, writer::SqlWriter,
 };
 use deadpool::managed::Pool;
 use std::{borrow::Cow, fmt::Debug, future::Future};
 
 /// Backend connector and dialect.
-///
-/// Names the row shape and result iterators so `Executor::run`/`fetch` return
-/// short concrete types instead of anonymous `impl Iterator` pyramids.
 pub trait Driver: Default + Clone + Sync + Send + Debug {
     /// Concrete connection type.
     type Connection: Connection<Driver = Self> + Debug;
@@ -18,25 +15,6 @@ pub trait Driver: Default + Clone + Sync + Send + Debug {
     type Prepared: Prepared;
     /// Transaction implementation.
     type Transaction<'c>: Transaction<'c>;
-
-    /// The row type produced by this backend, borrowing or owning its values.
-    type Row<'s>: Row + 's
-    where
-        Self: 's;
-
-    /// Iterator over the rows of a single statement.
-    ///
-    /// `O` is the query's [`AsQuery`](crate::AsQuery) output, kept alive by streaming drivers.
-    type Rows<'s, O>: Iterator<Item = Result<Self::Row<'s>>> + Send + 's
-    where
-        Self: 's,
-        O: AsMut<Query<Self>> + Send + 's;
-
-    /// Iterator over a query's results (row sets or affected counts).
-    type Results<'s, O>: Iterator<Item = Result<QueryResult<Self::Rows<'s, O>>>> + Send + 's
-    where
-        Self: 's,
-        O: AsMut<Query<Self>> + Send + 's;
 
     /// Human-readable backend name.
     const NAME: &'static [&'static str];

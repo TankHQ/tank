@@ -1,6 +1,9 @@
 use crate::{PostgresConnection, PostgresDriver};
 use std::future::Future;
-use tank_core::{AsQuery, Error, Executor, Query, RawQuery, Result, Transaction};
+use tank_core::{
+    AsQuery, Error, Executor, Query, QueryResult, RawQuery, Result, Row, Transaction,
+    stream::Stream,
+};
 use wtx::database::DbClient as _;
 
 /// Postgres transaction.
@@ -29,40 +32,25 @@ impl<'c> Executor for PostgresTransaction<'c> {
         false
     }
 
-    async fn do_prepare(
+    fn do_prepare(
         &mut self,
-        RawQuery { sql, .. }: RawQuery,
-    ) -> Result<Query<PostgresDriver>> {
-        let sql = sql.trim_end().trim_end_matches(';').to_string();
-        Ok(crate::PostgresPrepared::new(sql).into())
+        raw: RawQuery,
+    ) -> impl Future<Output = Result<Query<PostgresDriver>>> + Send {
+        self.connection.do_prepare(raw)
     }
 
-    fn run<'s, Q>(
+    fn run<'s>(
         &'s mut self,
-        query: Q,
-    ) -> impl Future<
-        Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>,
-    > + Send
-    where
-        Q: AsQuery<PostgresDriver> + Send + 's,
-    {
-        async move {
-            let mut query = query.as_query();
-            let result = match query.as_mut() {
-                Query::Raw(raw) => self.connection.run_prepared(&raw.sql, &[]).await,
-                Query::Prepared(prepared) => {
-                    prepared.encode_params()?;
-                    self.connection
-                        .run_prepared(&prepared.sql, &prepared.encoded_params)
-                        .await
-                }
-            };
-            result.map_err(|e| {
-                let error = e.context(format!("While running the query:\n{}", query.as_mut()));
-                log::error!("{error:#}");
-                error
-            })
-        }
+        query: impl AsQuery<PostgresDriver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
+        self.connection.run(query)
+    }
+
+    fn fetch<'s>(
+        &'s mut self,
+        query: impl AsQuery<PostgresDriver> + 's,
+    ) -> impl Stream<Item = Result<impl Row + 's>> + Send {
+        self.connection.fetch(query)
     }
 }
 

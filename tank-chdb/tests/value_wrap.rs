@@ -1,6 +1,9 @@
-use std::sync::Mutex;
+use std::{pin::pin, sync::Mutex};
 use tank_chdb::{ChDBConnection, ChDBDriver};
-use tank_core::{Connection, Executor, QueryResult, Result, Row, Value};
+use tank_core::{
+    Connection, Executor, QueryResult, Row, Value,
+    stream::{StreamExt, TryStreamExt},
+};
 
 static MUTEX: Mutex<()> = Mutex::new(());
 
@@ -10,15 +13,8 @@ async fn empty_select_keeps_schema() {
     let mut connection = ChDBConnection::connect(&ChDBDriver::new(), "chdb://".into())
         .await
         .unwrap();
-    let mut results = connection
-        .run("SELECT number AS n FROM numbers(0)")
-        .await
-        .unwrap();
-    let Some(Ok(QueryResult::Rows(mut rows))) = results.next() else {
-        panic!("schema-bearing response must return rows");
-    };
-    assert!(rows.next().is_none());
-    assert!(results.next().is_none());
+    let mut results = pin!(connection.run("SELECT number AS n FROM numbers(0)"));
+    assert!(results.next().await.is_none());
 }
 
 #[tokio::test]
@@ -28,15 +24,12 @@ async fn no_output_is_affected_unknown() {
         .await
         .unwrap();
     {
-        let mut results = connection
-            .run("CREATE TABLE no_output (n UInt8) ENGINE=Memory")
-            .await
-            .unwrap();
-        let Some(Ok(QueryResult::Affected(affected))) = results.next() else {
-            panic!("no output must return effects");
+        let mut results = pin!(connection.run("CREATE TABLE no_output (n UInt8) ENGINE=Memory"));
+        let Some(Ok(QueryResult::Affected(affected))) = results.next().await else {
+            panic!("No output must return effects");
         };
         assert_eq!(affected.rows_affected, None);
-        assert!(results.next().is_none());
+        assert!(results.next().await.is_none());
     }
     connection.execute("DROP TABLE no_output").await.unwrap();
 }
@@ -47,13 +40,11 @@ async fn metadata_orders_columns_and_preserves_json_conversion() {
     let mut connection = ChDBConnection::connect(&ChDBDriver::new(), "chdb://".into())
         .await
         .unwrap();
-    let row = connection
-        .fetch("SELECT 'hello' AS `t.z`, toUInt8(7) AS a, CAST(NULL AS Nullable(String)) AS nil")
-        .await
-        .unwrap()
-        .next()
-        .unwrap()
-        .unwrap();
+    let mut rows = pin!(
+        connection
+            .fetch("SELECT 'hello' AS `t.z`, toUInt8(7) AS a, CAST(NULL AS Nullable(String)) AS nil")
+    );
+    let row = rows.next().await.unwrap().unwrap();
     assert_eq!(row.names(), ["z", "a", "nil"]);
     assert_eq!(
         row.value(0).unwrap().as_ref(),
@@ -82,9 +73,8 @@ async fn malformed_output_is_not_misclassified_as_affected() {
     assert_eq!(
         connection
             .fetch("SELECT 1")
+            .try_collect::<Vec<_>>()
             .await
-            .unwrap()
-            .collect::<Result<Vec<_>>>()
             .unwrap()
             .len(),
         1
@@ -97,13 +87,8 @@ async fn compact_metadata_preserves_duplicate_labels_and_positions() {
     let mut connection = ChDBConnection::connect(&ChDBDriver::new(), "chdb://".into())
         .await
         .unwrap();
-    let row = connection
-        .fetch("SELECT * FROM (SELECT 1 AS n) a, (SELECT 2 AS n) b")
-        .await
-        .unwrap()
-        .next()
-        .unwrap()
-        .unwrap();
+    let mut rows = pin!(connection.fetch("SELECT * FROM (SELECT 1 AS n) a, (SELECT 2 AS n) b"));
+    let row = rows.next().await.unwrap().unwrap();
     assert_eq!(row.names(), ["n", "n"]);
     assert_eq!(
         row.value(0).unwrap().into_owned(),

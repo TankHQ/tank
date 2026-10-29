@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
 use tank::{AsValue, DynQuery, QueryBuilder, SqlWriter};
-use tank::{Driver, Entity, Executor, QueryResult, Row, cols, expr};
+use tank::{Driver, Entity, Executor, QueryResult, Row, cols, expr, stream::TryStreamExt};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -129,51 +129,35 @@ pub async fn multiple(executor: &mut impl Executor) {
     let mut query = <DynQuery as tank::AsQuery<_>>::as_query(query);
     let result = executor
         .run(&mut query)
-        .await
-        .unwrap()
-        .map(|result| {
-            Ok(match result? {
-                QueryResult::Rows(rows) => {
-                    QueryResult::Rows(rows.collect::<tank::Result<Vec<_>>>()?)
-                }
-                QueryResult::Affected(affected) => QueryResult::Affected(affected),
-            })
+        .map_ok(|result| match result {
+            QueryResult::Row(row) => QueryResult::Row(row.into_owned()),
+            QueryResult::Affected(affected) => QueryResult::Affected(affected),
         })
-        .collect::<tank::Result<Vec<_>>>()
+        .try_collect::<Vec<_>>()
+        .await
         .unwrap();
-    assert_eq!(result.len(), 14, "Exactly one result per SQL statement");
+    // 14 statements: 8 writes + 2 rows + 1 write + 1 row + 3 rows + 0 rows + 1 write = 16 items
+    assert_eq!(result.len(), 16);
     for (index, result) in result.iter().enumerate() {
         assert_eq!(
-            matches!(result, QueryResult::Rows(_)),
-            [8, 10, 11, 12].contains(&index),
-            "Unexpected result kind for statement {}",
-            index + 1,
+            matches!(result, QueryResult::Row(_)),
+            [8, 9, 11, 12, 13, 14].contains(&index),
+            "Unexpected result kind at index {}",
+            index,
         );
     }
     let result = result
         .into_iter()
         .enumerate()
-        .flat_map(|(index, result)| match result {
-            QueryResult::Rows(rows) => {
-                assert_eq!(
-                    rows.len(),
-                    match index {
-                        8 => 2,
-                        10 => 1,
-                        11 => 3,
-                        12 => 0,
-                        _ => unreachable!(),
-                    }
-                );
-                rows
-            }
+        .filter_map(|(index, result)| match result {
+            QueryResult::Row(row) => Some(row),
             QueryResult::Affected(affected) => {
-                if index == 13 {
+                if index == 15 {
                     if let Some(count) = affected.rows_affected {
                         assert_eq!(count, 0);
                     }
                 }
-                Vec::new()
+                None
             }
         })
         .collect::<Vec<_>>();
@@ -184,9 +168,9 @@ pub async fn multiple(executor: &mut impl Executor) {
     drop(result);
     let mut result = executor
         .fetch(&mut query)
+        .map_ok(Row::into_owned)
+        .try_collect::<Vec<_>>()
         .await
-        .unwrap()
-        .collect::<tank::Result<Vec<_>>>()
         .unwrap();
     let projected = result
         .iter()
@@ -194,7 +178,7 @@ pub async fn multiple(executor: &mut impl Executor) {
         .collect::<Vec<_>>();
     assert_eq!(
         projected, expected,
-        "fetch flattens all statement rowsets in order"
+        "Fetch flattens all statement rowsets in order"
     );
     result.sort_by(|a, b| {
         let a = a
@@ -268,6 +252,6 @@ pub async fn multiple(executor: &mut impl Executor) {
     drop(result);
     let affected = executor.execute(&mut query).await.unwrap();
     if let Some(count) = affected.rows_affected {
-        assert_eq!(count, 6, "execute counts writes, not the six selected rows");
+        assert_eq!(count, 6, "Execute counts writes, not the six selected rows");
     }
 }

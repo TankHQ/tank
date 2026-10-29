@@ -1,9 +1,12 @@
 use crate::{ScyllaDBConnection, ScyllaDBDriver, ScyllaDBPrepared, ValueWrap};
 use scylla::statement::batch::Batch;
-use std::future::Future;
+use std::future;
 use tank_core::{
-    AsEntity, AsQuery, Driver, DynQuery, Error, ErrorContext, Executor, OwnedResults, Query,
-    RawQuery, Result, RowsAffected, SqlWriter, Transaction, truncate_long,
+    AsEntity, AsQuery, Driver, DynQuery, Error, ErrorContext, Executor, Query, QueryResult,
+    RawQuery, Result, Row, RowsAffected, SqlWriter, Transaction,
+    future::Either,
+    stream::{self, Stream},
+    truncate_long,
 };
 
 /// Transaction abstraction for ScyllaDB/Cassandra batches.
@@ -52,31 +55,32 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
         Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
     }
 
-    fn run<'s, Q>(
+    fn run<'s>(
         &'s mut self,
-        query: Q,
-    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Results<'s, Q::Output>>> + Send
-    where
-        Q: AsQuery<ScyllaDBDriver> + Send + 's,
-    {
-        async move {
-            let mut query = query.as_query();
-            let context = format!(
-                "While running the query (appending a statement to a ScyllaDB/Cassandra batch):\n{:?}",
-                query.as_mut()
-            );
-            match query.as_mut() {
-                Query::Raw(RawQuery { sql, .. }) => {
-                    self.params.push(Default::default());
-                    self.batch.append_statement(sql.as_str());
-                }
-                Query::Prepared(prepared) => {
-                    self.params.push(prepared.take_params().context(context)?);
-                    self.batch.append_statement(prepared.statement.clone());
-                }
+        query: impl AsQuery<ScyllaDBDriver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
+        let mut query = query.as_query();
+        let context = format!(
+            "While running the query (appending a statement to a ScyllaDB/Cassandra batch):\n{:?}",
+            query.as_mut()
+        );
+        match query.as_mut() {
+            Query::Raw(RawQuery { sql, .. }) => {
+                self.params.push(Default::default());
+                self.batch.append_statement(sql.as_str());
             }
-            Ok(OwnedResults::new(Vec::new()))
+            Query::Prepared(prepared) => {
+                self.params
+                    .push(match prepared.take_params().context(context) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            return Either::Left(stream::once(future::ready(Err(e))));
+                        }
+                    });
+                self.batch.append_statement(prepared.statement.clone());
+            }
         }
+        Either::Right(stream::empty::<Result<QueryResult>>())
     }
 
     async fn append<It>(&mut self, entities: It) -> Result<RowsAffected>

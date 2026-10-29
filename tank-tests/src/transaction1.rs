@@ -94,7 +94,7 @@ pub async fn transaction1(connection: &mut impl Connection) {
 
     // Expect empty tables
     {
-        let entities_bundle = connection
+        let entities = connection
             .fetch(
                 QueryBuilder::new()
                     .select(cols!(*))
@@ -102,14 +102,14 @@ pub async fn transaction1(connection: &mut impl Connection) {
                     .where_expr(true)
                     .build(&connection.driver()),
             )
+            .try_collect::<Vec<_>>()
             .await
             .unwrap();
-        let entities = entities_bundle.collect::<tank::Result<Vec<_>>>().unwrap();
         assert!(entities.is_empty());
     }
 
     {
-        let entities_bundle = connection
+        let entities = connection
             .fetch(
                 QueryBuilder::new()
                     .select(cols!(*))
@@ -117,9 +117,9 @@ pub async fn transaction1(connection: &mut impl Connection) {
                     .where_expr(true)
                     .build(&connection.driver()),
             )
+            .try_collect::<Vec<_>>()
             .await
             .unwrap();
-        let entities = entities_bundle.collect::<tank::Result<Vec<_>>>().unwrap();
         assert!(entities.is_empty());
     }
 

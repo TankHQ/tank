@@ -1,7 +1,8 @@
-use std::sync::Mutex;
+use std::{pin::pin, sync::Mutex};
 use tank_chdb::{ChDBConnection, ChDBDriver};
 use tank_core::{
-    AsValue, Connection, Executor, QueryParam, QueryResult, RawQuery, Result, Row, Value,
+    AsValue, Connection, Executor, QueryParam, QueryResult, RawQuery, Row, Value,
+    stream::{Stream, StreamExt, TryStreamExt},
 };
 
 static MUTEX: Mutex<()> = Mutex::new(());
@@ -13,31 +14,28 @@ async fn streaming_public_execution_and_reuse() {
         .await
         .unwrap();
 
-    // Dropping an unconsumed statement iterator also owns/cancels its rowset.
+    // Dropping an unconsumed statement stream also owns/cancels its rowset.
     let pending = connection
-        .run("SELECT number FROM numbers(1000000000000) SETTINGS max_block_size=2, max_threads=1")
-        .await
-        .unwrap();
+        .run("SELECT number FROM numbers(1000000000000) SETTINGS max_block_size=2, max_threads=1");
     drop(pending);
     // Cancel while the blocking initialization worker may still own a stream.
     // Reuse must wait for that worker's native cancellation and destruction.
     for _ in 0..4 {
-        let mut future = Box::pin(connection.run(
+        let mut stream = Box::pin(connection.run(
             "SELECT number FROM numbers(1000000000000) SETTINGS max_block_size=2, max_threads=1",
         ));
         std::future::poll_fn(|cx| {
-            let _ = future.as_mut().poll(cx);
+            let _ = stream.as_mut().poll_next(cx);
             std::task::Poll::Ready(())
         })
         .await;
-        drop(future);
+        drop(stream);
     }
     assert_eq!(
         connection
             .fetch("SELECT 123")
+            .try_collect::<Vec<_>>()
             .await
-            .unwrap()
-            .collect::<Result<Vec<_>>>()
             .unwrap()
             .len(),
         1
@@ -49,20 +47,20 @@ async fn streaming_public_execution_and_reuse() {
     )).await.unwrap();
     for value in [7_i64, 11_i64] {
         prepared.bind(value).unwrap();
-        let mut results = connection.run(&mut prepared).await.unwrap();
-        let QueryResult::Rows(mut rows) = results.next().unwrap().unwrap() else {
-            panic!("prepared SET leaked as a statement")
+        let mut results = pin!(connection.run(&mut prepared));
+        let QueryResult::Row(row) = results.next().await.unwrap().unwrap() else {
+            panic!("Prepared SET leaked as a statement")
         };
-        let row = rows.next().unwrap().unwrap();
         assert_eq!(i64::try_from_value(row.value(0).unwrap()).unwrap(), value);
-        assert!(results.next().is_none());
         // Drop early, rebind and reuse the same prepared statement.
     }
     {
-        let mut rows = connection.fetch("SELECT number FROM numbers(1000000000000) SETTINGS max_block_size=2, max_threads=1").await.unwrap();
-        let first = rows.next().unwrap().unwrap().into_owned();
+        let mut rows = pin!(connection.fetch(
+            "SELECT number FROM numbers(1000000000000) SETTINGS max_block_size=2, max_threads=1"
+        ));
+        let first = rows.next().await.unwrap().unwrap().into_owned();
         for _ in 0..10 {
-            rows.next().unwrap().unwrap();
+            rows.next().await.unwrap().unwrap();
         }
         assert_eq!(first.names(), ["number"]);
         assert_eq!(
@@ -75,35 +73,32 @@ async fn streaming_public_execution_and_reuse() {
         "/* comment */ SELECT 1 WHERE 0",
         "WITH 1 AS n SELECT n WHERE 0",
     ] {
-        let mut results = connection.run(sql).await.unwrap();
-        let QueryResult::Rows(mut rows) = results.next().unwrap().unwrap() else {
-            panic!("empty SELECT must be a rowset")
-        };
-        assert!(rows.next().is_none());
-        assert!(results.next().is_none());
+        let mut results = pin!(connection.run(sql));
+        assert!(results.next().await.is_none());
     }
 
     let sql = "SELECT intDiv(42, toInt64(8-number)) FROM numbers(100) SETTINGS max_block_size=2, max_threads=1";
     {
-        let mut rows = connection.fetch(sql).await.unwrap();
+        let mut rows = pin!(connection.fetch(sql));
         assert!(
-            rows.next().unwrap().is_ok(),
-            "must yield rows before late failure"
+            rows.next().await.unwrap().is_ok(),
+            "Must yield rows before late failure"
         );
-        let error = rows.collect::<Result<Vec<_>>>().unwrap_err();
+        let error = rows.try_collect::<Vec<_>>().await.unwrap_err();
         assert!(format!("{error:#}").contains("Division by zero"));
         assert!(format!("{error:#}").contains(sql));
     }
 
-    let mut invalid = connection.run("SELECT (").await.unwrap();
-    assert!(invalid.next().unwrap().is_err());
-    assert!(invalid.next().is_none());
-    drop(invalid);
     {
-        let mut results = connection.run("SELECT 1 FORMAT Null").await.unwrap();
+        let mut invalid = pin!(connection.run("SELECT ("));
+        assert!(invalid.next().await.unwrap().is_err());
+        assert!(invalid.next().await.is_none());
+    }
+    {
+        let mut results = pin!(connection.run("SELECT 1 FORMAT Null"));
         assert!(
-            results.next().unwrap().is_err(),
-            "missing output schema must be an error, not empty success"
+            results.next().await.unwrap().is_err(),
+            "Missing output schema must be an error, not empty success"
         );
     }
 
@@ -118,30 +113,28 @@ async fn streaming_public_execution_and_reuse() {
         .unwrap();
     let rows = connection
         .fetch("SELECT n FROM fallback_once")
+        .try_collect::<Vec<_>>()
         .await
-        .unwrap()
-        .collect::<Result<Vec<_>>>()
         .unwrap();
     assert_eq!(rows.len(), 2);
     drop(rows);
-    let mut results = connection.run("SHOW TABLES").await.unwrap();
-    let QueryResult::Rows(rows) = results.next().unwrap().unwrap() else {
-        panic!("SHOW must retain buffered schema")
-    };
-    assert!(!rows.collect::<Result<Vec<_>>>().unwrap().is_empty());
-    drop(results);
+    {
+        let rows = connection
+            .run("SHOW TABLES")
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        assert!(!rows.is_empty());
+        assert!(rows.iter().all(|r| matches!(r, QueryResult::Row(_))));
+    }
     connection
         .execute("DROP TABLE fallback_once")
         .await
         .unwrap();
-    let mut results = connection
-        .run("SHOW TABLES LIKE 'no_such_incremental_table'")
-        .await
-        .unwrap();
-    let QueryResult::Rows(mut rows) = results.next().unwrap().unwrap() else {
-        panic!("empty SHOW must retain schema")
-    };
-    assert!(rows.next().is_none());
+    {
+        let mut results = pin!(connection.run("SHOW TABLES LIKE 'no_such_incremental_table'"));
+        assert!(results.next().await.is_none());
+    }
 }
 
 #[tokio::test]
@@ -153,13 +146,10 @@ async fn streaming_labels_filters_and_writes() {
 
     // Qualified labels are reduced to their column name.
     {
-        let row = connection
-            .fetch("SELECT number AS `t.n`, 'hello' AS s, CAST(NULL AS Nullable(Int64)) AS nil FROM numbers(3) SETTINGS max_block_size=2, max_threads=1")
-            .await
-            .unwrap()
-            .next()
-            .unwrap()
-            .unwrap();
+        let mut rows = pin!(connection.fetch(
+            "SELECT number AS `t.n`, 'hello' AS s, CAST(NULL AS Nullable(Int64)) AS nil FROM numbers(3) SETTINGS max_block_size=2, max_threads=1"
+        ));
+        let row = rows.next().await.unwrap().unwrap();
         assert_eq!(row.names(), ["n", "s", "nil"]);
         assert_eq!(
             row.value(1).unwrap().as_ref(),
@@ -182,9 +172,8 @@ async fn streaming_labels_filters_and_writes() {
         let count = {
             let rows = connection
                 .fetch(sql)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap();
             rows.len()
         };
@@ -198,22 +187,21 @@ async fn streaming_labels_filters_and_writes() {
         "INSERT INTO streaming_fallback SELECT number FROM numbers(3)",
         "SET max_threads=1",
     ] {
-        let mut results = connection.run(sql).await.unwrap();
-        let Some(Ok(QueryResult::Affected(affected))) = results.next() else {
-            panic!("write returned rows: {sql}")
+        let mut results = pin!(connection.run(sql));
+        let Some(Ok(QueryResult::Affected(affected))) = results.next().await else {
+            panic!("Write returned rows: {sql}")
         };
         assert_eq!(
             affected.rows_affected, None,
-            "storage reads must not become write counts"
+            "Storage reads must not become write counts"
         );
-        assert!(results.next().is_none());
+        assert!(results.next().await.is_none());
     }
     {
         let rows = connection
             .fetch("SELECT n FROM streaming_fallback")
+            .try_collect::<Vec<_>>()
             .await
-            .unwrap()
-            .collect::<Result<Vec<_>>>()
             .unwrap();
         assert_eq!(rows.len(), 4);
     }
@@ -231,9 +219,8 @@ async fn streaming_labels_filters_and_writes() {
     {
         let rows = connection
             .fetch("SELECT 123")
+            .try_collect::<Vec<_>>()
             .await
-            .unwrap()
-            .collect::<Result<Vec<_>>>()
             .unwrap();
         assert_eq!(rows.len(), 1);
     }

@@ -107,7 +107,7 @@ pub(crate) fn tank_value_to_duckdb_logical_type(v: &Value) -> CBox<duckdb_logica
                 duckdb_logical_type_set_alias(*result, name.as_ptr());
             }
             _ => {
-                log::error!("tank::Value `{:?}` is unsupported", v);
+                log::error!("Value `{:?}` is unsupported by DuckDB", v);
                 *result = duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_INVALID)
             }
         }

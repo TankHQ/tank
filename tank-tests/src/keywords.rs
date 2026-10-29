@@ -61,18 +61,16 @@ pub async fn keywords(executor: &mut impl Executor) {
     assert_eq!(found_by_where.unwrap(), entity);
 
     {
-        let bundle = executor
-            .fetch(
+        let mut stream = pin!(
+            executor.fetch(
                 QueryBuilder::new()
                     .select(cols!(ReservedWords::group_field, COUNT(*)))
                     .from(ReservedWords::table())
                     .group_by(cols!(ReservedWords::group_field))
                     .build(&executor.driver()),
             )
-            .await
-            .unwrap();
-        let mut stream = bundle;
-        let row = stream.next().expect("Expected a row").unwrap();
+        );
+        let row = stream.next().await.expect("Expected a row").unwrap();
         let group_val =
             bool::try_from_value(row.value(0).unwrap()).expect("Failed to decode group bool");
         let count_val = i64::try_from_value(row.value(1).unwrap()).expect("Failed to decode count");
@@ -86,8 +84,8 @@ pub async fn keywords(executor: &mut impl Executor) {
         }
     }
     {
-        let bundle_ordered = executor
-            .fetch(
+        let mut stream_ordered = pin!(
+            executor.fetch(
                 QueryBuilder::new()
                     .select(ReservedWords::columns())
                     .from(ReservedWords::table())
@@ -95,11 +93,9 @@ pub async fn keywords(executor: &mut impl Executor) {
                     .limit(Some(1))
                     .build(&executor.driver()),
             )
-            .await
-            .unwrap();
-        let mut stream_ordered = bundle_ordered;
+        );
 
-        let row_ordered = stream_ordered.next().expect("Expected row").unwrap();
+        let row_ordered = stream_ordered.next().await.expect("Expected row").unwrap();
         let entity_ordered = ReservedWords::from_row(row_ordered).expect("Failed to parse entity");
         assert_eq!(entity_ordered.order_field.as_deref(), Some("asc"));
     }
@@ -114,8 +110,8 @@ pub async fn keywords(executor: &mut impl Executor) {
     };
     entity2.save(executor).await.expect("Saved 2");
     {
-        let bundle_group = executor
-            .fetch(
+        let mut stream_group = pin!(
+            executor.fetch(
                 QueryBuilder::new()
                     .select(cols!(ReservedWords::group_field, COUNT(*)))
                     .from(ReservedWords::table())
@@ -123,15 +119,13 @@ pub async fn keywords(executor: &mut impl Executor) {
                     .order_by(cols!(ReservedWords::group_field ASC))
                     .build(&executor.driver()),
             )
-            .await
-            .unwrap();
-        let mut stream_group = bundle_group;
+        );
 
-        let row1 = stream_group.next().unwrap().unwrap();
+        let row1 = stream_group.next().await.unwrap().unwrap();
         let g = bool::try_from_value(row1.value(0).unwrap()).unwrap();
         assert_eq!(g, false);
 
-        let row2 = stream_group.next().unwrap().unwrap();
+        let row2 = stream_group.next().await.unwrap().unwrap();
         let g = bool::try_from_value(row2.value(0).unwrap()).unwrap();
         assert_eq!(g, true);
     }

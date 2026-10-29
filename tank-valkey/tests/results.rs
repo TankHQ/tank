@@ -3,8 +3,10 @@ mod init;
 #[cfg(test)]
 mod tests {
     use super::init::init_valkey;
-    use std::sync::Mutex;
-    use tank::{Entity, Executor, QueryBuilder, QueryResult, Row, cols, expr};
+    use std::{pin::pin, sync::Mutex};
+    use tank::{
+        Entity, Executor, QueryBuilder, QueryResult, Row, cols, expr, stream::StreamExt,
+    };
     use tank_core::Connection;
     use tank_valkey::{ValkeyConnection, ValkeyDriver};
     use testcontainers_modules::testcontainers::ContainerAsync;
@@ -37,12 +39,8 @@ mod tests {
             .from(Item::table())
             .where_expr(expr!(Item::id == 999_999))
             .build(&ValkeyDriver::default());
-        let mut results = connection.run(query).await.unwrap();
-        let Some(Ok(QueryResult::Rows(rows))) = results.next() else {
-            panic!("SELECT * must return Rows even when the hash is missing");
-        };
-        assert_eq!(rows.count(), 0);
-        assert!(results.next().is_none());
+        let mut results = pin!(connection.run(query));
+        assert!(results.next().await.is_none());
     }
 
     /// `SELECT *` on a present hash decodes to exactly one row.
@@ -64,18 +62,16 @@ mod tests {
                 .from(Item::table())
                 .where_expr(expr!(Item::id == 7))
                 .build(&ValkeyDriver::default());
-            let mut results = connection.run(query).await.unwrap();
-            let Some(Ok(QueryResult::Rows(mut rows))) = results.next() else {
-                panic!("expected Rows");
+            let mut results = pin!(connection.run(query));
+            let Some(Ok(QueryResult::Row(row))) = results.next().await else {
+                panic!("Expected Row");
             };
-            let row = rows.next().unwrap().unwrap();
             assert!(row.names().iter().any(|name| name == "name"));
             assert_eq!(
                 row.get_column("name").unwrap().as_ref(),
                 &tank_core::Value::from("stored")
             );
-            assert!(rows.next().is_none());
-            assert!(results.next().is_none());
+            assert!(results.next().await.is_none());
         }
 
         Item::delete_many(&mut connection, expr!(Item::id == 7))
@@ -96,19 +92,15 @@ mod tests {
         .await
         .unwrap();
 
-        // Missing key: one empty rowset.
+        // Missing key: zero rows.
         {
             let query = QueryBuilder::new()
                 .select(cols!(Item::id, Item::name))
                 .from(Item::table())
                 .where_expr(expr!(Item::id == 999_999))
                 .build(&ValkeyDriver::default());
-            let mut results = connection.run(query).await.unwrap();
-            let Some(Ok(QueryResult::Rows(rows))) = results.next() else {
-                panic!("expected empty Rows");
-            };
-            assert_eq!(rows.count(), 0);
-            assert!(results.next().is_none());
+            let mut results = pin!(connection.run(query));
+            assert!(results.next().await.is_none());
         }
 
         // Present key: one row with both columns.
@@ -118,13 +110,12 @@ mod tests {
                 .from(Item::table())
                 .where_expr(expr!(Item::id == 7))
                 .build(&ValkeyDriver::default());
-            let mut results = connection.run(query).await.unwrap();
-            let Some(Ok(QueryResult::Rows(mut rows))) = results.next() else {
-                panic!("expected Rows");
+            let mut results = pin!(connection.run(query));
+            let Some(Ok(QueryResult::Row(row))) = results.next().await else {
+                panic!("Expected Row");
             };
-            assert_eq!(rows.next().unwrap().unwrap().len(), 2);
-            assert!(rows.next().is_none());
-            assert!(results.next().is_none());
+            assert_eq!(row.len(), 2);
+            assert!(results.next().await.is_none());
         }
 
         Item::delete_many(&mut connection, expr!(Item::id == 7))

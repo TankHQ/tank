@@ -1,5 +1,13 @@
-use std::{borrow::Cow, fmt};
-use tank_core::{QueryResult, Result, Row, RowLabels, RowOwned, Value};
+use std::{
+    borrow::Cow,
+    fmt,
+    future::Future,
+    pin::Pin,
+    task::{self, Poll},
+};
+use tank_core::{
+    QueryResult, Result, Row, RowLabels, RowOwned, RowsAffected, Value, stream::Stream,
+};
 use wtx::database::Record as _;
 use wtx::database::Records as _;
 use wtx::database::client::postgres::{PostgresRecord, PostgresRecords};
@@ -34,7 +42,7 @@ impl PostgresScratch {
                 .columns()
                 .into_iter()
                 .flatten()
-                .map(|(_, ty)| crate::util::ColumnDecoder::from_type(&crate::util::wtx_ty_to_pg_type(ty))),
+                .map(|(_, ty)| crate::util::ColumnDecoder::from_ty(ty)),
         );
         if self.decoders.len() != self.labels.len()
             || !records
@@ -86,13 +94,11 @@ impl Row for PostgresRow<'_> {
 
     #[inline(always)]
     fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>> {
-        let decoder = self.decoders.get(index)?;
         // Missing cells and malformed wire data retain the lazy decoder's
         // NULL fallback; only an out-of-range column returns None.
-        Some(Cow::Owned(match self.record.value(index) {
-            Some(wrapper) => decoder.value(wrapper.bytes()),
-            None => Value::Null,
-        }))
+        self.decoders
+            .get(index)?
+            .value(self.record.value(index).map(|v| v.bytes()))
     }
 
     fn into_owned(self) -> RowOwned {
@@ -158,33 +164,118 @@ impl<'s> Iterator for PostgresRows<'s> {
     }
 }
 
-/// The statement-level results of a Postgres query.
-///
-/// A single statement yields either a row set or an affected count, never both.
-pub struct PostgresResults<'s> {
-    result: Option<Result<QueryResult<PostgresRows<'s>>>>,
+/// Statement-level iterator over either `PostgresRows` or a single `RowsAffected`.
+pub(crate) struct PostgresResults<'s> {
+    rows: Option<PostgresRows<'s>>,
+    affected: Option<RowsAffected>,
 }
 
 impl<'s> PostgresResults<'s> {
-    /// Builds the one-shot results from the resolved row set.
     #[inline(always)]
-    pub(crate) fn new(result: Result<QueryResult<PostgresRows<'s>>>) -> Self {
-        Self { result: Some(result) }
+    pub(crate) fn rows(rows: PostgresRows<'s>) -> Self {
+        Self {
+            rows: Some(rows),
+            affected: None,
+        }
+    }
+
+    #[inline(always)]
+    pub(crate) fn affected(affected: RowsAffected) -> Self {
+        Self {
+            rows: None,
+            affected: Some(affected),
+        }
     }
 }
 
 impl<'s> Iterator for PostgresResults<'s> {
-    type Item = Result<QueryResult<PostgresRows<'s>>>;
+    type Item = Result<QueryResult<PostgresRow<'s>>>;
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
-        self.result.take()
+        if let Some(row) = self.rows.as_mut().and_then(Iterator::next) {
+            return Some(row.map(QueryResult::Row));
+        }
+        self.affected.take().map(|a| Ok(QueryResult::Affected(a)))
     }
 
     #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = usize::from(self.result.is_some());
+        let remaining = self
+            .rows
+            .as_ref()
+            .map_or(0, |rows| rows.records.len() - rows.index)
+            + usize::from(self.affected.is_some());
         (remaining, Some(remaining))
+    }
+}
+
+/// Stream adapter that awaits the query execution future once, then yields items from `I`.
+pub(crate) struct PostgresStream<F, I> {
+    fut: Option<F>,
+    iter: Option<I>,
+}
+
+impl<F, I> PostgresStream<F, I> {
+    #[inline(always)]
+    pub(crate) fn new(fut: F) -> Self {
+        Self {
+            fut: Some(fut),
+            iter: None,
+        }
+    }
+}
+
+impl<F, I, T> Stream for PostgresStream<F, I>
+where
+    F: Future<Output = Result<I>>,
+    I: Iterator<Item = Result<T>>,
+{
+    type Item = Result<T>;
+
+    #[inline(always)]
+    fn poll_next(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
+        // Return `Poll<Result<Option<T>>>` instead of `Poll<Option<Result<T>>>` so `poll_init`
+        // does not share `poll_next`'s `sret` slot and block LLVM SROA on the hot row return.
+        #[cold]
+        #[inline(never)]
+        fn poll_init<F, I, T>(
+            this: &mut PostgresStream<F, I>,
+            cx: &mut task::Context<'_>,
+        ) -> Poll<Result<Option<T>>>
+        where
+            F: Future<Output = Result<I>>,
+            I: Iterator<Item = Result<T>>,
+        {
+            let Some(fut) = this.fut.as_mut() else {
+                return Poll::Ready(Ok(None));
+            };
+            let Poll::Ready(res) = unsafe { Pin::new_unchecked(fut) }.poll(cx) else {
+                return Poll::Pending;
+            };
+            this.fut = None;
+            let mut iter = res?;
+            let first = iter.next().transpose()?;
+            this.iter = Some(iter);
+            Poll::Ready(Ok(first))
+        }
+        let this = unsafe { self.get_unchecked_mut() };
+        if let Some(item) = this.iter.as_mut().and_then(Iterator::next) {
+            Poll::Ready(Some(item))
+        } else {
+            match poll_init(this, cx) {
+                Poll::Ready(res) => Poll::Ready(res.transpose()),
+                Poll::Pending => Poll::Pending,
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match &self.iter {
+            Some(iter) => iter.size_hint(),
+            None => (0, None),
+        }
     }
 }
 

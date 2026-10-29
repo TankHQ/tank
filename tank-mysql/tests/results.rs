@@ -1,21 +1,20 @@
 mod init;
 
-use tank_core::{AsValue, Connection, Executor, QueryResult, Result, Row};
+use std::pin::pin;
+use tank_core::{
+    AsValue, Connection, Executor, QueryResult, Result, Row,
+    stream::{StreamExt, TryStreamExt},
+};
 use tank_mysql::{MySQLConnection, MySQLDriver};
 
-fn row_values(rows: impl Iterator<Item = Result<impl Row>>) -> Vec<i64> {
-    rows.map(|row| i64::try_from_value(row.unwrap().value(0).unwrap()).unwrap())
-        .collect()
-}
-
-fn assert_rows(
-    result: Option<Result<QueryResult<impl Iterator<Item = Result<impl Row>>>>>,
-    expected: &[i64],
-) {
-    let Some(Ok(QueryResult::Rows(rows))) = result else {
-        panic!("Expected a rowset");
+fn assert_row(result: Option<Result<QueryResult<impl Row>>>, expected: i64) {
+    let Some(Ok(QueryResult::Row(row))) = result else {
+        panic!("Expected a row");
     };
-    assert_eq!(row_values(rows), expected);
+    assert_eq!(
+        i64::try_from_value(row.value(0).unwrap()).unwrap(),
+        expected
+    );
 }
 
 fn assert_affected<R>(result: Option<Result<QueryResult<R>>>, count: u64, id: Option<i64>) {
@@ -38,37 +37,35 @@ async fn raw_and_prepared_result_sets() {
         .unwrap();
 
     {
-        let mut results = conn
-            .run(
-                "SELECT 1 WHERE FALSE;
-                 UPDATE grouped_results SET id = 10 WHERE FALSE;
-                 INSERT INTO grouped_results VALUES (NULL);
-                 SELECT 2 UNION ALL SELECT 3;
-                 INSERT INTO grouped_results VALUES (NULL);
-                 SELECT 4;
-                 SELECT 5 WHERE FALSE",
-            )
-            .await
-            .unwrap();
-        assert_rows(results.next(), &[]);
-        assert_affected(results.next(), 0, None);
-        assert_affected(results.next(), 1, Some(1));
-        assert_rows(results.next(), &[2, 3]);
-        assert_affected(results.next(), 1, Some(2));
-        assert_rows(results.next(), &[4]);
-        assert_rows(results.next(), &[]);
-        assert!(results.next().is_none());
+        let mut results = pin!(conn.run(
+            "SELECT 1 WHERE FALSE;
+             UPDATE grouped_results SET id = 10 WHERE FALSE;
+             INSERT INTO grouped_results VALUES (NULL);
+             SELECT 2 UNION ALL SELECT 3;
+             INSERT INTO grouped_results VALUES (NULL);
+             SELECT 4;
+             SELECT 5 WHERE FALSE",
+        ));
+        assert_affected(results.next().await, 0, None);
+        assert_affected(results.next().await, 1, Some(1));
+        assert_row(results.next().await, 2);
+        assert_row(results.next().await, 3);
+        assert_affected(results.next().await, 1, Some(2));
+        assert_row(results.next().await, 4);
+        assert!(results.next().await.is_none());
     }
 
     let mut prepared = conn
         .prepare("SELECT id FROM grouped_results WHERE id = ?")
         .await
         .unwrap();
-    for (id, expected) in [(99_i64, &[][..]), (1, &[1][..])] {
+    for (id, expected) in [(99_i64, None), (1, Some(1))] {
         prepared.bind(id).unwrap();
-        let mut results = conn.run(&mut prepared).await.unwrap();
-        assert_rows(results.next(), expected);
-        assert!(results.next().is_none());
+        let mut results = pin!(conn.run(&mut prepared));
+        if let Some(expected) = expected {
+            assert_row(results.next().await, expected);
+        }
+        assert!(results.next().await.is_none());
     }
 
     let mut prepared = conn
@@ -77,16 +74,20 @@ async fn raw_and_prepared_result_sets() {
         .unwrap();
     prepared.bind(99_i64).unwrap();
     {
-        let mut results = conn.run(prepared).await.unwrap();
-        assert_affected(results.next(), 0, None);
-        assert!(results.next().is_none());
+        let mut results = pin!(conn.run(prepared));
+        assert_affected(results.next().await, 0, None);
+        assert!(results.next().await.is_none());
     }
 
-    let rows = conn
-        .fetch("SELECT 1 WHERE FALSE; SELECT 2; UPDATE grouped_results SET id = 10 WHERE FALSE; SELECT 3")
+    let rows: Vec<i64> = conn
+        .fetch(
+            "SELECT 1 WHERE FALSE; SELECT 2; UPDATE grouped_results SET id = 10 WHERE FALSE; SELECT 3",
+        )
+        .map_ok(|row| i64::try_from_value(row.value(0).unwrap()).unwrap())
+        .try_collect()
         .await
         .unwrap();
-    assert_eq!(row_values(rows), [2, 3]);
+    assert_eq!(rows, [2, 3]);
 
     let affected = conn
         .execute("INSERT INTO grouped_results VALUES (NULL); SELECT 1; INSERT INTO grouped_results VALUES (NULL); UPDATE grouped_results SET id = 10 WHERE FALSE")
@@ -95,9 +96,9 @@ async fn raw_and_prepared_result_sets() {
     assert_eq!(affected.rows_affected, Some(2));
     assert_eq!(affected.last_affected_id, Some(4));
 
-    // A later-set error must fail run itself, not appear in a returned iterator.
     assert!(
         conn.run("SELECT 1; SELECT * FROM tank_missing_grouped_results")
+            .try_collect::<Vec<_>>()
             .await
             .is_err()
     );
@@ -124,21 +125,19 @@ async fn raw_and_prepared_calls_preserve_native_sets() {
     .unwrap();
 
     {
-        let mut results = conn.run("CALL tank_grouped_results()").await.unwrap();
-        assert_rows(results.next(), &[]);
-        assert_rows(results.next(), &[2, 3]);
-        assert_rows(results.next(), &[]);
-        assert_affected(results.next(), 0, None);
-        assert!(results.next().is_none());
+        let mut results = pin!(conn.run("CALL tank_grouped_results()"));
+        assert_row(results.next().await, 2);
+        assert_row(results.next().await, 3);
+        assert_affected(results.next().await, 0, None);
+        assert!(results.next().await.is_none());
     }
     let prepared = conn.prepare("CALL tank_grouped_results()").await.unwrap();
     {
-        let mut results = conn.run(prepared).await.unwrap();
-        assert_rows(results.next(), &[]);
-        assert_rows(results.next(), &[2, 3]);
-        assert_rows(results.next(), &[]);
-        assert_affected(results.next(), 0, None);
-        assert!(results.next().is_none());
+        let mut results = pin!(conn.run(prepared));
+        assert_row(results.next().await, 2);
+        assert_row(results.next().await, 3);
+        assert_affected(results.next().await, 0, None);
+        assert!(results.next().await.is_none());
     }
 
     conn.execute("DROP PROCEDURE tank_grouped_results")

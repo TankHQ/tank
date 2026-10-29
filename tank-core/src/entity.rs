@@ -3,7 +3,7 @@ use crate::{
     Result, Row, RowOwned, RowsAffected, TableRef, ValueOwned, future::Either, writer::SqlWriter,
 };
 use anyhow::{Context as _, anyhow};
-use futures::{FutureExt, Stream, StreamExt, TryStreamExt, stream};
+use futures::{FutureExt, Stream, StreamExt};
 use log::Level;
 use std::{
     future::{self, Future},
@@ -217,10 +217,9 @@ pub trait Entity: AsEntity + Expression {
             .from(Self::table())
             .where_expr(condition)
             .limit(limit);
-        let rows = executor.fetch(builder.build(&executor.driver()));
-        stream::once(rows)
-            .map_ok(|rows| stream::iter(rows.map(|row| row.and_then(Self::from_row))))
-            .try_flatten()
+        executor
+            .fetch(builder.build(&executor.driver()))
+            .map(|result| result.and_then(Self::from_row))
     }
 
     /// Deletes all entities matching a condition.

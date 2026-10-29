@@ -123,10 +123,9 @@ pub async fn service(executor: &mut impl Executor) {
 
     let api_by_addr = executor
         .fetch(query)
-        .await
-        .unwrap()
         .map(|row| Service::from_row(row?))
-        .collect::<Result<Vec<_>>>()
+        .try_collect::<Vec<_>>()
+        .await
         .expect("Failed to query by addr");
     assert_eq!(
         api_by_addr,
@@ -165,10 +164,9 @@ pub async fn service(executor: &mut impl Executor) {
                     .order_by(cols!(Service::addr ASC))
                     .build(&executor.driver()),
             )
-            .await
-            .unwrap()
             .map(|row| Service::from_row(row?))
-            .collect::<Result<Vec<_>>>()
+            .try_collect::<Vec<_>>()
+            .await
             .expect("Failed to select ordered services");
 
         assert_eq!(

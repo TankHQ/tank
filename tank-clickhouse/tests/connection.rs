@@ -3,10 +3,12 @@ mod init;
 #[cfg(test)]
 mod tests {
     use crate::init::init_clickhouse;
-    use std::sync::Mutex;
+    use std::{pin::pin, sync::Mutex};
     use tank_clickhouse::{ClickHouseConnection, ClickHouseDriver};
     use tank_core::{
-        AsValue, Connection, ConnectionPool, Driver, Entity, Executor, PoolConfig, QueryResult, Row,
+        AsValue, Connection, ConnectionPool, Driver, Entity, Executor, PoolConfig, QueryResult,
+        Row,
+        stream::{StreamExt, TryStreamExt},
     };
     use tank_tests::{init_logs, silent_logs};
 
@@ -60,33 +62,27 @@ mod tests {
         query
             .bind(Option::<i64>::None)
             .expect("Could not bind a NULL");
-        let rows = {
-            let mut results = connection
-                .run(&mut query)
-                .await
-                .expect("Could not query by the NULL value");
-            let Some(Ok(QueryResult::Rows(rows))) = results.next() else {
-                panic!("prepared SELECT must return rows, not the internal SET directive");
-            };
-            assert!(results.next().is_none());
-            rows.map(|row| row.and_then(PreparedNullable::from_row))
-                .collect::<tank_core::Result<Vec<_>>>()
-                .expect("Could not query by the NULL value")
-        };
+        let rows: Vec<PreparedNullable> = connection
+            .run(&mut query)
+            .map(|result| match result? {
+                QueryResult::Row(row) => PreparedNullable::from_row(row),
+                QueryResult::Affected(_) => {
+                    panic!("Prepared SELECT must return rows, not the internal SET directive")
+                }
+            })
+            .try_collect()
+            .await
+            .expect("Could not query by the NULL value");
         assert!(rows.is_empty(), "A NULL parameter must not match any row");
 
         // The same statement must be reusable with a new binding.
         query.bind(7_i64).expect("Could not rebind the value");
-        let rows = {
-            let bundle = connection
-                .fetch(&mut query)
-                .await
-                .expect("Could not rerun the prepared query");
-            bundle
-                .map(|row| row.and_then(PreparedNullable::from_row))
-                .collect::<tank_core::Result<Vec<_>>>()
-                .expect("Could not rerun the prepared query")
-        };
+        let rows: Vec<PreparedNullable> = connection
+            .fetch(&mut query)
+            .map(|row| row.and_then(PreparedNullable::from_row))
+            .try_collect()
+            .await
+            .expect("Could not rerun the prepared query");
         assert_eq!(
             rows,
             [PreparedNullable {
@@ -118,8 +114,11 @@ mod tests {
             .get()
             .await
             .expect("Could not get a connection without an explicit database");
-        let bundle = connection.run("SELECT 1").await.unwrap();
-        let rows = bundle.collect::<tank_core::Result<Vec<_>>>().unwrap();
+        let rows = connection
+            .run("SELECT 1")
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
         assert!(!rows.is_empty());
 
         // A non existing database must fail.
@@ -164,35 +163,29 @@ mod tests {
             "/* not a SQL prefix */ SELECT number FROM numbers(0)",
             "WITH 1 AS n SELECT n WHERE 0",
         ] {
-            let mut results = connection.run(sql).await.unwrap();
-            let Some(Ok(QueryResult::Rows(mut rows))) = results.next() else {
-                panic!("empty SELECT must return rows");
-            };
-            assert!(rows.next().is_none());
-            assert!(results.next().is_none());
+            let mut results = pin!(connection.run(sql));
+            assert!(results.next().await.is_none());
         }
         for sql in [
             "CREATE TEMPORARY TABLE statement_results (n UInt64) ENGINE = Memory",
             "INSERT INTO statement_results SELECT number FROM numbers(0)",
             "INSERT INTO statement_results VALUES (1), (2)",
         ] {
-            let mut results = connection.run(sql).await.unwrap();
-            let Some(Ok(QueryResult::Affected(affected))) = results.next() else {
-                panic!("write must return effects");
+            let mut results = pin!(connection.run(sql));
+            let Some(Ok(QueryResult::Affected(affected))) = results.next().await else {
+                panic!("Write must return effects");
             };
             assert_eq!(affected.rows_affected, None);
-            assert!(results.next().is_none());
+            assert!(results.next().await.is_none());
         }
         // Multiple native blocks still belong to a single statement result.
-        let mut results = connection
+        let rows = connection
             .run("SELECT number FROM numbers(5) SETTINGS max_block_size = 1")
+            .try_collect::<Vec<_>>()
             .await
             .unwrap();
-        let Some(Ok(QueryResult::Rows(rows))) = results.next() else {
-            panic!("SELECT must return one rowset");
-        };
-        assert_eq!(rows.map(Result::unwrap).count(), 5);
-        assert!(results.next().is_none());
+        assert_eq!(rows.len(), 5);
+        assert!(rows.iter().all(|r| matches!(r, QueryResult::Row(_))));
     }
 
     #[tokio::test]
@@ -209,15 +202,12 @@ mod tests {
 
         // The driver sets these session settings on connect.
         for (name, expected) in [("join_use_nulls", "1"), ("final", "1")] {
-            let bundle = connection
-                .fetch(format!(
-                    "SELECT value FROM system.settings WHERE name = '{name}'"
-                ))
-                .await
-                .unwrap();
+            let mut bundle = pin!(connection.fetch(format!(
+                "SELECT value FROM system.settings WHERE name = '{name}'"
+            )));
             let row = bundle
-                .into_iter()
                 .next()
+                .await
                 .expect("Could not find the session setting row")
                 .expect("Could not read the session setting row");
             let value = row

@@ -4,10 +4,8 @@ use async_stream::try_stream;
 use redis::{Client, aio::MultiplexedConnection};
 use std::{borrow::Cow, future, mem, sync::Arc};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, OwnedResults, Query, QueryResult,
-    QueryResultOwned, Result, RowOwned, RowsAffected, describe_url,
-    stream::{Stream, TryStreamExt},
-    truncate_long,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, QueryResultOwned,
+    Result, Row, RowOwned, RowsAffected, describe_url, stream::Stream, truncate_long,
 };
 #[derive(Debug)]
 pub struct ValkeyConnection {
@@ -63,26 +61,10 @@ impl Executor for ValkeyConnection {
         self.driver
     }
 
-    fn run<'s, Q>(
+    fn run<'s>(
         &'s mut self,
-        query: Q,
-    ) -> impl Future<Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>>
-    + Send
-    where
-        Q: AsQuery<ValkeyDriver> + Send + 's,
-    {
-        async move {
-            let results = self.do_run(query).try_collect::<Vec<_>>().await?;
-            Ok(OwnedResults::new(results.into_iter().map(Ok).collect()))
-        }
-    }
-}
-
-impl ValkeyConnection {
-    fn do_run<'s, Q: AsQuery<ValkeyDriver> + 's>(
-        &'s mut self,
-        query: Q,
-    ) -> impl Stream<Item = Result<QueryResultOwned>> + Send + 's {
+        query: impl AsQuery<ValkeyDriver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
         let mut query = query.as_query();
         try_stream! {
             let Query::Prepared(prepared) = query.as_mut() else {
@@ -92,7 +74,9 @@ impl ValkeyConnection {
                 return;
             };
             if prepared.is_empty() {
-                yield decode_result(prepared, redis::Value::Nil)?;
+                if let Some(result) = decode_result(prepared, redis::Value::Nil)? {
+                    yield result;
+                }
                 return;
             }
             let pipeline = prepared.make_pipeline();
@@ -107,13 +91,18 @@ impl ValkeyConnection {
                 .await
                 .map_err(Error::new)
                 .with_context(make_context)?;
-            yield decode_result(prepared, raw_result).with_context(make_context)?;
+            if let Some(result) = decode_result(prepared, raw_result).with_context(make_context)? {
+                yield result;
+            }
         }
     }
 }
 
 // A pipeline contains all native commands for one logical query, not one result per command.
-fn decode_result(prepared: &ValkeyPrepared, raw_result: redis::Value) -> Result<QueryResultOwned> {
+fn decode_result(
+    prepared: &ValkeyPrepared,
+    raw_result: redis::Value,
+) -> Result<Option<QueryResultOwned>> {
     let results = match raw_result {
         redis::Value::Array(arr) => arr,
         redis::Value::Nil => vec![],
@@ -128,13 +117,13 @@ fn decode_result(prepared: &ValkeyPrepared, raw_result: redis::Value) -> Result<
         }
     };
     if !prepared.returns_rows {
-        return Ok(QueryResult::Affected(RowsAffected {
+        return Ok(Some(QueryResult::Affected(RowsAffected {
             rows_affected: None,
             last_affected_id: None,
-        }));
+        })));
     }
     if results.is_empty() || results.iter().all(|v| matches!(v, redis::Value::Nil)) {
-        return Ok(QueryResult::Rows(Vec::new().into_iter()));
+        return Ok(None);
     }
     if prepared.columns.is_empty() {
         let mut results = results.into_iter();
@@ -147,7 +136,7 @@ fn decode_result(prepared: &ValkeyPrepared, raw_result: redis::Value) -> Result<
             result => return Err(anyhow!("Unexpected HGETALL response: {result:?}")),
         };
         if fields.is_empty() {
-            return Ok(QueryResult::Rows(Vec::new().into_iter()));
+            return Ok(None);
         }
         let mut labels = Vec::with_capacity(fields.len());
         let mut values = Vec::with_capacity(fields.len());
@@ -159,9 +148,7 @@ fn decode_result(prepared: &ValkeyPrepared, raw_result: redis::Value) -> Result<
             labels.push(label.into_owned());
             values.push(ValueWrap::try_from(value)?.0.into_owned().into_owned());
         }
-        return Ok(QueryResult::Rows(
-            vec![RowOwned::new(labels.into(), values)].into_iter(),
-        ));
+        return Ok(Some(QueryResult::Row(RowOwned::new(labels.into(), values))));
     }
     if results.len() != prepared.columns.len() {
         return Err(anyhow!(
@@ -196,5 +183,5 @@ fn decode_result(prepared: &ValkeyPrepared, raw_result: redis::Value) -> Result<
         names: unsafe { labels.assume_init() },
         values,
     };
-    Ok(QueryResult::Rows(vec![row].into_iter()))
+    Ok(Some(QueryResult::Row(row)))
 }

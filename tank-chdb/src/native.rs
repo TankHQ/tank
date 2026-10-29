@@ -98,7 +98,7 @@ impl NativeResult {
     fn new(raw: *mut c_void) -> Result<Self> {
         NonNull::new(raw)
             .map(Self)
-            .ok_or_else(|| anyhow!("chDB returned a null result"))
+            .ok_or_else(|| anyhow!("ChDB returned a null result"))
     }
 
     pub(crate) fn error(&self) -> Option<String> {
@@ -113,7 +113,7 @@ impl NativeResult {
 
     pub(crate) fn check(&self) -> Result<()> {
         match self.error() {
-            Some(error) => Err(anyhow!("chDB query failed: {error}")),
+            Some(error) => Err(anyhow!("ChDB query failed: {error}")),
             None => Ok(()),
         }
     }
@@ -126,7 +126,7 @@ impl NativeResult {
         let data = unsafe { chdb_result_buffer(self.0.as_ptr()) };
         ensure!(
             !data.is_null(),
-            "chDB returned a null buffer with nonzero length"
+            "ChDB returned a null buffer with nonzero length"
         );
         Ok(unsafe { std::slice::from_raw_parts(data.cast(), len) })
     }

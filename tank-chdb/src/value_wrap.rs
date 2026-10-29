@@ -2,8 +2,13 @@ use anyhow::{anyhow, ensure};
 use serde_json::Value as JsonValue;
 use std::borrow::Cow;
 use tank_core::{
-    ErrorContext, QueryResult, QueryResultOwned, Result, RowLabels, RowOwned, Value, ValueOwned,
+    ErrorContext, Result, RowLabels, RowOwned, RowsAffected, Value, ValueOwned,
 };
+
+pub(crate) enum ParsedChunk {
+    Rows(std::vec::IntoIter<RowOwned>),
+    Affected(RowsAffected),
+}
 
 fn json_to_tank(value: JsonValue) -> ValueOwned {
     match value {
@@ -13,9 +18,9 @@ fn json_to_tank(value: JsonValue) -> ValueOwned {
     }
 }
 
-pub(crate) fn parse_result(data: &[u8]) -> Result<QueryResultOwned> {
+pub(crate) fn parse_result(data: &[u8]) -> Result<ParsedChunk> {
     if data.iter().all(u8::is_ascii_whitespace) {
-        return Ok(QueryResult::Affected(Default::default()));
+        return Ok(ParsedChunk::Affected(Default::default()));
     }
     let mut response: JsonValue = serde_json::from_slice(data)?;
     let meta = response["meta"]
@@ -53,7 +58,7 @@ pub(crate) fn parse_result(data: &[u8]) -> Result<QueryResultOwned> {
                 JsonValue::Array(values) => {
                     ensure!(
                         values.len() == keys.len(),
-                        "chDB JSON row width differs from schema"
+                        "ChDB JSON row width differs from schema"
                     );
                     std::mem::take(values)
                         .into_iter()
@@ -73,5 +78,5 @@ pub(crate) fn parse_result(data: &[u8]) -> Result<QueryResultOwned> {
             Ok(RowOwned::new(labels.clone(), values))
         })
         .collect::<Result<Vec<_>>>()?;
-    Ok(QueryResult::Rows(rows.into_iter()))
+    Ok(ParsedChunk::Rows(rows.into_iter()))
 }

@@ -2,8 +2,8 @@ use crate::{
     DuckDBPrepared, DuckDBTransaction, cbox::CBox, date_to_duckdb_date, decimal_to_duckdb_decimal,
     driver::DuckDBDriver, i128_to_duckdb_hugeint, interval_to_duckdb_interval,
     offsetdatetime_to_duckdb_timestamp, primitive_date_time_to_duckdb_timestamp,
-    tank_value_to_duckdb_logical_type, tank_value_to_duckdb_value, time_to_duckdb_time,
-    u128_to_duckdb_uhugeint,
+    streaming::Statements, tank_value_to_duckdb_logical_type, tank_value_to_duckdb_value,
+    time_to_duckdb_time, u128_to_duckdb_uhugeint,
 };
 use anyhow::anyhow;
 use libduckdb_sys::*;
@@ -19,8 +19,11 @@ use std::{
     },
 };
 use tank_core::{
-    AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query, RawQuery,
-    Result, RowsAffected, SqlCoreWriter, Value, as_c_string, describe_path, error_message_from_ptr,
+    AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
+    QueryResult, RawQuery, Result, Row, RowsAffected, SqlCoreWriter, Value, as_c_string,
+    describe_path, error_message_from_ptr,
+    future::Either,
+    stream::{self, Stream},
     truncate_long,
 };
 use tokio::task::spawn_blocking;
@@ -184,15 +187,14 @@ impl Executor for DuckDBConnection {
         Ok(DuckDBPrepared::new(prepared?).into())
     }
 
-    fn run<'s, Q>(
+    fn run<'s>(
         &'s mut self,
-        query: Q,
-    ) -> impl Future<Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>>
-    + Send
-    where
-        Q: AsQuery<DuckDBDriver> + Send + 's,
-    {
-        async move { crate::streaming::Statements::new(self, query.as_query()) }
+        query: impl AsQuery<DuckDBDriver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
+        match Statements::new(self, query.as_query()) {
+            Ok(statements) => Either::Left(stream::iter(statements)),
+            Err(error) => Either::Right(stream::once(std::future::ready(Err(error)))),
+        }
     }
 
     async fn append<It>(&mut self, rows: It) -> Result<RowsAffected>

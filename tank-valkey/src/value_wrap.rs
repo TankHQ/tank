@@ -270,7 +270,7 @@ impl<'a> ToRedisArgs for ValueWrap<'a> {
             v if v.is_null() => None::<i32>.write_redis_args(out), // This writes nothing
             _ => {
                 log::error!(
-                    "tank::Value variant `{:?}` is not supported by Valkey/Redis",
+                    "Value variant `{:?}` is not supported by Valkey/Redis",
                     &value
                 )
             }

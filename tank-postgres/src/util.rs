@@ -10,12 +10,6 @@ use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
 use wtx::database::client::postgres::Ty;
 
-/// Converts a `wtx` Postgres type into the canonical `postgres_types::Type`.
-pub(crate) fn wtx_ty_to_pg_type(ty: Ty) -> Type {
-    let oid: u32 = ty.into();
-    Type::from_oid(oid).unwrap_or(Type::UNKNOWN)
-}
-
 /// A decode strategy for one result-set column, resolved once per statement.
 ///
 /// `extract_value_resolved` matches the column's `postgres_types::Type` on every
@@ -45,56 +39,69 @@ pub enum ColumnDecoder {
 
 impl ColumnDecoder {
     /// Resolves the decoder for a column type once per statement.
-    pub(crate) fn from_type(ty: &Type) -> Self {
-        match ty.kind() {
-            Kind::Simple => match *ty {
-                Type::BOOL => Self::Bool,
-                Type::CHAR => Self::Int8,
-                Type::INT2 => Self::Int16,
-                Type::INT4 => Self::Int32,
-                Type::INT8 => Self::Int64,
-                Type::FLOAT4 => Self::Float32,
-                Type::FLOAT8 => Self::Float64,
-                Type::OID => Self::UInt32,
-                Type::VARCHAR | Type::TEXT | Type::NAME | Type::BPCHAR | Type::JSON | Type::XML => {
-                    Self::Text
-                }
-                Type::BYTEA => Self::Bytea,
-                Type::UNKNOWN => Self::Unknown,
-                Type::NUMERIC
+    pub(crate) fn from_ty(ty: Ty) -> Self {
+        match ty {
+            Ty::Bool => Self::Bool,
+            Ty::Char => Self::Int8,
+            Ty::Int2 => Self::Int16,
+            Ty::Int4 => Self::Int32,
+            Ty::Int8 => Self::Int64,
+            Ty::Float4 => Self::Float32,
+            Ty::Float8 => Self::Float64,
+            Ty::Oid => Self::UInt32,
+            Ty::Varchar | Ty::Text | Ty::Name | Ty::Bpchar | Ty::Json | Ty::Xml => Self::Text,
+            Ty::Bytea => Self::Bytea,
+            Ty::Unknown => Self::Unknown,
+            _ => match Type::from_oid(ty.into()).unwrap_or(Type::UNKNOWN) {
+                ty @ (Type::NUMERIC
                 | Type::DATE
                 | Type::TIME
                 | Type::TIMESTAMP
                 | Type::TIMESTAMPTZ
                 | Type::INTERVAL
-                | Type::UUID => Self::Typed(ty.clone()),
-                _ => Self::Generic(ty.clone()),
+                | Type::UUID) => Self::Typed(ty),
+                ty => match ty.kind() {
+                    Kind::Pseudo | Kind::Enum(_) => Self::Unknown,
+                    _ => Self::Generic(ty),
+                },
             },
-            Kind::Pseudo | Kind::Enum(_) => Self::Unknown,
-            _ => Self::Generic(ty.clone()),
         }
     }
 
     /// Keeps common entity fields small enough to fuse decoding and conversion.
     #[inline(always)]
-    pub(crate) fn value<'a>(&self, raw: &'a [u8]) -> Value<'a> {
+    pub(crate) fn value<'a>(&self, raw: Option<&'a [u8]>) -> Option<Cow<'a, Value<'a>>> {
         #[cold]
         #[inline(never)]
-        // Return `Option<Value>` instead of `Value` so the cold call does not share `value`'s
-        // `sret` slot and block LLVM SROA, while keeping `Box<dyn Error>` drop glue out of line.
+        // Return `Option<Value>` instead of `Option<Cow<Value>>` so the cold call does not share
+        // `value`'s `sret` slot and block LLVM SROA, while keeping `Box<dyn Error>` out of line.
         fn fallback<'a>(decoder: &ColumnDecoder, raw: &'a [u8]) -> Option<Value<'a>> {
             decoder.decode(Some(raw)).ok()
         }
+        let Some(raw) = raw else {
+            return Some(Cow::Owned(Value::Null));
+        };
+        // `Bool` also places a 1-byte `Option<bool>` store at offset 1..2 of `Value`,
+        // splitting the 3-byte 1..4 gap into `i8` + `i16` so LLVM SROA promotes both to SSA.
         match self {
+            Self::Bool => match raw {
+                [b] => Some(Cow::Owned(Value::Boolean(Some(*b != 0)))),
+                _ => Some(Cow::Owned(Value::Null)),
+            },
             Self::Int32 => match raw {
-                [a, b, c, d] => Value::Int32(Some(i32::from_be_bytes([*a, *b, *c, *d]))),
-                _ => Value::Null,
+                [a, b, c, d] => Some(Cow::Owned(Value::Int32(Some(i32::from_be_bytes([
+                    *a, *b, *c, *d,
+                ]))))),
+                _ => Some(Cow::Owned(Value::Null)),
             },
             Self::Text => match wtx::misc::from_utf8_basic(raw) {
-                Ok(text) => Value::Varchar(Some(Cow::Borrowed(text))),
-                Err(_) => Value::Null,
+                Ok(text) => Some(Cow::Owned(Value::Varchar(Some(Cow::Borrowed(text))))),
+                Err(_) => Some(Cow::Owned(Value::Null)),
             },
-            _ => fallback(self, raw).unwrap_or_default(),
+            _ => match fallback(self, raw) {
+                Some(v) => Some(Cow::Owned(v)),
+                None => Some(Cow::Owned(Value::Null)),
+            },
         }
     }
 

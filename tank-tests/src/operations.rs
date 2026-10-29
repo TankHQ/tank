@@ -119,9 +119,9 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     query.bind(40)?;
     let _messages: Vec<_> = executor
         .fetch(query)
-        .await?
-        .map(|row| Ok(row?.value(0).unwrap().into_owned().into_owned()))
-        .collect::<Result<_>>()?;
+        .map_ok(|row| row.value(0).unwrap().into_owned().into_owned())
+        .try_collect()
+        .await?;
 
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
@@ -151,13 +151,11 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
                 .limit(Some(50)),
         );
         {
-            let bundle = executor.run(query).await.unwrap();
-            for result in bundle {
-                match result? {
-                    QueryResult::Rows(rows) => {
-                        for row in rows {
-                            log::debug!("Row: {:?}", row?);
-                        }
+            let mut stream = pin!(executor.run(query));
+            while let Some(result) = stream.try_next().await? {
+                match result {
+                    QueryResult::Row(row) => {
+                        log::debug!("Row: {:?}", row.into_owned());
                     }
                     QueryResult::Affected(RowsAffected { rows_affected, .. }) => {
                         log::debug!("Affected rows: {rows_affected:?}")
@@ -302,7 +300,6 @@ pub async fn advanced_operations(executor: &mut impl Executor) -> Result<()> {
                     .limit(Some(100))
                     .build(&executor.driver()),
             )
-            .await?
             .map(|row| {
                 #[derive(Entity)]
                 struct Row {
@@ -311,7 +308,8 @@ pub async fn advanced_operations(executor: &mut impl Executor) -> Result<()> {
                 }
                 Row::from_row(row?).map(|row| (row.message, row.callsign))
             })
-            .collect::<Result<Vec<_>>>()?;
+            .try_collect::<Vec<_>>()
+            .await?;
         assert!(
             messages.iter().map(|(a, b)| (a.as_str(), b.as_str())).eq([
                 ("Heavy armor spotted, grid 4C.", "SteelHammer"),

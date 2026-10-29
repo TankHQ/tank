@@ -115,10 +115,9 @@ pub async fn shopping(executor: &mut impl Executor) {
                 .order_by(cols!(Product::price ASC))
                 .build(&executor.driver()),
         )
-        .await
-        .unwrap()
         .map(|row| Product::from_row(row?))
-        .collect::<Result<Vec<Product>>>()
+        .try_collect::<Vec<Product>>()
+        .await
         .expect("Could not get the products ordered by increasing price");
     assert!(
         ordered_products.iter().map(|v| &v.name).eq([
@@ -188,8 +187,8 @@ pub async fn shopping(executor: &mut impl Executor) {
         .await
         .expect("Could not insert the users");
     let count_value = {
-        let mut count_bundle = executor
-            .fetch(
+        let mut count_bundle = pin!(
+            executor.fetch(
                 QueryBuilder::new()
                     .select(cols!(COUNT(*)))
                     .from(User::table())
@@ -197,9 +196,8 @@ pub async fn shopping(executor: &mut impl Executor) {
                     .limit(Some(1))
                     .build(&executor.driver()),
             )
-            .await
-            .unwrap();
-        let row = count_bundle.next().expect("Did not return some value");
+        );
+        let row = count_bundle.next().await.expect("Did not return some value");
         i64::try_from_value(row.unwrap().value(0).unwrap()).unwrap()
     };
     assert_eq!(count_value, 2);
@@ -300,10 +298,9 @@ pub async fn shopping(executor: &mut impl Executor) {
                     .order_by(cols!(Product::name ASC, User::name ASC))
                     .build(&executor.driver()),
             )
-            .await
-            .unwrap()
             .map(|row| Carts::from_row(row?))
-            .collect::<Result<Vec<_>>>()
+            .try_collect::<Vec<_>>()
+            .await
             .expect("Could not get the products ordered by increasing price");
         assert_eq!(
             carts,

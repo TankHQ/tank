@@ -163,7 +163,10 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     }
 
     {
-        use tank::{Entity, expr, stream::TryStreamExt};
+        use tank::{
+            Entity, expr,
+            stream::{StreamExt, TryStreamExt},
+        };
 
         let mut query = EntityExample::prepare_find(
             &mut connection,
@@ -174,15 +177,18 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         query.bind(Uuid::from_str("2f4f97da-0278-4c99-bc22-2b3986aeee85")?)?;
         let entities = connection
             .fetch(&mut query)
-            .await?
-            .map(|row| EntityExample::from_row(row?))
-            .collect::<Result<Vec<EntityExample>>>()?;
+            .map(|row| row.and_then(EntityExample::from_row))
+            .try_collect::<Vec<EntityExample>>()
+            .await?;
         query.clear_bindings()?;
         query.bind(Uuid::from_str("962f2c1c-7caa-468d-a387-53ed9860c4bf")?)?;
     }
 
     {
-        use tank::{QueryBuilder, cols, expr, stream::TryStreamExt};
+        use tank::{
+            QueryBuilder, cols, expr,
+            stream::{StreamExt, TryStreamExt},
+        };
 
         let uid = entity.unit_id;
         let results = connection
@@ -196,9 +202,9 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                     .limit(Some(50))
                     .build(&connection.driver()),
             )
-            .await?
-            .map(|row| EntityExample::from_row(row?))
-            .collect::<Result<Vec<_>>>()?;
+            .map(|row| row.and_then(EntityExample::from_row))
+            .try_collect::<Vec<_>>()
+            .await?;
     }
 
     #[cfg(not(feature = "disable-joins"))]
@@ -223,9 +229,9 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                     .order_by(cols!(Book::title ASC))
                     .build(&connection.driver()),
             )
-            .await?
-            .map(|row| BookWithAuthor::from_row(row?))
-            .collect::<Result<_>>()?;
+            .map(|row| row.and_then(BookWithAuthor::from_row))
+            .try_collect()
+            .await?;
 
         let rows: Vec<BookWithAuthor> = connection
             .fetch(
@@ -235,16 +241,16 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                     .where_expr(true)
                     .build(&connection.driver()),
             )
-            .await?
-            .map(|row| BookWithAuthor::from_row(row?))
-            .collect::<Result<_>>()?;
+            .map(|row| row.and_then(BookWithAuthor::from_row))
+            .try_collect()
+            .await?;
 
         let dataset = join!(
             Book B
                 LEFT JOIN Author A1 ON B.author == A1.author_id
                 LEFT JOIN Author A2 ON B.co_author == A2.author_id
         );
-        let bundle = connection
+        let rows = connection
             .fetch(
                 QueryBuilder::new()
                     .select(cols!(B.title, A1.name as author, A2.name as co_author))
@@ -252,8 +258,8 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                     .where_expr(true)
                     .build(&connection.driver()),
             )
+            .try_collect::<Vec<_>>()
             .await?;
-        let rows = bundle.collect::<Result<Vec<_>>>()?;
     }
 
     Ok(())

@@ -322,7 +322,7 @@ impl<'a> TryFrom<ValueWrap<'a>> for mysql_async::Value {
             },
             v => {
                 return Err(
-                    anyhow!("tank::Value variant `{v:?}` is not supported by MySQL").into(),
+                    anyhow!("Value variant `{v:?}` is not supported by MySQL").into(),
                 );
             }
         })

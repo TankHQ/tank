@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
+use std::pin::pin;
 use std::sync::LazyLock;
+use tank::stream::{StreamExt, TryStreamExt};
 use tank::{AsValue, Entity, Row, expr};
 use tank::{Executor, QueryBuilder, cols};
 use tokio::sync::Mutex;
@@ -58,20 +60,18 @@ pub async fn aggregates(executor: &mut impl Executor) {
 
     // SELECT COUNT(*), SUM(value)
     {
-        let bundle = executor
-            .fetch(
+        let mut stream = pin!(
+            executor.fetch(
                 QueryBuilder::new()
                     .select(cols!(COUNT(*), SUM(Values::value)))
                     .from(Values::table())
                     .where_expr(true)
                     .build(&executor.driver()),
             )
-            .await
-            .unwrap();
-        let mut stream = bundle;
-        let count = stream.next();
+        );
+        let count = stream.next().await;
         assert!(
-            stream.next().is_none(),
+            stream.next().await.is_none(),
             "The query is expected to return a single row"
         );
         let expected = (COUNT as i128, EXPECTED_SUM as i128);
@@ -99,7 +99,7 @@ pub async fn aggregates(executor: &mut impl Executor) {
     // SELECT *
     {
         {
-            let bundle = executor
+            let values = executor
                 .fetch(
                     QueryBuilder::new()
                         .select(cols!(*))
@@ -107,10 +107,6 @@ pub async fn aggregates(executor: &mut impl Executor) {
                         .where_expr(true)
                         .build(&executor.driver()),
                 )
-                .await
-                .unwrap();
-            let stream = bundle;
-            let values = stream
                 .map(|row| {
                     let row = row.unwrap();
                     let i = row
@@ -122,7 +118,8 @@ pub async fn aggregates(executor: &mut impl Executor) {
                     u32::try_from_value(row.value(i).unwrap())
                         .expect("The result could not be convert back to u32")
                 })
-                .collect::<BTreeSet<_>>();
+                .collect::<BTreeSet<_>>()
+                .await;
             assert!(
                 values.into_iter().eq((1..(COUNT + 1)).into_iter()),
                 "The result didn't received from the db contains all the values that were inserted"
@@ -140,8 +137,11 @@ pub async fn aggregates(executor: &mut impl Executor) {
             .bind(EXPECTED_AVG)
             .expect("Could not bind the parameter");
         {
-            let bundle = executor.fetch(&mut query).await.unwrap();
-            let values = bundle.collect::<tank::Result<Vec<_>>>().unwrap();
+            let values = executor
+                .fetch(&mut query)
+                .try_collect::<Vec<_>>()
+                .await
+                .unwrap();
             assert_eq!(values.len(), COUNT as usize / 2);
         }
         assert!(query.is_prepared());
@@ -150,8 +150,11 @@ pub async fn aggregates(executor: &mut impl Executor) {
             .expect("Could not clear the bindings");
         query.bind(0).expect("Could not bind a second time");
         {
-            let bundle = executor.fetch(&mut query).await.unwrap();
-            let values = bundle.collect::<tank::Result<Vec<_>>>().unwrap();
+            let values = executor
+                .fetch(&mut query)
+                .try_collect::<Vec<_>>()
+                .await
+                .unwrap();
             assert_eq!(values.len(), COUNT as usize);
         }
     }

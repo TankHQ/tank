@@ -134,13 +134,12 @@ pub async fn bindings(executor: &mut impl Executor) {
             .bind(value)
             .unwrap_or_else(|e| panic!("Failed to bind `{name}`: {e:#}"));
     }
-    let loaded = {
-        let bundle = executor.fetch(&mut query).await.unwrap();
-        bundle
-            .map(|row| BoundTypes::from_row(row?))
-            .collect::<tank::Result<Vec<_>>>()
-            .expect("Failed to fetch the bound row")
-    };
+    let loaded = executor
+        .fetch(&mut query)
+        .and_then(|row| std::future::ready(BoundTypes::from_row(row)))
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Failed to fetch the bound row");
     assert_eq!(
         loaded.as_slice(),
         std::slice::from_ref(&first),
@@ -169,13 +168,12 @@ pub async fn bindings(executor: &mut impl Executor) {
     ] {
         query.bind(value).expect("Failed to rebind a value");
     }
-    let loaded = {
-        let bundle = executor.fetch(&mut query).await.unwrap();
-        bundle
-            .map(|row| BoundTypes::from_row(row?))
-            .collect::<tank::Result<Vec<_>>>()
-            .expect("Failed to fetch the rebound row")
-    };
+    let loaded = executor
+        .fetch(&mut query)
+        .and_then(|row| std::future::ready(BoundTypes::from_row(row)))
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Failed to fetch the rebound row");
     assert_eq!(
         loaded.as_slice(),
         std::slice::from_ref(&second),

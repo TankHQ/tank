@@ -177,14 +177,17 @@ pub async fn arrays1(executor: &mut impl Executor) {
                 .from(Arrays2::table())
                 .where_expr(true),
         );
-        let bundle = executor.run(query).await.unwrap();
-        let rows = bundle
-            .filter_map(|v| match v.unwrap() {
-                QueryResult::Rows(v) => Some(v),
+        let rows = executor
+            .run(query)
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter_map(|v| match v {
+                QueryResult::Row(v) => Some(v),
                 QueryResult::Affected(..) => None,
             })
-            .flatten();
-        let rows = rows.collect::<tank::Result<Vec<_>>>().unwrap();
+            .collect::<Vec<_>>();
 
         let value = Arrays1::from_row(&rows[0]).expect("First must be Arrays1");
         assert_eq!(

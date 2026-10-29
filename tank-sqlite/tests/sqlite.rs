@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-    use std::sync::Mutex;
+    use std::{path::Path, pin::pin, sync::Mutex};
     use tank_core::{
         Connection, ConnectionPool, Driver, Entity, Executor, QueryResult, Row, Value,
+        stream::{StreamExt, TryStreamExt},
     };
     use tank_sqlite::{SQLiteConnection, SQLiteDriver};
     use tank_tests::{PreparedBinding, execute_tests, init_logs};
@@ -30,27 +30,24 @@ mod tests {
         ";
         let results = connection
             .run(sql)
-            .await
-            .unwrap()
             .map(|result| match result.unwrap() {
-                QueryResult::Rows(rows) => (
-                    None,
-                    rows.map(|row| row.unwrap().value(0).unwrap().into_owned().into_owned())
-                        .collect::<Vec<_>>(),
-                ),
-                QueryResult::Affected(affected) => (affected.rows_affected, vec![]),
+                QueryResult::Row(row) => {
+                    (None, Some(row.value(0).unwrap().into_owned().into_owned()))
+                }
+                QueryResult::Affected(affected) => (affected.rows_affected, None),
             })
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>()
+            .await;
         assert_eq!(
             results,
             [
-                (Some(0), vec![]),
-                (Some(2), vec![]),
-                (None, vec![Value::Int64(Some(1)), Value::Int64(Some(2))]),
-                (Some(1), vec![]),
-                (None, vec![]),
-                (Some(0), vec![]),
-                (Some(0), vec![]),
+                (Some(0), None),
+                (Some(2), None),
+                (None, Some(Value::Int64(Some(1)))),
+                (None, Some(Value::Int64(Some(2)))),
+                (Some(1), None),
+                (Some(0), None),
+                (Some(0), None),
             ]
         );
         let rows = connection
@@ -63,10 +60,9 @@ mod tests {
             SELECT 99;
         ",
             )
-            .await
-            .unwrap()
             .map(|row| row.unwrap().value(0).unwrap().into_owned().into_owned())
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>()
+            .await;
         assert_eq!(rows, [2, 3, 11, 99].map(|n| Value::Int64(Some(n))));
         let affected = connection
             .execute(
@@ -86,19 +82,15 @@ mod tests {
         assert_eq!(
             connection
                 .run("; -- only ; a comment\n /* ; */")
-                .await
-                .unwrap()
-                .count(),
+                .count()
+                .await,
             0
         );
-        assert_eq!(connection.run("").await.unwrap().count(), 0);
-        let mut results = connection
-            .run("SELECT 1; SELECT * FROM missing_table")
-            .await
-            .unwrap();
-        assert!(matches!(results.next(), Some(Ok(QueryResult::Rows(_)))));
-        assert!(results.next().unwrap().is_err());
-        assert!(results.next().is_none());
+        assert_eq!(connection.run("").count().await, 0);
+        let mut results = pin!(connection.run("SELECT 1; SELECT * FROM missing_table"));
+        assert!(matches!(results.next().await, Some(Ok(QueryResult::Row(_)))));
+        assert!(results.next().await.unwrap().is_err());
+        assert!(results.next().await.is_none());
     }
 
     #[tokio::test]
@@ -112,18 +104,11 @@ mod tests {
             .await
             .unwrap();
         empty.bind(1).unwrap();
-        {
-            let mut results = connection.run(&mut empty).await.unwrap();
-            let Some(Ok(QueryResult::Rows(rows))) = results.next() else {
-                panic!("Expected empty rowset")
-            };
-            assert_eq!(rows.count(), 0);
-            assert!(results.next().is_none());
-        }
+        assert_eq!(connection.run(&mut empty).count().await, 0);
         empty.bind(2).unwrap();
-        assert_eq!(connection.fetch(&mut empty).await.unwrap().count(), 0);
+        assert_eq!(connection.fetch(&mut empty).count().await, 0);
         let mut comments = connection.prepare("-- ; only a comment").await.unwrap();
-        assert_eq!(connection.run(&mut comments).await.unwrap().count(), 0);
+        assert_eq!(connection.run(&mut comments).count().await, 0);
         connection
             .execute("CREATE TABLE returning_items (value TEXT)")
             .await
@@ -134,15 +119,12 @@ mod tests {
             .unwrap();
         query.bind("owned; text").unwrap();
         let rows = {
-            let mut results = connection.run(&mut query).await.unwrap();
-            let Some(Ok(QueryResult::Rows(rows))) = results.next() else {
-                panic!("Expected RETURNING rows")
+            let mut results = pin!(connection.run(&mut query));
+            let Some(Ok(QueryResult::Row(row))) = results.next().await else {
+                panic!("Expected RETURNING row")
             };
-            let rows = rows
-                .map(|row| row.unwrap().into_owned())
-                .collect::<Vec<_>>();
-            assert!(results.next().is_none());
-            rows
+            assert!(results.next().await.is_none());
+            vec![row.into_owned()]
         };
         query.bind("second").unwrap();
         assert_eq!(
@@ -174,13 +156,11 @@ mod tests {
             SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
                 .await
                 .unwrap();
-        let bundle = connection
+        let values = connection
             .fetch("SELECT 1 AS id, 2 AS value UNION ALL SELECT 3, 4")
-            .await
-            .unwrap();
-        let values = bundle
             .map(|row| row.and_then(PreparedBinding::from_row))
-            .collect::<tank_core::Result<Vec<_>>>()
+            .try_collect::<Vec<_>>()
+            .await
             .unwrap();
         assert_eq!(
             values,
@@ -189,25 +169,21 @@ mod tests {
                 PreparedBinding { id: 3, value: 4 }
             ]
         );
-        let bundle = connection
-            .fetch("SELECT 1 AS id, 2 AS value WHERE false")
-            .await
-            .unwrap();
         assert!(
-            bundle
+            connection
+                .fetch("SELECT 1 AS id, 2 AS value WHERE false")
                 .map(|row| row.and_then(PreparedBinding::from_row))
-                .collect::<tank_core::Result<Vec<_>>>()
+                .try_collect::<Vec<_>>()
+                .await
                 .unwrap()
                 .is_empty()
         );
-        let bundle = connection
-            .fetch("SELECT 1 AS id, 'invalid' AS value")
-            .await
-            .unwrap();
         assert!(
-            bundle
+            connection
+                .fetch("SELECT 1 AS id, 'invalid' AS value")
                 .map(|row| row.and_then(PreparedBinding::from_row))
-                .collect::<tank_core::Result<Vec<_>>>()
+                .try_collect::<Vec<_>>()
+                .await
                 .is_err()
         );
     }
@@ -259,12 +235,8 @@ mod tests {
             .await
             .expect("Could not open the database");
         let mut connection = pool.get().await.expect("Could not get a connection");
-        let bundle = connection
-            .fetch("SELECT CAST(x'FF41' AS TEXT)")
-            .await
-            .expect("Could not fetch the invalid UTF-8 text");
-        let mut stream = bundle;
-        let row = stream.next().expect("No row returned").unwrap();
+        let mut stream = pin!(connection.fetch("SELECT CAST(x'FF41' AS TEXT)"));
+        let row = stream.next().await.expect("No row returned").unwrap();
         let text = format!("{:?}", row.value(0).unwrap());
         assert!(text.contains("\\xff") || text.contains("\\u{fffd}") || text.contains('A'));
     }
@@ -288,7 +260,7 @@ mod tests {
             .expect("Could not prepare the query");
         assert!(
             query.bind(u64::MAX).is_err(),
-            "u64 above i64::MAX must not be silently wrapped"
+            "Values of u64 above i64::MAX must not be silently wrapped"
         );
     }
 }

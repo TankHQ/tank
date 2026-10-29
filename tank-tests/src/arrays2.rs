@@ -49,15 +49,17 @@ pub async fn arrays2(executor: &mut impl Executor) {
                 .where_expr(true)
                 .limit(Some(1)),
         );
-        let bundle = executor.run(query).await.unwrap();
-        let rows = bundle
-            .filter_map(|v| match v.unwrap() {
-                QueryResult::Rows(v) => Some(v),
+        let rows = executor
+            .run(query)
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter_map(|v| match v {
+                QueryResult::Row(v) => Some(v),
                 QueryResult::Affected(..) => None,
             })
-            .flatten();
-        let rows = rows
-            .map(|row| Container::from_row(row?))
+            .map(Container::from_row)
             .collect::<tank::Result<Vec<_>>>()
             .expect("Coult not execute the query");
         assert_eq!(

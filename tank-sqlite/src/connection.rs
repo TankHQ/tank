@@ -9,7 +9,7 @@ use std::{
     ffi::{CStr, CString, c_char, c_int},
     ptr,
     str::FromStr,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Prepared, Query, QueryResult, RawQuery,
@@ -312,96 +312,72 @@ impl Executor for SQLiteConnection {
         Ok(SQLitePrepared::new(prepared).into())
     }
 
-    fn run<'s, Q>(
+    fn run<'s>(
         &'s mut self,
-        query: Q,
-    ) -> impl Future<Output = Result<<Self::Driver as tank_core::Driver>::Results<'s, Q::Output>>>
-    + Send
-    where
-        Q: AsQuery<SQLiteDriver> + Send + 's,
+        query: impl AsQuery<SQLiteDriver> + 's,
+    ) -> impl tank_core::stream::Stream<Item = Result<QueryResult<impl tank_core::Row + 's>>> + Send
     {
-        async move {
-            let mut query = query.as_query();
-            if let Query::Raw(raw) = query.as_mut() {
-                if raw.sql.as_bytes().contains(&0) {
-                    return Err(anyhow!("SQLite query contains an interior NUL byte"));
-                }
+        let mut query = query.as_query();
+        if let Query::Raw(raw) = query.as_mut() {
+            if raw.sql.as_bytes().contains(&0) {
+                return tank_core::future::Either::Left(tank_core::stream::once(
+                    std::future::ready(Err(anyhow!("SQLite query contains an interior NUL byte"))),
+                ));
             }
-            if let Query::Prepared(prepared) = query.as_mut() {
-                if !prepared.statement().is_null()
-                    && unsafe { sqlite3_db_handle(prepared.statement()) } != *self.connection
-                {
-                    return Err(anyhow!(
+        }
+        if let Query::Prepared(prepared) = query.as_mut() {
+            if !prepared.statement().is_null()
+                && unsafe { sqlite3_db_handle(prepared.statement()) } != *self.connection
+            {
+                return tank_core::future::Either::Left(tank_core::stream::once(
+                    std::future::ready(Err(anyhow!(
                         "Prepared statement belongs to another SQLite connection"
-                    ));
+                    ))),
+                ));
+            }
+        }
+        tank_core::future::Either::Right(tank_core::stream::iter(SQLiteCursor {
+            connection: self,
+            query,
+            statement: None,
+            offset: 0,
+            generation: 0,
+            active: false,
+            done: false,
+            names: None,
+        }))
+    }
+}
+
+impl<Q: AsMut<Query<SQLiteDriver>>> Iterator for SQLiteCursor<'_, Q> {
+    type Item = Result<QueryResult<RowOwned>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.done {
+                return None;
+            }
+            if self.active {
+                match self.row() {
+                    Ok(Some(row)) => return Some(Ok(QueryResult::Row(row))),
+                    Ok(None) => {}
+                    Err(error) => {
+                        self.done = true;
+                        return Some(Err(error));
+                    }
                 }
             }
-            let state = Arc::new(Mutex::new(SQLiteCursor {
-                connection: self,
-                query,
-                statement: None,
-                offset: 0,
-                generation: 0,
-                active: false,
-                done: false,
-                names: None,
-            }));
-            Ok(SQLiteResults { state, done: false })
-        }
-    }
-}
-
-/// Iterator over the rows of one SQLite statement.
-///
-/// Shares state with [`SQLiteResults`]; a generation counter invalidates it once the next statement begins.
-pub struct SQLiteRows<'s, Q: AsMut<Query<SQLiteDriver>>> {
-    state: Arc<Mutex<SQLiteCursor<'s, Q>>>,
-    generation: usize,
-}
-
-impl<Q: AsMut<Query<SQLiteDriver>>> Iterator for SQLiteRows<'_, Q> {
-    type Item = Result<RowOwned>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut cursor = self.state.lock().unwrap();
-        if cursor.generation != self.generation {
-            return None;
-        }
-        cursor.row().transpose()
-    }
-}
-
-/// Statement-level results of a SQLite query.
-pub struct SQLiteResults<'s, Q: AsMut<Query<SQLiteDriver>>> {
-    state: Arc<Mutex<SQLiteCursor<'s, Q>>>,
-    done: bool,
-}
-
-impl<'s, Q: AsMut<Query<SQLiteDriver>>> Iterator for SQLiteResults<'s, Q> {
-    type Item = Result<QueryResult<SQLiteRows<'s, Q>>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.done {
-            return None;
-        }
-        let mut cursor = self.state.lock().unwrap();
-        match cursor.advance() {
-            Err(error) => {
-                cursor.done = true;
-                self.done = true;
-                Some(Err(error))
-            }
-            Ok(Some(affected)) => Some(Ok(QueryResult::Affected(affected))),
-            Ok(None) if cursor.active => {
-                let generation = cursor.generation;
-                Some(Ok(QueryResult::Rows(SQLiteRows {
-                    state: self.state.clone(),
-                    generation,
-                })))
-            }
-            Ok(None) => {
-                self.done = true;
-                None
+            match self.advance() {
+                Ok(Some(affected)) => return Some(Ok(QueryResult::Affected(affected))),
+                Ok(None) if self.active => {}
+                Ok(None) => {
+                    self.done = true;
+                    return None;
+                }
+                Err(error) => {
+                    self.done = true;
+                    return Some(Err(error));
+                }
             }
         }
     }

@@ -3,8 +3,11 @@ mod init;
 #[cfg(test)]
 mod tests {
     use super::init::init;
-    use std::{borrow::Cow, sync::Mutex};
-    use tank_core::{Connection, Executor, Row, RowOwned, Value};
+    use std::{borrow::Cow, pin::pin, sync::Mutex};
+    use tank_core::{
+        Connection, Executor, Row, RowOwned, Value,
+        stream::{StreamExt, TryStreamExt},
+    };
     use tank_postgres::{PostgresConnection, PostgresDriver};
 
     static MUTEX: Mutex<()> = Mutex::new(());
@@ -23,8 +26,8 @@ mod tests {
         connection: &mut PostgresConnection,
         query: impl tank_core::AsQuery<PostgresDriver> + Send,
     ) -> RowOwned {
-        let rows = connection.fetch(query).await.unwrap();
-        rows.map(|row| row.unwrap().into_owned()).next().unwrap()
+        let mut rows = pin!(connection.fetch(query));
+        rows.next().await.unwrap().unwrap().into_owned()
     }
 
     #[tokio::test]
@@ -114,7 +117,14 @@ mod tests {
         query
             .bind(Value::Unknown(Some("unsupported".into())))
             .unwrap();
-        assert!(connection.fetch(&mut query).await.is_err());
+        assert!(
+            connection
+                .fetch(&mut query)
+                .map_ok(Row::into_owned)
+                .try_collect::<Vec<_>>()
+                .await
+                .is_err()
+        );
 
         query.bind(4_i32).unwrap().bind(5_i32).unwrap();
         let row = fetch_one(&mut connection, &mut query).await;

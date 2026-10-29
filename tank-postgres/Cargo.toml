@@ -10,7 +10,6 @@ categories.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-async-stream.workspace = true
 byteorder = "1"
 bytes = "1"
 fallible-iterator = "0"

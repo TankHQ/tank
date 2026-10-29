@@ -1,6 +1,5 @@
 use crate::{MySQLConnection, MySQLPrepared, MySQLSqlWriter, MySQLTransaction};
-use std::convert::AsMut;
-use tank_core::{Driver, OwnedResults, OwnedRowIter, Query, RowOwned};
+use tank_core::Driver;
 
 /// MySQL/MariaDB driver.
 #[derive(Clone, Copy, Debug)]
@@ -31,16 +30,6 @@ impl Driver for MySQLDriver {
     type SqlWriter = MySQLSqlWriter;
     type Prepared = MySQLPrepared;
     type Transaction<'c> = MySQLTransaction<'c>;
-
-    type Row<'s> = RowOwned;
-    type Rows<'s, O>
-        = OwnedRowIter
-    where
-        O: AsMut<Query<Self>> + Send + 's;
-    type Results<'s, O>
-        = OwnedResults
-    where
-        O: AsMut<Query<Self>> + Send + 's;
 
     const NAME: &'static [&'static str] = &["mysql", "mariadb"];
 

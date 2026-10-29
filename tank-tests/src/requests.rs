@@ -213,9 +213,8 @@ pub async fn requests(executor: &mut impl Executor) {
         assert_eq!(
             executor
                 .fetch(&mut violated_limits)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             0
@@ -226,9 +225,8 @@ pub async fn requests(executor: &mut impl Executor) {
         assert_eq!(
             executor
                 .fetch(&mut violated_limits)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             0
@@ -239,9 +237,8 @@ pub async fn requests(executor: &mut impl Executor) {
         assert_eq!(
             executor
                 .fetch(&mut violated_limits)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             1
@@ -252,9 +249,8 @@ pub async fn requests(executor: &mut impl Executor) {
         assert_eq!(
             executor
                 .fetch(&mut violated_limits)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             0
@@ -265,9 +261,8 @@ pub async fn requests(executor: &mut impl Executor) {
         assert_eq!(
             executor
                 .fetch(&mut violated_limits)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             2
@@ -280,9 +275,8 @@ pub async fn requests(executor: &mut impl Executor) {
         assert_eq!(
             executor
                 .fetch(&mut violated_limits)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             0
@@ -308,9 +302,8 @@ pub async fn requests(executor: &mut impl Executor) {
         assert_eq!(
             executor
                 .fetch(&mut violated_limits)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             2
@@ -332,9 +325,8 @@ pub async fn requests(executor: &mut impl Executor) {
         assert_eq!(
             executor
                 .fetch(&mut violated_limits)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             1
@@ -354,9 +346,8 @@ pub async fn requests(executor: &mut impl Executor) {
         assert_eq!(
             executor
                 .fetch(&mut violated_limits)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             0
@@ -376,9 +367,8 @@ pub async fn requests(executor: &mut impl Executor) {
         assert_eq!(
             executor
                 .fetch(&mut violated_limits)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             0
@@ -389,9 +379,8 @@ pub async fn requests(executor: &mut impl Executor) {
         assert_eq!(
             executor
                 .fetch(&mut violated_limits)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             1
@@ -404,9 +393,8 @@ pub async fn requests(executor: &mut impl Executor) {
         assert_eq!(
             executor
                 .fetch(&mut violated_limits)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             0
@@ -425,9 +413,8 @@ pub async fn requests(executor: &mut impl Executor) {
         assert_eq!(
             executor
                 .fetch(&mut violated_limits)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             1

@@ -190,10 +190,9 @@ pub async fn books(executor: &mut impl Executor) {
                     .order_by(cols!(B.title DESC))
                     .build(&executor.driver()),
             )
+            .map(|row| row.and_then(BookAuthorResult::from_row))
+            .try_collect::<Vec<_>>()
             .await
-            .unwrap()
-            .map(|row| BookAuthorResult::from_row(row?))
-            .collect::<Result<Vec<_>>>()
             .expect("Failed to query books and authors joined");
         assert_eq!(
             result,
@@ -214,19 +213,15 @@ pub async fn books(executor: &mut impl Executor) {
             Book B LEFT JOIN Author A1 ON B.author == A1.author_id
                 LEFT JOIN Author A2 ON B.co_author == A2.author_id
         );
-        let result = {
-            let bundle = executor
-                .fetch(
-                    QueryBuilder::new()
-                        .select(cols!(B.title, A1.name as author, A2.name as co_author))
-                        .from(dataset)
-                        .where_expr(true)
-                        .build(&executor.driver()),
-                )
-                .await
-                .unwrap();
-            bundle
-                .map(|row| {
+        let result = executor
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(B.title, A1.name as author, A2.name as co_author))
+                    .from(dataset)
+                    .where_expr(true)
+                    .build(&executor.driver()),
+            )
+            .map(|row| {
                 let row = row.unwrap();
                 let mut iter = row.values();
                 (
@@ -248,7 +243,7 @@ pub async fn books(executor: &mut impl Executor) {
                 )
             })
             .collect::<HashSet<_>>()
-        };
+            .await;
         assert_eq!(
             result,
             HashSet::from_iter([
@@ -286,10 +281,9 @@ pub async fn books(executor: &mut impl Executor) {
                     .where_expr(true)
                     .build(&executor.driver()),
             )
+            .map(|row| row.and_then(Books::from_row))
+            .try_collect::<HashSet<_>>()
             .await
-            .unwrap()
-            .map(|row| Books::from_row(row?))
-            .collect::<Result<HashSet<_>>>()
             .expect("Could not return the books");
         assert_eq!(
             books,
@@ -350,10 +344,9 @@ pub async fn books(executor: &mut impl Executor) {
                     .order_by(cols!(Author::name ASC))
                     .build(&executor.driver()),
             )
-            .await
-            .unwrap()
             .map(|row| AsValue::try_from_value(row?.value(0).unwrap()))
-            .collect::<Result<Vec<String>>>()
+            .try_collect::<Vec<String>>()
+            .await
             .expect("Could not return the ordered names of the authors");
         assert_eq!(
             authors,
@@ -387,13 +380,10 @@ pub async fn books(executor: &mut impl Executor) {
                 .where_expr(expr!(Book::title == "Harry Potter and the Deathly Hallows"))
                 .limit(Some(1)),
         );
-        let bundle = executor.run(query).await.unwrap();
-        let mut stream = bundle;
-        let Some(Ok(QueryResult::Rows(mut rows))) = stream.next() else {
+        let mut stream = std::pin::pin!(executor.run(query));
+        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
             panic!("Could not get the first row")
         };
-        let row = rows.next().expect("Expected the first book").unwrap();
-        assert!(rows.next().is_none());
         let book = Book::from_row(row).expect("Could not get the book from row");
         assert_eq!(
             book,
@@ -406,11 +396,9 @@ pub async fn books(executor: &mut impl Executor) {
                 year: 2002,
             }
         );
-        let Some(Ok(QueryResult::Rows(mut rows))) = stream.next() else {
+        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
             panic!("Could not get the second row")
         };
-        let row = rows.next().expect("Expected the second book").unwrap();
-        assert!(rows.next().is_none());
         let book = Book::from_row(row).expect("Could not get the book from row");
         assert_eq!(
             book,
@@ -424,7 +412,7 @@ pub async fn books(executor: &mut impl Executor) {
             }
         );
         assert!(
-            stream.next().is_none(),
+            stream.next().await.is_none(),
             "There should be only two statement results"
         )
     }

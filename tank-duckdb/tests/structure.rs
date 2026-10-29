@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 use indoc::indoc;
-use tank_core::{Connection, ConnectionPool, Driver, Executor, Row, Transaction, Value};
+use tank_core::{
+    Connection, ConnectionPool, Driver, Executor, Row, Transaction, Value, stream::TryStreamExt,
+};
 
 pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     let mut connection = pool
@@ -33,16 +35,16 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         .expect("Could not start a transaction");
     tx.commit().await.expect("Faield to commit the transaction");
     {
-        let users_bundle = connection
+        let users = connection
             .fetch(indoc! {"
             SELECT id, info
             FROM users
             WHERE info.age >= 30
             ORDER BY id;
         "})
+            .try_collect::<Vec<_>>()
             .await
             .expect("Failed to query");
-        let users = users_bundle.collect::<tank_core::Result<Vec<_>>>().unwrap();
         assert_eq!(users.len(), 2);
         let Value::Struct(Some(alice), t) = users[0].get_column("info").unwrap().into_owned()
         else {
@@ -99,11 +101,11 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         .expect("Failed to create complex table");
 
     {
-        let items_bundle = connection
+        let items = connection
             .fetch("SELECT data FROM complex_items WHERE id = 100")
+            .try_collect::<Vec<_>>()
             .await
             .expect("Failed to query complex items");
-        let items = items_bundle.collect::<tank_core::Result<Vec<_>>>().unwrap();
         assert_eq!(items.len(), 1);
         let Value::Struct(Some(data), t) = items[0].get_column("data").unwrap().into_owned() else {
             panic!("Expected complex struct");
@@ -153,13 +155,11 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         .expect("Failed to create null_checks table");
 
     {
-        let null_rows_bundle = connection
+        let null_rows = connection
             .fetch("SELECT id, info FROM null_checks ORDER BY id")
+            .try_collect::<Vec<_>>()
             .await
             .expect("Failed to query null_checks");
-        let null_rows = null_rows_bundle
-            .collect::<tank_core::Result<Vec<_>>>()
-            .unwrap();
 
         assert_eq!(null_rows.len(), 2);
 
@@ -218,13 +218,11 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         .expect("Failed to create ts_resolution table");
 
     {
-        let ts_rows_bundle = connection
+        let ts_rows = connection
             .fetch("SELECT ts_s, ts_ms, ts_ns FROM ts_resolution WHERE id = 1")
+            .try_collect::<Vec<_>>()
             .await
             .expect("Failed to query ts_resolution");
-        let ts_rows = ts_rows_bundle
-            .collect::<tank_core::Result<Vec<_>>>()
-            .unwrap();
 
         assert_eq!(ts_rows.len(), 1);
         let expected_date = time::Date::from_calendar_date(2025, time::Month::June, 15).unwrap();

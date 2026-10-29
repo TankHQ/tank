@@ -1,7 +1,11 @@
 use anyhow::anyhow;
 use redis::{Cmd, Pipeline};
 use std::future;
-use tank_core::{AsQuery, Driver, Executor, OwnedResults, Query, Result, Transaction};
+use tank_core::{
+    AsQuery, Executor, Query, QueryResult, Result, Row, Transaction,
+    future::Either,
+    stream::{self, Stream},
+};
 
 use crate::{ValkeyConnection, ValkeyDriver};
 
@@ -17,23 +21,18 @@ impl<'c> Executor for ValkeyTransaction<'c> {
         false
     }
 
-    fn run<'s, Q>(
+    fn run<'s>(
         &'s mut self,
-        query: Q,
-    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Results<'s, Q::Output>>> + Send
-    where
-        Q: AsQuery<ValkeyDriver> + Send + 's,
-    {
-        async move {
-            let mut query = query.as_query();
-            let Query::Prepared(prepared) = query.as_mut() else {
-                return Err(anyhow!(
-                    "Query is not the expected tank::Query::Prepared variant (Valkey/Redis driver uses prepared)",
-                ));
-            };
-            self.commands.extend(prepared.commands.iter().cloned());
-            Ok(OwnedResults::new(Vec::new()))
-        }
+        query: impl AsQuery<ValkeyDriver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
+        let mut query = query.as_query();
+        let Query::Prepared(prepared) = query.as_mut() else {
+            return Either::Left(stream::once(future::ready(Err(anyhow!(
+                "Query is not the expected tank::Query::Prepared variant (Valkey/Redis driver uses prepared)",
+            )))));
+        };
+        self.commands.extend(prepared.commands.iter().cloned());
+        Either::Right(stream::empty::<Result<QueryResult>>())
     }
 }
 

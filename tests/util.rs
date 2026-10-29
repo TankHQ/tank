@@ -224,12 +224,11 @@ mod tests {
         let labels: RowLabels = Arc::from(vec!["id".into()]);
         let values = vec![Value::Int32(Some(1))];
         let row = RowOwned::new(labels, values);
-        let result: QueryResultOwned = QueryResult::Rows(vec![row].into_iter());
-        let QueryResult::Rows(mut rows) = result else {
-            panic!("Expected a statement rowset")
+        let result: QueryResultOwned = QueryResult::Row(row);
+        let QueryResult::Row(row) = result else {
+            panic!("Expected a row")
         };
-        assert_eq!(rows.next().unwrap().values, vec![Value::Int32(Some(1))]);
-        assert!(rows.next().is_none());
+        assert_eq!(row.values, vec![Value::Int32(Some(1))]);
     }
 
     #[test]

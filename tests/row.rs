@@ -24,7 +24,7 @@ mod tests {
         assert!(Arc::ptr_eq(&names, &owned.names));
         assert_eq!(owned.values.as_ptr(), values_ptr);
         let Some(Cow::Borrowed(Value::Varchar(Some(text)))) = owned.value(0) else {
-            panic!("expected stored text")
+            panic!("Expected stored text")
         };
         assert_eq!(text.as_ptr(), text_ptr);
     }

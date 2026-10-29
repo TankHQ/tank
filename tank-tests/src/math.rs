@@ -1,5 +1,8 @@
 use std::sync::LazyLock;
-use tank::{AsValue, Entity, Executor, QueryBuilder, Result, Row, cols, expr};
+use tank::{
+    AsValue, Entity, Executor, QueryBuilder, Row, cols, expr,
+    stream::{StreamExt, TryStreamExt},
+};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -34,10 +37,10 @@ pub async fn math(executor: &mut impl Executor) {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
+        .map_ok(MathTable::from_row)
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
         .await
-        .unwrap()
-        .map(|row| MathTable::from_row(row?))
-        .collect::<Result<Vec<_>>>()
         .expect("Could not get the result 1");
     assert_eq!(result, [MathTable { id: 0, read: 44 }]);
 
@@ -49,10 +52,10 @@ pub async fn math(executor: &mut impl Executor) {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
+        .map_ok(MathTable::from_row)
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
         .await
-        .unwrap()
-        .map(|row| MathTable::from_row(row?))
-        .collect::<Result<Vec<_>>>()
         .expect("Could not get the result 2");
     assert_eq!(result, [MathTable { id: 0, read: 3 }]);
 
@@ -64,10 +67,10 @@ pub async fn math(executor: &mut impl Executor) {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
+        .map_ok(MathTable::from_row)
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
         .await
-        .unwrap()
-        .map(|row| MathTable::from_row(row?))
-        .collect::<Result<Vec<_>>>()
         .expect("Could not get the result 3");
     assert_eq!(result, [MathTable { id: 0, read: 8 }]);
 
@@ -79,10 +82,10 @@ pub async fn math(executor: &mut impl Executor) {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
+        .map_ok(|v| bool::try_from_value(v.values().nth(1).unwrap()))
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
         .await
-        .unwrap()
-        .map(|v| bool::try_from_value(v?.values().nth(1).unwrap()))
-        .collect::<Result<Vec<_>>>()
         .expect("Could not get the result 4");
     assert_eq!(result, [true]);
 
@@ -94,10 +97,10 @@ pub async fn math(executor: &mut impl Executor) {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
+        .map_ok(|v| bool::try_from_value(v.values().nth(1).unwrap()))
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
         .await
-        .unwrap()
-        .map(|v| bool::try_from_value(v?.values().nth(1).unwrap()))
-        .collect::<Result<Vec<_>>>()
         .expect("Could not get the result 5");
     assert_eq!(result, [true]);
 
@@ -112,10 +115,10 @@ pub async fn math(executor: &mut impl Executor) {
                     .where_expr(expr!(MathTable::id == 0))
                     .build(&executor.driver()),
             )
+            .map_ok(MathTable::from_row)
+            .map(Result::flatten)
+            .try_collect::<Vec<_>>()
             .await
-            .unwrap()
-            .map(|row| MathTable::from_row(row?))
-            .collect::<Result<Vec<_>>>()
             .expect("Could not get the CAST result");
         assert_eq!(result, [MathTable { id: 0, read: 0 }]);
     }
@@ -131,10 +134,10 @@ pub async fn math(executor: &mut impl Executor) {
                     .where_expr(expr!(MathTable::id == 0))
                     .build(&executor.driver()),
             )
+            .map_ok(MathTable::from_row)
+            .map(Result::flatten)
+            .try_collect::<Vec<_>>()
             .await
-            .unwrap()
-            .map(|row| MathTable::from_row(row?))
-            .collect::<Result<Vec<_>>>()
             .expect("Could not get the LOG10 result");
         assert_eq!(
             result,

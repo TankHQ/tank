@@ -11,7 +11,7 @@ mod tests {
         let mut context = Context::fragment(Fragment::SqlSelect);
         expression.write_query(&writer, &mut context, &mut out);
         let DynQuery::Raw(raw) = out else {
-            panic!("the writer only produces raw queries");
+            panic!("The writer only produces raw queries");
         };
         raw
     }
@@ -24,7 +24,7 @@ mod tests {
         prepared.bind(1_i64).unwrap();
         prepared.bind("x").unwrap();
         let (directive, built) = writer.build_parameterized_sql(&prepared).unwrap();
-        let directive = directive.expect("bound values must produce a SET directive");
+        let directive = directive.expect("Bound values must produce a SET directive");
         assert!(directive.starts_with("SET param_p0 = "), "{directive}");
         assert!(directive.contains("param_p1 = "), "{directive}");
         assert!(built.contains("{p0:Nullable(Int64)}"), "{built}");
@@ -53,7 +53,7 @@ mod tests {
         let mut prepared = ClickHousePrepared::new(sql, params);
         prepared.bind(Option::<i64>::None).unwrap();
         let (directive, built) = writer.build_parameterized_sql(&prepared).unwrap();
-        let directive = directive.expect("a NULL binding still produces a SET directive");
+        let directive = directive.expect("A NULL binding still produces a SET directive");
         assert!(directive.contains("'\\\\N'"), "{directive}");
         assert!(built.contains("Nullable(Nothing)"), "{built}");
     }

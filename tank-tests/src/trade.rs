@@ -372,29 +372,28 @@ pub async fn trade_multiple(executor: &mut impl Executor) {
                 .from(Trade::table())
                 .where_expr(true),
         );
-        let bundle = executor.run(query).await.unwrap();
-        let mut stream = bundle;
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) = stream.next()
+        let mut stream = pin!(executor.run(query));
+        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
+            stream.next().await
         else {
             panic!("Could not get the result of the first query");
         };
         if let Some(rows_affected) = rows_affected {
             assert_eq!(rows_affected, 5);
         }
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) = stream.next()
+        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
+            stream.next().await
         else {
             panic!("Could not get the result of the first statement");
         };
         if let Some(rows_affected) = rows_affected {
             assert_eq!(rows_affected, 1);
         }
-        let Some(Ok(QueryResult::Rows(mut rows))) = stream.next() else {
+        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
             panic!("Could not get the result of the second statement");
         };
-        let row = rows.next().expect("Expected one selected trade").unwrap();
-        assert!(rows.next().is_none());
-        assert!(stream.next().is_none());
         let trade = Trade::from_row(row).expect("Could not decode the Trade from row");
+        assert!(stream.next().await.is_none());
         assert_eq!(
             trade,
             Trade {

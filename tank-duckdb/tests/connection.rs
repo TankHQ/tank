@@ -1,8 +1,11 @@
 #[cfg(test)]
 mod tests {
     use indoc::indoc;
-    use std::{path::Path, sync::Mutex};
-    use tank_core::{AsValue, Connection, Executor, QueryResult, Result, Row, Value};
+    use std::{path::Path, pin::pin, sync::Mutex};
+    use tank_core::{
+        AsValue, Connection, Executor, QueryResult, Row, Value,
+        stream::{StreamExt, TryStreamExt},
+    };
     use tank_duckdb::{DuckDBConnection, DuckDBDriver};
     use tank_tests::{init_logs, silent_logs};
     use tokio::fs;
@@ -18,12 +21,12 @@ mod tests {
         let first;
         {
             // Materializing this result would be infeasible. Only the requested prefix is read.
-            let mut rows = connection.fetch(
+            let mut rows = pin!(connection.fetch(
                 "SELECT i, 'row-' || i::VARCHAR AS label, [i, i + 1] AS nested FROM range(1000000000000) t(i)"
-            ).await.unwrap();
-            first = rows.next().unwrap().unwrap().into_owned();
+            ));
+            first = rows.next().await.unwrap().unwrap().into_owned();
             for i in 1..5000 {
-                let row = rows.next().unwrap().unwrap();
+                let row = rows.next().await.unwrap().unwrap();
                 assert_eq!(row.value(0).unwrap().into_owned(), Value::Int64(Some(i)));
             }
         }
@@ -36,9 +39,15 @@ mod tests {
         assert!(
             matches!(first.value(2).unwrap().as_ref(), Value::List(Some(values), _) if values.len() == 2 && values[1] == Value::Int64(Some(1)))
         );
-        let mut rows = connection.fetch("SELECT 42").await.unwrap();
+        let mut rows = pin!(connection.fetch("SELECT 42"));
         assert_eq!(
-            rows.next().unwrap().unwrap().value(0).unwrap().into_owned(),
+            rows.next()
+                .await
+                .unwrap()
+                .unwrap()
+                .value(0)
+                .unwrap()
+                .into_owned(),
             Value::Int32(Some(42))
         );
     }
@@ -50,16 +59,14 @@ mod tests {
                 .await
                 .unwrap();
         {
-            let mut results = connection.run(
+            let mut results = pin!(connection.run(
                 "SELECT CAST(CASE WHEN i = 1000000 THEN 'invalid' ELSE i::VARCHAR END AS BIGINT) FROM range(1000010) t(i); CREATE TABLE must_not_run(i INT)"
-            ).await.unwrap();
-            let QueryResult::Rows(mut rows) = results.next().unwrap().unwrap() else {
-                panic!("Expected rows")
-            };
+            ));
             let mut count = 0;
             let error = loop {
-                match rows.next().expect("Expected late error") {
-                    Ok(_) => count += 1,
+                match results.next().await.expect("Expected late error") {
+                    Ok(QueryResult::Row(_)) => count += 1,
+                    Ok(QueryResult::Affected(_)) => panic!("Unexpected affected count"),
                     Err(error) => break error,
                 }
             };
@@ -68,8 +75,7 @@ mod tests {
                 "Consumed {count} rows before error"
             );
             assert!(format!("{error:#}").contains("invalid"));
-            assert!(rows.next().is_none());
-            assert!(results.next().is_none());
+            assert!(results.next().await.is_none());
         }
         assert!(
             connection
@@ -91,27 +97,19 @@ mod tests {
                 .unwrap();
         // The native DATE is valid, but its year is outside time::Date's supported range.
         let sql = "SELECT CASE WHEN i = 5000 THEN DATE '2000000-01-01' ELSE DATE '2025-01-01' END FROM range(5001) t(i); CREATE TABLE must_not_run(i INT)";
-        for drain in [false, true] {
-            let mut results = connection.run(sql).await.unwrap();
-            let QueryResult::Rows(mut rows) = results.next().unwrap().unwrap() else {
-                panic!("Expected rows")
-            };
-            assert!(rows.next().unwrap().is_ok());
-            if drain {
-                let error = results
-                    .next()
-                    .unwrap()
-                    .err()
-                    .expect("Drain must report extraction error");
-                assert!(format!("{error:#}").contains("date"));
-            } else {
-                for row in rows.by_ref().take(4999) {
-                    row.unwrap();
-                }
-                assert!(rows.next().unwrap().is_err());
+        {
+            let mut results = pin!(connection.run(sql));
+            for _ in 0..5000 {
+                assert!(matches!(results.next().await, Some(Ok(QueryResult::Row(_)))));
             }
-            assert!(rows.next().is_none());
-            assert!(results.next().is_none());
+            let error = results
+                .next()
+                .await
+                .unwrap()
+                .err()
+                .expect("Must report extraction error");
+            assert!(format!("{error:#}").contains("date"));
+            assert!(results.next().await.is_none());
         }
         assert!(
             connection
@@ -128,54 +126,47 @@ mod tests {
                 .await
                 .unwrap();
         {
-            let mut results = connection.run(
-                "CREATE TABLE ordered(i BIGINT); INSERT INTO ordered VALUES (7); SELECT i FROM range(10000) t(i); UPDATE ordered SET i = 8; SELECT * FROM ordered; SELECT 1 WHERE false"
-            ).await.unwrap();
+            let mut results = pin!(connection.run(
+                "CREATE TABLE ordered(i BIGINT); INSERT INTO ordered VALUES (7); SELECT i FROM range(2) t(i); UPDATE ordered SET i = 8; SELECT * FROM ordered; SELECT 1 WHERE false"
+            ));
             assert!(
-                matches!(results.next().unwrap().unwrap(), QueryResult::Affected(a) if a.rows_affected == Some(0))
+                matches!(results.next().await.unwrap().unwrap(), QueryResult::Affected(a) if a.rows_affected == Some(0))
             );
             assert!(
-                matches!(results.next().unwrap().unwrap(), QueryResult::Affected(a) if a.rows_affected == Some(1))
+                matches!(results.next().await.unwrap().unwrap(), QueryResult::Affected(a) if a.rows_affected == Some(1))
             );
-            let QueryResult::Rows(mut old_rows) = results.next().unwrap().unwrap() else {
-                panic!("Expected rows")
-            };
-            old_rows.next().unwrap().unwrap();
+            assert!(matches!(
+                results.next().await.unwrap().unwrap(),
+                QueryResult::Row(_)
+            ));
+            assert!(matches!(
+                results.next().await.unwrap().unwrap(),
+                QueryResult::Row(_)
+            ));
             assert!(
-                matches!(results.next().unwrap().unwrap(), QueryResult::Affected(a) if a.rows_affected == Some(1))
+                matches!(results.next().await.unwrap().unwrap(), QueryResult::Affected(a) if a.rows_affected == Some(1))
             );
-            assert!(old_rows.next().is_none());
-            let QueryResult::Rows(mut rows) = results.next().unwrap().unwrap() else {
-                panic!("Expected rows")
+            let QueryResult::Row(row) = results.next().await.unwrap().unwrap() else {
+                panic!("Expected row")
             };
-            assert_eq!(
-                rows.next().unwrap().unwrap().value(0).unwrap().into_owned(),
-                Value::Int64(Some(8))
-            );
-            let QueryResult::Rows(mut empty) = results.next().unwrap().unwrap() else {
-                panic!("Expected empty rowset")
-            };
-            assert!(empty.next().is_none());
-            assert!(rows.next().is_none());
-            assert!(results.next().is_none());
+            assert_eq!(row.value(0).unwrap().into_owned(), Value::Int64(Some(8)));
+            assert!(results.next().await.is_none());
         }
         // Dropping an unfinished batch does not eagerly execute subsequent statements.
         {
-            let mut results = connection
-                .run("SELECT * FROM range(10000); INSERT INTO ordered VALUES (99)")
-                .await
-                .unwrap();
-            let QueryResult::Rows(mut rows) = results.next().unwrap().unwrap() else {
-                panic!("Expected rows")
-            };
-            rows.next().unwrap().unwrap();
+            let mut results = pin!(
+                connection.run("SELECT * FROM range(10000); INSERT INTO ordered VALUES (99)")
+            );
+            assert!(matches!(
+                results.next().await.unwrap().unwrap(),
+                QueryResult::Row(_)
+            ));
         }
         assert_eq!(
             connection
                 .fetch("SELECT * FROM ordered")
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             1
@@ -188,29 +179,19 @@ mod tests {
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
                 .await
                 .unwrap();
-        {
-            let mut results = connection.run(
-                "SELECT CAST(CASE WHEN i = 1000000 THEN 'invalid' ELSE i::VARCHAR END AS BIGINT) FROM range(1000010) t(i); SELECT 42"
-            ).await.unwrap();
-            let QueryResult::Rows(mut rows) = results.next().unwrap().unwrap() else {
-                panic!("Expected rows")
-            };
-            rows.next().unwrap().unwrap();
-            let error = results
-                .next()
-                .unwrap()
-                .err()
-                .expect("Drain must report native fetch error");
-            assert!(format!("{error:#}").contains("invalid"));
-            assert!(results.next().is_none());
-            assert!(rows.next().is_none());
-        }
+        assert!(
+            connection
+                .execute(
+                    "SELECT CAST(CASE WHEN i = 1000000 THEN 'invalid' ELSE i::VARCHAR END AS BIGINT) FROM range(1000010) t(i); SELECT 42"
+                )
+                .await
+                .is_err()
+        );
         assert_eq!(
             connection
                 .fetch("SELECT 42")
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             1
@@ -229,26 +210,21 @@ mod tests {
             .unwrap();
         for value in ["first", "second"] {
             query.bind(value).unwrap();
-            let results = connection.run(&mut query).await.unwrap();
+            let results = connection.run(&mut query);
+            let handle = tokio::runtime::Handle::current();
             std::thread::scope(|scope| {
-                let mut rows = scope
-                    .spawn(move || {
-                        let mut results = results;
-                        let QueryResult::Rows(rows) = results.next().unwrap().unwrap() else {
-                            panic!("Expected rows")
-                        };
-                        // The row iterator keeps the query and connection alive after outer drop.
-                        rows
-                    })
-                    .join()
-                    .unwrap();
                 scope
                     .spawn(move || {
-                        let row = rows.next().unwrap().unwrap();
-                        assert_eq!(
-                            row.value(0).unwrap().into_owned(),
-                            Value::Varchar(Some(value.into()))
-                        );
+                        handle.block_on(async move {
+                            let mut results = pin!(results);
+                            let QueryResult::Row(row) = results.next().await.unwrap().unwrap() else {
+                                panic!("Expected row")
+                            };
+                            assert_eq!(
+                                row.value(0).unwrap().into_owned(),
+                                Value::Varchar(Some(value.into()))
+                            );
+                        });
                     })
                     .join()
                     .unwrap();
@@ -263,18 +239,16 @@ mod tests {
         assert!(
             connection
                 .fetch(&mut bad)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .is_err()
         );
         bad.bind("42").unwrap();
         assert_eq!(
             connection
                 .fetch(&mut bad)
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .unwrap()
                 .len(),
             1
@@ -301,28 +275,26 @@ mod tests {
             EXPLAIN SELECT * FROM items;
         ",
             )
-            .await
-            .unwrap()
             .map(|result| match result.unwrap() {
-                QueryResult::Rows(rows) => (None, rows.collect::<Result<Vec<_>>>().unwrap().len()),
-                QueryResult::Affected(affected) => (affected.rows_affected, 0),
+                QueryResult::Row(_) => None,
+                QueryResult::Affected(affected) => Some(affected.rows_affected),
             })
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>()
+            .await;
         assert_eq!(
             &results[..7],
             &[
-                (Some(0), 0),
-                (Some(2), 0),
-                (None, 2),
-                (Some(1), 0),
-                (None, 0),
-                (Some(0), 0),
-                (None, 1),
+                Some(Some(0)),
+                Some(Some(2)),
+                None,
+                None,
+                Some(Some(1)),
+                Some(Some(0)),
+                None,
             ]
         );
-        assert_eq!(results.len(), 8);
-        assert_eq!(results[7].0, None);
-        assert!(results[7].1 > 0);
+        assert!(results.len() >= 8);
+        assert!(results[7..].iter().all(Option::is_none));
         let values = connection
             .fetch(
                 "
@@ -333,10 +305,9 @@ mod tests {
             SELECT 99;
         ",
             )
-            .await
-            .unwrap()
             .map(|row| row.unwrap().value(0).unwrap().into_owned().into_owned())
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>()
+            .await;
         assert_eq!(values, [2, 3, 4, 11, 99].map(|n| Value::Int32(Some(n))));
         assert_eq!(
             connection
@@ -354,8 +325,8 @@ mod tests {
                 .rows_affected,
             Some(3)
         );
-        assert_eq!(connection.run("-- ;\n /* ; */").await.unwrap().count(), 0);
-        assert_eq!(connection.run("").await.unwrap().count(), 0);
+        assert_eq!(connection.run("-- ;\n /* ; */").count().await, 0);
+        assert_eq!(connection.run("").count().await, 0);
     }
 
     #[tokio::test]
@@ -369,24 +340,16 @@ mod tests {
             .await
             .unwrap();
         empty.bind("empty").unwrap();
-        {
-            let mut results = connection.run(&mut empty).await.unwrap();
-            let Some(Ok(QueryResult::Rows(rows))) = results.next() else {
-                panic!("Expected empty rowset")
-            };
-            assert_eq!(rows.count(), 0);
-            assert!(results.next().is_none());
-        }
+        assert_eq!(connection.run(&mut empty).count().await, 0);
         let mut query = connection.prepare("SELECT ? AS value").await.unwrap();
         query.bind("owned; text").unwrap();
         let rows = connection
             .fetch(&mut query)
-            .await
-            .unwrap()
             .map(|row| row.unwrap().into_owned())
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>()
+            .await;
         query.bind("second").unwrap();
-        assert_eq!(connection.fetch(&mut query).await.unwrap().count(), 1);
+        assert_eq!(connection.fetch(&mut query).count().await, 1);
         assert_eq!(rows[0].names(), &["value"]);
         assert!(
             matches!(rows[0].value(0), Some(std::borrow::Cow::Borrowed(Value::Varchar(Some(text)))) if text == "owned; text")
@@ -394,9 +357,8 @@ mod tests {
         assert!(
             connection
                 .fetch("SELECT CAST(value AS INTEGER) FROM (VALUES ('invalid')) AS t(value)")
+                .try_collect::<Vec<_>>()
                 .await
-                .unwrap()
-                .collect::<Result<Vec<_>>>()
                 .is_err()
         );
     }
@@ -447,21 +409,19 @@ mod tests {
         )
         .await
         .expect("Could not open the database");
-        let bundle = connection
+        let parameters = connection
             .run(indoc! {r#"
                 SELECT name, value
                 FROM duckdb_settings()
                 WHERE name IN ('threads', 'max_memory');
 
             "#})
-            .await
-            .unwrap();
-        let parameters = bundle
-            .flat_map(|result| match result.unwrap() {
-                QueryResult::Rows(rows) => rows,
+            .map_ok(|result| match result {
+                QueryResult::Row(row) => row.into_owned(),
                 QueryResult::Affected(_) => panic!("Unexpected affected count"),
             })
-            .collect::<Result<Vec<_>>>()
+            .try_collect::<Vec<_>>()
+            .await
             .unwrap();
         assert!(!parameters.is_empty());
         let threads = String::try_from_value(

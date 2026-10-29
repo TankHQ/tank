@@ -1,6 +1,5 @@
 use crate::{ValkeyConnection, ValkeyPrepared, ValkeySqlWriter, ValkeyTransaction};
-use std::convert::AsMut;
-use tank_core::{Driver, OwnedResults, OwnedRowIter, Query, RowOwned};
+use tank_core::Driver;
 
 /// Valkey driver.
 #[derive(Clone, Copy, Debug)]
@@ -34,16 +33,6 @@ impl Driver for ValkeyDriver {
     type SqlWriter = ValkeySqlWriter;
     type Prepared = ValkeyPrepared;
     type Transaction<'c> = ValkeyTransaction<'c>;
-
-    type Row<'s> = RowOwned;
-    type Rows<'s, O>
-        = OwnedRowIter
-    where
-        O: AsMut<Query<Self>> + Send + 's;
-    type Results<'s, O>
-        = OwnedResults
-    where
-        O: AsMut<Query<Self>> + Send + 's;
 
     const NAME: &'static [&'static str] = &["valkey", "redis", "valkeys", "rediss"];
 

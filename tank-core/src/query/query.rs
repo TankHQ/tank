@@ -1,6 +1,6 @@
-use crate::{AsValue, Driver, DynQuery, Prepared, Result, RowOwned, truncate_long};
+use crate::{AsValue, Driver, DynQuery, Prepared, Result, Row, RowOwned, truncate_long};
 use anyhow::anyhow;
-use std::fmt::{self, Debug, Display, Formatter};
+use std::fmt::{self, Debug, Display};
 
 /// Byte span of a parameter marker inside a built query
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -171,27 +171,22 @@ impl Extend<RowsAffected> for RowsAffected {
 }
 
 /// Items from `Executor::run`: rows or effects.
-///
-/// The `R` parameter is the statement's rowset.
-/// Use [`QueryResultOwned`] for materialised results.
-pub enum QueryResult<R> {
-    /// A statement's rows, including an empty rowset.
-    Rows(R),
-    /// A modify effect aggregation
+#[derive(Debug)]
+pub enum QueryResult<R = RowOwned> {
+    /// A labeled row.
+    Row(R),
+    /// A modify effect aggregation.
     Affected(RowsAffected),
 }
 
-impl<R: Debug> Debug for QueryResult<R> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Rows(rows) => f.debug_tuple("Rows").field(rows).finish(),
-            Self::Affected(affected) => f.debug_tuple("Affected").field(affected).finish(),
-        }
+/// Owning query result.
+pub type QueryResultOwned = QueryResult<RowOwned>;
+
+impl<R: Row> From<R> for QueryResult<R> {
+    fn from(value: R) -> Self {
+        Self::Row(value)
     }
 }
-
-/// Owning query result.
-pub type QueryResultOwned = QueryResult<std::vec::IntoIter<RowOwned>>;
 
 impl<R> From<RowsAffected> for QueryResult<R> {
     fn from(value: RowsAffected) -> Self {
