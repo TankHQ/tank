@@ -78,6 +78,13 @@ impl ColumnDecoder {
     /// Keeps common entity fields small enough to fuse decoding and conversion.
     #[inline(always)]
     pub(crate) fn value<'a>(&self, raw: &'a [u8]) -> Value<'a> {
+        #[cold]
+        #[inline(never)]
+        // Return `Option<Value>` instead of `Value` so the cold call does not share `value`'s
+        // `sret` slot and block LLVM SROA, while keeping `Box<dyn Error>` drop glue out of line.
+        fn fallback<'a>(decoder: &ColumnDecoder, raw: &'a [u8]) -> Option<Value<'a>> {
+            decoder.decode(Some(raw)).ok()
+        }
         match self {
             Self::Int32 => match raw {
                 [a, b, c, d] => Value::Int32(Some(i32::from_be_bytes([*a, *b, *c, *d]))),
@@ -87,7 +94,7 @@ impl ColumnDecoder {
                 Ok(text) => Value::Varchar(Some(Cow::Borrowed(text))),
                 Err(_) => Value::Null,
             },
-            _ => self.decode(Some(raw)).unwrap_or(Value::Null),
+            _ => fallback(self, raw).unwrap_or_default(),
         }
     }
 

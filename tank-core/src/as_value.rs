@@ -1673,8 +1673,11 @@ impl<T: AsValue> AsValue for Option<T> {
     fn try_from_value(value: impl AsValue) -> Result<Self> {
         #[cold]
         #[inline(never)]
-        fn is_null(value: &Value<'_>) -> bool {
-            value.is_null()
+        // Return `Option<Result<T>>` instead of `Result<Option<T>>` so the cold call does not
+        // share `try_from_value`'s `sret` slot, and take `&mut Value` so `val` stays in registers.
+        fn fallback<T: AsValue>(value: &mut Value<'_>) -> Option<Result<T>> {
+            let value = mem::take(value);
+            (!value.is_null()).then(|| <T as AsValue>::try_from_value(value))
         }
         match value.as_value() {
             val @ Value::Null => {
@@ -1685,7 +1688,7 @@ impl<T: AsValue> AsValue for Option<T> {
             val => {
                 // Compare against `T::as_empty_value()`'s constant discriminant so LLVM
                 // constant-folds `val.is_null()` to `T`'s single variant instead of a
-                // 28-entry jump table, outlining cross-variant checks to `is_null`.
+                // 28-entry jump table, materializing `other` only on the cold path.
                 let empty = T::as_empty_value();
                 let same = mem::discriminant(&val) == mem::discriminant(&empty);
                 if !matches!(
@@ -1695,11 +1698,14 @@ impl<T: AsValue> AsValue for Option<T> {
                     // Scalar empty values own no heap data; forgetting elides drop glue.
                     mem::forget(empty);
                 }
-                Ok(if same && !val.is_null() || !is_null(&val) {
-                    Some(<T as AsValue>::try_from_value(val)?)
+                if same && !val.is_null() {
+                    <T as AsValue>::try_from_value(val).map(Some)
                 } else {
-                    None
-                })
+                    let mut other = val;
+                    let res = fallback(&mut other).transpose();
+                    mem::forget(other);
+                    res
+                }
             }
         }
     }

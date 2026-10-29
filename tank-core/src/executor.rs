@@ -131,36 +131,37 @@ where
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
-        // Keep statement-boundary advancement out of the per-row hot loop.
+        // Return `Result<Option<Row>>` instead of `Option<Result<Row>>` so `fallback` does not
+        // share `next`'s `sret` slot and block LLVM SROA from scalarizing the hot row return.
         #[cold]
         #[inline(never)]
-        fn fallback<'s, D, O>(fetched: &mut Fetched<'s, D, O>) -> Option<Result<D::Row<'s>>>
+        fn fallback<'s, D, O>(fetched: &mut Fetched<'s, D, O>) -> Result<Option<D::Row<'s>>>
         where
             D: Driver + 's,
             O: AsMut<Query<D>> + Send + 's,
         {
             fetched.current = None;
             if let Some(error) = fetched.pending.take() {
-                return Some(Err(error));
+                return Err(error);
             }
             for item in &mut fetched.inner {
-                match item {
-                    Ok(QueryResult::Rows(mut rows)) => {
+                match item? {
+                    QueryResult::Rows(mut rows) => {
                         if let Some(row) = rows.next() {
                             fetched.current = Some(rows);
-                            return Some(row);
+                            return row.map(Some);
                         }
                     }
-                    Ok(QueryResult::Affected(_)) => {}
-                    Err(error) => return Some(Err(error)),
+                    QueryResult::Affected(_) => {}
                 }
             }
-            None
+            Ok(None)
         }
-        self.current
-            .as_mut()
-            .and_then(Iterator::next)
-            .or_else(|| fallback(self))
+        if let Some(row) = self.current.as_mut().and_then(Iterator::next) {
+            Some(row)
+        } else {
+            fallback(self).transpose()
+        }
     }
 
     #[inline(always)]
