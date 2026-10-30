@@ -51,7 +51,7 @@ impl<'a> ValueSql<'a> {
                 _ => break,
             }
         }
-        let pg_type = Self::value_to_postgres_type(element_type);
+        let (pg_type, _) = Self::value_to_postgres_type(element_type);
         let mut collector = Vec::with_capacity(total_capacity);
         Self::flatten_recursive(values, &mut collector);
         (collector, dimensions, pg_type)
@@ -69,62 +69,64 @@ impl<'a> ValueSql<'a> {
         }
     }
 
-    fn value_to_postgres_type(value: &Value) -> Type {
+    fn value_to_postgres_type(value: &Value) -> (Type, Ty) {
         assert!(matches!(Type::BPCHAR_ARRAY.kind(), Kind::Array(..)));
         match value {
-            Value::Boolean(..) => Type::BOOL,
-            Value::Int8(..) => Type::INT2,
-            Value::Int16(..) => Type::INT2,
-            Value::Int32(..) => Type::INT4,
-            Value::Int64(..) => Type::INT8,
-            Value::Int128(..) => Type::NUMERIC,
-            Value::UInt8(..) => Type::INT2,
-            Value::UInt16(..) => Type::INT4,
-            Value::UInt32(..) => Type::INT8,
-            Value::UInt64(..) => Type::NUMERIC,
-            Value::UInt128(..) => Type::NUMERIC,
-            Value::Float32(..) => Type::FLOAT4,
-            Value::Float64(..) => Type::FLOAT8,
-            Value::Decimal(.., _, _) => Type::NUMERIC,
-            Value::Char(..) => Type::BPCHAR,
-            Value::Varchar(..) => Type::TEXT,
-            Value::Blob(..) => Type::BYTEA,
-            Value::Date(..) => Type::DATE,
-            Value::Time(..) => Type::TIME,
-            Value::Timestamp(..) => Type::TIMESTAMP,
-            Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ,
-            Value::Interval(..) => Type::INTERVAL,
-            Value::Uuid(..) => Type::UUID,
+            Value::Boolean(..) => (Type::BOOL, Ty::Bool),
+            Value::Int8(..) => (Type::INT2, Ty::Int2),
+            Value::Int16(..) => (Type::INT2, Ty::Int2),
+            Value::Int32(..) => (Type::INT4, Ty::Int4),
+            Value::Int64(..) => (Type::INT8, Ty::Int8),
+            Value::Int128(..) => (Type::NUMERIC, Ty::Numeric),
+            Value::UInt8(..) => (Type::INT2, Ty::Int2),
+            Value::UInt16(..) => (Type::INT4, Ty::Int4),
+            Value::UInt32(..) => (Type::INT8, Ty::Int8),
+            Value::UInt64(..) => (Type::NUMERIC, Ty::Numeric),
+            Value::UInt128(..) => (Type::NUMERIC, Ty::Numeric),
+            Value::Float32(..) => (Type::FLOAT4, Ty::Float4),
+            Value::Float64(..) => (Type::FLOAT8, Ty::Float8),
+            Value::Decimal(.., _, _) => (Type::NUMERIC, Ty::Numeric),
+            Value::Char(..) => (Type::BPCHAR, Ty::Bpchar),
+            Value::Varchar(..) => (Type::TEXT, Ty::Text),
+            Value::Blob(..) => (Type::BYTEA, Ty::Bytea),
+            Value::Date(..) => (Type::DATE, Ty::Date),
+            Value::Time(..) => (Type::TIME, Ty::Time),
+            Value::Timestamp(..) => (Type::TIMESTAMP, Ty::Timestamp),
+            Value::TimestampWithTimezone(..) => (Type::TIMESTAMPTZ, Ty::Timestamptz),
+            Value::Interval(..) => (Type::INTERVAL, Ty::Interval),
+            Value::Uuid(..) => (Type::UUID, Ty::Uuid),
             Value::Array(.., t) | Value::List(.., t) => match &t.element {
-                Value::Boolean(..) => Type::BOOL_ARRAY,
-                Value::Int8(..) => Type::INT2_ARRAY,
-                Value::Int16(..) => Type::INT2_ARRAY,
-                Value::Int32(..) => Type::INT4_ARRAY,
-                Value::Int64(..) => Type::INT8_ARRAY,
-                Value::Int128(..) => Type::NUMERIC_ARRAY,
-                Value::UInt8(..) => Type::INT2_ARRAY,
-                Value::UInt16(..) => Type::INT4_ARRAY,
-                Value::UInt32(..) => Type::INT8_ARRAY,
-                Value::UInt64(..) => Type::NUMERIC_ARRAY,
-                Value::UInt128(..) => Type::NUMERIC_ARRAY,
-                Value::Float32(..) => Type::FLOAT4_ARRAY,
-                Value::Float64(..) => Type::FLOAT8_ARRAY,
-                Value::Decimal(..) => Type::NUMERIC_ARRAY,
-                Value::Char(..) => Type::BPCHAR_ARRAY,
-                Value::Varchar(..) => Type::TEXT_ARRAY,
-                Value::Blob(..) => Type::BYTEA_ARRAY,
-                Value::Date(..) => Type::DATE_ARRAY,
-                Value::Time(..) => Type::TIME_ARRAY,
-                Value::Timestamp(..) => Type::TIMESTAMP_ARRAY,
-                Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ_ARRAY,
-                Value::Interval(..) => Type::INTERVAL_ARRAY,
-                Value::Uuid(..) => Type::UUID_ARRAY,
+                Value::Boolean(..) => (Type::BOOL_ARRAY, Ty::BoolArray),
+                Value::Int8(..) => (Type::INT2_ARRAY, Ty::Int2Array),
+                Value::Int16(..) => (Type::INT2_ARRAY, Ty::Int2Array),
+                Value::Int32(..) => (Type::INT4_ARRAY, Ty::Int4Array),
+                Value::Int64(..) => (Type::INT8_ARRAY, Ty::Int8Array),
+                Value::Int128(..) => (Type::NUMERIC_ARRAY, Ty::NumericArray),
+                Value::UInt8(..) => (Type::INT2_ARRAY, Ty::Int2Array),
+                Value::UInt16(..) => (Type::INT4_ARRAY, Ty::Int4Array),
+                Value::UInt32(..) => (Type::INT8_ARRAY, Ty::Int8Array),
+                Value::UInt64(..) => (Type::NUMERIC_ARRAY, Ty::NumericArray),
+                Value::UInt128(..) => (Type::NUMERIC_ARRAY, Ty::NumericArray),
+                Value::Float32(..) => (Type::FLOAT4_ARRAY, Ty::Float4Array),
+                Value::Float64(..) => (Type::FLOAT8_ARRAY, Ty::Float8Array),
+                Value::Decimal(..) => (Type::NUMERIC_ARRAY, Ty::NumericArray),
+                Value::Char(..) => (Type::BPCHAR_ARRAY, Ty::BpcharArray),
+                Value::Varchar(..) => (Type::TEXT_ARRAY, Ty::TextArray),
+                Value::Blob(..) => (Type::BYTEA_ARRAY, Ty::ByteaArray),
+                Value::Date(..) => (Type::DATE_ARRAY, Ty::DateArray),
+                Value::Time(..) => (Type::TIME_ARRAY, Ty::TimeArray),
+                Value::Timestamp(..) => (Type::TIMESTAMP_ARRAY, Ty::TimestampArray),
+                Value::TimestampWithTimezone(..) => (Type::TIMESTAMPTZ_ARRAY, Ty::TimestamptzArray),
+                Value::Interval(..) => (Type::INTERVAL_ARRAY, Ty::IntervalArray),
+                Value::Uuid(..) => (Type::UUID_ARRAY, Ty::UuidArray),
                 Value::Array(..) | Value::List(..) => Self::value_to_postgres_type(&t.element),
-                Value::Map(..) | Value::Json(..) | Value::Struct(..) => Type::JSON_ARRAY,
-                _ => Type::UNKNOWN,
+                Value::Map(..) | Value::Json(..) | Value::Struct(..) => {
+                    (Type::JSON_ARRAY, Ty::JsonArray)
+                }
+                _ => (Type::UNKNOWN, Ty::Unknown),
             },
-            Value::Map(..) | Value::Json(..) | Value::Struct(..) => Type::JSON,
-            _ => Type::UNKNOWN,
+            Value::Map(..) | Value::Json(..) | Value::Struct(..) => (Type::JSON, Ty::Json),
+            _ => (Type::UNKNOWN, Ty::Unknown),
         }
     }
 }
@@ -221,7 +223,7 @@ impl TankParam {
     }
 
     fn encode_value(&mut self, value: &Value<'_>) -> tank_core::Result<()> {
-        let pg_ty = ValueSql::value_to_postgres_type(value);
+        let (pg_ty, wtx_ty) = ValueSql::value_to_postgres_type(value);
         self.bytes.clear();
         self.is_null = match ValueSql(value).to_sql(&pg_ty, &mut self.bytes) {
             Ok(IsNull::Yes) => true,
@@ -230,7 +232,7 @@ impl TankParam {
                 return Err(anyhow!("Could not encode parameter {value:?}: {e}"));
             }
         };
-        self.ty = Ty::from(pg_ty.oid());
+        self.ty = wtx_ty;
         Ok(())
     }
 

@@ -19,8 +19,10 @@ use tank_core::{
 };
 use url::Url;
 use wtx::{
-    database::DbClient as _,
-    database::client::postgres::{ClientBuffer, Config, PostgresClient, PostgresRecords},
+    database::{
+        DbClient as _,
+        client::postgres::{ClientBuffer, Config, PostgresClient, PostgresRecords},
+    },
     net::Uri,
     rng::{ChaCha20, CryptoSeedableRng as _},
     tls::{PlaintextCtx, TlsConfig, TlsConnector},
@@ -187,7 +189,7 @@ impl PostgresConnection {
         let Some(columns) = records.columns() else {
             return;
         };
-        if columns.size_hint().0 != labels.len()
+        if columns.len() != labels.len()
             || !columns
                 .zip(labels.iter())
                 .all(|((name, _), label)| name == label)
