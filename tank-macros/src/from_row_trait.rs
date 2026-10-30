@@ -63,6 +63,7 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
         factory_name.clone(),
         quote! {
             trait #trait_name {
+                fn make_error(name: &str) -> ::tank::Error;
                 fn from_row(row: impl ::tank::Row) -> ::tank::Result<#struct_name>;
             }
             struct #factory_name<T>(std::marker::PhantomData<T>);
@@ -84,22 +85,22 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
                 }
             }
             impl<T> #trait_name for #factory_name<T> {
+                #[cold]
+                #[inline(never)]
+                fn make_error(name: &str) -> ::tank::Error {
+                    ::tank::anyhow!(
+                        "Column `{name}` does not exist in the row provided (implement `Default` for {} or get all the columns)",
+                        stringify!(#struct_name),
+                    )
+                }
                 #[inline(always)]
                 fn from_row(row: impl ::tank::Row) -> ::tank::Result<#struct_name> {
-                    #[cold]
-                    #[inline(never)]
-                    fn __make_error__(name: &str) -> ::tank::Error {
-                        ::tank::anyhow!(
-                            "Column `{name}` does not exist in the row provided (implement `Default` for {} or get all the columns)",
-                            stringify!(#struct_name),
-                        )
-                    }
                     if #is_ordered {
                         return Ok(#struct_name {
                             #(
                                 #idents: {
                                     let Some(__v__) = row.value(#indices) else {
-                                        return Err(__make_error__(#names));
+                                        return Err(Self::make_error(#names));
                                     };
                                     #convs
                                 },
@@ -110,7 +111,7 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
                     #(let mut #idents: Option<#tys> = None;)*
                     #fallback_holder
                     Ok(#struct_name {
-                        #(#idents: #idents.ok_or_else(|| __make_error__(#names))?,)*
+                        #(#idents: #idents.ok_or_else(|| Self::make_error(#names))?,)*
                         #(#remaining: Default::default(),)*
                     })
                 }

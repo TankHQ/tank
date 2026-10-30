@@ -1691,15 +1691,27 @@ impl<T: AsValue> AsValue for Option<T> {
                 // 28-entry jump table, materializing `other` only on the cold path.
                 let empty = T::as_empty_value();
                 let same = mem::discriminant(&val) == mem::discriminant(&empty);
-                if !matches!(
+                let drop_empty = matches!(
                     empty,
-                    Value::Array(..) | Value::List(..) | Value::Map(..) | Value::Struct(..)
-                ) {
+                    Value::Array(..)
+                        | Value::List(..)
+                        | Value::Map(..)
+                        | Value::Struct(..)
+                        | Value::Json(..)
+                );
+                if !drop_empty {
                     // Scalar empty values own no heap data; forgetting elides drop glue.
                     mem::forget(empty);
                 }
-                if same && !val.is_null() {
-                    <T as AsValue>::try_from_value(val).map(Some)
+                if same {
+                    if val.is_null() {
+                        if !drop_empty {
+                            mem::forget(val);
+                        }
+                        Ok(None)
+                    } else {
+                        <T as AsValue>::try_from_value(val).map(Some)
+                    }
                 } else {
                     let mut other = val;
                     let res = fallback(&mut other).transpose();

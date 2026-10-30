@@ -7,7 +7,6 @@ mod rows;
 mod sql_writer;
 mod stream;
 mod transaction;
-mod util;
 mod value_wrap;
 
 pub use connection::*;

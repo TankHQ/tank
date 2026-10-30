@@ -1,6 +1,6 @@
 use crate::{
     PostgresDriver, PostgresPrepared, PostgresTransaction, TankParam, TankStmt,
-    rows::{PostgresResults, PostgresRows, PostgresScratch, PostgresStream},
+    rows::{PostgresResults, PostgresRows, PostgresStream},
     stream::ConnectionStream,
 };
 use std::{
@@ -15,12 +15,12 @@ use std::{fs, path::PathBuf, str::FromStr};
 use tank_core::anyhow;
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, Row,
-    RowsAffected, describe_url, stream::Stream,
+    RowLabels, RowsAffected, describe_url, stream::Stream,
 };
 use url::Url;
 use wtx::{
     database::DbClient as _,
-    database::client::postgres::{ClientBuffer, Config, PostgresClient},
+    database::client::postgres::{ClientBuffer, Config, PostgresClient, PostgresRecords},
     net::Uri,
     rng::{ChaCha20, CryptoSeedableRng as _},
     tls::{PlaintextCtx, TlsConfig, TlsConnector},
@@ -32,9 +32,9 @@ pub(crate) type WtxClient = PostgresClient<wtx::Error, ConnectionStream, Plainte
 /// PostgreSQL connection backed by `wtx`.
 pub struct PostgresConnection {
     pub(crate) client: WtxClient,
-    /// Reusable decode buffers, cleared and refilled by every query so that a
-    /// steady-state workload performs no per-query allocation.
-    pub(crate) scratch: PostgresScratch,
+    /// Cached column labels of the current statement, reused while consecutive
+    /// queries share the same column set.
+    pub(crate) labels: RowLabels,
 }
 
 impl Debug for PostgresConnection {
@@ -93,7 +93,7 @@ impl Connection for PostgresConnection {
             .with_context(|| make_context(&url))?;
         Ok(Self {
             client,
-            scratch: Default::default(),
+            labels: Default::default(),
         })
     }
 
@@ -171,12 +171,36 @@ impl PostgresConnection {
         error
     }
 
+    #[cold]
+    #[inline(never)]
+    fn rebuild_labels(labels: &mut RowLabels, records: &PostgresRecords<'_, wtx::Error>) {
+        *labels = records
+            .columns()
+            .into_iter()
+            .flatten()
+            .map(|(name, _)| name.to_string())
+            .collect();
+    }
+
+    #[inline]
+    fn prepare_labels(labels: &mut RowLabels, records: &PostgresRecords<'_, wtx::Error>) {
+        let Some(columns) = records.columns() else {
+            return;
+        };
+        if columns.size_hint().0 != labels.len()
+            || !columns
+                .zip(labels.iter())
+                .all(|((name, _), label)| name == label)
+        {
+            Self::rebuild_labels(labels, records);
+        }
+    }
+
     /// Runs one statement through the typed protocol, decoding with full type
     /// information.
     ///
     /// The returned view borrows both the client (whose read buffer holds the
-    /// row bytes) and the scratch (labels and decoders), and decodes each value
-    /// lazily.
+    /// row bytes) and the cached labels, and decodes each value lazily.
     #[inline]
     pub(crate) async fn run_prepared<'s>(
         &'s mut self,
@@ -189,12 +213,8 @@ impl PostgresConnection {
             .await
             .map_err(Error::new)?;
         Ok(if records.columns().is_some() {
-            self.scratch.prepare(&records);
-            PostgresResults::rows(PostgresRows::new(
-                records,
-                &self.scratch.labels,
-                &self.scratch.decoders,
-            ))
+            Self::prepare_labels(&mut self.labels, &records);
+            PostgresResults::rows(PostgresRows::new(records, &self.labels))
         } else {
             PostgresResults::affected(RowsAffected {
                 rows_affected: Some(records.rows_affected()),
@@ -214,12 +234,8 @@ impl PostgresConnection {
             .execute_stmt_many(TankStmt::new(sql, params), params, |_| Ok(()))
             .await
             .map_err(Error::new)?;
-        self.scratch.prepare(&records);
-        Ok(PostgresRows::new(
-            records,
-            &self.scratch.labels,
-            &self.scratch.decoders,
-        ))
+        Self::prepare_labels(&mut self.labels, &records);
+        Ok(PostgresRows::new(records, &self.labels))
     }
 
     /// Rebuilds a wtx-acceptable URI: wtx only understands `application_name` and

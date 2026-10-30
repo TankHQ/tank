@@ -5613,8 +5613,10 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "ring",
+ "rust_decimal",
  "simdutf8",
  "tokio",
+ "uuid",
  "wtx-macros",
  "zlib-rs",
 ]

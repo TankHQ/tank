@@ -1,12 +1,9 @@
-use crate::{
-    interval_wrap::IntervalWrap,
-    util::{flatten_array, value_to_postgres_type},
-};
+use crate::interval_wrap::IntervalWrap;
 use anyhow::anyhow;
 use bytes::BytesMut;
 use core::hash::BuildHasher;
-use postgres_protocol::types::array_to_sql;
-use postgres_types::{IsNull, ToSql, Type, to_sql_checked};
+use postgres_protocol::types::{ArrayDimension, array_to_sql};
+use postgres_types::{IsNull, Kind, ToSql, Type, to_sql_checked};
 use rust_decimal::{Decimal, prelude::FromPrimitive};
 use std::error::Error;
 use tank_core::{Value, ValueOwned};
@@ -21,6 +18,116 @@ use wtx::{
 /// A `ToSql` adapter over a borrowed tank [`Value`].
 #[derive(Debug)]
 struct ValueSql<'a>(&'a Value<'a>);
+
+impl<'a> ValueSql<'a> {
+    fn flatten_array(
+        values: &'a [Value<'a>],
+        mut element_type: &'a Value<'a>,
+    ) -> (Vec<&'a Value<'a>>, Vec<ArrayDimension>, Type) {
+        let mut dimensions = Vec::new();
+        let mut current_level = values;
+        let mut total_capacity = 1;
+        loop {
+            let len = current_level.len();
+            dimensions.push(ArrayDimension {
+                len: len as i32,
+                lower_bound: 1,
+            });
+            total_capacity *= len;
+            if len == 0 {
+                total_capacity = 0;
+                break;
+            }
+            match current_level.first() {
+                Some(Value::Array(Some(inner), ..) | Value::List(Some(inner), ..)) => {
+                    current_level = inner
+                }
+                _ => break,
+            }
+        }
+        loop {
+            match element_type {
+                Value::Array(.., t) | Value::List(.., t) => element_type = &t.element,
+                _ => break,
+            }
+        }
+        let pg_type = Self::value_to_postgres_type(element_type);
+        let mut collector = Vec::with_capacity(total_capacity);
+        Self::flatten_recursive(values, &mut collector);
+        (collector, dimensions, pg_type)
+    }
+
+    fn flatten_recursive(values: &'a [Value<'a>], collector: &mut Vec<&'a Value<'a>>) {
+        for value in values {
+            match value {
+                Value::Array(Some(inner), ..) | Value::List(Some(inner), ..) => {
+                    Self::flatten_recursive(inner, collector);
+                }
+                Value::Array(None, ..) | Value::List(None, ..) => {}
+                _ => collector.push(value),
+            }
+        }
+    }
+
+    fn value_to_postgres_type(value: &Value) -> Type {
+        assert!(matches!(Type::BPCHAR_ARRAY.kind(), Kind::Array(..)));
+        match value {
+            Value::Boolean(..) => Type::BOOL,
+            Value::Int8(..) => Type::INT2,
+            Value::Int16(..) => Type::INT2,
+            Value::Int32(..) => Type::INT4,
+            Value::Int64(..) => Type::INT8,
+            Value::Int128(..) => Type::NUMERIC,
+            Value::UInt8(..) => Type::INT2,
+            Value::UInt16(..) => Type::INT4,
+            Value::UInt32(..) => Type::INT8,
+            Value::UInt64(..) => Type::NUMERIC,
+            Value::UInt128(..) => Type::NUMERIC,
+            Value::Float32(..) => Type::FLOAT4,
+            Value::Float64(..) => Type::FLOAT8,
+            Value::Decimal(.., _, _) => Type::NUMERIC,
+            Value::Char(..) => Type::BPCHAR,
+            Value::Varchar(..) => Type::TEXT,
+            Value::Blob(..) => Type::BYTEA,
+            Value::Date(..) => Type::DATE,
+            Value::Time(..) => Type::TIME,
+            Value::Timestamp(..) => Type::TIMESTAMP,
+            Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ,
+            Value::Interval(..) => Type::INTERVAL,
+            Value::Uuid(..) => Type::UUID,
+            Value::Array(.., t) | Value::List(.., t) => match &t.element {
+                Value::Boolean(..) => Type::BOOL_ARRAY,
+                Value::Int8(..) => Type::INT2_ARRAY,
+                Value::Int16(..) => Type::INT2_ARRAY,
+                Value::Int32(..) => Type::INT4_ARRAY,
+                Value::Int64(..) => Type::INT8_ARRAY,
+                Value::Int128(..) => Type::NUMERIC_ARRAY,
+                Value::UInt8(..) => Type::INT2_ARRAY,
+                Value::UInt16(..) => Type::INT4_ARRAY,
+                Value::UInt32(..) => Type::INT8_ARRAY,
+                Value::UInt64(..) => Type::NUMERIC_ARRAY,
+                Value::UInt128(..) => Type::NUMERIC_ARRAY,
+                Value::Float32(..) => Type::FLOAT4_ARRAY,
+                Value::Float64(..) => Type::FLOAT8_ARRAY,
+                Value::Decimal(..) => Type::NUMERIC_ARRAY,
+                Value::Char(..) => Type::BPCHAR_ARRAY,
+                Value::Varchar(..) => Type::TEXT_ARRAY,
+                Value::Blob(..) => Type::BYTEA_ARRAY,
+                Value::Date(..) => Type::DATE_ARRAY,
+                Value::Time(..) => Type::TIME_ARRAY,
+                Value::Timestamp(..) => Type::TIMESTAMP_ARRAY,
+                Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ_ARRAY,
+                Value::Interval(..) => Type::INTERVAL_ARRAY,
+                Value::Uuid(..) => Type::UUID_ARRAY,
+                Value::Array(..) | Value::List(..) => Self::value_to_postgres_type(&t.element),
+                Value::Map(..) | Value::Json(..) | Value::Struct(..) => Type::JSON_ARRAY,
+                _ => Type::UNKNOWN,
+            },
+            Value::Map(..) | Value::Json(..) | Value::Struct(..) => Type::JSON,
+            _ => Type::UNKNOWN,
+        }
+    }
+}
 
 impl ToSql for ValueSql<'_> {
     fn to_sql(
@@ -63,7 +170,8 @@ impl ToSql for ValueSql<'_> {
             Value::Uuid(v) => v.to_sql(ty, out),
             Value::Array(v, element) | Value::List(v, element) => match v {
                 Some(v) => {
-                    let (vector, dimensions, element_type) = flatten_array(v, &element.element);
+                    let (vector, dimensions, element_type) =
+                        Self::flatten_array(v, &element.element);
                     array_to_sql(
                         dimensions,
                         element_type.oid(),
@@ -113,7 +221,7 @@ impl TankParam {
     }
 
     fn encode_value(&mut self, value: &Value<'_>) -> tank_core::Result<()> {
-        let pg_ty = value_to_postgres_type(value);
+        let pg_ty = ValueSql::value_to_postgres_type(value);
         self.bytes.clear();
         self.is_null = match ValueSql(value).to_sql(&pg_ty, &mut self.bytes) {
             Ok(IsNull::Yes) => true,
@@ -122,7 +230,7 @@ impl TankParam {
                 return Err(anyhow!("Could not encode parameter {value:?}: {e}"));
             }
         };
-        self.ty = Self::ty_to_wtx(pg_ty.oid());
+        self.ty = Ty::from(pg_ty.oid());
         Ok(())
     }
 
@@ -140,58 +248,6 @@ impl TankParam {
             }
         }
         Ok(())
-    }
-
-    /// Maps a PostgreSQL type OID to the `wtx` type enum.
-    ///
-    /// `wtx` does not publicly expose an OID → `Ty` constructor, so the common
-    /// types tank produces are listed explicitly and everything else falls back to
-    /// `Ty::Custom`, which carries the raw OID verbatim.
-    fn ty_to_wtx(oid: u32) -> Ty {
-        match oid {
-            16 => Ty::Bool,
-            17 => Ty::Bytea,
-            18 => Ty::Char,
-            19 => Ty::Name,
-            20 => Ty::Int8,
-            21 => Ty::Int2,
-            23 => Ty::Int4,
-            25 => Ty::Text,
-            26 => Ty::Oid,
-            114 => Ty::Json,
-            700 => Ty::Float4,
-            701 => Ty::Float8,
-            705 => Ty::Unknown,
-            1042 => Ty::Bpchar,
-            1043 => Ty::Varchar,
-            1082 => Ty::Date,
-            1083 => Ty::Time,
-            1114 => Ty::Timestamp,
-            1184 => Ty::Timestamptz,
-            1186 => Ty::Interval,
-            1700 => Ty::Numeric,
-            2950 => Ty::Uuid,
-            1000 => Ty::BoolArray,
-            1001 => Ty::ByteaArray,
-            1002 => Ty::CharArray,
-            1003 => Ty::NameArray,
-            1005 => Ty::Int2Array,
-            1007 => Ty::Int4Array,
-            1009 => Ty::TextArray,
-            1014 => Ty::BpcharArray,
-            1015 => Ty::VarcharArray,
-            1016 => Ty::Int8Array,
-            1021 => Ty::Float4Array,
-            1022 => Ty::Float8Array,
-            1115 => Ty::TimestampArray,
-            1182 => Ty::DateArray,
-            1183 => Ty::TimeArray,
-            1185 => Ty::TimestamptzArray,
-            1187 => Ty::IntervalArray,
-            1231 => Ty::NumericArray,
-            2951 => Ty::UuidArray,
-            other => Ty::Custom(other),
-        }
     }
 }
 
