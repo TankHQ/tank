@@ -135,8 +135,10 @@ It accepts a subset of Rust syntax with additional sentinel tokens for SQL seman
 - `PI` identifiers
 - `col == NULL`, `col != NULL` null check, it becomes `IS NULL`/`IS NOT NULL`
 - `value != "ab%" as LIKE` pattern matching: becomes `value NOT LIKE 'ab%'` in SQL. Also supports `IN`, `REGEXP`, and `GLOB` (actual support depends on the driver)
+- `Operator::callsign == #signs as IN`, becomes: `callsign IN ('Alpha', 'Bravo-2')`
 - `-(-PI) + 2 * (5 % (2 + 1)) == 7 && !(4 < 2)` combination of the previous
 - `CAST((2 > 1) as i32)` casting expression (mind the parentheses), the type names are automatically converted by the driver
+- `current_timestamp_ms!()` milliseconds since epoch. Each driver renders it in its own dialect: `CAST(EXTRACT(EPOCH FROM NOW()) * 1000 AS BIGINT)`, `(unixepoch('subsec') * 1000)`, `epoch_ms(current_timestamp)`, ...
 
 Parentheses obey standard Rust precedence. Empty invocation (`expr!()`) yields `false`. Ultimately, the drivers decide if and how these expressions are translated into the specific query language.
 

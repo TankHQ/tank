@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use rcgen::{
     CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose,
     SanType,

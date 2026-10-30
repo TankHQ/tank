@@ -5,7 +5,7 @@ use std::pin::pin;
 use std::{str::FromStr, sync::Arc, sync::LazyLock};
 use tank::QueryBuilder;
 use tank::{
-    AsValue, Dataset, Entity, Executor, FixedDecimal, cols, expr, join,
+    AsValue, Dataset, Entity, Executor, FixedDecimal, Result, Row, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, PrimitiveDateTime, Time};
@@ -115,7 +115,7 @@ pub async fn shopping(executor: &mut impl Executor) {
                 .order_by(cols!(Product::price ASC))
                 .build(&executor.driver()),
         )
-        .map(|r| r.and_then(Product::from_row))
+        .map(|row| Product::from_row(row?))
         .try_collect::<Vec<Product>>()
         .await
         .expect("Could not get the products ordered by increasing price");
@@ -186,21 +186,21 @@ pub async fn shopping(executor: &mut impl Executor) {
     User::insert_many(executor, &users)
         .await
         .expect("Could not insert the users");
-    let row = pin!(
-        executor.fetch(
-            QueryBuilder::new()
-                .select(cols!(COUNT(*)))
-                .from(User::table())
-                .where_expr(true)
-                .limit(Some(1))
-                .build(&executor.driver())
-        )
-    )
-    .try_next()
-    .await
-    .expect("Failed to query for count")
-    .expect("Did not return some value");
-    assert_eq!(i64::try_from_value(row.values[0].clone()).unwrap(), 2);
+    let count_value = {
+        let mut count_bundle = pin!(
+            executor.fetch(
+                QueryBuilder::new()
+                    .select(cols!(COUNT(*)))
+                    .from(User::table())
+                    .where_expr(true)
+                    .limit(Some(1))
+                    .build(&executor.driver()),
+            )
+        );
+        let row = count_bundle.next().await.expect("Did not return some value");
+        i64::try_from_value(row.unwrap().value(0).unwrap()).unwrap()
+    };
+    assert_eq!(count_value, 2);
 
     // Cart
     Cart::drop_table(executor, true, false)
@@ -298,8 +298,7 @@ pub async fn shopping(executor: &mut impl Executor) {
                     .order_by(cols!(Product::name ASC, User::name ASC))
                     .build(&executor.driver()),
             )
-            .map_ok(Carts::from_row)
-            .map(Result::flatten)
+            .map(|row| Carts::from_row(row?))
             .try_collect::<Vec<_>>()
             .await
             .expect("Could not get the products ordered by increasing price");

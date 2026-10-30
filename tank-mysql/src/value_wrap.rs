@@ -8,7 +8,7 @@ use std::borrow::Cow;
 use tank_core::{AsValue, Interval};
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
-pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, tank_core::Value>);
+pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, tank_core::Value<'a>>);
 
 /// MySQL's binary pseudo-charset, reported for binary columns.
 const BINARY_CHARSET: u16 = 63;
@@ -116,7 +116,7 @@ pub(crate) fn extract_value(
 
 /// Parse a MySQL `TIME` literal (`[-]HH:MM:SS[.ffffff]`) into an interval.
 fn parse_mysql_time(text: &str) -> tank_core::Result<Interval> {
-    let context = || anyhow!("Could not parse the MySQL TIME value `{text}`");
+    let make_context = || anyhow!("Could not parse the MySQL TIME value `{text}`");
     let (negative, text) = match text.strip_prefix('-') {
         Some(rest) => (true, rest),
         None => (false, text),
@@ -125,12 +125,12 @@ fn parse_mysql_time(text: &str) -> tank_core::Result<Interval> {
     let hours: i64 = parts
         .next()
         .and_then(|v| v.parse().ok())
-        .ok_or_else(context)?;
+        .ok_or_else(make_context)?;
     let minutes: i64 = parts
         .next()
         .and_then(|v| v.parse().ok())
-        .ok_or_else(context)?;
-    let seconds = parts.next().ok_or_else(context)?;
+        .ok_or_else(make_context)?;
+    let seconds = parts.next().ok_or_else(make_context)?;
     let (seconds, micros) = match seconds.split_once('.') {
         Some((seconds, fraction)) => {
             let mut fraction = fraction.to_owned();
@@ -139,11 +139,11 @@ fn parse_mysql_time(text: &str) -> tank_core::Result<Interval> {
                 fraction.push('0');
             }
             (
-                seconds.parse::<i64>().map_err(|_| context())?,
+                seconds.parse::<i64>().map_err(|_| make_context())?,
                 fraction.parse::<i64>().unwrap_or(0),
             )
         }
-        None => (seconds.parse::<i64>().map_err(|_| context())?, 0),
+        None => (seconds.parse::<i64>().map_err(|_| make_context())?, 0),
     };
     let result = Interval::from_hours(hours)
         + Interval::from_mins(minutes)
@@ -152,14 +152,14 @@ fn parse_mysql_time(text: &str) -> tank_core::Result<Interval> {
     Ok(if negative { -result } else { result })
 }
 
-impl<'a> From<&'a tank_core::Value> for ValueWrap<'a> {
-    fn from(value: &'a tank_core::Value) -> Self {
+impl<'a> From<&'a tank_core::Value<'a>> for ValueWrap<'a> {
+    fn from(value: &'a tank_core::Value<'a>) -> Self {
         Self(Cow::Borrowed(value))
     }
 }
 
-impl<'a> From<tank_core::Value> for ValueWrap<'a> {
-    fn from(value: tank_core::Value) -> Self {
+impl<'a> From<tank_core::Value<'a>> for ValueWrap<'a> {
+    fn from(value: tank_core::Value<'a>) -> Self {
         Self(Cow::Owned(value))
     }
 }
@@ -183,7 +183,9 @@ impl<'a> TryFrom<mysql_async::Value> for ValueWrap<'a> {
                     }
                     _ => {
                         // TODO Replace it with String::from_utf8_lossy_owned once https://github.com/rust-lang/rust/issues/129436 is fixed
-                        tank_core::Value::Unknown(Some(String::from_utf8_lossy(&v).to_string()))
+                        tank_core::Value::Unknown(Some(Cow::Owned(
+                            String::from_utf8_lossy(&v).to_string(),
+                        )))
                     }
                 }
             }
@@ -239,7 +241,7 @@ impl<'a> TryFrom<ValueWrap<'a>> for mysql_async::Value {
     type Error = tank_core::Error;
 
     fn try_from(value: ValueWrap<'a>) -> Result<Self, Self::Error> {
-        type TankValue = tank_core::Value;
+        use tank_core::Value as TankValue;
         type MySQLValue = mysql_async::Value;
         macro_rules! ensure_date_range {
             ($date:expr, $target:ty) => {{
@@ -266,12 +268,12 @@ impl<'a> TryFrom<ValueWrap<'a>> for mysql_async::Value {
             TankValue::Int16(Some(v), ..) => MySQLValue::from(v),
             TankValue::Int32(Some(v), ..) => MySQLValue::from(v),
             TankValue::Int64(Some(v), ..) => MySQLValue::from(v),
-            TankValue::Int128(Some(v), ..) => MySQLValue::from(v),
+            TankValue::Int128(Some(v), ..) => MySQLValue::from(*v),
             TankValue::UInt8(Some(v), ..) => MySQLValue::from(v),
             TankValue::UInt16(Some(v), ..) => MySQLValue::from(v),
             TankValue::UInt32(Some(v), ..) => MySQLValue::from(v),
             TankValue::UInt64(Some(v), ..) => MySQLValue::from(v),
-            TankValue::UInt128(Some(v), ..) => MySQLValue::from(v),
+            TankValue::UInt128(Some(v), ..) => MySQLValue::from(*v),
             TankValue::Float32(Some(v), ..) => MySQLValue::from(v),
             TankValue::Float64(Some(v), ..) => MySQLValue::from(v),
             TankValue::Decimal(Some(v), ..) => MySQLValue::from(v),
@@ -280,7 +282,10 @@ impl<'a> TryFrom<ValueWrap<'a>> for mysql_async::Value {
                 Cow::Borrowed(v) => MySQLValue::from(v),
                 Cow::Owned(v) => MySQLValue::from(v),
             },
-            TankValue::Blob(Some(v), ..) => MySQLValue::from(v),
+            TankValue::Blob(Some(v), ..) => match v {
+                Cow::Borrowed(v) => MySQLValue::from(v),
+                Cow::Owned(v) => MySQLValue::from(v),
+            },
             TankValue::Date(Some(v), ..) => MySQLValue::from(v),
             TankValue::Time(Some(v), ..) => MySQLValue::from(v),
             TankValue::Timestamp(Some(v), ..) => ensure_date_range!(v, u16)?,
@@ -311,10 +316,13 @@ impl<'a> TryFrom<ValueWrap<'a>> for mysql_async::Value {
             // TankValue::List(Some(v), ..) => MySQLValue::from(v),
             // TankValue::Map(Some(v), ..) => MySQLValue::from(v),
             // TankValue::Struct(Some(v), ..) => MySQLValue::from(v),
-            TankValue::Unknown(Some(v), ..) => MySQLValue::from(v),
+            TankValue::Unknown(Some(v), ..) => match v {
+                Cow::Borrowed(v) => MySQLValue::from(v),
+                Cow::Owned(v) => MySQLValue::from(v),
+            },
             v => {
                 return Err(
-                    anyhow!("tank::Value variant `{v:?}` is not supported by MySQL").into(),
+                    anyhow!("Value variant `{v:?}` is not supported by MySQL").into(),
                 );
             }
         })

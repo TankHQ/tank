@@ -1,15 +1,13 @@
 use crate::{
     ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Query, QueryBuilder,
-    RawQuery, Result, Row, RowValues, RowsAffected, TableRef, future::Either, stream::Stream,
-    truncate_long, writer::SqlWriter,
+    Result, Row, RowOwned, RowsAffected, TableRef, ValueOwned, future::Either, writer::SqlWriter,
 };
-use anyhow::anyhow;
-use futures::{FutureExt, StreamExt};
+use anyhow::{Context as _, anyhow};
+use futures::{FutureExt, Stream, StreamExt};
 use log::Level;
 use std::{
     future::{self, Future},
     pin::pin,
-    sync::Arc,
 };
 
 pub trait AsEntity {
@@ -46,23 +44,23 @@ pub trait Entity: AsEntity + Expression {
     -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = &'static ColumnDef>>;
 
     /// Full row representation including all persisted columns.
-    fn row_values(&self) -> RowValues;
+    fn row_values(&self) -> Vec<ValueOwned>;
 
     /// Full row representation with column labels.
-    fn row(&self) -> Row {
-        Row {
-            labels: Self::columns()
-                .into_iter()
+    fn row(&self) -> RowOwned {
+        RowOwned::new(
+            Self::columns()
+                .iter()
                 .map(|v| v.name().to_string())
-                .collect::<Arc<[String]>>(),
-            values: self.row_values(),
-        }
+                .collect(),
+            self.row_values(),
+        )
     }
 
     /// Reconstruct `Self` from a labeled row.
     ///
     /// Fails if columns are missing or type conversion fails.
-    fn from_row(row: Row) -> Result<Self>
+    fn from_row(row: impl Row) -> Result<Self>
     where
         Self: Sized;
 
@@ -79,20 +77,30 @@ pub trait Entity: AsEntity + Expression {
         Self: Sized,
     {
         async move {
-            let mut query = DynQuery::with_capacity(2048);
             let writer = executor.driver().sql_writer();
             if create_schema && !Self::table().schema.is_empty() {
+                let mut query = DynQuery::with_capacity(128);
                 writer.write_create_schema::<Self>(&mut query, true);
+                // Some dialects do not support schemas and emit nothing.
+                if !query.is_empty() {
+                    executor.execute(query).await?;
+                }
             }
-            if !executor.accepts_multiple_statements() && !query.is_empty() {
-                let mut q = query.into_query(executor.driver());
-                executor.execute(&mut q).await?;
-                // To reuse the allocated buffer
-                query = q.into();
-                query.clear();
-            }
+            let mut query = DynQuery::with_capacity(2048);
             writer.write_create_table::<Self>(&mut query, if_not_exists);
-            executor.execute(query).await.map(|_| ())
+            if executor.accepts_multiple_statements() {
+                writer.write_column_comments::<Self>(&mut query);
+                return executor.execute(query).await.map(|_| ());
+            }
+            executor.execute(query).await?;
+            for column in Self::columns().iter().filter(|c| !c.comment.is_empty()) {
+                let mut query = DynQuery::with_capacity(256);
+                writer.write_column_comment(&mut query, column);
+                if !query.is_empty() {
+                    executor.execute(query).await?;
+                }
+            }
+            Ok(())
         }
     }
 
@@ -170,8 +178,8 @@ pub trait Entity: AsEntity + Expression {
         let mut query = DynQuery::default();
         writer.write_select(&mut query, &builder);
         async {
-            if let DynQuery::Raw(RawQuery(sql)) = query {
-                executor.prepare(sql).await
+            if let DynQuery::Raw(raw) = query {
+                executor.prepare(raw).await
             } else {
                 Ok(query.into())
             }
@@ -254,8 +262,7 @@ pub trait Entity: AsEntity + Expression {
             .driver()
             .sql_writer()
             .write_insert(&mut query, [self], true);
-        let sql = query.as_str();
-        let context = format!("While saving using the query {}", truncate_long!(sql));
+        let context = format!("While saving using the query {query}");
         Either::Right(executor.execute(query).map(|mut v| {
             if let Ok(result) = v
                 && let Some(affected) = result.rows_affected
@@ -265,10 +272,7 @@ pub trait Entity: AsEntity + Expression {
                     "The driver returned affected rows: {affected} (expected <= 2)"
                 ));
             }
-            match v {
-                Ok(_) => Ok(()),
-                Err(e) => Err(e.context(context)),
-            }
+            v.map(|_| ()).context(context)
         }))
     }
 

@@ -1,7 +1,11 @@
 #[cfg(test)]
 mod tests {
     use indoc::indoc;
-    use tank::{DynQuery, Entity, GenericSqlWriter, QueryBuilder, SqlWriter, cols, expr};
+    use std::fmt::Write;
+    use tank::{
+        DynQuery, Entity, GenericSqlWriter, QueryBuilder, QueryParam, QueryResult,
+        QueryResultOwned, RawQuery, RowOwned, RowsAffected, SqlWriter, cols, expr,
+    };
 
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
@@ -84,6 +88,24 @@ mod tests {
                 SELECT "customer_id", SUM("amount")
                 FROM "orders"
                 WHERE "status" = 'completed'
+                GROUP BY "customer_id";
+            "#}
+            .trim()
+        );
+
+        let mut sql = DynQuery::default();
+        WRITER.write_select(
+            &mut sql,
+            &QueryBuilder::new()
+                .select(cols!(Orders::customer_id as cid, SUM(Orders::amount)))
+                .from(Orders::table())
+                .group_by(cols!(Orders::customer_id as cid)),
+        );
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                SELECT "customer_id" AS "cid", SUM("amount")
+                FROM "orders"
                 GROUP BY "customer_id";
             "#}
             .trim()
@@ -462,7 +484,6 @@ mod tests {
 
     #[test]
     fn query_21() {
-        use std::fmt::Write;
         let mut q = DynQuery::default();
         let _ = q.write_str("SELECT 1");
         let s: String = q.into();
@@ -471,8 +492,81 @@ mod tests {
 
     #[test]
     fn query_22() {
-        use tank::RawQuery;
-        let rq = RawQuery("SELECT * FROM t".into());
+        let rq = RawQuery::new("SELECT * FROM t".into());
         assert_eq!(format!("{rq}"), "SELECT * FROM t");
+    }
+
+    #[test]
+    fn raw_query_helpers() {
+        let mut rq =
+            RawQuery::with_params("SELECT ?".into(), vec![QueryParam { begin: 7, end: 8 }]);
+        assert_eq!(rq.sql, "SELECT ?");
+        assert_eq!(rq.params.len(), 1);
+        rq.clear();
+        assert!(rq.sql.is_empty());
+        assert!(rq.params.is_empty());
+
+        let rq: RawQuery = "hello".to_string().into();
+        let s: String = rq.into();
+        assert_eq!(s, "hello");
+
+        let row = tank::RowOwned::default();
+        let QueryResult::Row(_row) = QueryResult::Row(row) else {
+            unreachable!()
+        };
+        assert!(matches!(
+            QueryResult::<tank::RowOwned>::from(RowsAffected::default()),
+            QueryResult::Affected(_)
+        ));
+    }
+
+    #[test]
+    fn owned_results_preserve_rows_and_affected() {
+        let results: Vec<QueryResultOwned> = vec![
+            QueryResult::Affected(RowsAffected {
+                rows_affected: Some(2),
+                last_affected_id: Some(7),
+            }),
+            QueryResult::Row(RowOwned::default()),
+            QueryResult::Row(RowOwned::default()),
+        ];
+        assert_eq!(results.len(), 3);
+        assert!(matches!(&results[0], QueryResult::Affected(_)));
+        assert!(matches!(&results[1], QueryResult::Row(_)));
+        assert_eq!(
+            results
+                .into_iter()
+                .filter_map(|result| match result {
+                    QueryResult::Row(row) => Some(row),
+                    QueryResult::Affected(_) => None,
+                })
+                .count(),
+            2,
+        );
+    }
+
+    #[test]
+    fn affected_aggregation_skips_rows_and_keeps_last_known_id() {
+        let results = [
+            QueryResult::Affected(RowsAffected {
+                rows_affected: Some(2),
+                last_affected_id: Some(7),
+            }),
+            QueryResult::Row(0),
+            QueryResult::Row(1),
+            QueryResult::Affected(RowsAffected::default()),
+            QueryResult::Affected(RowsAffected {
+                rows_affected: Some(4),
+                last_affected_id: Some(9),
+            }),
+        ];
+        let mut affected = RowsAffected::default();
+        for result in results {
+            if let QueryResult::Affected(result) = result {
+                affected.extend([result]);
+            }
+        }
+        assert_eq!(affected.rows_affected, Some(6));
+        assert_eq!(affected.last_affected_id, Some(9));
     }
 }

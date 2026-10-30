@@ -77,6 +77,30 @@ pub async fn conditions(executor: &mut impl Executor) {
         .await;
     assert_eq!(count, 2, "Should find 2 entries with `id IN (1, 3, 5)`");
 
+    let ids = [1, 3, 5];
+    let count = ConditionEntry::find_many(executor, expr!(id == #ids as IN), None)
+        .map_err(|e| panic!("{e:#}"))
+        .count()
+        .await;
+    assert_eq!(
+        count, 2,
+        "Should find 2 entries with `id IN (1, 3, 5)` from a Rust array"
+    );
+
+    let names = vec!["Alice", "Bob"];
+    let count = ConditionEntry::find_many(
+        executor,
+        expr!(ConditionEntry::name == #names as IN && ConditionEntry::name != NULL),
+        None,
+    )
+    .map_err(|e| panic!("{e:#}"))
+    .count()
+    .await;
+    assert_eq!(
+        count, 2,
+        "Should find 2 entries with `name IN ('Alice', 'Bob')` from a Rust Vec"
+    );
+
     let count = ConditionEntry::find_many(executor, expr!(!active), None)
         .map_err(|e| panic!("{e:#}"))
         .count()

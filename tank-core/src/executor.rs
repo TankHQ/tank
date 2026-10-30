@@ -1,6 +1,6 @@
 use crate::{
     AsEntity, AsQuery, Driver, DynQuery, Query, QueryResult, RawQuery, Result, Row, RowsAffected,
-    stream::{Stream, StreamExt, TryStreamExt},
+    stream::{Stream, StreamExt},
     writer::SqlWriter,
 };
 use anyhow::anyhow;
@@ -8,7 +8,38 @@ use convert_case::{Case, Casing};
 use std::{
     future::{self, Future},
     mem,
+    pin::{Pin, pin},
+    task::{self, Poll},
 };
+
+/// Stream adapter returned by [`Executor::fetch`], filtering [`Executor::run`] to rows.
+struct Fetched<S>(S);
+
+impl<S, R> Stream for Fetched<S>
+where
+    S: Stream<Item = Result<QueryResult<R>>>,
+{
+    type Item = Result<R>;
+
+    #[inline(always)]
+    fn poll_next(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut inner = unsafe { self.map_unchecked_mut(|s| &mut s.0) };
+        loop {
+            match inner.as_mut().poll_next(cx) {
+                Poll::Ready(Some(Ok(QueryResult::Row(row)))) => return Poll::Ready(Some(Ok(row))),
+                Poll::Ready(Some(Ok(QueryResult::Affected(_)))) => {}
+                Poll::Ready(Some(Err(e))) => return Poll::Ready(Some(Err(e))),
+                Poll::Ready(None) => return Poll::Ready(None),
+                Poll::Pending => return Poll::Pending,
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
 
 /// Async query execution.
 ///
@@ -36,7 +67,7 @@ pub trait Executor: Send {
         let query = mem::take(query.as_mut());
         async {
             match query {
-                Query::Raw(RawQuery(sql)) => self.do_prepare(sql).await,
+                Query::Raw(raw) => self.do_prepare(raw).await,
                 Query::Prepared(..) => Ok(query),
             }
         }
@@ -45,7 +76,7 @@ pub trait Executor: Send {
     /// Internal hook for implementing prepared statement support.
     fn do_prepare(
         &mut self,
-        _sql: String,
+        _query: RawQuery,
     ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
         future::ready(Err(anyhow!(
             "{} does not support prepare",
@@ -57,20 +88,14 @@ pub trait Executor: Send {
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send;
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send;
 
     /// Executes a query and streams the resulting rows, ignoring affected counts.
     fn fetch<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
-    ) -> impl Stream<Item = Result<Row>> + Send {
-        self.run(query).filter_map(|v| async move {
-            match v {
-                Ok(QueryResult::Row(v)) => Some(Ok(v)),
-                Err(e) => Some(Err(e)),
-                _ => None,
-            }
-        })
+    ) -> impl Stream<Item = Result<impl Row + 's>> + Send {
+        Fetched(self.run(query))
     }
 
     /// Executes a query and returns the total number of affected rows.
@@ -78,15 +103,17 @@ pub trait Executor: Send {
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
     ) -> impl Future<Output = Result<RowsAffected>> + Send {
-        self.run(query)
-            .filter_map(|v| async move {
-                match v {
-                    Ok(QueryResult::Affected(v)) => Some(Ok(v)),
-                    Err(e) => Some(Err(e)),
-                    _ => None,
+        let stream = self.run(query);
+        async move {
+            let mut stream = pin!(stream);
+            let mut affected = RowsAffected::default();
+            while let Some(item) = stream.next().await {
+                if let QueryResult::Affected(a) = item? {
+                    affected.extend([a]);
                 }
-            })
-            .try_collect()
+            }
+            Ok(affected)
+        }
     }
 
     /// Efficiently inserts a collection of entities bypassing regular SQL execution when supported by the driver.
@@ -124,22 +151,22 @@ impl<S: Executor + ?Sized> Executor for &mut S {
 
     fn do_prepare(
         &mut self,
-        sql: String,
+        query: RawQuery,
     ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
-        (**self).do_prepare(sql)
+        (**self).do_prepare(query)
     }
 
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
         (**self).run(query)
     }
 
     fn fetch<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
-    ) -> impl Stream<Item = Result<Row>> + Send {
+    ) -> impl Stream<Item = Result<impl Row + 's>> + Send {
         (**self).fetch(query)
     }
 

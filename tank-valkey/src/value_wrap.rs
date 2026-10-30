@@ -3,15 +3,15 @@ use redis::{FromRedisValue, RedisWrite, ToRedisArgs};
 use std::{borrow::Cow, collections::HashMap};
 
 #[derive(Default, PartialEq, Eq, Hash, Debug)]
-pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, tank_core::Value>);
+pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, tank_core::Value<'a>>);
 
-impl<'a> From<ValueWrap<'a>> for tank_core::Value {
+impl<'a> From<ValueWrap<'a>> for tank_core::ValueOwned {
     fn from(value: ValueWrap<'a>) -> Self {
-        value.0.into_owned()
+        value.0.into_owned().into_owned()
     }
 }
 
-impl<'a> From<&'a ValueWrap<'a>> for &'a tank_core::Value {
+impl<'a> From<&'a ValueWrap<'a>> for &'a tank_core::Value<'a> {
     fn from(value: &'a ValueWrap<'a>) -> Self {
         match &value.0 {
             Cow::Borrowed(v) => *v,
@@ -20,13 +20,13 @@ impl<'a> From<&'a ValueWrap<'a>> for &'a tank_core::Value {
     }
 }
 
-impl<'a> From<tank_core::Value> for ValueWrap<'a> {
-    fn from(value: tank_core::Value) -> Self {
+impl<'a> From<tank_core::Value<'a>> for ValueWrap<'a> {
+    fn from(value: tank_core::Value<'a>) -> Self {
         Self(Cow::Owned(value))
     }
 }
 
-impl<'a> From<&'a tank_core::Value> for ValueWrap<'a> {
+impl<'a> From<&'a tank_core::Value<'a>> for ValueWrap<'a> {
     fn from(value: &'a tank_core::Value) -> Self {
         Self(Cow::Borrowed(value))
     }
@@ -50,18 +50,18 @@ impl<'a> TryFrom<redis::Value> for ValueWrap<'a> {
                     .into_iter()
                     .map(|v| Ok::<_, tank_core::Error>(ValueWrap::try_from(v)?.into()));
                 let first = it.next().transpose()?;
-                let ty = first
+                let t = first
                     .as_ref()
                     .map(tank_core::Value::as_null)
                     .unwrap_or(tank_core::Value::Null);
                 let mut it = first.map(|v| Ok(v)).into_iter().chain(it).peekable();
                 tank_core::Value::List(
                     if it.peek().is_some() {
-                        Some(it.collect::<Result<Vec<_>, _>>()?)
+                        Some(it.collect::<Result<Vec<_>, _>>()?.into_boxed_slice())
                     } else {
                         None
                     },
-                    Box::new(ty),
+                    Box::new(tank_core::CollectionType { element: t, len: 0 }),
                 )
             }
             redis::Value::Map(v) => {
@@ -82,12 +82,14 @@ impl<'a> TryFrom<redis::Value> for ValueWrap<'a> {
                 let mut it = first.map(|v| Ok(v)).into_iter().chain(it).peekable();
                 tank_core::Value::Map(
                     if it.peek().is_some() {
-                        Some(it.collect::<Result<HashMap<_, _>, _>>()?)
+                        Some(Box::new(it.collect::<Result<HashMap<_, _>, _>>()?))
                     } else {
                         None
                     },
-                    Box::new(k_ty),
-                    Box::new(v_ty),
+                    Box::new(tank_core::MapType {
+                        key: k_ty,
+                        value: v_ty,
+                    }),
                 )
             }
             redis::Value::Attribute { data, .. } => ValueWrap::from_redis_value(*data)?.into(),
@@ -107,7 +109,7 @@ impl<'a> TryFrom<ValueWrap<'a>> for redis::Value {
     type Error = tank_core::Error;
 
     fn try_from(value: ValueWrap) -> Result<Self, Self::Error> {
-        let value: tank_core::Value = value.into();
+        let value: tank_core::ValueOwned = value.into();
         Ok(match value {
             v if v.is_null() => redis::Value::Nil,
             tank_core::Value::Boolean(Some(v)) => redis::Value::Boolean(v),
@@ -156,22 +158,16 @@ impl<'a> TryFrom<ValueWrap<'a>> for redis::Value {
                 redis::Value::BulkString(v.as_bytes().into())
             }
             tank_core::Value::Blob(Some(v)) => redis::Value::BulkString(v.into()),
-            tank_core::Value::Array(Some(v), ..) => redis::Value::Array(
-                v.into_iter()
-                    .map(|v| {
-                        let v: ValueWrap<'_> = v.into();
-                        redis::Value::try_from(v)
-                    })
-                    .collect::<Result<_, _>>()?,
-            ),
-            tank_core::Value::List(Some(v), ..) => redis::Value::Array(
-                v.into_iter()
-                    .map(|v| {
-                        let v: ValueWrap<'_> = v.into();
-                        redis::Value::try_from(v)
-                    })
-                    .collect::<Result<_, _>>()?,
-            ),
+            tank_core::Value::Array(Some(v), ..) | tank_core::Value::List(Some(v), ..) => {
+                redis::Value::Array(
+                    v.into_iter()
+                        .map(|v| {
+                            let v: ValueWrap<'_> = v.into();
+                            redis::Value::try_from(v)
+                        })
+                        .collect::<Result<_, _>>()?,
+                )
+            }
             tank_core::Value::Map(Some(v), ..) => redis::Value::Map(
                 v.into_iter()
                     .map(|(k, v)| {
@@ -254,12 +250,7 @@ impl<'a> ToRedisArgs for ValueWrap<'a> {
             }
             tank_core::Value::Varchar(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::Blob(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::Array(Some(v), ..) => v
-                .iter()
-                .map(|v| ValueWrap(Cow::Borrowed(v)))
-                .collect::<Vec<_>>()
-                .write_redis_args(out),
-            tank_core::Value::List(Some(v), ..) => v
+            tank_core::Value::Array(Some(v), ..) | tank_core::Value::List(Some(v), ..) => v
                 .iter()
                 .map(|v| ValueWrap(Cow::Borrowed(v)))
                 .collect::<Vec<_>>()
@@ -279,7 +270,7 @@ impl<'a> ToRedisArgs for ValueWrap<'a> {
             v if v.is_null() => None::<i32>.write_redis_args(out), // This writes nothing
             _ => {
                 log::error!(
-                    "tank::Value variant `{:?}` is not supported by Valkey/Redis",
+                    "Value variant `{:?}` is not supported by Valkey/Redis",
                     &value
                 )
             }

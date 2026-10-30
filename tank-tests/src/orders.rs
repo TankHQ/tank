@@ -1,6 +1,9 @@
 use rust_decimal::Decimal;
 use std::sync::LazyLock;
-use tank::{Entity, Executor, FixedDecimal, QueryBuilder, cols, expr, stream::TryStreamExt};
+use tank::{
+    Entity, Executor, FixedDecimal, QueryBuilder, cols, expr,
+    stream::{StreamExt, TryStreamExt},
+};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -137,8 +140,9 @@ pub async fn orders(executor: &mut impl Executor) {
         .unwrap();
     let orders = executor
         .fetch(&mut query)
-        .and_then(|v| async { Order::from_row(v) })
-        .map_ok(|v| format!("{}, {}, {:.2}€", v.country, v.status, v.total.0))
+        .map(|v| {
+            Order::from_row(v?).map(|v| format!("{}, {}, {:.2}€", v.country, v.status, v.total.0))
+        })
         .try_collect::<Vec<_>>()
         .await
         .expect("Could not run query 1");
@@ -169,8 +173,9 @@ pub async fn orders(executor: &mut impl Executor) {
         .unwrap();
     let orders: Vec<String> = executor
         .fetch(&mut query)
-        .and_then(|v| async { Order::from_row(v) })
-        .map_ok(|v| format!("{}, {}, {:.2}€", v.country, v.status, v.total.0))
+        .map(|v| {
+            Order::from_row(v?).map(|v| format!("{}, {}, {:.2}€", v.country, v.status, v.total.0))
+        })
         .try_collect()
         .await
         .expect("Could not run query 2");
@@ -204,8 +209,9 @@ pub async fn orders(executor: &mut impl Executor) {
                 .limit(Some(1))
                 .build(&executor.driver()),
         )
-        .and_then(|v| async { Order::from_row(v) })
-        .map_ok(|v| format!("{}, {}, {:.2}€", v.country, v.status, v.total.0))
+        .map(|v| {
+            Order::from_row(v?).map(|v| format!("{}, {}, {:.2}€", v.country, v.status, v.total.0))
+        })
         .try_collect()
         .await
         .expect("Could not run top order query");

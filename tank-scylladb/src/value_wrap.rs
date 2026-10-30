@@ -10,43 +10,52 @@ use scylla::{
         value::SerializeValue,
         writers::{CellWriter, WrittenCellProof},
     },
-    value::{CqlDecimal, CqlDecimalBorrowed, CqlDuration, CqlTimestamp, CqlVarintBorrowed},
+    value::{
+        Counter, CqlDecimal, CqlDecimalBorrowed, CqlDuration, CqlTimestamp, CqlVarint,
+        CqlVarintBorrowed,
+    },
 };
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
     io::{self, Error, ErrorKind},
 };
-use tank_core::{AsValue, Interval, TableRef, Value};
+use tank_core::{
+    AsValue, CollectionType as TankCollectionType, Interval, MapType, StructType, TableRef, Value,
+    ValueOwned,
+};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct ValueWrap(pub(crate) Value);
+pub(crate) struct ValueWrap(pub(crate) ValueOwned);
 
-impl From<Value> for ValueWrap {
-    fn from(value: tank_core::Value) -> Self {
+impl From<ValueOwned> for ValueWrap {
+    fn from(value: ValueOwned) -> Self {
         Self(value)
     }
 }
 
-impl From<ValueWrap> for Value {
+impl From<ValueWrap> for ValueOwned {
     fn from(value: ValueWrap) -> Self {
         value.0
     }
 }
 
 impl AsValue for ValueWrap {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> ValueOwned {
         Value::Unknown(None)
     }
 
-    fn as_value(self) -> Value {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         self.0
     }
 
-    fn try_from_value(value: Value) -> tank_core::Result<Self> {
-        Ok(Self(value))
+    fn try_from_value(value: impl AsValue) -> tank_core::Result<Self> {
+        Ok(Self(value.as_value().into_owned()))
     }
 }
 
@@ -62,7 +71,7 @@ impl SerializeValue for ValueWrap {
             format!("Could not serialize {value:?} as ColumnType::UserDefinedType"),
         ));
         fn do_serialize<'b, V: AsValue + SerializeValue>(
-            value: Value,
+            value: ValueOwned,
             ty: &ColumnType,
             writer: CellWriter<'b>,
         ) -> Result<WrittenCellProof<'b>, SerializationError> {
@@ -77,7 +86,12 @@ impl SerializeValue for ValueWrap {
                 NativeType::Ascii => do_serialize::<String>(value, ty, writer),
                 NativeType::Boolean => do_serialize::<bool>(value, ty, writer),
                 NativeType::Blob => do_serialize::<Vec<u8>>(value, ty, writer),
-                NativeType::Counter => do_serialize::<Vec<u8>>(value, ty, writer),
+                NativeType::Counter => {
+                    let v = i64::try_from_value(value).map_err(|e| {
+                        SerializationError::new(Error::new(ErrorKind::InvalidData, format!("{e}")))
+                    })?;
+                    Counter(v).serialize(ty, writer)
+                }
                 NativeType::Date => do_serialize::<Date>(value, ty, writer),
                 NativeType::Decimal => {
                     if self.0.is_null() {
@@ -96,20 +110,111 @@ impl SerializeValue for ValueWrap {
                     .serialize(ty, writer)
                 }
                 NativeType::Double => do_serialize::<f64>(value, ty, writer),
-                NativeType::Duration => todo!(),
+                NativeType::Duration => {
+                    if self.0.is_null() {
+                        return Ok(writer.set_null());
+                    }
+                    let interval = Interval::try_from_value(value).map_err(|e| {
+                        SerializationError::new(Error::new(ErrorKind::InvalidData, format!("{e}")))
+                    })?;
+                    if interval.months != 0 {
+                        return Err(SerializationError::new(Error::new(
+                            ErrorKind::InvalidData,
+                            "CQL duration cannot represent months",
+                        )));
+                    }
+                    CqlDuration {
+                        months: 0,
+                        days: interval.days as i32,
+                        nanoseconds: interval.nanos as i64,
+                    }
+                    .serialize(ty, writer)
+                }
                 NativeType::Float => do_serialize::<f32>(value, ty, writer),
                 NativeType::Int => do_serialize::<i32>(value, ty, writer),
                 NativeType::BigInt => do_serialize::<i64>(value, ty, writer),
                 NativeType::Text => do_serialize::<String>(value, ty, writer),
-                NativeType::Timestamp => todo!(),
-                NativeType::Inet => todo!(),
+                NativeType::Timestamp => {
+                    if self.0.is_null() {
+                        return Ok(writer.set_null());
+                    }
+                    let date_time = PrimitiveDateTime::try_from_value(value).map_err(|e| {
+                        SerializationError::new(Error::new(ErrorKind::InvalidData, format!("{e}")))
+                    })?;
+                    let millis = date_time.assume_utc().unix_timestamp_nanos() / 1_000_000;
+                    CqlTimestamp(millis as i64).serialize(ty, writer)
+                }
+                NativeType::Inet => {
+                    if self.0.is_null() {
+                        return Ok(writer.set_null());
+                    }
+                    let Value::Varchar(Some(ip), ..) =
+                        value.try_as(&Value::Varchar(None)).map_err(|e| {
+                            SerializationError::new(Error::new(
+                                ErrorKind::InvalidData,
+                                format!("{e}"),
+                            ))
+                        })?
+                    else {
+                        return Err(SerializationError::new(Error::new(
+                            ErrorKind::InvalidData,
+                            "Expected a textual value for a CQL inet column",
+                        )));
+                    };
+                    let ip: std::net::IpAddr = ip.parse().map_err(|e| {
+                        SerializationError::new(Error::new(ErrorKind::InvalidData, format!("{e}")))
+                    })?;
+                    ip.serialize(ty, writer)
+                }
                 NativeType::SmallInt => do_serialize::<i16>(value, ty, writer),
                 NativeType::TinyInt => do_serialize::<i8>(value, ty, writer),
                 NativeType::Time => do_serialize::<Time>(value, ty, writer),
                 NativeType::Timeuuid => do_serialize::<Uuid>(value, ty, writer),
                 NativeType::Uuid => do_serialize::<Uuid>(value, ty, writer),
-                NativeType::Varint => todo!(),
-                _ => todo!(),
+                NativeType::Varint => {
+                    if self.0.is_null() {
+                        return Ok(writer.set_null());
+                    }
+                    let mut bytes = match &value {
+                        Value::UInt64(Some(v)) => {
+                            let mut b = vec![0u8];
+                            b.extend_from_slice(&v.to_be_bytes());
+                            b
+                        }
+                        Value::UInt128(Some(v)) => {
+                            let mut b = vec![0u8];
+                            b.extend_from_slice(&v.to_be_bytes());
+                            b
+                        }
+                        Value::Int128(Some(v)) => v.to_be_bytes().to_vec(),
+                        _ => {
+                            let v = i128::try_from_value(value).map_err(|e| {
+                                SerializationError::new(Error::new(
+                                    ErrorKind::InvalidData,
+                                    format!("{e}"),
+                                ))
+                            })?;
+                            v.to_be_bytes().to_vec()
+                        }
+                    };
+                    while bytes.len() > 1 {
+                        let first = bytes[0];
+                        if (first == 0x00 && bytes[1] & 0x80 == 0)
+                            || (first == 0xFF && bytes[1] & 0x80 != 0)
+                        {
+                            bytes.remove(0);
+                        } else {
+                            break;
+                        }
+                    }
+                    CqlVarint::from_signed_bytes_be(bytes).serialize(ty, writer)
+                }
+                _ => {
+                    return Err(SerializationError::new(Error::new(
+                        ErrorKind::InvalidData,
+                        format!("ScyllaDB does not support serializing {ty:?}"),
+                    )));
+                }
             },
             ColumnType::Collection { frozen: _, typ } => match typ {
                 CollectionType::List(..) => do_serialize::<Vec<ValueWrap>>(value, ty, writer),
@@ -117,7 +222,13 @@ impl SerializeValue for ValueWrap {
                     do_serialize::<HashMap<ValueWrap, ValueWrap>>(value, ty, writer)
                 }
                 CollectionType::Set(..) => do_serialize::<Vec<ValueWrap>>(value, ty, writer),
-                _ => todo!(),
+                #[allow(unreachable_patterns)]
+                _ => {
+                    return Err(SerializationError::new(Error::new(
+                        ErrorKind::InvalidData,
+                        format!("ScyllaDB does not support serializing {ty:?}"),
+                    )));
+                }
             },
             ColumnType::Vector {
                 typ: _,
@@ -145,8 +256,12 @@ impl SerializeValue for ValueWrap {
                     return Err(error);
                 }
             }
-            ColumnType::Tuple(_) => todo!(),
-            _ => todo!(),
+            _ => {
+                return Err(SerializationError::new(Error::new(
+                    ErrorKind::InvalidData,
+                    format!("ScyllaDB does not support serializing {ty:?}"),
+                )));
+            }
         }
     }
 }
@@ -157,21 +272,21 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
     }
 
     fn deserialize(
-        ty: &'metadata ColumnType<'metadata>,
+        column_t: &'metadata ColumnType<'metadata>,
         v: Option<FrameSlice<'frame>>,
     ) -> Result<Self, DeserializationError> {
-        let value = match ty {
+        let value = match column_t {
             ColumnType::Native(native_type) => match native_type {
-                NativeType::Boolean => Value::Boolean(DeserializeValue::deserialize(ty, v)?),
-                NativeType::TinyInt => Value::Int8(DeserializeValue::deserialize(ty, v)?),
-                NativeType::SmallInt => Value::Int16(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Int => Value::Int32(DeserializeValue::deserialize(ty, v)?),
-                NativeType::BigInt => Value::Int64(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Counter => Value::Int64(DeserializeValue::deserialize(ty, v)?),
+                NativeType::Boolean => Value::Boolean(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::TinyInt => Value::Int8(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::SmallInt => Value::Int16(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::Int => Value::Int32(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::BigInt => Value::Int64(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::Counter => Value::Int64(DeserializeValue::deserialize(column_t, v)?),
                 NativeType::Varint => {
                     let mut unsigned = false;
                     let value = if let Some(varint) =
-                        <Option<CqlVarintBorrowed> as DeserializeValue>::deserialize(ty, v)?
+                        <Option<CqlVarintBorrowed> as DeserializeValue>::deserialize(column_t, v)?
                     {
                         let mut bytes = varint.as_signed_bytes_be_slice();
                         let mut len = bytes.len();
@@ -195,16 +310,16 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                         None
                     };
                     if unsigned {
-                        Value::UInt128(value.map(|v| v as _))
+                        Value::UInt128(value.map(|v| Box::new(v as u128)))
                     } else {
-                        Value::Int128(value)
+                        Value::Int128(value.map(Box::new))
                     }
                 }
-                NativeType::Float => Value::Float32(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Double => Value::Float64(DeserializeValue::deserialize(ty, v)?),
+                NativeType::Float => Value::Float32(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::Double => Value::Float64(DeserializeValue::deserialize(column_t, v)?),
                 NativeType::Decimal => {
                     if let Some(d) =
-                        <Option<CqlDecimalBorrowed> as DeserializeValue>::deserialize(ty, v)?
+                        <Option<CqlDecimalBorrowed> as DeserializeValue>::deserialize(column_t, v)?
                     {
                         let error = |details: Cow<'_, str>| {
                             DeserializationError::new(io::Error::new(
@@ -252,18 +367,19 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                     }
                 }
                 NativeType::Ascii => Value::Varchar(
-                    <Option<String> as DeserializeValue>::deserialize(ty, v)?.map(Into::into),
+                    <Option<String> as DeserializeValue>::deserialize(column_t, v)?.map(Into::into),
                 ),
                 NativeType::Text => Value::Varchar(
-                    <Option<String> as DeserializeValue>::deserialize(ty, v)?.map(Into::into),
+                    <Option<String> as DeserializeValue>::deserialize(column_t, v)?.map(Into::into),
                 ),
                 NativeType::Blob => Value::Blob(
-                    <Option<Vec<u8>> as DeserializeValue>::deserialize(ty, v)?.map(Into::into),
+                    <Option<Vec<u8>> as DeserializeValue>::deserialize(column_t, v)?
+                        .map(Into::into),
                 ),
-                NativeType::Date => Value::Date(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Time => Value::Time(DeserializeValue::deserialize(ty, v)?),
+                NativeType::Date => Value::Date(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::Time => Value::Time(DeserializeValue::deserialize(column_t, v)?),
                 NativeType::Timestamp => Value::Timestamp(
-                    <Option<CqlTimestamp> as DeserializeValue>::deserialize(ty, v)?
+                    <Option<CqlTimestamp> as DeserializeValue>::deserialize(column_t, v)?
                         .map(|v| {
                             OffsetDateTime::from_unix_timestamp_nanos((v.0 as i128) * 1_000_000)
                                 .map(|v| PrimitiveDateTime::new(v.date(), v.time()))
@@ -272,7 +388,7 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                         .map_err(DeserializationError::new)?,
                 ),
                 NativeType::Duration => Value::Interval(
-                    <Option<CqlDuration> as DeserializeValue>::deserialize(ty, v)?.map(|v| {
+                    <Option<CqlDuration> as DeserializeValue>::deserialize(column_t, v)?.map(|v| {
                         Interval {
                             months: v.months as _,
                             days: v.days as _,
@@ -280,49 +396,62 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                         }
                     }),
                 ),
-                NativeType::Inet => todo!(),
-                NativeType::Timeuuid => Value::Uuid(DeserializeValue::deserialize(ty, v)?),
-                NativeType::Uuid => Value::Uuid(DeserializeValue::deserialize(ty, v)?),
+                NativeType::Inet => Value::Varchar(
+                    <Option<std::net::IpAddr> as DeserializeValue>::deserialize(column_t, v)?
+                        .map(|v| v.to_string().into()),
+                ),
+                NativeType::Timeuuid => Value::Uuid(DeserializeValue::deserialize(column_t, v)?),
+                NativeType::Uuid => Value::Uuid(DeserializeValue::deserialize(column_t, v)?),
                 _ => {
                     let error = DeserializationError::new(std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
-                        format!("Unexpected type {ty:?} from ScyllaDB"),
+                        format!("Unexpected type {column_t:?} from ScyllaDB"),
                     ));
                     log::error!("{error:#}");
                     return Err(error);
                 }
             },
-            ColumnType::Collection { frozen: _, typ } => match typ {
+            ColumnType::Collection { frozen: _, typ: t } => match t {
                 CollectionType::List(elem_type) => Value::List(
-                    <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(ty, v)?
+                    <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(column_t, v)?
                         .map(|v| v.into_iter().map(|v| v.0).collect()),
-                    Self::deserialize(elem_type, None)?.0.into(),
+                    Box::new(TankCollectionType {
+                        element: Self::deserialize(elem_type, None)?.0,
+                        len: 0,
+                    }),
                 ),
                 CollectionType::Map(k_type, v_type) => Value::Map(
                     <Option<HashMap<ValueWrap, ValueWrap>> as DeserializeValue>::deserialize(
-                        ty, v,
+                        column_t, v,
                     )?
-                    .map(|v| v.into_iter().map(|(k, v)| (k.0, v.0)).collect()),
-                    Self::deserialize(k_type, None)?.0.into(),
-                    Self::deserialize(v_type, None)?.0.into(),
+                    .map(|v| Box::new(v.into_iter().map(|(k, v)| (k.0, v.0)).collect())),
+                    Box::new(MapType {
+                        key: Self::deserialize(k_type, None)?.0,
+                        value: Self::deserialize(v_type, None)?.0,
+                    }),
                 ),
-                CollectionType::Set(elem_type) => Value::List(
-                    <Option<HashSet<ValueWrap>> as DeserializeValue>::deserialize(ty, v)?
+                CollectionType::Set(element_t) => Value::List(
+                    <Option<HashSet<ValueWrap>> as DeserializeValue>::deserialize(column_t, v)?
                         .map(|v| v.into_iter().map(|v| v.0).collect()),
-                    Self::deserialize(elem_type, None)?.0.into(),
+                    Box::new(TankCollectionType {
+                        element: Self::deserialize(element_t, None)?.0,
+                        len: 0,
+                    }),
                 ),
                 _ => {
                     return Err(DeserializationError::new(Error::new(
                         ErrorKind::InvalidData,
-                        format!("Unexpected collection type {ty:?}"),
+                        format!("Unexpected collection type {column_t:?}"),
                     )));
                 }
             },
             ColumnType::Vector { typ, dimensions } => Value::Array(
-                <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(ty, v)?
+                <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(column_t, v)?
                     .map(|v| v.into_iter().map(|v| v.0).collect()),
-                Self::deserialize(typ, None)?.0.into(),
-                *dimensions as _,
+                Box::new(TankCollectionType {
+                    element: Self::deserialize(typ, None)?.0,
+                    len: *dimensions as _,
+                }),
             ),
             ColumnType::UserDefinedType {
                 frozen: _,
@@ -335,7 +464,7 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                     columns: Default::default(),
                     primary_key: Default::default(),
                 };
-                let fields = UdtIterator::deserialize(ty, v)?
+                let fields = UdtIterator::deserialize(column_t, v)?
                     .map(|((name, ty), res)| {
                         res.and_then(|v| {
                             let val = Option::<ValueWrap>::deserialize(ty, v.flatten())?
@@ -345,22 +474,34 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                         })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let ty = fields
+                let t = fields
                     .iter()
                     .map(|(name, value)| (name.clone(), value.as_null()))
                     .collect();
-                Value::Struct(if v.is_none() { None } else { Some(fields) }, ty, type_ref)
+                Value::Struct(
+                    if v.is_none() {
+                        None
+                    } else {
+                        Some(fields.into_boxed_slice())
+                    },
+                    Box::new(StructType {
+                        types: t,
+                        name: type_ref,
+                    }),
+                )
             }
-            ColumnType::Tuple(elem_types) => Value::Array(
-                <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(ty, v)?
+            ColumnType::Tuple(types) => Value::Array(
+                <Option<Vec<ValueWrap>> as DeserializeValue>::deserialize(column_t, v)?
                     .map(|v| v.into_iter().map(|v| v.0).collect()),
-                Value::Unknown(None).into(),
-                elem_types.len() as _,
+                Box::new(TankCollectionType {
+                    element: Value::Unknown(None),
+                    len: types.len() as _,
+                }),
             ),
             _ => {
                 return Err(DeserializationError::new(Error::new(
                     ErrorKind::InvalidData,
-                    format!("Unexpected type {ty:?}"),
+                    format!("Unexpected type {column_t:?}"),
                 )));
             }
         };

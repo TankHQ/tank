@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
-use std::{pin::pin, sync::LazyLock};
-use tank::{AsValue, Entity, Row, expr, stream::StreamExt, stream::TryStreamExt};
+use std::pin::pin;
+use std::sync::LazyLock;
+use tank::stream::{StreamExt, TryStreamExt};
+use tank::{AsValue, Entity, Row, expr};
 use tank::{Executor, QueryBuilder, cols};
 use tokio::sync::Mutex;
 
@@ -64,7 +66,7 @@ pub async fn aggregates(executor: &mut impl Executor) {
                     .select(cols!(COUNT(*), SUM(Values::value)))
                     .from(Values::table())
                     .where_expr(true)
-                    .build(&executor.driver())
+                    .build(&executor.driver()),
             )
         );
         let count = stream.next().await;
@@ -74,9 +76,10 @@ pub async fn aggregates(executor: &mut impl Executor) {
         );
         let expected = (COUNT as i128, EXPECTED_SUM as i128);
         let actual = match count {
-            Some(Ok(Row { values, .. })) => {
-                let a = i128::try_from_value((*values)[0].clone());
-                let b = i128::try_from_value((*values)[1].clone());
+            Some(row) => {
+                let row = row.unwrap();
+                let a = i128::try_from_value(row.value(0).unwrap());
+                let b = i128::try_from_value(row.value(1).unwrap());
                 match (a, b) {
                     (Ok(a), Ok(b)) => Some((a, b)),
                     (Err(e), _) => panic!("{e}"),
@@ -96,25 +99,23 @@ pub async fn aggregates(executor: &mut impl Executor) {
     // SELECT *
     {
         {
-            let stream = pin!(
-                executor.fetch(
+            let values = executor
+                .fetch(
                     QueryBuilder::new()
                         .select(cols!(*))
                         .from(Values::table())
                         .where_expr(true)
-                        .build(&executor.driver())
+                        .build(&executor.driver()),
                 )
-            );
-            let values = stream
                 .map(|row| {
-                    let row = row.expect("Error while fetching the row");
+                    let row = row.unwrap();
                     let i = row
                         .names()
                         .iter()
                         .enumerate()
                         .find_map(|(i, v)| if v == "value" { Some(i) } else { None })
                         .expect("Column `value` is not present");
-                    u32::try_from_value(row.values[i].clone())
+                    u32::try_from_value(row.value(i).unwrap())
                         .expect("The result could not be convert back to u32")
                 })
                 .collect::<BTreeSet<_>>()
@@ -135,22 +136,26 @@ pub async fn aggregates(executor: &mut impl Executor) {
         query
             .bind(EXPECTED_AVG)
             .expect("Could not bind the parameter");
-        let values = executor
-            .fetch(&mut query)
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not fetch rows above average from the prepared statement");
+        {
+            let values = executor
+                .fetch(&mut query)
+                .try_collect::<Vec<_>>()
+                .await
+                .unwrap();
+            assert_eq!(values.len(), COUNT as usize / 2);
+        }
         assert!(query.is_prepared());
-        assert_eq!(values.len(), COUNT as usize / 2);
         query
             .clear_bindings()
             .expect("Could not clear the bindings");
         query.bind(0).expect("Could not bind a second time");
-        let values = executor
-            .fetch(&mut query)
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not fetch positive rows from the prepared statement");
-        assert_eq!(values.len(), COUNT as usize);
+        {
+            let values = executor
+                .fetch(&mut query)
+                .try_collect::<Vec<_>>()
+                .await
+                .unwrap();
+            assert_eq!(values.len(), COUNT as usize);
+        }
     }
 }

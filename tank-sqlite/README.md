@@ -24,6 +24,14 @@ cargo add tank
 cargo add tank-sqlite
 ```
 
+Optional feature flags:
+- `bundled` (default): compiles and links SQLite statically, so the binary is self-contained.
+
+Disable it to link a system SQLite instead:
+```sh
+cargo add tank-sqlite --no-default-features
+```
+
 ## Quick Start
 ```rust
 use tank::{ConnectionPool, Driver, PoolConfig};

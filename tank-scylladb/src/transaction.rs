@@ -3,7 +3,7 @@ use scylla::statement::batch::Batch;
 use std::future;
 use tank_core::{
     AsEntity, AsQuery, Driver, DynQuery, Error, ErrorContext, Executor, Query, QueryResult,
-    RawQuery, Result, RowsAffected, SqlWriter, Transaction,
+    RawQuery, Result, Row, RowsAffected, SqlWriter, Transaction,
     future::Either,
     stream::{self, Stream},
     truncate_long,
@@ -37,28 +37,35 @@ impl ScyllaDBTransaction<'_> {
 impl<'c> Executor for ScyllaDBTransaction<'c> {
     type Driver = ScyllaDBDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<ScyllaDBDriver>> {
-        let context = format!("While preparing the query:\n{}", truncate_long!(sql));
+    fn accepts_multiple_statements(&self) -> bool {
+        false
+    }
+
+    async fn do_prepare(
+        &mut self,
+        RawQuery { sql, .. }: RawQuery,
+    ) -> Result<Query<ScyllaDBDriver>> {
+        let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
         let statement = self
             .connection
             .session
-            .prepare(sql)
+            .prepare(sql.as_str())
             .await
-            .with_context(|| context)?;
+            .with_context(make_context)?;
         Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
     }
 
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<ScyllaDBDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
         let mut query = query.as_query();
         let context = format!(
             "While running the query (appending a statement to a ScyllaDB/Cassandra batch):\n{:?}",
             query.as_mut()
         );
         match query.as_mut() {
-            Query::Raw(RawQuery(sql)) => {
+            Query::Raw(RawQuery { sql, .. }) => {
                 self.params.push(Default::default());
                 self.batch.append_statement(sql.as_str());
             }
@@ -73,7 +80,7 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
                 self.batch.append_statement(prepared.statement.clone());
             }
         }
-        Either::Right(stream::empty())
+        Either::Right(stream::empty::<Result<QueryResult>>())
     }
 
     async fn append<It>(&mut self, entities: It) -> Result<RowsAffected>

@@ -393,6 +393,7 @@ pub async fn trade_multiple(executor: &mut impl Executor) {
             panic!("Could not get the result of the second statement");
         };
         let trade = Trade::from_row(row).expect("Could not decode the Trade from row");
+        assert!(stream.next().await.is_none());
         assert_eq!(
             trade,
             Trade {

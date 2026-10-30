@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, QueryBuilder, QueryResult, Result, RowsAffected, SqlWriter,
-    cols, expr, join,
+    Driver, DynQuery, Entity, Executor, QueryBuilder, QueryResult, Result, Row as _, RowsAffected,
+    SqlWriter, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, OffsetDateTime, Time, UtcOffset, macros::date};
@@ -119,7 +119,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     query.bind(40)?;
     let _messages: Vec<_> = executor
         .fetch(query)
-        .map_ok(|row| row.values[0].clone())
+        .map_ok(|row| row.value(0).unwrap().into_owned().into_owned())
         .try_collect()
         .await?;
 
@@ -154,7 +154,9 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
             let mut stream = pin!(executor.run(query));
             while let Some(result) = stream.try_next().await? {
                 match result {
-                    QueryResult::Row(row) => log::debug!("Row: {row:?}"),
+                    QueryResult::Row(row) => {
+                        log::debug!("Row: {:?}", row.into_owned());
+                    }
                     QueryResult::Affected(RowsAffected { rows_affected, .. }) => {
                         log::debug!("Affected rows: {rows_affected:?}")
                     }
@@ -299,14 +301,12 @@ pub async fn advanced_operations(executor: &mut impl Executor) -> Result<()> {
                     .build(&executor.driver()),
             )
             .map(|row| {
-                row.and_then(|row| {
-                    #[derive(Entity)]
-                    struct Row {
-                        message: String,
-                        callsign: String,
-                    }
-                    Row::from_row(row).and_then(|row| Ok((row.message, row.callsign)))
-                })
+                #[derive(Entity)]
+                struct Row {
+                    message: String,
+                    callsign: String,
+                }
+                Row::from_row(row?).map(|row| (row.message, row.callsign))
             })
             .try_collect::<Vec<_>>()
             .await?;

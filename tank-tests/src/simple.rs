@@ -4,13 +4,13 @@ use rust_decimal::{Decimal, prelude::FromPrimitive};
 use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
-    i128,
     pin::pin,
     sync::{Arc, LazyLock},
 };
 use tank::{
     Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult, RawQuery,
-    RowsAffected, SqlWriter, expr, stream::TryStreamExt,
+    RowsAffected, SqlWriter, expr,
+    stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Time, macros::date};
 use tokio::sync::Mutex;
@@ -121,25 +121,20 @@ pub async fn simple(executor: &mut impl Executor) {
         );
         {
             let mut stream = pin!(executor.run(query));
-            let result = stream
-                .try_next()
-                .await
-                .expect("Could not process the first query correctly");
-            let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) = result else {
-                panic!("Unexpected result type:\n{result:#?}");
+            let result = stream.next().await;
+            let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) = result else {
+                panic!("Expected a write statement result");
             };
             if let Some(rows_affected) = rows_affected {
                 assert_eq!(rows_affected, 0);
             }
-            let result = stream
-                .try_next()
-                .await
-                .expect("Could not process the second query correctly");
-            let Some(QueryResult::Row(row)) = result else {
-                panic!("Unexpected result type:\n{result:#?}");
+            let result = stream.next().await;
+            let Some(Ok(QueryResult::Row(row))) = result else {
+                panic!("Expected a SELECT statement result");
             };
             let value =
                 SimpleFields::from_row(row).expect("Could not decode the row into SimpleFields");
+            assert!(stream.next().await.is_none());
             assert_eq!(
                 value,
                 SimpleFields {
@@ -239,27 +234,28 @@ pub async fn simple(executor: &mut impl Executor) {
         );
         {
             let mut stream = pin!(executor.run(query));
-            let Ok(Some(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
-                stream.try_next().await
+            let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
+                stream.next().await
             else {
                 panic!("Could not process the first query correctly")
             };
             if let Some(rows_affected) = rows_affected {
                 assert_eq!(rows_affected, 1);
             }
-            let Ok(Some(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
-                stream.try_next().await
+            let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
+                stream.next().await
             else {
                 panic!("Could not process the first query correctly")
             };
             if let Some(rows_affected) = rows_affected {
                 assert_eq!(rows_affected, 1);
             }
-            let Ok(Some(QueryResult::Row(row))) = stream.try_next().await else {
+            let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
                 panic!("Could not process the second query correctly")
             };
             let value =
                 SimpleFields::from_row(row).expect("Could not decode the row into SimpleFields");
+            assert!(stream.next().await.is_none());
             assert_eq!(
                 value,
                 SimpleFields {

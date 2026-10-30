@@ -104,12 +104,12 @@ mod tests {
         assert!(matches!(columns[2].value, Value::Date(..)));
         assert!(matches!(
             columns[3].value,
-            Value::Array(_, ref ty, 2) if matches!(**ty, Value::Time(..))
+            Value::Array(_, ref t) if t.len == 2 && matches!(t.element, Value::Time(..))
         ));
         assert!(matches!(columns[4].value, Value::Float64(..)));
         assert!(matches!(
             columns[5].value,
-            Value::List(_, ref ty) if matches!(**ty, Value::Varchar(..))
+            Value::List(.., ref t) if matches!(t.element, Value::Varchar(..))
         ));
         assert!(matches!(columns[6].value, Value::Map(..)));
         assert!(matches!(columns[7].value, Value::Uuid(..)));

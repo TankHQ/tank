@@ -67,18 +67,13 @@ pub async fn keywords(executor: &mut impl Executor) {
                     .select(cols!(ReservedWords::group_field, COUNT(*)))
                     .from(ReservedWords::table())
                     .group_by(cols!(ReservedWords::group_field))
-                    .build(&executor.driver())
+                    .build(&executor.driver()),
             )
         );
-        let row = stream
-            .next()
-            .await
-            .expect("Expected a row")
-            .expect("Query failed");
-        let Row { values, .. } = row;
+        let row = stream.next().await.expect("Expected a row").unwrap();
         let group_val =
-            bool::try_from_value(values[0].clone()).expect("Failed to decode group bool");
-        let count_val = i64::try_from_value(values[1].clone()).expect("Failed to decode count");
+            bool::try_from_value(row.value(0).unwrap()).expect("Failed to decode group bool");
+        let count_val = i64::try_from_value(row.value(1).unwrap()).expect("Failed to decode count");
         assert_eq!(group_val, true);
         assert_eq!(count_val, 1);
     }
@@ -96,15 +91,11 @@ pub async fn keywords(executor: &mut impl Executor) {
                     .from(ReservedWords::table())
                     .order_by(cols!(ReservedWords::order_field ASC))
                     .limit(Some(1))
-                    .build(&executor.driver())
+                    .build(&executor.driver()),
             )
         );
 
-        let row_ordered = stream_ordered
-            .next()
-            .await
-            .expect("Expected row")
-            .expect("Query failed");
+        let row_ordered = stream_ordered.next().await.expect("Expected row").unwrap();
         let entity_ordered = ReservedWords::from_row(row_ordered).expect("Failed to parse entity");
         assert_eq!(entity_ordered.order_field.as_deref(), Some("asc"));
     }
@@ -126,18 +117,16 @@ pub async fn keywords(executor: &mut impl Executor) {
                     .from(ReservedWords::table())
                     .group_by(cols!(ReservedWords::group_field))
                     .order_by(cols!(ReservedWords::group_field ASC))
-                    .build(&executor.driver())
+                    .build(&executor.driver()),
             )
         );
 
         let row1 = stream_group.next().await.unwrap().unwrap();
-        let Row { values, .. } = row1;
-        let g = bool::try_from_value(values[0].clone()).unwrap();
+        let g = bool::try_from_value(row1.value(0).unwrap()).unwrap();
         assert_eq!(g, false);
 
         let row2 = stream_group.next().await.unwrap().unwrap();
-        let Row { values, .. } = row2;
-        let g = bool::try_from_value(values[0].clone()).unwrap();
+        let g = bool::try_from_value(row2.value(0).unwrap()).unwrap();
         assert_eq!(g, true);
     }
 

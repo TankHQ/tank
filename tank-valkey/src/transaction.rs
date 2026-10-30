@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use redis::{Cmd, Pipeline};
 use std::future;
 use tank_core::{
-    AsQuery, Executor, Query, QueryResult, Result, Transaction,
+    AsQuery, Executor, Query, QueryResult, Result, Row, Transaction,
     future::Either,
     stream::{self, Stream},
 };
@@ -17,10 +17,14 @@ pub struct ValkeyTransaction<'c> {
 impl<'c> Executor for ValkeyTransaction<'c> {
     type Driver = ValkeyDriver;
 
+    fn accepts_multiple_statements(&self) -> bool {
+        false
+    }
+
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<ValkeyDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
         let mut query = query.as_query();
         let Query::Prepared(prepared) = query.as_mut() else {
             return Either::Left(stream::once(future::ready(Err(anyhow!(
@@ -28,7 +32,7 @@ impl<'c> Executor for ValkeyTransaction<'c> {
             )))));
         };
         self.commands.extend(prepared.commands.iter().cloned());
-        Either::Right(stream::empty())
+        Either::Right(stream::empty::<Result<QueryResult>>())
     }
 }
 

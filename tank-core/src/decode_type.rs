@@ -1,4 +1,4 @@
-use crate::{TypeDecoded, Value, matches_path};
+use crate::{CollectionType, MapType, TypeDecoded, ValueOwned, matches_path};
 use quote::ToTokens;
 use std::mem;
 use syn::{
@@ -13,83 +13,83 @@ pub fn decode_type(ty: &Type) -> TypeDecoded {
             let ident = path.get_ident();
             if let Some(ident) = ident {
                 if ident == "bool" {
-                    break 'data_type Value::Boolean(None);
+                    break 'data_type ValueOwned::Boolean(None);
                 } else if ident == "i8" {
-                    break 'data_type Value::Int8(None);
+                    break 'data_type ValueOwned::Int8(None);
                 } else if ident == "i16" {
-                    break 'data_type Value::Int16(None);
+                    break 'data_type ValueOwned::Int16(None);
                 } else if ident == "i32" {
-                    break 'data_type Value::Int32(None);
+                    break 'data_type ValueOwned::Int32(None);
                 } else if ident == "i64" {
-                    break 'data_type Value::Int64(None);
+                    break 'data_type ValueOwned::Int64(None);
                 } else if ident == "i128" {
-                    break 'data_type Value::Int128(None);
+                    break 'data_type ValueOwned::Int128(None);
                 } else if ident == "u8" {
-                    break 'data_type Value::UInt8(None);
+                    break 'data_type ValueOwned::UInt8(None);
                 } else if ident == "u16" {
-                    break 'data_type Value::UInt16(None);
+                    break 'data_type ValueOwned::UInt16(None);
                 } else if ident == "u32" {
-                    break 'data_type Value::UInt32(None);
+                    break 'data_type ValueOwned::UInt32(None);
                 } else if ident == "u64" {
-                    break 'data_type Value::UInt64(None);
+                    break 'data_type ValueOwned::UInt64(None);
                 } else if ident == "u128" {
-                    break 'data_type Value::UInt128(None);
+                    break 'data_type ValueOwned::UInt128(None);
                 } else if ident == "isize" {
                     break 'data_type if mem::size_of::<isize>() == mem::size_of::<i32>() {
-                        Value::Int32(None)
+                        ValueOwned::Int32(None)
                     } else {
-                        Value::Int64(None)
+                        ValueOwned::Int64(None)
                     };
                 } else if ident == "usize" {
                     break 'data_type if mem::size_of::<usize>() == mem::size_of::<u32>() {
-                        Value::UInt32(None)
+                        ValueOwned::UInt32(None)
                     } else {
-                        Value::UInt64(None)
+                        ValueOwned::UInt64(None)
                     };
                 } else if ident == "f32" {
-                    break 'data_type Value::Float32(None);
+                    break 'data_type ValueOwned::Float32(None);
                 } else if ident == "f64" {
-                    break 'data_type Value::Float64(None);
+                    break 'data_type ValueOwned::Float64(None);
                 } else if ident == "char" {
-                    break 'data_type Value::Char(None);
+                    break 'data_type ValueOwned::Char(None);
                 } else if ident == "str" {
-                    break 'data_type Value::Varchar(None);
+                    break 'data_type ValueOwned::Varchar(None);
                 }
             }
             if matches_path(path, &["std", "num", "NonZeroI8"]) {
-                break 'data_type Value::Int8(None);
+                break 'data_type ValueOwned::Int8(None);
             } else if matches_path(path, &["std", "num", "NonZeroI16"]) {
-                break 'data_type Value::Int16(None);
+                break 'data_type ValueOwned::Int16(None);
             } else if matches_path(path, &["std", "num", "NonZeroI32"]) {
-                break 'data_type Value::Int32(None);
+                break 'data_type ValueOwned::Int32(None);
             } else if matches_path(path, &["std", "num", "NonZeroI64"]) {
-                break 'data_type Value::Int64(None);
+                break 'data_type ValueOwned::Int64(None);
             } else if matches_path(path, &["std", "num", "NonZeroI128"]) {
-                break 'data_type Value::Int128(None);
+                break 'data_type ValueOwned::Int128(None);
             } else if matches_path(path, &["std", "num", "NonZeroIsize"]) {
                 break 'data_type if mem::size_of::<isize>() == mem::size_of::<i32>() {
-                    Value::Int32(None)
+                    ValueOwned::Int32(None)
                 } else {
-                    Value::Int64(None)
+                    ValueOwned::Int64(None)
                 };
             } else if matches_path(path, &["std", "num", "NonZeroU8"]) {
-                break 'data_type Value::UInt8(None);
+                break 'data_type ValueOwned::UInt8(None);
             } else if matches_path(path, &["std", "num", "NonZeroU16"]) {
-                break 'data_type Value::UInt16(None);
+                break 'data_type ValueOwned::UInt16(None);
             } else if matches_path(path, &["std", "num", "NonZeroU32"]) {
-                break 'data_type Value::UInt32(None);
+                break 'data_type ValueOwned::UInt32(None);
             } else if matches_path(path, &["std", "num", "NonZeroU64"]) {
-                break 'data_type Value::UInt64(None);
+                break 'data_type ValueOwned::UInt64(None);
             } else if matches_path(path, &["std", "num", "NonZeroU128"]) {
-                break 'data_type Value::UInt128(None);
+                break 'data_type ValueOwned::UInt128(None);
             } else if matches_path(path, &["std", "num", "NonZeroUsize"]) {
                 break 'data_type if mem::size_of::<usize>() == mem::size_of::<u32>() {
-                    Value::UInt32(None)
+                    ValueOwned::UInt32(None)
                 } else {
-                    Value::UInt64(None)
+                    ValueOwned::UInt64(None)
                 };
             } else if matches_path(path, &["rust_decimal", "Decimal"]) {
-                break 'data_type Value::Decimal(None, 0, 0);
+                break 'data_type ValueOwned::Decimal(None, 0, 0);
             } else if matches_path(path, &["tank", "FixedDecimal"]) {
                 let PathArguments::AngleBracketed(arguments) = &path
                     .segments
@@ -110,36 +110,36 @@ pub fn decode_type(ty: &Type) -> TypeDecoded {
                         _ => panic!(),
                     })
                     .collect::<Vec<_>>();
-                break 'data_type Value::Decimal(
+                break 'data_type ValueOwned::Decimal(
                     None,
                     *ws.first().expect("Doesn't have width param"),
                     *ws.last().expect("Doesn't have size param"),
                 );
             } else if matches_path(path, &["std", "string", "String"]) {
-                break 'data_type Value::Varchar(None);
+                break 'data_type ValueOwned::Varchar(None);
             } else if matches_path(path, &["time", "Time"])
                 || matches_path(path, &["chrono", "NaiveTime"])
             {
-                break 'data_type Value::Time(None);
+                break 'data_type ValueOwned::Time(None);
             } else if matches_path(path, &["time", "Date"])
                 || matches_path(path, &["chrono", "NaiveDate"])
             {
-                break 'data_type Value::Date(None);
+                break 'data_type ValueOwned::Date(None);
             } else if matches_path(path, &["time", "PrimitiveDateTime"])
                 || matches_path(path, &["time", "UtcDateTime"])
                 || matches_path(path, &["chrono", "NaiveDateTime"])
             {
-                break 'data_type Value::Timestamp(None);
+                break 'data_type ValueOwned::Timestamp(None);
             } else if matches_path(path, &["time", "OffsetDateTime"])
                 || matches_path(path, &["chrono", "DateTime"])
             {
-                break 'data_type Value::TimestampWithTimezone(None);
+                break 'data_type ValueOwned::TimestampWithTimezone(None);
             } else if matches_path(path, &["std", "time", "Duration"])
                 || matches_path(path, &["tank", "Interval"])
             {
-                break 'data_type Value::Interval(None);
+                break 'data_type ValueOwned::Interval(None);
             } else if matches_path(path, &["uuid", "Uuid"]) {
-                break 'data_type Value::Uuid(None);
+                break 'data_type ValueOwned::Uuid(None);
             } else {
                 let is_option = matches_path(path, &["std", "option", "Option"]);
                 let is_cow = matches_path(path, &["std", "borrow", "Cow"]);
@@ -183,7 +183,13 @@ pub fn decode_type(ty: &Type) -> TypeDecoded {
                                     };
                                     break 'data_type first_type.value;
                                 } else if is_list {
-                                    break 'data_type Value::List(None, Box::new(first_type.value));
+                                    break 'data_type ValueOwned::List(
+                                        None,
+                                        Box::new(CollectionType {
+                                            element: first_type.value,
+                                            len: 0,
+                                        }),
+                                    );
                                 } else if is_map {
                                     let panic_msg = &format!(
                                         "Type `{}` must have two generic arguments at lease",
@@ -195,10 +201,12 @@ pub fn decode_type(ty: &Type) -> TypeDecoded {
                                         panic!("{panic_msg}");
                                     };
                                     let second_type = decode_type(second_type);
-                                    break 'data_type Value::Map(
+                                    break 'data_type ValueOwned::Map(
                                         None,
-                                        Box::new(first_type.value),
-                                        Box::new(second_type.value),
+                                        Box::new(MapType {
+                                            key: first_type.value,
+                                            value: second_type.value,
+                                        }),
                                     );
                                 }
                             } else {
@@ -212,7 +220,7 @@ pub fn decode_type(ty: &Type) -> TypeDecoded {
                     }
                 }
             }
-            Value::Unknown(None)
+            ValueOwned::Unknown(None)
         } else if let Type::Array(TypeArray {
             elem,
             len:
@@ -223,26 +231,34 @@ pub fn decode_type(ty: &Type) -> TypeDecoded {
             ..
         }) = ty
         {
-            break 'data_type Value::Array(
+            break 'data_type ValueOwned::Array(
                 None,
-                Box::new(decode_type(&*elem).value),
-                len.base10_parse().expect(&format!(
-                    "Expected an integer literal array length in `{}`",
-                    ty.to_token_stream().to_string()
-                )),
+                Box::new(CollectionType {
+                    element: decode_type(&*elem).value,
+                    len: len.base10_parse().expect(&format!(
+                        "Expected an integer literal array length in `{}`",
+                        ty.to_token_stream().to_string()
+                    )),
+                }),
             );
         } else if let Type::Slice(TypeSlice { elem, .. }) = ty {
             let element_type = decode_type(&*elem);
             if matches!(
                 element_type,
                 TypeDecoded {
-                    value: Value::UInt8(..),
+                    value: ValueOwned::UInt8(..),
                     nullable: false,
                 }
             ) {
-                break 'data_type Value::Blob(None);
+                break 'data_type ValueOwned::Blob(None);
             }
-            break 'data_type Value::List(None, Box::new(decode_type(&*elem).value));
+            break 'data_type ValueOwned::List(
+                None,
+                Box::new(CollectionType {
+                    element: decode_type(&*elem).value,
+                    len: 0,
+                }),
+            );
         } else {
             panic!("Unexpected type `{}`", ty.to_token_stream().to_string())
         }

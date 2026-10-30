@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 use tank::{
-    AsValue, Entity, Executor, QueryBuilder, Result, cols, expr,
+    AsValue, Entity, Executor, QueryBuilder, Row, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -82,7 +82,7 @@ pub async fn math(executor: &mut impl Executor) {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
-        .map_ok(|v| bool::try_from_value(v.values.into_iter().nth(1).unwrap()))
+        .map_ok(|v| bool::try_from_value(v.values().nth(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await
@@ -97,12 +97,31 @@ pub async fn math(executor: &mut impl Executor) {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
-        .map_ok(|v| bool::try_from_value(v.values.into_iter().nth(1).unwrap()))
+        .map_ok(|v| bool::try_from_value(v.values().nth(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await
         .expect("Could not get the result 5");
     assert_eq!(result, [true]);
+
+    // CAST to an integer type: the generated type name must be valid for the
+    // dialect (e.g. MySQL only accepts SIGNED/UNSIGNED, not INTEGER)
+    {
+        let result = executor
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(MathTable::id, (CAST(MathTable::read as i64)) as read))
+                    .from(MathTable::table())
+                    .where_expr(expr!(MathTable::id == 0))
+                    .build(&executor.driver()),
+            )
+            .map_ok(MathTable::from_row)
+            .map(Result::flatten)
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Could not get the CAST result");
+        assert_eq!(result, [MathTable { id: 0, read: 0 }]);
+    }
 
     // LOG10: log base 10 of 1000 should be 3
     #[cfg(not(feature = "disable-log10"))]

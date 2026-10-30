@@ -1,11 +1,13 @@
-use crate::{Context, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, Value};
-use std::fmt;
+use crate::{
+    Context, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, Value, ValueOwned,
+};
+use std::fmt::{self, Debug, Formatter};
 
 #[derive(Default)]
 pub enum DefaultValueType {
     #[default]
     None,
-    Value(Value),
+    Value(ValueOwned),
     Expression(Box<dyn Expression + Send + Sync>),
 }
 
@@ -51,36 +53,48 @@ impl Expression for DefaultValueType {
     }
 }
 
-impl fmt::Debug for DefaultValueType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::None => f.write_str("None"),
-            Self::Value(v) => f.debug_tuple("Value").field(v).finish(),
-            Self::Expression(_) => f.debug_tuple("Expression").field(&"..").finish(),
-        }
-    }
-}
-
-impl From<Value> for DefaultValueType {
-    fn from(value: Value) -> Self {
-        Self::Value(value)
+impl<'a> From<Value<'a>> for DefaultValueType {
+    fn from(value: Value<'a>) -> Self {
+        Self::Value(value.into_owned())
     }
 }
 
 impl From<bool> for DefaultValueType {
     fn from(value: bool) -> Self {
-        Self::Value(Value::Boolean(Some(value)))
+        Self::Value(ValueOwned::Boolean(Some(value)))
     }
 }
 
 impl From<&'static str> for DefaultValueType {
     fn from(value: &'static str) -> Self {
-        Self::Value(Value::Varchar(Some(value.into())))
+        Self::Value(ValueOwned::Varchar(Some(value.into())))
     }
 }
 
 impl From<i64> for DefaultValueType {
     fn from(value: i64) -> Self {
-        Self::Value(Value::Int64(Some(value)))
+        Self::Value(ValueOwned::Int64(Some(value)))
+    }
+}
+
+impl From<f64> for DefaultValueType {
+    fn from(value: f64) -> Self {
+        Self::Value(ValueOwned::Float64(Some(value)))
+    }
+}
+
+impl From<char> for DefaultValueType {
+    fn from(value: char) -> Self {
+        Self::Value(ValueOwned::Char(Some(value)))
+    }
+}
+
+impl Debug for DefaultValueType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::None => f.write_str("None"),
+            Self::Value(v) => f.debug_tuple("Value").field(v).finish(),
+            Self::Expression(_) => f.debug_tuple("Expression").field(&"..").finish(),
+        }
     }
 }

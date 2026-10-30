@@ -1,7 +1,8 @@
+#![allow(unused_imports)]
 #![allow(unused_variables)]
 use anyhow::anyhow;
 use std::{collections::HashMap, str::FromStr, sync::LazyLock};
-use tank::{AsValue, Entity, Result, Value, expr};
+use tank::{AsValue, Entity, Result, Value, current_timestamp_ms, expr};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -12,14 +13,17 @@ pub struct Notes(pub String); // Third party type
 pub struct NotesWrap(pub Notes); // Local wrapper
 
 impl AsValue for NotesWrap {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> tank::ValueOwned {
         Value::Varchar(None)
     }
-    fn as_value(self) -> Value {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Varchar(Some(self.0.0.into()))
     }
-    fn try_from_value(value: Value) -> Result<Self> {
-        match value.try_as(&Value::Varchar(None)) {
+    fn try_from_value(value: impl AsValue) -> Result<Self> {
+        match value.as_value().try_as(&Value::Varchar(None)) {
             Ok(Value::Varchar(Some(s))) => Ok(NotesWrap(Notes(s.to_string()))),
             _ => Err(anyhow!("Expected Varchar for Notes")),
         }
@@ -72,6 +76,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         transient_cache: HashMap::new(),
     };
 
+    #[cfg(not(feature = "disable-transactions"))]
     {
         use tank::{Entity, Transaction};
 
@@ -151,10 +156,17 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         expr!(EntityExample::casualties > ?);
         let uid = Uuid::new_v4();
         expr!(EntityExample::unit_id == #uid);
+        let regions = ["North", "South"];
+        expr!(EntityExample::region == #regions as IN);
+        let one_day_ms = time::Duration::days(1).whole_milliseconds();
+        expr!(current_timestamp_ms!() - #one_day_ms);
     }
 
     {
-        use tank::{Entity, expr, stream::TryStreamExt};
+        use tank::{
+            Entity, expr,
+            stream::{StreamExt, TryStreamExt},
+        };
 
         let mut query = EntityExample::prepare_find(
             &mut connection,
@@ -165,7 +177,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         query.bind(Uuid::from_str("2f4f97da-0278-4c99-bc22-2b3986aeee85")?)?;
         let entities = connection
             .fetch(&mut query)
-            .map_ok(|row| EntityExample::from_row(row).unwrap())
+            .map(|row| row.and_then(EntityExample::from_row))
             .try_collect::<Vec<EntityExample>>()
             .await?;
         query.clear_bindings()?;
@@ -173,7 +185,10 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     }
 
     {
-        use tank::{QueryBuilder, cols, expr, stream::TryStreamExt};
+        use tank::{
+            QueryBuilder, cols, expr,
+            stream::{StreamExt, TryStreamExt},
+        };
 
         let uid = entity.unit_id;
         let results = connection
@@ -187,7 +202,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                     .limit(Some(50))
                     .build(&connection.driver()),
             )
-            .map_ok(|row| EntityExample::from_row(row).unwrap())
+            .map(|row| row.and_then(EntityExample::from_row))
             .try_collect::<Vec<_>>()
             .await?;
     }
@@ -214,8 +229,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                     .order_by(cols!(Book::title ASC))
                     .build(&connection.driver()),
             )
-            .map_ok(BookWithAuthor::from_row)
-            .map(Result::flatten)
+            .map(|row| row.and_then(BookWithAuthor::from_row))
             .try_collect()
             .await?;
 
@@ -227,8 +241,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                     .where_expr(true)
                     .build(&connection.driver()),
             )
-            .map_ok(BookWithAuthor::from_row)
-            .map(Result::flatten)
+            .map(|row| row.and_then(BookWithAuthor::from_row))
             .try_collect()
             .await?;
 

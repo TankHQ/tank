@@ -103,7 +103,7 @@ impl Expression for &'static str {
     }
 }
 
-impl Expression for Value {
+impl<'a> Expression for Value<'a> {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         writer.write_value(context, out, self);
     }
@@ -221,7 +221,7 @@ impl OpPrecedence for Box<[u8]> {
 }
 impl Expression for Box<[u8]> {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        writer.write_value(context, out, &Value::Blob(Some(self.clone())));
+        writer.write_value(context, out, &Value::Blob(Some(Cow::Owned(self.to_vec()))));
     }
 }
 

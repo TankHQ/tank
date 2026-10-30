@@ -51,14 +51,16 @@ pub async fn binary(executor: &mut impl Executor) {
     query
         .bind(payload.clone())
         .expect("Failed to bind the binary payload");
-    let rows = executor
-        .fetch(&mut query)
-        .try_collect::<Vec<_>>()
-        .await
-        .expect("Failed to fetch the bound binary payload");
-    assert_eq!(rows.len(), 1, "Expected exactly one match for the payload");
-    let loaded = BinaryFields::from_row(rows.into_iter().next().unwrap())
-        .expect("Failed to decode the bound binary payload");
+    let loaded = {
+        let rows = executor
+            .fetch(&mut query)
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1, "Expected exactly one match for the payload");
+        BinaryFields::from_row(rows.into_iter().next().unwrap())
+            .expect("Failed to decode the bound binary payload")
+    };
     assert_eq!(loaded.data, payload, "Binary bound round-trip lost bytes");
 
     BinaryFields::drop_table(executor, true, false)

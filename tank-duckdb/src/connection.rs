@@ -1,29 +1,30 @@
 use crate::{
     DuckDBPrepared, DuckDBTransaction, cbox::CBox, date_to_duckdb_date, decimal_to_duckdb_decimal,
-    driver::DuckDBDriver, extract::extract_value, i128_to_duckdb_hugeint,
-    interval_to_duckdb_interval, offsetdatetime_to_duckdb_timestamp,
-    primitive_date_time_to_duckdb_timestamp, tank_value_to_duckdb_logical_type,
-    tank_value_to_duckdb_value, time_to_duckdb_time, u128_to_duckdb_uhugeint,
+    driver::DuckDBDriver, i128_to_duckdb_hugeint, interval_to_duckdb_interval,
+    offsetdatetime_to_duckdb_timestamp, primitive_date_time_to_duckdb_timestamp,
+    streaming::Statements, tank_value_to_duckdb_logical_type, tank_value_to_duckdb_value,
+    time_to_duckdb_time, u128_to_duckdb_uhugeint,
 };
 use anyhow::anyhow;
-use async_stream::try_stream;
-use flume::Sender;
 use libduckdb_sys::*;
 use std::{
     borrow::Cow,
     ffi::{CStr, CString, c_char, c_void},
     fmt::{self, Debug, Formatter},
-    mem, ptr,
+    ptr,
     str::FromStr,
     sync::{
-        Arc, LazyLock,
+        LazyLock,
         atomic::{AtomicPtr, Ordering},
     },
 };
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, RawQuery, Result, Row, RowsAffected, SqlWriter, Value, as_c_string,
-    error_message_from_ptr, send_value, stream::Stream, truncate_long,
+    QueryResult, RawQuery, Result, Row, RowsAffected, SqlCoreWriter, Value, as_c_string,
+    describe_path, error_message_from_ptr,
+    future::Either,
+    stream::{self, Stream},
+    truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -46,198 +47,123 @@ impl DuckDBConnection {
             });
         &**DATABASE_CACHE
     }
-
-    pub(crate) fn do_run<F>(execute: F, tx: Sender<Result<QueryResult>>)
-    where
-        F: FnOnce(*mut duckdb_result) -> u32,
-    {
-        unsafe {
-            let result: duckdb_result = mem::zeroed();
-            let mut result = CBox::new(result, |mut r| duckdb_destroy_result(&mut r));
-            let rc = execute(&mut *result);
-            if rc != duckdb_state_DuckDBSuccess {
-                send_value!(
-                    tx,
-                    Err(Error::msg(
-                        error_message_from_ptr(&duckdb_result_error(&mut *result)).to_string(),
-                    ))
-                );
-                return;
-            }
-            let statement_type = duckdb_result_statement_type(*result);
-            #[allow(non_upper_case_globals)]
-            if !matches!(
-                statement_type,
-                duckdb_statement_type_DUCKDB_STATEMENT_TYPE_SELECT
-            ) {
-                let rows_affected = duckdb_rows_changed(&mut *result);
-                send_value!(
-                    tx,
-                    Ok(QueryResult::Affected(RowsAffected {
-                        rows_affected: Some(rows_affected),
-                        ..Default::default()
-                    }))
-                );
-                return;
-            }
-            Self::extract_result(&mut *result, tx);
-        }
-    }
-
-    pub(crate) fn do_run_unprepared(
-        connection: duckdb_connection,
-        sql: &CStr,
-        tx: Sender<Result<QueryResult>>,
-    ) {
-        unsafe {
-            let mut statements =
-                CBox::new(ptr::null_mut(), |mut p| duckdb_destroy_extracted(&mut p));
-            let count = duckdb_extract_statements(connection, sql.as_ptr(), &mut *statements);
-            if count == 0 {
-                send_value!(
-                    tx,
-                    Err(Error::msg(
-                        error_message_from_ptr(&duckdb_extract_statements_error(*statements))
-                            .to_string(),
-                    ))
-                );
-                return;
-            }
-            for i in 0..count {
-                let mut prepared = DuckDBPrepared::new(CBox::new(ptr::null_mut(), |mut p| {
-                    duckdb_destroy_prepare(&mut p)
-                }));
-                let rc = duckdb_prepare_extracted_statement(
-                    connection,
-                    *statements,
-                    i,
-                    &mut *prepared.statement,
-                );
-                if rc != duckdb_state_DuckDBSuccess {
-                    send_value!(
-                        tx,
-                        Err(Error::msg(
-                            error_message_from_ptr(&duckdb_prepare_error(prepared.statement()))
-                                .to_string(),
-                        ))
-                    );
-                    return;
-                }
-                Self::do_run_prepared(prepared.statement(), tx.clone());
-            }
-        }
-    }
-
-    pub(crate) fn do_run_prepared(
-        prepared: duckdb_prepared_statement,
-        tx: Sender<Result<QueryResult>>,
-    ) {
-        let tx2 = tx.clone();
-        Self::do_run(
-            |result| unsafe {
-                let rc = duckdb_execute_prepared_streaming(prepared, result);
-                if rc != duckdb_state_DuckDBSuccess {
-                    send_value!(
-                        tx2,
-                        Err(Error::msg(
-                            error_message_from_ptr(&duckdb_result_error(result)).to_string(),
-                        ))
-                    );
-                }
-                rc
-            },
-            tx,
-        );
-    }
-
-    pub(crate) fn extract_result(result: *mut duckdb_result, tx: Sender<Result<QueryResult>>) {
-        unsafe {
-            let is_streaming = duckdb_result_is_streaming(*result);
-            loop {
-                let chunk = CBox::new(
-                    if is_streaming {
-                        duckdb_stream_fetch_chunk(*result)
-                    } else {
-                        duckdb_fetch_chunk(*result)
-                    },
-                    |mut v| duckdb_destroy_data_chunk(&mut v),
-                );
-                if chunk.is_null() {
-                    return;
-                }
-                let rows = duckdb_data_chunk_get_size(*chunk);
-                let cols = duckdb_data_chunk_get_column_count(*chunk);
-                let info = (0..cols)
-                    .map(|i| {
-                        let vector = duckdb_data_chunk_get_vector(*chunk, i);
-                        let logical_type =
-                            CBox::new(duckdb_vector_get_column_type(vector), |mut l| {
-                                duckdb_destroy_logical_type(&mut l)
-                            });
-                        let type_id = duckdb_get_type_id(*logical_type);
-                        let data = duckdb_vector_get_data(vector);
-                        let validity = duckdb_vector_get_validity(vector);
-                        let name = CStr::from_ptr(duckdb_column_name(&mut *result, i))
-                            .to_str()
-                            .unwrap();
-                        (vector, logical_type, type_id, data, validity, name)
-                    })
-                    .collect::<Box<[_]>>();
-                let names = info
-                    .iter()
-                    .map(|v| v.5.to_string())
-                    .collect::<Arc<[String]>>();
-                for row in 0..rows {
-                    let columns = (0..cols).map(|col| {
-                        let col = col as usize;
-                        let info = &info[col];
-                        Ok(extract_value(
-                            info.0,
-                            row as usize,
-                            *info.1,
-                            info.2,
-                            info.3,
-                            info.4,
-                        )?)
-                    });
-                    match columns.collect::<Result<_>>() {
-                        Ok(values) => {
-                            let row = Row::new(names.clone(), values);
-                            send_value!(tx, Ok(QueryResult::Row(row)));
-                        }
-                        Err(e) => {
-                            send_value!(tx, Err(e));
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
-impl Debug for DuckDBConnection {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DuckDBConnection")
-            .field("connection", &self.connection)
-            .finish()
+impl Connection for DuckDBConnection {
+    async fn connect(driver: &DuckDBDriver, url: Cow<'static, str>) -> Result<Self> {
+        let url = Self::sanitize_url(driver, url)?;
+        let make_context = || {
+            format!(
+                "While trying to connect to DuckDB {}",
+                describe_path::<DuckDBDriver>(&url)
+            )
+        };
+        let mut config: CBox<duckdb_config> = CBox::new(ptr::null_mut(), |mut p| unsafe {
+            duckdb_destroy_config(&mut p)
+        });
+        unsafe {
+            let rc = duckdb_create_config(&mut *config);
+            if rc != duckdb_state_DuckDBSuccess {
+                let error =
+                    anyhow!("Cannot allocate the duckdb_config object").context(make_context());
+                log::error!("{error:#}");
+                return Err(error);
+            }
+        };
+        let mut path = CString::from_str(&format!(
+            "{}{}",
+            url.host_str()
+                .map_or(Default::default(), |host| format!("{host}/")),
+            url.path()
+        ))
+        .with_context(make_context)?;
+        for (key, value) in url.query_pairs() {
+            let rc = unsafe {
+                match &*key {
+                    "mode" => {
+                        if value == "memory" {
+                            path = CString::from_str(":memory:")?;
+                            continue;
+                        }
+                        duckdb_set_config(
+                            *config,
+                            c"access_mode".as_ptr(),
+                            match &*value {
+                                "ro" => c"READ_ONLY",
+                                "rw" | "rwc" => c"READ_WRITE",
+                                _ => {
+                                    let error = anyhow!("Unknown value {value:?} for `mode`, expected one of: `ro`, `rw`, `rwc`, `memory`");
+                                    log::warn!("{error:#}");
+                                    return Err(error);
+                                }
+                            }
+                            .as_ptr(),
+                        )
+                    }
+                    _ => duckdb_set_config(
+                        *config,
+                        as_c_string(&*key).as_ptr(),
+                        as_c_string(&*value).as_ptr(),
+                    ),
+                }
+            };
+            if rc != duckdb_state_DuckDBSuccess {
+                let error = anyhow!("Error while setting config `{key}={value}`");
+                log::warn!("{error:#}");
+                return Err(error);
+            }
+        }
+        let mut database: duckdb_database = ptr::null_mut();
+        let mut connection;
+        let mut error: CBox<*mut c_char> = CBox::new(ptr::null_mut(), |p| unsafe {
+            duckdb_free(p as *mut c_void)
+        });
+        let db_cache = Self::database_cache().load(Ordering::Relaxed);
+        unsafe {
+            let rc = duckdb_get_or_create_from_cache(
+                db_cache,
+                path.as_ptr(),
+                &mut database,
+                *config,
+                &mut *error,
+            );
+            if rc != duckdb_state_DuckDBSuccess {
+                let error = CStr::from_ptr(*error)
+                    .to_str()
+                    .context("While reading the error from `duckdb_get_or_create_from_cache`")?
+                    .to_owned();
+                return Err(Error::msg(error));
+            };
+            connection = CBox::new(ptr::null_mut(), |mut p| duckdb_disconnect(&mut p));
+            let rc = duckdb_connect(database, &mut *connection);
+            if rc != duckdb_state_DuckDBSuccess {
+                let error = anyhow!("Failed to connect to database url `{url}`");
+                log::error!("{error:#}");
+                return Err(error);
+            };
+        };
+        Ok(DuckDBConnection { connection })
+    }
+
+    fn begin(&mut self) -> impl Future<Output = Result<DuckDBTransaction<'_>>> + Send {
+        DuckDBTransaction::new(self)
     }
 }
 
 impl Executor for DuckDBConnection {
     type Driver = DuckDBDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<DuckDBDriver>> {
+    async fn do_prepare(&mut self, RawQuery { sql, .. }: RawQuery) -> Result<Query<DuckDBDriver>> {
         let connection = AtomicPtr::new(*self.connection);
-        let context = format!("While preparing the query:\n{}", truncate_long!(sql));
         let prepared = spawn_blocking(move || unsafe {
+            let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
             let mut prepared = CBox::new(ptr::null_mut(), |mut p| duckdb_destroy_prepare(&mut p));
             let sql = match CString::new(sql.as_bytes()) {
                 Ok(sql) => sql,
                 Err(e) => {
                     let error = Error::new(e)
-                        .context("Could not create a CString from the query String")
-                        .context(context);
+                        .context("Could convert `String` to `CString`")
+                        .context(make_context());
                     log::error!("{error:#}");
                     return Err(error);
                 }
@@ -251,7 +177,7 @@ impl Executor for DuckDBConnection {
                 let error = Error::msg(
                     error_message_from_ptr(&duckdb_prepare_error(*prepared)).to_string(),
                 )
-                .context(context);
+                .context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
             }
@@ -264,33 +190,10 @@ impl Executor for DuckDBConnection {
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<DuckDBDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> {
-        let mut query = query.as_query();
-        let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
-        let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
-        let connection = AtomicPtr::new(*self.connection);
-        let mut owned = mem::take(query.as_mut());
-        let join = spawn_blocking(move || {
-            match &mut owned {
-                Query::Raw(RawQuery(sql)) => {
-                    let str = unsafe { CString::from_vec_unchecked(mem::take(sql).into_bytes()) };
-                    Self::do_run_unprepared(connection.load(Ordering::Relaxed), str.as_c_str(), tx);
-                    *sql = unsafe { String::from_utf8_unchecked(str.into_bytes()) }
-                }
-                Query::Prepared(query) => Self::do_run_prepared(query.statement(), tx),
-            }
-            owned
-        });
-        try_stream! {
-            while let Ok(result) = rx.recv_async().await {
-                yield result.map_err(|e| {
-                    let error = e.context(context.clone());
-                    log::error!("{error:#}");
-                    error
-                })?;
-            }
-            *query.as_mut() = mem::take(&mut join.await?);
-            query.as_mut().clear_bindings().context(context)?;
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
+        match Statements::new(self, query.as_query()) {
+            Ok(statements) => Either::Left(stream::iter(statements)),
+            Err(error) => Either::Right(stream::once(std::future::ready(Err(error)))),
         }
     }
 
@@ -364,14 +267,14 @@ impl Executor for DuckDBConnection {
                         Value::Int32(Some(v), ..) => duckdb_append_int32(*appender, v),
                         Value::Int64(Some(v), ..) => duckdb_append_int64(*appender, v),
                         Value::Int128(Some(v), ..) => {
-                            duckdb_append_hugeint(*appender, i128_to_duckdb_hugeint(v))
+                            duckdb_append_hugeint(*appender, i128_to_duckdb_hugeint(*v))
                         }
                         Value::UInt8(Some(v), ..) => duckdb_append_uint8(*appender, v),
                         Value::UInt16(Some(v), ..) => duckdb_append_uint16(*appender, v),
                         Value::UInt32(Some(v), ..) => duckdb_append_uint32(*appender, v),
                         Value::UInt64(Some(v), ..) => duckdb_append_uint64(*appender, v),
                         Value::UInt128(Some(v), ..) => {
-                            duckdb_append_uhugeint(*appender, u128_to_duckdb_uhugeint(v))
+                            duckdb_append_uhugeint(*appender, u128_to_duckdb_uhugeint(*v))
                         }
                         Value::Float32(Some(v), ..) => duckdb_append_float(*appender, v),
                         Value::Float64(Some(v), ..) => duckdb_append_double(*appender, v),
@@ -419,44 +322,32 @@ impl Executor for DuckDBConnection {
                             *appender,
                             duckdb_create_uuid(u128_to_duckdb_uhugeint(v.as_u128())),
                         ),
-                        Value::List(Some(ref v), ty) => {
-                            let logical_type = tank_value_to_duckdb_logical_type(&ty);
+                        Value::List(Some(ref v), ref ty) | Value::Array(Some(ref v), ref ty) => {
+                            let logical_type = tank_value_to_duckdb_logical_type(&ty.element);
                             let values = v
                                 .iter()
                                 .map(|v| tank_value_to_duckdb_value(v))
                                 .collect::<Vec<_>>();
                             let mut values = values.iter().map(|v| **v).collect::<Vec<_>>();
+                            let is_array = matches!(value, Value::Array(..));
                             let value = CBox::new(
-                                duckdb_create_list_value(
-                                    *logical_type,
-                                    values.as_mut_ptr(),
-                                    v.len() as u64,
-                                ),
+                                if is_array {
+                                    duckdb_create_array_value(
+                                        *logical_type,
+                                        values.as_mut_ptr(),
+                                        ty.len as u64,
+                                    )
+                                } else {
+                                    duckdb_create_list_value(
+                                        *logical_type,
+                                        values.as_mut_ptr(),
+                                        v.len() as u64,
+                                    )
+                                },
                                 |mut p| duckdb_destroy_value(&mut p),
                             );
                             if value.is_null() {
-                                let error = anyhow!("Could not create list value");
-                                log::error!("{error:#}");
-                                return Err(error);
-                            }
-                            duckdb_append_value(*appender, *value)
-                        }
-                        Value::Array(Some(ref v), ty, len) => {
-                            let logical_type = tank_value_to_duckdb_logical_type(&*ty);
-                            let values = v
-                                .iter()
-                                .map(|v| tank_value_to_duckdb_value(v))
-                                .collect::<Vec<_>>();
-                            let value = CBox::new(
-                                duckdb_create_array_value(
-                                    *logical_type,
-                                    values.iter().map(|v| **v).collect::<Vec<_>>().as_mut_ptr(),
-                                    len as u64,
-                                ),
-                                |mut p| duckdb_destroy_value(&mut p),
-                            );
-                            if value.is_null() {
-                                let error = anyhow!("Could not create array value");
+                                let error = anyhow!("Could not create collection value");
                                 log::error!("{error:#}");
                                 return Err(error);
                             }
@@ -544,97 +435,10 @@ impl Executor for DuckDBConnection {
     }
 }
 
-impl Connection for DuckDBConnection {
-    async fn connect(driver: &DuckDBDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = "While trying to connect to DuckDB";
-        let url = Self::sanitize_url(driver, url).context(context)?;
-        let mut config: CBox<duckdb_config> = CBox::new(ptr::null_mut(), |mut p| unsafe {
-            duckdb_destroy_config(&mut p)
-        });
-        unsafe {
-            let rc = duckdb_create_config(&mut *config);
-            if rc != duckdb_state_DuckDBSuccess {
-                let error = anyhow!("Cannot allocate the duckdb_config object").context(context);
-                log::error!("{error:#}");
-                return Err(error);
-            }
-        };
-        let mut path = CString::from_str(&format!(
-            "{}{}",
-            url.host_str()
-                .map_or(Default::default(), |host| format!("{host}/")),
-            url.path()
-        ))
-        .context(context)?;
-        for (key, value) in url.query_pairs() {
-            let rc = unsafe {
-                match &*key {
-                    "mode" => {
-                        if value == "memory" {
-                            path = CString::from_str(":memory:")?;
-                            continue;
-                        }
-                        duckdb_set_config(
-                            *config,
-                            c"access_mode".as_ptr(),
-                            match &*value {
-                                "ro" => c"READ_ONLY",
-                                "rw" | "rwc" => c"READ_WRITE",
-                                _ => {
-                                    let error = anyhow!("Unknown value {value:?} for `mode`, expected one of: `ro`, `rw`, `rwc`, `memory`");
-                                    log::warn!("{error:#}");
-                                    return Err(error);
-                                }
-                            }
-                            .as_ptr(),
-                        )
-                    }
-                    _ => duckdb_set_config(
-                        *config,
-                        as_c_string(&*key).as_ptr(),
-                        as_c_string(&*value).as_ptr(),
-                    ),
-                }
-            };
-            if rc != duckdb_state_DuckDBSuccess {
-                let error = anyhow!("Error while setting config `{key}={value}`");
-                log::warn!("{error:#}");
-                return Err(error);
-            }
-        }
-        let mut database: duckdb_database = ptr::null_mut();
-        let mut connection;
-        let mut error: CBox<*mut c_char> = CBox::new(ptr::null_mut(), |p| unsafe {
-            duckdb_free(p as *mut c_void)
-        });
-        let db_cache = Self::database_cache().load(Ordering::Relaxed);
-        unsafe {
-            let rc = duckdb_get_or_create_from_cache(
-                db_cache,
-                path.as_ptr(),
-                &mut database,
-                *config,
-                &mut *error,
-            );
-            if rc != duckdb_state_DuckDBSuccess {
-                let error = CStr::from_ptr(*error)
-                    .to_str()
-                    .context("While reading the error from `duckdb_get_or_create_from_cache`")?
-                    .to_owned();
-                return Err(Error::msg(error));
-            };
-            connection = CBox::new(ptr::null_mut(), |mut p| duckdb_disconnect(&mut p));
-            let rc = duckdb_connect(database, &mut *connection);
-            if rc != duckdb_state_DuckDBSuccess {
-                let error = anyhow!("Failed to connect to database url `{url}`");
-                log::error!("{error:#}");
-                return Err(error);
-            };
-        };
-        Ok(DuckDBConnection { connection })
-    }
-
-    fn begin(&mut self) -> impl Future<Output = Result<DuckDBTransaction<'_>>> + Send {
-        DuckDBTransaction::new(self)
+impl Debug for DuckDBConnection {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DuckDBConnection")
+            .field("connection", &self.connection)
+            .finish()
     }
 }

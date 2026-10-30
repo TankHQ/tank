@@ -17,30 +17,35 @@ pub struct CustomValues {
 }
 pub struct FpCategoryWrap(pub FpCategory);
 impl AsValue for FpCategoryWrap {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> tank::ValueOwned {
         Value::Varchar(None)
     }
-    fn as_value(self) -> Value {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         format!("{:?}", self.0).as_value()
     }
 
-    fn try_from_value(value: Value) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        let error = anyhow!("Could not conver `{value:?}` to FpCategory");
-        let Ok(Value::Varchar(Some(value), ..)) = &value.try_as(&Value::Varchar(None)) else {
-            return Err(error);
+        let Ok(Value::Varchar(Some(value), ..)) = value.as_value().try_as(&Value::Varchar(None))
+        else {
+            return Err(anyhow!(
+                "Could not convert value into FpCategory (expected a Value::Varchar)"
+            ));
         };
-        Ok(match value.as_ref() {
-            "Nan" => FpCategory::Nan,
-            "Infinite" => FpCategory::Infinite,
-            "Zero" => FpCategory::Zero,
-            "Subnormal" => FpCategory::Subnormal,
-            "Normal" => FpCategory::Normal,
-            _ => return Err(error),
+        match value.as_ref() {
+            "Nan" => Ok(FpCategory::Nan),
+            "Infinite" => Ok(FpCategory::Infinite),
+            "Zero" => Ok(FpCategory::Zero),
+            "Subnormal" => Ok(FpCategory::Subnormal),
+            "Normal" => Ok(FpCategory::Normal),
+            other => Err(anyhow!("Could not convert `{other}` to FpCategory")),
         }
-        .into())
+        .map(Into::into)
     }
 }
 impl From<FpCategory> for FpCategoryWrap {

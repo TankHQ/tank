@@ -1,81 +1,77 @@
-use crate::{
-    PostgresConnection, PostgresDriver, PostgresPrepared, ValueWrap,
-    util::stream_postgres_row_to_tank_row,
-};
+use crate::{PostgresConnection, PostgresDriver};
+use std::future::Future;
 use tank_core::{
-    AsQuery, Error, Executor, Query, QueryResult, RawQuery, Result, Transaction,
-    future::{Either, TryFutureExt},
-    stream::{Stream, TryStreamExt},
+    AsQuery, Error, Executor, Query, QueryResult, RawQuery, Result, Row, Transaction,
+    stream::Stream,
 };
+use wtx::database::DbClient as _;
 
 /// Postgres transaction.
-pub struct PostgresTransaction<'c>(pub(crate) tokio_postgres::Transaction<'c>);
+///
+/// `wtx` has no dedicated transaction object, so this holds a mutable borrow of
+/// the connection and issues `BEGIN`/`COMMIT`/`ROLLBACK` explicitly.
+pub struct PostgresTransaction<'c> {
+    pub(crate) connection: &'c mut PostgresConnection,
+}
 
 impl<'c> PostgresTransaction<'c> {
-    pub async fn new(client: &'c mut PostgresConnection) -> Result<Self> {
-        Ok(Self(client.client.transaction().await.map_err(|e| {
-            log::error!("{e:#}");
-            e
-        })?))
+    pub(crate) async fn new(connection: &'c mut PostgresConnection) -> Result<Self> {
+        connection
+            .client
+            .execute_ignored("BEGIN")
+            .await
+            .map_err(Error::new)?;
+        Ok(Self { connection })
     }
 }
 
 impl<'c> Executor for PostgresTransaction<'c> {
     type Driver = PostgresDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<PostgresDriver>> {
-        Ok(
-            PostgresPrepared::new(self.0.prepare(&sql).await.map_err(|e| {
-                let error = Error::new(e);
-                log::error!("{error:#}");
-                error
-            })?)
-            .into(),
-        )
+    fn accepts_multiple_statements(&self) -> bool {
+        false
     }
+
+    fn do_prepare(
+        &mut self,
+        raw: RawQuery,
+    ) -> impl Future<Output = Result<Query<PostgresDriver>>> + Send {
+        self.connection.do_prepare(raw)
+    }
+
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<PostgresDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
-        let mut query = query.as_query();
-        stream_postgres_row_to_tank_row(async move || match query.as_mut() {
-            Query::Raw(RawQuery(sql)) => {
-                let stream = self
-                    .0
-                    .query_raw(sql.as_str(), Vec::<ValueWrap>::new())
-                    .await?;
-                Ok(Either::Left(stream))
-            }
-            Query::Prepared(prepared) => {
-                let params = prepared.take_params();
-                let portal = self
-                    .0
-                    .bind_raw(&prepared.statement, params.into_iter())
-                    .await?;
-                Ok(Either::Right(self.0.query_portal_raw(&portal, 0).await?))
-            }
-        })
-        .map_err(|e| {
-            log::error!("{e:#}");
-            e
-        })
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
+        self.connection.run(query)
+    }
+
+    fn fetch<'s>(
+        &'s mut self,
+        query: impl AsQuery<PostgresDriver> + 's,
+    ) -> impl Stream<Item = Result<impl Row + 's>> + Send {
+        self.connection.fetch(query)
     }
 }
 
 impl<'c> Transaction<'c> for PostgresTransaction<'c> {
     fn commit(self) -> impl Future<Output = Result<()>> + Send {
-        self.0.commit().map_err(|e| {
-            let error = Error::new(e);
-            log::error!("{error:#}");
-            error
-        })
+        async move {
+            self.connection
+                .client
+                .execute_ignored("COMMIT")
+                .await
+                .map_err(Error::new)
+        }
     }
 
     fn rollback(self) -> impl Future<Output = Result<()>> + Send {
-        self.0.rollback().map_err(|e| {
-            let error = Error::new(e);
-            log::error!("{error:#}");
-            error
-        })
+        async move {
+            self.connection
+                .client
+                .execute_ignored("ROLLBACK")
+                .await
+                .map_err(Error::new)
+        }
     }
 }

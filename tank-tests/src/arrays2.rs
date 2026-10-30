@@ -19,6 +19,8 @@ struct Container {
 
 pub async fn arrays2(executor: &mut impl Executor) {
     let _ = MUTEX.lock().await;
+    #[cfg(feature = "disable-multiple-statements")]
+    let _ = executor;
 
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
@@ -47,16 +49,18 @@ pub async fn arrays2(executor: &mut impl Executor) {
                 .where_expr(true)
                 .limit(Some(1)),
         );
-        let rows = pin!(executor.run(query).try_filter_map(|v| async move {
-            Ok(match v {
+        let rows = executor
+            .run(query)
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter_map(|v| match v {
                 QueryResult::Row(v) => Some(v),
                 QueryResult::Affected(..) => None,
             })
-        }));
-        let rows = rows
-            .map(|v| v.and_then(Container::from_row))
-            .try_collect::<Vec<_>>()
-            .await
+            .map(Container::from_row)
+            .collect::<tank::Result<Vec<_>>>()
             .expect("Coult not execute the query");
         assert_eq!(
             rows,

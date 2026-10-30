@@ -6,11 +6,11 @@ use crate::{
 use anyhow::anyhow;
 use async_stream::try_stream;
 use mongodb::{Client, ClientSession, Collection, Database, bson::Bson};
-use std::{borrow::Cow, future, i64};
+use std::{borrow::Cow, future};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, RowsAffected,
-    TableRef,
-    stream::{Stream, TryStreamExt},
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, Row,
+    RowsAffected, TableRef, describe_url,
+    stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
 
@@ -59,13 +59,20 @@ impl MongoDBConnection {
 
 impl Connection for MongoDBConnection {
     async fn connect(driver: &MongoDBDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = "While trying to connect to MongoDB";
-        let url = Self::sanitize_url(driver, url).context(context)?;
-        let client = Client::with_uri_str(&url).await.context(context)?;
+        let url = Self::sanitize_url(driver, url)?;
+        let make_context = || {
+            format!(
+                "While trying to connect to MongoDB {}",
+                describe_url::<MongoDBDriver>(&url)
+            )
+        };
+        let client = Client::with_uri_str(&url)
+            .await
+            .with_context(make_context)?;
         let database = client.database(match url.path_segments().and_then(|mut v| v.next()) {
             Some(v) if !v.is_empty() => v,
             _ => {
-                let error = anyhow!("Empty database name").context(context);
+                let error = anyhow!("Empty database name").context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
             }
@@ -90,9 +97,13 @@ impl Connection for MongoDBConnection {
 impl Executor for MongoDBConnection {
     type Driver = MongoDBDriver;
 
+    fn accepts_multiple_statements(&self) -> bool {
+        false
+    }
+
     fn do_prepare(
         &mut self,
-        _query: String,
+        _query: RawQuery,
     ) -> impl Future<Output = Result<Query<MongoDBDriver>>> + Send {
         future::ready(Err(anyhow!("MongoDB does not support prepare")))
     }
@@ -100,12 +111,12 @@ impl Executor for MongoDBConnection {
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<MongoDBDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
         macro_rules! make_context {
             ($query:expr) => {
                 format!(
                     "While running the query:\n{}",
-                    truncate_long!(format!("{:?}", $query), true)
+                    truncate_long!(format!("{:?}", $query), true) // TODO try to print the query directly
                 )
             };
         }
@@ -140,7 +151,7 @@ impl Executor for MongoDBConnection {
                     }
                     match operation.await {
                         Ok(Some(v)) => {
-                            yield QueryResult::Row(v.0.into_owned())
+                            yield QueryResult::Row(v.0.into_owned());
                         }
                         Ok(None) => {}
                         Err(e) => {
@@ -311,6 +322,7 @@ impl Executor for MongoDBConnection {
                         operation = operation.session(session);
                     }
                     operation.await.with_context(|| make_context!(payload))?;
+                    yield QueryResult::Affected(RowsAffected::default());
                 }
 
                 Payload::DropCollection(DropCollectionPayload { table, .. }) => {
@@ -320,10 +332,12 @@ impl Executor for MongoDBConnection {
                         operation = operation.session(session);
                     }
                     operation.await.with_context(|| make_context!(payload))?;
+                    yield QueryResult::Affected(RowsAffected::default());
                 }
 
                 Payload::CreateDatabase(..) => {
                     // No database creating needed (it is created automatically)
+                    yield QueryResult::Affected(RowsAffected::default());
                 }
 
                 Payload::DropDatabase(DropDatabasePayload { table, .. }) => {
@@ -333,6 +347,7 @@ impl Executor for MongoDBConnection {
                         operation = operation.session(session);
                     }
                     operation.await.with_context(|| make_context!(payload))?;
+                    yield QueryResult::Affected(RowsAffected::default());
                 }
 
                 Payload::Aggregate(AggregatePayload {
@@ -422,5 +437,7 @@ impl Executor for MongoDBConnection {
             log::error!("{e:#}");
             e
         })
+        // Heap-allocate the 12-arm MongoDB generator so callers in unoptimized builds do not overflow the stack.
+        .boxed()
     }
 }

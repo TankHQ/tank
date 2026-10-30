@@ -1,11 +1,11 @@
 #![allow(unused_imports)]
 use crate::silent_logs;
-use core::f64;
 use rust_decimal::Decimal;
 use std::{pin::pin, sync::LazyLock};
 use tank::{
     Driver, DynQuery, Entity, Executor, FixedDecimal, Interval, QueryBuilder, QueryResult,
-    RawQuery, RowsAffected, SqlWriter, expr, stream::StreamExt,
+    RawQuery, RowsAffected, SqlWriter, expr,
+    stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, Time};
 use tokio::sync::Mutex;
@@ -176,7 +176,11 @@ pub async fn limits(executor: &mut impl Executor) {
         float64: f64::MAX,
         time: Time::from_hms_micro(23, 59, 59, 999_999)
             .expect("Close to midnight time must be correct"),
+        #[cfg(not(feature = "disable-large-dates"))]
         date: Date::from_calendar_date(9999, Month::December, 31)
+            .expect("Very old date must be correct"),
+        #[cfg(feature = "disable-large-dates")]
+        date: Date::from_calendar_date(2149, Month::June, 6)
             .expect("Very old date must be correct"),
         #[cfg(not(feature = "disable-large-decimals"))]
         decimal: FixedDecimal::from(decimal("79228162514264337593.543950335")),
@@ -230,9 +234,15 @@ pub async fn limits(executor: &mut impl Executor) {
         (loaded.time - Time::from_hms_micro(23, 59, 59, 999_999).unwrap()).abs()
             < time::Duration::milliseconds(1),
     );
+    #[cfg(not(feature = "disable-large-dates"))]
     assert_eq!(
         loaded.date,
         Date::from_calendar_date(9999, Month::December, 31).unwrap()
+    );
+    #[cfg(feature = "disable-large-dates")]
+    assert_eq!(
+        loaded.date,
+        Date::from_calendar_date(2149, Month::June, 6).unwrap()
     );
     #[cfg(not(feature = "disable-large-decimals"))]
     assert_eq!(loaded.decimal.0, decimal("79228162514264337593.543950335"));
@@ -386,6 +396,7 @@ pub async fn limits(executor: &mut impl Executor) {
         let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
             panic!("Could not get the row of the third statement");
         };
+        assert!(stream.next().await.is_none());
         let loaded = Limits::from_row(row).expect("Could not decode the Limits from maximals row");
         assert_eq!(loaded.boolean, true);
         assert_eq!(loaded.int8, 127);

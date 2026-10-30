@@ -24,28 +24,31 @@ impl HostPort {
 }
 
 impl AsValue for HostPort {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> tank::ValueOwned {
         Value::Varchar(None)
     }
 
-    fn as_value(self) -> Value {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Varchar(Some(format!("{}:{}", self.host, self.port).into()))
     }
 
-    fn try_from_value(value: Value) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
         // Always call try_as before checking the received value
-        match value.try_as(&Value::Varchar(None)) {
+        match value.as_value().try_as(&Value::Varchar(None)) {
             Ok(Value::Varchar(Some(v))) => {
-                let context = || anyhow!("Failed to parse HostPort from value `{v}`");
-                let (host, port) = v.split_once(':').ok_or_else(context)?;
+                let make_context = || anyhow!("Failed to parse HostPort from value `{v}`");
+                let (host, port) = v.split_once(':').ok_or_else(make_context)?;
                 Ok(Self {
                     host: host.to_string(),
                     port: port
                         .parse::<u16>()
-                        .map_err(|e| Error::new(e).context(context()))?,
+                        .map_err(|e| Error::new(e).context(make_context()))?,
                 })
             }
             _ => Err(anyhow!(
@@ -120,8 +123,7 @@ pub async fn service(executor: &mut impl Executor) {
 
     let api_by_addr = executor
         .fetch(query)
-        .map_ok(Service::from_row)
-        .map(Result::flatten)
+        .map(|row| Service::from_row(row?))
         .try_collect::<Vec<_>>()
         .await
         .expect("Failed to query by addr");
@@ -162,8 +164,7 @@ pub async fn service(executor: &mut impl Executor) {
                     .order_by(cols!(Service::addr ASC))
                     .build(&executor.driver()),
             )
-            .map_ok(Service::from_row)
-            .map(Result::flatten)
+            .map(|row| Service::from_row(row?))
             .try_collect::<Vec<_>>()
             .await
             .expect("Failed to select ordered services");
