@@ -161,15 +161,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
         };
         if let Some(delimiter) = delimiter {
             out.push(delimiter);
-            let mut pos = 0;
-            for (i, c) in value.char_indices() {
-                if c == delimiter {
-                    out.push_str(&value[pos..i]);
-                    out.push_str(escaped);
-                    pos = i + 1;
-                }
-            }
-            out.push_str(&value[pos..]);
+            write_escaped(out, value, delimiter, escaped);
             out.push(delimiter);
         } else {
             out.push_str(value);

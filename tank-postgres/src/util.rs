@@ -1,14 +1,14 @@
 use crate::interval_wrap::IntervalWrap;
 use anyhow::anyhow;
 use fallible_iterator::FallibleIterator;
-use postgres_protocol::types::{ArrayDimension, array_from_sql};
+use postgres_protocol::types::{self, ArrayDimension, array_from_sql};
 use postgres_types::{FromSql, Kind, Type};
 use rust_decimal::Decimal;
-use std::{borrow::Cow, error::Error, mem};
+use std::{borrow::Cow, error::Error, mem, str};
 use tank_core::{CollectionType, Value, ValueOwned};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
-use wtx::database::client::postgres::Ty;
+use wtx::{database::client::postgres::Ty, misc::from_utf8_basic};
 
 /// A decode strategy for one result-set column, resolved once per statement.
 ///
@@ -18,7 +18,7 @@ use wtx::database::client::postgres::Ty;
 /// enum. The common scalar types decode straight through `postgres_protocol`,
 /// skipping both the `Type` comparison and the `FromSql` dispatch; the remaining
 /// types keep their resolved [`Type`] and go through the generic path.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum ColumnDecoder {
     Bool,
     Int8,
@@ -31,14 +31,13 @@ pub enum ColumnDecoder {
     Text,
     Bytea,
     Unknown,
-    /// Types decoded by `FromSql` with an already-resolved type.
-    Typed(Type),
-    /// Types decoded by the generic (array/range/enum/…) path.
-    Generic(Type),
+    /// Types decoded by `FromSql` or the generic (array/range/enum/…) path.
+    Other(u32),
 }
 
 impl ColumnDecoder {
     /// Resolves the decoder for a column type once per statement.
+    #[inline]
     pub(crate) fn from_ty(ty: Ty) -> Self {
         match ty {
             Ty::Bool => Self::Bool,
@@ -52,32 +51,21 @@ impl ColumnDecoder {
             Ty::Varchar | Ty::Text | Ty::Name | Ty::Bpchar | Ty::Json | Ty::Xml => Self::Text,
             Ty::Bytea => Self::Bytea,
             Ty::Unknown => Self::Unknown,
-            _ => match Type::from_oid(ty.into()).unwrap_or(Type::UNKNOWN) {
-                ty @ (Type::NUMERIC
-                | Type::DATE
-                | Type::TIME
-                | Type::TIMESTAMP
-                | Type::TIMESTAMPTZ
-                | Type::INTERVAL
-                | Type::UUID) => Self::Typed(ty),
-                ty => match ty.kind() {
-                    Kind::Pseudo | Kind::Enum(_) => Self::Unknown,
-                    _ => Self::Generic(ty),
-                },
-            },
+            other => Self::Other(other.into()),
         }
+    }
+
+    // Return `Option<Value>` instead of `Option<Cow<Value>>` so the cold call does not share
+    // `value`'s `sret` slot and block LLVM SROA, while keeping `Box<dyn Error>` out of line.
+    #[cold]
+    #[inline(never)]
+    fn fallback<'a>(&self, raw: &'a [u8]) -> Option<Value<'a>> {
+        self.decode(Some(raw)).ok()
     }
 
     /// Keeps common entity fields small enough to fuse decoding and conversion.
     #[inline(always)]
     pub(crate) fn value<'a>(&self, raw: Option<&'a [u8]>) -> Option<Cow<'a, Value<'a>>> {
-        #[cold]
-        #[inline(never)]
-        // Return `Option<Value>` instead of `Option<Cow<Value>>` so the cold call does not share
-        // `value`'s `sret` slot and block LLVM SROA, while keeping `Box<dyn Error>` out of line.
-        fn fallback<'a>(decoder: &ColumnDecoder, raw: &'a [u8]) -> Option<Value<'a>> {
-            decoder.decode(Some(raw)).ok()
-        }
         let Some(raw) = raw else {
             return Some(Cow::Owned(Value::Null));
         };
@@ -94,11 +82,11 @@ impl ColumnDecoder {
                 ]))))),
                 _ => Some(Cow::Owned(Value::Null)),
             },
-            Self::Text => match wtx::misc::from_utf8_basic(raw) {
+            Self::Text => match str::from_utf8(raw) {
                 Ok(text) => Some(Cow::Owned(Value::Varchar(Some(Cow::Borrowed(text))))),
                 Err(_) => Some(Cow::Owned(Value::Null)),
             },
-            _ => match fallback(self, raw) {
+            _ => match self.fallback(raw) {
                 Some(v) => Some(Cow::Owned(v)),
                 None => Some(Cow::Owned(Value::Null)),
             },
@@ -110,7 +98,6 @@ impl ColumnDecoder {
         &self,
         raw: Option<&'a [u8]>,
     ) -> Result<Value<'a>, Box<dyn Error + Sync + Send>> {
-        use postgres_protocol::types;
         Ok(match self {
             Self::Bool => Value::Boolean(match raw {
                 Some(raw) => Some(types::bool_from_sql(raw)?),
@@ -146,7 +133,7 @@ impl ColumnDecoder {
             }),
             Self::Text => match raw {
                 Some(raw) => Value::Varchar(Some(Cow::Borrowed(
-                    wtx::misc::from_utf8_basic(raw).or_else(|_| types::text_from_sql(raw))?,
+                    from_utf8_basic(raw).or_else(|_| types::text_from_sql(raw))?,
                 ))),
                 None => Value::Varchar(None),
             },
@@ -156,140 +143,147 @@ impl ColumnDecoder {
             },
             Self::Unknown => match raw {
                 Some(raw) => Value::Unknown(Some(Cow::Borrowed(
-                    wtx::misc::from_utf8_basic(raw).or_else(|_| types::text_from_sql(raw))?,
+                    from_utf8_basic(raw).or_else(|_| types::text_from_sql(raw))?,
                 ))),
                 None => Value::Unknown(None),
             },
-            Self::Typed(ty) | Self::Generic(ty) => return extract_value_pg(ty, raw),
+            Self::Other(oid) => {
+                let ty = Type::from_oid(*oid).unwrap_or(Type::UNKNOWN);
+                return Self::extract_value_pg(&ty, raw);
+            }
         })
     }
-}
 
-fn extract_value_pg<'a>(
-    ty: &Type,
-    raw: Option<&'a [u8]>,
-) -> Result<Value<'a>, Box<dyn Error + Sync + Send>> {
-    fn convert<'a, T: FromSql<'a>>(
+    fn extract_value_pg<'a>(
         ty: &Type,
         raw: Option<&'a [u8]>,
-    ) -> Result<Option<T>, Box<dyn Error + Sync + Send>> {
-        Ok(match raw {
-            Some(raw) => Some(T::from_sql(ty, raw)?),
-            None => None,
-        })
-    }
-    let kind = ty.kind();
-    Ok(match kind {
-        Kind::Simple => match *ty {
-            Type::BOOL => Value::Boolean(convert::<bool>(ty, raw)?),
-            Type::CHAR => Value::Int8(convert::<i8>(ty, raw)?),
-            Type::INT2 => Value::Int16(convert::<i16>(ty, raw)?),
-            Type::INT4 => Value::Int32(convert::<i32>(ty, raw)?),
-            Type::INT8 => Value::Int64(convert::<i64>(ty, raw)?),
-            Type::FLOAT4 => Value::Float32(convert::<f32>(ty, raw)?),
-            Type::FLOAT8 => Value::Float64(convert::<f64>(ty, raw)?),
-            Type::NUMERIC => Value::Decimal(convert::<Decimal>(ty, raw)?, 0, 0),
-            Type::OID => Value::UInt32(convert::<u32>(ty, raw)?),
-            Type::VARCHAR | Type::TEXT | Type::NAME | Type::BPCHAR | Type::JSON | Type::XML => {
-                // Borrow the UTF-8 payload directly from the driver buffer.
-                match raw {
-                    Some(raw) => match std::str::from_utf8(raw) {
-                        Ok(s) => Value::Varchar(Some(Cow::Borrowed(s))),
-                        Err(_) => Value::Varchar(convert::<String>(ty, Some(raw))?.map(Into::into)),
+    ) -> Result<Value<'a>, Box<dyn Error + Sync + Send>> {
+        fn convert<'a, T: FromSql<'a>>(
+            ty: &Type,
+            raw: Option<&'a [u8]>,
+        ) -> Result<Option<T>, Box<dyn Error + Sync + Send>> {
+            Ok(match raw {
+                Some(raw) => Some(T::from_sql(ty, raw)?),
+                None => None,
+            })
+        }
+        let kind = ty.kind();
+        Ok(match kind {
+            Kind::Simple => match *ty {
+                Type::BOOL => Value::Boolean(convert::<bool>(ty, raw)?),
+                Type::CHAR => Value::Int8(convert::<i8>(ty, raw)?),
+                Type::INT2 => Value::Int16(convert::<i16>(ty, raw)?),
+                Type::INT4 => Value::Int32(convert::<i32>(ty, raw)?),
+                Type::INT8 => Value::Int64(convert::<i64>(ty, raw)?),
+                Type::FLOAT4 => Value::Float32(convert::<f32>(ty, raw)?),
+                Type::FLOAT8 => Value::Float64(convert::<f64>(ty, raw)?),
+                Type::NUMERIC => Value::Decimal(convert::<Decimal>(ty, raw)?, 0, 0),
+                Type::OID => Value::UInt32(convert::<u32>(ty, raw)?),
+                Type::VARCHAR | Type::TEXT | Type::NAME | Type::BPCHAR | Type::JSON | Type::XML => {
+                    // Borrow the UTF-8 payload directly from the driver buffer.
+                    match raw {
+                        Some(raw) => match str::from_utf8(raw) {
+                            Ok(s) => Value::Varchar(Some(Cow::Borrowed(s))),
+                            Err(_) => {
+                                Value::Varchar(convert::<String>(ty, Some(raw))?.map(Into::into))
+                            }
+                        },
+                        None => Value::Varchar(None),
+                    }
+                }
+                Type::BYTEA => match raw {
+                    Some(raw) => Value::Blob(Some(Cow::Borrowed(raw))),
+                    None => Value::Blob(None),
+                },
+                Type::DATE => Value::Date(convert::<Date>(ty, raw)?),
+                Type::TIME => Value::Time(convert::<Time>(ty, raw)?),
+                Type::TIMESTAMP => Value::Timestamp(convert::<PrimitiveDateTime>(ty, raw)?),
+                Type::TIMESTAMPTZ => {
+                    Value::TimestampWithTimezone(convert::<OffsetDateTime>(ty, raw)?)
+                }
+                Type::INTERVAL => {
+                    Value::Interval(convert::<IntervalWrap>(ty, raw)?.map(Into::into))
+                }
+                Type::UUID => Value::Uuid(convert::<Uuid>(ty, raw)?),
+                Type::UNKNOWN => match raw {
+                    Some(raw) => match str::from_utf8(raw) {
+                        Ok(s) => Value::Unknown(Some(Cow::Borrowed(s))),
+                        Err(_) => Value::Unknown(convert::<String>(ty, Some(raw))?.map(Into::into)),
                     },
-                    None => Value::Varchar(None),
+                    None => Value::Unknown(None),
+                },
+                _ => {
+                    return Err(anyhow!("Unexpected {ty} variant for Kind::Simple").into());
+                }
+            },
+            Kind::Array(inner_ty) => {
+                let t = Self::extract_value_pg(inner_ty, None)?.into_owned();
+                if let Some(raw) = raw {
+                    let array = array_from_sql(raw)?;
+                    let dimensions = array.dimensions().collect::<Vec<_>>()?;
+                    if dimensions.is_empty() {
+                        Value::Array(
+                            Some(Vec::new().into()),
+                            Box::new(CollectionType { element: t, len: 0 }),
+                        )
+                    } else {
+                        let mut values = array
+                            .values()
+                            .map(|v| Self::extract_value_pg(inner_ty, v))
+                            .collect::<Vec<_>>()?;
+                        let mut cursor = 0;
+                        Self::build_array(&mut cursor, &mut values, &t, dimensions.iter().cloned())?
+                    }
+                } else {
+                    Value::List(None, Box::new(CollectionType { element: t, len: 0 }))
                 }
             }
-            Type::BYTEA => match raw {
-                Some(raw) => Value::Blob(Some(Cow::Borrowed(raw))),
-                None => Value::Blob(None),
-            },
-            Type::DATE => Value::Date(convert::<Date>(ty, raw)?),
-            Type::TIME => Value::Time(convert::<Time>(ty, raw)?),
-            Type::TIMESTAMP => Value::Timestamp(convert::<PrimitiveDateTime>(ty, raw)?),
-            Type::TIMESTAMPTZ => Value::TimestampWithTimezone(convert::<OffsetDateTime>(ty, raw)?),
-            Type::INTERVAL => Value::Interval(convert::<IntervalWrap>(ty, raw)?.map(Into::into)),
-            Type::UUID => Value::Uuid(convert::<Uuid>(ty, raw)?),
-            Type::UNKNOWN => match raw {
-                Some(raw) => match std::str::from_utf8(raw) {
-                    Ok(s) => Value::Unknown(Some(Cow::Borrowed(s))),
-                    Err(_) => Value::Unknown(convert::<String>(ty, Some(raw))?.map(Into::into)),
-                },
+            // Pseudo types (e.g. `unknown`, `record`) and enums have no dedicated
+            // binary decoder; surface the raw payload as an unknown value.
+            Kind::Pseudo | Kind::Enum(_) => match raw {
+                Some(raw) => Value::Unknown(Some(Cow::Borrowed(str::from_utf8(raw).unwrap_or("")))),
                 None => Value::Unknown(None),
             },
-            _ => {
-                return Err(anyhow!("Unexpected {ty} variant for Kind::Simple").into());
-            }
-        },
-        Kind::Array(inner_ty) => {
-            let t = extract_value_pg(inner_ty, None)?.into_owned();
-            if let Some(raw) = raw {
-                let array = array_from_sql(raw)?;
-                let dimensions = array.dimensions().collect::<Vec<_>>()?;
-                if dimensions.is_empty() {
-                    Value::Array(
-                        Some(Vec::new().into()),
-                        Box::new(CollectionType { element: t, len: 0 }),
-                    )
-                } else {
-                    let mut values = array
-                        .values()
-                        .map(|v| extract_value_pg(inner_ty, v))
-                        .collect::<Vec<_>>()?;
-                    let mut cursor = 0;
-                    build_array(&mut cursor, &mut values, &t, dimensions.iter().cloned())?
-                }
-            } else {
-                Value::List(None, Box::new(CollectionType { element: t, len: 0 }))
-            }
-        }
-        // Pseudo types (e.g. `unknown`, `record`) and enums have no dedicated
-        // binary decoder; surface the raw payload as an unknown value.
-        Kind::Pseudo | Kind::Enum(_) => match raw {
-            Some(raw) => {
-                Value::Unknown(Some(Cow::Borrowed(std::str::from_utf8(raw).unwrap_or(""))))
-            }
-            None => Value::Unknown(None),
-        },
-        _ => return Err(tank_core::anyhow!("Unexpected kind {kind:?}").into()),
-    })
-}
+            _ => return Err(anyhow!("Unexpected kind {kind:?}").into()),
+        })
+    }
 
-fn build_array<'a>(
-    cursor: &mut usize,
-    values: &mut Vec<Value<'a>>,
-    element_ty: &ValueOwned,
-    mut it: impl ExactSizeIterator<Item = ArrayDimension> + Clone,
-) -> Result<Value<'a>, Box<dyn Error + Sync + Send>> {
-    let dimension = it.next().expect("Must have one dimension at least");
-    let len = dimension.len as u32;
-    Ok(if it.len() == 0 {
-        let begin = *cursor;
-        let end = begin + len as usize;
-        *cursor = end;
-        Value::Array(
-            Some((begin..end).map(|i| mem::take(&mut values[i])).collect()),
-            Box::new(CollectionType {
-                element: element_ty.clone(),
-                len,
-            }),
-        )
-    } else {
-        let mut elements = Vec::with_capacity(len as usize);
-        let mut nested_t = element_ty.clone();
-        for _ in 0..len {
-            let child = build_array(cursor, values, element_ty, it.clone())?;
-            nested_t = child.as_null();
-            elements.push(child);
-        }
-        Value::Array(
-            Some(elements.into_boxed_slice()),
-            Box::new(CollectionType {
-                element: nested_t,
-                len,
-            }),
-        )
-    })
+    fn build_array<'a>(
+        cursor: &mut usize,
+        values: &mut Vec<Value<'a>>,
+        element_ty: &ValueOwned,
+        mut it: impl ExactSizeIterator<Item = ArrayDimension> + Clone,
+    ) -> Result<Value<'a>, Box<dyn Error + Sync + Send>> {
+        let dimension = it.next().expect("Must have one dimension at least");
+        let len = dimension.len as u32;
+        Ok(if it.len() == 0 {
+            let begin = *cursor;
+            let end = begin + len as usize;
+            *cursor = end;
+            Value::Array(
+                Some((begin..end).map(|i| mem::take(&mut values[i])).collect()),
+                Box::new(CollectionType {
+                    element: element_ty.clone(),
+                    len,
+                }),
+            )
+        } else {
+            let mut elements = Vec::with_capacity(len as usize);
+            let mut nested_t = element_ty.clone();
+            for _ in 0..len {
+                let child = Self::build_array(cursor, values, element_ty, it.clone())?;
+                nested_t = child.as_null();
+                elements.push(child);
+            }
+            Value::Array(
+                Some(elements.into_boxed_slice()),
+                Box::new(CollectionType {
+                    element: nested_t,
+                    len,
+                }),
+            )
+        })
+    }
 }
 
 pub(crate) fn flatten_array<'a>(

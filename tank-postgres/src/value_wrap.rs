@@ -3,15 +3,19 @@ use crate::{
     util::{flatten_array, value_to_postgres_type},
 };
 use anyhow::anyhow;
-use bytes::{BufMut, BytesMut};
+use bytes::BytesMut;
+use core::hash::BuildHasher;
 use postgres_protocol::types::array_to_sql;
-use postgres_types::{IsNull, ToSql, Type};
+use postgres_types::{IsNull, ToSql, Type, to_sql_checked};
 use rust_decimal::{Decimal, prelude::FromPrimitive};
+use std::error::Error;
 use tank_core::{Value, ValueOwned};
 use wtx::{
     codec::Encode,
-    database::Typed,
-    database::client::postgres::{Postgres, PostgresEncodeWrapper, Ty},
+    database::{
+        StmtCmd, Typed,
+        client::postgres::{Postgres, PostgresEncodeWrapper, Ty},
+    },
 };
 
 /// A `ToSql` adapter over a borrowed tank [`Value`].
@@ -23,7 +27,7 @@ impl ToSql for ValueSql<'_> {
         &self,
         ty: &Type,
         out: &mut BytesMut,
-    ) -> Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
+    ) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
         match self.0 {
             Value::Null => None::<String>.to_sql(ty, out),
             Value::Boolean(v) => v.to_sql(ty, out),
@@ -31,12 +35,20 @@ impl ToSql for ValueSql<'_> {
             Value::Int16(v) => v.to_sql(ty, out),
             Value::Int32(v) => v.to_sql(ty, out),
             Value::Int64(v) => v.to_sql(ty, out),
-            Value::Int128(v) => v.as_deref().copied().map(Decimal::from_i128).to_sql(ty, out),
+            Value::Int128(v) => v
+                .as_deref()
+                .copied()
+                .map(Decimal::from_i128)
+                .to_sql(ty, out),
             Value::UInt8(v) => v.map(|v| v as i16).to_sql(ty, out),
             Value::UInt16(v) => v.map(|v| v as i32).to_sql(ty, out),
             Value::UInt32(v) => v.map(|v| v as i64).to_sql(ty, out),
             Value::UInt64(v) => v.map(Decimal::from_u64).to_sql(ty, out),
-            Value::UInt128(v) => v.as_deref().copied().map(Decimal::from_u128).to_sql(ty, out),
+            Value::UInt128(v) => v
+                .as_deref()
+                .copied()
+                .map(Decimal::from_u128)
+                .to_sql(ty, out),
             Value::Float32(v) => v.to_sql(ty, out),
             Value::Float64(v) => v.to_sql(ty, out),
             Value::Decimal(v, _, _) => v.to_sql(ty, out),
@@ -66,11 +78,7 @@ impl ToSql for ValueSql<'_> {
                 }
                 None => None::<Vec<ValueSql>>.to_sql(ty, out),
             },
-            _ => Err(anyhow!(
-                "Value variant `{:?}` is not supported by Postgres",
-                self.0
-            )
-            .into()),
+            _ => Err(anyhow!("Value variant `{:?}` is not supported by Postgres", self.0).into()),
         }
     }
 
@@ -78,7 +86,7 @@ impl ToSql for ValueSql<'_> {
         true
     }
 
-    postgres_types::to_sql_checked!();
+    to_sql_checked!();
 }
 
 /// A single parameter to bind, pre-encoded into the PostgreSQL binary format.
@@ -94,7 +102,7 @@ pub(crate) struct TankParam {
 }
 
 impl TankParam {
-    fn new(value: &Value<'_>) -> anyhow::Result<Self> {
+    fn new(value: &Value<'_>) -> tank_core::Result<Self> {
         let mut param = Self {
             ty: Ty::Unknown,
             is_null: true,
@@ -104,7 +112,7 @@ impl TankParam {
         Ok(param)
     }
 
-    fn encode_value(&mut self, value: &Value<'_>) -> anyhow::Result<()> {
+    fn encode_value(&mut self, value: &Value<'_>) -> tank_core::Result<()> {
         let pg_ty = value_to_postgres_type(value);
         self.bytes.clear();
         self.is_null = match ValueSql(value).to_sql(&pg_ty, &mut self.bytes) {
@@ -114,12 +122,15 @@ impl TankParam {
                 return Err(anyhow!("Could not encode parameter {value:?}: {e}"));
             }
         };
-        self.ty = ty_to_wtx(pg_ty.oid());
+        self.ty = Self::ty_to_wtx(pg_ty.oid());
         Ok(())
     }
 
     /// Encodes a list of tank values into bindable parameters.
-    pub(crate) fn encode_all(values: &[ValueOwned], params: &mut Vec<Self>) -> anyhow::Result<()> {
+    pub(crate) fn encode_all(
+        values: &[ValueOwned],
+        params: &mut Vec<Self>,
+    ) -> tank_core::Result<()> {
         params.truncate(values.len());
         for (index, value) in values.iter().enumerate() {
             if let Some(param) = params.get_mut(index) {
@@ -129,6 +140,58 @@ impl TankParam {
             }
         }
         Ok(())
+    }
+
+    /// Maps a PostgreSQL type OID to the `wtx` type enum.
+    ///
+    /// `wtx` does not publicly expose an OID → `Ty` constructor, so the common
+    /// types tank produces are listed explicitly and everything else falls back to
+    /// `Ty::Custom`, which carries the raw OID verbatim.
+    fn ty_to_wtx(oid: u32) -> Ty {
+        match oid {
+            16 => Ty::Bool,
+            17 => Ty::Bytea,
+            18 => Ty::Char,
+            19 => Ty::Name,
+            20 => Ty::Int8,
+            21 => Ty::Int2,
+            23 => Ty::Int4,
+            25 => Ty::Text,
+            26 => Ty::Oid,
+            114 => Ty::Json,
+            700 => Ty::Float4,
+            701 => Ty::Float8,
+            705 => Ty::Unknown,
+            1042 => Ty::Bpchar,
+            1043 => Ty::Varchar,
+            1082 => Ty::Date,
+            1083 => Ty::Time,
+            1114 => Ty::Timestamp,
+            1184 => Ty::Timestamptz,
+            1186 => Ty::Interval,
+            1700 => Ty::Numeric,
+            2950 => Ty::Uuid,
+            1000 => Ty::BoolArray,
+            1001 => Ty::ByteaArray,
+            1002 => Ty::CharArray,
+            1003 => Ty::NameArray,
+            1005 => Ty::Int2Array,
+            1007 => Ty::Int4Array,
+            1009 => Ty::TextArray,
+            1014 => Ty::BpcharArray,
+            1015 => Ty::VarcharArray,
+            1016 => Ty::Int8Array,
+            1021 => Ty::Float4Array,
+            1022 => Ty::Float8Array,
+            1115 => Ty::TimestampArray,
+            1182 => Ty::DateArray,
+            1183 => Ty::TimeArray,
+            1185 => Ty::TimestamptzArray,
+            1187 => Ty::IntervalArray,
+            1231 => Ty::NumericArray,
+            2951 => Ty::UuidArray,
+            other => Ty::Custom(other),
+        }
     }
 }
 
@@ -173,17 +236,20 @@ pub(crate) struct TankStmt<'a> {
 }
 
 impl<'a> TankStmt<'a> {
+    #[inline]
     pub(crate) fn new(sql: &'a str, params: &'a [TankParam]) -> Self {
         Self { sql, params }
     }
 }
 
-impl wtx::database::StmtCmd for TankStmt<'_> {
+impl StmtCmd for TankStmt<'_> {
+    #[inline]
     fn cmd(&self) -> Option<&str> {
         Some(self.sql)
     }
 
-    fn hash(&self, hasher: &mut impl core::hash::BuildHasher) -> u64 {
+    #[inline]
+    fn hash(&self, hasher: &mut impl BuildHasher) -> u64 {
         let mut h = hasher.hash_one(self.sql);
         for param in self.params {
             let ty = u32::from(param.ty);
@@ -194,59 +260,3 @@ impl wtx::database::StmtCmd for TankStmt<'_> {
         h
     }
 }
-
-/// Maps a PostgreSQL type OID to the `wtx` type enum.
-///
-/// `wtx` does not publicly expose an OID → `Ty` constructor, so the common
-/// types tank produces are listed explicitly and everything else falls back to
-/// `Ty::Custom`, which carries the raw OID verbatim.
-fn ty_to_wtx(oid: u32) -> Ty {
-    match oid {
-        16 => Ty::Bool,
-        17 => Ty::Bytea,
-        18 => Ty::Char,
-        19 => Ty::Name,
-        20 => Ty::Int8,
-        21 => Ty::Int2,
-        23 => Ty::Int4,
-        25 => Ty::Text,
-        26 => Ty::Oid,
-        114 => Ty::Json,
-        700 => Ty::Float4,
-        701 => Ty::Float8,
-        705 => Ty::Unknown,
-        1042 => Ty::Bpchar,
-        1043 => Ty::Varchar,
-        1082 => Ty::Date,
-        1083 => Ty::Time,
-        1114 => Ty::Timestamp,
-        1184 => Ty::Timestamptz,
-        1186 => Ty::Interval,
-        1700 => Ty::Numeric,
-        2950 => Ty::Uuid,
-        1000 => Ty::BoolArray,
-        1001 => Ty::ByteaArray,
-        1002 => Ty::CharArray,
-        1003 => Ty::NameArray,
-        1005 => Ty::Int2Array,
-        1007 => Ty::Int4Array,
-        1009 => Ty::TextArray,
-        1014 => Ty::BpcharArray,
-        1015 => Ty::VarcharArray,
-        1016 => Ty::Int8Array,
-        1021 => Ty::Float4Array,
-        1022 => Ty::Float8Array,
-        1115 => Ty::TimestampArray,
-        1182 => Ty::DateArray,
-        1183 => Ty::TimeArray,
-        1185 => Ty::TimestamptzArray,
-        1187 => Ty::IntervalArray,
-        1231 => Ty::NumericArray,
-        2951 => Ty::UuidArray,
-        other => Ty::Custom(other),
-    }
-}
-
-/// Keeps `BufMut` referenced (used transitively by the `ToSql` impls).
-#[allow(dead_code)]
-fn _keep(_: &mut dyn BufMut) {}

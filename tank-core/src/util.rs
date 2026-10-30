@@ -172,16 +172,16 @@ pub fn separated_by<T, F>(
 }
 
 /// Write, escaping occurrences of `search` char with `replace` while copying into buffer.
+#[inline]
 pub fn write_escaped(out: &mut DynQuery, value: &str, search: char, replace: &str) {
-    let mut position = 0;
-    for (i, c) in value.char_indices() {
-        if c == search {
-            out.push_str(&value[position..i]);
-            out.push_str(replace);
-            position = i + c.len_utf8();
-        }
+    let mut rest = value;
+    let char_len = search.len_utf8();
+    while let Some(i) = rest.find(search) {
+        out.push_str(&rest[..i]);
+        out.push_str(replace);
+        rest = &rest[i + char_len..];
     }
-    out.push_str(&value[position..]);
+    out.push_str(rest);
 }
 
 /// Convenience wrapper converting into a `CString`.

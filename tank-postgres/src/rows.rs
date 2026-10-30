@@ -1,9 +1,11 @@
+use crate::util::ColumnDecoder;
 use std::{
     borrow::Cow,
-    fmt,
+    cmp::min,
+    fmt::{self, Debug, Formatter},
     future::Future,
     pin::Pin,
-    task::{self, Poll},
+    task::{Context, Poll},
 };
 use tank_core::{
     QueryResult, Result, Row, RowLabels, RowOwned, RowsAffected, Value, stream::Stream,
@@ -24,7 +26,7 @@ use wtx::database::client::postgres::{PostgresRecord, PostgresRecords};
 #[derive(Default, Debug)]
 pub(crate) struct PostgresScratch {
     /// Per-column decoders of the current statement, resolved once per query.
-    pub(crate) decoders: Vec<crate::util::ColumnDecoder>,
+    pub(crate) decoders: Vec<ColumnDecoder>,
     /// Labels of the current statement, reused while consecutive queries share
     /// the same column set (the common case for a prepared statement).
     pub(crate) labels: RowLabels,
@@ -36,14 +38,13 @@ impl PostgresScratch {
     where
         E: From<wtx::Error>,
     {
+        let Some(columns) = records.columns() else {
+            self.decoders.clear();
+            return;
+        };
         self.decoders.clear();
-        self.decoders.extend(
-            records
-                .columns()
-                .into_iter()
-                .flatten()
-                .map(|(_, ty)| crate::util::ColumnDecoder::from_ty(ty)),
-        );
+        self.decoders
+            .extend(columns.map(|(_, ty)| ColumnDecoder::from_ty(ty)));
         if self.decoders.len() != self.labels.len()
             || !records
                 .columns()
@@ -69,11 +70,11 @@ impl PostgresScratch {
 pub struct PostgresRow<'a> {
     record: PostgresRecord<'a, wtx::Error>,
     labels: &'a RowLabels,
-    decoders: &'a [crate::util::ColumnDecoder],
+    decoders: &'a [ColumnDecoder],
 }
 
-impl fmt::Debug for PostgresRow<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for PostgresRow<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("PostgresRow")
             .field("labels", &self.labels)
             .field("len", &self.decoders.len())
@@ -89,7 +90,7 @@ impl Row for PostgresRow<'_> {
 
     #[inline(always)]
     fn len(&self) -> usize {
-        self.decoders.len()
+        min(self.decoders.len(), self.record.len())
     }
 
     #[inline(always)]
@@ -124,15 +125,16 @@ pub struct PostgresRows<'s> {
     /// Column labels, borrowed from the connection's reusable scratch.
     labels: &'s RowLabels,
     /// Per-column decoders, borrowed from the connection's reusable scratch.
-    decoders: &'s [crate::util::ColumnDecoder],
+    decoders: &'s [ColumnDecoder],
 }
 
 impl<'s> PostgresRows<'s> {
     /// Builds a lazy single-statement view borrowing the scratch.
+    #[inline(always)]
     pub(crate) fn new(
         records: PostgresRecords<'s, wtx::Error>,
         labels: &'s RowLabels,
-        decoders: &'s [crate::util::ColumnDecoder],
+        decoders: &'s [ColumnDecoder],
     ) -> PostgresRows<'s> {
         PostgresRows {
             records,
@@ -224,6 +226,25 @@ impl<F, I> PostgresStream<F, I> {
             iter: None,
         }
     }
+
+    // Return `Poll<Result<()>>` instead of `Poll<Option<Result<T>>>` so `poll_init`
+    // has no `sret` pointer and only initializes `self.iter` once.
+    #[cold]
+    #[inline(never)]
+    fn poll_init(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>>
+    where
+        F: Future<Output = Result<I>>,
+    {
+        let Some(fut) = self.fut.as_mut() else {
+            return Poll::Ready(Ok(()));
+        };
+        let Poll::Ready(res) = unsafe { Pin::new_unchecked(fut) }.poll(cx) else {
+            return Poll::Pending;
+        };
+        self.fut = None;
+        self.iter = Some(res?);
+        Poll::Ready(Ok(()))
+    }
 }
 
 impl<F, I, T> Stream for PostgresStream<F, I>
@@ -234,40 +255,16 @@ where
     type Item = Result<T>;
 
     #[inline(always)]
-    fn poll_next(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Option<Self::Item>> {
-        // Return `Poll<Result<Option<T>>>` instead of `Poll<Option<Result<T>>>` so `poll_init`
-        // does not share `poll_next`'s `sret` slot and block LLVM SROA on the hot row return.
-        #[cold]
-        #[inline(never)]
-        fn poll_init<F, I, T>(
-            this: &mut PostgresStream<F, I>,
-            cx: &mut task::Context<'_>,
-        ) -> Poll<Result<Option<T>>>
-        where
-            F: Future<Output = Result<I>>,
-            I: Iterator<Item = Result<T>>,
-        {
-            let Some(fut) = this.fut.as_mut() else {
-                return Poll::Ready(Ok(None));
-            };
-            let Poll::Ready(res) = unsafe { Pin::new_unchecked(fut) }.poll(cx) else {
-                return Poll::Pending;
-            };
-            this.fut = None;
-            let mut iter = res?;
-            let first = iter.next().transpose()?;
-            this.iter = Some(iter);
-            Poll::Ready(Ok(first))
-        }
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = unsafe { self.get_unchecked_mut() };
-        if let Some(item) = this.iter.as_mut().and_then(Iterator::next) {
-            Poll::Ready(Some(item))
-        } else {
-            match poll_init(this, cx) {
-                Poll::Ready(res) => Poll::Ready(res.transpose()),
-                Poll::Pending => Poll::Pending,
+        if this.iter.is_none() {
+            match this.poll_init(cx) {
+                Poll::Ready(Ok(())) => {}
+                Poll::Ready(Err(e)) => return Poll::Ready(Some(Err(e))),
+                Poll::Pending => return Poll::Pending,
             }
         }
+        Poll::Ready(this.iter.as_mut().and_then(Iterator::next))
     }
 
     #[inline(always)]
@@ -278,4 +275,3 @@ where
         }
     }
 }
-

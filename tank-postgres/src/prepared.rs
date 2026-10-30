@@ -23,8 +23,13 @@ impl PostgresPrepared {
     }
 
     /// Encodes the bound values into wtx parameters.
+    #[inline]
     pub(crate) fn encode_params(&mut self) -> Result<()> {
         self.index = 0;
+        if self.params.is_empty() {
+            self.encoded_params.clear();
+            return Ok(());
+        }
         let result = TankParam::encode_all(&self.params, &mut self.encoded_params);
         self.params.clear();
         result

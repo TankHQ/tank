@@ -115,7 +115,8 @@ pub trait SqlWriter:
             return;
         };
         let cols = E::<It>::columns().len();
-        out.buffer().reserve(128 + cols * 32);
+        let rows = entities.size_hint().0.max(1);
+        out.buffer().reserve(128 + (cols + rows * cols) * 16);
         if !out.is_empty() {
             out.push('\n');
         }

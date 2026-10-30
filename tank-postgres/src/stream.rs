@@ -1,5 +1,13 @@
-use core::{mem::MaybeUninit, num::NonZeroUsize};
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+#[cfg(feature = "tls")]
+use anyhow::anyhow;
+#[cfg(feature = "tls")]
+use core::mem::MaybeUninit;
+use core::num::NonZeroUsize;
+#[cfg(feature = "tls")]
+use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadBuf};
+use tokio::net::TcpStream;
+#[cfg(feature = "tls")]
+use tokio_native_tls::{TlsConnector, TlsStream};
 use wtx::{
     collections::MaybeUninitSlice,
     net::{Stream, StreamCommon, StreamReader, StreamWriter},
@@ -11,15 +19,15 @@ use wtx::{
 /// unlike `wtx`'s built-in TLS client), and the resulting encrypted byte stream
 /// is presented to `wtx` as a plaintext transport.
 pub(crate) enum ConnectionStream {
-    Plain(tokio::net::TcpStream),
+    Plain(TcpStream),
     #[cfg(feature = "tls")]
-    Tls(Box<tokio_native_tls::TlsStream<tokio::net::TcpStream>>),
+    Tls(Box<TlsStream<TcpStream>>),
 }
 
 impl ConnectionStream {
     /// Opens a plain TCP connection.
     pub(crate) async fn connect_plain(host: &str, port: u16) -> anyhow::Result<Self> {
-        let stream = tokio::net::TcpStream::connect((host, port)).await?;
+        let stream = TcpStream::connect((host, port)).await?;
         stream.set_nodelay(true)?;
         Ok(Self::Plain(stream))
     }
@@ -33,11 +41,10 @@ impl ConnectionStream {
     pub(crate) async fn connect_tls(
         host: &str,
         port: u16,
-        connector: tokio_native_tls::TlsConnector,
+        connector: TlsConnector,
         domain: &str,
     ) -> anyhow::Result<Self> {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        let mut stream = tokio::net::TcpStream::connect((host, port)).await?;
+        let mut stream = TcpStream::connect((host, port)).await?;
         stream.set_nodelay(true)?;
         // SSLRequest: length (8) then the magic code 80877103.
         AsyncWriteExt::write_all(&mut stream, &8u32.to_be_bytes()).await?;
@@ -46,7 +53,7 @@ impl ConnectionStream {
         let mut response = [0u8; 1];
         stream.read_exact(&mut response).await?;
         if response[0] != b'S' {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "The Postgres server refused the TLS upgrade (response byte {})",
                 response[0]
             ));
@@ -54,60 +61,65 @@ impl ConnectionStream {
         let tls = connector.connect(domain, stream).await?;
         Ok(Self::Tls(Box::new(tls)))
     }
-}
 
-/// Builds a `tokio::io::ReadBuf` over a wtx uninitialized byte slice, preserving
-/// the already-initialized prefix.
-fn read_buf<'a>(slice: &'a mut MaybeUninitSlice<'_, u8>) -> ReadBuf<'a> {
-    let initialized = slice.all().len() - slice.uninitialized_mut().len();
-    // SAFETY: `all_mut` requires that initialized elements stay initialized; we
-    // only write through `ReadBuf`, which advances the initialized length.
-    let all: &mut [MaybeUninit<u8>] = unsafe { slice.all_mut() };
-    let mut read_buf = ReadBuf::uninit(all);
-    // SAFETY: the first `initialized` bytes were already initialized by wtx.
-    unsafe { read_buf.assume_init(initialized) };
-    read_buf
+    /// Builds a `tokio::io::ReadBuf` over a wtx uninitialized byte slice, preserving
+    /// the already-initialized prefix.
+    #[cfg(feature = "tls")]
+    fn read_buf<'a>(slice: &'a mut MaybeUninitSlice<'_, u8>) -> ReadBuf<'a> {
+        let initialized = slice.all().len() - slice.uninitialized_mut().len();
+        // SAFETY: `all_mut` requires that initialized elements stay initialized; we
+        // only write through `ReadBuf`, which advances the initialized length.
+        let all: &mut [MaybeUninit<u8>] = unsafe { slice.all_mut() };
+        let mut read_buf = ReadBuf::uninit(all);
+        // SAFETY: the first `initialized` bytes were already initialized by wtx.
+        unsafe { read_buf.assume_init(initialized) };
+        read_buf
+    }
 }
 
 impl StreamCommon for ConnectionStream {}
 
 impl StreamReader for ConnectionStream {
+    #[inline]
     async fn read(&mut self, bytes: MaybeUninitSlice<'_, u8>) -> wtx::Result<Option<NonZeroUsize>> {
-        use tokio::io::AsyncReadExt;
-        let mut bytes = bytes;
-        let filled = {
-            let mut read_buf = read_buf(&mut bytes);
-            match self {
-                Self::Plain(stream) => {
-                    AsyncReadExt::read_buf(stream, &mut read_buf).await?;
-                }
-                #[cfg(feature = "tls")]
-                Self::Tls(stream) => {
-                    AsyncReadExt::read_buf(stream.as_mut(), &mut read_buf).await?;
-                }
+        match self {
+            Self::Plain(stream) => StreamReader::read(stream, bytes).await,
+            #[cfg(feature = "tls")]
+            Self::Tls(stream) => {
+                let mut bytes = bytes;
+                let mut read_buf = Self::read_buf(&mut bytes);
+                AsyncReadExt::read_buf(stream.as_mut(), &mut read_buf).await?;
+                Ok(NonZeroUsize::new(read_buf.filled().len()))
             }
-            read_buf.filled().len()
-        };
-        Ok(NonZeroUsize::new(filled))
+        }
     }
 }
 
 impl StreamWriter for ConnectionStream {
+    #[inline]
     async fn write_all(&mut self, bytes: &[u8]) -> wtx::Result<()> {
-        use tokio::io::AsyncWriteExt;
         match self {
-            Self::Plain(stream) => AsyncWriteExt::write_all(stream, bytes).await?,
+            Self::Plain(stream) => StreamWriter::write_all(stream, bytes).await,
             #[cfg(feature = "tls")]
-            Self::Tls(stream) => AsyncWriteExt::write_all(stream.as_mut(), bytes).await?,
+            Self::Tls(stream) => {
+                AsyncWriteExt::write_all(stream.as_mut(), bytes).await?;
+                Ok(())
+            }
         }
-        Ok(())
     }
 
+    #[inline]
     async fn write_all_vectored(&mut self, bytes: &[&[u8]]) -> wtx::Result<()> {
-        for chunk in bytes {
-            self.write_all(chunk).await?;
+        match self {
+            Self::Plain(stream) => StreamWriter::write_all_vectored(stream, bytes).await,
+            #[cfg(feature = "tls")]
+            Self::Tls(_) => {
+                for chunk in bytes {
+                    self.write_all(chunk).await?;
+                }
+                Ok(())
+            }
         }
-        Ok(())
     }
 }
 
@@ -122,7 +134,3 @@ impl Stream for ConnectionStream {
         Ok(((), (), ()))
     }
 }
-
-/// Keeps the `AsyncRead`/`AsyncWrite` bounds referenced on all feature sets.
-#[allow(dead_code)]
-fn _assert_traits<T: AsyncRead + AsyncWrite + Unpin>() {}
