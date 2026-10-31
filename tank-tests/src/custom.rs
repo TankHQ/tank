@@ -58,7 +58,7 @@ impl From<FpCategoryWrap> for FpCategory {
     }
 }
 
-pub async fn custom(executor: &mut impl Executor) {
+pub async fn custom(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -105,4 +105,5 @@ pub async fn custom(executor: &mut impl Executor) {
             category: FpCategory::Nan
         })
     );
+    Ok(())
 }

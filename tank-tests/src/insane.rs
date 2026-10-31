@@ -7,7 +7,7 @@ use std::{
     rc::Rc,
     sync::{Arc, LazyLock},
 };
-use tank::{Entity, Executor};
+use tank::{Entity, Executor, Result};
 use time::Time;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -52,7 +52,7 @@ struct InsaneNullFields {
     green: Box<RefCell<Arc<Box<Arc<Arc<Arc<RefCell<time::Time>>>>>>>>,
 }
 
-pub async fn insane(executor: &mut impl Executor) {
+pub async fn insane(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -240,4 +240,5 @@ pub async fn insane(executor: &mut impl Executor) {
         "cd6c7a05-8b7d-4ee9-8b9c-0e39380b4dac"
     );
     assert_eq!(loaded.green, entity.green);
+    Ok(())
 }

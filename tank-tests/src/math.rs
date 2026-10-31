@@ -14,7 +14,7 @@ struct MathTable {
     read: u64,
 }
 
-pub async fn math(executor: &mut impl Executor) {
+pub async fn math(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -126,4 +126,5 @@ pub async fn math(executor: &mut impl Executor) {
             "FLOOR(LOG10(1000)) should be 3"
         );
     }
+    Ok(())
 }

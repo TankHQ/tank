@@ -127,7 +127,7 @@ impl Request {
     }
 }
 
-pub async fn requests(executor: &mut impl Executor) {
+pub async fn requests(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock();
 
     // Setup
@@ -316,4 +316,5 @@ pub async fn requests(executor: &mut impl Executor) {
         violated_limits.bind("v2/resource/new".to_string()).unwrap();
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 1); // Violates [5]
     }
+    Ok(())
 }

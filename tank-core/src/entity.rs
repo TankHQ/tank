@@ -1,6 +1,6 @@
 use crate::{
     ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Query, QueryBuilder,
-    RawQuery, Result, Row, RowOwned, RowsAffected, TableRef, ValueOwned, future::Either,
+    RawQuery, Result, Row, RowOwned, RowValues, RowsAffected, TableRef, future::Either,
     stream::Stream, truncate_long, writer::SqlWriter,
 };
 use anyhow::anyhow;
@@ -9,7 +9,6 @@ use log::Level;
 use std::{
     future::{self, Future},
     pin::pin,
-    sync::Arc,
 };
 
 pub trait AsEntity {
@@ -46,7 +45,7 @@ pub trait Entity: AsEntity + Expression {
     -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = &'static ColumnDef>>;
 
     /// Full row representation including all persisted columns.
-    fn row_values(&self) -> Vec<ValueOwned>;
+    fn row_values(&self) -> RowValues;
 
     /// Full row representation with column labels.
     fn row(&self) -> RowOwned {
@@ -54,7 +53,7 @@ pub trait Entity: AsEntity + Expression {
             Self::columns()
                 .iter()
                 .map(|v| v.name().to_string())
-                .collect::<Arc<[String]>>(),
+                .collect(),
             self.row_values(),
         )
     }

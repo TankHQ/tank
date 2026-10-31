@@ -497,7 +497,7 @@ mod tests {
                     },
                 },
                 rhs: Operand::LitInt(60),
-            } if vec.as_slice() == &[
+            } if **vec == [
                 Value::Int32(Some(-1)),
                 Value::Int32(Some(-2)),
                 Value::Int32(Some(-3)),

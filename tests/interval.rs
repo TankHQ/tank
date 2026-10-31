@@ -139,7 +139,7 @@ mod tests {
             Interval {
                 months: 12,
                 days: 15,
-                nanos: Interval::NANOS_IN_DAY * 2
+                nanos: Interval::NANOS_IN_DAY as i64 * 2
             },
             "INTERVAL '1 YEAR 17 DAYS'"
         );
@@ -147,7 +147,7 @@ mod tests {
             Interval {
                 months: 48,
                 days: 15,
-                nanos: Interval::NANOS_IN_DAY * 2 + 1_000_000_000
+                nanos: Interval::NANOS_IN_DAY as i64 * 2 + 1_000_000_000
             },
             "INTERVAL '4 YEARS 1468801 SECONDS'"
         );
@@ -193,12 +193,12 @@ mod tests {
             Interval::from_millis(950_400_001)
         );
 
-        let almost_max_days = Interval::from_days(i64::MAX - 1);
+        let almost_max_days = Interval::from_days(i32::MAX as i64 - 1);
         assert_eq!(
             almost_max_days + Interval::from_nanos(Interval::NANOS_IN_DAY),
             Interval {
                 months: 0,
-                days: i64::MAX,
+                days: i32::MAX,
                 nanos: 0,
             }
         );
@@ -206,8 +206,8 @@ mod tests {
             almost_max_days + Interval::from_nanos(Interval::NANOS_IN_DAY) + Interval::from_days(1),
             Interval {
                 months: 0,
-                days: i64::MAX,
-                nanos: Interval::NANOS_IN_DAY,
+                days: i32::MAX,
+                nanos: Interval::NANOS_IN_DAY as i64,
             }
         );
 
@@ -215,12 +215,12 @@ mod tests {
             Interval {
                 months: 12,
                 days: 45,
-                nanos: Interval::NANOS_IN_DAY * 10 + 15,
+                nanos: Interval::NANOS_IN_DAY as i64 * 10 + 15,
             } + Interval::from_micros(1)
                 - Interval {
                     months: 9,
                     days: 1,
-                    nanos: Interval::NANOS_IN_DAY,
+                    nanos: Interval::NANOS_IN_DAY as i64,
                 },
             Interval {
                 months: 3,   // 12 - 9
@@ -424,7 +424,7 @@ mod tests {
         let duration = Duration::from_secs(90000); // 1 day + 3600 secs
         let interval: Interval = duration.into();
         assert_eq!(interval.days, 1);
-        assert_eq!(interval.nanos, 3600 * Interval::NANOS_IN_SEC);
+        assert_eq!(interval.nanos, 3600 * Interval::NANOS_IN_SEC as i64);
         assert_eq!(interval.months, 0);
 
         let d2: Duration = interval.into();

@@ -85,23 +85,23 @@ pub(crate) fn tank_value_to_duckdb_logical_type(v: &Value<'_>) -> CBox<duckdb_lo
             }
             Value::Struct(.., t) => {
                 let names = t
-                    .types
+                    .fields
                     .iter()
                     .map(|name| as_c_string(name.0.to_string()))
                     .collect::<Vec<_>>();
-                let types = t
-                    .types
+                let fields = t
+                    .fields
                     .iter()
                     .map(|v| tank_value_to_duckdb_logical_type(&v.1))
                     .collect::<Vec<_>>();
                 *result = duckdb_create_struct_type(
-                    types.iter().map(|v| **v).collect::<Vec<_>>().as_mut_ptr(),
+                    fields.iter().map(|v| **v).collect::<Vec<_>>().as_mut_ptr(),
                     names
                         .iter()
                         .map(|n| n.as_ptr())
                         .collect::<Vec<_>>()
                         .as_mut_ptr(),
-                    t.types.len() as u64,
+                    t.fields.len() as u64,
                 );
                 let name = as_c_string(&t.name.name as &str);
                 duckdb_logical_type_set_alias(*result, name.as_ptr());

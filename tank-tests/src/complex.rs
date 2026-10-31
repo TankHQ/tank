@@ -4,7 +4,7 @@ use std::{
     sync::LazyLock,
     time::Duration,
 };
-use tank::{Entity, Executor};
+use tank::{Entity, Executor, Result};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -72,7 +72,7 @@ impl Default for ComplexNullFields {
     }
 }
 
-pub async fn complex(executor: &mut impl Executor) {
+pub async fn complex(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -281,4 +281,5 @@ pub async fn complex(executor: &mut impl Executor) {
     ))]
     assert_eq!(loaded.fifth, entity.fifth);
     assert_eq!(loaded.sixth.field, 777);
+    Ok(())
 }

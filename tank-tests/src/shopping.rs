@@ -5,7 +5,7 @@ use std::pin::pin;
 use std::{str::FromStr, sync::Arc, sync::LazyLock};
 use tank::QueryBuilder;
 use tank::{
-    AsValue, Dataset, Entity, Executor, FixedDecimal, Row, cols, expr, join,
+    AsValue, Dataset, Entity, Executor, FixedDecimal, Result, Row, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, PrimitiveDateTime, Time};
@@ -50,7 +50,7 @@ struct Cart {
     timestamp: PrimitiveDateTime,
 }
 
-pub async fn shopping(executor: &mut impl Executor) {
+pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Product
@@ -322,4 +322,5 @@ pub async fn shopping(executor: &mut impl Executor) {
             ]
         )
     }
+    Ok(())
 }

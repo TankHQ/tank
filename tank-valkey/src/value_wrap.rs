@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use redis::{FromRedisValue, RedisWrite, ToRedisArgs};
 use std::collections::HashMap;
+use tank_core::AsValue;
 
 #[derive(PartialEq, Eq, Hash, Debug)]
 pub(crate) struct ValueWrap<'a>(pub(crate) tank_core::Value<'a>);
@@ -237,23 +238,23 @@ impl<'a> ToRedisArgs for ValueWrap<'a> {
             tank_core::Value::Blob(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::Array(Some(v), ..) => v
                 .into_iter()
-                .map(|v| ValueWrap(v.clone()))
+                .map(|v| ValueWrap(v.as_value()))
                 .collect::<Vec<_>>()
                 .write_redis_args(out),
             tank_core::Value::List(Some(v), ..) => v
                 .into_iter()
-                .map(|v| ValueWrap(v.clone()))
+                .map(|v| ValueWrap(v.as_value()))
                 .collect::<Vec<_>>()
                 .write_redis_args(out),
             tank_core::Value::Map(Some(v), ..) => v
                 .iter()
-                .map(|(k, v)| (ValueWrap(v.clone()), ValueWrap(v.clone())))
+                .map(|(k, v)| (ValueWrap(k.as_value()), ValueWrap(v.as_value())))
                 .collect::<HashMap<_, _>>()
                 .write_redis_args(out),
             tank_core::Value::Json(Some(v), ..) => v.to_string().write_redis_args(out),
             tank_core::Value::Struct(Some(v), ..) => v
                 .into_iter()
-                .map(|(k, v)| (k, ValueWrap(v.clone())))
+                .map(|(k, v)| (k, ValueWrap(v.as_value())))
                 .collect::<HashMap<_, _>>()
                 .write_redis_args(out),
             tank_core::Value::Unknown(Some(v), ..) => v.write_redis_args(out),

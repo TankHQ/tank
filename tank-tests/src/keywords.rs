@@ -1,7 +1,7 @@
 use std::pin::pin;
 use std::sync::LazyLock;
 use tank::stream::StreamExt;
-use tank::{AsValue, Entity, Executor, QueryBuilder, Row, cols, expr};
+use tank::{AsValue, Entity, Executor, QueryBuilder, Result, Row, cols, expr};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -23,7 +23,7 @@ pub struct ReservedWords {
     pub limit_field: f64,
 }
 
-pub async fn keywords(executor: &mut impl Executor) {
+pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -143,4 +143,5 @@ pub async fn keywords(executor: &mut impl Executor) {
         .expect("Query limit failed")
         .expect("Limit entity not found");
     assert_eq!(found_limit.id, 2);
+    Ok(())
 }

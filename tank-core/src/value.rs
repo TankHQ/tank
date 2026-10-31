@@ -10,6 +10,7 @@ use std::{
     collections::{HashMap, hash_map::DefaultHasher},
     fmt::{self, Display},
     hash::{Hash, Hasher},
+    iter,
     mem::discriminant,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
@@ -105,7 +106,7 @@ pub struct MapType<'a> {
 #[derive(Debug, Clone)]
 pub struct StructType<'a> {
     /// Field types.
-    pub types: Vec<(String, Value<'a>)>,
+    pub fields: Vec<(String, Value<'a>)>,
     /// Table reference.
     pub name: TableRef,
 }
@@ -130,10 +131,8 @@ impl<'a> Value<'a> {
             }
             (Value::Struct(.., l), Value::Struct(.., r)) => {
                 l.name == r.name
-                    && l.types.len() == r.types.len()
-                    && l.types
-                        .iter()
-                        .zip(&r.types)
+                    && l.fields.len() == r.fields.len()
+                    && iter::zip(&l.fields, &r.fields)
                         .all(|((ln, lt), (rn, rt))| ln == rn && lt.same_type(rt))
             }
             _ => discriminant(self) == discriminant(other),
@@ -354,8 +353,8 @@ impl<'a> Value<'a> {
                         .collect()
                 }),
                 Box::new(StructType {
-                    types: t
-                        .types
+                    fields: t
+                        .fields
                         .into_iter()
                         .map(|(k, v)| (k, v.into_owned()))
                         .collect(),
@@ -412,7 +411,7 @@ impl<'a> PartialEq for Value<'a> {
             }
             (Self::Json(l), Self::Json(r)) => l == r,
             (Self::Struct(l, lt), Self::Struct(r, rt)) => {
-                lt.name == rt.name && l == r && lt.types == rt.types
+                lt.name == rt.name && l == r && lt.fields == rt.fields
             }
             (Self::Unknown(l), Self::Unknown(r)) => l == r,
             _ => false,
@@ -515,7 +514,7 @@ impl<'a> Hash for Value<'a> {
                 if let Some(v) = v {
                     v.hash(state);
                 }
-                t.types.hash(state);
+                t.fields.hash(state);
                 t.name.hash(state);
             }
             Unknown(v) => v.hash(state),
@@ -593,11 +592,11 @@ impl<'a> ToTokens for Value<'a> {
             }
             Value::Json(..) => quote!(::tank::Value::Json(None)),
             Value::Struct(.., t) => {
-                let types = t.types.iter().map(|(k, v)| quote!((#k.into(), #v)));
+                let fields = t.fields.iter().map(|(k, v)| quote!((#k.into(), #v)));
                 let name = &t.name;
                 quote!(::tank::Value::Struct(
                     None,
-                    Box::new(::tank::StructType { types: vec![#(#types),*], name: #name }),
+                    Box::new(::tank::StructType { fields: vec![#(#fields),*], name: #name }),
                 ))
             }
             Value::Unknown(..) => quote!(::tank::Value::Unknown(None)),

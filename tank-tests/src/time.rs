@@ -22,7 +22,7 @@ pub struct Times {
     pub time_2: NaiveTime,
 }
 
-pub async fn times(executor: &mut impl Executor) {
+pub async fn times(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -468,4 +468,5 @@ pub async fn times(executor: &mut impl Executor) {
             );
         }
     }
+    Ok(())
 }

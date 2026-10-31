@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use std::{pin::pin, sync::LazyLock};
-use tank::{AsValue, Entity, Row, expr, stream::StreamExt, stream::TryStreamExt};
+use tank::{AsValue, Entity, Result, Row, expr, stream::StreamExt, stream::TryStreamExt};
 use tank::{Executor, QueryBuilder, cols};
 use tokio::sync::Mutex;
 
@@ -16,7 +16,7 @@ struct Values {
     value: u32,
 }
 
-pub async fn aggregates(executor: &mut impl Executor) {
+pub async fn aggregates(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock();
 
     // Setup
@@ -109,7 +109,7 @@ pub async fn aggregates(executor: &mut impl Executor) {
                 .map(|row| {
                     let row = row.expect("Error while fetching the row");
                     let i = row
-                        .names()
+                        .labels()
                         .iter()
                         .enumerate()
                         .find_map(|(i, v)| if v == "value" { Some(i) } else { None })
@@ -154,4 +154,5 @@ pub async fn aggregates(executor: &mut impl Executor) {
             .expect("Could not fetch positive rows from the prepared statement");
         assert_eq!(values.len(), COUNT as usize);
     }
+    Ok(())
 }

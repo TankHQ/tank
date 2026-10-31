@@ -330,7 +330,7 @@ pub(crate) fn extract_value(
                 Value::Struct(
                     value,
                     Box::new(StructType {
-                        types: value_type,
+                        fields: value_type,
                         name: TableRef::new(name),
                     }),
                 )

@@ -8,7 +8,9 @@ use postgres_openssl::MakeTlsConnector;
 use postgres_types::ToSql;
 use std::{
     borrow::Cow,
-    env, mem,
+    env,
+    iter::zip,
+    mem,
     path::PathBuf,
     pin::{Pin, pin},
     str::FromStr,
@@ -16,7 +18,7 @@ use std::{
 };
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, RawQuery, Result, Row, RowLabels, RowsAffected, SqlWriter, Transaction,
+    QueryResult, RawQuery, Result, Row, RowLabels, RowOwned, RowsAffected, SqlWriter, Transaction,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
@@ -35,7 +37,9 @@ impl PostgresConnection {
     #[cold]
     #[inline(never)]
     fn query_error(e: impl Into<Error>, query: &Query<PostgresDriver>) -> Error {
-        let error = e.into().context(format!("While running the query:\n{query}"));
+        let error = e
+            .into()
+            .context(format!("While running the query:\n{query}"));
         log::error!("{error:#}");
         error
     }
@@ -49,10 +53,7 @@ impl PostgresConnection {
     #[inline]
     fn prepare_labels(labels: &mut RowLabels, columns: &[tokio_postgres::Column]) {
         if columns.len() != labels.len()
-            || !columns
-                .iter()
-                .zip(labels.iter())
-                .all(|(col, label)| col.name() == label)
+            || !zip(columns.iter(), labels.iter()).all(|(col, label)| col.name() == label)
         {
             Self::rebuild_labels(labels, columns);
         }
@@ -78,8 +79,12 @@ impl PostgresConnection {
                 .map_err(|e| Self::query_error(e, query))?;
                 if let Some(ref row) = first {
                     Self::prepare_labels(&mut self.labels, row.columns());
+                    Ok(PostgresRows::new(first, stream, &self.labels))
+                } else {
+                    // The pre-poll above drained a zero-row result: polling the
+                    // exhausted `RowStream` would yield `Error::closed()`.
+                    Ok(PostgresRows::new_drained(stream, &self.labels))
                 }
-                Ok(PostgresRows::new(first, stream, &self.labels))
             }
             Query::Prepared(prepared) => {
                 let params = match prepared.take_params() {
@@ -146,7 +151,10 @@ impl Executor for PostgresConnection {
                         let mut stream = pin!(transaction.run(&mut owned));
                         while let Some(value) = stream.next().await.transpose()? {
                             yield match value {
-                                QueryResult::Row(r) => QueryResult::Row(r.into_owned()),
+                                QueryResult::Row(r) => QueryResult::Row(RowOwned::new(
+                                    r.labels().into(),
+                                    r.into_values().collect(),
+                                )),
                                 QueryResult::Affected(a) => QueryResult::Affected(a),
                             };
                         }

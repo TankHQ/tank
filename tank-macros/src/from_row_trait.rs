@@ -42,12 +42,12 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
     let is_ordered = quote! {
         #unique_names
             && row.len() >= #columns_len
-            && matches!(row.names(), [#(#idents),*] if true #(&& #idents.as_bytes() == #name_lits)*)
+            && matches!(row.labels(), [#(#idents),*] if true #(&& #idents.as_bytes() == #name_lits)*)
     };
     let fallback = |assigns: TokenStream| {
         quote! {
             ::std::hint::cold_path();
-            for (__i__, __n__) in row.names().iter().enumerate() {
+            for (__i__, __n__) in row.labels().iter().enumerate() {
                 let Some(__v__) = row.value(__i__) else { break };
                 #[allow(unreachable_patterns)]
                 match __n__.as_bytes() {

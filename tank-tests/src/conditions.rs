@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 use tank::{
-    Entity, Executor, expr,
+    Entity, Executor, Result, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -17,7 +17,7 @@ struct ConditionEntry {
     verified: Option<bool>,
 }
 
-pub async fn conditions(executor: &mut impl Executor) {
+pub async fn conditions(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -160,4 +160,5 @@ pub async fn conditions(executor: &mut impl Executor) {
         .count()
         .await;
     assert_eq!(count, 1, "Should find 1 entry with `NOT verified`");
+    Ok(())
 }

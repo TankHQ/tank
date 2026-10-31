@@ -1,5 +1,5 @@
 use std::sync::LazyLock;
-use tank::{Entity, Executor, expr};
+use tank::{Entity, Executor, Result, expr};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -17,7 +17,7 @@ pub struct SpecialIdentifiers {
     pub double_quote_col: i32,
 }
 
-pub async fn identifiers(executor: &mut impl Executor) {
+pub async fn identifiers(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     SpecialIdentifiers::drop_table(executor, true, false)
@@ -51,4 +51,5 @@ pub async fn identifiers(executor: &mut impl Executor) {
         .await
         .expect("Failed to query after delete");
     assert!(gone.is_none());
+    Ok(())
 }

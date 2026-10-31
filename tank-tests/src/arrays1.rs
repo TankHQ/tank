@@ -2,8 +2,8 @@
 #![allow(unused_imports)]
 use std::{borrow::Cow, pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, RawQuery, SqlWriter,
-    cols, stream::TryStreamExt,
+    Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, RawQuery, Result,
+    SqlWriter, cols, stream::TryStreamExt,
 };
 use tokio::sync::Mutex;
 
@@ -27,7 +27,7 @@ struct Arrays2 {
     echo: [[[Cow<'static, str>; 2]; 2]; 1],
 }
 
-pub async fn arrays1(executor: &mut impl Executor) {
+pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
     let _ = MUTEX.lock().await;
 
     // Setup
@@ -202,4 +202,5 @@ pub async fn arrays1(executor: &mut impl Executor) {
             },
         );
     }
+    Ok(())
 }

@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 use tank::{
-    Connection, Entity, QueryBuilder, Transaction, cols,
+    Connection, Entity, QueryBuilder, Result, Transaction, cols,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -22,7 +22,7 @@ struct EntityB {
 }
 
 /// Test the transaction functionality using only inserts and deletes (no select)
-pub async fn transaction1(connection: &mut impl Connection) {
+pub async fn transaction1(connection: &mut impl Connection) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -193,4 +193,5 @@ pub async fn transaction1(connection: &mut impl Connection) {
         .count()
         .await;
     assert_eq!(entity_b_entries, 3);
+    Ok(())
 }

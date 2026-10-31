@@ -68,7 +68,7 @@ struct Service {
     backup_addr: Option<HostPort>,
 }
 
-pub async fn service(executor: &mut impl Executor) {
+pub async fn service(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -187,4 +187,5 @@ pub async fn service(executor: &mut impl Executor) {
             ]
         );
     }
+    Ok(())
 }

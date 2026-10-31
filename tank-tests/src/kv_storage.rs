@@ -2,7 +2,7 @@
 use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::sync::{Arc, LazyLock};
-use tank::{Entity, Executor, expr};
+use tank::{Entity, Executor, Result, expr};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -46,7 +46,7 @@ pub struct KV {
     pub counters: Option<BTreeMap<String, i64>>,
 }
 
-pub async fn kv_storage(executor: &mut impl Executor) {
+pub async fn kv_storage(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -152,4 +152,5 @@ pub async fn kv_storage(executor: &mut impl Executor) {
         .await
         .expect("Failed to query KV");
     assert_eq!(value, Some(second));
+    Ok(())
 }

@@ -4,10 +4,11 @@ mod tests {
     use rust_decimal::Decimal;
     use std::{borrow::Cow, collections::HashMap, fmt::Write, sync::Arc};
     use tank::{
-        Context, Dataset, DeclareTableRef, DynQuery, EitherIterator, Entity, FixedDecimal,
-        Fragment, GenericSqlWriter, Interval, QueryBuilder, QueryResult, References, Row,
-        RowsAffected, SqlWriter, TableRef, Value, as_c_string, column_def, consume_while,
-        extract_number, quote_cow, separated_by, value_to_json, write_escaped,
+        CollectionType, Context, Dataset, DeclareTableRef, DynQuery, EitherIterator, Entity,
+        FixedDecimal, Fragment, GenericSqlWriter, Interval, MapType, QueryBuilder, QueryResult,
+        References, Row, RowLabels, RowOwned, RowsAffected, SqlWriter, StructType, TableRef, Value,
+        as_c_string, column_def, consume_while, extract_number, quote_cow, separated_by,
+        value_to_json, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, Time, UtcOffset};
 
@@ -153,65 +154,55 @@ mod tests {
 
     #[test]
     fn row_new_and_accessors() {
-        let labels: Arc<[String]> = Arc::from(vec!["id".into(), "name".into()]);
-        let values: Box<[Value]> =
-            vec![Value::Int32(Some(1)), Value::Varchar(Some("Alice".into()))].into();
-        let row = Row::new(labels.clone(), values);
-        assert_eq!(row.names(), &["id", "name"]);
-        assert_eq!(row.values().len(), 2);
+        let labels: RowLabels = RowLabels::from(vec!["id".into(), "name".into()]);
+        let values = vec![Value::Int32(Some(1)), Value::Varchar(Some("Alice".into()))];
+        let row = RowOwned::new(labels.clone(), values);
+        assert_eq!(row.labels(), &["id", "name"]);
+        assert_eq!(row.values().count(), 2);
         assert_eq!(row.len(), 2);
     }
 
     #[test]
     fn row_get_column() {
-        let labels: Arc<[String]> = Arc::from(vec!["id".into(), "name".into()]);
-        let values: Box<[Value]> =
-            vec![Value::Int32(Some(42)), Value::Varchar(Some("Bob".into()))].into();
-        let row = Row::new(labels, values);
-        assert_eq!(row.get_column("id"), Some(&Value::Int32(Some(42))));
-        assert_eq!(
-            row.get_column("name"),
-            Some(&Value::Varchar(Some("Bob".into())))
+        let labels = RowLabels::from(vec!["id".into(), "name".into()]);
+        let values = vec![Value::Int32(Some(42)), Value::Varchar(Some("Bob".into()))];
+        let row = RowOwned::new(labels, values);
+        assert!(
+            row.get_column("id")
+                .is_some_and(|v| *v == Value::Int32(Some(42)))
+        );
+        assert!(
+            row.get_column("name")
+                .is_some_and(|v| *v == Value::Varchar(Some("Bob".into())))
         );
         assert_eq!(row.get_column("missing"), None);
     }
 
     #[test]
-    fn row_into_iterator() {
-        let labels: Arc<[String]> = Arc::from(vec!["a".into(), "b".into()]);
-        let values: Box<[Value]> = vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into();
-        let row = Row::new(labels, values);
-        let pairs: Vec<_> = (&row).into_iter().collect();
+    fn row_iter() {
+        let labels = RowLabels::from(vec!["a".into(), "b".into()]);
+        let values = vec![Value::Int32(Some(1)), Value::Int32(Some(2))];
+        let row = RowOwned::new(labels, values);
+        let pairs: Vec<_> = row.iter().collect();
         assert_eq!(pairs.len(), 2);
         assert_eq!(pairs[0].0, "a");
         assert_eq!(*pairs[0].1, Value::Int32(Some(1)));
     }
 
     #[test]
-    fn row_into_iterator_mut() {
-        let labels: Arc<[String]> = Arc::from(vec!["x".into()]);
-        let values: Box<[Value]> = vec![Value::Int32(Some(10))].into();
-        let mut row = Row::new(labels, values);
-        for (_, v) in &mut row {
-            *v = Value::Int32(Some(20));
-        }
-        assert_eq!(row.get_column("x"), Some(&Value::Int32(Some(20))));
-    }
-
-    #[test]
-    fn row_values_into() {
-        let labels: Arc<[String]> = Arc::from(vec!["c".into()]);
-        let values: Box<[Value]> = vec![Value::Boolean(Some(true))].into();
-        let row = Row::new(labels, values);
-        let rv: Box<[Value]> = row.into();
-        assert_eq!(rv.len(), 1);
+    fn row_into_values() {
+        let labels = RowLabels::from(vec!["x".into()]);
+        let values = vec![Value::Int32(Some(10))];
+        let row = RowOwned::new(labels, values);
+        let values: Vec<_> = row.into_values().collect();
+        assert_eq!(values, vec![Value::Int32(Some(10))]);
     }
 
     #[test]
     fn row_to_query_result() {
-        let labels: Arc<[String]> = Arc::from(vec!["id".into()]);
-        let values: Box<[Value]> = vec![Value::Int32(Some(1))].into();
-        let row = Row::new(labels, values);
+        let labels = RowLabels::from(vec!["id".into()]);
+        let values = vec![Value::Int32(Some(1))];
+        let row = RowOwned::new(labels, values);
         let result: QueryResult = row.into();
         assert!(matches!(result, QueryResult::Row(_)));
     }
@@ -340,7 +331,7 @@ mod tests {
             Some(serde_json::json!(123456789))
         );
         assert_eq!(
-            value_to_json(&Value::Int128(Some(999))),
+            value_to_json(&Value::Int128(Some(999.into()))),
             Some(serde_json::json!(999))
         );
         assert_eq!(
@@ -360,7 +351,7 @@ mod tests {
             Some(serde_json::json!(200))
         );
         assert_eq!(
-            value_to_json(&Value::UInt128(Some(300))),
+            value_to_json(&Value::UInt128(Some(300.into()))),
             Some(serde_json::json!(300))
         );
         assert_eq!(
@@ -429,18 +420,26 @@ mod tests {
     fn util_value_to_json_array_and_list() {
         let arr = Value::Array(
             Some(vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into()),
-            Box::new(Value::Int32(None)),
-            2,
+            Box::new(CollectionType {
+                element: Value::Int32(None),
+                len: 2,
+            }),
         );
         let result = value_to_json(&arr).unwrap();
         assert_eq!(result, serde_json::json!([1, 2]));
 
         let list = Value::List(
-            Some(vec![
-                Value::Varchar(Some("a".into())),
-                Value::Varchar(Some("b".into())),
-            ]),
-            Box::new(Value::Varchar(None)),
+            Some(
+                vec![
+                    Value::Varchar(Some("a".into())),
+                    Value::Varchar(Some("b".into())),
+                ]
+                .into(),
+            ),
+            Box::new(CollectionType {
+                element: Value::Varchar(None),
+                len: 0,
+            }),
         );
         let result = value_to_json(&list).unwrap();
         assert_eq!(result, serde_json::json!(["a", "b"]));
@@ -451,17 +450,21 @@ mod tests {
         let mut map = HashMap::new();
         map.insert(Value::Int32(Some(1)), Value::Int32(Some(42)));
         let v = Value::Map(
-            Some(map),
-            Box::new(Value::Int32(None)),
-            Box::new(Value::Int32(None)),
+            Some(Box::new(map)),
+            Box::new(MapType {
+                key: Value::Int32(None),
+                value: Value::Int32(None),
+            }),
         );
-        assert_eq!(value_to_json(&v), None);
+        assert_eq!(value_to_json(&v), Some(serde_json::json!({"1": 42})));
 
         let empty_map: HashMap<Value, Value> = HashMap::new();
         let v2 = Value::Map(
-            Some(empty_map),
-            Box::new(Value::Varchar(None)),
-            Box::new(Value::Int32(None)),
+            Some(Box::new(empty_map)),
+            Box::new(MapType {
+                key: Value::Varchar(None),
+                value: Value::Int32(None),
+            }),
         );
         let result = value_to_json(&v2).unwrap();
         assert!(result.is_object());
@@ -476,7 +479,13 @@ mod tests {
 
     #[test]
     fn util_value_to_json_struct() {
-        let s = Value::Struct(Some(vec![]), vec![], TableRef::new("my_type".into()));
+        let s = Value::Struct(
+            Some(vec![].into()),
+            Box::new(StructType {
+                fields: vec![],
+                name: TableRef::new("my_type".into()),
+            }),
+        );
         let result = value_to_json(&s).unwrap();
         assert!(result.is_object());
     }
@@ -571,9 +580,11 @@ mod tests {
         let mut map = HashMap::new();
         map.insert(Value::Varchar(Some("key1".into())), Value::Int32(Some(100)));
         let map_val = Value::Map(
-            Some(map),
-            Box::new(Value::Varchar(None)),
-            Box::new(Value::Int32(None)),
+            Some(Box::new(map)),
+            Box::new(MapType {
+                key: Value::Varchar(None),
+                value: Value::Int32(None),
+            }),
         );
         writer.write_value(&mut Default::default(), &mut q, &map_val);
         let s = q.as_str().to_string();
@@ -586,12 +597,17 @@ mod tests {
         let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
         let struct_val = Value::Struct(
-            Some(vec![
-                ("name".into(), Value::Varchar(Some("Alice".into()))),
-                ("age".into(), Value::Int32(Some(30))),
-            ]),
-            vec![],
-            TableRef::new("person".into()),
+            Some(
+                vec![
+                    ("name".into(), Value::Varchar(Some("Alice".into()))),
+                    ("age".into(), Value::Int32(Some(30))),
+                ]
+                .into(),
+            ),
+            Box::new(StructType {
+                fields: vec![],
+                name: TableRef::new("person".into()),
+            }),
         );
         writer.write_value(&mut Default::default(), &mut q, &struct_val);
         let s = q.as_str().to_string();

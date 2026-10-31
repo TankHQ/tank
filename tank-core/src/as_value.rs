@@ -143,8 +143,8 @@ impl AsValue for &Value<'_> {
                 v.as_ref()
                     .map(|v| v.iter().map(|(k, v)| (k.clone(), v.as_value())).collect()),
                 Box::new(StructType {
-                    types: t
-                        .types
+                    fields: t
+                        .fields
                         .iter()
                         .map(|(k, v)| (k.clone(), v.as_value()))
                         .collect(),

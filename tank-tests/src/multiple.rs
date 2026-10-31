@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
-use tank::{AsValue, DynQuery, QueryBuilder, Row};
+use tank::{AsValue, DynQuery, QueryBuilder, Result, Row};
 use tank::{Driver, Entity, Executor, QueryResult, SqlWriter, stream::TryStreamExt};
 use tokio::sync::Mutex;
 
@@ -24,7 +24,7 @@ struct Three {
     string: String,
 }
 
-pub async fn multiple(executor: &mut impl Executor) {
+pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     let mut query = DynQuery::default();
@@ -142,7 +142,7 @@ pub async fn multiple(executor: &mut impl Executor) {
     });
     assert_eq!(result.len(), 6);
     let mut result = result.into_iter().peekable();
-    assert_eq!(result.peek().unwrap().names(), ["a2", "string"]);
+    assert_eq!(result.peek().unwrap().labels(), ["a2", "string"]);
     assert_eq!(
         Two::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         Two {
@@ -151,7 +151,7 @@ pub async fn multiple(executor: &mut impl Executor) {
         }
     );
     result.next();
-    assert_eq!(result.peek().unwrap().names(), ["a2", "string"]);
+    assert_eq!(result.peek().unwrap().labels(), ["a2", "string"]);
     assert_eq!(
         Two::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         Two {
@@ -160,7 +160,7 @@ pub async fn multiple(executor: &mut impl Executor) {
         }
     );
     result.next();
-    assert_eq!(result.peek().unwrap().names(), ["string"]);
+    assert_eq!(result.peek().unwrap().labels(), ["string"]);
     assert_eq!(
         Three::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         Three {
@@ -168,7 +168,7 @@ pub async fn multiple(executor: &mut impl Executor) {
         }
     );
     result.next();
-    assert_eq!(result.peek().unwrap().names(), ["string"]);
+    assert_eq!(result.peek().unwrap().labels(), ["string"]);
     assert_eq!(
         Three::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         Three {
@@ -176,7 +176,7 @@ pub async fn multiple(executor: &mut impl Executor) {
         }
     );
     result.next();
-    assert_eq!(result.peek().unwrap().names(), ["a2", "string"]);
+    assert_eq!(result.peek().unwrap().labels(), ["a2", "string"]);
     assert_eq!(
         Two::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         Two {
@@ -185,7 +185,7 @@ pub async fn multiple(executor: &mut impl Executor) {
         }
     );
     result.next();
-    assert_eq!(result.peek().unwrap().names(), ["a1", "string", "c1"]);
+    assert_eq!(result.peek().unwrap().labels(), ["a1", "string", "c1"]);
     assert_eq!(
         One::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         One {
@@ -195,4 +195,5 @@ pub async fn multiple(executor: &mut impl Executor) {
         }
     );
     result.next();
+    Ok(())
 }

@@ -10,7 +10,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use tank_core::{Error as TankError, Result, Row, RowLabels, RowOwned, Value, stream::Stream};
+use tank_core::{Error as TankError, Result, Row, RowLabels, Value, stream::Stream};
 
 struct RawCell<'a>(Option<&'a [u8]>);
 
@@ -67,7 +67,7 @@ impl PostgresRow<'_> {
 
 impl Row for PostgresRow<'_> {
     #[inline(always)]
-    fn names(&self) -> &[String] {
+    fn labels(&self) -> &[String] {
         self.labels
     }
 
@@ -77,13 +77,13 @@ impl Row for PostgresRow<'_> {
     }
 
     #[inline(always)]
-    fn value(&self, index: usize) -> Option<Value<'_>> {
+    fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>> {
         if index >= self.len() {
             return None;
         }
         let raw = match self.row.try_get::<usize, RawCell<'_>>(index) {
             Ok(RawCell(Some(raw))) => raw,
-            Ok(RawCell(None)) => return Some(Value::Null),
+            Ok(RawCell(None)) => return Some(Cow::Owned(Value::Null)),
             Err(e) => {
                 mem::forget(e);
                 return None;
@@ -93,38 +93,21 @@ impl Row for PostgresRow<'_> {
         // splitting the 3-byte 1..4 gap into `i8` + `i16` so LLVM SROA promotes both to SSA.
         match *self.row.columns()[index].type_() {
             Type::BOOL => match *raw {
-                [b] => Some(Value::Boolean(Some(b != 0))),
-                _ => Some(Value::Null),
+                [b] => Some(Cow::Owned(Value::Boolean(Some(b != 0)))),
+                _ => Some(Cow::Owned(Value::Null)),
             },
             Type::INT4 => match raw.try_into() {
-                Ok(b) => Some(Value::Int32(Some(i32::from_be_bytes(b)))),
-                Err(_) => Some(Value::Null),
+                Ok(b) => Some(Cow::Owned(Value::Int32(Some(i32::from_be_bytes(b))))),
+                Err(_) => Some(Cow::Owned(Value::Null)),
             },
             Type::VARCHAR | Type::TEXT => match std::str::from_utf8(raw) {
-                Ok(text) => Some(Value::Varchar(Some(Cow::Borrowed(text)))),
-                Err(_) => Some(Value::Null),
+                Ok(text) => Some(Cow::Owned(Value::Varchar(Some(Cow::Borrowed(text))))),
+                Err(_) => Some(Cow::Owned(Value::Null)),
             },
             ref ty => match Self::decode_fallback(ty, raw) {
-                Some(v) => Some(v),
-                None => Some(Value::Null),
+                Some(v) => Some(Cow::Owned(v)),
+                None => Some(Cow::Owned(Value::Null)),
             },
-        }
-    }
-
-    fn take_values(self) -> impl Iterator<Item = tank_core::ValueOwned> {
-        self.values()
-            .map(|v| v.clone().into_owned())
-            .collect::<Vec<_>>()
-            .into_iter()
-    }
-
-    fn into_owned(self) -> RowOwned {
-        RowOwned {
-            names: self.labels.clone(),
-            values: self
-                .values()
-                .map(|value| value.clone().into_owned())
-                .collect(),
         }
     }
 }
@@ -134,6 +117,10 @@ pub struct PostgresRows<'s> {
     first: Option<tokio_postgres::Row>,
     stream: tokio_postgres::RowStream,
     labels: &'s RowLabels,
+    /// Set when the underlying `RowStream` has already been fully drained
+    /// (zero-row raw query pre-polled in `fetch_inner`): polling a completed
+    /// `tokio_postgres::RowStream` yields `Error::closed()`.
+    done: bool,
 }
 
 impl<'s> PostgresRows<'s> {
@@ -147,6 +134,17 @@ impl<'s> PostgresRows<'s> {
             first,
             stream,
             labels,
+            done: false,
+        }
+    }
+
+    #[inline(always)]
+    pub(crate) fn new_drained(stream: tokio_postgres::RowStream, labels: &'s RowLabels) -> Self {
+        Self {
+            first: None,
+            stream,
+            labels,
+            done: true,
         }
     }
 
@@ -160,6 +158,9 @@ impl<'s> PostgresRows<'s> {
 
     #[inline(always)]
     fn poll_next(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<PostgresRow<'s>>>> {
+        if self.done {
+            return Poll::Ready(None);
+        }
         if let Some(row) = self.first.take() {
             return Poll::Ready(Some(Ok(PostgresRow {
                 row,

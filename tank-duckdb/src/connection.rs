@@ -22,8 +22,8 @@ use std::{
 };
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, RawQuery, Result, Row, RowOwned, RowsAffected, SqlWriter, Value, as_c_string,
-    error_message_from_ptr, send_value, stream::Stream, truncate_long,
+    QueryResult, RawQuery, Result, Row, RowLabels, RowOwned, RowsAffected, SqlWriter, Value,
+    as_c_string, error_message_from_ptr, send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -183,10 +183,7 @@ impl DuckDBConnection {
                         (vector, logical_type, type_id, data, validity, name)
                     })
                     .collect::<Box<[_]>>();
-                let names = info
-                    .iter()
-                    .map(|v| v.5.to_string())
-                    .collect::<Arc<[String]>>();
+                let labels: RowLabels = info.iter().map(|v| v.5.to_string()).collect();
                 for row in 0..rows {
                     let columns = (0..cols).map(|col| {
                         let col = col as usize;
@@ -202,7 +199,7 @@ impl DuckDBConnection {
                     });
                     match columns.collect::<Result<Vec<_>>>() {
                         Ok(values) => {
-                            let row = RowOwned::new(names.clone(), values);
+                            let row = RowOwned::new(labels.clone(), values);
                             send_value!(tx, Ok(QueryResult::Row(row)));
                         }
                         Err(e) => {

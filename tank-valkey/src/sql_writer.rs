@@ -1,8 +1,8 @@
 use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
-use std::{borrow::Cow, fmt::Write};
+use std::fmt::Write;
 use tank_core::{
-    AsEntity, Context, Dataset, DynQuery, Entity, Expression, Fragment, IsAsterisk, Row,
+    AsEntity, AsValue, Context, Dataset, DynQuery, Entity, Expression, Fragment, IsAsterisk, Row,
     SelectQuery, SqlWriter, TableRef, Value, column_def,
 };
 
@@ -229,7 +229,7 @@ impl SqlWriter for ValkeySqlWriter {
                 Row::iter(&row)
                     .filter_map(|(k, v)| {
                         if v.is_scalar() && !v.is_null() {
-                            (k, ValueWrap(v)).into()
+                            (k, ValueWrap(v.as_value())).into()
                         } else {
                             None
                         }
@@ -239,7 +239,7 @@ impl SqlWriter for ValkeySqlWriter {
             ));
             for (k, v) in Row::iter(&row).filter_map(|(k, v)| {
                 if !v.is_scalar() || v.same_type(&Value::Json(None)) {
-                    (k, ValueWrap(v)).into()
+                    (k, ValueWrap(v.as_value())).into()
                 } else {
                     None
                 }
@@ -257,7 +257,7 @@ impl SqlWriter for ValkeySqlWriter {
                         prepared.commands.push(Cmd::hset_multiple(
                             key,
                             v.iter()
-                                .map(|(k, v)| (ValueWrap(k.clone()), ValueWrap(v.clone())))
+                                .map(|(k, v)| (ValueWrap(k.as_value()), ValueWrap(v.as_value())))
                                 .collect::<Vec<_>>()
                                 .as_slice(),
                         ))
@@ -266,7 +266,7 @@ impl SqlWriter for ValkeySqlWriter {
                         prepared.commands.push(Cmd::hset_multiple(
                             key,
                             v.iter()
-                                .map(|(k, v)| (k, ValueWrap(v.clone())))
+                                .map(|(k, v)| (k, ValueWrap(v.as_value())))
                                 .collect::<Vec<_>>()
                                 .as_slice(),
                         ))

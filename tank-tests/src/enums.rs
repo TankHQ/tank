@@ -99,7 +99,7 @@ struct Entry {
     another_enum: AnotherEnum,
 }
 
-pub async fn enums(executor: &mut impl Executor) {
+pub async fn enums(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -185,4 +185,5 @@ pub async fn enums(executor: &mut impl Executor) {
             },
         ]
     );
+    Ok(())
 }

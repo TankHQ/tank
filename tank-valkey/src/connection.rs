@@ -2,7 +2,7 @@ use crate::{ValkeyDriver, ValkeyTransaction, ValueWrap};
 use anyhow::anyhow;
 use async_stream::try_stream;
 use redis::{Client, aio::MultiplexedConnection};
-use std::{borrow::Cow, future, mem, sync::Arc};
+use std::{borrow::Cow, future, iter, mem, sync::Arc};
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Row, RowOwned,
     RowsAffected, stream::Stream, truncate_long,
@@ -120,8 +120,7 @@ impl Executor for ValkeyConnection {
             let mut values = Vec::with_capacity(prepared.columns.len());
             {
                 let labels_mut = Arc::get_mut(&mut labels).unwrap();
-                for (i, (col, mut redis_val)) in
-                    prepared.columns.iter().zip(results.into_iter()).enumerate()
+                for (i, (col, mut redis_val)) in iter::zip(prepared.columns.iter(),results.into_iter()).enumerate()
                 {
                     labels_mut[i].write(col.name().into());
                     if let (tank_core::Value::Map(..), redis::Value::Array(array)) =
@@ -139,7 +138,7 @@ impl Executor for ValkeyConnection {
                 }
             }
             let row = QueryResult::Row(RowOwned {
-                names: unsafe { labels.assume_init() },
+                labels: unsafe { labels.assume_init() },
                 values,
             });
             yield row;

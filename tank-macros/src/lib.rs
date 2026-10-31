@@ -183,7 +183,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 RESULT.iter().map(|v| v.iter().copied())
             }
 
-            fn row_values(&self) -> ::std::vec::Vec<::tank::ValueOwned> {
+            fn row_values(&self) -> ::tank::RowValues {
                 vec![#(#row_values),*]
             }
 

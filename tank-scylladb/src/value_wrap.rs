@@ -372,7 +372,7 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                         Some(fields.into_boxed_slice())
                     },
                     Box::new(StructType {
-                        types: ty,
+                        fields: ty,
                         name: type_ref,
                     }),
                 )

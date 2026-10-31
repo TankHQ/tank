@@ -1,6 +1,8 @@
 use rust_decimal::Decimal;
 use std::sync::LazyLock;
-use tank::{Entity, Executor, FixedDecimal, QueryBuilder, cols, expr, stream::TryStreamExt};
+use tank::{
+    Entity, Executor, FixedDecimal, QueryBuilder, Result, cols, expr, stream::TryStreamExt,
+};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -18,7 +20,7 @@ pub struct Order {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-pub async fn orders(executor: &mut impl Executor) {
+pub async fn orders(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -214,4 +216,5 @@ pub async fn orders(executor: &mut impl Executor) {
         ["Germany, shipped, 1118.99€".to_string()],
         "ORDER BY total DESC LIMIT 1 should return the most expensive order"
     );
+    Ok(())
 }

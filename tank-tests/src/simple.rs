@@ -10,7 +10,7 @@ use std::{
 };
 use tank::{
     Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult, RawQuery,
-    RowsAffected, SqlWriter, expr, stream::TryStreamExt,
+    Result, RowsAffected, SqlWriter, expr, stream::TryStreamExt,
 };
 use time::{Date, Time, macros::date};
 use tokio::sync::Mutex;
@@ -40,7 +40,7 @@ pub struct SimpleFields {
     papa: Option<FixedDecimal<20, 1>>,
 }
 
-pub async fn simple(executor: &mut impl Executor) {
+pub async fn simple(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -284,4 +284,5 @@ pub async fn simple(executor: &mut impl Executor) {
             );
         }
     }
+    Ok(())
 }
