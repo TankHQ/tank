@@ -8,8 +8,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tank::{
-    AsValue, Entity, Executor, QueryBuilder, Result, Value, anyhow, current_timestamp_ms, expr,
-    join,
+    AsValue, Entity, Executor, QueryBuilder, Result, Value, ValueOwned, anyhow,
+    current_timestamp_ms, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -24,10 +24,13 @@ pub enum Method {
     DELETE,
 }
 impl AsValue for Method {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> ValueOwned {
         Value::Varchar(None)
     }
-    fn as_value(self) -> Value {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Varchar(Some(
             match self {
                 Method::GET => "get",
@@ -38,11 +41,11 @@ impl AsValue for Method {
             .into(),
         ))
     }
-    fn try_from_value(value: Value) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        if let Value::Varchar(Some(v)) = value.try_as(&String::as_empty_value())? {
+        if let Value::Varchar(Some(v)) = value.as_value().try_as(&String::as_empty_value())? {
             match &*v {
                 "get" => return Ok(Method::GET),
                 "post" => return Ok(Method::POST),

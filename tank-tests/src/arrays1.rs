@@ -182,7 +182,7 @@ pub async fn arrays1(executor: &mut impl Executor) {
             .await
             .expect("Could not collect the rows");
 
-        let value = Arrays1::from_row(rows[0].clone()).expect("First must be Arrays1");
+        let value = Arrays1::from_row(&rows[0]).expect("First must be Arrays1");
         assert_eq!(
             value,
             Arrays1 {

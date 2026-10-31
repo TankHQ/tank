@@ -51,7 +51,12 @@ impl SqlWriter for DuckDBSqlWriter {
         UNITS
     }
 
-    fn write_map(&self, context: &mut Context, out: &mut DynQuery, value: &HashMap<Value, Value>) {
+    fn write_map(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &HashMap<Value<'_>, Value<'_>>,
+    ) {
         out.push_str("MAP{");
         separated_by(
             out,

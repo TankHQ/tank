@@ -3,7 +3,7 @@ use crate::{
     util::stream_postgres_row_to_tank_row,
 };
 use tank_core::{
-    AsQuery, Error, Executor, Query, QueryResult, RawQuery, Result, Transaction,
+    AsQuery, Error, Executor, Query, QueryResult, RawQuery, Result, Row, Transaction,
     future::{Either, TryFutureExt},
     stream::{Stream, TryStreamExt},
 };
@@ -36,7 +36,7 @@ impl<'c> Executor for PostgresTransaction<'c> {
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<PostgresDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
         let mut query = query.as_query();
         stream_postgres_row_to_tank_row(async move || match query.as_mut() {
             Query::Raw(RawQuery(sql)) => {
@@ -47,7 +47,7 @@ impl<'c> Executor for PostgresTransaction<'c> {
                 Ok(Either::Left(stream))
             }
             Query::Prepared(prepared) => {
-                let params = prepared.take_params();
+                let params = prepared.take_params()?;
                 let portal = self
                     .0
                     .bind_raw(&prepared.statement, params.into_iter())

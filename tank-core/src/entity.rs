@@ -1,7 +1,7 @@
 use crate::{
     ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Query, QueryBuilder,
-    RawQuery, Result, Row, RowValues, RowsAffected, TableRef, future::Either, stream::Stream,
-    truncate_long, writer::SqlWriter,
+    RawQuery, Result, Row, RowOwned, RowsAffected, TableRef, ValueOwned, future::Either,
+    stream::Stream, truncate_long, writer::SqlWriter,
 };
 use anyhow::anyhow;
 use futures::{FutureExt, StreamExt};
@@ -46,23 +46,23 @@ pub trait Entity: AsEntity + Expression {
     -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = &'static ColumnDef>>;
 
     /// Full row representation including all persisted columns.
-    fn row_values(&self) -> RowValues;
+    fn row_values(&self) -> Vec<ValueOwned>;
 
     /// Full row representation with column labels.
-    fn row(&self) -> Row {
-        Row {
-            labels: Self::columns()
-                .into_iter()
+    fn row(&self) -> RowOwned {
+        RowOwned::new(
+            Self::columns()
+                .iter()
                 .map(|v| v.name().to_string())
                 .collect::<Arc<[String]>>(),
-            values: self.row_values(),
-        }
+            self.row_values(),
+        )
     }
 
     /// Reconstruct `Self` from a labeled row.
     ///
     /// Fails if columns are missing or type conversion fails.
-    fn from_row(row: Row) -> Result<Self>
+    fn from_row(row: impl Row) -> Result<Self>
     where
         Self: Sized;
 

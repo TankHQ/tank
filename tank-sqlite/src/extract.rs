@@ -1,9 +1,9 @@
 use anyhow::anyhow;
 use libsqlite3_sys::*;
 use std::ffi::{CStr, c_int};
-use tank_core::{AsValue, Result, Value};
+use tank_core::{AsValue, Result, Value, ValueOwned};
 
-pub(crate) fn extract_value(statement: *mut sqlite3_stmt, index: c_int) -> Result<Value> {
+pub(crate) fn extract_value(statement: *mut sqlite3_stmt, index: c_int) -> Result<ValueOwned> {
     unsafe {
         let column_type = sqlite3_column_type(statement, index);
         Ok(match column_type {

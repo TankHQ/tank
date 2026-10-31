@@ -2,8 +2,8 @@ use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
 use std::{borrow::Cow, fmt::Write};
 use tank_core::{
-    AsEntity, Context, Dataset, DynQuery, Entity, Expression, Fragment, IsAsterisk, SelectQuery,
-    SqlWriter, TableRef, Value, column_def,
+    AsEntity, Context, Dataset, DynQuery, Entity, Expression, Fragment, IsAsterisk, Row,
+    SelectQuery, SqlWriter, TableRef, Value, column_def,
 };
 
 pub struct ValkeySqlWriter {
@@ -169,8 +169,8 @@ impl SqlWriter for ValkeySqlWriter {
             let ty = &column_def.value;
             match ty {
                 v if v.is_scalar() => prepared.commands.push(Cmd::hget(key, id)),
-                Value::Array(.., ty, _) | Value::List(.., ty) => {
-                    if !ty.is_scalar() {
+                Value::Array(.., t) | Value::List(.., t) => {
+                    if !t.element.is_scalar() {
                         log::error!(
                             "Valkey/Redis can only query lists with scalar values, found: {ty:?}"
                         );
@@ -182,8 +182,8 @@ impl SqlWriter for ValkeySqlWriter {
                         -1,
                     ));
                 }
-                Value::Map(.., k_ty, v_ty) => {
-                    if !k_ty.is_scalar() || !v_ty.is_scalar() {
+                Value::Map(.., t) => {
+                    if !t.key.is_scalar() || !t.value.is_scalar() {
                         log::error!(
                             "Valkey/Redis can only query maps with scalar key and value (they are encoded as HSET), found: {ty:?}"
                         );
@@ -226,10 +226,10 @@ impl SqlWriter for ValkeySqlWriter {
             let key = is_pk_condition.key;
             prepared.commands.push(Cmd::hset_multiple(
                 &key,
-                row.into_iter()
+                Row::iter(&row)
                     .filter_map(|(k, v)| {
                         if v.is_scalar() && !v.is_null() {
-                            (k, ValueWrap(Cow::Borrowed(v))).into()
+                            (k, ValueWrap(v)).into()
                         } else {
                             None
                         }
@@ -237,29 +237,27 @@ impl SqlWriter for ValkeySqlWriter {
                     .collect::<Vec<_>>()
                     .as_slice(),
             ));
-            for (k, v) in row.into_iter().filter_map(|(k, v)| {
+            for (k, v) in Row::iter(&row).filter_map(|(k, v)| {
                 if !v.is_scalar() || v.same_type(&Value::Json(None)) {
-                    (k, ValueWrap(Cow::Borrowed(v))).into()
+                    (k, ValueWrap(v)).into()
                 } else {
                     None
                 }
             }) {
                 let key = format!("{key}{}{k}", self.separator);
-                let value = v.0.as_ref();
+                let value = v.0;
                 match value {
-                    Value::Array(Some(v), ..) if !v.is_empty() => prepared
-                        .commands
-                        .push(Cmd::rpush(key, ValueWrap(Cow::Borrowed(value)))),
-                    Value::List(Some(v), ..) if !v.is_empty() => prepared
-                        .commands
-                        .push(Cmd::rpush(key, ValueWrap(Cow::Borrowed(value)))),
+                    Value::Array(Some(ref v), ..) if !v.is_empty() => {
+                        prepared.commands.push(Cmd::rpush(key, ValueWrap(value)))
+                    }
+                    Value::List(Some(ref v), ..) if !v.is_empty() => {
+                        prepared.commands.push(Cmd::rpush(key, ValueWrap(value)))
+                    }
                     Value::Map(Some(v), ..) if !v.is_empty() => {
                         prepared.commands.push(Cmd::hset_multiple(
                             key,
                             v.iter()
-                                .map(|(k, v)| {
-                                    (ValueWrap(Cow::Borrowed(k)), ValueWrap(Cow::Borrowed(v)))
-                                })
+                                .map(|(k, v)| (ValueWrap(k.clone()), ValueWrap(v.clone())))
                                 .collect::<Vec<_>>()
                                 .as_slice(),
                         ))
@@ -268,7 +266,7 @@ impl SqlWriter for ValkeySqlWriter {
                         prepared.commands.push(Cmd::hset_multiple(
                             key,
                             v.iter()
-                                .map(|(k, v)| (k, ValueWrap(Cow::Borrowed(v))))
+                                .map(|(k, v)| (k, ValueWrap(v.clone())))
                                 .collect::<Vec<_>>()
                                 .as_slice(),
                         ))

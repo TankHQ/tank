@@ -8,7 +8,7 @@ use std::borrow::Cow;
 use tank_core::{AsValue, Interval};
 use time::{Date, Duration, Month, PrimitiveDateTime, Time};
 
-pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, tank_core::Value>);
+pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, tank_core::Value<'a>>);
 
 /// MySQL's binary pseudo-charset, reported for binary columns.
 const BINARY_CHARSET: u16 = 63;
@@ -152,14 +152,14 @@ fn parse_mysql_time(text: &str) -> tank_core::Result<Interval> {
     Ok(if negative { -result } else { result })
 }
 
-impl<'a> From<&'a tank_core::Value> for ValueWrap<'a> {
-    fn from(value: &'a tank_core::Value) -> Self {
+impl<'a> From<&'a tank_core::Value<'a>> for ValueWrap<'a> {
+    fn from(value: &'a tank_core::Value<'a>) -> Self {
         Self(Cow::Borrowed(value))
     }
 }
 
-impl<'a> From<tank_core::Value> for ValueWrap<'a> {
-    fn from(value: tank_core::Value) -> Self {
+impl<'a> From<tank_core::Value<'a>> for ValueWrap<'a> {
+    fn from(value: tank_core::Value<'a>) -> Self {
         Self(Cow::Owned(value))
     }
 }
@@ -183,7 +183,9 @@ impl<'a> TryFrom<mysql_async::Value> for ValueWrap<'a> {
                     }
                     _ => {
                         // TODO Replace it with String::from_utf8_lossy_owned once https://github.com/rust-lang/rust/issues/129436 is fixed
-                        tank_core::Value::Unknown(Some(String::from_utf8_lossy(&v).to_string()))
+                        tank_core::Value::Unknown(Some(Cow::Owned(
+                            String::from_utf8_lossy(&v).to_string(),
+                        )))
                     }
                 }
             }
@@ -239,7 +241,6 @@ impl<'a> TryFrom<ValueWrap<'a>> for mysql_async::Value {
     type Error = tank_core::Error;
 
     fn try_from(value: ValueWrap<'a>) -> Result<Self, Self::Error> {
-        type TankValue = tank_core::Value;
         type MySQLValue = mysql_async::Value;
         macro_rules! ensure_date_range {
             ($date:expr, $target:ty) => {{
@@ -261,34 +262,37 @@ impl<'a> TryFrom<ValueWrap<'a>> for mysql_async::Value {
         }
         Ok(match value.0.into_owned() {
             v if v.is_null() => MySQLValue::NULL,
-            TankValue::Boolean(Some(v)) => MySQLValue::from(v),
-            TankValue::Int8(Some(v), ..) => MySQLValue::from(v),
-            TankValue::Int16(Some(v), ..) => MySQLValue::from(v),
-            TankValue::Int32(Some(v), ..) => MySQLValue::from(v),
-            TankValue::Int64(Some(v), ..) => MySQLValue::from(v),
-            TankValue::Int128(Some(v), ..) => MySQLValue::from(v),
-            TankValue::UInt8(Some(v), ..) => MySQLValue::from(v),
-            TankValue::UInt16(Some(v), ..) => MySQLValue::from(v),
-            TankValue::UInt32(Some(v), ..) => MySQLValue::from(v),
-            TankValue::UInt64(Some(v), ..) => MySQLValue::from(v),
-            TankValue::UInt128(Some(v), ..) => MySQLValue::from(v),
-            TankValue::Float32(Some(v), ..) => MySQLValue::from(v),
-            TankValue::Float64(Some(v), ..) => MySQLValue::from(v),
-            TankValue::Decimal(Some(v), ..) => MySQLValue::from(v),
-            TankValue::Char(Some(v), ..) => MySQLValue::from(v.to_string()),
-            TankValue::Varchar(Some(v), ..) => match v {
+            tank_core::Value::Boolean(Some(v)) => MySQLValue::from(v),
+            tank_core::Value::Int8(Some(v), ..) => MySQLValue::from(v),
+            tank_core::Value::Int16(Some(v), ..) => MySQLValue::from(v),
+            tank_core::Value::Int32(Some(v), ..) => MySQLValue::from(v),
+            tank_core::Value::Int64(Some(v), ..) => MySQLValue::from(v),
+            tank_core::Value::Int128(Some(v), ..) => MySQLValue::from(*v),
+            tank_core::Value::UInt8(Some(v), ..) => MySQLValue::from(v),
+            tank_core::Value::UInt16(Some(v), ..) => MySQLValue::from(v),
+            tank_core::Value::UInt32(Some(v), ..) => MySQLValue::from(v),
+            tank_core::Value::UInt64(Some(v), ..) => MySQLValue::from(v),
+            tank_core::Value::UInt128(Some(v), ..) => MySQLValue::from(*v),
+            tank_core::Value::Float32(Some(v), ..) => MySQLValue::from(v),
+            tank_core::Value::Float64(Some(v), ..) => MySQLValue::from(v),
+            tank_core::Value::Decimal(Some(v), ..) => MySQLValue::from(v),
+            tank_core::Value::Char(Some(v), ..) => MySQLValue::from(v.to_string()),
+            tank_core::Value::Varchar(Some(v), ..) => match v {
                 Cow::Borrowed(v) => MySQLValue::from(v),
                 Cow::Owned(v) => MySQLValue::from(v),
             },
-            TankValue::Blob(Some(v), ..) => MySQLValue::from(v),
-            TankValue::Date(Some(v), ..) => MySQLValue::from(v),
-            TankValue::Time(Some(v), ..) => MySQLValue::from(v),
-            TankValue::Timestamp(Some(v), ..) => ensure_date_range!(v, u16)?,
-            TankValue::TimestampWithTimezone(Some(v), ..) => {
+            tank_core::Value::Blob(Some(v), ..) => match v {
+                Cow::Borrowed(v) => MySQLValue::from(v),
+                Cow::Owned(v) => MySQLValue::from(v),
+            },
+            tank_core::Value::Date(Some(v), ..) => MySQLValue::from(v),
+            tank_core::Value::Time(Some(v), ..) => MySQLValue::from(v),
+            tank_core::Value::Timestamp(Some(v), ..) => ensure_date_range!(v, u16)?,
+            tank_core::Value::TimestampWithTimezone(Some(v), ..) => {
                 let date_time = v.to_utc();
                 ensure_date_range!(date_time, u16)?
             }
-            TankValue::Interval(Some(v), ..) => {
+            tank_core::Value::Interval(Some(v), ..) => {
                 let v: Duration = v.into();
                 let mut secs = v.whole_seconds();
                 let days = (secs / Interval::SECS_IN_DAY).abs() as _;
@@ -306,12 +310,15 @@ impl<'a> TryFrom<ValueWrap<'a>> for mysql_async::Value {
                     v.subsec_microseconds().abs() as _,
                 )
             }
-            TankValue::Uuid(Some(v), ..) => MySQLValue::from(v.to_string()),
-            // TankValue::Array(Some(v), ..) => MySQLValue::from(v),
-            // TankValue::List(Some(v), ..) => MySQLValue::from(v),
-            // TankValue::Map(Some(v), ..) => MySQLValue::from(v),
-            // TankValue::Struct(Some(v), ..) => MySQLValue::from(v),
-            TankValue::Unknown(Some(v), ..) => MySQLValue::from(v),
+            tank_core::Value::Uuid(Some(v), ..) => MySQLValue::from(v.to_string()),
+            // tank_core::Value::Array(Some(v), ..) => MySQLValue::from(v),
+            // tank_core::Value::List(Some(v), ..) => MySQLValue::from(v),
+            // tank_core::Value::Map(Some(v), ..) => MySQLValue::from(v),
+            // tank_core::Value::Struct(Some(v), ..) => MySQLValue::from(v),
+            tank_core::Value::Unknown(Some(v), ..) => match v {
+                Cow::Borrowed(v) => MySQLValue::from(v),
+                Cow::Owned(v) => MySQLValue::from(v),
+            },
             v => {
                 return Err(
                     anyhow!("tank::Value variant `{v:?}` is not supported by MySQL").into(),

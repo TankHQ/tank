@@ -77,7 +77,7 @@ impl SqlWriter for SQLiteSqlWriter {
         }
     }
 
-    fn write_column_type(&self, _context: &mut Context, out: &mut DynQuery, value: &Value) {
+    fn write_column_type(&self, _context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
         match value {
             Value::Boolean(..) => out.push_str("INTEGER"),
             Value::Int8(..) => out.push_str("INTEGER"),
@@ -157,7 +157,7 @@ impl SqlWriter for SQLiteSqlWriter {
         _context: &mut Context,
         _out: &mut DynQuery,
         _value: &mut dyn Iterator<Item = &dyn Expression>,
-        _ty: Option<&Value>,
+        _ty: Option<&Value<'_>>,
         _is_array: bool,
     ) {
         log::error!("SQLite does not support arrays or lists");
@@ -167,7 +167,7 @@ impl SqlWriter for SQLiteSqlWriter {
         &self,
         _context: &mut Context,
         _out: &mut DynQuery,
-        _value: &HashMap<Value, Value>,
+        _value: &HashMap<Value<'_>, Value<'_>>,
     ) {
         log::error!("SQLite does not support maps");
     }

@@ -55,7 +55,7 @@ impl SqlWriter for PostgresSqlWriter {
         }
     }
 
-    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value) {
+    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
         match value {
             Value::Boolean(..) => out.push_str("BOOLEAN"),
             Value::Int8(..) => out.push_str("SMALLINT"),
@@ -85,12 +85,12 @@ impl SqlWriter for PostgresSqlWriter {
             Value::TimestampWithTimezone(..) => out.push_str("TIMESTAMP WITH TIME ZONE"),
             Value::Interval(..) => out.push_str("INTERVAL"),
             Value::Uuid(..) => out.push_str("UUID"),
-            Value::Array(.., inner, size) => {
-                self.write_column_type(context, out, inner);
-                let _ = write!(out, "[{}]", size);
+            Value::Array(.., t) => {
+                self.write_column_type(context, out, &t.element);
+                let _ = write!(out, "[{}]", t.len);
             }
-            Value::List(.., inner) => {
-                self.write_column_type(context, out, inner);
+            Value::List(.., t) => {
+                self.write_column_type(context, out, &t.element);
                 out.push_str("[]");
             }
             Value::Map(..) | Value::Json(..) | Value::Struct(..) => out.push_str("JSON"),
@@ -200,7 +200,7 @@ impl SqlWriter for PostgresSqlWriter {
         context: &mut Context,
         out: &mut DynQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
-        ty: Option<&Value>,
+        ty: Option<&Value<'_>>,
         _is_array: bool,
     ) {
         out.push_str("ARRAY[");

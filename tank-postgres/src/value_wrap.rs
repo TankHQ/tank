@@ -11,7 +11,7 @@ use std::{borrow::Cow, error::Error};
 use tank_core::Value;
 
 #[derive(Clone, Debug)]
-pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, Value>);
+pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, Value<'a>>);
 
 impl<'a> Default for ValueWrap<'a> {
     fn default() -> Self {
@@ -19,14 +19,14 @@ impl<'a> Default for ValueWrap<'a> {
     }
 }
 
-impl<'a> From<&'a Value> for ValueWrap<'a> {
-    fn from(value: &'a Value) -> Self {
+impl<'a> From<&'a Value<'a>> for ValueWrap<'a> {
+    fn from(value: &'a Value<'a>) -> Self {
         ValueWrap(Cow::Borrowed(value))
     }
 }
 
-impl<'a> From<Value> for ValueWrap<'a> {
-    fn from(value: Value) -> Self {
+impl<'a> From<Value<'a>> for ValueWrap<'a> {
+    fn from(value: Value<'a>) -> Self {
         ValueWrap(Cow::Owned(value))
     }
 }
@@ -62,12 +62,12 @@ impl<'a> ToSql for ValueWrap<'a> {
             Value::Int16(v) => v.to_sql(ty, out),
             Value::Int32(v) => v.to_sql(ty, out),
             Value::Int64(v) => v.to_sql(ty, out),
-            Value::Int128(v) => v.map(|v| Decimal::from_i128(v)).to_sql(ty, out),
+            Value::Int128(v) => v.as_deref().map(|v| Decimal::from_i128(*v)).to_sql(ty, out),
             Value::UInt8(v) => v.map(|v| v as i16).to_sql(ty, out),
             Value::UInt16(v) => v.map(|v| v as i32).to_sql(ty, out),
             Value::UInt32(v) => v.map(|v| v as i64).to_sql(ty, out),
             Value::UInt64(v) => v.map(|v| Decimal::from_u64(v)).to_sql(ty, out),
-            Value::UInt128(v) => v.map(|v| Decimal::from_u128(v)).to_sql(ty, out),
+            Value::UInt128(v) => v.as_deref().map(|v| Decimal::from_u128(*v)).to_sql(ty, out),
             Value::Float32(v) => v.to_sql(ty, out),
             Value::Float64(v) => v.to_sql(ty, out),
             Value::Decimal(v, _, _) => v.to_sql(ty, out),
@@ -80,26 +80,9 @@ impl<'a> ToSql for ValueWrap<'a> {
             Value::TimestampWithTimezone(v) => v.to_sql(ty, out),
             Value::Interval(v) => v.map(IntervalWrap).to_sql(ty, out),
             Value::Uuid(v) => v.to_sql(ty, out),
-            Value::Array(v, element, ..) => match v {
+            Value::Array(v, t) | Value::List(v, t) => match v {
                 Some(v) => {
-                    let (vector, dimensions, element_type) = flatten_array(&**v, element);
-                    array_to_sql(
-                        dimensions,
-                        element_type.oid(),
-                        vector.into_iter().map(|v| ValueWrap(Cow::Borrowed(v))),
-                        |e, w| match e.to_sql(&element_type, w)? {
-                            IsNull::No => Ok(postgres_protocol::IsNull::No),
-                            IsNull::Yes => Ok(postgres_protocol::IsNull::Yes),
-                        },
-                        out,
-                    )?;
-                    Ok(IsNull::No)
-                }
-                None => None::<Vec<ValueWrap>>.to_sql(ty, out),
-            },
-            Value::List(v, element) => match v {
-                Some(v) => {
-                    let (vector, dimensions, element_type) = flatten_array(v.as_slice(), element);
+                    let (vector, dimensions, element_type) = flatten_array(v, &t.element);
                     array_to_sql(
                         dimensions,
                         element_type.oid(),

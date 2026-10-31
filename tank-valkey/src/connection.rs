@@ -4,7 +4,7 @@ use async_stream::try_stream;
 use redis::{Client, aio::MultiplexedConnection};
 use std::{borrow::Cow, future, mem, sync::Arc};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Row,
+    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Row, RowOwned,
     RowsAffected, stream::Stream, truncate_long,
 };
 
@@ -56,7 +56,7 @@ impl Executor for ValkeyConnection {
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<ValkeyDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
         let mut query = query.as_query();
         try_stream! {
             let Query::Prepared(prepared) = query.as_mut() else {
@@ -138,9 +138,9 @@ impl Executor for ValkeyConnection {
                     values.push(converted.0.into_owned());
                 }
             }
-            let row = QueryResult::Row(Row {
-                labels: unsafe { labels.assume_init() },
-                values: values.into(),
+            let row = QueryResult::Row(RowOwned {
+                names: unsafe { labels.assume_init() },
+                values,
             });
             yield row;
         }

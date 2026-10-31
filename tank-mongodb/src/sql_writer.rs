@@ -151,7 +151,7 @@ impl SqlWriter for MongoDBSqlWriter {
         self.write_identifier(context, out, &value.name, false);
     }
 
-    fn write_value(&self, _context: &mut Context, out: &mut DynQuery, value: &Value) {
+    fn write_value(&self, _context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -330,7 +330,7 @@ impl SqlWriter for MongoDBSqlWriter {
         context: &mut Context,
         out: &mut DynQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
-        _ty: Option<&Value>,
+        _ty: Option<&Value<'_>>,
         _is_array: bool,
     ) {
         let Some(target) = out
@@ -393,7 +393,12 @@ impl SqlWriter for MongoDBSqlWriter {
         *target = Bson::Array(values);
     }
 
-    fn write_map(&self, _context: &mut Context, out: &mut DynQuery, value: &HashMap<Value, Value>) {
+    fn write_map(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+        value: &HashMap<Value<'_>, Value<'_>>,
+    ) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -420,7 +425,12 @@ impl SqlWriter for MongoDBSqlWriter {
         *target = Bson::Document(doc);
     }
 
-    fn write_struct(&self, _context: &mut Context, out: &mut DynQuery, value: &[(String, Value)]) {
+    fn write_struct(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+        value: &[(String, Value<'_>)],
+    ) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)

@@ -6,9 +6,9 @@ use serde::{
     ser::{Error as _, SerializeMap},
 };
 use std::borrow::Cow;
-use tank_core::Row;
+use tank_core::{Row, RowOwned};
 
-pub(crate) struct RowWrap<'a>(pub(crate) Cow<'a, Row>);
+pub(crate) struct RowWrap<'a>(pub(crate) Cow<'a, RowOwned>);
 
 impl<'a> TryFrom<Document> for RowWrap<'a> {
     type Error = tank_core::Error;
@@ -27,10 +27,7 @@ impl<'a> TryFrom<Document> for RowWrap<'a> {
             pairs.push(pair);
         }
         let (labels, values): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
-        Ok(RowWrap(Cow::Owned(Row {
-            labels: labels.into(),
-            values: values.into(),
-        })))
+        Ok(RowWrap(Cow::Owned(RowOwned::new(labels.into(), values))))
     }
 }
 
@@ -38,8 +35,8 @@ impl<'a> TryFrom<RowWrap<'a>> for Document {
     type Error = tank_core::Error;
     fn try_from(value: RowWrap<'a>) -> Result<Self, Self::Error> {
         let mut result = Document::new();
-        for (k, v) in value.0.as_ref() {
-            result.insert(k, value_to_bson(v)?);
+        for (k, v) in value.0.as_ref().iter() {
+            result.insert(k, value_to_bson(&v)?);
         }
         Ok(result)
     }
@@ -51,10 +48,10 @@ impl<'a> Serialize for RowWrap<'a> {
         S: Serializer,
     {
         let mut state = serializer.serialize_map(Some(self.0.len()))?;
-        for (k, v) in self.0.as_ref() {
+        for (k, v) in self.0.as_ref().iter() {
             state.serialize_entry(
                 k,
-                &value_to_bson(v).map_err(|e| S::Error::custom(format!("{e}")))?,
+                &value_to_bson(&v).map_err(|e| S::Error::custom(format!("{e}")))?,
             )?;
         }
         state.end()

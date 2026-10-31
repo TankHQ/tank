@@ -82,7 +82,7 @@ impl Executor for ScyllaDBConnection {
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<ScyllaDBDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
         let mut query = query.as_query();
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         stream! {
@@ -130,7 +130,7 @@ impl Executor for ScyllaDBConnection {
     fn fetch<'s>(
         &'s mut self,
         query: impl AsQuery<ScyllaDBDriver> + 's,
-    ) -> impl Stream<Item = Result<Row>> + Send {
+    ) -> impl Stream<Item = Result<impl Row + 's>> + Send {
         let mut query = query.as_query();
         let context = Arc::new(format!("While fetching the query:\n{}", query.as_mut()));
         stream! {

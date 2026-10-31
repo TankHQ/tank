@@ -37,7 +37,7 @@ where
     }
 }
 
-pub fn value_to_json(v: &Value) -> Option<JsonValue> {
+pub fn value_to_json(v: &Value<'_>) -> Option<JsonValue> {
     Some(match v {
         _ if v.is_null() => JsonValue::Null,
         Value::Boolean(Some(v), ..) => JsonValue::Bool(*v),
@@ -45,12 +45,12 @@ pub fn value_to_json(v: &Value) -> Option<JsonValue> {
         Value::Int16(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
         Value::Int32(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
         Value::Int64(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
-        Value::Int128(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
+        Value::Int128(Some(v), ..) => JsonValue::Number(Number::from_i128(**v)?),
         Value::UInt8(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
         Value::UInt16(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
         Value::UInt32(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
         Value::UInt64(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
-        Value::UInt128(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
+        Value::UInt128(Some(v), ..) => JsonValue::Number(Number::from_u128(**v)?),
         Value::Float32(Some(v), ..) => JsonValue::Number(Number::from_f64(*v as _)?),
         Value::Float64(Some(v), ..) => JsonValue::Number(Number::from_f64(*v as _)?),
         Value::Decimal(Some(v), ..) => JsonValue::Number(Number::from_f64(v.to_f64()?)?),
@@ -69,10 +69,7 @@ pub fn value_to_json(v: &Value) -> Option<JsonValue> {
             return None;
         }
         Value::Uuid(Some(v), ..) => JsonValue::String(v.to_string()),
-        Value::Array(Some(v), ..) => {
-            JsonValue::Array(v.iter().map(value_to_json).collect::<Option<_>>()?)
-        }
-        Value::List(Some(v), ..) => {
+        Value::Array(Some(v), ..) | Value::List(Some(v), ..) => {
             JsonValue::Array(v.iter().map(value_to_json).collect::<Option<_>>()?)
         }
         Value::Map(Some(v), ..) => {
@@ -84,7 +81,7 @@ pub fn value_to_json(v: &Value) -> Option<JsonValue> {
                 let Some(v) = value_to_json(v) else {
                     return None;
                 };
-                map.insert(k, v)?;
+                map.insert(k, v);
             }
             JsonValue::Object(map)
         }
@@ -95,11 +92,11 @@ pub fn value_to_json(v: &Value) -> Option<JsonValue> {
                 let Some(v) = value_to_json(v) else {
                     return None;
                 };
-                map.insert(k.clone(), v)?;
+                map.insert(k.clone(), v);
             }
             JsonValue::Object(map)
         }
-        Value::Unknown(Some(v), ..) => JsonValue::String(v.clone()),
+        Value::Unknown(Some(v), ..) => JsonValue::String(v.to_string()),
         _ => {
             return None;
         }
@@ -173,16 +170,16 @@ pub fn separated_by<T, F>(
 }
 
 /// Write, escaping occurrences of `search` char with `replace` while copying into buffer.
+#[inline]
 pub fn write_escaped(out: &mut DynQuery, value: &str, search: char, replace: &str) {
-    let mut position = 0;
-    for (i, c) in value.char_indices() {
-        if c == search {
-            out.push_str(&value[position..i]);
-            out.push_str(replace);
-            position = i + c.len_utf8();
-        }
+    let mut rest = value;
+    let char_len = search.len_utf8();
+    while let Some(i) = rest.find(search) {
+        out.push_str(&rest[..i]);
+        out.push_str(replace);
+        rest = &rest[i + char_len..];
     }
-    out.push_str(&value[position..]);
+    out.push_str(rest);
 }
 
 /// Convenience wrapper converting into a `CString`.
@@ -466,7 +463,7 @@ macro_rules! impl_executor_transaction {
                 &'s mut self,
                 query: impl ::tank_core::AsQuery<Self::Driver> + 's,
             ) -> impl ::tank_core::stream::Stream<
-                Item = ::tank_core::Result<::tank_core::QueryResult>,
+                Item = ::tank_core::Result<::tank_core::QueryResult<impl ::tank_core::Row + 's>>,
             > + Send {
                 self.$connection.run(query)
             }
@@ -475,9 +472,8 @@ macro_rules! impl_executor_transaction {
                 &'s mut self,
                 query: impl ::tank_core::AsQuery<Self::Driver> + 's,
             ) -> impl ::tank_core::stream::Stream<
-                Item = ::tank_core::Result<::tank_core::Row>,
-            > + Send
-            + 's {
+                Item = ::tank_core::Result<impl ::tank_core::Row + 's>,
+            > + Send {
                 self.$connection.fetch(query)
             }
 

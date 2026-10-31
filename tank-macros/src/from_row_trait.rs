@@ -1,127 +1,119 @@
-use crate::{ColumnMetadata, TableMetadata};
+use crate::TableMetadata;
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Ident, Type, spanned::Spanned};
+use syn::{Ident, LitByteStr, spanned::Spanned};
 
 pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
     let item = &table.item;
     let struct_name = &item.ident;
     let trait_name = Ident::new(&format!("{struct_name}FromRowTrait"), item.span());
     let factory_name = Ident::new(&format!("{struct_name}FromRowFactory"), item.span());
-    let fields_holder_declarations = table.columns.iter().map(|c| {
-        let ident = &c.ident;
-        let ty = &c.ty;
-        quote! {
-            let mut #ident: Option<#ty> = None;
-        }
+    let columns_len = table.columns.len();
+    let unique_names = (1..columns_len).all(|i| {
+        table.columns[..i]
+            .iter()
+            .all(|c| c.name != table.columns[i].name)
     });
-    type AssignmentFn = dyn Fn(&Ident, &Type, Option<&Type>) -> TokenStream;
-    type ProducerFn = Box<dyn Fn(&AssignmentFn) -> TokenStream>;
-    let field_assignment = table
+    let idents = table.columns.iter().map(|c| &c.ident).collect::<Vec<_>>();
+    let tys = table.columns.iter().map(|c| &c.ty);
+    let names = table.columns.iter().map(|c| &c.name).collect::<Vec<_>>();
+    let name_lits = table
         .columns
         .iter()
-        .map(
-            |ColumnMetadata {
-                 ident,
-                 name,
-                 ty,
-                 conversion_type,
-                 ..
-             }| {
-                let ident = ident.clone();
-                let name = name.clone();
-                let ty = ty.clone();
-                let conversion_type = conversion_type.clone();
-                Box::new(move |assign: &AssignmentFn| {
-                    let assign = assign(&ident, &ty, conversion_type.as_ref());
-                    quote! {
-                        if __n__ == #name {
-                            #assign;
-                        }
-                    }
-                }) as ProducerFn
-            },
-        )
-        .reduce(|acc, cur| {
-            Box::new(move |assign: &AssignmentFn| {
-                let acc = acc(assign);
-                let cur = cur(assign);
-                quote!(#acc else #cur)
-            }) as ProducerFn
-        })
-        .unwrap_or(Box::new(|_| TokenStream::new()));
-    let create_result = table.columns.iter().map(|c| {
-        let column = &c.name;
-        let ident = &c.ident;
-        quote! {
-            #ident: #ident.ok_or(__make_error__(#column))?
-        }
-    });
+        .map(|c| LitByteStr::new(c.name.as_bytes(), item.span()))
+        .collect::<Vec<_>>();
     let remaining = item
         .fields
         .iter()
-        .filter(|field| {
-            table
-                .columns
-                .iter()
-                .find(|c| c.ident == *field.ident.as_ref().unwrap())
-                .is_none()
+        .filter_map(|f| f.ident.as_ref())
+        .filter(|id| !idents.contains(id))
+        .collect::<Vec<_>>();
+    let convs = table
+        .columns
+        .iter()
+        .map(|c| {
+            let (ty, conv) = (&c.ty, c.conversion_type.as_ref().unwrap_or(&c.ty));
+            quote!(::std::convert::Into::<#ty>::into(
+                <#conv as ::tank::AsValue>::try_from_value(__v__)?
+            ))
         })
-        .map(|field| {
-            let ident = field.ident.as_ref().unwrap();
-            quote!(#ident: Default::default())
-        });
-    let create_result = quote! {
-        #struct_name {
-            #(#create_result,)*
-            #(#remaining,)*
+        .collect::<Vec<_>>();
+    let indices = (0..columns_len).collect::<Vec<_>>();
+    let is_ordered = quote! {
+        #unique_names
+            && row.len() >= #columns_len
+            && matches!(row.names(), [#(#idents),*] if true #(&& #idents.as_bytes() == #name_lits)*)
+    };
+    let fallback = |assigns: TokenStream| {
+        quote! {
+            ::std::hint::cold_path();
+            for (__i__, __n__) in row.names().iter().enumerate() {
+                let Some(__v__) = row.value(__i__) else { break };
+                #[allow(unreachable_patterns)]
+                match __n__.as_bytes() {
+                    #assigns
+                    _ => drop(__v__),
+                }
+            }
         }
     };
-    let field_assignment_default = field_assignment(&|field, ty, conversion_type| {
-        if let Some(conversion_type) = conversion_type {
-            quote!(result.#field = ::std::convert::Into::<#ty>::into(<#conversion_type as ::tank::AsValue>::try_from_value(__v__)?))
-        } else {
-            quote!(result.#field = <#ty as ::tank::AsValue>::try_from_value(__v__)?)
-        }
-    });
-    let field_assignment_holder = field_assignment(&|field, ty, conversion_type| {
-        if let Some(conversion_type) = conversion_type {
-            quote!(#field = Some(::std::convert::Into::<#ty>::into(<#conversion_type as ::tank::AsValue>::try_from_value(__v__)?)))
-        } else {
-            quote!(#field = Some(<#ty as ::tank::AsValue>::try_from_value(__v__)?))
-        }
-    });
+    let fallback_default = fallback(quote!(#(#name_lits => result.#idents = #convs,)*));
+    let fallback_holder = fallback(quote!(#(#name_lits => #idents = Some(#convs),)*));
     (
         factory_name.clone(),
         quote! {
             trait #trait_name {
-                fn from_row(row: ::tank::Row) -> ::tank::Result<#struct_name>;
+                fn make_error(name: &str) -> ::tank::Error;
+                fn from_row(row: impl ::tank::Row) -> ::tank::Result<#struct_name>;
             }
             struct #factory_name<T>(std::marker::PhantomData<T>);
             impl<T: Default + Into<#struct_name>> #factory_name<T> {
-                // Called when T has Default Trait
-                fn from_row(row: ::tank::Row) -> ::tank::Result<#struct_name> {
+                #[inline(always)]
+                fn from_row(row: impl ::tank::Row) -> ::tank::Result<#struct_name> {
                     let mut result = T::default().into();
-                    for (__n__, __v__) in ::std::iter::zip(row.labels.iter(), row.values.into_iter())
-                    {
-                        #field_assignment_default
+                    if #is_ordered {
+                        #(
+                            let Some(__v__) = row.value(#indices) else {
+                                return Ok(result);
+                            };
+                            result.#idents = #convs;
+                        )*
+                        return Ok(result);
                     }
+                    #fallback_default
                     Ok(result)
                 }
             }
             impl<T> #trait_name for #factory_name<T> {
-                // Called when T doesn't have default trait
-                fn from_row(row: ::tank::Row) -> ::tank::Result<#struct_name> {
-                    #(#fields_holder_declarations)*
-                    for (__n__, __v__) in ::std::iter::zip(row.labels.iter(), row.values.into_iter())
-                    {
-                        #field_assignment_holder
-                    }
-                    let __make_error__ = |name: &str| ::tank::anyhow!(
+                #[cold]
+                #[inline(never)]
+                fn make_error(name: &str) -> ::tank::Error {
+                    ::tank::anyhow!(
                         "Column `{name}` does not exist in the row provided (implement `Default` for {} or get all the columns)",
                         stringify!(#struct_name),
-                    );
-                    Ok(#create_result)
+                    )
+                }
+                #[inline(always)]
+                fn from_row(row: impl ::tank::Row) -> ::tank::Result<#struct_name> {
+                    if #is_ordered {
+                        return Ok(#struct_name {
+                            #(
+                                #idents: {
+                                    let Some(__v__) = row.value(#indices) else {
+                                        return Err(Self::make_error(#names));
+                                    };
+                                    #convs
+                                },
+                            )*
+                            #(#remaining: Default::default(),)*
+                        });
+                    }
+                    #(let mut #idents: Option<#tys> = None;)*
+                    #fallback_holder
+                    Ok(#struct_name {
+                        #(#idents: #idents.ok_or_else(|| Self::make_error(#names))?,)*
+                        #(#remaining: Default::default(),)*
+                    })
                 }
             }
         },
