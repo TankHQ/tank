@@ -68,22 +68,22 @@ pub(crate) fn tank_value_to_duckdb_logical_type(v: &Value<'_>) -> CBox<duckdb_lo
                 *result = duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_INTERVAL)
             }
             Value::Uuid(..) => *result = duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_UUID),
-            Value::Array(.., t) => {
+            Value::Array(_, t, ..) => {
                 *result = duckdb_create_array_type(
                     *tank_value_to_duckdb_logical_type(&t.element),
                     t.len as u64,
                 )
             }
-            Value::List(.., t) => {
+            Value::List(_, t, ..) => {
                 *result = duckdb_create_list_type(*tank_value_to_duckdb_logical_type(&t.element))
             }
-            Value::Map(.., t) => {
+            Value::Map(_, t, ..) => {
                 *result = duckdb_create_map_type(
                     *tank_value_to_duckdb_logical_type(&t.key),
                     *tank_value_to_duckdb_logical_type(&t.value),
                 )
             }
-            Value::Struct(.., t) => {
+            Value::Struct(_, t, ..) => {
                 let names = t
                     .fields
                     .iter()

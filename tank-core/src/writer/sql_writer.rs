@@ -197,15 +197,15 @@ pub trait SqlWriter: Send {
             Value::TimestampWithTimezone(..) => out.push_str("TIMESTAMPTZ"),
             Value::Interval(..) => out.push_str("INTERVAL"),
             Value::Uuid(..) => out.push_str("UUID"),
-            Value::Array(.., t) => {
+            Value::Array(_, t, ..) => {
                 self.write_column_type(context, out, &t.element);
                 let _ = write!(out, "[{}]", t.len);
             }
-            Value::List(.., t) => {
+            Value::List(_, t, ..) => {
                 self.write_column_type(context, out, &t.element);
                 out.push_str("[]");
             }
-            Value::Map(.., t) => {
+            Value::Map(_, t, ..) => {
                 out.push_str("MAP(");
                 self.write_column_type(context, out, &t.key);
                 out.push(',');
