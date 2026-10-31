@@ -1,34 +1,19 @@
 use anyhow::anyhow;
 use redis::{FromRedisValue, RedisWrite, ToRedisArgs};
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
 
-#[derive(Default, PartialEq, Eq, Hash, Debug)]
-pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, tank_core::Value<'a>>);
+#[derive(PartialEq, Eq, Hash, Debug)]
+pub(crate) struct ValueWrap<'a>(pub(crate) tank_core::Value<'a>);
 
-impl<'a> From<ValueWrap<'a>> for tank_core::ValueOwned {
+impl<'a> From<ValueWrap<'a>> for tank_core::Value<'a> {
     fn from(value: ValueWrap<'a>) -> Self {
-        value.0.into_owned().into_owned()
-    }
-}
-
-impl<'a> From<&'a ValueWrap<'a>> for &'a tank_core::Value<'a> {
-    fn from(value: &'a ValueWrap<'a>) -> Self {
-        match &value.0 {
-            Cow::Borrowed(v) => *v,
-            Cow::Owned(v) => v,
-        }
+        value.0
     }
 }
 
 impl<'a> From<tank_core::Value<'a>> for ValueWrap<'a> {
     fn from(value: tank_core::Value<'a>) -> Self {
-        Self(Cow::Owned(value))
-    }
-}
-
-impl<'a> From<&'a tank_core::Value<'a>> for ValueWrap<'a> {
-    fn from(value: &'a tank_core::Value<'a>) -> Self {
-        Self(Cow::Borrowed(value))
+        Self(value)
     }
 }
 
@@ -215,22 +200,18 @@ impl<'a> ToRedisArgs for ValueWrap<'a> {
     where
         W: ?Sized + RedisWrite,
     {
-        let value = match &self.0 {
-            Cow::Borrowed(v) => *v,
-            Cow::Owned(v) => v,
-        };
-        match value {
+        match &self.0 {
             tank_core::Value::Boolean(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::Int8(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::Int16(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::Int32(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::Int64(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::Int128(Some(v), ..) => (**v).write_redis_args(out),
+            tank_core::Value::Int128(Some(v), ..) => (*v).write_redis_args(out),
             tank_core::Value::UInt8(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::UInt16(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::UInt32(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::UInt64(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::UInt128(Some(v), ..) => (**v).write_redis_args(out),
+            tank_core::Value::UInt128(Some(v), ..) => (*v).write_redis_args(out),
             tank_core::Value::Float32(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::Float64(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::Decimal(Some(v), ..) => v.write_redis_args(out),
@@ -241,46 +222,44 @@ impl<'a> ToRedisArgs for ValueWrap<'a> {
             | tank_core::Value::TimestampWithTimezone(Some(..), ..)
             | tank_core::Value::Interval(Some(..), ..)
             | tank_core::Value::Uuid(Some(..), ..) => {
-                if let Ok(v) = value
+                if let Ok(v) = self
+                    .0
                     .clone()
                     .try_as(&tank_core::Value::Varchar(None))
                     .inspect_err(|e| {
                         log::error!("{e:#}");
                     })
                 {
-                    ValueWrap(Cow::Owned(v)).write_redis_args(out);
+                    ValueWrap(v).write_redis_args(out);
                 }
             }
             tank_core::Value::Varchar(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::Blob(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::Array(Some(v), ..) => v
-                .iter()
-                .map(|v| ValueWrap(Cow::Borrowed(v)))
+                .into_iter()
+                .map(|v| ValueWrap(v.clone()))
                 .collect::<Vec<_>>()
                 .write_redis_args(out),
             tank_core::Value::List(Some(v), ..) => v
-                .iter()
-                .map(|v| ValueWrap(Cow::Borrowed(v)))
+                .into_iter()
+                .map(|v| ValueWrap(v.clone()))
                 .collect::<Vec<_>>()
                 .write_redis_args(out),
             tank_core::Value::Map(Some(v), ..) => v
                 .iter()
-                .map(|(k, v)| (ValueWrap(Cow::Borrowed(k)), ValueWrap(Cow::Borrowed(v))))
+                .map(|(k, v)| (ValueWrap(v.clone()), ValueWrap(v.clone())))
                 .collect::<HashMap<_, _>>()
                 .write_redis_args(out),
             tank_core::Value::Json(Some(v), ..) => v.to_string().write_redis_args(out),
             tank_core::Value::Struct(Some(v), ..) => v
-                .iter()
-                .map(|(k, v)| (k, ValueWrap(Cow::Borrowed(v))))
+                .into_iter()
+                .map(|(k, v)| (k, ValueWrap(v.clone())))
                 .collect::<HashMap<_, _>>()
                 .write_redis_args(out),
             tank_core::Value::Unknown(Some(v), ..) => v.write_redis_args(out),
             v if v.is_null() => None::<i32>.write_redis_args(out), // This writes nothing
-            _ => {
-                log::error!(
-                    "tank::Value variant `{:?}` is not supported by Valkey/Redis",
-                    &value
-                )
+            v => {
+                log::error!("tank::Value variant `{v:?}` is not supported by Valkey/Redis",)
             }
         }
     }

@@ -36,7 +36,7 @@ impl<'a> TryFrom<RowWrap<'a>> for Document {
     fn try_from(value: RowWrap<'a>) -> Result<Self, Self::Error> {
         let mut result = Document::new();
         for (k, v) in value.0.as_ref().iter() {
-            result.insert(k, value_to_bson(v.as_ref())?);
+            result.insert(k, value_to_bson(&v)?);
         }
         Ok(result)
     }
@@ -51,7 +51,7 @@ impl<'a> Serialize for RowWrap<'a> {
         for (k, v) in self.0.as_ref().iter() {
             state.serialize_entry(
                 k,
-                &value_to_bson(v.as_ref()).map_err(|e| S::Error::custom(format!("{e}")))?,
+                &value_to_bson(&v).map_err(|e| S::Error::custom(format!("{e}")))?,
             )?;
         }
         state.end()

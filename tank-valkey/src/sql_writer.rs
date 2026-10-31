@@ -245,21 +245,19 @@ impl SqlWriter for ValkeySqlWriter {
                 }
             }) {
                 let key = format!("{key}{}{k}", self.separator);
-                let value = v.0.as_ref();
+                let value = v.0;
                 match value {
-                    Value::Array(Some(v), ..) if !v.is_empty() => prepared
-                        .commands
-                        .push(Cmd::rpush(key, ValueWrap(Cow::Borrowed(value)))),
-                    Value::List(Some(v), ..) if !v.is_empty() => prepared
-                        .commands
-                        .push(Cmd::rpush(key, ValueWrap(Cow::Borrowed(value)))),
+                    Value::Array(Some(ref v), ..) if !v.is_empty() => {
+                        prepared.commands.push(Cmd::rpush(key, ValueWrap(value)))
+                    }
+                    Value::List(Some(ref v), ..) if !v.is_empty() => {
+                        prepared.commands.push(Cmd::rpush(key, ValueWrap(value)))
+                    }
                     Value::Map(Some(v), ..) if !v.is_empty() => {
                         prepared.commands.push(Cmd::hset_multiple(
                             key,
                             v.iter()
-                                .map(|(k, v)| {
-                                    (ValueWrap(Cow::Borrowed(k)), ValueWrap(Cow::Borrowed(v)))
-                                })
+                                .map(|(k, v)| (ValueWrap(k.clone()), ValueWrap(v.clone())))
                                 .collect::<Vec<_>>()
                                 .as_slice(),
                         ))
@@ -268,7 +266,7 @@ impl SqlWriter for ValkeySqlWriter {
                         prepared.commands.push(Cmd::hset_multiple(
                             key,
                             v.iter()
-                                .map(|(k, v)| (k, ValueWrap(Cow::Borrowed(v))))
+                                .map(|(k, v)| (k, ValueWrap(v.clone())))
                                 .collect::<Vec<_>>()
                                 .as_slice(),
                         ))

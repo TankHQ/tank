@@ -1,6 +1,5 @@
 use crate::{QueryResult, Value, ValueOwned};
 use std::{
-    borrow::Cow,
     fmt::{self, Debug, Formatter},
     sync::Arc,
 };
@@ -44,13 +43,13 @@ pub trait Row: Debug + Send + Sync {
 
     /// Borrows a stored value or returns a freshly decoded value.
     /// SQL NULL is a `Value`; `None` means no value at this index.
-    fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>>;
+    fn value(&self, index: usize) -> Option<Value<'_>>;
 
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    fn get_column(&self, name: &str) -> Option<Cow<'_, Value<'_>>> {
+    fn get_column(&self, name: &str) -> Option<Value<'_>> {
         self.names()
             .iter()
             .position(|label| label == name)
@@ -58,11 +57,13 @@ pub trait Row: Debug + Send + Sync {
     }
 
     /// Iterates values without cloning stored payloads, stopping at a missing cell.
-    fn values(&self) -> impl Iterator<Item = Cow<'_, Value<'_>>> {
+    fn values(&self) -> impl Iterator<Item = Value<'_>> {
         (0..self.len()).map_while(|index| self.value(index))
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&str, Cow<'_, Value<'_>>)> {
+    fn take_values(self) -> impl Iterator<Item = ValueOwned>;
+
+    fn iter(&self) -> impl Iterator<Item = (&str, Value<'_>)> {
         self.names().iter().map(String::as_str).zip(self.values())
     }
 
@@ -73,7 +74,7 @@ pub trait Row: Debug + Send + Sync {
     {
         RowOwned::new(
             self.names().into(),
-            self.values()
+            self.take_values()
                 .map(|value| value.into_owned().into_owned())
                 .collect::<Vec<_>>(),
         )
@@ -92,7 +93,7 @@ impl<R: Row + ?Sized> Row for &R {
     }
 
     #[inline(always)]
-    fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>> {
+    fn value(&self, index: usize) -> Option<Value<'_>> {
         (**self).value(index)
     }
 
@@ -102,17 +103,22 @@ impl<R: Row + ?Sized> Row for &R {
     }
 
     #[inline(always)]
-    fn get_column(&self, name: &str) -> Option<Cow<'_, Value<'_>>> {
+    fn get_column(&self, name: &str) -> Option<Value<'_>> {
         (**self).get_column(name)
     }
 
     #[inline(always)]
-    fn values(&self) -> impl Iterator<Item = Cow<'_, Value<'_>>> {
+    fn values(&self) -> impl Iterator<Item = Value<'_>> {
         (**self).values()
     }
 
     #[inline(always)]
-    fn iter(&self) -> impl Iterator<Item = (&str, Cow<'_, Value<'_>>)> {
+    fn take_values(self) -> impl Iterator<Item = ValueOwned> {
+        (*self).values().map(|v| v.clone().into_owned())
+    }
+
+    #[inline(always)]
+    fn iter(&self) -> impl Iterator<Item = (&str, Value<'_>)> {
         (**self).iter()
     }
 }
@@ -154,8 +160,12 @@ impl Row for RowOwned {
     }
 
     #[inline(always)]
-    fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>> {
-        self.values.get(index).map(Cow::Borrowed)
+    fn value(&self, index: usize) -> Option<Value<'_>> {
+        self.values.get(index).cloned()
+    }
+
+    fn take_values(self) -> impl Iterator<Item = ValueOwned> {
+        self.values.into_iter()
     }
 
     #[inline(always)]

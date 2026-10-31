@@ -17,7 +17,7 @@ pub enum Operand<'a> {
     Type(Value<'a>),
     Variable(Value<'a>),
     Value(&'a Value<'a>),
-    Call(&'static str, &'a [&'a dyn Expression]),
+    Call(&'a str, &'a [&'a dyn Expression]),
     Asterisk,
     QuestionMark,
     CurrentTimestampMs,

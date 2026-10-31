@@ -611,7 +611,7 @@ impl ExpressionVisitor for NegateNumber {
                 self.value = (-v).as_value();
                 return true;
             }
-            &Operand::Variable(ref v) | &Operand::Value(v) => match v {
+            Operand::Variable(v) | &Operand::Value(v) => match v {
                 Value::Int8(Some(v)) => {
                     self.value = (-v).as_value();
                     return true;

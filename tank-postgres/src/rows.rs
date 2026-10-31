@@ -77,13 +77,13 @@ impl Row for PostgresRow<'_> {
     }
 
     #[inline(always)]
-    fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>> {
+    fn value(&self, index: usize) -> Option<Value<'_>> {
         if index >= self.len() {
             return None;
         }
         let raw = match self.row.try_get::<usize, RawCell<'_>>(index) {
             Ok(RawCell(Some(raw))) => raw,
-            Ok(RawCell(None)) => return Some(Cow::Owned(Value::Null)),
+            Ok(RawCell(None)) => return Some(Value::Null),
             Err(e) => {
                 mem::forget(e);
                 return None;
@@ -93,22 +93,29 @@ impl Row for PostgresRow<'_> {
         // splitting the 3-byte 1..4 gap into `i8` + `i16` so LLVM SROA promotes both to SSA.
         match *self.row.columns()[index].type_() {
             Type::BOOL => match *raw {
-                [b] => Some(Cow::Owned(Value::Boolean(Some(b != 0)))),
-                _ => Some(Cow::Owned(Value::Null)),
+                [b] => Some(Value::Boolean(Some(b != 0))),
+                _ => Some(Value::Null),
             },
             Type::INT4 => match raw.try_into() {
-                Ok(b) => Some(Cow::Owned(Value::Int32(Some(i32::from_be_bytes(b))))),
-                Err(_) => Some(Cow::Owned(Value::Null)),
+                Ok(b) => Some(Value::Int32(Some(i32::from_be_bytes(b)))),
+                Err(_) => Some(Value::Null),
             },
             Type::VARCHAR | Type::TEXT => match std::str::from_utf8(raw) {
-                Ok(text) => Some(Cow::Owned(Value::Varchar(Some(Cow::Borrowed(text))))),
-                Err(_) => Some(Cow::Owned(Value::Null)),
+                Ok(text) => Some(Value::Varchar(Some(Cow::Borrowed(text)))),
+                Err(_) => Some(Value::Null),
             },
             ref ty => match Self::decode_fallback(ty, raw) {
-                Some(v) => Some(Cow::Owned(v)),
-                None => Some(Cow::Owned(Value::Null)),
+                Some(v) => Some(v),
+                None => Some(Value::Null),
             },
         }
+    }
+
+    fn take_values(self) -> impl Iterator<Item = tank_core::ValueOwned> {
+        self.values()
+            .map(|v| v.clone().into_owned())
+            .collect::<Vec<_>>()
+            .into_iter()
     }
 
     fn into_owned(self) -> RowOwned {
@@ -116,7 +123,7 @@ impl Row for PostgresRow<'_> {
             names: self.labels.clone(),
             values: self
                 .values()
-                .map(|value| value.into_owned().into_owned())
+                .map(|value| value.clone().into_owned())
                 .collect(),
         }
     }
