@@ -10,7 +10,7 @@ use std::{
 };
 use tank::{
     AsValue, Driver, DynQuery, Entity, Error, Executor, FixedDecimal, Query, QueryBuilder,
-    QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Value, anyhow, cols, expr,
+    QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Value, ValueOwned, anyhow, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Time, macros::date};
@@ -25,20 +25,23 @@ enum SomeEnum {
     SecondValue,
 }
 impl AsValue for SomeEnum {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> ValueOwned {
         Value::Varchar(None)
     }
-    fn as_value(self) -> Value {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         match self {
             Self::FirstValue => Value::Varchar(Some("first".into())),
             Self::SecondValue => Value::Varchar(Some("second".into())),
         }
     }
-    fn try_from_value(value: Value) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        if let Value::Varchar(Some(v), ..) = value.try_as(&Value::Varchar(None))? {
+        if let Value::Varchar(Some(v), ..) = value.as_value().try_as(&Value::Varchar(None))? {
             match v.deref() {
                 "first" => return Ok(Self::FirstValue),
                 "second" => return Ok(Self::SecondValue),
@@ -57,10 +60,13 @@ enum AnotherEnum {
     Delta,
 }
 impl AsValue for AnotherEnum {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> ValueOwned {
         Value::Int8(None)
     }
-    fn as_value(self) -> Value {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         match self {
             Self::Alpha => Value::Int8(Some(0)),
             Self::Bravo => Value::Int8(Some(1)),
@@ -68,11 +74,11 @@ impl AsValue for AnotherEnum {
             Self::Delta => Value::Int8(Some(3)),
         }
     }
-    fn try_from_value(value: Value) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        if let Value::Int8(Some(v), ..) = value.try_as(&Value::Int8(None))? {
+        if let Value::Int8(Some(v), ..) = value.as_value().try_as(&Value::Int8(None))? {
             match v {
                 0 => return Ok(Self::Alpha),
                 1 => return Ok(Self::Bravo),

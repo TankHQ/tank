@@ -5,7 +5,7 @@ use std::pin::pin;
 use std::{str::FromStr, sync::Arc, sync::LazyLock};
 use tank::QueryBuilder;
 use tank::{
-    AsValue, Dataset, Entity, Executor, FixedDecimal, cols, expr, join,
+    AsValue, Dataset, Entity, Executor, FixedDecimal, Row, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, PrimitiveDateTime, Time};
@@ -186,21 +186,24 @@ pub async fn shopping(executor: &mut impl Executor) {
     User::insert_many(executor, &users)
         .await
         .expect("Could not insert the users");
-    let row = pin!(
-        executor.fetch(
-            QueryBuilder::new()
-                .select(cols!(COUNT(*)))
-                .from(User::table())
-                .where_expr(true)
-                .limit(Some(1))
-                .build(&executor.driver())
+    let count = {
+        let row = pin!(
+            executor.fetch(
+                QueryBuilder::new()
+                    .select(cols!(COUNT(*)))
+                    .from(User::table())
+                    .where_expr(true)
+                    .limit(Some(1))
+                    .build(&executor.driver())
+            )
         )
-    )
-    .try_next()
-    .await
-    .expect("Failed to query for count")
-    .expect("Did not return some value");
-    assert_eq!(i64::try_from_value(row.values[0].clone()).unwrap(), 2);
+        .try_next()
+        .await
+        .expect("Failed to query for count")
+        .expect("Did not return some value");
+        i64::try_from_value(row.value(0).unwrap()).unwrap()
+    };
+    assert_eq!(count, 2);
 
     // Cart
     Cart::drop_table(executor, true, false)

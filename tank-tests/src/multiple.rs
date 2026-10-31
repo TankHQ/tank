@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
-use tank::{AsValue, DynQuery, QueryBuilder};
+use tank::{AsValue, DynQuery, QueryBuilder, Row};
 use tank::{Driver, Entity, Executor, QueryResult, SqlWriter, stream::TryStreamExt};
 use tokio::sync::Mutex;
 
@@ -142,52 +142,52 @@ pub async fn multiple(executor: &mut impl Executor) {
     });
     assert_eq!(result.len(), 6);
     let mut result = result.into_iter().peekable();
-    assert_eq!(*result.peek().unwrap().labels, ["a2", "string"]);
+    assert_eq!(result.peek().unwrap().names(), ["a2", "string"]);
     assert_eq!(
-        Two::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
+        Two::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         Two {
             a2: 21,
             string: "aaa".into()
         }
     );
     result.next();
-    assert_eq!(*result.peek().unwrap().labels, ["a2", "string"]);
+    assert_eq!(result.peek().unwrap().names(), ["a2", "string"]);
     assert_eq!(
-        Two::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
+        Two::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         Two {
             a2: 22,
             string: "bbb".into()
         }
     );
     result.next();
-    assert_eq!(*result.peek().unwrap().labels, ["string"]);
+    assert_eq!(result.peek().unwrap().names(), ["string"]);
     assert_eq!(
-        Three::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
+        Three::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         Three {
             string: "ccc".into(),
         }
     );
     result.next();
-    assert_eq!(*result.peek().unwrap().labels, ["string"]);
+    assert_eq!(result.peek().unwrap().names(), ["string"]);
     assert_eq!(
-        Three::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
+        Three::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         Three {
             string: "ddd".into(),
         }
     );
     result.next();
-    assert_eq!(*result.peek().unwrap().labels, ["a2", "string"]);
+    assert_eq!(result.peek().unwrap().names(), ["a2", "string"]);
     assert_eq!(
-        Two::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
+        Two::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         Two {
             a2: 23,
             string: "eee".into()
         }
     );
     result.next();
-    assert_eq!(*result.peek().unwrap().labels, ["a1", "string", "c1"]);
+    assert_eq!(result.peek().unwrap().names(), ["a1", "string", "c1"]);
     assert_eq!(
-        One::from_row(result.peek().unwrap().clone()).expect("The row was not an entity Two"),
+        One::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
         One {
             a1: 11,
             string: "zzz".into(),

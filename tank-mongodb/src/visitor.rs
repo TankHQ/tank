@@ -592,7 +592,7 @@ impl<'p, 'a, 'h> ExpressionVisitor for NotRewriter<'p, 'a, 'h> {
 
 #[derive(Default, Debug)]
 pub struct NegateNumber {
-    pub value: Value,
+    pub value: tank_core::ValueOwned,
 }
 impl ExpressionVisitor for NegateNumber {
     fn visit_operand(
@@ -611,7 +611,7 @@ impl ExpressionVisitor for NegateNumber {
                 self.value = (-v).as_value();
                 return true;
             }
-            Operand::Variable(v) => match v {
+            &Operand::Variable(ref v) | &Operand::Value(v) => match v {
                 Value::Int8(Some(v)) => {
                     self.value = (-v).as_value();
                     return true;
@@ -629,42 +629,7 @@ impl ExpressionVisitor for NegateNumber {
                     return true;
                 }
                 Value::Int128(Some(v)) => {
-                    self.value = (-v).as_value();
-                    return true;
-                }
-                Value::Float32(Some(v)) => {
-                    self.value = (-v).as_value();
-                    return true;
-                }
-                Value::Float64(Some(v)) => {
-                    self.value = (-v).as_value();
-                    return true;
-                }
-                Value::Decimal(Some(v), ..) => {
-                    self.value = (-v).as_value();
-                    return true;
-                }
-                _ => {}
-            },
-            Operand::Value(v) => match v {
-                Value::Int8(Some(v)) => {
-                    self.value = (-v).as_value();
-                    return true;
-                }
-                Value::Int16(Some(v)) => {
-                    self.value = (-v).as_value();
-                    return true;
-                }
-                Value::Int32(Some(v)) => {
-                    self.value = (-v).as_value();
-                    return true;
-                }
-                Value::Int64(Some(v)) => {
-                    self.value = (-v).as_value();
-                    return true;
-                }
-                Value::Int128(Some(v)) => {
-                    self.value = (-v).as_value();
+                    self.value = (-**v).as_value();
                     return true;
                 }
                 Value::Float32(Some(v)) => {

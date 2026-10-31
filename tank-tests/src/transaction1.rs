@@ -93,31 +93,35 @@ pub async fn transaction1(connection: &mut impl Connection) {
         .expect("Failed to rollback the transaction");
 
     // Expect empty tables
-    let entities = connection
-        .fetch(
-            QueryBuilder::new()
-                .select(cols!(*))
-                .from(EntityA::table())
-                .where_expr(true)
-                .build(&connection.driver()),
-        )
-        .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not select EntityA rows");
-    assert!(entities.is_empty());
+    {
+        let entities = connection
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(*))
+                    .from(EntityA::table())
+                    .where_expr(true)
+                    .build(&connection.driver()),
+            )
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Could not select EntityA rows");
+        assert!(entities.is_empty());
+    }
 
-    let entities = connection
-        .fetch(
-            QueryBuilder::new()
-                .select(cols!(*))
-                .from(EntityB::table())
-                .where_expr(true)
-                .build(&connection.driver()),
-        )
-        .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not select EntityB rows");
-    assert!(entities.is_empty());
+    {
+        let entities = connection
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(*))
+                    .from(EntityB::table())
+                    .where_expr(true)
+                    .build(&connection.driver()),
+            )
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Could not select EntityB rows");
+        assert!(entities.is_empty());
+    }
 
     // Insert more values and commit
     let mut transaction = connection

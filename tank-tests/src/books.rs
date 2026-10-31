@@ -222,12 +222,12 @@ pub async fn books(executor: &mut impl Executor) {
                     .where_expr(true)
                     .build(&executor.driver()),
             )
-            .try_collect::<Vec<Row>>()
+            .try_collect::<Vec<_>>()
             .await
             .expect("Failed to query books and authors joined")
             .into_iter()
             .map(|row| {
-                let mut iter = row.values.into_iter();
+                let mut iter = row.into_owned().values.into_iter();
                 (
                     match iter.next().unwrap() {
                         Value::Varchar(Some(v)) => v,
@@ -350,7 +350,7 @@ pub async fn books(executor: &mut impl Executor) {
                     .order_by(cols!(Author::name ASC))
                     .build(&executor.driver()),
             )
-            .and_then(|row| async move { AsValue::try_from_value((*row.values)[0].clone()) })
+            .and_then(|row| async move { AsValue::try_from_value(row.value(0).unwrap()) })
             .try_collect::<Vec<String>>()
             .await
             .expect("Could not return the ordered names of the authors");

@@ -1,4 +1,4 @@
-use crate::{AsValue, Driver, DynQuery, Prepared, Result, Row, RowsAffected, truncate_long};
+use crate::{AsValue, Driver, DynQuery, Prepared, Result, RowOwned, RowsAffected, truncate_long};
 use anyhow::anyhow;
 use std::fmt::{self, Display};
 
@@ -110,9 +110,12 @@ impl<D: Driver> AsMut<Query<D>> for Query<D> {
 
 /// Items from `Executor::run`: rows or effects.
 #[derive(Debug)]
-pub enum QueryResult {
+pub enum QueryResult<R = RowOwned> {
     /// A labeled row
-    Row(Row),
+    Row(R),
     /// A modify effect aggregation
     Affected(RowsAffected),
 }
+
+/// Owning query result.
+pub type QueryResultOwned = QueryResult<RowOwned>;

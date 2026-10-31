@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 use tank::{
-    AsValue, Entity, Executor, QueryBuilder, Result, cols, expr,
+    AsValue, Entity, Executor, QueryBuilder, Result, Row, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -82,7 +82,7 @@ pub async fn math(executor: &mut impl Executor) {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
-        .map_ok(|v| bool::try_from_value(v.values.into_iter().nth(1).unwrap()))
+        .map_ok(|v| bool::try_from_value(v.value(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await
@@ -97,7 +97,7 @@ pub async fn math(executor: &mut impl Executor) {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
-        .map_ok(|v| bool::try_from_value(v.values.into_iter().nth(1).unwrap()))
+        .map_ok(|v| bool::try_from_value(v.value(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await

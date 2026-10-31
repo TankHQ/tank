@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::sync::LazyLock;
 use tank::{
-    AsValue, Entity, Error, Executor, QueryBuilder, Result, Value, anyhow, cols, expr,
+    AsValue, Entity, Error, Executor, QueryBuilder, Result, Value, ValueOwned, anyhow, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -24,20 +24,23 @@ impl HostPort {
 }
 
 impl AsValue for HostPort {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> ValueOwned {
         Value::Varchar(None)
     }
 
-    fn as_value(self) -> Value {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Varchar(Some(format!("{}:{}", self.host, self.port).into()))
     }
 
-    fn try_from_value(value: Value) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
         // Always call try_as before checking the received value
-        match value.try_as(&Value::Varchar(None)) {
+        match value.as_value().try_as(&Value::Varchar(None)) {
             Ok(Value::Varchar(Some(v))) => {
                 let context = || anyhow!("Failed to parse HostPort from value `{v}`");
                 let (host, port) = v.split_once(':').ok_or_else(context)?;

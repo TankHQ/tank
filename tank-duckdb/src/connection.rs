@@ -22,7 +22,7 @@ use std::{
 };
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, RawQuery, Result, Row, RowsAffected, SqlWriter, Value, as_c_string,
+    QueryResult, RawQuery, Result, Row, RowOwned, RowsAffected, SqlWriter, Value, as_c_string,
     error_message_from_ptr, send_value, stream::Stream, truncate_long,
 };
 use tokio::task::spawn_blocking;
@@ -200,9 +200,9 @@ impl DuckDBConnection {
                             info.4,
                         )?)
                     });
-                    match columns.collect::<Result<_>>() {
+                    match columns.collect::<Result<Vec<_>>>() {
                         Ok(values) => {
-                            let row = Row::new(names.clone(), values);
+                            let row = RowOwned::new(names.clone(), values);
                             send_value!(tx, Ok(QueryResult::Row(row)));
                         }
                         Err(e) => {
@@ -264,7 +264,7 @@ impl Executor for DuckDBConnection {
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<DuckDBDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> {
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
         let mut query = query.as_query();
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
@@ -364,14 +364,14 @@ impl Executor for DuckDBConnection {
                         Value::Int32(Some(v), ..) => duckdb_append_int32(*appender, v),
                         Value::Int64(Some(v), ..) => duckdb_append_int64(*appender, v),
                         Value::Int128(Some(v), ..) => {
-                            duckdb_append_hugeint(*appender, i128_to_duckdb_hugeint(v))
+                            duckdb_append_hugeint(*appender, i128_to_duckdb_hugeint(*v))
                         }
                         Value::UInt8(Some(v), ..) => duckdb_append_uint8(*appender, v),
                         Value::UInt16(Some(v), ..) => duckdb_append_uint16(*appender, v),
                         Value::UInt32(Some(v), ..) => duckdb_append_uint32(*appender, v),
                         Value::UInt64(Some(v), ..) => duckdb_append_uint64(*appender, v),
                         Value::UInt128(Some(v), ..) => {
-                            duckdb_append_uhugeint(*appender, u128_to_duckdb_uhugeint(v))
+                            duckdb_append_uhugeint(*appender, u128_to_duckdb_uhugeint(*v))
                         }
                         Value::Float32(Some(v), ..) => duckdb_append_float(*appender, v),
                         Value::Float64(Some(v), ..) => duckdb_append_double(*appender, v),
@@ -419,8 +419,8 @@ impl Executor for DuckDBConnection {
                             *appender,
                             duckdb_create_uuid(u128_to_duckdb_uhugeint(v.as_u128())),
                         ),
-                        Value::List(Some(ref v), ty) => {
-                            let logical_type = tank_value_to_duckdb_logical_type(&ty);
+                        Value::List(Some(ref v), t) => {
+                            let logical_type = tank_value_to_duckdb_logical_type(&t.element);
                             let values = v
                                 .iter()
                                 .map(|v| tank_value_to_duckdb_value(v))
@@ -441,8 +441,8 @@ impl Executor for DuckDBConnection {
                             }
                             duckdb_append_value(*appender, *value)
                         }
-                        Value::Array(Some(ref v), ty, len) => {
-                            let logical_type = tank_value_to_duckdb_logical_type(&*ty);
+                        Value::Array(Some(ref v), t) => {
+                            let logical_type = tank_value_to_duckdb_logical_type(&t.element);
                             let values = v
                                 .iter()
                                 .map(|v| tank_value_to_duckdb_value(v))
@@ -451,7 +451,7 @@ impl Executor for DuckDBConnection {
                                 duckdb_create_array_value(
                                     *logical_type,
                                     values.iter().map(|v| **v).collect::<Vec<_>>().as_mut_ptr(),
-                                    len as u64,
+                                    t.len as u64,
                                 ),
                                 |mut p| duckdb_destroy_value(&mut p),
                             );

@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 use anyhow::anyhow;
 use std::{collections::HashMap, str::FromStr, sync::LazyLock};
-use tank::{AsValue, Entity, Result, Value, expr};
+use tank::{AsValue, Entity, Result, Value, ValueOwned, expr};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -12,14 +12,17 @@ pub struct Notes(pub String); // Third party type
 pub struct NotesWrap(pub Notes); // Local wrapper
 
 impl AsValue for NotesWrap {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> ValueOwned {
         Value::Varchar(None)
     }
-    fn as_value(self) -> Value {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Varchar(Some(self.0.0.into()))
     }
-    fn try_from_value(value: Value) -> Result<Self> {
-        match value.try_as(&Value::Varchar(None)) {
+    fn try_from_value(value: impl AsValue) -> Result<Self> {
+        match value.as_value().try_as(&Value::Varchar(None)) {
             Ok(Value::Varchar(Some(s))) => Ok(NotesWrap(Notes(s.to_string()))),
             _ => Err(anyhow!("Expected Varchar for Notes")),
         }
@@ -237,7 +240,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                 LEFT JOIN Author A1 ON B.author == A1.author_id
                 LEFT JOIN Author A2 ON B.co_author == A2.author_id
         );
-        let rows = connection
+        let _ = connection
             .fetch(
                 QueryBuilder::new()
                     .select(cols!(B.title, A1.name as author, A2.name as co_author))

@@ -3,15 +3,15 @@ use redis::{FromRedisValue, RedisWrite, ToRedisArgs};
 use std::{borrow::Cow, collections::HashMap};
 
 #[derive(Default, PartialEq, Eq, Hash, Debug)]
-pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, tank_core::Value>);
+pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, tank_core::Value<'a>>);
 
-impl<'a> From<ValueWrap<'a>> for tank_core::Value {
+impl<'a> From<ValueWrap<'a>> for tank_core::ValueOwned {
     fn from(value: ValueWrap<'a>) -> Self {
-        value.0.into_owned()
+        value.0.into_owned().into_owned()
     }
 }
 
-impl<'a> From<&'a ValueWrap<'a>> for &'a tank_core::Value {
+impl<'a> From<&'a ValueWrap<'a>> for &'a tank_core::Value<'a> {
     fn from(value: &'a ValueWrap<'a>) -> Self {
         match &value.0 {
             Cow::Borrowed(v) => *v,
@@ -20,14 +20,14 @@ impl<'a> From<&'a ValueWrap<'a>> for &'a tank_core::Value {
     }
 }
 
-impl<'a> From<tank_core::Value> for ValueWrap<'a> {
-    fn from(value: tank_core::Value) -> Self {
+impl<'a> From<tank_core::Value<'a>> for ValueWrap<'a> {
+    fn from(value: tank_core::Value<'a>) -> Self {
         Self(Cow::Owned(value))
     }
 }
 
-impl<'a> From<&'a tank_core::Value> for ValueWrap<'a> {
-    fn from(value: &'a tank_core::Value) -> Self {
+impl<'a> From<&'a tank_core::Value<'a>> for ValueWrap<'a> {
+    fn from(value: &'a tank_core::Value<'a>) -> Self {
         Self(Cow::Borrowed(value))
     }
 }
@@ -50,18 +50,18 @@ impl<'a> TryFrom<redis::Value> for ValueWrap<'a> {
                     .into_iter()
                     .map(|v| Ok::<_, tank_core::Error>(ValueWrap::try_from(v)?.into()));
                 let first = it.next().transpose()?;
-                let ty = first
+                let element = first
                     .as_ref()
                     .map(tank_core::Value::as_null)
                     .unwrap_or(tank_core::Value::Null);
                 let mut it = first.map(|v| Ok(v)).into_iter().chain(it).peekable();
                 tank_core::Value::List(
                     if it.peek().is_some() {
-                        Some(it.collect::<Result<Vec<_>, _>>()?)
+                        Some(it.collect::<Result<Vec<_>, _>>()?.into_boxed_slice())
                     } else {
                         None
                     },
-                    Box::new(ty),
+                    Box::new(tank_core::CollectionType { element, len: 0 }),
                 )
             }
             redis::Value::Map(v) => {
@@ -75,19 +75,18 @@ impl<'a> TryFrom<redis::Value> for ValueWrap<'a> {
                     })
                     .peekable();
                 let first = it.next().transpose()?;
-                let (k_ty, v_ty) = first
+                let (key, value) = first
                     .as_ref()
                     .map(|(k, v)| (k.as_null(), v.as_null()))
                     .unwrap_or((tank_core::Value::Null, tank_core::Value::Null));
                 let mut it = first.map(|v| Ok(v)).into_iter().chain(it).peekable();
                 tank_core::Value::Map(
                     if it.peek().is_some() {
-                        Some(it.collect::<Result<HashMap<_, _>, _>>()?)
+                        Some(Box::new(it.collect::<Result<HashMap<_, _>, _>>()?))
                     } else {
                         None
                     },
-                    Box::new(k_ty),
-                    Box::new(v_ty),
+                    Box::new(tank_core::MapType { key, value }),
                 )
             }
             redis::Value::Attribute { data, .. } => ValueWrap::from_redis_value(*data)?.into(),
@@ -155,7 +154,7 @@ impl<'a> TryFrom<ValueWrap<'a>> for redis::Value {
                 };
                 redis::Value::BulkString(v.as_bytes().into())
             }
-            tank_core::Value::Blob(Some(v)) => redis::Value::BulkString(v.into()),
+            tank_core::Value::Blob(Some(v)) => redis::Value::BulkString(v.into_owned()),
             tank_core::Value::Array(Some(v), ..) => redis::Value::Array(
                 v.into_iter()
                     .map(|v| {
@@ -226,12 +225,12 @@ impl<'a> ToRedisArgs for ValueWrap<'a> {
             tank_core::Value::Int16(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::Int32(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::Int64(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::Int128(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::Int128(Some(v), ..) => (**v).write_redis_args(out),
             tank_core::Value::UInt8(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::UInt16(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::UInt32(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::UInt64(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::UInt128(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::UInt128(Some(v), ..) => (**v).write_redis_args(out),
             tank_core::Value::Float32(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::Float64(Some(v), ..) => v.write_redis_args(out),
             tank_core::Value::Decimal(Some(v), ..) => v.write_redis_args(out),

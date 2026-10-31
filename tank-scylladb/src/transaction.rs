@@ -3,7 +3,7 @@ use scylla::statement::batch::Batch;
 use std::future;
 use tank_core::{
     AsEntity, AsQuery, Driver, DynQuery, Error, ErrorContext, Executor, Query, QueryResult,
-    RawQuery, Result, RowsAffected, SqlWriter, Transaction,
+    RawQuery, Result, Row, RowsAffected, SqlWriter, Transaction,
     future::Either,
     stream::{self, Stream},
     truncate_long,
@@ -51,7 +51,7 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<ScyllaDBDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
         let mut query = query.as_query();
         let context = format!(
             "While running the query (appending a statement to a ScyllaDB/Cassandra batch):\n{:?}",
@@ -73,7 +73,7 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
                 self.batch.append_statement(prepared.statement.clone());
             }
         }
-        Either::Right(stream::empty())
+        Either::Right(stream::empty::<Result<QueryResult>>())
     }
 
     async fn append<It>(&mut self, entities: It) -> Result<RowsAffected>

@@ -4,19 +4,19 @@ use async_stream::try_stream;
 use postgres_protocol::types::{ArrayDimension, array_from_sql};
 use postgres_types::{FromSql, Kind, Type};
 use rust_decimal::Decimal;
-use std::{error::Error, iter, mem, pin::pin};
+use std::{borrow::Cow, error::Error, iter, mem, pin::pin};
 use tank_core::{
-    ErrorContext, Value,
+    CollectionType, ErrorContext, RowOwned, Value, ValueOwned,
     stream::{Stream, StreamExt},
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use tokio_postgres::{SimpleQueryMessage, fallible_iterator::FallibleIterator};
 use uuid::Uuid;
 
-pub(crate) fn row_to_tank_row(row: tokio_postgres::Row) -> tank_core::Result<tank_core::RowValues> {
+pub(crate) fn row_to_tank_row(row: tokio_postgres::Row) -> tank_core::Result<Vec<ValueOwned>> {
     (0..row.len())
         .map(|i| match row.try_get::<_, ValueWrap>(i) {
-            Ok(v) => Ok(v.0.into_owned()),
+            Ok(v) => Ok(v.0.into_owned().into_owned()),
             Err(e) => {
                 let col = &row.columns()[i];
                 Err(e).context(format!(
@@ -27,16 +27,16 @@ pub(crate) fn row_to_tank_row(row: tokio_postgres::Row) -> tank_core::Result<tan
                 ))
             }
         })
-        .collect::<tank_core::Result<tank_core::RowValues>>()
+        .collect()
 }
 
 pub(crate) fn simple_query_row_to_tank_row(
     row: tokio_postgres::SimpleQueryRow,
-) -> tank_core::Result<tank_core::RowValues> {
+) -> tank_core::Result<Vec<ValueOwned>> {
     (0..row.len())
         .map(|i| match row.try_get(i) {
             Ok(Some(v)) => ValueWrap::from_sql(&Type::UNKNOWN, v.as_bytes())
-                .map(|v| v.0.into_owned())
+                .map(|v| v.0.into_owned().into_owned())
                 .map_err(|e| anyhow!("{e:#}")),
             Ok(None) => Ok(Value::Null),
             Err(..) => {
@@ -48,15 +48,14 @@ pub(crate) fn simple_query_row_to_tank_row(
                 ))
             }
         })
-        .collect::<tank_core::Result<tank_core::RowValues>>()
+        .collect()
 }
 
-pub(crate) fn stream_postgres_row_to_tank_row<V, R>(
+pub(crate) fn stream_postgres_row_to_tank_row<V>(
     stream: impl AsyncFnOnce() -> tank_core::Result<V>,
-) -> impl Stream<Item = tank_core::Result<R>>
+) -> impl Stream<Item = tank_core::Result<tank_core::QueryResult>>
 where
     V: Stream<Item = Result<tokio_postgres::Row, tokio_postgres::Error>>,
-    R: From<tank_core::Row>,
 {
     try_stream! {
         let stream = stream().await?;
@@ -66,20 +65,16 @@ where
             let labels = labels.get_or_insert_with(|| {
                 row.columns().iter().map(|c| c.name().to_string()).collect()
             });
-            yield tank_core::Row {
-                labels: labels.clone(),
-                values: row_to_tank_row(row)?,
-            }.into();
+            yield RowOwned::new(labels.clone(), row_to_tank_row(row)?).into();
         }
     }
 }
 
-pub(crate) fn stream_postgres_simple_query_message_to_tank_query_result<V, R>(
+pub(crate) fn stream_postgres_simple_query_message_to_tank_query_result<V>(
     stream: impl AsyncFnOnce() -> tank_core::Result<V>,
-) -> impl Stream<Item = tank_core::Result<R>>
+) -> impl Stream<Item = tank_core::Result<tank_core::QueryResult>>
 where
     V: Stream<Item = Result<tokio_postgres::SimpleQueryMessage, tokio_postgres::Error>>,
-    R: From<tank_core::QueryResult>,
 {
     try_stream! {
         let stream = stream().await?;
@@ -89,8 +84,8 @@ where
         while let Some(entry) = stream.next().await.transpose()? {
             match entry {
                 SimpleQueryMessage::Row(row) => {
-                    yield tank_core::QueryResult::Row(tank_core::Row {
-                        labels: labels
+                    yield tank_core::QueryResult::Row(RowOwned::new(
+                        labels
                             .as_ref()
                             .filter(|v| v.len() == row.len())
                             .ok_or_else(|| {
@@ -99,9 +94,8 @@ where
                                 )
                             })?
                             .clone(),
-                        values: simple_query_row_to_tank_row(row)?,
-                    })
-                    .into();
+                        simple_query_row_to_tank_row(row)?,
+                    ));
                 }
                 SimpleQueryMessage::CommandComplete(rows_affected) => {
                     if rows {
@@ -111,8 +105,7 @@ where
                         yield tank_core::QueryResult::Affected(tank_core::RowsAffected {
                             rows_affected: Some(rows_affected),
                             ..Default::default()
-                        })
-                        .into();
+                        });
                     }
                 }
                 SimpleQueryMessage::RowDescription(columns) => {
@@ -133,10 +126,10 @@ where
     }
 }
 
-pub(crate) fn extract_value(
+pub(crate) fn extract_value<'a>(
     ty: &Type,
-    raw: Option<&[u8]>,
-) -> Result<Value, Box<dyn Error + Sync + Send>> {
+    raw: Option<&'a [u8]>,
+) -> Result<Value<'a>, Box<dyn Error + Sync + Send>> {
     fn convert<'a, T: FromSql<'a>>(
         ty: &Type,
         raw: Option<&'a [u8]>,
@@ -159,16 +152,16 @@ pub(crate) fn extract_value(
             Type::NUMERIC => Value::Decimal(convert::<Decimal>(ty, raw)?, 0, 0),
             Type::OID => Value::UInt32(convert::<u32>(ty, raw)?),
             Type::VARCHAR | Type::TEXT | Type::NAME | Type::BPCHAR | Type::JSON | Type::XML => {
-                Value::Varchar(convert::<String>(ty, raw)?.map(Into::into))
+                Value::Varchar(convert::<&str>(ty, raw)?.map(Cow::Borrowed))
             }
-            Type::BYTEA => Value::Blob(convert::<Vec<u8>>(ty, raw)?.map(Into::into)),
+            Type::BYTEA => Value::Blob(convert::<&[u8]>(ty, raw)?.map(Cow::Borrowed)),
             Type::DATE => Value::Date(convert::<Date>(ty, raw)?),
             Type::TIME => Value::Time(convert::<Time>(ty, raw)?),
             Type::TIMESTAMP => Value::Timestamp(convert::<PrimitiveDateTime>(ty, raw)?),
             Type::TIMESTAMPTZ => Value::TimestampWithTimezone(convert::<OffsetDateTime>(ty, raw)?),
             Type::INTERVAL => Value::Interval(convert::<IntervalWrap>(ty, raw)?.map(Into::into)),
             Type::UUID => Value::Uuid(convert::<Uuid>(ty, raw)?),
-            Type::UNKNOWN => Value::Unknown(convert::<String>(ty, raw)?),
+            Type::UNKNOWN => Value::Unknown(convert::<&str>(ty, raw)?.map(Cow::Borrowed)),
             _ => {
                 return Err(anyhow!("Unexpected {ty} variant for Kind::Simple").into());
             }
@@ -182,35 +175,51 @@ pub(crate) fn extract_value(
                     .map(|v| extract_value(inner_ty, v))
                     .collect::<Vec<_>>()?;
                 let dimensions = array.dimensions().collect::<Vec<_>>()?;
-                let first = build_array(0, &mut values, &ty, dimensions.iter())?;
-                first
+                if dimensions.is_empty() {
+                    Value::Array(
+                        Some(Vec::new().into()),
+                        Box::new(CollectionType {
+                            element: ty,
+                            len: 0,
+                        }),
+                    )
+                } else {
+                    build_array(0, &mut values, &ty, dimensions.iter())?
+                }
             } else {
-                Value::List(None, Box::new(ty))
+                Value::List(
+                    None,
+                    Box::new(CollectionType {
+                        element: ty,
+                        len: 0,
+                    }),
+                )
             }
         }
         _ => return Err(tank_core::anyhow!("Unexpected kind {kind:?}").into()),
     })
 }
 
-fn build_array<'a>(
+fn build_array<'a, 'b>(
     begin: usize,
-    values: &mut Vec<Value>,
-    element_ty: &Value,
-    mut it: impl ExactSizeIterator<Item = &'a ArrayDimension> + Clone,
-) -> Result<Value, Box<dyn Error + Sync + Send>> {
+    values: &mut Vec<Value<'a>>,
+    element_ty: &Value<'a>,
+    mut it: impl ExactSizeIterator<Item = &'b ArrayDimension> + Clone,
+) -> Result<Value<'a>, Box<dyn Error + Sync + Send>> {
     let dimension = it.next().expect("Must have one dimension at least");
     let len = dimension.len as u32;
     Ok(if it.len() == 0 {
         let begin = begin as u32 * len;
-        // Last array
         Value::Array(
             Some(
                 (begin..(begin + len))
                     .map(|i| mem::take(&mut values[i as usize]))
                     .collect(),
             ),
-            Box::new(element_ty.clone()),
-            len,
+            Box::new(CollectionType {
+                element: element_ty.clone(),
+                len,
+            }),
         )
     } else {
         let first = build_array(begin, values, element_ty, it.clone())?;
@@ -220,14 +229,20 @@ fn build_array<'a>(
             (1..len).map(|i| build_array(i as usize + begin, values, &nested_ty, it.clone())),
         )
         .collect::<Result<_, _>>()?;
-        Value::Array(Some(elements), Box::new(nested_ty), len)
+        Value::Array(
+            Some(elements),
+            Box::new(CollectionType {
+                element: nested_ty,
+                len,
+            }),
+        )
     })
 }
 
 pub(crate) fn flatten_array<'a>(
-    values: &'a [Value],
-    mut element_type: &'a Value,
-) -> (Vec<&'a Value>, Vec<ArrayDimension>, Type) {
+    values: &'a [Value<'a>],
+    mut element_type: &'a Value<'a>,
+) -> (Vec<&'a Value<'a>>, Vec<ArrayDimension>, Type) {
     let mut dimensions = Vec::new();
     let mut current_level = values;
     let mut total_capacity = 1;
@@ -243,14 +258,15 @@ pub(crate) fn flatten_array<'a>(
             break;
         }
         match current_level.first() {
-            Some(Value::Array(Some(inner), ..)) => current_level = inner,
-            Some(Value::List(Some(inner), ..)) => current_level = inner.as_slice(),
+            Some(Value::Array(Some(inner), ..) | Value::List(Some(inner), ..)) => {
+                current_level = inner
+            }
             _ => break,
         }
     }
     loop {
         match element_type {
-            Value::Array(.., element, _) | Value::List(.., element) => element_type = element,
+            Value::Array(.., t) | Value::List(.., t) => element_type = &t.element,
             _ => break,
         }
     }
@@ -260,13 +276,10 @@ pub(crate) fn flatten_array<'a>(
     (collector, dimensions, pg_type)
 }
 
-fn flatten_recursive<'a>(values: &'a [Value], collector: &mut Vec<&'a Value>) {
+fn flatten_recursive<'a>(values: &'a [Value<'a>], collector: &mut Vec<&'a Value<'a>>) {
     for value in values {
         match value {
-            Value::Array(Some(inner), ..) => {
-                flatten_recursive(inner, collector);
-            }
-            Value::List(Some(inner), ..) => {
+            Value::Array(Some(inner), ..) | Value::List(Some(inner), ..) => {
                 flatten_recursive(inner, collector);
             }
             Value::Array(None, ..) | Value::List(None, ..) => {}
@@ -275,7 +288,8 @@ fn flatten_recursive<'a>(values: &'a [Value], collector: &mut Vec<&'a Value>) {
     }
 }
 
-pub fn postgres_type_to_value(ty: &Type) -> Value {
+pub fn postgres_type_to_value(ty: &Type) -> ValueOwned {
+    let list = |element| Value::List(None, Box::new(CollectionType { element, len: 0 }));
     match *ty {
         Type::BOOL => Value::Boolean(None),
         Type::CHAR => Value::Int8(None),
@@ -293,28 +307,28 @@ pub fn postgres_type_to_value(ty: &Type) -> Value {
         Type::TIMESTAMPTZ => Value::TimestampWithTimezone(None),
         Type::INTERVAL => Value::Interval(None),
         Type::UUID => Value::Uuid(None),
-        Type::BOOL_ARRAY => Value::List(None, Box::new(Value::Boolean(None))),
-        Type::INT2_ARRAY => Value::List(None, Box::new(Value::Int16(None))),
-        Type::INT4_ARRAY => Value::List(None, Box::new(Value::Int32(None))),
-        Type::INT8_ARRAY => Value::List(None, Box::new(Value::Int64(None))),
-        Type::FLOAT4_ARRAY => Value::List(None, Box::new(Value::Float32(None))),
-        Type::FLOAT8_ARRAY => Value::List(None, Box::new(Value::Float64(None))),
-        Type::NUMERIC_ARRAY => Value::List(None, Box::new(Value::Decimal(None, 0, 0))),
-        Type::TEXT_ARRAY | Type::VARCHAR_ARRAY => Value::List(None, Box::new(Value::Varchar(None))),
-        Type::BYTEA_ARRAY => Value::List(None, Box::new(Value::Blob(None))),
-        Type::DATE_ARRAY => Value::List(None, Box::new(Value::Date(None))),
-        Type::TIME_ARRAY => Value::List(None, Box::new(Value::Time(None))),
-        Type::TIMESTAMP_ARRAY => Value::List(None, Box::new(Value::Timestamp(None))),
-        Type::TIMESTAMPTZ_ARRAY => Value::List(None, Box::new(Value::TimestampWithTimezone(None))),
-        Type::INTERVAL_ARRAY => Value::List(None, Box::new(Value::Interval(None))),
-        Type::UUID_ARRAY => Value::List(None, Box::new(Value::Uuid(None))),
-        Type::JSON_ARRAY => Value::List(None, Box::new(Value::Json(None))),
+        Type::BOOL_ARRAY => list(Value::Boolean(None)),
+        Type::INT2_ARRAY => list(Value::Int16(None)),
+        Type::INT4_ARRAY => list(Value::Int32(None)),
+        Type::INT8_ARRAY => list(Value::Int64(None)),
+        Type::FLOAT4_ARRAY => list(Value::Float32(None)),
+        Type::FLOAT8_ARRAY => list(Value::Float64(None)),
+        Type::NUMERIC_ARRAY => list(Value::Decimal(None, 0, 0)),
+        Type::TEXT_ARRAY | Type::VARCHAR_ARRAY => list(Value::Varchar(None)),
+        Type::BYTEA_ARRAY => list(Value::Blob(None)),
+        Type::DATE_ARRAY => list(Value::Date(None)),
+        Type::TIME_ARRAY => list(Value::Time(None)),
+        Type::TIMESTAMP_ARRAY => list(Value::Timestamp(None)),
+        Type::TIMESTAMPTZ_ARRAY => list(Value::TimestampWithTimezone(None)),
+        Type::INTERVAL_ARRAY => list(Value::Interval(None)),
+        Type::UUID_ARRAY => list(Value::Uuid(None)),
+        Type::JSON_ARRAY => list(Value::Json(None)),
         Type::JSON => Value::Json(None),
         _ => Value::Null,
     }
 }
 
-pub fn value_to_postgres_type(value: &Value) -> Type {
+pub fn value_to_postgres_type(value: &Value<'_>) -> Type {
     assert!(matches!(Type::BPCHAR_ARRAY.kind(), Kind::Array(..)));
     match value {
         Value::Boolean(..) => Type::BOOL,
@@ -340,7 +354,7 @@ pub fn value_to_postgres_type(value: &Value) -> Type {
         Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ,
         Value::Interval(..) => Type::INTERVAL,
         Value::Uuid(..) => Type::UUID,
-        Value::Array(.., element, _) | Value::List(.., element) => match **element {
+        Value::Array(.., t) | Value::List(.., t) => match t.element {
             Value::Boolean(..) => Type::BOOL_ARRAY,
             Value::Int8(..) => Type::INT2_ARRAY,
             Value::Int16(..) => Type::INT2_ARRAY,
@@ -364,7 +378,7 @@ pub fn value_to_postgres_type(value: &Value) -> Type {
             Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ_ARRAY,
             Value::Interval(..) => Type::INTERVAL_ARRAY,
             Value::Uuid(..) => Type::UUID_ARRAY,
-            Value::Array(..) | Value::List(..) => value_to_postgres_type(element),
+            Value::Array(..) | Value::List(..) => value_to_postgres_type(&t.element),
             Value::Map(..) | Value::Json(..) | Value::Struct(..) => Type::JSON_ARRAY,
             _ => Type::UNKNOWN,
         },

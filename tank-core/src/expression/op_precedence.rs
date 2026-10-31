@@ -36,7 +36,7 @@ impl OpPrecedence for &'static str {
     }
 }
 
-impl OpPrecedence for Value {
+impl<'a> OpPrecedence for Value<'a> {
     fn precedence(&self, _writer: &dyn SqlWriter) -> i32 {
         0
     }

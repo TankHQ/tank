@@ -73,14 +73,14 @@ impl Prepared for DuckDBPrepared {
                 Value::Int32(Some(v), ..) => duckdb_bind_int32(prepared, index, v),
                 Value::Int64(Some(v), ..) => duckdb_bind_int64(prepared, index, v),
                 Value::Int128(Some(v), ..) => {
-                    duckdb_bind_hugeint(prepared, index, i128_to_duckdb_hugeint(v))
+                    duckdb_bind_hugeint(prepared, index, i128_to_duckdb_hugeint(*v))
                 }
                 Value::UInt8(Some(v), ..) => duckdb_bind_uint8(prepared, index, v),
                 Value::UInt16(Some(v), ..) => duckdb_bind_uint16(prepared, index, v),
                 Value::UInt32(Some(v), ..) => duckdb_bind_uint32(prepared, index, v),
                 Value::UInt64(Some(v), ..) => duckdb_bind_uint64(prepared, index, v),
                 Value::UInt128(Some(v), ..) => {
-                    duckdb_bind_uhugeint(prepared, index, u128_to_duckdb_uhugeint(v))
+                    duckdb_bind_uhugeint(prepared, index, u128_to_duckdb_uhugeint(*v))
                 }
                 Value::Float32(Some(v), ..) => duckdb_bind_float(prepared, index, v),
                 Value::Float64(Some(v), ..) => duckdb_bind_double(prepared, index, v),
