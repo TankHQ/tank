@@ -168,7 +168,6 @@ macro_rules! impl_as_value {
         impl_as_value!(@impl $source, $destination, |s| Box::new(s), ($destination(Some(v), ..)) => *v $(, $pat_rest => $expr_rest)*);
     };
     ($source:ty, $destination:path $(, $pat_rest:pat => $expr_rest:expr)* $(,)?) => {
-        // Bind and `forget` `val` so `Copy` payloads skip `Value` drop glue.
         impl_as_value!(@impl $source, $destination, |s| s as _, (val @ $destination(Some(v), ..)) => { mem::forget(val); v as _ } $(, $pat_rest => $expr_rest)*);
     };
     (@impl $source:ty, $destination:path, |$s:ident| $wrap:expr, ($fast_pat:pat) => $unwrap:expr $(, $pat_rest:pat => $expr_rest:expr)* $(,)?) => {
@@ -408,7 +407,6 @@ macro_rules! impl_as_value {
         }
     };
     ($source:ty, $destination:path, $($rest:tt)*) => {
-        // Bind and `forget` `val` so `Copy` payloads skip `Value` drop glue.
         impl_as_value!(@owned $source, (val @ $destination(Some(v), ..)) => { mem::forget(val); v.into() }, $destination, $($rest)*);
         impl_as_value!(@reference $source);
     };

@@ -109,29 +109,29 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         panic!("Expected complex struct");
     };
     assert_eq!(t.fields[0].0, "tags");
-    let tags_val = &data[0].1;
-    match tags_val {
-        Value::List(Some(list), ..) => {
-            assert_eq!(list.len(), 2);
-            assert_eq!(list[0], Value::Varchar(Some("urgent".into())));
-            assert_eq!(list[1], Value::Varchar(Some("work".into())));
+    let tags = &data[0].1;
+    match tags {
+        Value::List(Some(v), ..) => {
+            assert_eq!(v.len(), 2);
+            assert_eq!(v[0], Value::Varchar(Some("urgent".into())));
+            assert_eq!(v[1], Value::Varchar(Some("work".into())));
         }
-        Value::Array(Some(arr), ..) => {
-            assert_eq!(arr.len(), 2);
-            assert_eq!(arr[0], Value::Varchar(Some("urgent".into())));
+        Value::Array(Some(v), ..) => {
+            assert_eq!(v.len(), 2);
+            assert_eq!(v[0], Value::Varchar(Some("urgent".into())));
         }
-        _ => panic!("Expected List or Array for tags, got {:?}", tags_val),
+        _ => panic!("Expected List or Array for tags, got {:?}", tags),
     }
 
     assert_eq!(t.fields[1].0, "meta");
-    let meta_val = &data[1].1;
-    if let Value::Struct(Some(meta), ..) = meta_val {
-        assert_eq!(meta[0].0, "priority");
-        assert_eq!(meta[0].1, Value::Int32(Some(1)));
-        assert_eq!(meta[1].0, "label");
-        assert_eq!(meta[1].1, Value::Varchar(Some("high".into())));
+    let value = &data[1].1;
+    if let Value::Struct(Some(v), ..) = value {
+        assert_eq!(v[0].0, "priority");
+        assert_eq!(v[0].1, Value::Int32(Some(1)));
+        assert_eq!(v[1].0, "label");
+        assert_eq!(v[1].1, Value::Varchar(Some("high".into())));
     } else {
-        panic!("Expected nested struct for meta, got {:?}", meta_val);
+        panic!("Expected nested struct for meta, got {:?}", value);
     }
     drop(items);
 
@@ -177,20 +177,16 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     }
 
     let info_col_2 = null_rows[1].get_column("info").unwrap();
-    if let Value::Struct(Some(values), ..) = info_col_2.as_ref() {
-        assert_eq!(values.len(), 2);
-        assert_eq!(values[0].0, "name");
+    if let Value::Struct(Some(v), ..) = info_col_2.as_ref() {
+        assert_eq!(v.len(), 2);
+        assert_eq!(v[0].0, "name");
         assert_eq!(
-            values[0].1,
+            v[0].1,
             Value::Varchar(None),
             "Expected NULL Varchar for name"
         );
-        assert_eq!(values[1].0, "score");
-        assert_eq!(
-            values[1].1,
-            Value::Int32(Some(3)),
-            "Expected Int32(3) for score"
-        );
+        assert_eq!(v[1].0, "score");
+        assert_eq!(v[1].1, Value::Int32(Some(3)), "Expected Int32(3) for score");
     } else {
         panic!(
             "Expected valid struct for row 2 (Value::Struct(Some(..), ..)), got {:?}",
@@ -225,39 +221,39 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
 
     // TIMESTAMP_S: should be 2025-06-15 12:30:45
     let ts = ts_rows[0].get_column("ts_s").unwrap();
-    let Value::Timestamp(Some(ts_s)) = ts.as_ref() else {
+    let Value::Timestamp(Some(v)) = ts.as_ref() else {
         panic!("Expected Timestamp for ts_s");
     };
     assert_eq!(
-        ts_s.date(),
+        v.date(),
         expected_date,
-        "TIMESTAMP_S date is wrong: got {ts_s}"
+        "TIMESTAMP_S date is wrong: got {v}"
     );
-    assert_eq!(ts_s.hour(), 12, "TIMESTAMP_S hour is wrong: got {ts_s}");
-    assert_eq!(ts_s.minute(), 30, "TIMESTAMP_S minute is wrong: got {ts_s}");
-    assert_eq!(ts_s.second(), 45, "TIMESTAMP_S second is wrong: got {ts_s}");
+    assert_eq!(v.hour(), 12, "TIMESTAMP_S hour is wrong: got {v}");
+    assert_eq!(v.minute(), 30, "TIMESTAMP_S minute is wrong: got {v}");
+    assert_eq!(v.second(), 45, "TIMESTAMP_S second is wrong: got {v}");
 
     // TIMESTAMP_MS: should be 2025-06-15 12:30:45.123
     let ts = ts_rows[0].get_column("ts_ms").unwrap();
-    let Value::Timestamp(Some(ts_ms)) = ts.as_ref() else {
+    let Value::Timestamp(Some(v)) = ts.as_ref() else {
         panic!("Expected Timestamp for ts_ms");
     };
     assert_eq!(
-        ts_ms.date(),
+        v.date(),
         expected_date,
-        "TIMESTAMP_MS date is wrong: got {ts_ms}"
+        "TIMESTAMP_MS date is wrong: got {v}"
     );
-    assert_eq!(ts_ms.hour(), 12, "TIMESTAMP_MS hour is wrong: got {ts_ms}");
+    assert_eq!(v.hour(), 12, "TIMESTAMP_MS hour is wrong: got {v}");
 
     // TIMESTAMP_NS: should be 2025-06-15 12:30:45.123456789
     let ts = ts_rows[0].get_column("ts_ns").unwrap();
-    let Value::Timestamp(Some(ts_ns)) = ts.as_ref() else {
+    let Value::Timestamp(Some(v)) = ts.as_ref() else {
         panic!("Expected Timestamp for ts_ns");
     };
     assert_eq!(
-        ts_ns.date(),
+        v.date(),
         expected_date,
-        "TIMESTAMP_NS date is wrong: got {ts_ns}"
+        "TIMESTAMP_NS date is wrong: got {v}"
     );
-    assert_eq!(ts_ns.hour(), 12, "TIMESTAMP_NS hour is wrong: got {ts_ns}");
+    assert_eq!(v.hour(), 12, "TIMESTAMP_NS hour is wrong: got {v}");
 }
