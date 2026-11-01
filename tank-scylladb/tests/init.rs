@@ -1,3 +1,6 @@
+// Shared by the `scylladb`, `cassandra` and `connection` test binaries, so
+// each sees the others' helpers as dead code.
+#![allow(dead_code)]
 use indoc::indoc;
 use rcgen::{
     CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose,

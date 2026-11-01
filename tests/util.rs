@@ -2,7 +2,7 @@
 mod tests {
     use quote::ToTokens;
     use rust_decimal::Decimal;
-    use std::{borrow::Cow, collections::HashMap, fmt::Write, sync::Arc};
+    use std::{borrow::Cow, collections::HashMap, fmt::Write};
     use tank::{
         CollectionType, Context, Dataset, DeclareTableRef, DynQuery, EitherIterator, Entity,
         FixedDecimal, Fragment, GenericSqlWriter, Interval, MapType, QueryBuilder, QueryResult,

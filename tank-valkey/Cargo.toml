@@ -7,6 +7,16 @@ license.workspace = true
 edition.workspace = true
 repository.workspace = true
 categories.workspace = true
+autotests = false
+
+[[test]]
+name = "pk_condition"
+
+[[test]]
+name = "redis"
+
+[[test]]
+name = "valkey"
 
 [dependencies]
 anyhow.workspace = true

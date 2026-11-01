@@ -24,7 +24,7 @@ mod tests {
                 .connect_pool(url.clone().into(), PoolConfig::new())
                 .await
                 .expect("Failed to connect");
-            execute_tests(&mut pool).await;
+            execute_tests(&mut pool).await.expect("A tank-tests test failed");
         }
         {
             let driver = ValkeyDriver::new(".", false);
@@ -32,7 +32,7 @@ mod tests {
                 .connect_pool(url.clone().into(), PoolConfig::new())
                 .await
                 .expect("Failed to connect");
-            execute_tests(&mut pool).await;
+            execute_tests(&mut pool).await.expect("A tank-tests test failed");
         }
         drop(container);
 
@@ -48,7 +48,7 @@ mod tests {
             .connect_pool(url.clone().into(), PoolConfig::new())
             .await
             .expect("Failed to connect");
-        execute_tests(&mut pool).await;
+        execute_tests(&mut pool).await.expect("A tank-tests test failed");
         drop(container);
     }
 }
