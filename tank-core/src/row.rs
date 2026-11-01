@@ -1,4 +1,4 @@
-use crate::{QueryResult, Value, ValueOwned};
+use crate::{AsValue, QueryResult, Value, ValueOwned};
 use std::{
     borrow::Cow,
     fmt::{self, Debug, Formatter},
@@ -76,9 +76,9 @@ pub trait Row: Debug + Send + Sync {
         let row = self;
         let mut index = 0;
         iter::from_fn(move || {
-            let value = row.value(index)?;
+            let value = row.value(index)?.as_value().into_owned();
             index += 1;
-            Some(value.into_owned().into_owned())
+            Some(value)
         })
     }
 }

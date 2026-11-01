@@ -1,6 +1,6 @@
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    DynQuery, Entity, Executor, QueryBuilder, Result, Row, ValueOwned, cols, expr,
+    AsValue, DynQuery, Entity, Executor, QueryBuilder, Result, Row, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -48,8 +48,8 @@ pub async fn other(executor: &mut impl Executor) -> Result<()> {
                 .where_expr(true)
                 .build(&executor.driver()),
         )
-        .map_ok(|v| v.value(0).unwrap().into());
-    let value: ValueOwned = pin!(stream)
+        .map_ok(|v| v.value(0).unwrap().as_value().into_owned());
+    let value = pin!(stream)
         .next()
         .await
         .expect("No result returned from the stream")

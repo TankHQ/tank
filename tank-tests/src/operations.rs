@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, QueryBuilder, QueryResult, Result, Row, RowsAffected,
-    SqlWriter, ValueOwned, cols, expr, join,
+    AsValue, Driver, DynQuery, Entity, Executor, QueryBuilder, QueryResult, Result, Row,
+    RowsAffected, SqlWriter, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, OffsetDateTime, Time, UtcOffset, macros::date};
@@ -117,9 +117,9 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     let mut query =
         RadioLog::prepare_find(executor, expr!(RadioLog::signal_strength > ?), None).await?;
     query.bind(40)?;
-    let _messages: Vec<ValueOwned> = executor
+    let _messages: Vec<_> = executor
         .fetch(query)
-        .map_ok(|row| row.value(0).unwrap().into())
+        .map_ok(|row| row.value(0).unwrap().as_value().into_owned())
         .try_collect()
         .await?;
 
