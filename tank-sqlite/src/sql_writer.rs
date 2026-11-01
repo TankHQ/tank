@@ -157,7 +157,7 @@ impl SqlWriter for SQLiteSqlWriter {
         _context: &mut Context,
         _out: &mut DynQuery,
         _value: &mut dyn Iterator<Item = &dyn Expression>,
-        _ty: Option<&Value<'_>>,
+        _t: Option<&Value<'_>>,
         _is_array: bool,
     ) {
         log::error!("SQLite does not support arrays or lists");

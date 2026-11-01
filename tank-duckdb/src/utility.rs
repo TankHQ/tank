@@ -68,22 +68,22 @@ pub(crate) fn tank_value_to_duckdb_logical_type(v: &Value<'_>) -> CBox<duckdb_lo
                 *result = duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_INTERVAL)
             }
             Value::Uuid(..) => *result = duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_UUID),
-            Value::Array(.., t) => {
+            Value::Array(_, t, ..) => {
                 *result = duckdb_create_array_type(
                     *tank_value_to_duckdb_logical_type(&t.element),
                     t.len as u64,
                 )
             }
-            Value::List(.., t) => {
+            Value::List(_, t, ..) => {
                 *result = duckdb_create_list_type(*tank_value_to_duckdb_logical_type(&t.element))
             }
-            Value::Map(.., t) => {
+            Value::Map(_, t, ..) => {
                 *result = duckdb_create_map_type(
                     *tank_value_to_duckdb_logical_type(&t.key),
                     *tank_value_to_duckdb_logical_type(&t.value),
                 )
             }
-            Value::Struct(.., t) => {
+            Value::Struct(_, t, ..) => {
                 let names = t
                     .fields
                     .iter()
@@ -154,7 +154,7 @@ pub(crate) fn tank_value_to_duckdb_value(value: &Value<'_>) -> CBox<duckdb_value
                 }
                 Value::Interval(Some(v)) => duckdb_create_interval(interval_to_duckdb_interval(v)),
                 Value::Uuid(Some(v)) => duckdb_create_uuid(u128_to_duckdb_uhugeint(v.as_u128())),
-                Value::Array(Some(v), t) => {
+                Value::Array(Some(v), t, ..) => {
                     let values = v
                         .iter()
                         .map(|v| tank_value_to_duckdb_value(v))
@@ -165,7 +165,7 @@ pub(crate) fn tank_value_to_duckdb_value(value: &Value<'_>) -> CBox<duckdb_value
                         t.len as u64,
                     )
                 }
-                Value::List(Some(v), t) => {
+                Value::List(Some(v), t, ..) => {
                     let values = v
                         .iter()
                         .map(|v| tank_value_to_duckdb_value(v))

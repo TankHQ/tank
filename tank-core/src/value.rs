@@ -569,21 +569,21 @@ impl<'a> ToTokens for Value<'a> {
             Value::TimestampWithTimezone(..) => quote!(::tank::Value::TimestampWithTimezone(None)),
             Value::Interval(..) => quote!(::tank::Value::Interval(None)),
             Value::Uuid(..) => quote!(::tank::Value::Uuid(None)),
-            Value::Array(.., t) => {
+            Value::Array(_, t, ..) => {
                 let (element, len) = (&t.element, t.len);
                 quote!(::tank::Value::Array(
                     None,
                     Box::new(::tank::CollectionType { element: #element, len: #len }),
                 ))
             }
-            Value::List(.., t) => {
+            Value::List(_, t, ..) => {
                 let (element, len) = (&t.element, t.len);
                 quote!(::tank::Value::List(
                     None,
                     Box::new(::tank::CollectionType { element: #element, len: #len }),
                 ))
             }
-            Value::Map(.., t) => {
+            Value::Map(_, t, ..) => {
                 let (key, value) = (&t.key, &t.value);
                 quote!(::tank::Value::Map(
                     None,
