@@ -379,6 +379,7 @@ pub(crate) fn extract_value(
             DUCKDB_TYPE_DUCKDB_TYPE_UUID => Value::Uuid(if is_valid {
                 let data = &*(data as *const duckdb_uhugeint).add(row);
                 // TODO: remove first bit swap once this is fixed https://github.com/duckdb/duckdb-rs/issues/519
+                // Closed upstream, but the raw C API vector path still returns flipped bits (libduckdb-sys 1.20000.1).
                 Some(Uuid::from_u64_pair(data.upper ^ (1 << 63), data.lower))
             } else {
                 None

@@ -182,7 +182,8 @@ impl<'a> TryFrom<mysql_async::Value> for ValueWrap<'a> {
                         tank_core::Value::Json(Some(json))
                     }
                     _ => {
-                        // TODO Replace it with String::from_utf8_lossy_owned once https://github.com/rust-lang/rust/issues/129436 is fixed
+                        // TODO Replace it with String::from_utf8_lossy_owned once the default
+                        // stable toolchain has it (stabilized in https://github.com/rust-lang/rust/issues/129436)
                         tank_core::Value::Unknown(Some(Cow::Owned(
                             String::from_utf8_lossy(&v).to_string(),
                         )))

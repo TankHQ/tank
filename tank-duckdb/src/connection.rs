@@ -16,7 +16,7 @@ use std::{
     mem, ptr,
     str::FromStr,
     sync::{
-        Arc, LazyLock,
+        Arc, LazyLock, Mutex,
         atomic::{AtomicPtr, Ordering},
     },
 };
@@ -31,6 +31,7 @@ use tokio::task::spawn_blocking;
 /// Provides helpers to execute queries and extract results into `tank_core` types.
 pub struct DuckDBConnection {
     pub(crate) connection: CBox<duckdb_connection>,
+    in_flight: Arc<Mutex<()>>,
 }
 
 impl DuckDBConnection {
@@ -64,12 +65,9 @@ impl DuckDBConnection {
                 );
                 return;
             }
-            let statement_type = duckdb_result_statement_type(*result);
-            #[allow(non_upper_case_globals)]
-            if !matches!(
-                statement_type,
-                duckdb_statement_type_DUCKDB_STATEMENT_TYPE_SELECT
-            ) {
+            if duckdb_result_return_type(*result)
+                != duckdb_result_type_DUCKDB_RESULT_TYPE_QUERY_RESULT
+            {
                 let rows_affected = duckdb_rows_changed(&mut *result);
                 send_value!(
                     tx,
@@ -200,7 +198,9 @@ impl DuckDBConnection {
                     match columns.collect::<Result<Vec<_>>>() {
                         Ok(values) => {
                             let row = RowOwned::new(labels.clone(), values);
-                            send_value!(tx, Ok(QueryResult::Row(row)));
+                            if tx.send(Ok(QueryResult::Row(row))).is_err() {
+                                return;
+                            }
                         }
                         Err(e) => {
                             send_value!(tx, Err(e));
@@ -226,8 +226,12 @@ impl Executor for DuckDBConnection {
 
     async fn do_prepare(&mut self, sql: String) -> Result<Query<DuckDBDriver>> {
         let connection = AtomicPtr::new(*self.connection);
+        let in_flight = self.in_flight.clone();
         let context = format!("While preparing the query:\n{}", truncate_long!(sql));
         let prepared = spawn_blocking(move || unsafe {
+            let _guard = in_flight
+                .lock()
+                .expect("The DuckDB connection was poisoned");
             let mut prepared = CBox::new(ptr::null_mut(), |mut p| duckdb_destroy_prepare(&mut p));
             let sql = match CString::new(sql.as_bytes()) {
                 Ok(sql) => sql,
@@ -266,8 +270,12 @@ impl Executor for DuckDBConnection {
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         let (tx, rx) = flume::unbounded::<Result<QueryResult>>();
         let connection = AtomicPtr::new(*self.connection);
+        let in_flight = self.in_flight.clone();
         let mut owned = mem::take(query.as_mut());
         let join = spawn_blocking(move || {
+            let _guard = in_flight
+                .lock()
+                .expect("The DuckDB connection was poisoned");
             match &mut owned {
                 Query::Raw(RawQuery(sql)) => {
                     let str = unsafe { CString::from_vec_unchecked(mem::take(sql).into_bytes()) };
@@ -299,6 +307,7 @@ impl Executor for DuckDBConnection {
     {
         type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
         let connection = AtomicPtr::new(*self.connection);
+        let in_flight = self.in_flight.clone();
         let rows = rows
             .into_iter()
             .map(|e| e.as_entity().row_values())
@@ -314,6 +323,9 @@ impl Executor for DuckDBConnection {
             .next()
             .unwrap();
         spawn_blocking(move || unsafe {
+            let _guard = in_flight
+                .lock()
+                .expect("The DuckDB connection was poisoned");
             let table_ref = E::<It>::table();
             let mut appender = CBox::new(ptr::null_mut(), |mut p| {
                 duckdb_appender_destroy(&mut p);
@@ -628,7 +640,10 @@ impl Connection for DuckDBConnection {
                 return Err(error);
             };
         };
-        Ok(DuckDBConnection { connection })
+        Ok(DuckDBConnection {
+            connection,
+            in_flight: Default::default(),
+        })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<DuckDBTransaction<'_>>> + Send {
