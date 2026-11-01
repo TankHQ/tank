@@ -47,11 +47,6 @@ use tank::{ConnectionPool, Driver, PoolConfig, expr, stream::TryStreamExt};
 use tank_duckdb::DuckDBDriver;
 
 async fn data() -> Result<()> {
-use std::collections::HashSet;
-use tank::{ConnectionPool, Driver, PoolConfig, expr, stream::TryStreamExt};
-use tank_duckdb::DuckDBDriver;
-
-async fn data() -> Result<()> {
     let driver = DuckDBDriver::new();
     let pool = driver
         .connect_pool(
@@ -146,7 +141,7 @@ async fn data() -> Result<()> {
 }
 ```
 
-Run `cargo run`. Tank will create `tank-demo.duckdb` and report `Tank is operational: 2 units found.`
+Run `cargo run`. Tank will create `../target/debug/tests.duckdb` and report `Tank is operational: 2 units found.`
 
 > [!NOTE]
 > The `expr!` macro is explained in the [Field Manual Section 8 - Tactical Coordination](08-advanced-operations.md#expr).

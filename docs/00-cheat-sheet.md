@@ -76,21 +76,24 @@ The field transient_cache is ignored by the database (not stored in the table)
 
 ```rust
 use anyhow::anyhow;
-use tank::{AsValue, Entity, Result, Value};
+use tank::{AsValue, Entity, Result, Value, ValueOwned};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Notes(pub String); // Third party type
 pub struct NotesWrap(pub Notes); // Local wrapper
 
 impl AsValue for NotesWrap {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> ValueOwned {
         Value::Varchar(None)
     }
-    fn as_value(self) -> Value {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Varchar(Some(self.0.0.into()))
     }
-    fn try_from_value(value: Value) -> Result<Self> {
-        match value.try_as(&Value::Varchar(None)) {
+    fn try_from_value(value: impl AsValue) -> Result<Self> {
+        match value.as_value().try_as(&Value::Varchar(None)) {
             Ok(Value::Varchar(Some(s))) => {
                 Ok(NotesWrap(Notes(s.to_string())))
             }
@@ -216,6 +219,8 @@ expr!(EntityExample::callsign != "Alpha%" as LIKE);
 expr!(EntityExample::casualties > ?);
 let uid = Uuid::new_v4();;
 expr!(EntityExample::unit_id == #uid);
+let regions = ["North", "South"];
+expr!(EntityExample::region == #regions as IN);
 ```
 
 ## Prepared statement
@@ -338,7 +343,7 @@ use tank::{QueryResult, stream::TryStreamExt};
     while let Some(result) = stream.try_next().await? {
         match result {
             QueryResult::Row(row) => {
-                println!("{:?}", row.values);
+                println!("{:?}", row.value(0));
             }
             QueryResult::Affected(v) => {
                 println!("affected: {:?}", v.rows_affected);

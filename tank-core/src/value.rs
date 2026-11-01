@@ -366,6 +366,14 @@ impl<'a> Value<'a> {
     }
 }
 
+/// Detaches a borrowed row cell in one step, instead of chaining
+/// `Cow::into_owned` and `Value::into_owned`.
+impl From<Cow<'_, Value<'_>>> for ValueOwned {
+    fn from(value: Cow<'_, Value<'_>>) -> Self {
+        value.into_owned().into_owned()
+    }
+}
+
 impl<'a> PartialEq for Value<'a> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {

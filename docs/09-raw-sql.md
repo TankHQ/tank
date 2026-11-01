@@ -77,9 +77,9 @@ query.bind(40_i32)?;
 query.bind("Alpha-1")?;
 query.bind(50_u32)?;
 
-let messages: Vec<_> = executor
+let messages: Vec<ValueOwned> = executor
     .fetch(&mut query)
-    .map_ok(|row| row.values[0].clone())
+    .map_ok(|row| row.value(0).unwrap().into())
     .try_collect()
     .await?;
 ```
@@ -93,9 +93,9 @@ let mut query = RadioLog::prepare_find(
     Some(50),
 ).await?;
 if let Query::Prepared(p) = &mut query { p.bind(40)?; }
-let messages: Vec<_> = executor
+let messages: Vec<ValueOwned> = executor
     .fetch(query)
-    .map_ok(|row| row.values[0].clone())
+    .map_ok(|row| row.value(0).unwrap().into())
     .try_collect()
     .await?;
 ```

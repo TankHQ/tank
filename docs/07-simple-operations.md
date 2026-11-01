@@ -175,9 +175,9 @@ Filter by strength (prepared):
 let mut query =
     RadioLog::prepare_find(executor, expr!(RadioLog::signal_strength > ?), None).await?;
 query.bind(40)?;
-let _messages: Vec<_> = executor
+let _messages: Vec<ValueOwned> = executor
     .fetch(query)
-    .map_ok(|row| row.values[0].clone())
+    .map_ok(|row| row.value(0).unwrap().into())
     .try_collect()
     .await?;
 ```

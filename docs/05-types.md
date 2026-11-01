@@ -70,7 +70,7 @@ To handle custom types you just need to implement [`tank::AsValue`](https://docs
 Here’s a `host:port` example that encodes a network address as a string that must be stored in a single column:
 
 ```rust
-use tank::{AsValue, Error, Result, Value};
+use tank::{AsValue, Error, Result, Value, ValueOwned};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostPort {
@@ -79,20 +79,23 @@ pub struct HostPort {
 }
 
 impl AsValue for HostPort {
-    fn as_empty_value() -> Value {
+    fn as_empty_value() -> ValueOwned {
         Value::Varchar(None)
     }
 
-    fn as_value(self) -> Value {
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
         Value::Varchar(Some(format!("{}:{}", self.host, self.port).into()))
     }
 
-    fn try_from_value(value: Value) -> Result<Self>
+    fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
         // Always call try_as before checking the received value
-        match value.try_as(&Value::Varchar(None)) {
+        match value.as_value().try_as(&Value::Varchar(None)) {
             Ok(Value::Varchar(Some(v))) => {
                 let context = || anyhow!("Failed to parse HostPort from value `{v}`");
                 let (host, port) = v.split_once(':').ok_or_else(context)?;
@@ -143,18 +146,22 @@ pub struct RequestLimit {
 // Declare a local wrapper making it possible to implement `tank::AsValue`
 pub struct MethodWrap(Option<Method>);
 impl tank::AsValue for MethodWrap {
-    fn as_empty_value() -> tank::Value {
+    fn as_empty_value() -> tank::ValueOwned {
         tank::Value::Varchar(None)
     }
 
-    fn as_value(self) -> tank::Value {
+    fn as_value<'a>(self) -> tank::Value<'a>
+    where
+        Self: 'a,
+    {
         self.0.map(|v| v.to_string()).as_value()
     }
 
-    fn try_from_value(value: tank::Value) -> tank::Result<Self>
+    fn try_from_value(value: impl tank::AsValue) -> tank::Result<Self>
     where
         Self: Sized,
     {
+        let value = value.as_value();
         if value.is_null() {
             return Ok(Self(None));
         }
