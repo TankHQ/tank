@@ -17,27 +17,27 @@ struct RawCell<'a>(Option<&'a [u8]>);
 impl<'a> FromSql<'a> for RawCell<'a> {
     #[inline(always)]
     fn from_sql(
-        _ty: &Type,
+        _t: &Type,
         raw: &'a [u8],
     ) -> std::result::Result<Self, Box<dyn Error + Sync + Send>> {
         Ok(Self(Some(raw)))
     }
 
     #[inline(always)]
-    fn from_sql_null(_ty: &Type) -> std::result::Result<Self, Box<dyn Error + Sync + Send>> {
+    fn from_sql_null(_t: &Type) -> std::result::Result<Self, Box<dyn Error + Sync + Send>> {
         Ok(Self(None))
     }
 
     #[inline(always)]
     fn from_sql_nullable(
-        _ty: &Type,
+        _t: &Type,
         raw: Option<&'a [u8]>,
     ) -> std::result::Result<Self, Box<dyn Error + Sync + Send>> {
         Ok(Self(raw))
     }
 
     #[inline(always)]
-    fn accepts(_ty: &Type) -> bool {
+    fn accepts(_t: &Type) -> bool {
         true
     }
 }

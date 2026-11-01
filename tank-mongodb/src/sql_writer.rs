@@ -330,7 +330,7 @@ impl SqlWriter for MongoDBSqlWriter {
         context: &mut Context,
         out: &mut DynQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
-        _ty: Option<&Value<'_>>,
+        _t: Option<&Value<'_>>,
         _is_array: bool,
     ) {
         let Some(target) = out

@@ -45,7 +45,7 @@ impl<'a> FromSql<'a> for ValueWrap<'a> {
         extract_value(ty, raw).map(Into::into)
     }
 
-    fn accepts(_ty: &Type) -> bool {
+    fn accepts(_t: &Type) -> bool {
         true
     }
 }
@@ -107,7 +107,7 @@ impl<'a> ToSql for ValueWrap<'a> {
         }
     }
 
-    fn accepts(_ty: &Type) -> bool
+    fn accepts(_t: &Type) -> bool
     where
         Self: Sized,
     {

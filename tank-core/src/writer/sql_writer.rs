@@ -252,7 +252,7 @@ pub trait SqlWriter: Send {
             Value::TimestampWithTimezone(Some(v), ..) => self.write_timestamptz(context, out, v),
             Value::Interval(Some(v), ..) => self.write_interval(context, out, v),
             Value::Uuid(Some(v), ..) => self.write_uuid(context, out, v),
-            Value::Array(Some(v), t) | Value::List(Some(v), t) => self.write_list(
+            Value::Array(Some(v), t, ..) | Value::List(Some(v), t, ..) => self.write_list(
                 context,
                 out,
                 &mut v.iter().map(|v| v as &dyn Expression),
@@ -498,7 +498,7 @@ pub trait SqlWriter: Send {
         context: &mut Context,
         out: &mut DynQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
-        _ty: Option<&Value<'_>>,
+        _t: Option<&Value<'_>>,
         _is_array: bool,
     ) {
         out.push('[');

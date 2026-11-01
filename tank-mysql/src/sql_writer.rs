@@ -246,7 +246,7 @@ impl SqlWriter for MySQLSqlWriter {
         context: &mut Context,
         out: &mut DynQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
-        _ty: Option<&Value>,
+        _t: Option<&Value>,
         _is_array: bool,
     ) {
         let is_json = matches!(context.fragment, Fragment::Json | Fragment::JsonKey);

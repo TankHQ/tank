@@ -154,7 +154,7 @@ pub(crate) fn tank_value_to_duckdb_value(value: &Value<'_>) -> CBox<duckdb_value
                 }
                 Value::Interval(Some(v)) => duckdb_create_interval(interval_to_duckdb_interval(v)),
                 Value::Uuid(Some(v)) => duckdb_create_uuid(u128_to_duckdb_uhugeint(v.as_u128())),
-                Value::Array(Some(v), t) => {
+                Value::Array(Some(v), t, ..) => {
                     let values = v
                         .iter()
                         .map(|v| tank_value_to_duckdb_value(v))
@@ -165,7 +165,7 @@ pub(crate) fn tank_value_to_duckdb_value(value: &Value<'_>) -> CBox<duckdb_value
                         t.len as u64,
                     )
                 }
-                Value::List(Some(v), t) => {
+                Value::List(Some(v), t, ..) => {
                     let values = v
                         .iter()
                         .map(|v| tank_value_to_duckdb_value(v))
