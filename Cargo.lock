@@ -3942,7 +3942,6 @@ dependencies = [
  "byteorder",
  "bytes",
  "log",
- "native-tls",
  "openssl",
  "postgres-openssl",
  "postgres-protocol",
