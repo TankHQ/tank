@@ -1,7 +1,7 @@
 use crate::{
     Action, AsEntity, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, Entity,
-    Error, Expression, ExpressionVisitor, Fragment, Interval, IsTrue, Join, JoinType, Operand,
-    Order, Ordered, PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value,
+    Error, Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
+    PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, WriteInList,
     possibly_parenthesized, separated_by, write_escaped, writer::Context,
 };
 use std::{
@@ -774,45 +774,22 @@ pub trait SqlWriter: Send {
         } else {
             context.fragment
         });
-        if matches!(value.op, BinaryOpType::In | BinaryOpType::NotIn) {
-            struct WriteInList;
-            impl ExpressionVisitor for WriteInList {
-                fn visit_operand(
-                    &mut self,
-                    writer: &dyn SqlWriter,
-                    context: &mut Context,
-                    out: &mut DynQuery,
-                    value: &Operand,
-                ) -> bool {
-                    match value {
-                        Operand::LitList(v) | Operand::LitTuple(v) => {
-                            writer.write_tuple(context, out, &mut v.iter().map(|v| v as _))
-                        }
-                        Operand::Variable(Value::Array(Some(v), ..) | Value::List(Some(v), ..))
-                        | Operand::Value(Value::Array(Some(v), ..) | Value::List(Some(v), ..)) => {
-                            writer.write_tuple(context, out, &mut v.iter().map(|v| v as _))
-                        }
-                        _ => return false,
-                    }
-                    true
-                }
-            }
-            if value
+        if matches!(value.op, BinaryOpType::In | BinaryOpType::NotIn)
+            && value
                 .rhs
                 .accept_visitor(&mut WriteInList, self.as_dyn(), &mut context.current, out)
-            {
-                out.push_str(suffix);
-                return;
-            }
+        {
+            out.push_str(suffix);
+        } else {
+            possibly_parenthesized!(
+                out,
+                !rhs_parenthesized && value.rhs.precedence(self.as_dyn()) <= precedence,
+                value
+                    .rhs
+                    .write_query(self.as_dyn(), &mut context.current, out)
+            );
+            out.push_str(suffix);
         }
-        possibly_parenthesized!(
-            out,
-            !rhs_parenthesized && value.rhs.precedence(self.as_dyn()) <= precedence,
-            value
-                .rhs
-                .write_query(self.as_dyn(), &mut context.current, out)
-        );
-        out.push_str(suffix);
     }
 
     fn write_cast(
