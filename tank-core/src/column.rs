@@ -1,6 +1,6 @@
 use crate::{
     DefaultValueType, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, TableRef,
-    Value, writer::Context,
+    ValueOwned, writer::Context,
 };
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
@@ -102,7 +102,7 @@ pub struct ColumnDef {
     /// Explicit SQL types.
     pub column_type: BTreeMap<&'static str, &'static str>,
     /// Type descriptor.
-    pub value: Value,
+    pub value: ValueOwned,
     /// Is nullable.
     pub nullable: bool,
     /// Default expression.

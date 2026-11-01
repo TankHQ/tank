@@ -61,8 +61,8 @@ pub use requests::*;
 pub use service::*;
 pub use shopping::*;
 pub use simple::*;
-use std::env;
-use tank::{ConnectionPool, Driver};
+use std::{env, future::Future, pin::Pin};
+use tank::{ConnectionPool, Driver, PooledConnection, Result};
 pub use time::*;
 pub use trade::*;
 pub use transaction1::*;
@@ -81,57 +81,71 @@ pub fn init_logs() {
     let _ = logger.try_init();
 }
 
-pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
+pub async fn execute_tests<D: Driver + 'static>(pool: &mut impl ConnectionPool<D>) {
+    type TestFn<D> = Box<
+        dyn for<'c> Fn(
+            &'c mut PooledConnection<D>,
+        ) -> Pin<Box<dyn Future<Output = Result<()>> + 'c>>,
+    >;
+    fn boxed<D: Driver + 'static, F>(f: F) -> TestFn<D>
+    where
+        F: Copy + 'static + for<'c> AsyncFn(&'c mut PooledConnection<D>) -> Result<()>,
+    {
+        Box::new(move |c| Box::pin(async move { f(c).await }))
+    }
+
     let mut connection = pool
         .get()
         .await
         .expect("Could not get a connection from the pool");
-    macro_rules! do_test {
-        ($test_function:ident $(, $args:expr )* $(,)?) => {
-            Box::pin($test_function(&mut connection, $($args),*)).await
-        };
+    let tests: Vec<TestFn<D>> = vec![
+        boxed(simple),
+        boxed(kv_storage),
+        boxed(trade_simple),
+        boxed(trade_multiple),
+        boxed(users),
+        boxed(aggregates),
+        boxed(binary),
+        boxed(books),
+        boxed(complex),
+        boxed(insane),
+        boxed(limits),
+        #[cfg(not(feature = "disable-multiple-statements"))]
+        boxed(multiple),
+        #[cfg(not(feature = "disable-intervals"))]
+        boxed(interval),
+        #[cfg(not(feature = "disable-arrays"))]
+        boxed(arrays1),
+        #[cfg(not(feature = "disable-arrays"))]
+        boxed(arrays2),
+        #[cfg(not(feature = "disable-transactions"))]
+        boxed(transaction1),
+        #[cfg(not(feature = "disable-transactions"))]
+        boxed(transaction2),
+        boxed(shopping),
+        boxed(orders),
+        boxed(times),
+        boxed(conditions),
+        boxed(metrics),
+        boxed(math),
+        boxed(ambiguity),
+        boxed(other),
+        boxed(service),
+        boxed(enums),
+        boxed(custom),
+        boxed(requests),
+        boxed(keywords),
+        boxed(identifiers),
+        boxed(readme),
+        boxed(operations),
+        boxed(advanced_operations),
+        boxed(cheat_sheet),
+    ];
+    for test in tests {
+        test(&mut connection)
+            .await
+            .expect("A tank-tests test failed");
     }
-    do_test!(simple);
-    do_test!(kv_storage);
-    do_test!(trade_simple);
-    do_test!(trade_multiple);
-    do_test!(users);
-    do_test!(aggregates);
-    do_test!(binary);
-    do_test!(books);
-    do_test!(complex);
-    do_test!(insane);
-    do_test!(limits);
-    #[cfg(not(feature = "disable-multiple-statements"))]
-    do_test!(multiple);
-    #[cfg(not(feature = "disable-intervals"))]
-    do_test!(interval);
-    #[cfg(not(feature = "disable-arrays"))]
-    do_test!(arrays1);
-    #[cfg(not(feature = "disable-arrays"))]
-    do_test!(arrays2);
-    #[cfg(not(feature = "disable-transactions"))]
-    do_test!(transaction1);
-    #[cfg(not(feature = "disable-transactions"))]
-    do_test!(transaction2);
-    do_test!(shopping);
-    do_test!(orders);
-    do_test!(times);
-    do_test!(conditions);
-    do_test!(metrics);
-    do_test!(math);
-    do_test!(ambiguity);
-    do_test!(other);
-    do_test!(service);
-    do_test!(enums);
-    do_test!(custom);
-    do_test!(requests);
-    do_test!(keywords);
-    do_test!(identifiers);
-    do_test!(readme).expect("Readme examples test did not succeed");
-    do_test!(operations).expect("Operations examples test did not succeed");
-    do_test!(advanced_operations).expect("Advanced operations examples test did not succeed");
-    do_test!(cheat_sheet).expect("Cheat Sheet examples test did not succeed");
 }
 
 #[macro_export]

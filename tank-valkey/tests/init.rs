@@ -1,3 +1,6 @@
+// Shared by the `valkey` and `redis` test binaries, so each sees the other's
+// helpers as dead code.
+#![allow(dead_code)]
 use rcgen::{
     BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair,
     KeyUsagePurpose, SanType,
@@ -11,7 +14,7 @@ use std::{
     str::FromStr,
     time::Duration,
 };
-use tank_core::{ConnectionPool, Driver};
+use tank_core::{ConnectionPool, Driver, Result};
 use tank_tests::{custom, kv_storage, limits, simple};
 use testcontainers_modules::{
     testcontainers::{
@@ -23,16 +26,17 @@ use testcontainers_modules::{
 };
 use tokio::fs;
 
-pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
+pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) -> Result<()> {
     let mut connection = pool
         .get()
         .await
         .expect("Could not get a connection from the pool");
     let connection = connection.as_mut();
-    simple(connection).await;
-    limits(connection).await;
-    kv_storage(connection).await;
-    custom(connection).await;
+    simple(connection).await?;
+    limits(connection).await?;
+    kv_storage(connection).await?;
+    custom(connection).await?;
+    Ok(())
 }
 
 async fn generate_ssl_files() -> std::io::Result<()> {

@@ -1,3 +1,6 @@
+// Shared by the `scylladb`, `cassandra` and `connection` test binaries, so
+// each sees the others' helpers as dead code.
+#![allow(dead_code)]
 use indoc::indoc;
 use rcgen::{
     CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose,
@@ -41,7 +44,9 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         .expect("Could not get a connection from the pool");
     macro_rules! do_test {
         ($test_function:ident $(, $args:expr )* $(,)?) => {
-            Box::pin($test_function(&mut connection, $($args),*)).await
+            Box::pin($test_function(&mut connection, $($args),*))
+                .await
+                .expect("A tank-tests test failed")
         };
     }
     do_test!(simple);
@@ -57,7 +62,7 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     do_test!(enums);
     do_test!(custom);
     do_test!(identifiers);
-    do_test!(cheat_sheet).expect("Cheat Sheet examples test did not succeed");
+    do_test!(cheat_sheet);
 }
 
 struct TestcontainersLogConsumer;

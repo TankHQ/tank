@@ -1,10 +1,9 @@
 use crate::{
     Action, AsEntity, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, Entity,
     Error, Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
-    PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, possibly_parenthesized,
-    separated_by, write_escaped, writer::Context,
+    PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, WriteInList,
+    possibly_parenthesized, separated_by, write_escaped, writer::Context,
 };
-use core::f64;
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
@@ -168,7 +167,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Write SQL type name.
-    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value) {
+    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
         match value {
             Value::Boolean(..) => out.push_str("BOOLEAN"),
             Value::Int8(..) => out.push_str("TINYINT"),
@@ -198,19 +197,19 @@ pub trait SqlWriter: Send {
             Value::TimestampWithTimezone(..) => out.push_str("TIMESTAMPTZ"),
             Value::Interval(..) => out.push_str("INTERVAL"),
             Value::Uuid(..) => out.push_str("UUID"),
-            Value::Array(.., inner, size) => {
-                self.write_column_type(context, out, inner);
-                let _ = write!(out, "[{size}]");
+            Value::Array(_, t, ..) => {
+                self.write_column_type(context, out, &t.element);
+                let _ = write!(out, "[{}]", t.len);
             }
-            Value::List(.., inner) => {
-                self.write_column_type(context, out, inner);
+            Value::List(_, t, ..) => {
+                self.write_column_type(context, out, &t.element);
                 out.push_str("[]");
             }
-            Value::Map(.., key, value) => {
+            Value::Map(_, t, ..) => {
                 out.push_str("MAP(");
-                self.write_column_type(context, out, key);
+                self.write_column_type(context, out, &t.key);
                 out.push(',');
-                self.write_column_type(context, out, value);
+                self.write_column_type(context, out, &t.value);
                 out.push(')');
             }
             Value::Json(..) => out.push_str("JSON"),
@@ -219,7 +218,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Write value.
-    fn write_value(&self, context: &mut Context, out: &mut DynQuery, value: &Value) {
+    fn write_value(&self, context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
         let delimiter = if context.fragment == Fragment::JsonKey {
             "\""
         } else {
@@ -232,12 +231,12 @@ pub trait SqlWriter: Send {
             Value::Int16(Some(v), ..) => self.write_value_i16(context, out, *v),
             Value::Int32(Some(v), ..) => self.write_value_i32(context, out, *v),
             Value::Int64(Some(v), ..) => self.write_value_i64(context, out, *v),
-            Value::Int128(Some(v), ..) => self.write_value_i128(context, out, *v),
+            Value::Int128(Some(v), ..) => self.write_value_i128(context, out, **v),
             Value::UInt8(Some(v), ..) => self.write_value_u8(context, out, *v),
             Value::UInt16(Some(v), ..) => self.write_value_u16(context, out, *v),
             Value::UInt32(Some(v), ..) => self.write_value_u32(context, out, *v),
             Value::UInt64(Some(v), ..) => self.write_value_u64(context, out, *v),
-            Value::UInt128(Some(v), ..) => self.write_value_u128(context, out, *v),
+            Value::UInt128(Some(v), ..) => self.write_value_u128(context, out, **v),
             Value::Float32(Some(v), ..) => self.write_value_f32(context, out, *v),
             Value::Float64(Some(v), ..) => self.write_value_f64(context, out, *v),
             Value::Decimal(Some(v), ..) => drop(write!(out, "{delimiter}{v}{delimiter}")),
@@ -253,24 +252,13 @@ pub trait SqlWriter: Send {
             Value::TimestampWithTimezone(Some(v), ..) => self.write_timestamptz(context, out, v),
             Value::Interval(Some(v), ..) => self.write_interval(context, out, v),
             Value::Uuid(Some(v), ..) => self.write_uuid(context, out, v),
-            Value::Array(Some(..), elem_ty, ..) | Value::List(Some(..), elem_ty, ..) => match value
-            {
-                Value::Array(Some(v), ..) => self.write_list(
-                    context,
-                    out,
-                    &mut v.iter().map(|v| v as &dyn Expression),
-                    Some(&*elem_ty),
-                    true,
-                ),
-                Value::List(Some(v), ..) => self.write_list(
-                    context,
-                    out,
-                    &mut v.iter().map(|v| v as &dyn Expression),
-                    Some(&*elem_ty),
-                    false,
-                ),
-                _ => unreachable!(),
-            },
+            Value::Array(Some(v), t, ..) | Value::List(Some(v), t, ..) => self.write_list(
+                context,
+                out,
+                &mut v.iter().map(|v| v as &dyn Expression),
+                Some(&t.element),
+                matches!(value, Value::Array(..)),
+            ),
             Value::Map(Some(v), ..) => self.write_map(context, out, v),
             Value::Json(Some(v), ..) => self.write_json(context, out, v),
             Value::Struct(Some(v), ..) => self.write_struct(context, out, v),
@@ -329,15 +317,7 @@ pub trait SqlWriter: Send {
         };
         if let Some(delimiter) = delimiter {
             out.push(delimiter);
-            let mut pos = 0;
-            for (i, c) in value.char_indices() {
-                if c == delimiter {
-                    out.push_str(&value[pos..i]);
-                    out.push_str(escaped);
-                    pos = i + 1;
-                }
-            }
-            out.push_str(&value[pos..]);
+            write_escaped(out, value, delimiter, escaped);
             out.push(delimiter);
         } else {
             out.push_str(value);
@@ -477,7 +457,7 @@ pub trait SqlWriter: Send {
             };
         }
         let mut months = value.months;
-        let mut nanos = value.nanos + value.days as i128 * Interval::NANOS_IN_DAY;
+        let mut nanos = value.nanos as i128 + value.days as i128 * Interval::NANOS_IN_DAY;
         let mut len = out.len();
         if months != 0 {
             if months.abs() > 48 || months % 12 == 0 {
@@ -518,7 +498,7 @@ pub trait SqlWriter: Send {
         context: &mut Context,
         out: &mut DynQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
-        _ty: Option<&Value>,
+        _t: Option<&Value<'_>>,
         _is_array: bool,
     ) {
         out.push('[');
@@ -551,7 +531,12 @@ pub trait SqlWriter: Send {
         out.push(')');
     }
 
-    fn write_map(&self, context: &mut Context, out: &mut DynQuery, value: &HashMap<Value, Value>) {
+    fn write_map(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &HashMap<Value<'_>, Value<'_>>,
+    ) {
         out.push('{');
         separated_by(
             out,
@@ -570,7 +555,12 @@ pub trait SqlWriter: Send {
         self.write_string(context, out, &value.to_string());
     }
 
-    fn write_struct(&self, context: &mut Context, out: &mut DynQuery, value: &[(String, Value)]) {
+    fn write_struct(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &[(String, Value<'_>)],
+    ) {
         out.push('{');
         separated_by(
             out,
@@ -784,14 +774,22 @@ pub trait SqlWriter: Send {
         } else {
             context.fragment
         });
-        possibly_parenthesized!(
-            out,
-            !rhs_parenthesized && value.rhs.precedence(self.as_dyn()) <= precedence,
-            value
+        if matches!(value.op, BinaryOpType::In | BinaryOpType::NotIn)
+            && value
                 .rhs
-                .write_query(self.as_dyn(), &mut context.current, out)
-        );
-        out.push_str(suffix);
+                .accept_visitor(&mut WriteInList, self.as_dyn(), &mut context.current, out)
+        {
+            out.push_str(suffix);
+        } else {
+            possibly_parenthesized!(
+                out,
+                !rhs_parenthesized && value.rhs.precedence(self.as_dyn()) <= precedence,
+                value
+                    .rhs
+                    .write_query(self.as_dyn(), &mut context.current, out)
+            );
+            out.push_str(suffix);
+        }
     }
 
     fn write_cast(
@@ -1229,7 +1227,8 @@ pub trait SqlWriter: Send {
             return;
         };
         let cols = E::<It>::columns().len();
-        out.buffer().reserve(128 + cols * 32);
+        let rows = entities.size_hint().0.max(1);
+        out.buffer().reserve(128 + (cols + rows * cols) * 16);
         if !out.is_empty() {
             out.push('\n');
         }

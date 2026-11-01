@@ -6,7 +6,7 @@ use std::{
     fmt::{self, Debug, Display},
     mem,
 };
-use tank_core::{AsValue, Prepared, Result, Value};
+use tank_core::{AsValue, Prepared, Result, ValueOwned};
 
 #[derive(Debug)]
 /// Prepared statement wrapper for MySQL/MariaDB.
@@ -15,7 +15,7 @@ use tank_core::{AsValue, Prepared, Result, Value};
 /// Implements `Prepared` for use by the `Executor` implementations.
 pub struct MySQLPrepared {
     pub(crate) statement: Statement,
-    pub(crate) params: Vec<Value>,
+    pub(crate) params: Vec<ValueOwned>,
     pub(crate) index: u64,
 }
 
@@ -58,7 +58,7 @@ impl Prepared for MySQLPrepared {
         let target = self.params.get_mut(index as usize).ok_or(anyhow!(
             "Index {index} cannot be bound, the query has only {len} parameters",
         ))?;
-        *target = value.as_value();
+        *target = value.as_value().into_owned();
         self.index = index + 1;
         Ok(self)
     }

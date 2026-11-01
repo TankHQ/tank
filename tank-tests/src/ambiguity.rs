@@ -4,7 +4,7 @@ use crate::ambiguity::{
 };
 use std::sync::{Arc, LazyLock};
 use tank::{
-    Entity, Executor, expr,
+    Entity, Executor, Result, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -56,7 +56,7 @@ mod second_schema {
     }
 }
 
-pub async fn ambiguity(executor: &mut impl Executor) {
+pub async fn ambiguity(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -331,4 +331,5 @@ pub async fn ambiguity(executor: &mut impl Executor) {
         .await,
         1
     );
+    Ok(())
 }

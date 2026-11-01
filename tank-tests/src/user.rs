@@ -4,7 +4,7 @@ use std::{
     sync::LazyLock,
 };
 use tank::{
-    Entity, Executor, expr,
+    Entity, Executor, Result, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::macros::datetime;
@@ -32,7 +32,7 @@ pub struct UserProfile {
     pub preferences: Option<BTreeMap<String, String>>,
 }
 
-pub async fn users(executor: &mut impl Executor) {
+pub async fn users(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Cleanup
@@ -227,4 +227,5 @@ pub async fn users(executor: &mut impl Executor) {
         final_usernames,
         HashSet::from_iter(["alice".into(), "bob".into(), "charlie".into()])
     );
+    Ok(())
 }

@@ -1,3 +1,6 @@
+// Shared by the `mysql` and `mariadb` test binaries, so each sees the other's
+// helpers as dead code.
+#![allow(dead_code)]
 use rcgen::{
     CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose,
     SanType,

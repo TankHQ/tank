@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 use tank::{
-    Connection, Entity, QueryBuilder, Transaction, cols,
+    Connection, Entity, QueryBuilder, Result, Transaction, cols,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -22,7 +22,7 @@ struct EntityB {
 }
 
 /// Test the transaction functionality using only inserts and deletes (no select)
-pub async fn transaction1(connection: &mut impl Connection) {
+pub async fn transaction1(connection: &mut impl Connection) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -93,31 +93,35 @@ pub async fn transaction1(connection: &mut impl Connection) {
         .expect("Failed to rollback the transaction");
 
     // Expect empty tables
-    let entities = connection
-        .fetch(
-            QueryBuilder::new()
-                .select(cols!(*))
-                .from(EntityA::table())
-                .where_expr(true)
-                .build(&connection.driver()),
-        )
-        .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not select EntityA rows");
-    assert!(entities.is_empty());
+    {
+        let entities = connection
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(*))
+                    .from(EntityA::table())
+                    .where_expr(true)
+                    .build(&connection.driver()),
+            )
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Could not select EntityA rows");
+        assert!(entities.is_empty());
+    }
 
-    let entities = connection
-        .fetch(
-            QueryBuilder::new()
-                .select(cols!(*))
-                .from(EntityB::table())
-                .where_expr(true)
-                .build(&connection.driver()),
-        )
-        .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not select EntityB rows");
-    assert!(entities.is_empty());
+    {
+        let entities = connection
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(*))
+                    .from(EntityB::table())
+                    .where_expr(true)
+                    .build(&connection.driver()),
+            )
+            .try_collect::<Vec<_>>()
+            .await
+            .expect("Could not select EntityB rows");
+        assert!(entities.is_empty());
+    }
 
     // Insert more values and commit
     let mut transaction = connection
@@ -189,4 +193,5 @@ pub async fn transaction1(connection: &mut impl Connection) {
         .count()
         .await;
     assert_eq!(entity_b_entries, 3);
+    Ok(())
 }

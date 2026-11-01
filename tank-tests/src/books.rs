@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
 use tank::{
-    AsValue, Dataset, Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, Row,
-    SqlWriter, Value, cols, expr, join,
+    AsValue, Dataset, Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, Result,
+    Row, SqlWriter, Value, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -35,7 +35,7 @@ pub struct Book {
     pub year: i32,
 }
 
-pub async fn books(executor: &mut impl Executor) {
+pub async fn books(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -222,12 +222,12 @@ pub async fn books(executor: &mut impl Executor) {
                     .where_expr(true)
                     .build(&executor.driver()),
             )
-            .try_collect::<Vec<Row>>()
+            .try_collect::<Vec<_>>()
             .await
             .expect("Failed to query books and authors joined")
             .into_iter()
             .map(|row| {
-                let mut iter = row.values.into_iter();
+                let mut iter = row.into_values();
                 (
                     match iter.next().unwrap() {
                         Value::Varchar(Some(v)) => v,
@@ -350,7 +350,7 @@ pub async fn books(executor: &mut impl Executor) {
                     .order_by(cols!(Author::name ASC))
                     .build(&executor.driver()),
             )
-            .and_then(|row| async move { AsValue::try_from_value((*row.values)[0].clone()) })
+            .and_then(|row| async move { AsValue::try_from_value(row.value(0).unwrap()) })
             .try_collect::<Vec<String>>()
             .await
             .expect("Could not return the ordered names of the authors");
@@ -422,4 +422,5 @@ pub async fn books(executor: &mut impl Executor) {
             "The stream should return only two rows"
         )
     }
+    Ok(())
 }

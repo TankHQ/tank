@@ -7,9 +7,9 @@ use scylla::{
     errors::{DeserializationError, TypeCheckError},
     frame::response::result::ColumnSpec,
 };
-use tank_core::Row;
+use tank_core::RowOwned;
 
-pub(crate) struct RowWrap(pub(crate) Row);
+pub(crate) struct RowWrap(pub(crate) RowOwned);
 
 impl<'frame, 'metadata> DeserializeRow<'frame, 'metadata> for RowWrap {
     fn type_check(_specs: &[ColumnSpec]) -> Result<(), TypeCheckError> {
@@ -20,10 +20,10 @@ impl<'frame, 'metadata> DeserializeRow<'frame, 'metadata> for RowWrap {
             .clone()
             .map(|v| v.map(|v| v.spec.name().to_string()))
             .collect::<Result<_, _>>()?;
-        let values = row
+        let values: Vec<tank_core::ValueOwned> = row
             .map(|v| v.map(|v| ValueWrap::deserialize(v.spec.typ(), v.slice).map(|v| v.0)))
             .collect::<Result<_, _>>()
             .flatten()?;
-        Ok(RowWrap(Row::new(names, values)))
+        Ok(RowWrap(RowOwned::new(names, values)))
     }
 }

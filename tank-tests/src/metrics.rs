@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::{future, sync::LazyLock};
 use tank::{
-    Entity, Executor, QueryBuilder, cols, expr,
+    Entity, Executor, QueryBuilder, Result, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, macros::date};
@@ -26,7 +26,7 @@ struct MetricValue {
     pub value: f64,
 }
 
-pub async fn metrics(executor: &mut impl Executor) {
+pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -683,4 +683,5 @@ pub async fn metrics(executor: &mut impl Executor) {
             ]
         );
     }
+    Ok(())
 }

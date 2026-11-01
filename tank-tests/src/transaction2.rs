@@ -1,6 +1,6 @@
 use rust_decimal::Decimal;
 use std::sync::LazyLock;
-use tank::{Connection, Entity, FixedDecimal, Transaction, expr};
+use tank::{Connection, Entity, FixedDecimal, Result, Transaction, expr};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -26,7 +26,7 @@ struct Transfer {
     note: Option<String>,
 }
 
-pub async fn transaction2(connection: &mut impl Connection) {
+pub async fn transaction2(connection: &mut impl Connection) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -187,4 +187,5 @@ pub async fn transaction2(connection: &mut impl Connection) {
         .await
         .expect("Failed to read C final");
     assert!(c_final.is_none(), "Account C should be deleted");
+    Ok(())
 }

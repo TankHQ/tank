@@ -1,11 +1,13 @@
-use crate::{Context, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, Value};
+use crate::{
+    Context, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, Value, ValueOwned,
+};
 use std::fmt;
 
 #[derive(Default)]
 pub enum DefaultValueType {
     #[default]
     None,
-    Value(Value),
+    Value(ValueOwned),
     Expression(Box<dyn Expression + Send + Sync>),
 }
 
@@ -61,9 +63,9 @@ impl fmt::Debug for DefaultValueType {
     }
 }
 
-impl From<Value> for DefaultValueType {
-    fn from(value: Value) -> Self {
-        Self::Value(value)
+impl<'a> From<Value<'a>> for DefaultValueType {
+    fn from(value: Value<'a>) -> Self {
+        Self::Value(value.into_owned())
     }
 }
 

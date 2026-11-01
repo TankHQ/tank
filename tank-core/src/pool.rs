@@ -203,14 +203,14 @@ impl<D: Driver> Executor for PooledConnection<D> {
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<D> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
         self.object.run(query)
     }
 
     fn fetch<'s>(
         &'s mut self,
         query: impl AsQuery<D> + 's,
-    ) -> impl Stream<Item = Result<Row>> + Send {
+    ) -> impl Stream<Item = Result<impl Row + 's>> + Send {
         self.object.fetch(query)
     }
 

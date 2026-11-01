@@ -285,6 +285,54 @@ mod tests {
     }
 
     #[test]
+    fn test_in_with_rust_collections() {
+        let ids = [1, 2, 3, 4, 5];
+        let expr = expr!(col == #ids as IN);
+        assert!(matches!(
+            expr,
+            BinaryOp {
+                op: BinaryOpType::In,
+                lhs: Operand::LitIdent("col"),
+                rhs: Operand::Variable(Value::Array(Some(..), ..)),
+            }
+        ));
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "col IN (1,2,3,4,5)");
+
+        let names = vec!["Alice", "Bob"];
+        let expr = expr!(col != #names as IN);
+        assert!(matches!(
+            expr,
+            BinaryOp {
+                op: BinaryOpType::NotIn,
+                lhs: Operand::LitIdent("col"),
+                rhs: Operand::Variable(Value::List(Some(..), ..)),
+            }
+        ));
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "col NOT IN ('Alice','Bob')");
+
+        let expr = expr!(col == (1, 3, 5) as IN);
+        let mut query = DynQuery::default();
+        expr.write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut query,
+        );
+        assert_eq!(query.as_str(), "col IN (1,3,5)");
+    }
+
+    #[test]
     fn test_question_mark_expressions() {
         let expr = expr!(alpha == ? && bravo > ?);
         assert!(matches!(
@@ -497,7 +545,7 @@ mod tests {
                     },
                 },
                 rhs: Operand::LitInt(60),
-            } if vec.as_slice() == &[
+            } if **vec == [
                 Value::Int32(Some(-1)),
                 Value::Int32(Some(-2)),
                 Value::Int32(Some(-3)),

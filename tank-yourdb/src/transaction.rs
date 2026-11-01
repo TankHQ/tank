@@ -1,5 +1,5 @@
 use crate::{YourDBConnection, YourDBDriver};
-use tank_core::{Error, Result, Transaction, impl_executor_transaction};
+use tank_core::{anyhow, Result, Transaction, impl_executor_transaction};
 
 pub struct YourDBTransaction<'c> {
     connection: &'c mut YourDBConnection,

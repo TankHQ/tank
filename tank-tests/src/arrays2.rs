@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
+#![allow(unused_variables)]
 use std::{pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
     Driver, DynQuery, Entity, Executor, Interval, Query, QueryBuilder, QueryResult, RawQuery,
-    SqlWriter,
+    Result, SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -17,7 +18,7 @@ struct Container {
     second: [[[Uuid; 1]; 3]; 1],
 }
 
-pub async fn arrays2(executor: &mut impl Executor) {
+pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
     let _ = MUTEX.lock().await;
 
     // Multiple statements
@@ -73,4 +74,5 @@ pub async fn arrays2(executor: &mut impl Executor) {
             }]
         )
     }
+    Ok(())
 }

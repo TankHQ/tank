@@ -8,7 +8,7 @@ use syn::{
     parse2,
     token::{Comma, Eq},
 };
-use tank_core::{Action, PrimaryKeyType, TypeDecoded, Value, decode_type, future::Either};
+use tank_core::{Action, PrimaryKeyType, TypeDecoded, ValueOwned, decode_type, future::Either};
 
 pub(crate) struct ColumnMetadata {
     pub(crate) ident: Ident,
@@ -17,7 +17,7 @@ pub(crate) struct ColumnMetadata {
     pub(crate) name: String,
     pub(crate) column_type: BTreeMap<String, String>,
     pub(crate) conversion_type: Option<Type>,
-    pub(crate) value: Value,
+    pub(crate) value: ValueOwned,
     pub(crate) nullable: bool,
     pub(crate) default: Option<TokenStream>,
     pub(crate) primary_key: PrimaryKeyType,
@@ -36,7 +36,10 @@ impl Debug for ColumnMetadata {
             .field("ty", &"..")
             .field("name", &self.name)
             .field("column_type", &self.column_type)
-            .field("conversion_type", &self.conversion_type)
+            .field(
+                "conversion_type",
+                &self.conversion_type.to_token_stream().to_string(),
+            )
             .field("value", &self.value)
             .field("nullable", &self.nullable)
             .field("default", &self.default)
@@ -135,7 +138,7 @@ pub fn decode_column(field: &Field) -> ColumnMetadata {
         name,
         column_type: Default::default(),
         conversion_type: Default::default(),
-        value: Value::Null,
+        value: ValueOwned::Null,
         nullable: false,
         default: None,
         primary_key: PrimaryKeyType::None,

@@ -7,6 +7,16 @@ license.workspace = true
 edition.workspace = true
 repository.workspace = true
 categories.workspace = true
+autotests = false
+
+[[test]]
+name = "escaping"
+
+[[test]]
+name = "mariadb"
+
+[[test]]
+name = "mysql"
 
 [features]
 

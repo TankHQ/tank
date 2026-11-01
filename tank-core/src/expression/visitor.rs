@@ -266,3 +266,28 @@ impl ExpressionVisitor for FindOrder {
         true
     }
 }
+
+/// Renders `IN`/`NOT IN` rhs as SQL tuples `(1,2,3)` (not array literals `[1,2,3]` as they normally would).
+#[derive(Default, Debug, Copy, Clone)]
+pub struct WriteInList;
+impl ExpressionVisitor for WriteInList {
+    fn visit_operand(
+        &mut self,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &Operand,
+    ) -> bool {
+        match value {
+            Operand::LitList(v) | Operand::LitTuple(v) => {
+                writer.write_tuple(context, out, &mut v.iter().map(|v| v as _))
+            }
+            Operand::Variable(Value::Array(Some(v), ..) | Value::List(Some(v), ..))
+            | Operand::Value(Value::Array(Some(v), ..) | Value::List(Some(v), ..)) => {
+                writer.write_tuple(context, out, &mut v.iter().map(|v| v as _))
+            }
+            _ => return false,
+        }
+        true
+    }
+}

@@ -1,7 +1,7 @@
 use std::pin::pin;
 use std::sync::LazyLock;
 use tank::stream::StreamExt;
-use tank::{AsValue, Entity, Executor, QueryBuilder, Row, cols, expr};
+use tank::{AsValue, Entity, Executor, QueryBuilder, Result, Row, cols, expr};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -23,7 +23,7 @@ pub struct ReservedWords {
     pub limit_field: f64,
 }
 
-pub async fn keywords(executor: &mut impl Executor) {
+pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -75,10 +75,9 @@ pub async fn keywords(executor: &mut impl Executor) {
             .await
             .expect("Expected a row")
             .expect("Query failed");
-        let Row { values, .. } = row;
         let group_val =
-            bool::try_from_value(values[0].clone()).expect("Failed to decode group bool");
-        let count_val = i64::try_from_value(values[1].clone()).expect("Failed to decode count");
+            bool::try_from_value(row.value(0).unwrap()).expect("Failed to decode group bool");
+        let count_val = i64::try_from_value(row.value(1).unwrap()).expect("Failed to decode count");
         assert_eq!(group_val, true);
         assert_eq!(count_val, 1);
     }
@@ -131,13 +130,11 @@ pub async fn keywords(executor: &mut impl Executor) {
         );
 
         let row1 = stream_group.next().await.unwrap().unwrap();
-        let Row { values, .. } = row1;
-        let g = bool::try_from_value(values[0].clone()).unwrap();
+        let g = bool::try_from_value(row1.value(0).unwrap()).unwrap();
         assert_eq!(g, false);
 
         let row2 = stream_group.next().await.unwrap().unwrap();
-        let Row { values, .. } = row2;
-        let g = bool::try_from_value(values[0].clone()).unwrap();
+        let g = bool::try_from_value(row2.value(0).unwrap()).unwrap();
         assert_eq!(g, true);
     }
 
@@ -146,4 +143,5 @@ pub async fn keywords(executor: &mut impl Executor) {
         .expect("Query limit failed")
         .expect("Limit entity not found");
     assert_eq!(found_limit.id, 2);
+    Ok(())
 }

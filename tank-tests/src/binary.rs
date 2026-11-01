@@ -1,5 +1,5 @@
 use std::sync::LazyLock;
-use tank::{Entity, Executor, expr, stream::TryStreamExt};
+use tank::{Entity, Executor, Result, expr, stream::TryStreamExt};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -16,7 +16,7 @@ fn payload() -> Box<[u8]> {
     vec![0x00, 0xFF, 0xDE, 0xAD, 0xBE, 0xEF, 0x80, 0x7F, 0xC3].into_boxed_slice()
 }
 
-pub async fn binary(executor: &mut impl Executor) {
+pub async fn binary(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
     let payload = payload();
 
@@ -64,4 +64,5 @@ pub async fn binary(executor: &mut impl Executor) {
     BinaryFields::drop_table(executor, true, false)
         .await
         .expect("Failed to drop the BinaryFields table");
+    Ok(())
 }

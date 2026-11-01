@@ -18,7 +18,8 @@ use std::{
 };
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Prepared, Query, QueryResult, RawQuery,
-    Result, Row, RowsAffected, error_message_from_ptr, send_value, stream::Stream, truncate_long,
+    Result, Row, RowOwned, RowsAffected, error_message_from_ptr, send_value, stream::Stream,
+    truncate_long,
 };
 use tokio::task::spawn_blocking;
 
@@ -78,7 +79,7 @@ impl SQLiteConnection {
                     SQLITE_ROW => {
                         let values = match (0..count)
                             .map(|i| extract_value(statement, i))
-                            .collect::<Result<_>>()
+                            .collect::<Result<Vec<_>>>()
                         {
                             Ok(value) => value,
                             Err(error) => {
@@ -88,10 +89,7 @@ impl SQLiteConnection {
                         };
                         send_value!(
                             tx,
-                            Ok(QueryResult::Row(Row {
-                                labels: labels.clone(),
-                                values: values,
-                            }))
+                            Ok(QueryResult::Row(RowOwned::new(labels.clone(), values)))
                         )
                     }
                     _ => {
@@ -214,7 +212,7 @@ impl Executor for SQLiteConnection {
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<SQLiteDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult>> + Send {
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
         let mut query = query.as_query();
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         let (tx, rx) = flume::unbounded::<Result<QueryResult>>();

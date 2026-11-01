@@ -79,7 +79,7 @@ query.bind(50_u32)?;
 
 let messages: Vec<_> = executor
     .fetch(&mut query)
-    .map_ok(|row| row.values[0].clone())
+    .map_ok(|row| row.value(0).unwrap().as_value().into_owned())
     .try_collect()
     .await?;
 ```
@@ -95,7 +95,7 @@ let mut query = RadioLog::prepare_find(
 if let Query::Prepared(p) = &mut query { p.bind(40)?; }
 let messages: Vec<_> = executor
     .fetch(query)
-    .map_ok(|row| row.values[0].clone())
+    .map_ok(|row| row.value(0).unwrap().as_value().into_owned())
     .try_collect()
     .await?;
 ```

@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use std::{pin::pin, sync::LazyLock};
-use tank::{AsValue, Entity, Row, expr, stream::StreamExt, stream::TryStreamExt};
+use tank::{AsValue, Entity, Result, Row, expr, stream::StreamExt, stream::TryStreamExt};
 use tank::{Executor, QueryBuilder, cols};
 use tokio::sync::Mutex;
 
@@ -16,7 +16,7 @@ struct Values {
     value: u32,
 }
 
-pub async fn aggregates(executor: &mut impl Executor) {
+pub async fn aggregates(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock();
 
     // Setup
@@ -74,9 +74,9 @@ pub async fn aggregates(executor: &mut impl Executor) {
         );
         let expected = (COUNT as i128, EXPECTED_SUM as i128);
         let actual = match count {
-            Some(Ok(Row { values, .. })) => {
-                let a = i128::try_from_value((*values)[0].clone());
-                let b = i128::try_from_value((*values)[1].clone());
+            Some(Ok(row)) => {
+                let a = i128::try_from_value(row.value(0).unwrap());
+                let b = i128::try_from_value(row.value(1).unwrap());
                 match (a, b) {
                     (Ok(a), Ok(b)) => Some((a, b)),
                     (Err(e), _) => panic!("{e}"),
@@ -109,12 +109,12 @@ pub async fn aggregates(executor: &mut impl Executor) {
                 .map(|row| {
                     let row = row.expect("Error while fetching the row");
                     let i = row
-                        .names()
+                        .labels()
                         .iter()
                         .enumerate()
                         .find_map(|(i, v)| if v == "value" { Some(i) } else { None })
                         .expect("Column `value` is not present");
-                    u32::try_from_value(row.values[i].clone())
+                    u32::try_from_value(row.value(i).unwrap())
                         .expect("The result could not be convert back to u32")
                 })
                 .collect::<BTreeSet<_>>()
@@ -135,13 +135,14 @@ pub async fn aggregates(executor: &mut impl Executor) {
         query
             .bind(EXPECTED_AVG)
             .expect("Could not bind the parameter");
-        let values = executor
+        let len = executor
             .fetch(&mut query)
             .try_collect::<Vec<_>>()
             .await
-            .expect("Could not fetch rows above average from the prepared statement");
+            .expect("Could not fetch rows above average from the prepared statement")
+            .len();
         assert!(query.is_prepared());
-        assert_eq!(values.len(), COUNT as usize / 2);
+        assert_eq!(len, COUNT as usize / 2);
         query
             .clear_bindings()
             .expect("Could not clear the bindings");
@@ -153,4 +154,5 @@ pub async fn aggregates(executor: &mut impl Executor) {
             .expect("Could not fetch positive rows from the prepared statement");
         assert_eq!(values.len(), COUNT as usize);
     }
+    Ok(())
 }

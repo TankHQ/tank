@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use tank::{AsValue, Value};
+use tank::{AsValue, CollectionType, Value};
 
 #[cfg(test)]
 mod tests {
@@ -14,7 +14,7 @@ mod tests {
         str::FromStr,
     };
     use tank::TableRef;
-    use tank_core::{AsValue, Interval, Value};
+    use tank_core::{AsValue, CollectionType, Interval, MapType, StructType, Value};
     use time::Month;
     use uuid::Uuid;
 
@@ -26,7 +26,7 @@ mod tests {
     #[test]
     fn value_bool() {
         let var = true;
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(val, Value::Boolean(Some(true)));
         assert_ne!(val, Value::Boolean(Some(false)));
         assert_ne!(val, Value::Boolean(None));
@@ -58,7 +58,7 @@ mod tests {
     #[test]
     fn value_i8() {
         let var = 127_i8;
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(val, Value::Int8(Some(127)));
         assert_ne!(val, Value::Int8(Some(126)));
         let var: i8 = AsValue::try_from_value(val).unwrap();
@@ -116,7 +116,7 @@ mod tests {
     #[test]
     fn value_i16() {
         let var = -32768_i16;
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(val, Value::Int16(Some(-32768)));
         assert_ne!(val, Value::Int32(Some(-32768)));
         let var: i16 = AsValue::try_from_value(val).unwrap();
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn value_i32() {
         let var = -2147483648_i32;
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(val, Value::Int32(Some(-2147483648)));
         assert_ne!(val, Value::Null);
         let var: i32 = AsValue::try_from_value(val).unwrap();
@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn value_i64() {
         let var = 9223372036854775807_i64;
-        let val: Value = var.as_value();
+        let val = var.as_value();
         let var: i64 = AsValue::try_from_value(val).unwrap();
         let val = var.as_value();
         let var: i64 = AsValue::try_from_value(val).unwrap();
@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn value_i128() {
         let var = -123456789101112131415_i128;
-        let val: Value = var.as_value();
+        let val = var.as_value();
         let var: i128 = AsValue::try_from_value(val).unwrap();
         let val = var.as_value();
         let var: i128 = AsValue::try_from_value(val).unwrap();
@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn value_u8() {
         let var = 255_u8;
-        let val: Value = var.as_value();
+        let val = var.as_value();
         let var: u8 = AsValue::try_from_value(val).unwrap();
         let val = var.as_value();
         let var: u8 = AsValue::try_from_value(val).unwrap();
@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn value_u16() {
         let var = 65535_u16;
-        let val: Value = var.as_value();
+        let val = var.as_value();
         let var: u16 = AsValue::try_from_value(val).unwrap();
         let val = var.as_value();
         let var: u16 = AsValue::try_from_value(val).unwrap();
@@ -320,7 +320,7 @@ mod tests {
     #[test]
     fn value_u32() {
         let var = 4_000_000_000_u32;
-        let val: Value = var.as_value();
+        let val = var.as_value();
         let var: u32 = AsValue::try_from_value(val).unwrap();
         let val = var.as_value();
         let var: u32 = AsValue::try_from_value(val).unwrap();
@@ -340,7 +340,7 @@ mod tests {
     #[test]
     fn value_u64() {
         let var = 18_000_000_000_000_000_000_u64;
-        let val: Value = var.as_value();
+        let val = var.as_value();
         let var: u64 = AsValue::try_from_value(val).unwrap();
         let val = var.as_value();
         let var: u64 = AsValue::try_from_value(val).unwrap();
@@ -365,7 +365,7 @@ mod tests {
     #[test]
     fn value_u128() {
         let var = 340_282_366_920_938_463_463_374_607_431_768_211_455_u128;
-        let val: Value = var.as_value();
+        let val = var.as_value();
         let var: u128 = AsValue::try_from_value(val).unwrap();
         let val = var.as_value();
         let var: u128 = AsValue::try_from_value(val).unwrap();
@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn value_f32() {
         let var = 3.14f32;
-        let val: Value = var.as_value();
+        let val = var.as_value();
         let var: f32 = AsValue::try_from_value(val).unwrap();
         let val = var.as_value();
         let var: f32 = AsValue::try_from_value(val).unwrap();
@@ -408,8 +408,8 @@ mod tests {
             f32::try_from_value(Decimal::from_f64(2.125).as_value()).unwrap(),
             2.125
         );
-        let v_pos_inf: Value = f32::INFINITY.as_value();
-        let v_neg_inf: Value = f32::NEG_INFINITY.as_value();
+        let v_pos_inf = f32::INFINITY.as_value();
+        let v_neg_inf = f32::NEG_INFINITY.as_value();
         assert_ne!(v_pos_inf, v_neg_inf);
         assert_eq!(f32::try_from_value(v_pos_inf).unwrap(), f32::INFINITY);
         assert_eq!(f32::try_from_value(v_neg_inf).unwrap(), f32::NEG_INFINITY);
@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn value_f64() {
         let var = 2.7182818284f64;
-        let val: Value = var.as_value();
+        let val = var.as_value();
         let var: f64 = AsValue::try_from_value(val).unwrap();
         let val = var.as_value();
         let var: f64 = AsValue::try_from_value(val).unwrap();
@@ -467,7 +467,7 @@ mod tests {
     #[test]
     fn value_char() {
         let var = 'a';
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(val, Value::Char(Some('a')));
         assert_ne!(val, Value::Char(Some('b')));
         let var: char = AsValue::try_from_value(val).unwrap();
@@ -485,7 +485,7 @@ mod tests {
     #[test]
     fn value_string() {
         let var = "Hello World!";
-        let val: Value = var.into();
+        let val = var.as_value();
         assert_eq!(val, Value::Varchar(Some("Hello World!".into())));
         assert_ne!(val, Value::Varchar(Some("Hello World.".into())));
         let var: String = AsValue::try_from_value(val).unwrap();
@@ -493,7 +493,7 @@ mod tests {
         let var: String = AsValue::try_from_value(val).unwrap();
         assert_eq!(var, "Hello World!");
         assert_eq!(String::try_from_value('x'.as_value()).unwrap(), "x");
-        assert_eq!(String::try_from_value("hello".into()).unwrap(), "hello");
+        assert_eq!(String::try_from_value("hello").unwrap(), "hello");
         assert_eq!(String::parse("").expect("Could not parse string"), "");
         assert_eq!(
             String::parse("\"\"").expect("Could not parse string"),
@@ -512,7 +512,7 @@ mod tests {
     #[test]
     fn value_cow_str() {
         let var = Cow::Borrowed("Hello World!");
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(val, Value::Varchar(Some("Hello World!".into())));
         let var: Cow<'_, str> = AsValue::try_from_value(val).unwrap();
         let val = var.as_value();
@@ -531,7 +531,7 @@ mod tests {
     #[test]
     fn value_date() {
         let var = time::Date::from_calendar_date(2025, Month::July, 21).unwrap();
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(val, Value::Date(Some(var)));
         assert_ne!(val, Value::Null);
         let var: time::Date = AsValue::try_from_value(val).unwrap();
@@ -547,14 +547,14 @@ mod tests {
             val,
             time::Date::from_calendar_date(2025, Month::January, 22).unwrap()
         );
-        time::Date::try_from_value("1999-12-12error".into())
+        time::Date::try_from_value("1999-12-12error")
             .expect_err("Should not be able to convert wrong string");
     }
 
     #[test]
     fn value_time() {
         let var = time::Time::from_hms(0, 57, 21).unwrap();
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(val, Value::Time(Some(var)));
         assert_ne!(val, Value::Null);
         let var: time::Time = AsValue::try_from_value(val).unwrap();
@@ -573,7 +573,7 @@ mod tests {
             time::Date::from_calendar_date(2025, Month::July, 29).unwrap(),
             time::Time::from_hms(13, 52, 13).unwrap(),
         );
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(val, Value::Timestamp(Some(var)));
         assert_ne!(val, Value::Varchar(None));
         let var: time::PrimitiveDateTime = AsValue::try_from_value(val).unwrap();
@@ -649,7 +649,7 @@ mod tests {
             time::Time::from_hms(00, 35, 12).unwrap(),
             time::UtcOffset::from_hms(2, 0, 0).unwrap(),
         );
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(val, Value::TimestampWithTimezone(Some(var)));
         assert_ne!(val, Value::Date(Some(var.date())));
 
@@ -743,7 +743,7 @@ mod tests {
     #[test]
     fn value_interval() {
         let var = Interval::from_months(4);
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(val, Interval::from_months(4).as_value());
         assert_ne!(val, Interval::from_months(3).as_value());
         assert_ne!(val, Interval::from_days(28).as_value());
@@ -862,7 +862,7 @@ mod tests {
     #[test]
     fn value_time_duration() {
         let var = time::Duration::days(14);
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(val, Interval::from_days(14).as_value());
         assert_ne!(val, Interval::from_days(15).as_value());
         assert_ne!(val, Interval::from_secs(1).as_value());
@@ -877,7 +877,7 @@ mod tests {
         let days_5 = std::time::Duration::new((5 * Interval::SECS_IN_DAY) as u64, 0);
         let days_1 = std::time::Duration::new((1 * Interval::SECS_IN_DAY) as u64, 0);
         let var = days_5.clone();
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(val, days_5.clone().as_value());
         assert_ne!(val, days_1.as_value());
 
@@ -890,7 +890,7 @@ mod tests {
     #[test]
     fn value_uuid() {
         let var = Uuid::nil();
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(
             val,
             Uuid::parse_str("00000000-0000-0000-0000-000000000000")
@@ -916,7 +916,7 @@ mod tests {
         let var = Uuid::parse_str("c959fd7d-d3a6-4453-a2ed-83116f2b1b84")
             .unwrap()
             .as_value();
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(
             val,
             Uuid::parse_str("c959fd7d-d3a6-4453-a2ed-83116f2b1b84")
@@ -940,14 +940,14 @@ mod tests {
         );
         assert_eq!(
             Uuid::parse_str("6ed80631-c3ec-41a5-9f66-d9c1e5532798").unwrap(),
-            Uuid::try_from_value("6ed80631-c3ec-41a5-9f66-d9c1e5532798".into()).unwrap()
+            Uuid::try_from_value("6ed80631-c3ec-41a5-9f66-d9c1e5532798").unwrap()
         );
     }
 
     #[test]
     fn value_decimal() {
         let var = Decimal::from_i128_with_scale(12345, 2);
-        let val: Value = var.as_value();
+        let val = var.as_value();
         assert_eq!(val, Decimal::from_f64(123.45).unwrap().as_value());
         assert_ne!(val, Decimal::from_f64(123.10).unwrap().as_value());
         let var: Decimal = AsValue::try_from_value(val).unwrap();
@@ -1002,7 +1002,7 @@ mod tests {
             Decimal::try_from_value((-11.29_f64).as_value()).unwrap(),
             Decimal::from_f64(-11.29).unwrap()
         );
-        Decimal::try_from_value("hello".into()).expect_err("Cannot convert a string to decimal");
+        Decimal::try_from_value("hello").expect_err("Cannot convert a string to decimal");
         assert_eq!(Decimal::as_empty_value(), Value::Decimal(None, 0, 0));
         assert_ne!(
             Decimal::as_empty_value(),
@@ -1015,7 +1015,7 @@ mod tests {
     #[test]
     fn value_array() {
         let var = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as [i8; 10];
-        let val: Value = var.as_value();
+        let val = var.as_value();
         let var = <[i8; 10]>::try_from_value(val).unwrap();
         assert_eq!(var, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
         assert_ne!(var, [0, 1, 2, 3, 4, 5, 6, 7, 7, 9]);
@@ -1065,7 +1065,7 @@ mod tests {
             Uuid::from_str("ed31d4ef-82ea-442e-b273-5f5006e55ab1").unwrap(),
         ]
         .into();
-        let val: Value = var.as_value();
+        let val = var.as_value();
         let var = VecDeque::<Uuid>::try_from_value(val).unwrap();
         assert_eq!(
             var,
@@ -1076,7 +1076,7 @@ mod tests {
                 Uuid::from_str("ed31d4ef-82ea-442e-b273-5f5006e55ab1").unwrap(),
             ]
         );
-        let val: Value = var.as_value();
+        let val = var.as_value();
         let var = LinkedList::<Uuid>::try_from_value(val).unwrap();
         assert_eq!(
             var,
@@ -1087,7 +1087,7 @@ mod tests {
                 Uuid::from_str("ed31d4ef-82ea-442e-b273-5f5006e55ab1").unwrap(),
             ])
         );
-        assert!(Vec::<String>::try_from_value("hello".into()).is_err());
+        assert!(Vec::<String>::try_from_value("hello").is_err());
         assert_eq!(
             Vec::<char>::try_from_value(['a', 'b', 'c'].as_value())
                 .expect("Cannot convert array to Vec"),
@@ -1099,28 +1099,40 @@ mod tests {
             LinkedList::<bool>::new()
         );
         assert_eq!(
-            VecDeque::<bool>::try_from_value(Value::List(None, Value::Boolean(None).into()))
-                .expect("Cannot convert Value to LinkedList"),
+            VecDeque::<bool>::try_from_value(Value::List(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Boolean(None),
+                    len: 0
+                })
+            ))
+            .expect("Cannot convert Value to LinkedList"),
             VecDeque::<bool>::new()
         );
         assert_eq!(
-            Vec::<bool>::try_from_value(Value::List(None, Value::Boolean(None).into()))
-                .expect("Cannot convert null list to Vector"),
+            Vec::<bool>::try_from_value(Value::List(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Boolean(None),
+                    len: 0
+                })
+            ))
+            .expect("Cannot convert null list to Vector"),
             Vec::<bool>::new()
         );
     }
 
     #[test]
     fn value_option_and_box_wrappers() {
-        let none_val: Value = (None::<i32>).as_value();
+        let none_val = (None::<i32>).as_value();
         assert_eq!(none_val, Value::Int32(None));
-        let some_val: Value = Some(42_i32).as_value();
+        let some_val = Some(42_i32).as_value();
         assert_eq!(some_val, Value::Int32(Some(42)));
         let round: Option<i32> = Option::try_from_value(some_val).unwrap();
         assert_eq!(round, Some(42));
         let round_none: Option<i32> = Option::try_from_value(none_val).unwrap();
         assert_eq!(round_none, None);
-        let boxed: Value = Box::new(11_i16).as_value();
+        let boxed = Box::new(11_i16).as_value();
         assert_eq!(boxed, Value::Int16(Some(11)));
         let unboxed: Box<i16> = Box::<i16>::try_from_value(boxed).unwrap();
         assert_eq!(*unboxed, 11);
@@ -1133,13 +1145,13 @@ mod tests {
             rc::Rc,
             sync::Arc,
         };
-        let arc_v: Value = Arc::new(5_u8).as_value();
+        let arc_v = Arc::new(5_u8).as_value();
         assert_eq!(arc_v, Value::UInt8(Some(5)));
-        let rc_v: Value = Rc::new(7_u16).as_value();
+        let rc_v = Rc::new(7_u16).as_value();
         assert_eq!(rc_v, Value::UInt16(Some(7)));
-        let cell_v: Value = Cell::new(9_i32).as_value();
+        let cell_v = Cell::new(9_i32).as_value();
         assert_eq!(cell_v, Value::Int32(Some(9)));
-        let refcell_v: Value = RefCell::new(13_i64).as_value();
+        let refcell_v = RefCell::new(13_i64).as_value();
         assert_eq!(refcell_v, Value::Int64(Some(13)));
         let arc_out: Arc<i8> = Arc::try_from_value(Arc::new(1_i8).as_value()).unwrap();
         assert_eq!(*arc_out, 1);
@@ -1178,14 +1190,18 @@ mod tests {
     #[test]
     fn value_struct_placeholder() {
         let s = Value::Struct(
-            Some(vec![("id".into(), 1_i32.as_value())]),
-            vec![("id".into(), i32::as_empty_value())],
-            TableRef::new("special_type_t".into()),
+            Some(vec![("id".into(), 1_i32.as_value())].into()),
+            Box::new(StructType {
+                fields: vec![("id".into(), i32::as_empty_value())],
+                name: TableRef::new("special_type_t".into()),
+            }),
         );
         let s_diff = Value::Struct(
-            Some(vec![("id".into(), 2_i32.as_value())]),
-            vec![("id".into(), i32::as_empty_value())],
-            TableRef::new("special_type_t".into()),
+            Some(vec![("id".into(), 2_i32.as_value())].into()),
+            Box::new(StructType {
+                fields: vec![("id".into(), i32::as_empty_value())],
+                name: TableRef::new("special_type_t".into()),
+            }),
         );
         assert_ne!(s, s_diff);
     }
@@ -1216,19 +1232,48 @@ mod tests {
         assert!(Value::TimestampWithTimezone(None).is_null());
         assert!(Value::Interval(None).is_null());
         assert!(Value::Uuid(None).is_null());
-        assert!(Value::Array(None, Box::new(Value::Int32(None)), 3).is_null());
-        assert!(Value::List(None, Box::new(Value::Int32(None))).is_null());
+        assert!(
+            Value::Array(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 3
+                })
+            )
+            .is_null()
+        );
+        assert!(
+            Value::List(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 0
+                })
+            )
+            .is_null()
+        );
         assert!(
             Value::Map(
                 None,
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None))
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None)
+                })
             )
             .is_null()
         );
         assert!(Value::Json(None).is_null());
         assert!(Value::Json(Some(serde_json::Value::Null)).is_null());
-        assert!(Value::Struct(None, vec![], TableRef::new("t".into()),).is_null());
+        assert!(
+            Value::Struct(
+                None,
+                Box::new(StructType {
+                    fields: vec![],
+                    name: TableRef::new("t".into())
+                })
+            )
+            .is_null()
+        );
         assert!(Value::Unknown(None).is_null());
 
         assert!(!Value::Boolean(Some(false)).is_null());
@@ -1245,12 +1290,15 @@ mod tests {
         assert_eq!(Value::Int16(Some(5)).as_null(), Value::Int16(None));
         assert_eq!(Value::Int32(Some(5)).as_null(), Value::Int32(None));
         assert_eq!(Value::Int64(Some(5)).as_null(), Value::Int64(None));
-        assert_eq!(Value::Int128(Some(5)).as_null(), Value::Int128(None));
+        assert_eq!(Value::Int128(Some(5.into())).as_null(), Value::Int128(None));
         assert_eq!(Value::UInt8(Some(5)).as_null(), Value::UInt8(None));
         assert_eq!(Value::UInt16(Some(5)).as_null(), Value::UInt16(None));
         assert_eq!(Value::UInt32(Some(5)).as_null(), Value::UInt32(None));
         assert_eq!(Value::UInt64(Some(5)).as_null(), Value::UInt64(None));
-        assert_eq!(Value::UInt128(Some(5)).as_null(), Value::UInt128(None));
+        assert_eq!(
+            Value::UInt128(Some(5.into())).as_null(),
+            Value::UInt128(None)
+        );
         assert_eq!(Value::Float32(Some(1.0)).as_null(), Value::Float32(None));
         assert_eq!(Value::Float64(Some(1.0)).as_null(), Value::Float64(None));
         assert_eq!(
@@ -1297,27 +1345,52 @@ mod tests {
         assert_eq!(
             Value::Array(
                 Some(vec![Value::Int32(Some(1))].into()),
-                Box::new(Value::Int32(None)),
-                1,
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 1,
+                }),
             )
             .as_null(),
-            Value::Array(None, Box::new(Value::Int32(None)), 1)
+            Value::Array(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 1,
+                })
+            )
         );
         assert_eq!(
-            Value::List(Some(vec![]), Box::new(Value::Boolean(None))).as_null(),
-            Value::List(None, Box::new(Value::Boolean(None)))
+            Value::List(
+                Some(vec![].into()),
+                Box::new(CollectionType {
+                    element: Value::Boolean(None),
+                    len: 0,
+                })
+            )
+            .as_null(),
+            Value::List(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Boolean(None),
+                    len: 0,
+                })
+            )
         );
         assert_eq!(
             Value::Map(
-                Some(std::collections::HashMap::new()),
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None)),
+                Some(std::collections::HashMap::new().into()),
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None),
+                }),
             )
             .as_null(),
             Value::Map(
                 None,
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None))
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None),
+                })
             )
         );
         assert_eq!(
@@ -1326,15 +1399,19 @@ mod tests {
         );
         assert_eq!(
             Value::Struct(
-                Some(vec![("id".into(), 1_i32.as_value())]),
-                vec![("id".into(), i32::as_empty_value())],
-                TableRef::new("t".into()),
+                Some(vec![("id".into(), 1_i32.as_value())].into()),
+                Box::new(StructType {
+                    fields: vec![("id".into(), i32::as_empty_value())],
+                    name: TableRef::new("t".into()),
+                }),
             )
             .as_null(),
             Value::Struct(
                 None,
-                vec![("id".into(), i32::as_empty_value())],
-                TableRef::new("t".into()),
+                Box::new(StructType {
+                    fields: vec![("id".into(), i32::as_empty_value())],
+                    name: TableRef::new("t".into()),
+                }),
             )
         );
         assert!(Value::Unknown(Some("x".into())).as_null().is_null());
@@ -1347,12 +1424,12 @@ mod tests {
         assert!(Value::Int16(Some(1)).is_scalar());
         assert!(Value::Int32(Some(1)).is_scalar());
         assert!(Value::Int64(Some(1)).is_scalar());
-        assert!(Value::Int128(Some(1)).is_scalar());
+        assert!(Value::Int128(Some(1.into())).is_scalar());
         assert!(Value::UInt8(Some(1)).is_scalar());
         assert!(Value::UInt16(Some(1)).is_scalar());
         assert!(Value::UInt32(Some(1)).is_scalar());
         assert!(Value::UInt64(Some(1)).is_scalar());
-        assert!(Value::UInt128(Some(1)).is_scalar());
+        assert!(Value::UInt128(Some(1.into())).is_scalar());
         assert!(Value::Float32(Some(1.0)).is_scalar());
         assert!(Value::Float64(Some(1.0)).is_scalar());
         assert!(Value::Decimal(Some(Decimal::from(1)), 0, 0).is_scalar());
@@ -1368,18 +1445,47 @@ mod tests {
         assert!(Value::Unknown(None).is_scalar());
 
         assert!(!Value::Null.is_scalar());
-        assert!(!Value::Array(None, Box::new(Value::Int32(None)), 1).is_scalar());
-        assert!(!Value::List(None, Box::new(Value::Int32(None))).is_scalar());
+        assert!(
+            !Value::Array(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 1
+                })
+            )
+            .is_scalar()
+        );
+        assert!(
+            !Value::List(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 0
+                })
+            )
+            .is_scalar()
+        );
         assert!(
             !Value::Map(
                 None,
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None))
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None)
+                })
             )
             .is_scalar()
         );
         assert!(!Value::Json(None).is_scalar());
-        assert!(!Value::Struct(None, vec![], TableRef::new("t".into())).is_scalar());
+        assert!(
+            !Value::Struct(
+                None,
+                Box::new(StructType {
+                    fields: vec![],
+                    name: TableRef::new("t".into())
+                })
+            )
+            .is_scalar()
+        );
     }
 
     #[test]
@@ -1395,58 +1501,117 @@ mod tests {
         assert!(!Value::Decimal(None, 10, 2).same_type(&Value::Decimal(None, 10, 3)));
 
         assert!(
-            Value::Array(None, Box::new(Value::Int32(None)), 5).same_type(&Value::Array(
+            Value::Array(
                 None,
-                Box::new(Value::Int32(None)),
-                5
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 5
+                })
+            )
+            .same_type(&Value::Array(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 5
+                })
             ))
         );
         assert!(
-            !Value::Array(None, Box::new(Value::Int32(None)), 5).same_type(&Value::Array(
+            !Value::Array(
                 None,
-                Box::new(Value::Int32(None)),
-                3
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 5
+                })
+            )
+            .same_type(&Value::Array(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 3
+                })
             ))
         );
         assert!(
-            !Value::Array(None, Box::new(Value::Int32(None)), 5).same_type(&Value::Array(
+            !Value::Array(
                 None,
-                Box::new(Value::Int64(None)),
-                5
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 5
+                })
+            )
+            .same_type(&Value::Array(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Int64(None),
+                    len: 5
+                })
             ))
         );
 
         assert!(
-            Value::List(None, Box::new(Value::Varchar(None)))
-                .same_type(&Value::List(None, Box::new(Value::Varchar(None))))
+            Value::List(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Varchar(None),
+                    len: 0
+                })
+            )
+            .same_type(&Value::List(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Varchar(None),
+                    len: 0
+                })
+            ))
         );
         assert!(
-            !Value::List(None, Box::new(Value::Varchar(None)))
-                .same_type(&Value::List(None, Box::new(Value::Int32(None))))
+            !Value::List(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Varchar(None),
+                    len: 0
+                })
+            )
+            .same_type(&Value::List(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 0
+                })
+            ))
         );
 
         assert!(
             Value::Map(
                 None,
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None))
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None)
+                })
             )
             .same_type(&Value::Map(
                 None,
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None)),
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None),
+                })
             ))
         );
         assert!(
             !Value::Map(
                 None,
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None))
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None)
+                })
             )
             .same_type(&Value::Map(
                 None,
-                Box::new(Value::Int32(None)),
-                Box::new(Value::Int32(None)),
+                Box::new(MapType {
+                    key: Value::Int32(None),
+                    value: Value::Int32(None),
+                })
             ))
         );
     }
@@ -1481,7 +1646,7 @@ mod tests {
             Value::Int64(Some(10000))
                 .try_as(&Value::Int128(None))
                 .unwrap(),
-            Value::Int128(Some(10000))
+            Value::Int128(Some(10000.into()))
         );
         assert_eq!(
             Value::Int32(Some(5)).try_as(&Value::UInt8(None)).unwrap(),
@@ -1501,7 +1666,7 @@ mod tests {
         );
         assert_eq!(
             Value::Int32(Some(5)).try_as(&Value::UInt128(None)).unwrap(),
-            Value::UInt128(Some(5))
+            Value::UInt128(Some(5.into()))
         );
         assert_eq!(
             Value::Float64(Some(5.0))
@@ -1531,7 +1696,13 @@ mod tests {
         assert!(Value::Int32(Some(5)).try_as(&Value::Json(None)).is_err());
         assert!(
             Value::Int32(Some(5))
-                .try_as(&Value::Array(None, Box::new(Value::Int32(None)), 1))
+                .try_as(&Value::Array(
+                    None,
+                    Box::new(CollectionType {
+                        element: Value::Int32(None),
+                        len: 1
+                    })
+                ))
                 .is_err()
         );
 
@@ -1558,10 +1729,10 @@ mod tests {
             Value::UInt64(Some(40))
         );
         assert_eq!(
-            Value::UInt128(Some(50))
+            Value::UInt128(Some(50.into()))
                 .try_as(&Value::UInt128(None))
                 .unwrap(),
-            Value::UInt128(Some(50))
+            Value::UInt128(Some(50.into()))
         );
         assert_eq!(
             Value::Char(Some('z')).try_as(&Value::Char(None)).unwrap(),
@@ -1643,68 +1814,100 @@ mod tests {
         assert_eq!(
             Value::Map(
                 None,
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None))
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None),
+                })
             ),
             Value::Map(
                 None,
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None))
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None),
+                })
             ),
         );
         let mut m = std::collections::HashMap::new();
         m.insert(Value::Varchar(Some("k".into())), Value::Int32(Some(1)));
         assert_ne!(
             Value::Map(
-                Some(std::collections::HashMap::new()),
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None)),
+                Some(std::collections::HashMap::new().into()),
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None),
+                }),
             ),
             Value::Map(
-                Some(m),
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None)),
+                Some(Box::new(m)),
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None),
+                }),
             ),
         );
         assert_eq!(
             Value::Map(
-                Some(std::collections::HashMap::new()),
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None)),
+                Some(std::collections::HashMap::new().into()),
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None),
+                }),
             ),
             Value::Map(
-                Some(std::collections::HashMap::new()),
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None)),
+                Some(std::collections::HashMap::new().into()),
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None),
+                }),
             ),
         );
         assert_ne!(
             Value::Map(
-                Some(std::collections::HashMap::new()),
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None)),
+                Some(std::collections::HashMap::new().into()),
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None),
+                }),
             ),
             Value::Map(
                 None,
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None))
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None),
+                })
             ),
         );
         assert_eq!(
             Value::Struct(
-                Some(vec![("a".into(), 1_i32.as_value())]),
-                vec![("a".into(), i32::as_empty_value())],
-                TableRef::new("t".into()),
+                Some(vec![("a".into(), 1_i32.as_value())].into()),
+                Box::new(StructType {
+                    fields: vec![("a".into(), i32::as_empty_value())],
+                    name: TableRef::new("t".into()),
+                }),
             ),
             Value::Struct(
-                Some(vec![("a".into(), 1_i32.as_value())]),
-                vec![("a".into(), i32::as_empty_value())],
-                TableRef::new("t".into()),
+                Some(vec![("a".into(), 1_i32.as_value())].into()),
+                Box::new(StructType {
+                    fields: vec![("a".into(), i32::as_empty_value())],
+                    name: TableRef::new("t".into()),
+                }),
             ),
         );
         assert_ne!(
-            Value::Struct(Some(vec![]), vec![], TableRef::new("t1".into()),),
-            Value::Struct(Some(vec![]), vec![], TableRef::new("t2".into()),),
+            Value::Struct(
+                None,
+                Box::new(StructType {
+                    fields: vec![],
+                    name: TableRef::new("t1".into())
+                })
+            ),
+            Value::Struct(
+                None,
+                Box::new(StructType {
+                    fields: vec![],
+                    name: TableRef::new("t2".into())
+                })
+            ),
         );
         assert_eq!(Value::UInt8(Some(1)), Value::UInt8(Some(1)));
         assert_ne!(Value::UInt8(Some(1)), Value::UInt8(Some(2)));
@@ -1712,7 +1915,10 @@ mod tests {
         assert_ne!(Value::UInt16(Some(10)), Value::UInt16(Some(20)));
         assert_eq!(Value::UInt32(Some(100)), Value::UInt32(Some(100)));
         assert_eq!(Value::UInt64(Some(1000)), Value::UInt64(Some(1000)));
-        assert_eq!(Value::UInt128(Some(10000)), Value::UInt128(Some(10000)));
+        assert_eq!(
+            Value::UInt128(Some(10000.into())),
+            Value::UInt128(Some(10000.into()))
+        );
 
         let mut m1 = std::collections::HashMap::new();
         m1.insert(Value::Varchar(Some("a".into())), Value::Int32(Some(1)));
@@ -1720,14 +1926,18 @@ mod tests {
         m2.insert(Value::Varchar(Some("a".into())), Value::Int32(Some(1)));
         assert_eq!(
             Value::Map(
-                Some(m1),
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None))
+                Some(Box::new(m1)),
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None),
+                })
             ),
             Value::Map(
-                Some(m2),
-                Box::new(Value::Varchar(None)),
-                Box::new(Value::Int32(None))
+                Some(Box::new(m2)),
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None),
+                })
             ),
         );
     }
@@ -1743,12 +1953,12 @@ mod tests {
         set.insert(Value::Int16(Some(2)));
         set.insert(Value::Int32(Some(3)));
         set.insert(Value::Int64(Some(4)));
-        set.insert(Value::Int128(Some(5)));
+        set.insert(Value::Int128(Some(5.into())));
         set.insert(Value::UInt8(Some(6)));
         set.insert(Value::UInt16(Some(7)));
         set.insert(Value::UInt32(Some(8)));
         set.insert(Value::UInt64(Some(9)));
-        set.insert(Value::UInt128(Some(10)));
+        set.insert(Value::UInt128(Some(10.into())));
         set.insert(Value::Float32(Some(1.5)));
         set.insert(Value::Float32(None));
         set.insert(Value::Float64(Some(2.5)));
@@ -1761,39 +1971,54 @@ mod tests {
         set.insert(Value::Json(Some(serde_json::json!(1))));
         set.insert(Value::Array(
             Some(vec![Value::Int32(Some(1))].into()),
-            Box::new(Value::Int32(None)),
-            1,
+            Box::new(CollectionType {
+                element: Value::Int32(None),
+                len: 1,
+            }),
         ));
         set.insert(Value::List(
-            Some(vec![Value::Int32(Some(1))]),
-            Box::new(Value::Int32(None)),
+            Some(vec![Value::Int32(Some(1))].into()),
+            Box::new(CollectionType {
+                element: Value::Int32(None),
+                len: 0,
+            }),
         ));
         set.insert(Value::Map(
-            Some(std::collections::HashMap::new()),
-            Box::new(Value::Varchar(None)),
-            Box::new(Value::Int32(None)),
+            Some(std::collections::HashMap::new().into()),
+            Box::new(MapType {
+                key: Value::Varchar(None),
+                value: Value::Int32(None),
+            }),
         ));
         let mut m_hash = std::collections::HashMap::new();
         m_hash.insert(Value::Varchar(Some("k".into())), Value::Int32(Some(1)));
         set.insert(Value::Map(
-            Some(m_hash),
-            Box::new(Value::Varchar(None)),
-            Box::new(Value::Int32(None)),
+            Some(Box::new(m_hash)),
+            Box::new(MapType {
+                key: Value::Varchar(None),
+                value: Value::Int32(None),
+            }),
         ));
         set.insert(Value::Map(
             None,
-            Box::new(Value::Varchar(None)),
-            Box::new(Value::Int32(None)),
+            Box::new(MapType {
+                key: Value::Varchar(None),
+                value: Value::Int32(None),
+            }),
         ));
         set.insert(Value::Struct(
-            Some(vec![("a".into(), 1_i32.as_value())]),
-            vec![("a".into(), i32::as_empty_value())],
-            TableRef::new("t".into()),
+            Some(vec![("a".into(), 1_i32.as_value())].into()),
+            Box::new(StructType {
+                fields: vec![("a".into(), i32::as_empty_value())],
+                name: TableRef::new("t".into()),
+            }),
         ));
         set.insert(Value::Struct(
             None,
-            vec![("a".into(), i32::as_empty_value())],
-            TableRef::new("t2".into()),
+            Box::new(StructType {
+                fields: vec![("a".into(), i32::as_empty_value())],
+                name: TableRef::new("t2".into()),
+            }),
         ));
         set.insert(Value::Unknown(Some("x".into())));
         let d = time::Date::from_calendar_date(2024, time::Month::January, 15).unwrap();
@@ -1831,14 +2056,18 @@ mod tests {
         use std::hash::{Hash, Hasher};
 
         let empty = Value::Map(
-            Some(std::collections::HashMap::new()),
-            Box::new(Value::Varchar(None)),
-            Box::new(Value::Int32(None)),
+            Some(std::collections::HashMap::new().into()),
+            Box::new(MapType {
+                key: Value::Varchar(None),
+                value: Value::Int32(None),
+            }),
         );
         let null = Value::Map(
             None,
-            Box::new(Value::Varchar(None)),
-            Box::new(Value::Int32(None)),
+            Box::new(MapType {
+                key: Value::Varchar(None),
+                value: Value::Int32(None),
+            }),
         );
 
         let mut empty_hasher = DefaultHasher::new();
@@ -1864,7 +2093,7 @@ mod tests {
             "00000000-0000-0000-0000-000000000000"
         );
         assert_eq!(format!("{}", Value::UInt64(Some(999))), "999");
-        assert_eq!(format!("{}", Value::Int128(Some(-100))), "-100");
+        assert_eq!(format!("{}", Value::Int128(Some((-100).into()))), "-100");
         assert_eq!(format!("{}", Value::Boolean(Some(false))), "false");
     }
 }
@@ -1887,7 +2116,13 @@ fn value_value() {
     assert!(matches!(Value::as_empty_value(), Value::Null));
     assert_eq!(
         <[u128; 23]>::as_empty_value(),
-        Value::Array(None, Box::new(Value::UInt128(None)), 23)
+        Value::Array(
+            None,
+            Box::new(CollectionType {
+                element: Value::UInt128(None),
+                len: 23
+            })
+        )
     );
     assert!(Value::parse("some input").is_err());
 }
@@ -1922,8 +2157,14 @@ mod as_value_tests {
         assert_eq!(bool::try_from_value(Value::UInt16(Some(0))).unwrap(), false);
         assert_eq!(bool::try_from_value(Value::UInt32(Some(1))).unwrap(), true);
         assert_eq!(bool::try_from_value(Value::UInt64(Some(0))).unwrap(), false);
-        assert_eq!(bool::try_from_value(Value::UInt128(Some(1))).unwrap(), true);
-        assert_eq!(bool::try_from_value(Value::Int128(Some(0))).unwrap(), false);
+        assert_eq!(
+            bool::try_from_value(Value::UInt128(Some(1.into()))).unwrap(),
+            true
+        );
+        assert_eq!(
+            bool::try_from_value(Value::Int128(Some(0.into()))).unwrap(),
+            false
+        );
 
         assert_eq!(bool::parse("true").unwrap(), true);
         assert_eq!(bool::parse("false").unwrap(), false);
@@ -2030,7 +2271,7 @@ mod as_value_tests {
         assert_eq!(i64::try_from_value(Value::UInt64(Some(4))).unwrap(), 4);
         assert_eq!(i128::try_from_value(Value::UInt8(Some(1))).unwrap(), 1);
         assert_eq!(
-            i128::try_from_value(Value::UInt128(Some(999))).unwrap(),
+            i128::try_from_value(Value::UInt128(Some(999.into()))).unwrap(),
             999
         );
         assert_eq!(u64::try_from_value(Value::UInt8(Some(1))).unwrap(), 1);

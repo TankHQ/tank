@@ -60,9 +60,9 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
     let row_values = table.columns.iter().map(
         |ColumnMetadata { ident,  conversion_type,.. }| {
             if let Some(conversion_type) = conversion_type {
-                quote!(::tank::AsValue::as_value(::std::convert::Into::<#conversion_type>::into(self.#ident.clone())))
+                quote!(::tank::AsValue::as_value(::std::convert::Into::<#conversion_type>::into(self.#ident.clone())).into_owned())
             } else {
-                quote!(::tank::AsValue::as_value(self.#ident.clone()))
+                quote!(::tank::AsValue::as_value(self.#ident.clone()).into_owned())
             }
         },
     );
@@ -184,10 +184,13 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
             }
 
             fn row_values(&self) -> ::tank::RowValues {
-                [#(#row_values),*].into()
+                vec![#(#row_values),*]
             }
 
-            fn from_row(row: ::tank::Row) -> ::tank::Result<Self> {
+            #[inline(always)]
+            fn from_row(
+                row: impl ::tank::Row,
+            ) -> ::tank::Result<Self> {
                 #from_row_factory::<Self>::from_row(row)
             }
         }

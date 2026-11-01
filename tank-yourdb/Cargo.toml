@@ -13,14 +13,15 @@ categories = ["database"]
 # Add backend-specific toggles; keep minimal.
 
 [dependencies]
-log = "0"
-rust_decimal = "1"
+log.workspace = true
+rust_decimal.workspace = true
+# Replace with the client library of the database you are targeting
 scylla = "1"
-tank-core = "0"
-time = "0"
-url = "2"
-uuid = "1"
+tank-core.workspace = true
+time.workspace = true
+url.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
-tank-tests = { version = "0", features = ["disable-transactions"] }
-tokio = "1"
+tank-tests = { path = "../tank-tests", features = ["disable-transactions"] }
+tokio.workspace = true

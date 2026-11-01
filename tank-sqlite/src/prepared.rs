@@ -85,12 +85,12 @@ impl Prepared for SQLitePrepared {
                 Value::Int32(Some(v), ..) => sqlite3_bind_int(statement, index, v as c_int),
                 Value::Int64(Some(v), ..) => sqlite3_bind_int64(statement, index, v),
                 Value::Int128(Some(v), ..) => {
-                    if v as sqlite3_int64 as i128 != v {
+                    if *v as sqlite3_int64 as i128 != *v {
                         return Err(anyhow!(
                             "Cannot bind i128 value `{v}` into sqlite integer because it's out of bounds"
                         ));
                     }
-                    sqlite3_bind_int64(statement, index, v as sqlite3_int64)
+                    sqlite3_bind_int64(statement, index, *v as sqlite3_int64)
                 }
                 Value::UInt8(Some(v), ..) => sqlite3_bind_int(statement, index, v as c_int),
                 Value::UInt16(Some(v), ..) => sqlite3_bind_int(statement, index, v as c_int),
@@ -104,12 +104,12 @@ impl Prepared for SQLitePrepared {
                     sqlite3_bind_int64(statement, index, v as sqlite3_int64)
                 }
                 Value::UInt128(Some(v), ..) => {
-                    if v as sqlite3_int64 as u128 != v {
+                    if *v as sqlite3_int64 as u128 != *v {
                         return Err(anyhow!(
                             "Cannot bind i128 value `{v}` into sqlite integer because it's out of bounds"
                         ));
                     }
-                    sqlite3_bind_int64(statement, index, v as sqlite3_int64)
+                    sqlite3_bind_int64(statement, index, *v as sqlite3_int64)
                 }
                 Value::Float32(Some(v), ..) => sqlite3_bind_double(statement, index, v as f64),
                 Value::Float64(Some(v), ..) => sqlite3_bind_double(statement, index, v),

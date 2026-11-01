@@ -1,11 +1,10 @@
 #![allow(unused_imports)]
 use crate::silent_logs;
-use core::f64;
 use rust_decimal::Decimal;
 use std::{pin::pin, sync::LazyLock};
 use tank::{
     Driver, DynQuery, Entity, Executor, FixedDecimal, Interval, QueryBuilder, QueryResult,
-    RawQuery, RowsAffected, SqlWriter, expr, stream::StreamExt,
+    RawQuery, Result, RowsAffected, SqlWriter, expr, stream::StreamExt,
 };
 use time::{Date, Month, Time};
 use tokio::sync::Mutex;
@@ -48,7 +47,7 @@ struct Limits {
     interval: Interval,
 }
 
-pub async fn limits(executor: &mut impl Executor) {
+pub async fn limits(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -434,4 +433,5 @@ pub async fn limits(executor: &mut impl Executor) {
             Interval::from_days(31) + Interval::from_mins(5)
         );
     }
+    Ok(())
 }

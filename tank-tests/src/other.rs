@@ -1,6 +1,6 @@
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    DynQuery, Entity, Executor, QueryBuilder, cols, expr,
+    AsValue, DynQuery, Entity, Executor, QueryBuilder, Result, Row, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -20,7 +20,7 @@ pub struct CharTable {
     letter: char,
 }
 
-pub async fn other(executor: &mut impl Executor) {
+pub async fn other(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -48,7 +48,7 @@ pub async fn other(executor: &mut impl Executor) {
                 .where_expr(true)
                 .build(&executor.driver()),
         )
-        .map_ok(|v| v.values.into_iter().nth(0).unwrap());
+        .map_ok(|v| v.value(0).unwrap().as_value().into_owned());
     let value = pin!(stream)
         .next()
         .await
@@ -93,4 +93,5 @@ pub async fn other(executor: &mut impl Executor) {
         row.letter, 'é',
         "Multi-byte char should round-trip correctly"
     );
+    Ok(())
 }

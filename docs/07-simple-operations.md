@@ -177,7 +177,7 @@ let mut query =
 query.bind(40)?;
 let _messages: Vec<_> = executor
     .fetch(query)
-    .map_ok(|row| row.values[0].clone())
+    .map_ok(|row| row.value(0).unwrap().as_value().into_owned())
     .try_collect()
     .await?;
 ```

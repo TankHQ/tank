@@ -35,7 +35,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         }
     }
 
-    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value) {
+    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
         match value {
             Value::Boolean(..) => out.push_str("BOOLEAN"),
             Value::Int8(..) => out.push_str("TINYINT"),
@@ -60,25 +60,25 @@ impl SqlWriter for ScyllaDBSqlWriter {
             Value::TimestampWithTimezone(..) => out.push_str("TIMESTAMP"),
             Value::Interval(..) => out.push_str("DURATION"),
             Value::Uuid(..) => out.push_str("UUID"),
-            Value::Array(.., inner, size) => {
-                if matches!(inner.as_ref(), Value::Char(..)) {
+            Value::Array(.., t) => {
+                if matches!(t.element, Value::Char(..)) {
                     out.push_str("ASCII");
                 } else {
                     out.push_str("VECTOR<");
-                    self.write_column_type(context, out, inner);
-                    let _ = write!(out, ",{size}>");
+                    self.write_column_type(context, out, &t.element);
+                    let _ = write!(out, ",{}>", t.len);
                 }
             }
-            Value::List(.., inner) => {
+            Value::List(.., t) => {
                 out.push_str("LIST<");
-                self.write_column_type(context, out, inner);
+                self.write_column_type(context, out, &t.element);
                 out.push('>');
             }
-            Value::Map(.., key, value) => {
+            Value::Map(.., t) => {
                 out.push_str("MAP<");
-                self.write_column_type(context, out, key);
+                self.write_column_type(context, out, &t.key);
                 out.push(',');
-                self.write_column_type(context, out, value);
+                self.write_column_type(context, out, &t.value);
                 out.push('>');
             }
             Value::Json(..) => out.push_str("TEXT"),
@@ -141,7 +141,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
             out.push_str("0s");
         }
         let mut months = value.months;
-        let mut nanos = value.nanos + value.days as i128 * Interval::NANOS_IN_DAY;
+        let mut nanos = value.nanos as i128 + value.days as i128 * Interval::NANOS_IN_DAY;
         if months != 0 {
             if months.abs() > 48 || months % 12 == 0 {
                 let _ = write!(out, "{}y", months / 12);
@@ -178,7 +178,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         context: &mut Context,
         out: &mut DynQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
-        ty: Option<&Value>,
+        ty: Option<&Value<'_>>,
         is_array: bool,
     ) {
         if is_array && matches!(ty, Some(Value::Char(..))) {

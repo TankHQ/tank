@@ -3,7 +3,7 @@
 use crate::silent_logs;
 use std::{pin::pin, sync::LazyLock, time::Duration};
 use tank::{
-    Driver, DynQuery, Entity, Executor, Interval, QueryBuilder, QueryResult, RawQuery,
+    Driver, DynQuery, Entity, Executor, Interval, QueryBuilder, QueryResult, RawQuery, Result,
     RowsAffected, SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
@@ -20,7 +20,7 @@ struct Intervals {
     third: Duration,
 }
 
-pub async fn interval(executor: &mut impl Executor) {
+pub async fn interval(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -214,4 +214,5 @@ pub async fn interval(executor: &mut impl Executor) {
         );
         assert_eq!(interval.third, Duration::from_nanos(5000));
     }
+    Ok(())
 }

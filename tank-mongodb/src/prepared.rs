@@ -5,13 +5,13 @@ use std::{
     fmt::{self, Display, Formatter, Write},
     mem,
 };
-use tank_core::{AsValue, Prepared, Result, Value};
+use tank_core::{AsValue, Prepared, Result, ValueOwned};
 
 #[derive(Default, Debug)]
 pub struct MongoDBPrepared {
     payload: Payload,
     pub(crate) count: u32,
-    pub(crate) params: Vec<Value>,
+    pub(crate) params: Vec<ValueOwned>,
     pub(crate) index: u64,
 }
 
@@ -78,7 +78,7 @@ impl Prepared for MongoDBPrepared {
             .params
             .get_mut(index as usize)
             .ok_or(anyhow!("Index {index} cannot be bound"))?;
-        *target = value.as_value();
+        *target = value.as_value().into_owned();
         self.index = index + 1;
         Ok(self)
     }

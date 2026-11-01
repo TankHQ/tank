@@ -3,7 +3,7 @@ use rust_decimal::Decimal;
 use std::{collections::BTreeMap, pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
     AsValue, Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult,
-    RawQuery, RowsAffected, SqlWriter, Value,
+    RawQuery, Result, RowsAffected, SqlWriter, Value,
     stream::{StreamExt, TryStreamExt},
 };
 use time::macros::datetime;
@@ -37,7 +37,7 @@ pub struct Trade {
     pub tags: Option<BTreeMap<String, String>>,
 }
 
-pub async fn trade_simple(executor: &mut impl Executor) {
+pub async fn trade_simple(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -141,9 +141,10 @@ pub async fn trade_simple(executor: &mut impl Executor) {
     );
 
     assert_eq!(Trade::find_many(executor, true, None).count().await, 1);
+    Ok(())
 }
 
-pub async fn trade_multiple(executor: &mut impl Executor) {
+pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
@@ -423,4 +424,5 @@ pub async fn trade_multiple(executor: &mut impl Executor) {
             }
         );
     }
+    Ok(())
 }
