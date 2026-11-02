@@ -302,7 +302,7 @@ h1 .text {
     grid-column: 1;
     grid-row: 1;
     height: 460px;
-    padding: 0 7px 52px;
+    padding: 0 7px 80px;
     border-color: var(--vp-c-border);
     border-radius: 18px;
     box-shadow:
@@ -325,28 +325,35 @@ h1 .text {
 .swipe-deck>div[class*="language-"]::after {
     content: "";
     position: absolute;
-    width: 36px;
-    height: 36px;
-    background: url('/logo-small.png') center / contain no-repeat;
-    filter: grayscale(1);
-    opacity: 0.7;
+    width: 64px;
+    height: 64px;
+    background: url('/icon.png') center / contain no-repeat;
+    filter: grayscale(1) brightness(0.85) contrast(3);
+    mix-blend-mode: screen;
+    opacity: 0.45;
     pointer-events: none;
 }
 
+html:not(.dark) .swipe-deck>div[class*="language-"]::before,
+html:not(.dark) .swipe-deck>div[class*="language-"]::after {
+    filter: grayscale(1) brightness(0.85) contrast(3) invert(1);
+    mix-blend-mode: multiply;
+}
+
 .swipe-deck>div[class*="language-"]::before {
-    top: 12px;
-    right: 14px;
+    top: 14px;
+    right: 16px;
 }
 
 .swipe-deck>div[class*="language-"]::after {
-    bottom: 12px;
-    left: 14px;
+    bottom: 14px;
+    left: 16px;
     transform: rotate(180deg);
 }
 
 .swipe-deck>div[class*="language-"]>.lang {
     position: static;
-    padding: 18px 50px 6px 13px;
+    padding: 18px 80px 6px 13px;
     font: 700 12px var(--vp-font-family-mono);
     letter-spacing: 0.04em;
     color: var(--vp-c-text-2);
