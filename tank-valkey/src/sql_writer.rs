@@ -169,7 +169,7 @@ impl SqlWriter for ValkeySqlWriter {
             let ty = &column_def.value;
             match ty {
                 v if v.is_scalar() => prepared.commands.push(Cmd::hget(key, id)),
-                Value::Array(.., t) | Value::List(.., t) => {
+                Value::Array(_, t, ..) | Value::List(_, t, ..) => {
                     if !t.element.is_scalar() {
                         log::error!(
                             "Valkey/Redis can only query lists with scalar values, found: {ty:?}"
@@ -182,7 +182,7 @@ impl SqlWriter for ValkeySqlWriter {
                         -1,
                     ));
                 }
-                Value::Map(.., t) => {
+                Value::Map(_, t, ..) => {
                     if !t.key.is_scalar() || !t.value.is_scalar() {
                         log::error!(
                             "Valkey/Redis can only query maps with scalar key and value (they are encoded as HSET), found: {ty:?}"

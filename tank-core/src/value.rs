@@ -118,18 +118,18 @@ impl<'a> Value<'a> {
     /// Checks if two values have the same type, ignoring their actual data.
     pub fn same_type(&self, other: &Value<'_>) -> bool {
         match (self, other) {
-            (Value::Decimal(.., l_width, l_scale), Value::Decimal(.., r_width, r_scale)) => {
+            (Value::Decimal(_, l_width, l_scale, ..), Value::Decimal(_, r_width, r_scale, ..)) => {
                 (*l_width == 0 || *r_width == 0 || l_width == r_width)
                     && (*l_scale == 0 || *r_scale == 0 || l_scale == r_scale)
             }
-            (Value::Array(.., l), Value::Array(.., r))
-            | (Value::List(.., l), Value::List(.., r)) => {
+            (Value::Array(_, l, ..), Value::Array(_, r, ..))
+            | (Value::List(_, l, ..), Value::List(_, r, ..)) => {
                 l.len == r.len && l.element.same_type(&r.element)
             }
-            (Value::Map(.., l), Value::Map(.., r)) => {
+            (Value::Map(_, l, ..), Value::Map(_, r, ..)) => {
                 l.key.same_type(&r.key) && l.value.same_type(&r.value)
             }
-            (Value::Struct(.., l), Value::Struct(.., r)) => {
+            (Value::Struct(_, l, ..), Value::Struct(_, r, ..)) => {
                 l.name == r.name
                     && l.fields.len() == r.fields.len()
                     && iter::zip(&l.fields, &r.fields)
@@ -194,7 +194,7 @@ impl<'a> Value<'a> {
             Value::UInt128(..) => Value::UInt128(None),
             Value::Float32(..) => Value::Float32(None),
             Value::Float64(..) => Value::Float64(None),
-            Value::Decimal(.., w, s) => Value::Decimal(None, *w, *s),
+            Value::Decimal(_, w, s, ..) => Value::Decimal(None, *w, *s),
             Value::Char(..) => Value::Char(None),
             Value::Varchar(..) => Value::Varchar(None),
             Value::Blob(..) => Value::Blob(None),
@@ -204,11 +204,11 @@ impl<'a> Value<'a> {
             Value::TimestampWithTimezone(..) => Value::TimestampWithTimezone(None),
             Value::Interval(..) => Value::Interval(None),
             Value::Uuid(..) => Value::Uuid(None),
-            Value::Array(.., t) => Value::Array(None, t.clone()),
-            Value::List(.., t) => Value::List(None, t.clone()),
-            Value::Map(.., t) => Value::Map(None, t.clone()),
+            Value::Array(_, t, ..) => Value::Array(None, t.clone()),
+            Value::List(_, t, ..) => Value::List(None, t.clone()),
+            Value::Map(_, t, ..) => Value::Map(None, t.clone()),
             Value::Json(..) => Value::Json(None),
-            Value::Struct(.., t) => Value::Struct(None, t.clone()),
+            Value::Struct(_, t, ..) => Value::Struct(None, t.clone()),
             Value::Unknown(..) => Value::Unknown(None),
         }
     }
@@ -244,7 +244,7 @@ impl<'a> Value<'a> {
             }
             Value::Interval(..) => Interval::try_from_value(self).map(AsValue::as_value),
             Value::Uuid(..) => Uuid::try_from_value(self).map(AsValue::as_value),
-            // Value::Array(.., ty, len) => {
+            // Value::Array(_, ty, len, ..) => {
             //     Box::<[Value]>::try_from_value(self).map(AsValue::as_value)
             // }
             // Value::List(..) => Box::<[Value]>::try_from_value(self).map(AsValue::as_value),
@@ -557,7 +557,7 @@ impl<'a> ToTokens for Value<'a> {
             Value::UInt128(..) => quote!(::tank::Value::UInt128(None)),
             Value::Float32(..) => quote!(::tank::Value::Float32(None)),
             Value::Float64(..) => quote!(::tank::Value::Float64(None)),
-            Value::Decimal(.., width, scale) => {
+            Value::Decimal(_, width, scale, ..) => {
                 quote!(::tank::Value::Decimal(None, #width, #scale))
             }
             Value::Char(..) => quote!(::tank::Value::Char(None)),
@@ -591,7 +591,7 @@ impl<'a> ToTokens for Value<'a> {
                 ))
             }
             Value::Json(..) => quote!(::tank::Value::Json(None)),
-            Value::Struct(.., t) => {
+            Value::Struct(_, t, ..) => {
                 let fields = t.fields.iter().map(|(k, v)| quote!((#k.into(), #v)));
                 let name = &t.name;
                 quote!(::tank::Value::Struct(

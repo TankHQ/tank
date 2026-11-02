@@ -90,7 +90,7 @@ impl SqlWriter for SQLiteSqlWriter {
             Value::UInt64(..) => out.push_str("INTEGER"),
             Value::Float32(..) => out.push_str("REAL"),
             Value::Float64(..) => out.push_str("REAL"),
-            Value::Decimal(.., precision, scale) => {
+            Value::Decimal(_, precision, scale, ..) => {
                 out.push_str("REAL");
                 if (precision, scale) != (&0, &0) {
                     let _ = write!(out, "({precision},{scale})");

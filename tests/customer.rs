@@ -59,16 +59,16 @@ mod tests {
         ));
         assert!(matches!(
             columns[1].value,
-            Value::List(.., ref t) if matches!(t.element, Value::Varchar(..))
+            Value::List(_, ref t, ..) if matches!(t.element, Value::Varchar(..))
         ));
         assert!(matches!(
             columns[2].value,
-            Value::List(.., ref t) if matches!(t.element, Value::Float32(..))
+            Value::List(_, ref t, ..) if matches!(t.element, Value::Float32(..))
         ));
         assert!(matches!(columns[3].value, Value::Interval(..)));
         assert!(matches!(
             columns[4].value,
-            Value::List(.., ref t) if matches!(t.element, Value::List(.., ref t) if matches!(t.element, Value::Int64(..))),
+            Value::List(_, ref t, ..) if matches!(t.element, Value::List(_, ref t, ..) if matches!(t.element, Value::Int64(..))),
         ));
         assert_eq!(columns[0].nullable, false);
         assert_eq!(columns[1].nullable, true);

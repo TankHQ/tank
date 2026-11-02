@@ -129,7 +129,7 @@ impl SqlWriter for MySQLSqlWriter {
             Value::UInt128(..) => out.push_str("NUMERIC(39) UNSIGNED"),
             Value::Float32(..) => out.push_str("FLOAT"),
             Value::Float64(..) => out.push_str("DOUBLE"),
-            Value::Decimal(.., precision, scale) => {
+            Value::Decimal(_, precision, scale, ..) => {
                 out.push_str("DECIMAL");
                 if (precision, scale) != (&0, &0) {
                     let _ = write!(out, "({},{})", precision, scale);
