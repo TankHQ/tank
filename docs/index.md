@@ -5,7 +5,7 @@ layout: home
 hero:
   name: "TANK"
   text: "Table Abstraction & Navigation Kit"
-  tagline: The Rust data layer.
+  tagline: The Rust data layer
   image:
     src: logo.png
     alt: Tank logo

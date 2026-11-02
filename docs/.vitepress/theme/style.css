@@ -328,7 +328,7 @@ h1 .text {
     width: 64px;
     height: 64px;
     background: url('/icon.png') center / contain no-repeat;
-    filter: grayscale(1) brightness(0.85) contrast(3);
+    filter: grayscale(1) brightness(0.6) contrast(3);
     mix-blend-mode: screen;
     opacity: 0.45;
     pointer-events: none;
@@ -336,7 +336,7 @@ h1 .text {
 
 html:not(.dark) .swipe-deck>div[class*="language-"]::before,
 html:not(.dark) .swipe-deck>div[class*="language-"]::after {
-    filter: grayscale(1) brightness(0.85) contrast(3) invert(1);
+    filter: grayscale(1) brightness(0.6) contrast(3) invert(1);
     mix-blend-mode: multiply;
 }
 
