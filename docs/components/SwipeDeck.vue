@@ -106,7 +106,7 @@ onBeforeUnmount(() => {
         <slot />
         <div class="arrow" aria-hidden="true">
             <span>executes</span>
-            <b>&rarr;</b>
+            <b>&darr;</b>
         </div>
         <p class="hint">Drag a card to throw it &nbsp;·&nbsp; the generated SQL follows the top card</p>
     </section>

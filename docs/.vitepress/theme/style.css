@@ -274,7 +274,7 @@ h1 .text {
     }
 }
 
-.home-stats > div {
+.home-stats>div {
     padding: 22px 20px;
     background: var(--vp-c-bg-soft);
     text-align: center;
@@ -319,7 +319,7 @@ h1 .text {
     color: var(--vp-c-text-3);
 }
 
-.driver-marquee > div {
+.driver-marquee>div {
     overflow: hidden;
     flex: 1;
     mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
@@ -373,8 +373,8 @@ h1 .text {
     margin: 28px 0 8px;
 }
 
-:is(.VPHome .vp-doc > div, .swipe-deck) > div[class*="language-"],
-.swipe-deck > .vp-code-group {
+:is(.VPHome .vp-doc > div, .swipe-deck)>div[class*="language-"],
+.swipe-deck>.vp-code-group {
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -386,7 +386,7 @@ h1 .text {
     box-shadow: 0 24px 50px -32px rgba(0, 0, 0, 0.65);
 }
 
-:is(.VPHome .vp-doc > div, .swipe-deck) > div[class*="language-"] > .lang {
+:is(.VPHome .vp-doc > div, .swipe-deck)>div[class*="language-"]>.lang {
     position: static;
     display: flex;
     align-items: center;
@@ -399,7 +399,7 @@ h1 .text {
     opacity: 1 !important;
 }
 
-:is(.VPHome .vp-doc > div, .swipe-deck) > div[class*="language-"] > .lang::after {
+:is(.VPHome .vp-doc > div, .swipe-deck)>div[class*="language-"]>.lang::after {
     content: "";
     width: 10px;
     height: 10px;
@@ -408,11 +408,11 @@ h1 .text {
     box-shadow: -16px 0 var(--vp-c-divider), -32px 0 var(--vp-c-divider);
 }
 
-:is(.VPHome .vp-doc > div, .swipe-deck) > div[class*="language-"] > button.copy {
+:is(.VPHome .vp-doc > div, .swipe-deck)>div[class*="language-"]>button.copy {
     top: 48px;
 }
 
-.swipe-deck > div[class*="language-"] {
+.swipe-deck>div[class*="language-"] {
     grid-column: 1;
     grid-row: 1;
     height: 460px;
@@ -425,25 +425,25 @@ h1 .text {
     will-change: transform, opacity;
 }
 
-.swipe-deck.dragging > div[class*="language-"] {
+.swipe-deck.dragging>div[class*="language-"] {
     cursor: grabbing;
 }
 
-.swipe-deck > div[class*="language-"] > pre {
+.swipe-deck>div[class*="language-"]>pre {
     flex: 1;
     min-height: 0;
     margin: 0;
     overflow: auto;
 }
 
-.swipe-deck > .vp-code-group {
+.swipe-deck>.vp-code-group {
     grid-column: 1;
     grid-row: 3;
     height: 300px;
     margin: 0;
 }
 
-.swipe-deck > .vp-code-group:not(.active) {
+.swipe-deck>.vp-code-group:not(.active) {
     display: none;
 }
 
@@ -461,7 +461,7 @@ h1 .text {
     min-height: 0;
 }
 
-.swipe-deck .blocks > div[class*="language-"] {
+.swipe-deck .blocks>div[class*="language-"] {
     flex: 1;
     min-height: 0;
     margin: 0;
@@ -485,16 +485,14 @@ h1 .text {
     justify-content: center;
     gap: 8px;
     color: var(--vp-c-brand-1);
-    font-size: 12px;
+    font-size: 24px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    font-weight: 700;
+    font-weight: 900;
 }
 
 .swipe-deck .arrow b {
-    font-size: 22px;
-    transform: rotate(90deg);
-    line-height: 1;
+    letter-spacing: 0;
 }
 
 .swipe-deck .hint {
@@ -510,16 +508,17 @@ h1 .text {
 @media (min-width: 960px) {
     .swipe-deck {
         grid-template-columns: 1.05fr 88px 1fr;
+        gap: 0;
         row-gap: 16px;
         align-items: center;
     }
 
-    .swipe-deck > div[class*="language-"],
-    .swipe-deck > .vp-code-group {
+    .swipe-deck>div[class*="language-"],
+    .swipe-deck>.vp-code-group {
         height: 660px;
     }
 
-    .swipe-deck > .vp-code-group {
+    .swipe-deck>.vp-code-group {
         grid-column: 3;
         grid-row: 1;
     }
@@ -537,7 +536,7 @@ h1 .text {
     }
 
     .swipe-deck .arrow b {
-        transform: none;
+        transform: rotateZ(-90deg);
     }
 }
 
