@@ -641,7 +641,7 @@ pub trait SqlWriter: Send {
 
     fn expression_binary_op_fragments(
         &self,
-        _context: &mut Context,
+        _context: &Context,
         op_type: BinaryOpType,
     ) -> (&str, &str, &str, bool, bool) {
         match op_type {

@@ -73,7 +73,7 @@ impl SqlWriter for DuckDBSqlWriter {
 
     fn expression_binary_op_fragments(
         &self,
-        context: &mut Context,
+        context: &Context,
         op_type: BinaryOpType,
     ) -> (&str, &str, &str, bool, bool) {
         match op_type {
