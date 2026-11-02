@@ -53,29 +53,55 @@ features:
     linkText: Types
 ---
 
-<p class="tk-lead">
-Tank (<strong>T</strong>able <strong>A</strong>bstraction &amp; <strong>N</strong>avigation
-<strong>K</strong>it) is the Rust data layer that lets you define an entity once and use the same
-explicit query API across a wide range of database systems. You define your entities; Tank and
-your chosen driver handle the ballistics.
-</p>
+<script setup>
+import SwipeDeck from "./components/SwipeDeck.vue"
+import TankJoke from "./components/TankJoke.vue"
 
-<HomeStats />
+const drivers = [
+  "Postgres",
+  "SQLite",
+  "MySQL",
+  "MariaDB",
+  "DuckDB",
+  "MongoDB",
+  "ScyllaDB",
+  "Cassandra",
+  "Valkey",
+  "Redis",
+]
+</script>
 
-<DriverMarquee />
+Tank (**T**able **A**bstraction & **N**avigation **K**it) is the Rust data layer that lets you
+define an entity once and use the same explicit query API across a wide range of database systems.
+You define your entities; Tank and your chosen driver handle the ballistics.
+
+<dl class="home-stats">
+  <div><dt>9</dt><dd>Database backends</dd></div>
+  <div><dt>1</dt><dd>Entity model</dd></div>
+  <div><dt>0</dt><dd>Boilerplate</dd></div>
+  <div><dt>100%</dt><dd>Async</dd></div>
+</dl>
+
+<div class="driver-marquee">
+  <strong>Supports</strong>
+  <div>
+    <ul>
+      <li v-for="(d, i) in [...drivers, ...drivers]" :key="i">{{ d }}</li>
+    </ul>
+  </div>
+</div>
 
 > [!NOTE]
 > In a hurry? The [cheat sheet](/00-cheat-sheet) shows every operation on one page.
 
-<SectionHeading eyebrow="01 · Entity" title="Define your entity once">
+###### 01 · Entity
+## Define your entity once
+
 A plain Rust struct, one derive. Field types map to the closest column type each backend
-supports, <code>#[tank(...)]</code> attributes configure the table, and ignored fields never
+supports, `#[tank(...)]` attributes configure the table, and ignored fields never
 reach the database.
-</SectionHeading>
 
-<CodeWindow title="schema.rs">
-
-```rust
+```rust [schema.rs]
 use tank::Entity;
 use uuid::Uuid;
 
@@ -103,13 +129,12 @@ pub struct Operator {
 }
 ```
 
-</CodeWindow>
+###### 02 · Operations
+## Every statement, one typed API
 
-<SectionHeading eyebrow="02 · Operations" title="Every statement, one typed API">
 The Rust source lives on the cards, the generated SQL lives in the window beside them. Drag a
 card to throw it — the top card follows your hand, gathers momentum and flies away, then the
 next one steps up and the window updates.
-</SectionHeading>
 
 <SwipeDeck>
 
@@ -117,38 +142,37 @@ next one steps up and the window updates.
 
 </SwipeDeck>
 
-<SectionHeading eyebrow="03 · Terrain" title="Pick your armor">
+###### 03 · Terrain
+## Pick your armor
+
 Every driver implements the same traits and advertises exactly what its engine can do —
 transactions, joins, bulk append, filtering and aggregations. See the
 [capability matrix](/04-capabilities) to choose the right backend for the mission.
-</SectionHeading>
 
 > [!WARNING]
 > **No-Fly Zone.** Tank deliberately ships no schema migrations (only table creation and
 > drop for fast setup) and no implicit joins. If you need either, reach for a dedicated
 > migration tool and write joins explicitly.
 
-<SectionHeading eyebrow="04 · Deployment" title="Zero setup">
+###### 04 · Deployment
+## Zero setup
+
 Two commands to arm the vehicle and choose a battlefield, then follow the
 [getting started guide](/02-getting-started) to connect, define an entity and fire your first
 query. Tank is async: run the examples under a runtime like
-[Tokio](https://crates.io/crates/tokio) and <code>.await</code> your operations.
-</SectionHeading>
+[Tokio](https://crates.io/crates/tokio) and `.await` your operations.
 
 ```sh
 cargo add tank          # the command vehicle
 cargo add tank-duckdb   # choose your battlefield
 ```
 
-<SectionHeading eyebrow="05 · Support" title="Support the mission">
+###### 05 · Support
+## Support the mission
+
 Building and maintaining drivers for several database families is a major effort. If Tank
 saves your company time, infrastructure headaches, or boilerplate, please consider
 [supporting its development](https://github.com/sponsors/TankHQ). Tank is carefully designed,
 written and maintained by (human) [barsdeveloper](https://github.com/barsdeveloper).
-</SectionHeading>
-
-<script setup>
-  import TankJoke from "./components/TankJoke.vue"
-</script>
 
 <TankJoke />

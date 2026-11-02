@@ -54,6 +54,12 @@ export default defineConfig({
 
   markdown: {
     config(md) {
+      const fence = md.renderer.rules.fence
+      md.renderer.rules.fence = (tokens, idx, ...rest) => {
+        const title = tokens[idx].info.match(/\[(.*)\]/)?.[1]
+        const html = fence(tokens, idx, ...rest)
+        return title ? html.replace(/(<span class="lang">).*?(<\/span>)/, `$1${title}$2`) : html
+      }
     },
   },
 })

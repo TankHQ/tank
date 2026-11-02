@@ -1,6 +1,4 @@
-<CodeWindow title="create_table.rs">
-
-```rust
+```rust [create_table.rs]
 use tank::Entity;
 use rust_decimal::Decimal;
 use uuid::Uuid;
@@ -21,8 +19,6 @@ struct Deployment {
 
 Deployment::create_table(&mut connection, true, true).await?;
 ```
-
-</CodeWindow>
 
 ::: code-group
 ```sql [Postgres]
@@ -104,9 +100,7 @@ CREATE TABLE IF NOT EXISTS "army"."deployments" (
 ```
 :::
 
-<CodeWindow title="drop_table.rs">
-
-```rust
+```rust [drop_table.rs]
 use tank::Entity;
 
 #[derive(Entity)]
@@ -115,8 +109,6 @@ struct Deployment {}
 
 Deployment::drop_table(&mut connection, true, false).await?;
 ```
-
-</CodeWindow>
 
 ::: code-group
 ```sql [Postgres]
@@ -130,9 +122,7 @@ DROP TABLE IF EXISTS "deployments";
 ```
 :::
 
-<CodeWindow title="insert_one.rs">
-
-```rust
+```rust [insert_one.rs]
 use tank::Entity;
 
 #[derive(Entity, Default)]
@@ -151,8 +141,6 @@ let vehicle = Vehicle { id: 1, model: "Tiger I".into(), ..Default::default() };
 Vehicle::insert_one(&mut connection, &vehicle).await?;
 ```
 
-</CodeWindow>
-
 ::: code-group
 ```sql [Postgres]
 INSERT INTO "army"."vehicles" ("id", "model", "crew", "weight_kg", "in_service") VALUES
@@ -168,9 +156,7 @@ INSERT INTO "vehicles" ("id", "model", "crew", "weight_kg", "in_service") VALUES
 ```
 :::
 
-<CodeWindow title="insert_many.rs">
-
-```rust
+```rust [insert_many.rs]
 use tank::Entity;
 use uuid::Uuid;
 
@@ -190,8 +176,6 @@ let viper = Soldier { id: Uuid::new_v4(), name: "Viper".into(), ..Default::defau
 Soldier::insert_many(&mut connection, &[rook, viper]).await?;
 ```
 
-</CodeWindow>
-
 ::: code-group
 ```sql [Postgres]
 INSERT INTO "army"."soldiers" ("id", "name", "rank", "age") VALUES
@@ -210,9 +194,7 @@ INSERT INTO "soldiers" ("id", "name", "rank", "age") VALUES
 ```
 :::
 
-<CodeWindow title="save.rs">
-
-```rust
+```rust [save.rs]
 use tank::Entity;
 use uuid::Uuid;
 
@@ -232,8 +214,6 @@ let mut mission = Mission { id: Uuid::new_v4(), code_name: "Red Dawn".into(), ..
 mission.progress = 0.4;
 mission.save(&mut connection).await?;
 ```
-
-</CodeWindow>
 
 ::: code-group
 ```sql [Postgres]
@@ -262,9 +242,7 @@ ON CONFLICT ("id") DO UPDATE SET
 ```
 :::
 
-<CodeWindow title="delete_many.rs">
-
-```rust
+```rust [delete_many.rs]
 use tank::{Entity, expr};
 use uuid::Uuid;
 
@@ -285,8 +263,6 @@ Signal::delete_many(
 .await?;
 ```
 
-</CodeWindow>
-
 ::: code-group
 ```sql [Postgres]
 DELETE FROM "army"."signals"
@@ -302,9 +278,7 @@ WHERE "encrypted" = false;
 ```
 :::
 
-<CodeWindow title="find_one.rs">
-
-```rust
+```rust [find_one.rs]
 use tank::{Entity, expr};
 use uuid::Uuid;
 
@@ -324,8 +298,6 @@ let unit = Operator::find_one(
 )
 .await?;
 ```
-
-</CodeWindow>
 
 ::: code-group
 ```sql [Postgres]
@@ -348,9 +320,7 @@ LIMIT 1;
 ```
 :::
 
-<CodeWindow title="find_many.rs">
-
-```rust
+```rust [find_many.rs]
 use tank::{Entity, expr, stream::TryStreamExt};
 use uuid::Uuid;
 
@@ -374,8 +344,6 @@ let flying: Vec<Drone> = Drone::find_many(
 .await?;
 ```
 
-</CodeWindow>
-
 ::: code-group
 ```sql [Postgres]
 SELECT "id", "model", "battery_pct", "active"
@@ -397,9 +365,7 @@ LIMIT 50;
 ```
 :::
 
-<CodeWindow title="prepare.rs">
-
-```rust
+```rust [prepare.rs]
 use tank::{Entity, expr, stream::TryStreamExt};
 use uuid::Uuid;
 
@@ -426,8 +392,6 @@ query.clear_bindings()?;
 query.bind(Uuid::new_v4())?;
 ```
 
-</CodeWindow>
-
 ::: code-group
 ```sql [Postgres]
 SELECT "id", "sender", "body", "sent_at"
@@ -449,9 +413,7 @@ LIMIT 50;
 ```
 :::
 
-<CodeWindow title="expr.rs">
-
-```rust
+```rust [expr.rs]
 use tank::{Entity, expr, stream::TryStreamExt};
 
 #[derive(Entity)]
@@ -476,8 +438,6 @@ let rows: Vec<Metric> = Metric::find_many(
 .await?;
 ```
 
-</CodeWindow>
-
 ::: code-group
 ```sql [Postgres]
 SELECT "id", "name", "country", "value"
@@ -496,9 +456,7 @@ WHERE "name" LIKE 'income%' AND "country" IN ('NL', 'UK') AND "value" > 0.0;
 ```
 :::
 
-<CodeWindow title="query_builder.rs">
-
-```rust
+```rust [query_builder.rs]
 use tank::{Entity, QueryBuilder, cols, expr};
 
 #[derive(Entity)]
@@ -525,8 +483,6 @@ let hottest: Vec<Reading> = connection
 .await?;
 ```
 
-</CodeWindow>
-
 ::: code-group
 ```sql [Postgres]
 SELECT "sensor", "celsius"
@@ -551,9 +507,7 @@ LIMIT 10;
 ```
 :::
 
-<CodeWindow title="group_by.rs">
-
-```rust
+```rust [group_by.rs]
 use tank::{Entity, QueryBuilder, cols};
 use rust_decimal::Decimal;
 
@@ -585,8 +539,6 @@ let by_symbol: Vec<Trade> = connection
 .await?;
 ```
 
-</CodeWindow>
-
 ::: code-group
 ```sql [Postgres]
 SELECT "symbol", COUNT(*) AS fills, SUM("quantity") AS volume
@@ -608,9 +560,7 @@ ORDER BY "symbol" ASC;
 ```
 :::
 
-<CodeWindow title="having.rs">
-
-```rust
+```rust [having.rs]
 use tank::{Entity, QueryBuilder, cols, expr};
 
 #[derive(Entity)]
@@ -637,8 +587,6 @@ let noisy: Vec<Event> = connection
 .await?;
 ```
 
-</CodeWindow>
-
 ::: code-group
 ```sql [Postgres]
 SELECT "level", SUM("count") AS total
@@ -663,9 +611,7 @@ ORDER BY "level" ASC;
 ```
 :::
 
-<CodeWindow title="join.rs">
-
-```rust
+```rust [join.rs]
 use tank::{Entity, QueryBuilder, cols, join};
 
 #[derive(Entity)]
@@ -699,8 +645,6 @@ let rows = connection
 .await?;
 ```
 
-</CodeWindow>
-
 ::: code-group
 ```sql [Postgres]
 SELECT "library"."books"."title", "library"."authors"."name"
@@ -722,9 +666,7 @@ JOIN "authors"
 ```
 :::
 
-<CodeWindow title="left_join.rs">
-
-```rust
+```rust [left_join.rs]
 use tank::{Entity, QueryBuilder, cols, expr, join};
 use rust_decimal::Decimal;
 use uuid::Uuid;
@@ -762,8 +704,6 @@ let rows = connection
 .await?;
 ```
 
-</CodeWindow>
-
 ::: code-group
 ```sql [Postgres]
 SELECT O."total", C."name" AS customer
@@ -791,9 +731,7 @@ ORDER BY O."total" DESC;
 ```
 :::
 
-<CodeWindow title="transaction.rs">
-
-```rust
+```rust [transaction.rs]
 use tank::{Entity, Transaction};
 use rust_decimal::Decimal;
 use uuid::Uuid;
@@ -815,8 +753,6 @@ Payment::insert_one(&mut tx, &payment).await?;
 payment.delete(&mut tx).await?;
 tx.commit().await?;
 ```
-
-</CodeWindow>
 
 ::: code-group
 ```sql [Postgres]
@@ -845,9 +781,7 @@ COMMIT;
 ```
 :::
 
-<CodeWindow title="raw_sql.rs">
-
-```rust
+```rust [raw_sql.rs]
 use tank::stream::TryStreamExt;
 
 let rows = connection
@@ -857,8 +791,6 @@ let rows = connection
 .try_collect::<Vec<_>>()
 .await?;
 ```
-
-</CodeWindow>
 
 ::: code-group
 ```sql [Postgres]
