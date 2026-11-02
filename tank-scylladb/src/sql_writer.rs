@@ -143,7 +143,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         let mut months = value.months;
         let mut nanos = value.nanos as i128 + value.days as i128 * Interval::NANOS_IN_DAY;
         if months != 0 {
-            if months.abs() > 48 || months % 12 == 0 {
+            if months.unsigned_abs() > 48 || months % 12 == 0 {
                 let _ = write!(out, "{}y", months / 12);
                 months = months % 12;
             }
@@ -333,6 +333,14 @@ impl SqlWriter for ScyllaDBSqlWriter {
         Self: Sized,
         E: Entity,
     {
+    }
+
+    fn write_column_comment(
+        &self,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        _column: &ColumnDef,
+    ) {
     }
 
     fn write_insert<It>(&self, out: &mut DynQuery, entities: It, _update: bool)

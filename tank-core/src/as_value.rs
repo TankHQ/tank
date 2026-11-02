@@ -902,7 +902,9 @@ impl_as_value!(
     },
     Value::Interval(Some(v), ..) => {
         let (h, m, s, ns) = v.as_hmsns();
-        if h < 0 {
+        // The sign-carrying decomposition places the sign on the first
+        // non-zero component, so every component must be checked.
+        if h < 0 || m < 0 || s < 0 || ns < 0 {
             return Err(anyhow!(
                 "Cannot convert negative interval `{v:?}` to `time::Time`"
             ));

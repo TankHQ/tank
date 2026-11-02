@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use std::{collections::HashSet, time::Duration};
-    use tank_core::{AsValue, Context, DynQuery, Fragment, Interval, SqlWriter};
+    use tank_core::{AsValue, Context, DynQuery, Fragment, Interval, SqlWriter, Value};
 
     struct Writer;
     impl SqlWriter for Writer {
@@ -440,5 +440,149 @@ mod tests {
 
         let duration2: time::Duration = interval.into();
         assert_eq!(duration, duration2);
+    }
+
+    // Tests kept from the branch that were not present on master
+    #[test]
+    fn large_and_negative_interval_to_time_duration() {
+        let negative: time::Duration = Interval::from_mins(-30).into();
+        assert_eq!(negative, time::Duration::minutes(-30));
+
+        let huge: time::Duration = Interval::from_months(i64::MAX / 2).into();
+        assert!(huge.whole_seconds() > 0);
+    }
+
+    #[test]
+    fn large_i128_constructors_keep_sign() {
+        for v in [i128::MAX, i128::MIN] {
+            let n = Interval::from_nanos(v);
+            assert_eq!(
+                n.days.signum() as i128,
+                v.signum(),
+                "Interval::from_nanos({v}) produced a days count with the wrong sign: {n:?}"
+            );
+            let m = Interval::from_micros(v);
+            assert_eq!(
+                m.days.signum() as i128,
+                v.signum(),
+                "Interval::from_micros({v}) produced a days count with the wrong sign: {m:?}"
+            );
+            let ms = Interval::from_millis(v);
+            assert_eq!(
+                ms.days.signum() as i128,
+                v.signum(),
+                "Interval::from_millis({v}) produced a days count with the wrong sign: {ms:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn large_interval_do_not_overflow() {
+        use tank_core::IntervalUnit;
+        let extremes = [
+            Interval::new(i32::MIN, 0, 0),
+            Interval::new(i32::MAX, 0, 0),
+            Interval::new(0, i32::MAX, i64::MAX),
+            Interval::new(0, i32::MIN, i64::MIN),
+            Interval::new(i32::MIN, i32::MIN, i64::MIN),
+        ];
+        for interval in extremes {
+            let _ = interval.as_ns();
+            let _ = interval.days_nanos();
+            let _ = interval.units_mask();
+            let _ = interval.unit_value(IntervalUnit::Nanosecond);
+            let _ = interval.as_duration(30.0);
+            let _ = -interval;
+            assert_eq!(interval, interval);
+            let mut set = HashSet::new();
+            set.insert(interval);
+            set.insert(interval);
+            assert_eq!(set.len(), 1);
+        }
+    }
+
+    #[test]
+    fn long_fraction_does_not_panic() {
+        for digits in 1..=40 {
+            let input = format!("12:30:00.{}", "9".repeat(digits));
+            let result = Interval::try_from_value(Value::Varchar(Some(input.into())));
+            if digits <= 9 {
+                assert!(result.is_ok(), "{digits} digits should parse");
+            } else {
+                assert!(result.is_err(), "{digits} digits should be rejected");
+            }
+        }
+        let parsed = Interval::try_from_value(Value::Varchar(Some("00:00:00.5".into()))).unwrap();
+        assert_eq!(parsed, Interval::from_millis(500));
+    }
+
+    #[test]
+    fn negative_as_duration() {
+        assert_eq!(Interval::from_mins(-30).as_duration(30.0), Duration::ZERO);
+        assert_eq!((-Interval::from_days(3)).as_duration(30.0), Duration::ZERO);
+        assert_eq!(
+            (Interval::from_days(1) - Interval::from_mins(30)).as_duration(30.0),
+            Duration::from_secs(23 * 3600 + 30 * 60)
+        );
+    }
+
+    #[test]
+    fn neg_min_months_does_not_panic() {
+        let value = Interval::new(i32::MIN, 0, 0);
+        let _ = -value;
+    }
+
+    #[test]
+    fn parse_huge_interval_does_not_panic() {
+        let parsed =
+            Interval::try_from_value(Value::Varchar(Some("1000000000000000000 years".into())));
+        if let Ok(v) = parsed {
+            assert!(v.months >= 0);
+        }
+        let parsed = Interval::try_from_value(Value::Varchar(Some(
+            "1000000000000000000 years 1000000000000000000 years".into(),
+        )));
+        if let Ok(v) = parsed {
+            assert!(v.months >= 0);
+        }
+    }
+
+    #[test]
+    fn total_nanos() {
+        assert_eq!(Interval::ZERO.as_ns(), 0);
+        assert_eq!(
+            Interval::from_months(1).as_ns(),
+            30 * Interval::NANOS_IN_DAY
+        );
+        assert_eq!(
+            (Interval::from_days(-1) + Interval::from_mins(30)).as_ns(),
+            -23 * Interval::NANOS_IN_HOUR - 30 * Interval::NANOS_IN_SEC * 60
+        );
+    }
+
+    #[test]
+    fn write_then_parse_round_trip() {
+        for interval in [
+            Interval::from_years(20_000) + Interval::from_millis(300),
+            Interval::from_months(5) + Interval::from_days(-2) + Interval::from_secs(1),
+            Interval::new(48, 15, (2 * Interval::NANOS_IN_DAY + 1_000_000_000) as i64),
+            Interval::from_days(-11),
+            Interval::from_micros(999_999_999),
+        ] {
+            let mut out = DynQuery::default();
+            WRITER.write_value(
+                &mut Context::new(Fragment::None, false),
+                &mut out,
+                &interval.as_value(),
+            );
+            let rendered = out.as_str().into_owned();
+            let body = rendered
+                .strip_prefix("INTERVAL ")
+                .unwrap_or(&rendered)
+                .to_string();
+            let parsed = Interval::try_from_value(Value::Varchar(Some(body.into())))
+                .unwrap_or_else(|e| panic!("Could not parse `{rendered}`: {e:#}"));
+            assert_eq!(parsed, interval, "Round-trip failed for `{rendered}`");
+        }
     }
 }

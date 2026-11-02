@@ -13,10 +13,16 @@ autotests = false
 name = "escaping"
 
 [[test]]
+name = "interval"
+
+[[test]]
 name = "mariadb"
 
 [[test]]
 name = "mysql"
+
+[[test]]
+name = "quoted_collections"
 
 [features]
 

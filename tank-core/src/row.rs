@@ -81,6 +81,22 @@ pub trait Row: Debug + Send + Sync {
             Some(value)
         })
     }
+
+    /// Copies names and owns all borrowed value payloads.
+    ///
+    /// Native row views override this to share their cached
+    /// [`RowLabels`] instead of re-allocating it.
+    fn into_owned(self) -> RowOwned
+    where
+        Self: Sized,
+    {
+        RowOwned::new(
+            self.labels().into(),
+            self.values()
+                .map(|value| value.into_owned().into_owned())
+                .collect(),
+        )
+    }
 }
 
 impl<R: Row + ?Sized> Row for &R {
@@ -173,6 +189,11 @@ impl Row for RowOwned {
 
     fn into_values(self) -> impl Iterator<Item = ValueOwned> {
         self.values.into_iter()
+    }
+
+    #[inline(always)]
+    fn into_owned(self) -> RowOwned {
+        self
     }
 }
 

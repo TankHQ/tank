@@ -2129,6 +2129,8 @@ fn value_value() {
 
 #[cfg(test)]
 mod as_value_tests {
+    use serde_json::Number;
+    use std::mem;
     use tank::{AsValue, Value};
 
     #[test]
@@ -2526,5 +2528,80 @@ mod as_value_tests {
         assert_eq!(42_usize.as_value(), Value::UInt64(Some(42)));
         let back: usize = usize::try_from_value(Value::UInt64(Some(42))).unwrap();
         assert_eq!(back, 42);
+    }
+
+    // Tests kept from the branch that were not present on master
+    #[test]
+    fn value_float_to_integer() {
+        assert_eq!(i64::try_from_value(5.0_f64.as_value()).unwrap(), 5);
+        assert_eq!(i32::try_from_value((5.0_f32).as_value()).unwrap(), 5);
+        assert_eq!(u8::try_from_value((200.0_f32).as_value()).unwrap(), 200);
+        assert_eq!(i128::try_from_value((-7.0_f64).as_value()).unwrap(), -7);
+
+        assert!(i64::try_from_value(1.5_f64.as_value()).is_err());
+        assert!(i32::try_from_value((1.5_f32).as_value()).is_err());
+        assert!(i64::try_from_value(1e30_f64.as_value()).is_err());
+        assert!(i64::try_from_value(f64::MAX.as_value()).is_err());
+        assert!(u64::try_from_value(1e30_f64.as_value()).is_err());
+        assert!(i32::try_from_value(1e30_f64.as_value()).is_err());
+        assert!(i8::try_from_value(200.0_f64.as_value()).is_err());
+        assert!(i8::try_from_value((-200.0_f64).as_value()).is_err());
+        assert!(i8::try_from_value((200.0_f32).as_value()).is_err());
+        assert!(u32::try_from_value((-1.0_f64).as_value()).is_err());
+
+        assert!(i64::try_from_value(9_223_372_036_854_775_808.0_f64.as_value()).is_err());
+        assert!(i64::try_from_value((9_223_372_036_854_775_808.0_f32).as_value()).is_err());
+        assert!(i32::try_from_value(2_147_483_648.0_f64.as_value()).is_err());
+        assert!(i8::try_from_value(128.0_f64.as_value()).is_err());
+        assert!(u64::try_from_value(18_446_744_073_709_551_616.0_f64.as_value()).is_err());
+        assert!(u8::try_from_value(256.0_f64.as_value()).is_err());
+        assert!(
+            i128::try_from_value(
+                170_141_183_460_469_231_731_687_303_715_884_105_728.0_f64.as_value()
+            )
+            .is_err()
+        );
+        assert!(
+            u128::try_from_value(
+                340_282_366_920_938_463_463_374_607_431_768_211_456.0_f64.as_value()
+            )
+            .is_err()
+        );
+        assert_eq!(
+            i64::try_from_value((9_223_372_036_854_775_808.0_f64 - 1024.0).as_value()).unwrap(),
+            9_223_372_036_854_774_784,
+        );
+        assert_eq!(
+            i64::try_from_value((-9_223_372_036_854_775_808.0_f64).as_value()).unwrap(),
+            i64::MIN,
+        );
+        assert_eq!(
+            i8::try_from_value((-128.0_f64).as_value()).unwrap(),
+            i8::MIN
+        );
+        assert!(
+            i64::try_from_value((-9_223_372_036_854_775_808.0_f64 - 2048.0).as_value()).is_err()
+        );
+
+        let json = |f: f64| serde_json::Value::Number(Number::from_f64(f).unwrap()).as_value();
+        assert_eq!(i128::try_from_value(json(42.0)).unwrap(), 42);
+        assert_eq!(i128::try_from_value(json(-7.0)).unwrap(), -7);
+        assert!(i128::try_from_value(json(1e40)).is_err());
+        assert!(i128::try_from_value(json(-1e40)).is_err());
+        assert!(i64::try_from_value(json(1e30)).is_err());
+    }
+
+    #[test]
+    fn value_layout_is_compact() {
+        assert!(
+            mem::size_of::<Value<'_>>() <= 32,
+            "Value grew to {} bytes; it must stay <= 32",
+            mem::size_of::<Value<'_>>(),
+        );
+        assert!(
+            mem::align_of::<Value<'_>>() <= 16,
+            "Value alignment grew to {}; it must stay <= 16",
+            mem::align_of::<Value<'_>>(),
+        );
     }
 }

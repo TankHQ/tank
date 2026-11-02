@@ -1,6 +1,9 @@
 use proc_macro2::TokenStream;
 use quote::ToTokens;
-use std::{collections::BTreeMap, fmt::Debug};
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Debug},
+};
 use syn::{
     Expr, ExprCall, ExprLit, ExprMethodCall, Field, Ident, Lit, LitStr, Path, Result, Type,
     custom_keyword, parenthesized,
@@ -30,7 +33,7 @@ pub(crate) struct ColumnMetadata {
 }
 
 impl Debug for ColumnMetadata {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ColumnMetadata")
             .field("ident", &self.ident)
             .field("ty", &"..")

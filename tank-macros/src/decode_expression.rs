@@ -4,7 +4,7 @@ use syn::{
     BinOp, Expr, ExprGroup, ExprLit, ExprMacro, ExprPath, LitStr, Macro, Member, Path, Type,
     TypePath, punctuated::Punctuated, spanned::Spanned, token::Comma,
 };
-use tank_core::decode_type;
+use tank_core::{decode_type, matches_path};
 
 fn unwrap_group(expr: &Expr) -> &Expr {
     match expr {
@@ -197,10 +197,18 @@ pub fn decode_expression(expr: &Expr) -> TokenStream {
         Expr::Lit(ExprLit { lit: v, .. }) => {
             let v = match v {
                 syn::Lit::Bool(v) => quote! { ::tank::Operand::LitBool(#v) },
-                syn::Lit::Int(v) => quote! { ::tank::Operand::LitInt(#v as _) },
+                syn::Lit::Int(v) => {
+                    let value = v.base10_parse::<i128>().unwrap_or_else(|e| {
+                        panic!("Integer literal is out of range for i128: {e}")
+                    });
+                    quote! { ::tank::Operand::LitInt(#value) }
+                }
                 syn::Lit::Float(v) => quote! { ::tank::Operand::LitFloat(#v as _) },
                 syn::Lit::Str(v) => quote! { ::tank::Operand::LitStr(#v) },
-                syn::Lit::Char(v) => quote! { ::tank::Operand::LitStr(#v) },
+                syn::Lit::Char(v) => {
+                    let s = LitStr::new(&v.value().to_string(), v.span());
+                    quote! { ::tank::Operand::LitStr(#s) }
+                }
                 _ => panic!(
                     "Unexpected value {:?} in a sql expression",
                     v.into_token_stream()
@@ -212,33 +220,13 @@ pub fn decode_expression(expr: &Expr) -> TokenStream {
             mac: Macro { path, tokens, .. },
             ..
         }) => {
-            if path
-                .segments
-                .iter()
-                .map(|v| v.ident.to_string())
-                .eq(["tank", "evaluated"].into_iter())
-            {
+            if matches_path(path, &["tank", "evaluated"]) {
                 quote! { ::tank::Operand::Variable(::tank::AsValue::as_value(#tokens)) }
-            } else if path
-                .segments
-                .iter()
-                .map(|v| v.ident.to_string())
-                .eq(["tank", "asterisk"].into_iter())
-            {
+            } else if matches_path(path, &["tank", "asterisk"]) {
                 quote! { ::tank::Operand::Asterisk }
-            } else if path.segments.iter().map(|v| v.ident.to_string()).eq([
-                "tank",
-                "question_mark",
-            ]
-            .into_iter())
-            {
+            } else if matches_path(path, &["tank", "question_mark"]) {
                 quote! { ::tank::Operand::QuestionMark }
-            } else if path.segments.iter().map(|v| v.ident.to_string()).eq([
-                "tank",
-                "current_timestamp_ms",
-            ]
-            .into_iter())
-            {
+            } else if matches_path(path, &["tank", "current_timestamp_ms"]) {
                 quote! { ::tank::Operand::CurrentTimestampMs }
             } else {
                 quote! { #path!(#tokens) }

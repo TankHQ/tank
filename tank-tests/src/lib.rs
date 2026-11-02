@@ -3,11 +3,13 @@ mod ambiguity;
 mod arrays1;
 mod arrays2;
 mod binary;
+mod bindings;
 mod books;
 mod cheat_sheet;
 mod complex;
 mod conditions;
 mod custom;
+mod decimals;
 mod enums;
 mod identifiers;
 mod insane;
@@ -21,6 +23,7 @@ mod multiple;
 mod operations;
 mod orders;
 mod other;
+mod prepared;
 mod readme;
 mod requests;
 mod service;
@@ -37,11 +40,13 @@ pub use ambiguity::*;
 pub use arrays1::*;
 pub use arrays2::*;
 pub use binary::*;
+pub use bindings::*;
 pub use books::*;
 pub use cheat_sheet::*;
 pub use complex::*;
 pub use conditions::*;
 pub use custom::*;
+pub use decimals::*;
 pub use enums::*;
 pub use identifiers::*;
 pub use insane::*;
@@ -56,6 +61,7 @@ pub use multiple::*;
 pub use operations::*;
 pub use orders::*;
 pub use other::*;
+pub use prepared::*;
 pub use readme::*;
 pub use requests::*;
 pub use service::*;
@@ -133,6 +139,9 @@ pub async fn execute_tests<D: Driver + 'static>(pool: &mut impl ConnectionPool<D
         boxed(service),
         boxed(enums),
         boxed(custom),
+        boxed(decimals),
+        boxed(prepared),
+        boxed(bindings),
         boxed(requests),
         boxed(keywords),
         boxed(identifiers),

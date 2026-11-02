@@ -194,4 +194,12 @@ impl SqlWriter for SQLiteSqlWriter {
         E: Entity,
     {
     }
+
+    fn write_column_comment(
+        &self,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        _column: &ColumnDef,
+    ) {
+    }
 }

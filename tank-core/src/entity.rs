@@ -1,7 +1,7 @@
 use crate::{
-    ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Query, QueryBuilder,
-    RawQuery, Result, Row, RowOwned, RowValues, RowsAffected, TableRef, future::Either,
-    stream::Stream, truncate_long, writer::SqlWriter,
+    ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Fragment, Query,
+    QueryBuilder, RawQuery, Result, Row, RowOwned, RowValues, RowsAffected, TableRef,
+    future::Either, stream::Stream, truncate_long, writer::SqlWriter,
 };
 use anyhow::anyhow;
 use futures::{FutureExt, StreamExt};
@@ -91,7 +91,24 @@ pub trait Entity: AsEntity + Expression {
                 query.clear();
             }
             writer.write_create_table::<Self>(&mut query, if_not_exists);
-            executor.execute(query).await.map(|_| ())
+            if executor.accepts_multiple_statements() {
+                return executor.execute(query).await.map(|_| ());
+            }
+            // Extended-protocol drivers execute one statement per round-trip,
+            // so the column comments written after `CREATE TABLE` are split out.
+            executor.execute(query).await?;
+            for column in Self::columns().iter().filter(|c| !c.comment.is_empty()) {
+                let mut query = DynQuery::with_capacity(256);
+                writer.write_column_comment(
+                    &mut Context::new(Fragment::SqlCommentOnColumn, true),
+                    &mut query,
+                    column,
+                );
+                if !query.is_empty() {
+                    executor.execute(query).await?;
+                }
+            }
+            Ok(())
         }
     }
 

@@ -2,13 +2,17 @@
 mod tests {
     use quote::ToTokens;
     use rust_decimal::Decimal;
-    use std::{borrow::Cow, collections::HashMap, fmt::Write};
+    use std::{
+        borrow::Cow,
+        collections::{BTreeMap, HashMap},
+        fmt::Write,
+    };
     use tank::{
         CollectionType, Context, Dataset, DeclareTableRef, DynQuery, EitherIterator, Entity,
         FixedDecimal, Fragment, GenericSqlWriter, Interval, MapType, QueryBuilder, QueryResult,
         References, Row, RowLabels, RowOwned, RowsAffected, SqlWriter, StructType, TableRef, Value,
-        as_c_string, column_def, consume_while, extract_number, quote_cow, separated_by,
-        value_to_json, write_escaped,
+        as_c_string, column_def, consume_while, extract_number, quote_btree_map, quote_cow,
+        quote_option, separated_by, truncate_long, value_to_json, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, Time, UtcOffset};
 
@@ -984,5 +988,143 @@ mod tests {
         let refs = References::<RefTarget>::new(Box::new([]));
         assert_eq!(refs.table_ref().name.as_ref(), "ref_target");
         assert!(refs.columns().is_empty());
+    }
+
+    // Tests kept from the branch that were not present on master
+    #[test]
+    fn util_quote_helpers() {
+        let map = BTreeMap::from([("a", "b"), ("c", "d")]);
+        let tokens = quote_btree_map(&map).to_string();
+        assert!(tokens.contains(":: std :: collections :: BTreeMap :: from"));
+        assert!(tokens.contains("\"a\""));
+
+        assert_eq!(quote_option::<&str>(&None).to_string(), "None");
+        assert_eq!(quote_option(&Some("v")).to_string(), "Some (\"v\")");
+    }
+
+    #[test]
+    fn util_value_to_json_unrepresentable_returns_none() {
+        let mut map = HashMap::new();
+        map.insert(
+            Value::Int32(Some(1)),
+            Value::Interval(Some(Interval::from_days(1))),
+        );
+        assert_eq!(
+            value_to_json(&Value::Map(
+                Some(map.into()),
+                Box::new(MapType {
+                    key: Value::Int32(None),
+                    value: Value::Interval(None)
+                })
+            )),
+            None
+        );
+
+        let mut map = HashMap::new();
+        map.insert(
+            Value::Interval(Some(Interval::from_days(1))),
+            Value::Int32(Some(1)),
+        );
+        assert_eq!(
+            value_to_json(&Value::Map(
+                Some(map.into()),
+                Box::new(MapType {
+                    key: Value::Interval(None),
+                    value: Value::Int32(None)
+                })
+            )),
+            None
+        );
+
+        assert_eq!(
+            value_to_json(&Value::Struct(
+                Some(vec![("k".into(), Value::Interval(Some(Interval::from_days(1))))].into()),
+                Box::new(StructType {
+                    fields: vec![],
+                    name: TableRef::new("t".into())
+                })
+            )),
+            None
+        );
+        assert_eq!(
+            value_to_json(&Value::Decimal(None, 0, 0)),
+            Some(serde_json::Value::Null)
+        );
+    }
+
+    #[test]
+    fn util_decimal_from_scaled() {
+        assert_eq!(
+            tank::decimal_from_scaled(1234, 2).unwrap(),
+            Decimal::new(1234, 2)
+        );
+        assert_eq!(
+            tank::decimal_from_scaled(200_i128, 29).unwrap(),
+            Decimal::new(20, 28)
+        );
+        assert!(tank::decimal_from_scaled(i128::MAX, 0).is_err());
+    }
+
+    #[test]
+    fn util_month_conversions() {
+        for (number, month) in [
+            (1, Month::January),
+            (2, Month::February),
+            (3, Month::March),
+            (4, Month::April),
+            (5, Month::May),
+            (6, Month::June),
+            (7, Month::July),
+            (8, Month::August),
+            (9, Month::September),
+            (10, Month::October),
+            (11, Month::November),
+            (12, Month::December),
+        ] {
+            assert_eq!(tank::month_to_number!(month), number);
+            assert_eq!(tank::number_to_month!(number, Month::January), month);
+        }
+        assert_eq!(tank::number_to_month!(13, Month::January), Month::January);
+    }
+
+    #[test]
+    fn util_truncate_long_multibyte() {
+        assert_eq!(format!("{}", truncate_long!("SELECT 1")), "SELECT 1");
+
+        let long_ascii = "X".repeat(tank::TRUNCATE_LONG_LIMIT + 100);
+        let truncated = format!("{}", truncate_long!(long_ascii));
+        assert!(truncated.ends_with("...\n"));
+        assert_eq!(
+            truncated.trim_end_matches("...\n").trim().len(),
+            tank::TRUNCATE_LONG_LIMIT
+        );
+
+        let long_utf8 = "€".repeat(tank::TRUNCATE_LONG_LIMIT);
+        let truncated = format!("{}", truncate_long!(long_utf8));
+        assert!(truncated.ends_with("...\n"));
+
+        let truncated = format!("{}", truncate_long!(long_utf8.clone(), true));
+        assert!(truncated.ends_with("...\n"));
+    }
+
+    #[test]
+    fn row_get_column_mismatched_lengths() {
+        let labels: RowLabels = RowLabels::from(vec!["a".to_string(), "b".to_string()]);
+        let values = vec![Value::Int32(Some(1))];
+        let row = RowOwned::new(labels, values);
+        assert_eq!(
+            row.get_column("a").map(Cow::into_owned),
+            Some(Value::Int32(Some(1)))
+        );
+        assert_eq!(row.get_column("b"), None);
+    }
+
+    #[test]
+    fn truncate_bound_edges() {
+        assert_eq!(tank::truncate_bound("abc", 10), 3);
+        assert_eq!(tank::truncate_bound("abcdef", 3), 3);
+        assert_eq!(tank::truncate_bound("aé", 2), 1);
+        assert_eq!(tank::truncate_bound("aé", 3), 3);
+        assert_eq!(tank::truncate_bound("", 0), 0);
     }
 }

@@ -139,6 +139,7 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
             };
             let value =
                 SimpleFields::from_row(row).expect("Could not decode the row into SimpleFields");
+            assert!(stream.try_next().await.unwrap().is_none());
             assert_eq!(
                 value,
                 SimpleFields {
@@ -259,6 +260,7 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
             };
             let value =
                 SimpleFields::from_row(row).expect("Could not decode the row into SimpleFields");
+            assert!(stream.try_next().await.unwrap().is_none());
             assert_eq!(
                 value,
                 SimpleFields {

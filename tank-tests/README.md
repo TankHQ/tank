@@ -24,16 +24,27 @@ Each module focuses on a distinct aspect of Tank functionality. They are orchest
 ## Feature Flags
 The crate exposes opt-out feature flags ("disable-*") that skip entire capability families when a driver cannot yet support them.
 
-| Flag                     | Skips tests that use                       |
-| ------------------------ | ------------------------------------------ |
-| `disable-arrays`         | Fixed-size arrays                          |
-| `disable-intervals`      | `Interval` an advanced duration handling   |
-| `disable-large-integers` | `i128` and `u128` columns                  |
-| `disable-lists`          | List/array-like dynamic collection types   |
-| `disable-maps`           | Map containers                             |
-| `disable-ordering`       | Explicit result ordering                   |
-| `disable-references`     | Referential integrity                      |
-| `disable-transactions`   | Transaction begin/commit/rollback coverage |
+| Flag                          | Skips tests that use                       |
+| ----------------------------- | ------------------------------------------ |
+| `disable-arrays`              | Fixed-size arrays (e.g. `[u8; 13]`)        |
+| `disable-glob`                | `GLOB` pattern matching                    |
+| `disable-groups`              | `GROUP BY` aggregations                    |
+| `disable-infinity`            | Infinite floating point values             |
+| `disable-intervals`           | Interval / duration value types            |
+| `disable-joins`               | SQL join semantics                         |
+| `disable-large-dates`         | Very large dates                           |
+| `disable-large-decimals`      | Decimals beyond IEEE-754 double precision  |
+| `disable-large-integers`      | `i128` and `u128` columns                  |
+| `disable-large-intervals`     | Very large interval values                 |
+| `disable-lists`               | List/array-like dynamic collection types   |
+| `disable-log10`               | `LOG10` math function                      |
+| `disable-maps`                | Map containers (`HashMap`, `BTreeMap`)     |
+| `disable-multiple-statements` | Statement batching                         |
+| `disable-nested-collections`  | Nested collection values                   |
+| `disable-old-dates`           | Historical date ranges                     |
+| `disable-ordering`            | Explicit result ordering                   |
+| `disable-references`          | Referential integrity                      |
+| `disable-transactions`        | Transaction begin/commit/rollback coverage |
 
 Use them from the driver crate's `Cargo.toml`:
 ```toml
