@@ -1,40 +1,57 @@
 import { onBeforeUnmount, ref } from "vue"
 
-/**
- * Shared click-and-drag gesture used by the draggable marquee and the card deck.
- * Reports pointer deltas and tells you whether the gesture actually moved, so a
- * tap can still behave as a click.
- */
-export function useDrag({ onStart, onMove, onEnd, threshold = 6, mouseOnly = false } = {}) {
+export function useDrag({ onStart, onMove, onEnd, threshold = 6 } = {}) {
     const dragging = ref(false)
-    let startX = 0
-    let startY = 0
-    let moved = false
+    let sx = 0
+    let sy = 0
+    let axis = null
+    let samples = []
 
-    const move = (e) => {
-        if (!dragging.value) return
-        const dx = e.clientX - startX
-        const dy = e.clientY - startY
-        if (!moved && Math.hypot(dx, dy) > threshold) moved = true
-        if (moved) e.preventDefault()
-        onMove?.({ dx, dy, e, moved })
-    }
-
-    const up = (e) => {
-        if (!dragging.value) return
+    const stop = () => {
         dragging.value = false
         window.removeEventListener("pointermove", move)
         window.removeEventListener("pointerup", up)
         window.removeEventListener("pointercancel", up)
-        onEnd?.({ dx: e.clientX - startX, dy: e.clientY - startY, e, moved })
+    }
+
+    const move = (e) => {
+        if (!dragging.value) return
+        const dx = e.clientX - sx
+        const dy = e.clientY - sy
+        if (!axis) {
+            if (Math.hypot(dx, dy) < threshold) return
+            axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y"
+            if (axis === "y") return stop()
+        }
+        if (e.cancelable) e.preventDefault()
+        samples.push({ x: e.clientX, y: e.clientY, t: performance.now() })
+        if (samples.length > 6) samples.shift()
+        onMove?.({ dx, dy, e })
+    }
+
+    const up = (e) => {
+        if (!dragging.value) return
+        const moved = axis === "x"
+        stop()
+        const a = samples[0]
+        const b = samples[samples.length - 1]
+        const dt = b.t - a.t || 16
+        onEnd?.({
+            dx: e.clientX - sx,
+            dy: e.clientY - sy,
+            vx: (b.x - a.x) / dt,
+            vy: (b.y - a.y) / dt,
+            moved,
+            e,
+        })
     }
 
     const down = (e) => {
-        if (mouseOnly && e.pointerType !== "mouse") return
-        if (e.pointerType === "mouse" && e.button !== 0) return
-        startX = e.clientX
-        startY = e.clientY
-        moved = false
+        if ((e.pointerType === "mouse" && e.button !== 0) || e.target.closest?.("button, label, input")) return
+        sx = e.clientX
+        sy = e.clientY
+        axis = null
+        samples = [{ x: sx, y: sy, t: performance.now() }]
         dragging.value = true
         onStart?.(e)
         window.addEventListener("pointermove", move, { passive: false })
@@ -42,19 +59,6 @@ export function useDrag({ onStart, onMove, onEnd, threshold = 6, mouseOnly = fal
         window.addEventListener("pointercancel", up)
     }
 
-    const suppressClick = (e) => {
-        if (moved) {
-            e.stopPropagation()
-            e.preventDefault()
-            moved = false
-        }
-    }
-
-    onBeforeUnmount(() => {
-        window.removeEventListener("pointermove", move)
-        window.removeEventListener("pointerup", up)
-        window.removeEventListener("pointercancel", up)
-    })
-
-    return { dragging, down, suppressClick }
+    onBeforeUnmount(stop)
+    return { dragging, down }
 }

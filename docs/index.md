@@ -111,7 +111,11 @@ card to throw it — the top card follows your hand, gathers momentum and flies 
 next one steps up and the window updates.
 </SectionHeading>
 
-<SwipeDeck src="/tank/queries.json" />
+<SwipeDeck>
+
+<!--@include: ./components/queries.md-->
+
+</SwipeDeck>
 
 <SectionHeading eyebrow="03 · Terrain" title="Pick your armor">
 Every driver implements the same traits and advertises exactly what its engine can do —

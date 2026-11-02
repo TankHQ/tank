@@ -229,13 +229,6 @@ h1 .text {
     margin: 28px 0;
 }
 
-/* Code groups nested in a CodeWindow sit flush inside the frame. */
-.tk-window__body .vp-code-group {
-    box-shadow: none;
-}
-
-
-
 .box {
     display: block !important;
     padding: 1em !important;
