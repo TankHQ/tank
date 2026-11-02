@@ -136,7 +136,11 @@ struct Vehicle {
     in_service: bool,
 }
 
-let vehicle = Vehicle { id: 1, model: "Tiger I".into(), ..Default::default() };
+let vehicle = Vehicle {
+    id: 1,
+    model: "Tiger I".into(),
+    ..Default::default()
+};
 
 Vehicle::insert_one(&mut connection, &vehicle).await?;
 ```
@@ -170,9 +174,16 @@ struct Soldier {
     age: u8,
 }
 
-let rook = Soldier { id: Uuid::new_v4(), name: "Rook".into(), ..Default::default() };
-let viper = Soldier { id: Uuid::new_v4(), name: "Viper".into(), ..Default::default() };
-
+let rook = Soldier {
+    id: Uuid::new_v4(),
+    name: "Rook".into(),
+    ..Default::default()
+};
+let viper = Soldier {
+    id: Uuid::new_v4(),
+    name: "Viper".into(),
+    ..Default::default()
+};
 Soldier::insert_many(&mut connection, &[rook, viper]).await?;
 ```
 
@@ -208,7 +219,11 @@ struct Mission {
     complete: bool,
 }
 
-let mut mission = Mission { id: Uuid::new_v4(), code_name: "Red Dawn".into(), ..Default::default() };
+let mut mission = Mission {
+    id: Uuid::new_v4(),
+    code_name: "Red Dawn".into(),
+    ..Default::default()
+};
 
 // Insert, or update when the primary key already exists.
 mission.progress = 0.4;
@@ -387,7 +402,9 @@ let mut query = Message::prepare_find(
 .await?;
 
 query.bind(Uuid::new_v4())?;
-let rows = connection.fetch(&mut query).try_collect::<Vec<_>>().await?;
+let rows = connection
+    .fetch(&mut query)
+    .try_collect::<Vec<_>>().await?;
 query.clear_bindings()?;
 query.bind(Uuid::new_v4())?;
 ```
@@ -745,9 +762,11 @@ struct Payment {
     amount: Decimal,
     settled: bool,
 }
-
-let payment = Payment { id: Uuid::new_v4(), amount: Decimal::new(2599, 2), ..Default::default() };
-
+let payment = Payment {
+    id: Uuid::new_v4(),
+    amount: Decimal::new(2599, 2),
+    ..Default::default()
+};
 let mut tx = connection.begin().await?;
 Payment::insert_one(&mut tx, &payment).await?;
 payment.delete(&mut tx).await?;
@@ -785,9 +804,11 @@ COMMIT;
 use tank::stream::TryStreamExt;
 
 let rows = connection
-    .fetch(
-        "SELECT callsign, casualties FROM army.deployments WHERE operational = false",
-    )
+    .fetch(r#"
+        SELECT callsign, casualties
+        FROM army.deployments
+        WHERE operational = false
+    "#)
 .try_collect::<Vec<_>>()
 .await?;
 ```

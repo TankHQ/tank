@@ -1,23 +1,23 @@
 <script setup>
-import { onMounted, onUnmounted, ref } from "vue"
+    import { onMounted, onUnmounted, ref } from "vue"
 
-const joke = ref(null)
-let jokes = []
-let timer = null
+    const joke = ref(null)
+    let jokes = []
+    let timer = null
 
-const next = () => {
-    if (!jokes.length) return
-    joke.value = jokes[Math.floor(Math.random() * jokes.length)]
-    clearInterval(timer)
-    timer = setInterval(next, 30000)
-}
+    const next = () => {
+        if (!jokes.length) return
+        joke.value = jokes[Math.floor(Math.random() * jokes.length)]
+        clearInterval(timer)
+        timer = setInterval(next, 30000)
+    }
 
-onMounted(async () => {
-    jokes = (await (await fetch("/tank/jokes.json")).json()).jokes
-    next()
-})
+    onMounted(async () => {
+        jokes = (await (await fetch("/tank/jokes.json")).json()).jokes
+        next()
+    })
 
-onUnmounted(() => clearInterval(timer))
+    onUnmounted(() => clearInterval(timer))
 </script>
 
 <template>
