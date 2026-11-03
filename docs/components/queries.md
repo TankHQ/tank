@@ -1025,22 +1025,29 @@ APPLY BATCH;
 :::
 
 ```rust [raw_sql.rs]
+use indoc::indoc;
 use tank::stream::TryStreamExt;
 
 let rows = connection
-    .fetch(
-        "SELECT callsign, casualties FROM army.deployments WHERE operational = false",
-    )
+    .fetch(indoc! {"
+        SELECT callsign, casualties
+        FROM army.deployments
+        WHERE operational = false
+    "})
     .try_collect::<Vec<_>>()
     .await?;
 ```
 
 ::: code-group
 ```sql [Postgres]
-SELECT callsign, casualties FROM army.deployments WHERE operational = false
+SELECT callsign, casualties
+FROM army.deployments
+WHERE operational = false
 ```
 ```sql [SQLite]
-SELECT callsign, casualties FROM army.deployments WHERE operational = false
+SELECT callsign, casualties
+FROM army.deployments
+WHERE operational = false
 ```
 ```text [MongoDB]
 Query is not the expected tank::Query::Prepared variant (MongoDB driver uses prepared)

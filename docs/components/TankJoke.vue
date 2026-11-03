@@ -1,7 +1,8 @@
 <script setup>
-    import { onMounted, onUnmounted, ref } from "vue"
+import { onMounted, onUnmounted, ref } from "vue"
+import { VPButton } from "vitepress/theme-without-fonts"
 
-    const joke = ref(null)
+const joke = ref(null)
     let jokes = []
     let timer = null
 
@@ -24,6 +25,6 @@
     <div v-if="joke" class="tank-joke">
         <p><em>{{ joke.title }}</em></p>
         <p>{{ joke.body }}</p>
-        <button class="VPButton medium alt" @click="next">Get a joke</button>
+        <VPButton theme="alt" text="Get a joke" @click="next" />
     </div>
 </template>

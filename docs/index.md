@@ -91,9 +91,6 @@ You define your entities; Tank and your chosen driver handle the ballistics.
   </div>
 </div>
 
-> [!NOTE]
-> In a hurry? The [cheat sheet](/00-cheat-sheet) shows every operation on one page.
-
 ###### 01 · Entity
 ## Define your entity once
 
