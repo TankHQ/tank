@@ -121,6 +121,10 @@ h1 .text {
     padding-top: 0;
 }
 
+.VPHome {
+    overflow-x: clip;
+}
+
 :where(.VPHome .vp-doc) p {
     max-width: 720px;
     margin: 14px 0 0;
@@ -286,7 +290,7 @@ h1 .text {
 }
 
 .swipe-deck>div[class*="language-"],
-.swipe-deck>.vp-code-group {
+.swipe-deck .vp-code-group {
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -382,13 +386,17 @@ html:not(.dark) .swipe-deck>div[class*="language-"]::after {
     font-size: 13px;
 }
 
-.swipe-deck>.vp-code-group {
+.swipe-deck .terminal {
+    display: contents;
+}
+
+.swipe-deck .vp-code-group {
     grid-column: 1;
     grid-row: 3;
     height: 300px;
 }
 
-.swipe-deck>.vp-code-group:not(.active),
+.swipe-deck .vp-code-group:not(.active),
 .swipe-deck .blocks .lang {
     display: none;
 }
@@ -422,6 +430,25 @@ html:not(.dark) .swipe-deck>div[class*="language-"]::after {
     margin: 0;
     border-radius: 0;
     overflow: hidden;
+}
+
+.swipe-deck .cursor {
+    display: inline-block;
+    width: 0.6em;
+    height: 2px;
+    vertical-align: sub;
+    background: var(--vp-c-brand-1);
+    animation: blink 1s step-end infinite;
+}
+
+.swipe-deck .cursor.typing {
+    animation: none;
+}
+
+@keyframes blink {
+    50% {
+        opacity: 0;
+    }
 }
 
 .swipe-deck .arrow {
@@ -460,11 +487,11 @@ html:not(.dark) .swipe-deck>div[class*="language-"]::after {
     }
 
     .swipe-deck>div[class*="language-"],
-    .swipe-deck>.vp-code-group {
+    .swipe-deck .vp-code-group {
         height: 660px;
     }
 
-    .swipe-deck>.vp-code-group {
+    .swipe-deck .vp-code-group {
         grid-column: 3;
         grid-row: 1;
     }

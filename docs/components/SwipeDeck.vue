@@ -1,9 +1,10 @@
 <script setup>
     import { onBeforeUnmount, onMounted, ref } from "vue"
+    import Terminal from "./Terminal.vue"
 
     const root = ref(null)
+    const terminal = ref(null)
     let cards = []
-    let groups = []
     let top = 0
     let sx = 0
     let sy = 0
@@ -26,7 +27,6 @@
                 transition: d < CARDS ? "" : "none",
             })
         })
-        groups.forEach((el, i) => el.classList.toggle("active", i === top))
     }
 
     const stop = () => {
@@ -66,7 +66,6 @@
         const ux = fast ? vx : Math.sign(dx || 1) * 0.9
         const uy = fast ? vy : (dy / (Math.abs(dx) || 1)) * 0.2
         const card = cards[top]
-        const db = groups[top]?.querySelector("input:checked + label")?.dataset.title
         Object.assign(card.style, {
             zIndex: cards.length + 1,
             opacity: 0,
@@ -75,12 +74,8 @@
             transition: "transform 0.42s ease-out, opacity 0.42s ease-out",
         })
         top = (top + 1) % cards.length
-        const group = groups[top]
-        const labels = [...(group?.querySelectorAll(".tabs label") ?? [])]
-        const idx = Math.max(0, labels.findIndex((l) => l.dataset.title === db))
-        if (labels[idx]?.control) labels[idx].control.checked = true
-        ;[...(group?.querySelector(".blocks")?.children ?? [])].forEach((b, i) => b.classList.toggle("active", i === idx))
         sync(card)
+        terminal.value?.show(top)
         clearTimeout(timer)
         timer = setTimeout(sync, 420)
     }
@@ -98,13 +93,14 @@
 
     onMounted(() => {
         cards = [...root.value.querySelectorAll(":scope > div[class*='language-']")]
-        groups = [...root.value.querySelectorAll(":scope > .vp-code-group")]
+        const groups = [...root.value.querySelectorAll(":scope > .vp-code-group")]
         for (let i = cards.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1))
             ;[cards[i], cards[j]] = [cards[j], cards[i]]
             ;[groups[i], groups[j]] = [groups[j], groups[i]]
         }
         sync()
+        terminal.value?.init(groups)
     })
 
     onBeforeUnmount(() => {
@@ -120,6 +116,7 @@
             <span>executes</span>
             <b>&darr;</b>
         </div>
+        <Terminal ref="terminal" />
         <p class="hint">Drag a card to throw it &nbsp;·&nbsp; the generated SQL follows the top card</p>
     </section>
 </template>
