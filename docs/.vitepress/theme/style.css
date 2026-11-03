@@ -68,14 +68,14 @@ h1 .text {
     position: absolute;
     top: calc(100% + 11px);
     left: calc(50% + 40px);
-    font: 300 13px/1 var(--vp-font-family-mono);
+    font: 300 13px/0.8 var(--vp-font-family-mono);
     color: var(--vp-c-brand-1);
     white-space: nowrap;
     transform-origin: left center;
     transform: rotate(-4deg);
     pointer-events: none;
     letter-spacing: -1px;
-    font-size: 14px;
+    font-size: 18px;
 }
 
 .VPNav {
@@ -157,7 +157,6 @@ h1 .text {
 }
 
 :where(.VPHome .vp-doc) p {
-    max-width: 720px;
     margin: 14px 0 0;
     font-size: 17px;
     line-height: 1.7;

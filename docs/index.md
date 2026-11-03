@@ -71,9 +71,7 @@ const drivers = [
 ]
 </script>
 
-Tank (**T**able **A**bstraction & **N**avigation **K**it) is the Rust data layer that lets you
-define an entity once and use the same explicit query API across a wide range of database systems.
-You define your entities; Tank and your chosen driver handle the ballistics.
+Tank (**T**able **A**bstraction & **N**avigation **K**it) is the Rust data layer that lets you define an entity once and use the same explicit query API across a wide range of database systems. You define your entities; Tank and your chosen driver handle the ballistics.
 
 <dl class="home-stats">
   <div><dt>9</dt><dd>Database backends</dd></div>
@@ -94,9 +92,7 @@ You define your entities; Tank and your chosen driver handle the ballistics.
 ###### 01 · Entity
 ## Define your entity once
 
-A plain Rust struct, one derive. Field types map to the closest column type each backend
-supports, `#[tank(...)]` attributes configure the table, and ignored fields never
-reach the database.
+A plain Rust struct, one derive. Field types map to the closest column type each backend supports, `#[tank(...)]` attributes configure the table, and ignored fields never reach the database.
 
 ```rust [schema.rs]
 use tank::Entity;
@@ -129,9 +125,7 @@ pub struct Operator {
 ###### 02 · Operations
 ## Every statement, one typed API
 
-The Rust source lives on the cards, the generated SQL lives in the window beside them. Drag a
-card to throw it — the top card follows your hand, gathers momentum and flies away, then the
-next one steps up and the window updates.
+The Rust source lives on the cards, the generated SQL lives in the window beside them. Drag a card to throw it — the top card follows your hand, gathers momentum and flies away, then the next one steps up and the window updates.
 
 <SwipeDeck>
 

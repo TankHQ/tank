@@ -29,14 +29,6 @@ export class Track {
         return this._Vertices.hull(points)
     }
 
-    // Resample the hull at a fixed arc spacing to get evenly spaced pads, and
-    // work out which way the loop flows (so scrolling pushes the right way).
-    // `discs` is a list of { x, y, r } in world space.
-    //
-    // `groundY` (optional) is the terrain heightfield. Where the belt's bottom run
-    // would dip below the terrain — a bump rising between two road wheels — the
-    // pads are pushed up onto the surface, so the track rides over bumps instead
-    // of clipping through them.
     buildLoop(discs, groundY) {
         const hull = this._outline(discs)
         if (!hull || hull.length < 4) return null

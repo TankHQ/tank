@@ -1,4 +1,4 @@
-// Tunable settings for the tank simulation. This file holds *only* raw values —
+// Tunable settings for the tank simulation. This file holds *only* raw values:
 // numbers, strings and small literal objects. Nothing here is computed: anything
 // derived from these settings lives in `geometry.js` (the tank's shape and
 // running gear) or beside the code that uses it.
