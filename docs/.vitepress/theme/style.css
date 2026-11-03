@@ -366,8 +366,7 @@ html:not(.dark) .swipe-deck>div[class*="language-"]::after {
     bottom: 12px;
 }
 
-.swipe-deck>div[class*="language-"]>pre,
-.swipe-deck .blocks>div[class*="language-"] {
+.swipe-deck pre {
     flex: 1;
     min-height: 0;
     margin: 0;
@@ -403,11 +402,6 @@ html:not(.dark) .swipe-deck>div[class*="language-"]::after {
     border-bottom: 1px solid var(--vp-c-divider);
 }
 
-.swipe-deck .tabs label {
-    padding: 0 6px;
-    font-size: 12px;
-}
-
 .swipe-deck .tabs::after {
     content: "";
     flex-shrink: 0;
@@ -419,19 +413,15 @@ html:not(.dark) .swipe-deck>div[class*="language-"]::after {
     box-shadow: -16px 0 var(--vp-c-divider), -32px 0 var(--vp-c-divider);
 }
 
-.swipe-deck .blocks {
+.swipe-deck .blocks,
+.swipe-deck .blocks>div[class*="language-"].active {
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
-}
-
-.swipe-deck .blocks>div[class*="language-"] {
+    margin: 0;
     border-radius: 0;
-}
-
-.swipe-deck .blocks pre {
-    overflow: visible;
+    overflow: hidden;
 }
 
 .swipe-deck .arrow {

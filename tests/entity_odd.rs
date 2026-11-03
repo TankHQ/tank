@@ -145,7 +145,7 @@ mod tests {
                 "charlie" DECIMAL,
                 "delta" INTERVAL,
                 "echo" DECIMAL,
-                "foxtrot" VARCHAR NOT NULL,
+                "foxtrot" TEXT NOT NULL,
                 PRIMARY KEY ("bravo", "delta"));
             "#}
             .trim()

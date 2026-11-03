@@ -653,7 +653,7 @@ mod tests {
         expr.write_query(&WRITER, &mut Context::qualify(true), &mut query);
         assert_eq!(
             query.as_str(),
-            r#"CAST("the_table"."first" AS VARCHAR) = "the_table"."second" AND "the_table"."first" > 0"#
+            r#"CAST("the_table"."first" AS TEXT) = "the_table"."second" AND "the_table"."first" > 0"#
         );
     }
 

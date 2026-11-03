@@ -164,12 +164,12 @@ mod tests {
             indoc! {r#"
                 CREATE TABLE "company"."employee" (
                 "id" UINTEGER PRIMARY KEY,
-                "name" VARCHAR NOT NULL UNIQUE,
+                "name" TEXT NOT NULL UNIQUE,
                 "hire_date" DATE NOT NULL,
                 "working_hours" TIME[2],
                 "salary" DOUBLE NOT NULL,
-                "skills" VARCHAR[] NOT NULL,
-                "documents" MAP(VARCHAR,BLOB),
+                "skills" TEXT[] NOT NULL,
+                "documents" MAP(TEXT,BLOB),
                 "access" UUID NOT NULL UNIQUE,
                 "deleted" BOOLEAN NOT NULL DEFAULT false);
             "#}

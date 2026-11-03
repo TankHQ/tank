@@ -30,7 +30,7 @@ mod tests {
                 query.as_str(),
                 indoc! {r#"
                     CREATE TABLE "my_table" (
-                    "special_column" VARCHAR,
+                    "special_column" TEXT,
                     "second_column" DOUBLE NOT NULL,
                     "third_column" INTEGER PRIMARY KEY);
                 "#}

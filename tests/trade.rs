@@ -236,17 +236,17 @@ mod tests {
                 CREATE TABLE "trading.company"."trade_execution" (
                 "trade_id" UBIGINT,
                 "order_id" UUID NOT NULL DEFAULT '241d362d-797e-4769-b3f6-412440c8cf68',
-                "symbol" VARCHAR NOT NULL,
+                "symbol" TEXT NOT NULL,
                 "isin" CHAR(1)[12] NOT NULL,
                 "price" DECIMAL(18,4) NOT NULL,
                 "quantity" UINTEGER NOT NULL,
                 "execution_time" TIMESTAMP,
-                "currency" VARCHAR,
+                "currency" TEXT,
                 "is_internalized" BOOLEAN NOT NULL,
-                "venue" VARCHAR,
+                "venue" TEXT,
                 "child_trade_ids" BIGINT[],
                 "metadata" BLOB,
-                "tags" MAP(VARCHAR,VARCHAR),
+                "tags" MAP(TEXT,TEXT),
                 PRIMARY KEY ("trade_id", "execution_time"),
                 FOREIGN KEY ("order_id") REFERENCES "order"("id") ON DELETE SET DEFAULT ON UPDATE RESTRICT);
                 COMMENT ON COLUMN "trading.company"."trade_execution"."symbol" IS 'Ticker symbol';

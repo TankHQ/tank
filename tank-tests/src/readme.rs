@@ -33,8 +33,8 @@ pub async fn readme(connection: &mut impl Executor) -> Result<()> {
     /*
      * CREATE SCHEMA IF NOT EXISTS "army";
      * CREATE TABLE IF NOT EXISTS "army"."tank" (
-     *     "name" VARCHAR PRIMARY KEY,
-     *     "country" VARCHAR NOT NULL,
+     *     "name" TEXT PRIMARY KEY,
+     *     "country" TEXT NOT NULL,
      *     "caliber" USMALLINT NOT NULL,
      *     "speed" FLOAT NOT NULL,
      *     "is_operational" BOOLEAN NOT NULL,

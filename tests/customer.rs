@@ -133,7 +133,7 @@ mod tests {
             indoc! {r#"
                 CREATE TABLE "customers" (
                 "transaction_ids" UBIGINT[] NOT NULL,
-                "settings" VARCHAR[] DEFAULT ['discount','newsletter'],
+                "settings" TEXT[] DEFAULT ['discount','newsletter'],
                 "values" FLOAT[],
                 "signup_duration" INTERVAL NOT NULL,
                 "recent_purchases" BIGINT[][]);

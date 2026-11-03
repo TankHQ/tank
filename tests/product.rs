@@ -135,10 +135,10 @@ mod tests {
             indoc! {r#"
                 CREATE TABLE "products" (
                 "id" UBIGINT PRIMARY KEY,
-                "name" VARCHAR NOT NULL,
+                "name" TEXT NOT NULL,
                 "price" DECIMAL NOT NULL,
                 "available" BOOLEAN NOT NULL,
-                "tags" VARCHAR[] NOT NULL,
+                "tags" TEXT[] NOT NULL,
                 "added_on" TIMESTAMP NOT NULL);
             "#}
             .trim()

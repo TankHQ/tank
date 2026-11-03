@@ -39,16 +39,16 @@ pub struct RadioLog {
 ```sql [SQL]
 CREATE TABLE IF NOT EXISTS operations.radio_operator (
     id UUID PRIMARY KEY,
-    callsign VARCHAR NOT NULL,
-    rank VARCHAR NOT NULL,
+    callsign TEXT NOT NULL,
+    rank TEXT NOT NULL,
     enlistment_date DATE NOT NULL,
     is_certified BOOLEAN NOT NULL);
 
 CREATE TABLE IF NOT EXISTS operations.radio_log (
     id UUID PRIMARY KEY,
     operator UUID NOT NULL REFERENCES operations.radio_operator(id),
-    message VARCHAR NOT NULL,
-    unit_callsign VARCHAR NOT NULL,
+    message TEXT NOT NULL,
+    unit_callsign TEXT NOT NULL,
     tx_time TIMESTAMP WITH TIME ZONE NOT NULL,
     rssi TINYINT NOT NULL);
 ```

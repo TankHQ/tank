@@ -221,6 +221,22 @@ impl SqlWriter for ScyllaDBSqlWriter {
         out.push_str("toUnixTimestamp(currentTimestamp())");
     }
 
+    fn write_transaction_begin(&self, out: &mut DynQuery) {
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("BEGIN BATCH");
+    }
+
+    fn write_transaction_commit(&self, out: &mut DynQuery) {
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("APPLY BATCH;");
+    }
+
+    fn write_transaction_rollback(&self, _out: &mut DynQuery) {}
+
     fn write_create_schema<E>(&self, out: &mut DynQuery, if_not_exists: bool)
     where
         Self: Sized,
@@ -359,10 +375,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         let entities = iter::once(entity).chain(entities);
         out.buffer().reserve(128 + E::<It>::columns().len() * 32);
         if multiple {
-            if !out.is_empty() {
-                out.push('\n');
-            }
-            out.push_str("BEGIN BATCH");
+            self.write_transaction_begin(out);
         }
         for entity in entities {
             if !out.is_empty() {
@@ -381,14 +394,14 @@ impl SqlWriter for ScyllaDBSqlWriter {
                 ", ",
             );
             let mut context = context.switch_fragment(Fragment::SqlInsertIntoValues);
-            out.push_str(") VALUES (");
+            out.push_str(") VALUES\n(");
             entity
                 .as_entity()
                 .write_query(self.as_dyn(), &mut context.current, out);
             out.push_str(");");
         }
         if multiple {
-            out.push_str("\nAPPLY BATCH;");
+            self.write_transaction_commit(out);
         }
     }
 

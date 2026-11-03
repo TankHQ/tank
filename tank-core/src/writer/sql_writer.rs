@@ -189,7 +189,7 @@ pub trait SqlWriter: Send {
                 }
             }
             Value::Char(..) => out.push_str("CHAR(1)"),
-            Value::Varchar(..) => out.push_str("VARCHAR"),
+            Value::Varchar(..) => out.push_str("TEXT"),
             Value::Blob(..) => out.push_str("BLOB"),
             Value::Date(..) => out.push_str("DATE"),
             Value::Time(..) => out.push_str("TIME"),
@@ -864,16 +864,25 @@ pub trait SqlWriter: Send {
 
     /// Emit BEGIN statement.
     fn write_transaction_begin(&self, out: &mut DynQuery) {
+        if !out.is_empty() {
+            out.push('\n');
+        }
         out.push_str("BEGIN;");
     }
 
     /// Emit COMMIT statement.
     fn write_transaction_commit(&self, out: &mut DynQuery) {
+        if !out.is_empty() {
+            out.push('\n');
+        }
         out.push_str("COMMIT;");
     }
 
     /// Emit ROLLBACK statement.
     fn write_transaction_rollback(&self, out: &mut DynQuery) {
+        if !out.is_empty() {
+            out.push('\n');
+        }
         out.push_str("ROLLBACK;");
     }
 

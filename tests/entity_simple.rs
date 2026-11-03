@@ -90,7 +90,7 @@ mod tests {
             indoc! {r#"
                 CREATE TABLE "simple_entity" (
                 "a" TINYINT NOT NULL,
-                "b" VARCHAR,
+                "b" TEXT,
                 "c" USMALLINT NOT NULL UNIQUE,
                 UNIQUE ("a", "c"),
                 UNIQUE ("b", "c"),

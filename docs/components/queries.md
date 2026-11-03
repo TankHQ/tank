@@ -53,32 +53,16 @@ CREATE TABLE IF NOT EXISTS `army`.`deployments` (
 `operational` BOOLEAN NOT NULL,
 `supply_ratio` DECIMAL);
 ```
-```json [MongoDB]
-{
-  "create": "deployments"
-}
-```
 ```sql [DuckDB]
 CREATE SCHEMA IF NOT EXISTS "army";
 CREATE TABLE IF NOT EXISTS "army"."deployments" (
 "unit_id" UUID PRIMARY KEY,
-"callsign" VARCHAR NOT NULL,
+"callsign" TEXT NOT NULL,
 "crew" UTINYINT NOT NULL,
 "casualties" INTEGER NOT NULL,
 "fuel_ratio" FLOAT NOT NULL,
 "operational" BOOLEAN NOT NULL,
 "supply_ratio" DECIMAL);
-```
-```sql [MariaDB]
-CREATE SCHEMA IF NOT EXISTS `army`;
-CREATE TABLE IF NOT EXISTS `army`.`deployments` (
-`unit_id` UUID PRIMARY KEY,
-`callsign` TEXT NOT NULL,
-`crew` TINYINT UNSIGNED NOT NULL,
-`casualties` INTEGER NOT NULL,
-`fuel_ratio` FLOAT NOT NULL,
-`operational` BOOLEAN NOT NULL,
-`supply_ratio` DECIMAL);
 ```
 ```sql [ScyllaDB]
 CREATE KEYSPACE IF NOT EXISTS "army"
@@ -115,16 +99,10 @@ DROP TABLE IF EXISTS "army"."deployments";
 ```sql [SQLite]
 DROP TABLE IF EXISTS "army.deployments";
 ```
-```sql [MySQL]
-DROP TABLE IF EXISTS `army`.`deployments`;
-```
 ```json [MongoDB]
 {
   "drop": "deployments"
 }
-```
-```sql [ScyllaDB]
-DROP TABLE IF EXISTS "army"."deployments";
 ```
 :::
 
@@ -142,13 +120,16 @@ struct Vehicle {
     in_service: bool,
 }
 
-let vehicle = Vehicle { id: 1, model: "Tiger I".into(), ..Default::default() };
-
+let vehicle = Vehicle {
+    id: 1,
+    model: "Tiger I".into(),
+    ..Default::default()
+};
 Vehicle::insert_one(&mut connection, &vehicle).await?;
 ```
 
 ::: code-group
-```sql [Postgres]
+```sql [DuckDB]
 INSERT INTO "army"."vehicles" ("id", "model", "crew", "weight_kg", "in_service") VALUES
 (1, 'Tiger I', 0, 0, false);
 ```
@@ -169,13 +150,6 @@ INSERT INTO `army`.`vehicles` (`id`, `model`, `crew`, `weight_kg`, `in_service`)
   "in_service": false
 }
 ```
-```sql [DuckDB]
-INSERT INTO "army"."vehicles" ("id", "model", "crew", "weight_kg", "in_service") VALUES
-(1, 'Tiger I', 0, 0, false);
-```
-```sql [ScyllaDB]
-INSERT INTO "army"."vehicles" ("id", "model", "crew", "weight_kg", "in_service") VALUES (1, 'Tiger I', 0, 0, false);
-```
 :::
 
 ```rust [insert_many.rs]
@@ -192,9 +166,16 @@ struct Soldier {
     age: u8,
 }
 
-let rook = Soldier { id: Uuid::new_v4(), name: "Rook".into(), ..Default::default() };
-let viper = Soldier { id: Uuid::new_v4(), name: "Viper".into(), ..Default::default() };
-
+let rook = Soldier {
+    id: Uuid::new_v4(),
+    name: "Rook".into(),
+    ..Default::default()
+};
+let viper = Soldier {
+    id: Uuid::new_v4(),
+    name: "Viper".into(),
+    ..Default::default()
+};
 Soldier::insert_many(&mut connection, &[rook, viper]).await?;
 ```
 
@@ -206,11 +187,6 @@ INSERT INTO "army"."soldiers" ("id", "name", "rank", "age") VALUES
 ```
 ```sql [SQLite]
 INSERT INTO "army.soldiers" ("id", "name", "rank", "age") VALUES
-('94f0cbcc-1fce-454e-a6e4-4e3587741808', 'Rook', '', 0),
-('2f4f97da-0278-4c99-bc22-2b3986aeee85', 'Viper', '', 0);
-```
-```sql [MySQL]
-INSERT INTO `army`.`soldiers` (`id`, `name`, `rank`, `age`) VALUES
 ('94f0cbcc-1fce-454e-a6e4-4e3587741808', 'Rook', '', 0),
 ('2f4f97da-0278-4c99-bc22-2b3986aeee85', 'Viper', '', 0);
 ```
@@ -240,15 +216,12 @@ INSERT INTO `army`.`soldiers` (`id`, `name`, `rank`, `age`) VALUES
   }
 ]
 ```
-```sql [MariaDB]
-INSERT INTO `army`.`soldiers` (`id`, `name`, `rank`, `age`) VALUES
-('94f0cbcc-1fce-454e-a6e4-4e3587741808', 'Rook', '', 0),
-('2f4f97da-0278-4c99-bc22-2b3986aeee85', 'Viper', '', 0);
-```
 ```sql [ScyllaDB]
 BEGIN BATCH
-INSERT INTO "army"."soldiers" ("id", "name", "rank", "age") VALUES (94f0cbcc-1fce-454e-a6e4-4e3587741808, 'Rook', '', 0);
-INSERT INTO "army"."soldiers" ("id", "name", "rank", "age") VALUES (2f4f97da-0278-4c99-bc22-2b3986aeee85, 'Viper', '', 0);
+INSERT INTO "army"."soldiers" ("id", "name", "rank", "age") VALUES
+(94f0cbcc-1fce-454e-a6e4-4e3587741808, 'Rook', '', 0);
+INSERT INTO "army"."soldiers" ("id", "name", "rank", "age") VALUES
+(2f4f97da-0278-4c99-bc22-2b3986aeee85, 'Viper', '', 0);
 APPLY BATCH;
 ```
 :::
@@ -267,9 +240,12 @@ struct Mission {
     complete: bool,
 }
 
-let mut mission = Mission { id: Uuid::new_v4(), code_name: "Red Dawn".into(), ..Default::default() };
-
-// Insert, or update when the primary key already exists.
+let mut mission = Mission {
+    id: Uuid::new_v4(),
+    code_name: "Red Dawn".into(),
+    ..Default::default()
+};
+// Insert, or update when the PK already exists.
 mission.progress = 0.4;
 mission.save(&mut connection).await?;
 ```
@@ -283,15 +259,7 @@ ON CONFLICT ("id") DO UPDATE SET
 "progress" = EXCLUDED."progress",
 "complete" = EXCLUDED."complete";
 ```
-```sql [SQLite]
-INSERT INTO "army.missions" ("id", "code_name", "progress", "complete") VALUES
-('94f0cbcc-1fce-454e-a6e4-4e3587741808', 'Red Dawn', 0.4, false)
-ON CONFLICT ("id") DO UPDATE SET
-"code_name" = EXCLUDED."code_name",
-"progress" = EXCLUDED."progress",
-"complete" = EXCLUDED."complete";
-```
-```sql [MySQL]
+```sql [MariaDB]
 INSERT INTO `army`.`missions` (`id`, `code_name`, `progress`, `complete`) VALUES
 ('94f0cbcc-1fce-454e-a6e4-4e3587741808', 'Red Dawn', 0.4, false)
 ON DUPLICATE KEY UPDATE`code_name` = VALUES(`code_name`),
@@ -324,23 +292,9 @@ ON DUPLICATE KEY UPDATE`code_name` = VALUES(`code_name`),
   "upsert": true
 }
 ```
-```sql [DuckDB]
-INSERT INTO "army"."missions" ("id", "code_name", "progress", "complete") VALUES
-('94f0cbcc-1fce-454e-a6e4-4e3587741808', 'Red Dawn', 0.4, false)
-ON CONFLICT ("id") DO UPDATE SET
-"code_name" = EXCLUDED."code_name",
-"progress" = EXCLUDED."progress",
-"complete" = EXCLUDED."complete";
-```
-```sql [MariaDB]
-INSERT INTO `army`.`missions` (`id`, `code_name`, `progress`, `complete`) VALUES
-('94f0cbcc-1fce-454e-a6e4-4e3587741808', 'Red Dawn', 0.4, false)
-ON DUPLICATE KEY UPDATE`code_name` = VALUES(`code_name`),
-`progress` = VALUES(`progress`),
-`complete` = VALUES(`complete`);
-```
 ```sql [ScyllaDB]
-INSERT INTO "army"."missions" ("id", "code_name", "progress", "complete") VALUES (94f0cbcc-1fce-454e-a6e4-4e3587741808, 'Red Dawn', 0.4, false);
+INSERT INTO "army"."missions" ("id", "code_name", "progress", "complete") VALUES
+(94f0cbcc-1fce-454e-a6e4-4e3587741808, 'Red Dawn', 0.4, false);
 ```
 :::
 
@@ -361,8 +315,7 @@ struct Signal {
 Signal::delete_many(
     &mut connection,
     expr!(Signal::encrypted == false),
-)
-.await?;
+).await?;
 ```
 
 ::: code-group
@@ -377,11 +330,6 @@ WHERE "encrypted" = false;
 ```sql [MySQL]
 DELETE FROM `army`.`signals`
 WHERE `encrypted` = false;
-```
-```json [MongoDB]
-{
-  "encrypted": false
-}
 ```
 :::
 
@@ -407,7 +355,7 @@ let unit = Operator::find_one(
 ```
 
 ::: code-group
-```sql [Postgres]
+```sql [DuckDB]
 SELECT "id", "callsign", "rank"
 FROM "army"."operators"
 WHERE "id" = '94f0cbcc-1fce-454e-a6e4-4e3587741808'
@@ -417,12 +365,6 @@ LIMIT 1;
 SELECT "id", "callsign", "rank"
 FROM "army.operators"
 WHERE "id" = '94f0cbcc-1fce-454e-a6e4-4e3587741808'
-LIMIT 1;
-```
-```sql [MySQL]
-SELECT `id`, `callsign`, `rank`
-FROM `army`.`operators`
-WHERE `id` = '94f0cbcc-1fce-454e-a6e4-4e3587741808'
 LIMIT 1;
 ```
 ```json [MongoDB]
@@ -442,12 +384,6 @@ LIMIT 1;
   },
   "limit": 1
 }
-```
-```sql [DuckDB]
-SELECT "id", "callsign", "rank"
-FROM "army"."operators"
-WHERE "id" = '94f0cbcc-1fce-454e-a6e4-4e3587741808'
-LIMIT 1;
 ```
 ```sql [ScyllaDB]
 SELECT "id", "callsign", "rank"
@@ -488,13 +424,7 @@ FROM "army"."drones"
 WHERE "active" = true AND "battery_pct" > 20
 LIMIT 50;
 ```
-```sql [SQLite]
-SELECT "id", "model", "battery_pct", "active"
-FROM "army.drones"
-WHERE "active" = true AND "battery_pct" > 20
-LIMIT 50;
-```
-```sql [MySQL]
+```sql [MariaDB]
 SELECT `id`, `model`, `battery_pct`, `active`
 FROM `army`.`drones`
 WHERE `active` = true AND `battery_pct` > 20
@@ -523,12 +453,6 @@ LIMIT 50;
   "limit": 50
 }
 ```
-```sql [MariaDB]
-SELECT `id`, `model`, `battery_pct`, `active`
-FROM `army`.`drones`
-WHERE `active` = true AND `battery_pct` > 20
-LIMIT 50;
-```
 :::
 
 ```rust [prepare.rs]
@@ -550,17 +474,13 @@ let mut query = Message::prepare_find(
     &mut connection,
     expr!(Message::sender == ?),
     Some(50),
-)
-.await?;
-
+).await?;
 query.bind(Uuid::new_v4())?;
 let rows = connection
     .fetch(&mut query)
     .map_ok(Row::into_owned)
     .try_collect::<Vec<_>>()
     .await?;
-query.clear_bindings()?;
-query.bind(Uuid::new_v4())?;
 ```
 
 ::: code-group
@@ -570,9 +490,9 @@ FROM "army"."messages"
 WHERE "sender" = $1
 LIMIT 50;
 ```
-```sql [SQLite]
+```sql [DuckDB]
 SELECT "id", "sender", "body", "sent_at"
-FROM "army.messages"
+FROM "army"."messages"
 WHERE "sender" = ?
 LIMIT 50;
 ```
@@ -600,24 +520,6 @@ LIMIT 50;
   },
   "limit": 50
 }
-```
-```sql [DuckDB]
-SELECT "id", "sender", "body", "sent_at"
-FROM "army"."messages"
-WHERE "sender" = ?
-LIMIT 50;
-```
-```sql [MariaDB]
-SELECT `id`, `sender`, `body`, `sent_at`
-FROM `army`.`messages`
-WHERE `sender` = ?
-LIMIT 50;
-```
-```sql [ScyllaDB]
-SELECT "id", "sender", "body", "sent_at"
-FROM "army"."messages"
-WHERE "sender" = ?
-LIMIT 50;
 ```
 :::
 
@@ -699,11 +601,6 @@ WHERE `name` LIKE 'income%' AND `country` IN ('NL','UK') AND `value` > 0.0;
   }
 }
 ```
-```sql [DuckDB]
-SELECT "id", "name", "country", "value"
-FROM "army"."metrics"
-WHERE "name" LIKE 'income%' AND "country" IN ('NL','UK') AND "value" > 0.0;
-```
 :::
 
 ```rust [query_builder.rs]
@@ -729,12 +626,12 @@ let hottest = connection
             .limit(Some(10))
             .build(&connection.driver()),
     )
-.try_collect::<Vec<_>>()
-.await?;
+    .try_collect::<Vec<_>>()
+    .await?;
 ```
 
 ::: code-group
-```sql [Postgres]
+```sql [DuckDB]
 SELECT "sensor", "celsius"
 FROM "army"."readings"
 WHERE "celsius" > 30.0
@@ -744,37 +641,6 @@ LIMIT 10;
 ```sql [SQLite]
 SELECT "sensor", "celsius"
 FROM "army.readings"
-WHERE "celsius" > 30.0
-ORDER BY "celsius" DESC
-LIMIT 10;
-```
-```sql [MySQL]
-SELECT `sensor`, `celsius`
-FROM `army`.`readings`
-WHERE `celsius` > 30.0
-ORDER BY `celsius` DESC
-LIMIT 10;
-```
-```json [MongoDB]
-{
-  "filter": {
-    "celsius": {
-      "$gt": 30.0
-    }
-  },
-  "projection": {
-    "sensor": 1,
-    "celsius": 1
-  },
-  "sort": {
-    "celsius": -1
-  },
-  "limit": 10
-}
-```
-```sql [DuckDB]
-SELECT "sensor", "celsius"
-FROM "army"."readings"
 WHERE "celsius" > 30.0
 ORDER BY "celsius" DESC
 LIMIT 10;
@@ -816,8 +682,8 @@ let by_symbol = connection
             .order_by(cols!(Trade::symbol ASC))
             .build(&connection.driver()),
     )
-.try_collect::<Vec<_>>()
-.await?;
+    .try_collect::<Vec<_>>()
+    .await?;
 ```
 
 ::: code-group
@@ -895,8 +761,8 @@ let noisy = connection
             .limit(Some(5))
             .build(&connection.driver()),
     )
-.try_collect::<Vec<_>>()
-.await?;
+    .try_collect::<Vec<_>>()
+    .await?;
 ```
 
 ::: code-group
@@ -969,24 +835,6 @@ LIMIT 5;
   }
 ]
 ```
-```sql [DuckDB]
-SELECT "level", SUM("count") AS "total"
-FROM "ops"."events"
-WHERE "source" != 'internal'
-GROUP BY "level"
-HAVING SUM("count") > 1000
-ORDER BY "level" ASC
-LIMIT 5;
-```
-```sql [MariaDB]
-SELECT `level`, SUM(`count`) AS `total`
-FROM `ops`.`events`
-WHERE `source` != 'internal'
-GROUP BY `level`
-HAVING SUM(`count`) > 1000
-ORDER BY `level` ASC
-LIMIT 5;
-```
 :::
 
 ```rust [join.rs]
@@ -1000,7 +848,6 @@ struct Book {
     title: String,
     author_id: i64,
 }
-
 #[derive(Entity)]
 #[tank(schema = "library", name = "authors")]
 struct Author {
@@ -1019,8 +866,8 @@ let rows = connection
             ))
             .build(&connection.driver()),
     )
-.try_collect::<Vec<_>>()
-.await?;
+    .try_collect::<Vec<_>>()
+    .await?;
 ```
 
 ::: code-group
@@ -1035,13 +882,6 @@ FROM "library.books" JOIN "library.authors" ON "library.books"."author_id" = "li
 ```sql [MySQL]
 SELECT `library`.`books`.`title`, `library`.`authors`.`name`
 FROM `library`.`books` JOIN `library`.`authors` ON `library`.`books`.`author_id` = `library`.`authors`.`id`;
-```
-```text [MongoDB]
-The table is not specified in the dataset (if it is a JOIN, MongoDB does not support it)
-```
-```sql [DuckDB]
-SELECT "library"."books"."title", "library"."authors"."name"
-FROM "library"."books" JOIN "library"."authors" ON "library"."books"."author_id" = "library"."authors"."id";
 ```
 :::
 
@@ -1058,7 +898,6 @@ struct Order {
     customer_id: Uuid,
     total: Decimal,
 }
-
 #[derive(Entity)]
 #[tank(schema = "shop", name = "customers")]
 struct Customer {
@@ -1079,12 +918,12 @@ let rows = connection
             .order_by(cols!(O.total DESC))
             .build(&connection.driver()),
     )
-.try_collect::<Vec<_>>()
-.await?;
+    .try_collect::<Vec<_>>()
+    .await?;
 ```
 
 ::: code-group
-```sql [Postgres]
+```sql [DuckDB]
 SELECT O.total, C.name AS "customer"
 FROM "shop"."orders" O LEFT JOIN "shop"."customers" C ON O.customer_id = C.id
 WHERE O.total > 100.0
@@ -1096,7 +935,7 @@ FROM "shop.orders" O LEFT JOIN "shop.customers" C ON O.customer_id = C.id
 WHERE O.total > 100.0
 ORDER BY O.total DESC;
 ```
-```sql [MySQL]
+```sql [MariaDB]
 SELECT O.total, C.name AS `customer`
 FROM `shop`.`orders` O LEFT JOIN `shop`.`customers` C ON O.customer_id = C.id
 WHERE O.total > 100.0
@@ -1104,18 +943,6 @@ ORDER BY O.total DESC;
 ```
 ```text [MongoDB]
 The table is not specified in the dataset (if it is a JOIN, MongoDB does not support it)
-```
-```sql [DuckDB]
-SELECT O.total, C.name AS "customer"
-FROM "shop"."orders" O LEFT JOIN "shop"."customers" C ON O.customer_id = C.id
-WHERE O.total > 100.0
-ORDER BY O.total DESC;
-```
-```sql [MariaDB]
-SELECT O.total, C.name AS `customer`
-FROM `shop`.`orders` O LEFT JOIN `shop`.`customers` C ON O.customer_id = C.id
-WHERE O.total > 100.0
-ORDER BY O.total DESC;
 ```
 :::
 
@@ -1134,8 +961,11 @@ struct Payment {
     settled: bool,
 }
 
-let payment = Payment { id: Uuid::new_v4(), amount: Decimal::new(2599, 2), ..Default::default() };
-
+let payment = Payment {
+    id: Uuid::new_v4(),
+    amount: Decimal::new(2599, 2),
+    ..Default::default()
+};
 let mut tx = connection.begin().await?;
 Payment::insert_one(&mut tx, &payment).await?;
 payment.delete(&mut tx).await?;
@@ -1148,14 +978,6 @@ BEGIN;
 INSERT INTO "bank"."payments" ("id", "account", "amount", "settled") VALUES
 ('94f0cbcc-1fce-454e-a6e4-4e3587741808', '', 25.99, false);
 DELETE FROM "bank"."payments"
-WHERE "id" = '94f0cbcc-1fce-454e-a6e4-4e3587741808';
-COMMIT;
-```
-```sql [SQLite]
-BEGIN;
-INSERT INTO "bank.payments" ("id", "account", "amount", "settled") VALUES
-('94f0cbcc-1fce-454e-a6e4-4e3587741808', '', 25.99, false);
-DELETE FROM "bank.payments"
 WHERE "id" = '94f0cbcc-1fce-454e-a6e4-4e3587741808';
 COMMIT;
 ```
@@ -1192,13 +1014,13 @@ COMMIT;
   }
 ]
 ```
-```sql [DuckDB]
-BEGIN;
+```sql [ScyllaDB]
+BEGIN BATCH
 INSERT INTO "bank"."payments" ("id", "account", "amount", "settled") VALUES
-('94f0cbcc-1fce-454e-a6e4-4e3587741808', '', 25.99, false);
+(94f0cbcc-1fce-454e-a6e4-4e3587741808, '', 25.99, false);
 DELETE FROM "bank"."payments"
-WHERE "id" = '94f0cbcc-1fce-454e-a6e4-4e3587741808';
-COMMIT;
+WHERE "id" = 94f0cbcc-1fce-454e-a6e4-4e3587741808;
+APPLY BATCH;
 ```
 :::
 
@@ -1209,8 +1031,8 @@ let rows = connection
     .fetch(
         "SELECT callsign, casualties FROM army.deployments WHERE operational = false",
     )
-.try_collect::<Vec<_>>()
-.await?;
+    .try_collect::<Vec<_>>()
+    .await?;
 ```
 
 ::: code-group
@@ -1220,16 +1042,7 @@ SELECT callsign, casualties FROM army.deployments WHERE operational = false
 ```sql [SQLite]
 SELECT callsign, casualties FROM army.deployments WHERE operational = false
 ```
-```sql [MySQL]
-SELECT callsign, casualties FROM army.deployments WHERE operational = false
-```
 ```text [MongoDB]
-MongoDB does not support SQL
-```
-```sql [MariaDB]
-SELECT callsign, casualties FROM army.deployments WHERE operational = false
-```
-```sql [ScyllaDB]
-SELECT callsign, casualties FROM army.deployments WHERE operational = false
+Query is not the expected tank::Query::Prepared variant (MongoDB driver uses prepared)
 ```
 :::
