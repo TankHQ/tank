@@ -86,27 +86,25 @@ pub trait Entity: AsEntity + Expression {
             if !executor.accepts_multiple_statements() && !query.is_empty() {
                 let mut q = query.into_query(executor.driver());
                 executor.execute(&mut q).await?;
-                // To reuse the allocated buffer
                 query = q.into();
-                query.clear();
+                query.clear(); // Reuse the buffer
             }
             writer.write_create_table::<Self>(&mut query, if_not_exists);
-            if executor.accepts_multiple_statements() {
-                return executor.execute(query).await.map(|_| ());
-            }
-            // Extended-protocol drivers execute one statement per round-trip,
-            // so the column comments written after `CREATE TABLE` are split out.
-            executor.execute(query).await?;
             for column in Self::columns().iter().filter(|c| !c.comment.is_empty()) {
-                let mut query = DynQuery::with_capacity(256);
+                if !executor.accepts_multiple_statements() && !query.is_empty() {
+                    let mut q = query.into_query(executor.driver());
+                    executor.execute(&mut q).await?;
+                    query = q.into();
+                    query.clear(); // Reuse the buffer
+                }
                 writer.write_column_comment(
                     &mut Context::new(Fragment::SqlCommentOnColumn, true),
                     &mut query,
                     column,
                 );
-                if !query.is_empty() {
-                    executor.execute(query).await?;
-                }
+            }
+            if !query.is_empty() || matches!(query, DynQuery::Prepared(..)) {
+                executor.execute(query).await?;
             }
             Ok(())
         }

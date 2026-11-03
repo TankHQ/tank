@@ -2,8 +2,8 @@ use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
 use std::fmt::Write;
 use tank_core::{
-    AsEntity, AsValue, Context, Dataset, DynQuery, Entity, Expression, Fragment, IsAsterisk, Row,
-    SelectQuery, SqlWriter, TableRef, Value, column_def,
+    AsEntity, AsValue, ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment,
+    IsAsterisk, Row, SelectQuery, SqlWriter, TableRef, Value, column_def,
 };
 
 pub struct ValkeySqlWriter {
@@ -94,6 +94,14 @@ impl SqlWriter for ValkeySqlWriter {
         E: Entity,
     {
         Self::prepare_query(out, &mut Default::default());
+    }
+
+    fn write_column_comment(
+        &self,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        _column: &ColumnDef,
+    ) {
     }
 
     fn write_drop_table<E>(&self, out: &mut DynQuery, _if_exists: bool)

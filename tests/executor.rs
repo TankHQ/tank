@@ -9,8 +9,8 @@ mod tests {
         sync::atomic::{AtomicUsize, Ordering},
     };
     use tank::{
-        AsQuery, AsValue, Connection, Driver, Executor, GenericSqlWriter, Prepared, QueryResult,
-        Result, RowOwned, RowsAffected, Transaction, anyhow,
+        AsQuery, AsValue, Connection, Driver, Entity, Executor, GenericSqlWriter, Prepared,
+        QueryResult, Result, RowOwned, RowsAffected, Transaction, anyhow,
         stream::{self, Stream, StreamExt},
     };
 
@@ -68,19 +68,38 @@ mod tests {
         }
     }
 
-    #[derive(Debug, Default)]
+    #[derive(Debug)]
     struct TestExecutor {
         results: Vec<Result<QueryResult<RowOwned>>>,
         consumed: AtomicUsize,
+        multiple_statements: bool,
+        executed: Vec<String>,
+    }
+
+    impl Default for TestExecutor {
+        fn default() -> Self {
+            Self {
+                results: Vec::new(),
+                consumed: AtomicUsize::new(0),
+                multiple_statements: true,
+                executed: Vec::new(),
+            }
+        }
     }
 
     impl Executor for TestExecutor {
         type Driver = TestDriver;
 
+        fn accepts_multiple_statements(&self) -> bool {
+            self.multiple_statements
+        }
+
         fn run<'s>(
             &'s mut self,
-            _: impl AsQuery<TestDriver> + 's,
+            query: impl AsQuery<TestDriver> + 's,
         ) -> impl Stream<Item = Result<QueryResult<impl tank::Row + 's>>> + Send {
+            let mut query = query.as_query();
+            self.executed.push(query.as_mut().to_string());
             let results = std::mem::take(&mut self.results);
             let consumed = &self.consumed;
             stream::iter(TestResults {

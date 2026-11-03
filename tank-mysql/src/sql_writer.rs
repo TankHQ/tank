@@ -329,13 +329,6 @@ impl SqlWriter for MySQLSqlWriter {
         self.write_string(&mut context, out, column.comment);
     }
 
-    fn write_column_comments_statements<E>(&self, _context: &mut Context, _out: &mut DynQuery)
-    where
-        Self: Sized,
-        E: Entity,
-    {
-    }
-
     fn write_column_comment(
         &self,
         _context: &mut Context,

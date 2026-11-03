@@ -926,7 +926,7 @@ pub trait SqlWriter: Send {
         out.push(';');
     }
 
-    /// Emit CREATE TABLE with columns, constraints & comments.
+    /// Emit CREATE TABLE with columns and constraints.
     fn write_create_table<E>(&self, out: &mut DynQuery, if_not_exists: bool)
     where
         Self: Sized,
@@ -1005,7 +1005,6 @@ pub trait SqlWriter: Send {
             "",
         );
         out.push_str(");");
-        self.write_column_comments_statements::<E>(&mut context, out);
     }
 
     /// Emit single column definition fragment.
@@ -1104,22 +1103,14 @@ pub trait SqlWriter: Send {
     fn write_column_comment(&self, context: &mut Context, out: &mut DynQuery, column: &ColumnDef) {
         let mut context = context.switch_fragment(Fragment::SqlCommentOnColumn);
         context.current.qualify_columns = true;
-        out.push_str("\nCOMMENT ON COLUMN ");
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("COMMENT ON COLUMN ");
         self.write_column_ref(&mut context.current, out, column.into());
         out.push_str(" IS ");
         self.write_string(&mut context.current, out, column.comment);
         out.push(';');
-    }
-
-    /// Write column comments.
-    fn write_column_comments_statements<E>(&self, context: &mut Context, out: &mut DynQuery)
-    where
-        Self: Sized,
-        E: Entity,
-    {
-        for c in E::columns().iter().filter(|c| !c.comment.is_empty()) {
-            self.write_column_comment(context, out, c);
-        }
     }
 
     /// Write DROP TABLE statement.
