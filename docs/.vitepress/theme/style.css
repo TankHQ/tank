@@ -404,8 +404,8 @@ html:not(.dark) .swipe-deck>div[class*="language-"]::after {
 }
 
 .swipe-deck .tabs label {
-    padding: 0 8px;
-    font-size: 13px;
+    padding: 0 6px;
+    font-size: 12px;
 }
 
 .swipe-deck .tabs::after {
