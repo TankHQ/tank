@@ -25,17 +25,17 @@ features:
     title: Async Firepower
     details: Non-blocking, streaming database operations built for async Rust.
     link: /03-connection
-    linkText: Connections
+    linkText: Supply lines
   - icon: 🧩
     title: One Entity Model
     details: Derive <code>Entity</code> on a plain struct and get table DDL, selects, inserts and row decoding.
     link: /06-entity-definition
     linkText: Entity definition
   - icon: ⚔️
-    title: Typed Expressions
-    details: The <code>expr!</code> macro builds a typed AST that each driver compiles to its own SQL.
+    title: Precision Fire Control
+    details: The <code>expr!</code> macro builds a typed AST driver compiles to its own SQL.
     link: /08-advanced-operations
-    linkText: Advanced operations
+    linkText: Tactical coordination
   - icon: 🎯
     title: Explicit Joins
     details: Joins are first-class datasets, never hidden behind entity fields. Every alliance is signed.
@@ -43,14 +43,14 @@ features:
     linkText: Joins
   - icon: 🛡️
     title: Adaptable Chassis
-    details: Swap SQL and NoSQL backends without touching your entity or query code.
+    details: Swap SQL and NoSQL backends like changing magazines mid-battle without touching your entity or query code.
     link: /04-capabilities
-    linkText: Feature matrix
+    linkText: Operational limits
   - icon: 🎖️
     title: Rich Type Arsenal
-    details: Map ordinary Rust types to native columns, and reach for <code>AsValue</code> for anything custom.
+    details: Map standard Rust types straight to native columns, and forge custom payloads with <code>AsValue</code>.
     link: /05-types
-    linkText: Types
+    linkText: Payload specs
 ---
 
 <script setup>
@@ -71,7 +71,7 @@ const drivers = [
 ]
 </script>
 
-Tank (**T**able **A**bstraction & **N**avigation **K**it) is the Rust data layer that lets you define an entity once and use the same explicit query API across a wide range of database systems. You define your entities; Tank and your chosen driver handle the ballistics.
+Welcome to the armored division, commander. Tank (**T**able **A**bstraction & **N**avigation **K**it) is the Rust data layer built for teams fighting across multiple fronts. Whether you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or holding a Postgres stronghold, you define your entities once and issue the same explicit orders everywhere. You call the targets, Tank and your driver handle the ballistics.
 
 <dl class="home-stats">
   <div><dt>9</dt><dd>Database backends</dd></div>
@@ -89,10 +89,10 @@ Tank (**T**able **A**bstraction & **N**avigation **K**it) is the Rust data layer
   </div>
 </div>
 
-###### 01 · Entity
+###### 01 · Unit Schematics
 ## Define your entity once
 
-A plain Rust struct, one derive. Field types map to the closest column type each backend supports, `#[tank(...)]` attributes configure the table, and ignored fields never reach the database.
+Field operations shouldn't require filling out forms in triplicate. Rig a plain Rust struct with `#[derive(Entity)]` and your frontline fighter is combat-ready: field types map to the closest native column each backend supports, `#[tank(...)]` attributes dial in the armor specs, and `#[tank(ignore)]` keeps local recon off the wire.
 
 ```rust [schema.rs]
 use tank::Entity;
@@ -122,48 +122,39 @@ pub struct Operator {
 }
 ```
 
-###### 02 · Operations
-## Every statement, one typed API
+###### 02 · Live Fire
+## Every maneuver, one typed API
 
-The Rust source lives on the cards, the generated SQL lives in the window beside them. Drag a card to throw it — the top card follows your hand, gathers momentum and flies away, then the next one steps up and the window updates.
+Below are sample operations you can issue from Rust and the corresponding SQL executed on each battlefield. Swipe through the deck to cycle maneuvers and inspect the live fire across backends.
 
 <SwipeDeck>
-
 <!--@include: ./components/queries.md-->
-
 </SwipeDeck>
 
 ###### 03 · Terrain
 ## Pick your armor
 
-Every driver implements the same traits and advertises exactly what its engine can do —
-transactions, joins, bulk append, filtering and aggregations. See the
-[capability matrix](/04-capabilities) to choose the right backend for the mission.
+Not all tanks are built for every terrain, and a lone-wolf SQLite operative has very different mechanical limits from a Postgres artillery battery or a Valkey ammo depot. Every driver implements the same core traits and reports what its engine can pull off: transactions, joins, high-caliber bulk appends, filtering, and aggregations. Consult the [capability matrix](/04-capabilities) before rolling out.
 
 > [!WARNING]
-> **No-Fly Zone.** Tank deliberately ships no schema migrations (only table creation and
-> drop for fast setup) and no implicit joins. If you need either, reach for a dedicated
-> migration tool and write joins explicitly.
+> **No-Fly Zone.** Tank deliberately ships no schema migrations (only table creation and drop for rapid deployment) and no implicit joins. Every alliance is signed in full view — bring a dedicated migration tool for schema evolution and write your joins explicitly.
 
 ###### 04 · Deployment
-## Zero setup
+## Skip training, go straight to live fire
 
-Two commands to arm the vehicle and choose a battlefield, then follow the
-[getting started guide](/02-getting-started) to connect, define an entity and fire your first
-query. Tank is async: run the examples under a runtime like
-[Tokio](https://crates.io/crates/tokio) and `.await` your operations.
+Two commands to arm the command vehicle and choose your battlefield, then report to the [getting started briefing](/02-getting-started) to open supply lines, define a unit, and fire for effect. Tank is 100% async, run your campaign under a runtime like [Tokio](https://crates.io/crates/tokio) and `.await` your orders.
 
 ```sh
 cargo add tank          # the command vehicle
 cargo add tank-duckdb   # choose your battlefield
 ```
 
-###### 05 · Support
-## Support the mission
+###### 05 · Logistics
+## Support the Mission
+Building and maintaining drivers for several database families is a major effort. **If Tank saves your company time, infrastructure headaches, or boilerplate, please consider supporting its development.**
 
-Building and maintaining drivers for several database families is a major effort. If Tank
-saves your company time, infrastructure headaches, or boilerplate, please consider
-[supporting its development](https://github.com/sponsors/TankHQ). Tank is carefully designed,
-written and maintained by (human) [barsdeveloper](https://github.com/barsdeveloper).
+Sponsorship helps keep Tank maintained, well-tested and moving toward new capabilities faster.
+
+🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**. Tank is carefully designed, written and maintained by (human) [barsdeveloper](https://github.com/barsdeveloper).
 
 <TankJoke />
