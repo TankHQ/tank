@@ -2,26 +2,15 @@
 // each sees the others' helpers as dead code.
 #![allow(dead_code)]
 use indoc::indoc;
-use rcgen::{
-    CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose,
-    PKCS_RSA_SHA256, SanType,
-};
-use std::{
-    env, future,
-    net::{IpAddr, Ipv4Addr},
-    path::PathBuf,
-    process::Command,
-    str::FromStr,
-    time::Duration,
-};
+use std::{borrow::Cow, env, future, path::PathBuf, time::Duration};
 use tank_core::{
-    Connection, ConnectionPool, Driver, Executor, Result,
+    Connection, ConnectionPool, Driver, Executor,
     future::{BoxFuture, FutureExt},
 };
 use tank_scylladb::{CassandraConnection, CassandraDriver, ScyllaDBConnection, ScyllaDBDriver};
 use tank_tests::{
-    ambiguity, cheat_sheet, custom, enums, identifiers, interval, kv_storage, limits, metrics,
-    service, simple, trade_multiple, trade_simple, transaction1,
+    ambiguity, cheat_sheet, custom, enums, generate_ssl_files, identifiers, interval, kv_storage,
+    limits, metrics, service, simple, trade_multiple, trade_simple, transaction1,
 };
 use testcontainers_modules::{
     scylladb::ScyllaDB,
@@ -34,7 +23,6 @@ use testcontainers_modules::{
         runners::AsyncRunner,
     },
 };
-use tokio::fs;
 use url::Url;
 
 pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
@@ -73,7 +61,7 @@ impl LogConsumer for TestcontainersLogConsumer {
             .trim();
         future::ready(if !log.is_empty() {
             match record {
-                LogFrame::StdOut(..) => log::trace!("{log}",),
+                LogFrame::StdOut(..) => log::trace!("{log}"),
                 LogFrame::StdErr(..) => log::debug!("{log}"),
             }
         })
@@ -84,68 +72,47 @@ impl LogConsumer for TestcontainersLogConsumer {
 pub async fn init_scylladb(ssl: bool) -> (String, Option<ContainerAsync<ScyllaDB>>) {
     if let Ok(url) = env::var("TANK_SCYLLADB_TEST") {
         return (url, None);
-    };
-    let mut readiness = vec![WaitFor::message_on_stderr("init - serving")];
-    if ssl {
-        readiness.push(WaitFor::message_on_stderr(
-            "9142 (encrypted, non-shard-aware)",
-        ));
-    } else {
-        readiness.push(WaitFor::message_on_stderr(
-            "9042 (unencrypted, non-shard-aware)",
-        ));
     }
-
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/assets");
     let mut image = ScyllaDB::default()
         .with_tag("2026.1.2")
         .with_startup_timeout(Duration::from_secs(120))
         .with_log_consumer(TestcontainersLogConsumer)
-        .with_ready_conditions(readiness)
-        .with_mapped_port(9042, ContainerPort::Tcp(9042));
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        .with_cmd([
+            "--broadcast-rpc-address",
+            "127.0.0.1",
+            "--native-shard-aware-transport-port",
+            "0",
+        ]);
     if ssl {
-        generate_ssl_files()
-            .await
-            .expect("Could not create the certificate files for SSL session");
+        generate_ssl_files(&path).expect("Could not create the certificate files for SSL session");
         image = image
-            .with_mapped_port(9142, ContainerPort::Tcp(9142))
-            .with_copy_to(
-                "/etc/scylla/scylla.yaml",
-                path.join("tests/assets/scylla.yaml"),
-            )
-            .with_copy_to("/etc/scylla/ca.pem", path.join("tests/assets/ca.pem"))
-            .with_copy_to(
-                "/etc/scylla/scylla.crt",
-                path.join("tests/assets/scylla.crt"),
-            )
-            .with_copy_to(
-                "/etc/scylla/scylla.key",
-                path.join("tests/assets/scylla.key"),
-            );
+            .with_copy_to("/etc/scylla/scylla.yaml", path.join("scylla.yaml"))
+            .with_copy_to("/etc/scylla/ca.pem", path.join("ca.pem"))
+            .with_copy_to("/etc/scylla/server-cert.pem", path.join("server-cert.pem"))
+            .with_copy_to("/etc/scylla/server-key.pem", path.join("server-key.pem"));
     }
     let container = image
         .start()
         .await
         .expect("Could not start the ScyllaDB container");
-    let plaintext_port = container
+    let port = container
         .get_host_port_ipv4(9042)
         .await
-        .expect("Cannot get the plaintext port (9042) of ScyllaDB");
-    let final_url = if ssl {
-        let ssl_host_port = container
-            .get_host_port_ipv4(9142)
-            .await
-            .expect("Cannot get the SSL port");
-        let params = format!(
-            "ssl_ca={}&ssl_cert={}&ssl_key={}",
-            path.join("tests/assets/ca.pem").to_string_lossy(),
-            path.join("tests/assets/client-cert.pem").to_string_lossy(),
-            path.join("tests/assets/client-key.pem").to_string_lossy(),
-        );
-        format!("scylladb://localhost:{ssl_host_port}/scylla_keyspace?{params}")
-    } else {
-        format!("scylladb://127.0.0.1:{plaintext_port}/scylla_keyspace")
-    };
+        .expect("Cannot get the port (9042) of ScyllaDB");
+    let final_url = format!(
+        "scylladb://localhost:{port}/scylla_keyspace{}",
+        if ssl {
+            Cow::Owned(format!(
+                "?ssl_ca={}&ssl_cert={}&ssl_key={}",
+                path.join("ca.pem").to_string_lossy(),
+                path.join("client-cert.pem").to_string_lossy(),
+                path.join("client-key.pem").to_string_lossy(),
+            ))
+        } else {
+            Cow::Borrowed("")
+        }
+    );
     let mut plain_url = Url::parse(&final_url).expect("The URL was not correct");
     plain_url.set_path("");
     ScyllaDBConnection::connect(&ScyllaDBDriver::new(), plain_url.to_string().into())
@@ -163,58 +130,44 @@ pub async fn init_scylladb(ssl: bool) -> (String, Option<ContainerAsync<ScyllaDB
 pub async fn init_cassandra(ssl: bool) -> (String, Option<ContainerAsync<GenericImage>>) {
     if let Ok(url) = env::var("TANK_CASSANDRA_TEST") {
         return (url, None);
-    };
+    }
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/assets");
     let mut image = GenericImage::new("cassandra", "5.0.8")
-        .with_startup_timeout(Duration::from_secs(120))
-        .with_log_consumer(TestcontainersLogConsumer)
-        .with_mapped_port(9042, ContainerPort::Tcp(9042))
+        .with_exposed_port(ContainerPort::Tcp(9042))
         .with_ready_conditions(vec![WaitFor::message_on_either_std(
             "Created default superuser role",
-        )]);
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        )])
+        .with_startup_timeout(Duration::from_secs(120))
+        .with_log_consumer(TestcontainersLogConsumer)
+        .with_env_var("CASSANDRA_BROADCAST_RPC_ADDRESS", "127.0.0.1");
     if ssl {
-        generate_ssl_files()
-            .await
-            .expect("Could not create the certificate files for SSL session");
+        generate_ssl_files(&path).expect("Could not create the certificate files for SSL session");
         image = image
-            .with_mapped_port(9142, ContainerPort::Tcp(9142))
-            .with_copy_to(
-                "/etc/cassandra/cassandra.yaml",
-                path.join("tests/assets/cassandra.yaml"),
-            )
-            .with_copy_to("/etc/cassandra/ca.pem", path.join("tests/assets/ca.pem"))
-            .with_copy_to(
-                "/etc/cassandra/cassandra.crt",
-                path.join("tests/assets/cassandra.crt"),
-            )
-            .with_copy_to(
-                "/etc/cassandra/cassandra.key",
-                path.join("tests/assets/cassandra.key"),
-            );
+            .with_copy_to("/etc/cassandra/cassandra.yaml", path.join("cassandra.yaml"))
+            .with_copy_to("/etc/cassandra/ca.pem", path.join("ca.pem"))
+            .with_copy_to("/etc/cassandra/server.pem", path.join("server.pem"));
     }
     let container = image
         .start()
         .await
         .expect("Could not start the Cassandra container");
-    let plaintext_port = container
+    let port = container
         .get_host_port_ipv4(9042)
         .await
-        .expect("Cannot get the plaintext port (9042) of Cassandra");
-    let final_url = if ssl {
-        let ssl_host_port = container
-            .get_host_port_ipv4(9142)
-            .await
-            .expect("Cannot get the SSL port");
-        let params = format!(
-            "ssl_ca={}&ssl_cert={}&ssl_key={}",
-            path.join("tests/assets/ca.pem").to_string_lossy(),
-            path.join("tests/assets/client-cert.pem").to_string_lossy(),
-            path.join("tests/assets/client-key.pem").to_string_lossy(),
-        );
-        format!("cassandra://localhost:{ssl_host_port}/cassandra_keyspace?{params}")
-    } else {
-        format!("cassandra://127.0.0.1:{plaintext_port}/cassandra_keyspace")
-    };
+        .expect("Cannot get the port (9042) of Cassandra");
+    let final_url = format!(
+        "cassandra://localhost:{port}/cassandra_keyspace{}",
+        if ssl {
+            Cow::Owned(format!(
+                "?ssl_ca={}&ssl_cert={}&ssl_key={}",
+                path.join("ca.pem").to_string_lossy(),
+                path.join("client-cert.pem").to_string_lossy(),
+                path.join("client-key.pem").to_string_lossy(),
+            ))
+        } else {
+            Cow::Borrowed("")
+        }
+    );
     let mut plain_url = Url::parse(&final_url).expect("The URL was not correct");
     plain_url.set_path("");
     CassandraConnection::connect(&CassandraDriver::new(), plain_url.to_string().into())
@@ -227,109 +180,4 @@ pub async fn init_cassandra(ssl: bool) -> (String, Option<ContainerAsync<Generic
         .await
         .expect("Could not create the keyspace");
     (final_url, Some(container))
-}
-
-async fn generate_ssl_files() -> Result<()> {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
-    let mut ca_params = CertificateParams::new(vec!["Test CA".to_string()])?;
-    ca_params.is_ca = IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
-    ca_params.key_usages.push(KeyUsagePurpose::KeyCertSign);
-    ca_params.key_usages.push(KeyUsagePurpose::CrlSign);
-    ca_params.use_authority_key_identifier_extension = true;
-    let ca_key = KeyPair::generate_for(&PKCS_RSA_SHA256)?;
-    let ca_cert = ca_params.self_signed(&ca_key)?;
-    let _ = fs::create_dir_all("tests/assets").await;
-    fs::write(path.join("tests/assets/ca.pem"), ca_cert.pem()).await?;
-
-    let ca_issuer = Issuer::from_params(&ca_params, ca_key);
-
-    let server_key = KeyPair::generate_for(&PKCS_RSA_SHA256)?;
-    let mut server_params = CertificateParams::new(vec!["localhost".to_string()])?;
-    server_params.use_authority_key_identifier_extension = true;
-    server_params
-        .key_usages
-        .push(KeyUsagePurpose::DigitalSignature);
-    server_params
-        .key_usages
-        .push(KeyUsagePurpose::KeyEncipherment);
-    server_params
-        .extended_key_usages
-        .push(ExtendedKeyUsagePurpose::ServerAuth);
-    server_params.subject_alt_names = vec![
-        SanType::DnsName("localhost".try_into()?),
-        SanType::IpAddress(IpAddr::V4(Ipv4Addr::from_str("127.0.0.1")?)),
-    ];
-    for octet in 1..=254 {
-        server_params
-            .subject_alt_names
-            .push(SanType::IpAddress(IpAddr::V4(Ipv4Addr::new(
-                172, 17, 0, octet,
-            ))));
-    }
-    server_params
-        .distinguished_name
-        .push(DnType::CommonName, "localhost");
-    let server_cert = server_params.signed_by(&server_key, &ca_issuer)?;
-    fs::write(path.join("tests/assets/scylla.crt"), server_cert.pem()).await?;
-    fs::write(
-        path.join("tests/assets/scylla.key"),
-        server_key.serialize_pem(),
-    )
-    .await?;
-    fs::write(path.join("tests/assets/cassandra.crt"), server_cert.pem()).await?;
-    fs::write(
-        path.join("tests/assets/cassandra.key"),
-        server_key.serialize_pem(),
-    )
-    .await?;
-
-    let client_key = KeyPair::generate_for(&PKCS_RSA_SHA256)?;
-    let mut client_params = CertificateParams::new(vec!["tank-mysql-user".to_string()])?;
-    client_params.is_ca = IsCa::NoCa;
-    client_params
-        .key_usages
-        .push(KeyUsagePurpose::DigitalSignature);
-    client_params
-        .extended_key_usages
-        .push(ExtendedKeyUsagePurpose::ClientAuth);
-    client_params
-        .distinguished_name
-        .push(DnType::CommonName, "tank-mysql-user");
-    let client_cert = client_params.signed_by(&client_key, &ca_issuer)?;
-    fs::write(path.join("tests/assets/client-cert.pem"), client_cert.pem()).await?;
-    fs::write(
-        path.join("tests/assets/client-key.pem"),
-        client_key.serialize_pem(),
-    )
-    .await?;
-
-    let client_p12_path = path.join("tests/assets/client.p12");
-    if client_p12_path.exists() {
-        fs::remove_file(&client_p12_path).await.ok();
-    }
-
-    let openssl_output = Command::new("openssl")
-        .args([
-            "pkcs12",
-            "-export",
-            "-in",
-            "tests/assets/client-cert.pem",
-            "-inkey",
-            "tests/assets/client-key.pem",
-            "-passout",
-            "pass:my&pass?is=P@$$",
-            "-out",
-            &client_p12_path.to_string_lossy(),
-        ])
-        .current_dir(&path)
-        .output()
-        .expect("Failed to run openssl");
-
-    if !openssl_output.status.success() {
-        let stderr = String::from_utf8_lossy(&openssl_output.stderr);
-        log::error!("OpenSSL failed to create PKCS#12: {stderr}");
-    }
-
-    Ok(())
 }

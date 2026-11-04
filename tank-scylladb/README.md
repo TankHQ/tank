@@ -16,6 +16,7 @@ It maps Tank operations and queries to native CQL commands. Use it with the main
 
 ## Features
 - Async connection and execution via [`scylla`](https://crates.io/crates/scylla)
+- TLS support via `rustls`
 - CQL mapping for Tank operations
 
 ## Install

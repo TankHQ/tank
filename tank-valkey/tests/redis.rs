@@ -37,18 +37,28 @@ mod tests {
         drop(container);
 
         // SSL
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        unsafe {
-            std::env::set_var("SSL_CERT_FILE", path.join("tests/assets/ca.pem"));
-        }
         let (ssl_url, container) = init_redis(true).await;
         let container = container.expect("Could not launch the SSL container");
-        let driver = RedisDriver::new(".", false);
-        let mut pool = driver
-            .connect_pool(ssl_url.clone().into(), PoolConfig::new())
-            .await
-            .expect("Failed to connect");
-        execute_tests(&mut pool).await.expect("A tank-tests test failed");
+        {
+            let driver = RedisDriver::default();
+            let mut pool = driver
+                .connect_pool(ssl_url.clone().into(), PoolConfig::new())
+                .await
+                .expect("Failed to connect");
+            execute_tests(&mut pool)
+                .await
+                .expect("A tank-tests test failed");
+        }
+        {
+            let driver = RedisDriver::new(".", false);
+            let mut pool = driver
+                .connect_pool(ssl_url.clone().into(), PoolConfig::new())
+                .await
+                .expect("Failed to connect");
+            execute_tests(&mut pool)
+                .await
+                .expect("A tank-tests test failed");
+        }
         drop(container);
     }
 }

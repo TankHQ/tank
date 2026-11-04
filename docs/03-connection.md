@@ -109,7 +109,7 @@ async fn establish_mysql_connection() -> Result<impl ConnectionPool<MySQLDriver>
     let driver = MySQLDriver::mysql();
     let pool = driver
         .connect_pool(
-            "mysql://tank-mysql-user@localhost:3306/operations_db?require_ssl=true&ssl_ca=/home/user/Git/tank/tank-mysql/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-mysql/tests/assets/client.p12&ssl_pass=my%26pass%3Fis%3DP%40%24%24".into(),
+            "mysql://tank-mysql-user@localhost:3306/operations_db?require_ssl=true&ssl_ca=/home/user/Git/tank/tank-mysql/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-mysql/tests/assets/client-cert.pem&ssl_key=/home/user/Git/tank/tank-mysql/tests/assets/client-key.pem".into(),
             PoolConfig::new(),
         )
         .await?;
@@ -125,6 +125,7 @@ Parameters:
 - `require_ssl (bool)`: Require secure connection, defaults to false.
 - `ssl_ca`: CA certificate path (falls back to environment variable `MYSQL_SSL_CA`).
 - `ssl_cert`: Client certificate path (falls back to environment variable `MYSQL_SSL_CERT`).
+- `ssl_key`: Client private key path (falls back to environment variable `MYSQL_SSL_KEY`).
 
 Additional URL parameters are passed directly to the mysql_async API. See the full list of supported options from options structure [Opts](https://docs.rs/mysql_async/latest/mysql_async/struct.Opts.html).
 

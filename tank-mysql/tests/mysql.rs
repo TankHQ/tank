@@ -33,26 +33,25 @@ mod tests {
         let (ssl_url, container) = init_mysql(true).await;
         let container = container.expect("Could not launch the SSL container");
 
-        let url = Url::parse(&url).expect("Could not parse the url returned from init");
-        let mut url_base = url.clone();
-        url_base.set_query(None);
-
-        let no_cert_url = url_base
+        let url = Url::parse(&ssl_url).expect("Could not parse the url returned from init");
+        let mut no_cert_url = url.clone();
+        no_cert_url.set_query(None);
+        no_cert_url
             .query_pairs_mut()
-            .extend_pairs(url.clone().query_pairs().filter(|(k, _)| k != "ssl_cert"))
-            .finish();
+            .extend_pairs(url.query_pairs().filter(|(k, _)| k != "ssl_cert"));
         assert!(
             MySQLConnection::connect(&driver, no_cert_url.to_string().into())
                 .await
                 .is_err()
         );
 
-        let no_pass_url = url_base
+        let mut no_key_url = url.clone();
+        no_key_url.set_query(None);
+        no_key_url
             .query_pairs_mut()
-            .extend_pairs(url.clone().query_pairs().filter(|(k, _)| k != "ssl_pass"))
-            .finish();
+            .extend_pairs(url.query_pairs().filter(|(k, _)| k != "ssl_key"));
         assert!(
-            MySQLConnection::connect(&driver, no_pass_url.to_string().into())
+            MySQLConnection::connect(&driver, no_key_url.to_string().into())
                 .await
                 .is_err()
         );
@@ -62,6 +61,7 @@ mod tests {
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
+        comments(&mut pool).await;
         drop(container);
     }
 }

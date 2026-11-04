@@ -10,20 +10,13 @@ mod tests {
 
     static MUTEX: Mutex<()> = Mutex::new(());
 
-    #[tokio::test]
-    async fn url_parameters() {
-        init_logs();
-        let _guard = MUTEX.lock().unwrap();
-
-        let (url, container) = init_scylladb(false).await;
-        let _container = container.expect("Could not launch container");
-
+    async fn check_url_parameters(url: &str) {
         let driver = ScyllaDBDriver::new();
+        let sep = if url.contains('?') { '&' } else { '?' };
 
         silent_logs! {
             {
-                let mut url = url.clone();
-                url.push_str("?hostname_resolution_timeout=12.5");
+                let url = format!("{url}{sep}hostname_resolution_timeout=12.5");
                 let pool = driver
                     .connect_pool(url.into(), PoolConfig::new())
                     .await
@@ -35,8 +28,7 @@ mod tests {
             }
 
             {
-                let mut url = url.clone();
-                url.push_str("?hostname_resolution_timeout=hello");
+                let url = format!("{url}{sep}hostname_resolution_timeout=hello");
                 let pool = driver
                     .connect_pool(url.into(), PoolConfig::new())
                     .await
@@ -48,8 +40,7 @@ mod tests {
             }
 
             {
-                let mut url = url.clone();
-                url.push_str("?tcp_nodelay=true");
+                let url = format!("{url}{sep}tcp_nodelay=true");
                 let pool = driver
                     .connect_pool(url.into(), PoolConfig::new())
                     .await
@@ -61,8 +52,7 @@ mod tests {
             }
 
             {
-                let mut url = url.clone();
-                url.push_str("?local_ip_address=not_an_ip");
+                let url = format!("{url}{sep}local_ip_address=not_an_ip");
                 let pool = driver
                     .connect_pool(url.into(), PoolConfig::new())
                     .await
@@ -74,8 +64,7 @@ mod tests {
             }
 
             {
-                let mut url = url.clone();
-                url.push_str("?pool_size_per_host=4");
+                let url = format!("{url}{sep}pool_size_per_host=4");
                 let pool = driver
                     .connect_pool(url.into(), PoolConfig::new())
                     .await
@@ -87,8 +76,7 @@ mod tests {
             }
 
             {
-                let mut url = url.clone();
-                url.push_str("?write_coalescing_delay=SmallNondeterministic");
+                let url = format!("{url}{sep}write_coalescing_delay=SmallNondeterministic");
                 let pool = driver
                     .connect_pool(url.into(), PoolConfig::new())
                     .await
@@ -100,8 +88,7 @@ mod tests {
             }
 
             {
-                let mut url = url.clone();
-                url.push_str("?write_coalescing_delay=50");
+                let url = format!("{url}{sep}write_coalescing_delay=50");
                 let pool = driver
                     .connect_pool(url.into(), PoolConfig::new())
                     .await
@@ -113,8 +100,9 @@ mod tests {
             }
 
             {
-                let mut url = url.clone();
-                url.push_str("?connection_timeout=10&tcp_keepalive_interval=15.5&compression=lz4");
+                let url = format!(
+                    "{url}{sep}connection_timeout=10&tcp_keepalive_interval=15.5&compression=lz4"
+                );
                 let pool = driver
                     .connect_pool(url.into(), PoolConfig::new())
                     .await
@@ -126,8 +114,7 @@ mod tests {
             }
 
             {
-                let mut url = url.clone();
-                url.push_str("?this_parameter_does_not_exist=123");
+                let url = format!("{url}{sep}this_parameter_does_not_exist=123");
                 let pool = driver
                     .connect_pool(url.into(), PoolConfig::new())
                     .await
@@ -138,5 +125,23 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[tokio::test]
+    async fn url_parameters() {
+        init_logs();
+        let _guard = MUTEX.lock().unwrap();
+
+        // Unencrypted
+        let (url, container) = init_scylladb(false).await;
+        let container = container.expect("Could not launch container");
+        check_url_parameters(&url).await;
+        drop(container);
+
+        // SSL
+        let (ssl_url, container) = init_scylladb(true).await;
+        let container = container.expect("Could not launch the SSL container");
+        check_url_parameters(&ssl_url).await;
+        drop(container);
     }
 }

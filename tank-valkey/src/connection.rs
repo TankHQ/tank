@@ -1,8 +1,9 @@
 use crate::{ValkeyDriver, ValkeyTransaction, ValueWrap};
 use anyhow::anyhow;
 use async_stream::try_stream;
-use redis::{Client, aio::MultiplexedConnection};
-use std::{borrow::Cow, future, iter, mem, sync::Arc};
+use redis::{Client, ClientTlsConfig, TlsCertificates, aio::MultiplexedConnection};
+use rustls::crypto::{CryptoProvider, aws_lc_rs::default_provider};
+use std::{borrow::Cow, fs, future, iter, mem, sync::Arc};
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Row, RowOwned,
     RowsAffected, stream::Stream, truncate_long,
@@ -21,9 +22,74 @@ impl Connection for ValkeyConnection {
     where
         Self: Sized,
     {
+        if CryptoProvider::get_default().is_none() {
+            let _ = default_provider().install_default();
+        }
         let context = "While trying to connect to Valkey";
         let url = Self::sanitize_url(driver, url).context(context)?;
-        let client = Client::open(url.as_str()).map_err(Error::new)?;
+        let mut root_cert = None;
+        let mut client_cert = None;
+        let mut client_key = None;
+        for (k, v) in url.query_pairs() {
+            match k.as_ref() {
+                "sslrootcert" | "ssl_ca" => {
+                    root_cert = Some(
+                        fs::read(v.as_ref())
+                            .with_context(|| format!("Failed to read SSL CA file `{v}`"))
+                            .context(context)?,
+                    );
+                }
+                "sslcert" | "ssl_cert" => {
+                    client_cert = Some(
+                        fs::read(v.as_ref())
+                            .with_context(|| format!("Failed to read SSL certificate file `{v}`"))
+                            .context(context)?,
+                    );
+                }
+                "sslkey" | "ssl_key" => {
+                    client_key = Some(
+                        fs::read(v.as_ref())
+                            .with_context(|| format!("Failed to read SSL private key file `{v}`"))
+                            .context(context)?,
+                    );
+                }
+                _ => {}
+            }
+        }
+        let client_tls = match (client_cert, client_key) {
+            (Some(client_cert), Some(client_key)) => Some(ClientTlsConfig {
+                client_cert,
+                client_key,
+            }),
+            (Some(_), None) => {
+                let error =
+                    anyhow!("SSL private key must be provided when SSL certificate is specified")
+                        .context(context);
+                log::error!("{error:#}");
+                return Err(error);
+            }
+            (None, Some(_)) => {
+                let error =
+                    anyhow!("SSL certificate must be provided when SSL private key is specified")
+                        .context(context);
+                log::error!("{error:#}");
+                return Err(error);
+            }
+            (None, None) => None,
+        };
+        let client = if root_cert.is_some() || client_tls.is_some() {
+            Client::build_with_tls(
+                url.as_str(),
+                TlsCertificates {
+                    client_tls,
+                    root_cert,
+                },
+            )
+            .map_err(Error::new)
+            .context(context)?
+        } else {
+            Client::open(url.as_str()).map_err(Error::new)?
+        };
         let connection = client
             .get_multiplexed_async_connection()
             .await

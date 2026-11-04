@@ -14,6 +14,7 @@ chrono.workspace = true
 env_logger.workspace = true
 indoc.workspace = true
 log.workspace = true
+rcgen.workspace = true
 rust_decimal.workspace = true
 tank = { workspace = true, features = ["chrono"] }
 time.workspace = true

@@ -63,17 +63,96 @@ pub use orders::*;
 pub use other::*;
 pub use prepared::*;
 pub use readme::*;
+use rcgen::{
+    BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair,
+    KeyUsagePurpose, SanType,
+};
 pub use requests::*;
 pub use service::*;
 pub use shopping::*;
 pub use simple::*;
-use std::{env, future::Future, pin::Pin};
+use std::{
+    env, fs,
+    future::Future,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    path::Path,
+    pin::Pin,
+};
 use tank::{ConnectionPool, Driver, PooledConnection, Result};
 pub use time::*;
 pub use trade::*;
 pub use transaction1::*;
 pub use transaction2::*;
 pub use user::*;
+
+pub fn generate_ssl_files(dir: impl AsRef<Path>) -> Result<()> {
+    let dir = dir.as_ref();
+    fs::create_dir_all(dir)?;
+
+    let mut ca_params = CertificateParams::new(vec!["Test CA".to_string()])?;
+    ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    ca_params.key_usages.push(KeyUsagePurpose::KeyCertSign);
+    ca_params.key_usages.push(KeyUsagePurpose::CrlSign);
+    ca_params.use_authority_key_identifier_extension = true;
+    let ca_key = KeyPair::generate()?;
+    let ca_cert = ca_params.self_signed(&ca_key)?;
+    fs::write(dir.join("ca.pem"), ca_cert.pem())?;
+    let ca_issuer = Issuer::from_params(&ca_params, ca_key);
+
+    let server_key = KeyPair::generate()?;
+    let mut server_params = CertificateParams::new(vec!["localhost".to_string()])?;
+    server_params.use_authority_key_identifier_extension = true;
+    server_params
+        .key_usages
+        .push(KeyUsagePurpose::DigitalSignature);
+    server_params
+        .key_usages
+        .push(KeyUsagePurpose::KeyEncipherment);
+    server_params
+        .extended_key_usages
+        .push(ExtendedKeyUsagePurpose::ServerAuth);
+    server_params.subject_alt_names = vec![
+        SanType::DnsName("localhost".try_into()?),
+        SanType::IpAddress(IpAddr::V4(Ipv4Addr::LOCALHOST)),
+        SanType::IpAddress(IpAddr::V6(Ipv6Addr::LOCALHOST)),
+    ];
+    server_params
+        .distinguished_name
+        .push(DnType::CommonName, "localhost");
+    let server_cert = server_params.signed_by(&server_key, &ca_issuer)?;
+    let server_cert_pem = server_cert.pem();
+    let server_key_pem = server_key.serialize_pem();
+    fs::write(dir.join("server-cert.pem"), &server_cert_pem)?;
+    fs::write(dir.join("server-key.pem"), &server_key_pem)?;
+    fs::write(
+        dir.join("server.pem"),
+        format!("{server_cert_pem}\n{server_key_pem}"),
+    )?;
+
+    let client_key = KeyPair::generate()?;
+    let mut client_params = CertificateParams::new(vec!["tank-client".to_string()])?;
+    client_params.is_ca = IsCa::NoCa;
+    client_params
+        .key_usages
+        .push(KeyUsagePurpose::DigitalSignature);
+    client_params
+        .extended_key_usages
+        .push(ExtendedKeyUsagePurpose::ClientAuth);
+    client_params
+        .distinguished_name
+        .push(DnType::CommonName, "tank-client");
+    let client_cert = client_params.signed_by(&client_key, &ca_issuer)?;
+    let client_cert_pem = client_cert.pem();
+    let client_key_pem = client_key.serialize_pem();
+    fs::write(dir.join("client-cert.pem"), &client_cert_pem)?;
+    fs::write(dir.join("client-key.pem"), &client_key_pem)?;
+    fs::write(
+        dir.join("client.pem"),
+        format!("{client_cert_pem}\n{client_key_pem}"),
+    )?;
+
+    Ok(())
+}
 
 pub fn init_logs() {
     let mut logger = env_logger::builder();

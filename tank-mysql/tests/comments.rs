@@ -43,7 +43,13 @@ pub(crate) async fn comments<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         .expect("Failed to create CommentedEntity table");
 
     let query = QueryBuilder::new()
-        .select(MySQLColumn::columns())
+        .select(cols!(
+            MySQLColumn::table_schema as table_schema,
+            MySQLColumn::table_name as table_name,
+            MySQLColumn::column_name as column_name,
+            MySQLColumn::ordinal_position as ordinal_position,
+            MySQLColumn::column_comment as column_comment,
+        ))
         .from(MySQLColumn::table())
         .where_expr(expr!(
             MySQLColumn::table_schema == "comment_schema"

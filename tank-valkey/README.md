@@ -18,6 +18,7 @@ Use it with the main [`tank`](https://crates.io/crates/tank) crate, which provid
 
 ## Features
 - Async connection and execution via [`redis`](https://crates.io/crates/redis)
+- TLS support via `rustls`
 - Key-Value mapping for Tank entities
 - Support for nested types such as `Vec` and `HashMap`, stored in auxiliary keys
 

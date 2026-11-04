@@ -23,7 +23,6 @@ url.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-rcgen.workspace = true
 tank-tests = { path = "../tank-tests", features = [
     "disable-intervals",
     "disable-joins",

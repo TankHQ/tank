@@ -16,7 +16,7 @@ It maps Tank operations and queries to native MongoDB commands. Use it with the 
 
 ## Features
 - Async connection and execution via [`mongodb`](https://crates.io/crates/mongodb)
-- TLS support
+- TLS support via `rustls`
 - BSON to Tank Value mapping
 
 ## Install

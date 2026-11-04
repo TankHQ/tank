@@ -27,11 +27,14 @@ mod tests {
         drop(container);
 
         // SSL
-        // let (ssl_url, container) = init_cassandra(true).await;
-        // let container = container.expect("Could not launch container");
-        // let driver = CassandraDriver::new();
-        // let mut pool = driver.connect(ssl_url.into()).await.expect("Failed to connect");
-        // execute_tests(&mut pool).await;
-        // drop(container);
+        let (ssl_url, container) = init_cassandra(true).await;
+        let container = container.expect("Could not launch the SSL container");
+        let driver = CassandraDriver::new();
+        let mut pool = driver
+            .connect_pool(ssl_url.into(), PoolConfig::new())
+            .await
+            .expect("Failed to connect");
+        execute_tests(&mut pool).await;
+        drop(container);
     }
 }
