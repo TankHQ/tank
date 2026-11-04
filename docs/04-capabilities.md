@@ -5,13 +5,13 @@ Not all tanks are built for every terrain. While Tank provides a unified API, th
 
 ## Feature Matrix
 
-| Feature          | Postgres | SQLite    | MySQL/MariaDB   | DuckDB | MongoDB  | ScyllaDB/Cassandra  | Valkey/Redis  |
-| ---------------- | :------: | :-------: | :-------------: | :----: | :------: | :-----------------: | :-----------: |
-| **Transaction**  | ✅       | ✅        | ✅              | ✅     | ✅       | ⚠️                  | ⚠️            |
-| **Join**         | ✅       | ✅        | ✅              | ✅     | ❌       | ❌                  | ❌            |
-| **Bulk Append**  | ✅       | ❌        | ❌              | ✅     | ❌       | ❌                  | ❌            |
-| **Filtering**    | ✅       | ✅        | ✅              | ✅     | ✅       | ⚠️                  | ⚠️            |
-| **Aggregations** | ✅       | ✅        | ✅              | ✅     | ✅       | ⚠️                  | ❌            |
+| Feature          | Postgres | SQLite    | MySQL/MariaDB   | DuckDB | MSSQL  | MongoDB  | ScyllaDB/Cassandra  | Valkey/Redis  |
+| ---------------- | :------: | :-------: | :-------------: | :----: | :----: | :------: | :-----------------: | :-----------: |
+| **Transaction**  | ✅       | ✅        | ✅              | ✅     | ✅     | ✅       | ⚠️                  | ⚠️            |
+| **Join**         | ✅       | ✅        | ✅              | ✅     | ✅     | ❌       | ❌                  | ❌            |
+| **Bulk Append**  | ✅       | ❌        | ❌              | ✅     | ❌     | ❌       | ❌                  | ❌            |
+| **Filtering**    | ✅       | ✅        | ✅              | ✅     | ✅     | ✅       | ⚠️                  | ⚠️            |
+| **Aggregations** | ✅       | ✅        | ✅              | ✅     | ✅     | ✅       | ⚠️                  | ❌            |
 
 ✅ supported, ⚠️ limited support, ❌ unavailable through Tank. **Bulk Append** means a specialized ingestion path; `insert_many` still works without one.
 

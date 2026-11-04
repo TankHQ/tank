@@ -58,6 +58,8 @@ const drivers = [
   { name: "MySQL", section: "mysql-mariadb" },
   { name: "MariaDB", section: "mysql-mariadb" },
   { name: "DuckDB", section: "duckdb" },
+  { name: "MSSQL", section: "mssql-sql-server" },
+  { name: "SQL Server", section: "mssql-sql-server" },
   { name: "MongoDB", section: "mongodb" },
   { name: "ScyllaDB", section: "scylladb-cassandra" },
   { name: "Cassandra", section: "scylladb-cassandra" },
@@ -69,7 +71,7 @@ const drivers = [
 Welcome to the armored division, commander. Tank (**T**able **A**bstraction & **N**avigation **K**it) is the Rust data layer built for teams fighting across multiple fronts. Whether you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or holding a Postgres stronghold, you define your entities once and issue the same explicit orders everywhere. You call the targets, Tank and your driver handle the ballistics.
 
 <dl class="home-stats">
-  <div><dt>10</dt><dd>Database backends</dd></div>
+  <div><dt>11</dt><dd>Database backends</dd></div>
   <div><dt>1</dt><dd>Entity model</dd></div>
   <div><dt>0</dt><dd>Boilerplate</dd></div>
   <div><dt>100%</dt><dd>Async API</dd></div>

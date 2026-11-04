@@ -164,6 +164,36 @@ Modes:
 
 The `mode` parameter provides a common syntax for specifying connection access, similar to SQLite. The values map respectively to `access_mode=READ_ONLY`, `access_mode=READ_WRITE`, `access_mode=READ_WRITE` and the special `duckdb://:memory:` path. Additional URL parameters are passed directly to the DuckDB C API. See the full list of supported options on the [DuckDB website](https://duckdb.org/docs/stable/configuration/overview#global-configuration-options).
 
+### MSSQL / SQL Server
+Microsoft SQL Server (and Azure SQL) is your enterprise command bunker: fortified T-SQL dialect, full transactional discipline, and native `JSON` and `VECTOR` support in SQL Server 2025.
+
+```rust
+use tank::{ConnectionPool, Driver, PoolConfig, Result};
+use tank_mssql::MSSQLDriver;
+
+async fn establish_mssql_connection(driver: &MSSQLDriver) -> Result<impl ConnectionPool<MSSQLDriver>> {
+    let pool = driver
+        .connect_pool(
+            "mssql://sa:yourStrong(!)Password@localhost:1433/operations_db?TrustServerCertificate=true",
+            PoolConfig::new(),
+        )
+        .await?;
+    Ok(pool)
+}
+```
+
+**URL Format**:
+- `mssql://user:password@host:port/database`
+- `sqlserver://user:password@host:port/database`
+
+Parameters:
+- `TrustServerCertificate` / `trust_cert (bool)`: Trust the server TLS certificate without CA validation.
+- `TrustServerCertificateCA` / `ssl_ca` / `sslrootcert`: Path to a custom CA certificate file (falls back to environment variable `MSSQL_SSL_CA`).
+- `encrypt`: TLS encryption mode (`true` / `required`, `false` / `off`, or `not_supported` / `DANGER_PLAINTEXT`).
+- `ApplicationName` / `application_name`: Sets the client application name visible in `APP_NAME()`.
+- `instance` / `instance_name`: Named SQL Server instance.
+- `readonly (bool)`: Sets `ApplicationIntent=ReadOnly`.
+
 ### MongoDB
 MongoDB is your guerrilla special forces unit operating in the "fog of war", gathering intel in whatever format it arrives.
 
