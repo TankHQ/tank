@@ -9,9 +9,14 @@ mod tests {
         num::*,
         rc::Rc,
         sync::{Arc, RwLock},
+        time::Duration,
     };
-    use tank::{AsValue, CollectionType, MapType, StructType, TableRef, Value, ValueOwned};
-    use tank_core::{FixedDecimal, Interval};
+    use tank::{
+        AsValue, CollectionType, FixedDecimal, Interval, MapType, StructType, TableRef, Value,
+        ValueOwned,
+    };
+    use time::{Date, Month, PrimitiveDateTime, Time, UtcDateTime};
+    use uuid::Uuid;
 
     #[test]
     fn borrowed_integer_conversions_match_owned_conversions() {
@@ -765,6 +770,16 @@ mod tests {
 
         let i3 = Interval::parse("01:30:00").unwrap();
         assert!(!i3.is_zero());
+
+        assert_eq!(
+            Duration::try_from_value(Value::Varchar(Some("2 hours".into()))).unwrap(),
+            Duration::from_secs(7200)
+        );
+        assert_eq!(
+            time::Duration::try_from_value(Value::Varchar(Some("30 minutes".into()))).unwrap(),
+            time::Duration::minutes(30)
+        );
+        assert!(Duration::parse("nonsense").is_err());
     }
 
     #[test]
@@ -918,12 +933,20 @@ mod tests {
         let v = m.clone().as_value();
         let back: HashMap<String, i32> = HashMap::try_from_value(v).unwrap();
         assert_eq!(back, m);
+        assert!(
+            HashMap::<String, i32>::try_from_value(m.as_value().as_null())
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
     fn option_and_wrapper_conversions() {
         assert_eq!(Some(42_i32).as_value(), Value::Int32(Some(42)));
         assert_eq!(None::<i32>.as_value(), Value::Int32(None));
+        assert_eq!((&None::<i32>).as_value(), Value::Int32(None));
+        assert_eq!(Option::<i32>::parse("null").unwrap(), None);
+        assert_eq!(Option::<i32>::parse("42").unwrap(), Some(42));
         let back: Option<i32> = Option::try_from_value(Value::Int32(Some(42))).unwrap();
         assert_eq!(back, Some(42));
         let none: Option<i32> = Option::try_from_value(Value::Int32(None)).unwrap();
@@ -1013,6 +1036,11 @@ mod tests {
             ))
             .is_err()
         );
+        assert_eq!(
+            <[i32; 2]>::try_from_value(Value::Json(Some(serde_json::json!([6, 7])))).unwrap(),
+            [6, 7]
+        );
+        assert!(<[i32; 2]>::try_from_value(Value::Unknown(Some("[8,9]".into()))).is_err());
     }
 
     #[test]
@@ -1102,6 +1130,7 @@ mod tests {
     #[test]
     fn blob_hex_decode_errors() {
         assert!(Box::<[u8]>::parse("not-hex").is_err());
+        assert!(Box::<[u8]>::try_from_value(Value::Int32(Some(1))).is_err());
     }
 
     #[test]
@@ -1154,56 +1183,123 @@ mod tests {
     fn value_to_tokens() {
         let tokens = |v: &ValueOwned| v.to_token_stream().to_string();
         assert_eq!(tokens(&Value::Null), ":: tank :: Value :: Null");
-        assert!(tokens(&Value::Int32(Some(1))).contains("Int32"));
-        assert!(
-            tokens(&Value::Decimal(
-                Some(rust_decimal::Decimal::new(1, 2)),
-                10,
-                2
-            ))
-            .contains("Decimal")
+        for (value, expected) in [
+            (Value::Boolean(None), "Boolean"),
+            (Value::Int8(None), "Int8"),
+            (Value::Int16(None), "Int16"),
+            (Value::Int32(Some(1)), "Int32"),
+            (Value::Int64(None), "Int64"),
+            (Value::Int128(None), "Int128"),
+            (Value::UInt8(None), "UInt8"),
+            (Value::UInt16(None), "UInt16"),
+            (Value::UInt32(None), "UInt32"),
+            (Value::UInt64(None), "UInt64"),
+            (Value::UInt128(None), "UInt128"),
+            (Value::Float32(None), "Float32"),
+            (Value::Float64(None), "Float64"),
+            (Value::Decimal(Some(Decimal::new(1, 2)), 10, 2), "Decimal"),
+            (Value::Char(None), "Char"),
+            (Value::Varchar(None), "Varchar"),
+            (Value::Blob(None), "Blob"),
+            (Value::Date(None), "Date"),
+            (Value::Time(None), "Time"),
+            (Value::Timestamp(None), "Timestamp"),
+            (Value::TimestampWithTimezone(None), "TimestampWithTimezone"),
+            (Value::Interval(None), "Interval"),
+            (Value::Uuid(None), "Uuid"),
+            (
+                Value::Array(
+                    None,
+                    Box::new(CollectionType {
+                        element: Value::Int32(None),
+                        len: 3,
+                    }),
+                ),
+                "Array (None , Box :: new",
+            ),
+            (
+                Value::List(
+                    None,
+                    Box::new(CollectionType {
+                        element: Value::Int32(None),
+                        len: 0,
+                    }),
+                ),
+                "List",
+            ),
+            (
+                Value::Map(
+                    None,
+                    Box::new(MapType {
+                        key: Value::Varchar(None),
+                        value: Value::Int32(None),
+                    }),
+                ),
+                "Map",
+            ),
+            (Value::Json(None), "Json"),
+            (
+                Value::Struct(
+                    None,
+                    Box::new(StructType {
+                        fields: vec![("a".to_string(), Value::Int32(None))],
+                        name: TableRef::new("t".into()),
+                    }),
+                ),
+                "Struct",
+            ),
+            (Value::Unknown(None), "Unknown"),
+        ] {
+            assert!(tokens(&value).contains(expected));
+        }
+    }
+
+    #[test]
+    fn reference_and_empty_as_value() {
+        let date = Date::from_calendar_date(2024, Month::May, 6).unwrap();
+        let time = Time::from_hms(1, 2, 3).unwrap();
+        let ts = PrimitiveDateTime::new(date, time);
+        for value in [
+            true.as_value(),
+            1.5_f32.as_value(),
+            2.5_f64.as_value(),
+            'x'.as_value(),
+            date.as_value(),
+            time.as_value(),
+            ts.as_value(),
+            ts.assume_utc().as_value(),
+            Interval::from_days(2).as_value(),
+            Uuid::nil().as_value(),
+        ] {
+            assert_eq!((&value).as_value(), value);
+        }
+        let cow_value: Cow<'_, Value<'_>> = Cow::Borrowed(&Value::Null);
+        assert_eq!((&cow_value).as_value(), Value::Null);
+        let json = serde_json::json!({"a": 1});
+        assert_eq!((&json).as_value(), Value::Json(Some(json.clone())));
+
+        assert_eq!(<&Value<'_>>::as_empty_value(), Value::Null);
+        assert_eq!(<&Interval>::as_empty_value(), Value::Interval(None));
+        assert_eq!(<&i32>::as_empty_value(), Value::Int32(None));
+        assert_eq!(UtcDateTime::as_empty_value(), Value::Timestamp(None));
+        assert_eq!(
+            <&FixedDecimal<10, 2>>::as_empty_value(),
+            Value::Decimal(None, 0, 0)
         );
-        assert!(
-            tokens(&Value::Array(
-                None,
-                Box::new(CollectionType {
-                    element: Value::Int32(None),
-                    len: 3
-                })
-            ))
-            .contains("Array (None , Box :: new")
+        assert_eq!(<&[i32; 3]>::as_empty_value(), <[i32; 3]>::as_empty_value());
+        assert_eq!(<&[i32]>::as_empty_value(), Vec::<i32>::as_empty_value());
+        assert_eq!(
+            <&HashMap<i32, i32>>::as_empty_value(),
+            HashMap::<i32, i32>::as_empty_value()
         );
-        assert!(
-            tokens(&Value::List(
-                None,
-                Box::new(CollectionType {
-                    element: Value::Int32(None),
-                    len: 0
-                })
-            ))
-            .contains("List")
-        );
-        assert!(
-            tokens(&Value::Map(
-                None,
-                Box::new(MapType {
-                    key: Value::Varchar(None),
-                    value: Value::Int32(None)
-                })
-            ))
-            .contains("Map")
-        );
-        assert!(tokens(&Value::Json(None)).contains("Json"));
-        assert!(
-            tokens(&Value::Struct(
-                None,
-                Box::new(StructType {
-                    fields: vec![("a".to_string(), Value::Int32(None))],
-                    name: TableRef::new("t".into())
-                })
-            ))
-            .contains("Struct")
-        );
-        assert!(tokens(&Value::Unknown(None)).contains("Unknown"));
+        assert_eq!(<&Cow<'_, str>>::as_empty_value(), Value::Varchar(None));
+        assert_eq!(<&Cow<'_, Value<'_>>>::as_empty_value(), Value::Null);
+        assert_eq!(<&Option<i32>>::as_empty_value(), Value::Int32(None));
+        assert_eq!(<&Box<i32>>::as_empty_value(), Value::Int32(None));
+        assert_eq!(<&Cell<i32>>::as_empty_value(), Value::Int32(None));
+        assert_eq!(<&RefCell<i32>>::as_empty_value(), Value::Int32(None));
+        assert_eq!(<&RwLock<i32>>::as_empty_value(), Value::Int32(None));
+        assert_eq!(<&Arc<i32>>::as_empty_value(), Value::Int32(None));
+        assert_eq!(<&serde_json::Value>::as_empty_value(), Value::Json(None));
     }
 }

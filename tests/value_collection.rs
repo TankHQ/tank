@@ -5,8 +5,7 @@ mod tests {
         collections::{BTreeMap, HashMap, LinkedList, VecDeque},
         str::FromStr,
     };
-    use tank::TableRef;
-    use tank_core::{AsValue, CollectionType, StructType, Value};
+    use tank::{AsValue, CollectionType, StructType, TableRef, Value};
     use uuid::Uuid;
 
     #[test]

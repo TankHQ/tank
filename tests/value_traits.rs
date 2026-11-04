@@ -6,7 +6,7 @@ mod tests {
         collections::{HashMap, HashSet, hash_map::DefaultHasher},
         hash::{Hash, Hasher},
     };
-    use tank_core::{AsValue, CollectionType, Interval, MapType, StructType, TableRef, Value};
+    use tank::{AsValue, CollectionType, Interval, MapType, StructType, TableRef, Value};
     use time::Month;
     use uuid::Uuid;
 
@@ -421,6 +421,22 @@ mod tests {
                 })
             ))
         );
+
+        let struct_type = |name: &'static str, fields: Vec<(String, Value<'static>)>| {
+            Value::Struct(
+                None,
+                Box::new(StructType {
+                    fields,
+                    name: TableRef::new(Cow::Borrowed(name)),
+                }),
+            )
+        };
+        let base = struct_type("t", vec![("a".into(), Value::Int32(None))]);
+        assert!(base.same_type(&struct_type("t", vec![("a".into(), Value::Int32(Some(1)))])));
+        assert!(!base.same_type(&struct_type("u", vec![("a".into(), Value::Int32(None))])));
+        assert!(!base.same_type(&struct_type("t", vec![])));
+        assert!(!base.same_type(&struct_type("t", vec![("b".into(), Value::Int32(None))])));
+        assert!(!base.same_type(&struct_type("t", vec![("a".into(), Value::Int64(None))])));
     }
 
     #[test]
@@ -582,10 +598,10 @@ mod tests {
             Value::TimestampWithTimezone(Some(tstz))
         );
         assert_eq!(
-            Value::Interval(Some(tank_core::Interval::from_days(5)))
+            Value::Interval(Some(Interval::from_days(5)))
                 .try_as(&Value::Interval(None))
                 .unwrap(),
-            Value::Interval(Some(tank_core::Interval::from_days(5)))
+            Value::Interval(Some(Interval::from_days(5)))
         );
         assert_eq!(
             Value::Uuid(Some(Uuid::nil()))
@@ -900,7 +916,7 @@ mod tests {
         set.insert(Value::TimestampWithTimezone(Some(
             time::PrimitiveDateTime::new(d, t).assume_utc(),
         )));
-        set.insert(Value::Interval(Some(tank_core::Interval::from_days(7))));
+        set.insert(Value::Interval(Some(Interval::from_days(7))));
         assert!(set.len() >= 25);
     }
 
@@ -1118,5 +1134,61 @@ mod tests {
                 ))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn value_into_owned() {
+        let date = time::Date::from_calendar_date(2024, Month::March, 2).unwrap();
+        let time = time::Time::from_hms(9, 8, 7).unwrap();
+        let ts = time::PrimitiveDateTime::new(date, time);
+        for value in [
+            Value::Boolean(Some(true)),
+            Value::Int8(Some(-8)),
+            Value::Int16(Some(-16)),
+            Value::Int128(Some(Box::new(-128))),
+            Value::UInt8(Some(8)),
+            Value::UInt16(Some(16)),
+            Value::UInt32(Some(32)),
+            Value::UInt64(Some(64)),
+            Value::UInt128(Some(Box::new(128))),
+            Value::Float32(Some(1.5)),
+            Value::Float64(Some(2.5)),
+            Value::Char(Some('x')),
+            Value::Blob(Some(Cow::Borrowed(&[1, 2]))),
+            Value::Date(Some(date)),
+            Value::Time(Some(time)),
+            Value::Timestamp(Some(ts)),
+            Value::TimestampWithTimezone(Some(ts.assume_utc())),
+            Value::Interval(Some(Interval::from_days(3))),
+            Value::Uuid(Some(Uuid::nil())),
+            Value::List(
+                Some(vec![Value::Varchar(Some(Cow::Borrowed("b")))].into()),
+                Box::new(CollectionType {
+                    element: Value::Varchar(Some(Cow::Borrowed("b"))),
+                    len: 0,
+                }),
+            ),
+            Value::Map(
+                Some(Box::new(HashMap::from([(
+                    Value::Varchar(Some(Cow::Borrowed("k"))),
+                    Value::Varchar(Some(Cow::Borrowed("v"))),
+                )]))),
+                Box::new(MapType {
+                    key: Value::Varchar(Some(Cow::Borrowed("k"))),
+                    value: Value::Varchar(Some(Cow::Borrowed("v"))),
+                }),
+            ),
+            Value::Json(Some(serde_json::json!({"a": 1}))),
+            Value::Struct(
+                Some(vec![("f".into(), Value::Varchar(Some(Cow::Borrowed("c"))))].into()),
+                Box::new(StructType {
+                    fields: vec![("f".into(), Value::Varchar(Some(Cow::Borrowed("c"))))],
+                    name: TableRef::new(Cow::Borrowed("s")),
+                }),
+            ),
+            Value::Unknown(Some(Cow::Borrowed("u"))),
+        ] {
+            assert_eq!(value.clone().into_owned(), value);
+        }
     }
 }

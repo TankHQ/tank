@@ -1,8 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use tank_core::{AsValue, Value};
-    // For every (target, source-variant) pair, a value in range must convert
-    // and a value out of range must error. Never silently wrap.
+    use tank::{AsValue, Value};
+
     macro_rules! conv {
         ($t:ty, $variant:ident, $v:expr) => {
             <$t>::try_from_value(Value::$variant(Some($v)))

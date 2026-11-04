@@ -2,9 +2,10 @@
 mod tests {
     use indoc::indoc;
     use rust_decimal::Decimal;
-    use std::str::FromStr;
+    use std::{collections::BTreeMap, str::FromStr};
     use tank::{
-        Context, DynQuery, Entity, Fragment, GenericSqlWriter, QueryBuilder, SqlWriter, Value, expr,
+        BinaryOp, BinaryOpType, ColumnDef, Context, DynQuery, Entity, Expression, Fragment,
+        GenericSqlWriter, Operand, QueryBuilder, SqlWriter, Value, expr,
     };
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
@@ -258,5 +259,71 @@ mod tests {
             sql.contains("-00:30"),
             "Expected -00:30 for sub-hour negative offset, got: {sql}"
         );
+    }
+
+    #[test]
+    fn test_sql_writer_types_and_operators() {
+        let mut ctx = Context::new(Fragment::SqlCreateTable, false);
+        for (value, expected) in [
+            (Value::Int128(None), "HUGEINT"),
+            (Value::UInt8(None), "UTINYINT"),
+            (Value::UInt128(None), "UHUGEINT"),
+            (Value::TimestampWithTimezone(None), "TIMESTAMPTZ"),
+            (Value::Json(None), "JSON"),
+            (Value::Null, ""),
+        ] {
+            let mut out = DynQuery::default();
+            WRITER.write_column_type(&mut ctx, &mut out, &value);
+            assert_eq!(out.as_str(), expected);
+        }
+
+        let mut out = DynQuery::default();
+        WRITER.write_column_overridden_type(
+            &mut ctx,
+            &mut out,
+            &ColumnDef::default(),
+            &BTreeMap::from([("", "CUSTOM")]),
+        );
+        assert_eq!(out.as_str(), "CUSTOM");
+
+        for (value, expected) in [
+            (Value::UInt8(Some(1)), "1"),
+            (Value::UInt128(Some(Box::new(5))), "5"),
+        ] {
+            let mut out = DynQuery::default();
+            WRITER.write_value(&mut Context::empty(), &mut out, &value);
+            assert_eq!(out.as_str(), expected);
+        }
+
+        let tuple = [Operand::LitInt(1), Operand::LitInt(2)];
+        for (operand, expected) in [
+            (Operand::LitTuple(&tuple), "(1,2)"),
+            (Operand::Value(&Value::Int32(Some(9))), "9"),
+        ] {
+            let mut out = DynQuery::default();
+            WRITER.write_operand(&mut ctx, &mut out, &operand);
+            assert_eq!(out.as_str(), expected);
+        }
+
+        for (op, expected) in [
+            (BinaryOpType::Is, "a IS 'x'"),
+            (BinaryOpType::Regexp, "a REGEXP 'x'"),
+            (BinaryOpType::NotRegexp, "a NOT REGEXP 'x'"),
+            (BinaryOpType::Glob, "a GLOB 'x'"),
+            (BinaryOpType::ShiftLeft, "a << 'x'"),
+        ] {
+            let mut out = DynQuery::default();
+            (BinaryOp {
+                op,
+                lhs: Operand::LitIdent("a"),
+                rhs: Operand::LitStr("x"),
+            })
+            .write_query(
+                &WRITER,
+                &mut Context::new(Fragment::SqlSelect, false),
+                &mut out,
+            );
+            assert_eq!(out.as_str(), expected);
+        }
     }
 }

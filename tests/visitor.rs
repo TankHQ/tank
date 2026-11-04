@@ -2,8 +2,9 @@
 mod tests {
     use std::sync::Arc;
     use tank::{
-        Entity, Expression, ExpressionVisitor, FindOrder, GenericSqlWriter, IsAggregateFunction,
-        IsAlias, IsAsterisk, IsConstant, IsFalse, IsQuestionMark, IsTrue, Order, cols, expr,
+        CollectionType, Context, DynQuery, Entity, Expression, ExpressionVisitor, FindOrder,
+        Fragment, GenericSqlWriter, IsAggregateFunction, IsAlias, IsAsterisk, IsConstant, IsFalse,
+        IsQuestionMark, IsTrue, Operand, Order, Value, WriteInList, cols, expr,
     };
 
     #[derive(Entity)]
@@ -112,6 +113,7 @@ mod tests {
         let mut alias_visitor2 = IsAlias::default();
         let e = expr!(Table::col_a);
         assert!(!e.accept_visitor(&mut alias_visitor2, &WRITER, &mut ctx, &mut out));
+        assert!(!expr!(1 + 2).accept_visitor(&mut alias_visitor2, &WRITER, &mut ctx, &mut out));
     }
 
     #[test]
@@ -132,6 +134,11 @@ mod tests {
             assert!(ordered.accept_visitor(&mut finder, &WRITER, &mut ctx, &mut out));
             assert_eq!(finder.order, Order::DESC);
         }
+        let mut finder = FindOrder::default();
+        assert!(expr!(true).accept_visitor(&mut finder, &WRITER, &mut ctx, &mut out));
+        assert!(expr!(Table::col_a).accept_visitor(&mut finder, &WRITER, &mut ctx, &mut out));
+        assert!(expr!(!true).accept_visitor(&mut finder, &WRITER, &mut ctx, &mut out));
+        assert!(expr!(1 + 2).accept_visitor(&mut finder, &WRITER, &mut ctx, &mut out));
     }
 
     #[test]
@@ -141,6 +148,7 @@ mod tests {
         let mut visitor = Defaults;
         let mut out = Default::default();
         let mut ctx = Default::default();
+        assert!(!expr!(1).accept_visitor(&mut visitor, &WRITER, &mut ctx, &mut out));
         assert!(!expr!(Table::col_a).accept_visitor(&mut visitor, &WRITER, &mut ctx, &mut out));
         assert!(!expr!(1 + 2).accept_visitor(&mut visitor, &WRITER, &mut ctx, &mut out));
         assert!(!expr!(!true).accept_visitor(&mut visitor, &WRITER, &mut ctx, &mut out));
@@ -183,5 +191,28 @@ mod tests {
             &mut ctx,
             &mut out
         ));
+    }
+
+    #[test]
+    fn visitor_write_in_list() {
+        let mut visitor = WriteInList;
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        let values: Box<[Value<'static>]> =
+            vec![Value::Int32(Some(3)), Value::Int32(Some(4))].into();
+        assert!(visitor.visit_operand(
+            &WRITER,
+            &mut ctx,
+            &mut out,
+            &Operand::Variable(Value::List(
+                Some(values),
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 0,
+                })
+            ))
+        ));
+        assert_eq!(out.as_str(), "(3,4)");
+        assert!(!visitor.visit_operand(&WRITER, &mut ctx, &mut out, &Operand::LitInt(1)));
     }
 }

@@ -4,7 +4,7 @@ mod tests {
         Decimal,
         prelude::{FromPrimitive, Zero},
     };
-    use tank_core::{AsValue, Interval, Value};
+    use tank::{AsValue, Interval, Value};
     use time::Month;
     use uuid::Uuid;
 

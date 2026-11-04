@@ -10,11 +10,14 @@ mod tests {
     use serde_json::Number;
     use std::{
         borrow::Cow,
-        collections::{HashSet, LinkedList, VecDeque},
+        cell::{Cell, RefCell},
+        collections::{BTreeMap, HashMap, HashSet, LinkedList, VecDeque, hash_map::DefaultHasher},
+        hash::{Hash, Hasher},
+        rc::Rc,
         str::FromStr,
+        sync::Arc,
     };
-    use tank::TableRef;
-    use tank_core::{AsValue, CollectionType, Interval, MapType, StructType, Value};
+    use tank::{AsValue, CollectionType, Interval, MapType, StructType, TableRef, Value};
     use time::Month;
     use uuid::Uuid;
 
@@ -1140,11 +1143,6 @@ mod tests {
 
     #[test]
     fn value_shared_wrappers_arc_rc_cell_refcell() {
-        use std::{
-            cell::{Cell, RefCell},
-            rc::Rc,
-            sync::Arc,
-        };
         let arc_v = Arc::new(5_u8).as_value();
         assert_eq!(arc_v, Value::UInt8(Some(5)));
         let rc_v = Rc::new(7_u16).as_value();
@@ -1166,7 +1164,6 @@ mod tests {
 
     #[test]
     fn value_map_semantics() {
-        use std::collections::{BTreeMap, HashMap};
         let mut m1: HashMap<String, i32> = HashMap::new();
         m1.insert("a".into(), 1);
         let mut m2: HashMap<String, i32> = HashMap::new();
@@ -1775,10 +1772,10 @@ mod tests {
             Value::TimestampWithTimezone(Some(tstz))
         );
         assert_eq!(
-            Value::Interval(Some(tank_core::Interval::from_days(5)))
+            Value::Interval(Some(Interval::from_days(5)))
                 .try_as(&Value::Interval(None))
                 .unwrap(),
-            Value::Interval(Some(tank_core::Interval::from_days(5)))
+            Value::Interval(Some(Interval::from_days(5)))
         );
         assert_eq!(
             Value::Uuid(Some(Uuid::nil()))
@@ -1944,7 +1941,6 @@ mod tests {
 
     #[test]
     fn value_hash() {
-        use std::collections::HashSet;
         let mut set = HashSet::new();
         set.insert(Value::Null);
         set.insert(Value::Boolean(Some(true)));
@@ -2029,7 +2025,7 @@ mod tests {
         set.insert(Value::TimestampWithTimezone(Some(
             time::PrimitiveDateTime::new(d, t).assume_utc(),
         )));
-        set.insert(Value::Interval(Some(tank_core::Interval::from_days(7))));
+        set.insert(Value::Interval(Some(Interval::from_days(7))));
         assert!(set.len() >= 25);
     }
 
@@ -2052,9 +2048,6 @@ mod tests {
 
     #[test]
     fn value_map_hash_matches_equality() {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
         let empty = Value::Map(
             Some(std::collections::HashMap::new().into()),
             Box::new(MapType {
@@ -2129,13 +2122,13 @@ fn value_value() {
 
 #[cfg(test)]
 mod as_value_tests {
+    use rust_decimal::Decimal;
     use serde_json::Number;
-    use std::mem;
-    use tank::{AsValue, Value};
+    use std::{collections::HashMap, mem, num::*, rc::Rc, sync::Arc};
+    use tank::{AsValue, FixedDecimal, Interval, Value};
 
     #[test]
     fn nonzero_conversions() {
-        use std::num::*;
         let v = NonZeroI32::new(42).unwrap().as_value();
         assert_eq!(v, Value::Int32(Some(42)));
         let back = NonZeroI32::try_from_value(v).unwrap();
@@ -2192,7 +2185,6 @@ mod as_value_tests {
 
     #[test]
     fn decimal_from_various_types() {
-        use rust_decimal::Decimal;
         assert_eq!(
             Decimal::try_from_value(Value::Int8(Some(5))).unwrap(),
             Decimal::new(5, 0)
@@ -2285,7 +2277,6 @@ mod as_value_tests {
 
     #[test]
     fn integer_decimal_conversions() {
-        use rust_decimal::Decimal;
         assert_eq!(
             i32::try_from_value(Value::Decimal(Some(Decimal::new(42, 0)), 0, 0)).unwrap(),
             42
@@ -2379,7 +2370,6 @@ mod as_value_tests {
 
     #[test]
     fn interval_parse() {
-        use tank_core::Interval;
         let i = Interval::parse("'1 year 2 months 3 days'").unwrap();
         assert_eq!(i.months, 14); // 12 + 2
         assert_eq!(i.days, 3);
@@ -2431,7 +2421,6 @@ mod as_value_tests {
 
     #[test]
     fn time_from_interval() {
-        use tank_core::Interval;
         let t = time::Time::try_from_value(Value::Interval(Some(
             Interval::from_hours(2) + Interval::from_mins(30),
         )))
@@ -2481,7 +2470,6 @@ mod as_value_tests {
 
     #[test]
     fn hashmap_conversions() {
-        use std::collections::HashMap;
         let mut m = HashMap::new();
         m.insert("key".to_string(), 42_i32);
         let v = m.clone().as_value();
@@ -2502,17 +2490,13 @@ mod as_value_tests {
         let back: Box<i32> = Box::try_from_value(Value::Int32(Some(42))).unwrap();
         assert_eq!(*back, 42);
 
-        use std::sync::Arc;
         assert_eq!(Arc::new(42_i32).as_value(), Value::Int32(Some(42)));
 
-        use std::rc::Rc;
         assert_eq!(Rc::new(42_i32).as_value(), Value::Int32(Some(42)));
     }
 
     #[test]
     fn fixed_decimal_round_trip() {
-        use rust_decimal::Decimal;
-        use tank_core::FixedDecimal;
         let fd: FixedDecimal<10, 2> = Decimal::new(1234, 2).into();
         let v = fd.as_value();
         let back: FixedDecimal<10, 2> = FixedDecimal::try_from_value(v).unwrap();

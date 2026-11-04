@@ -10,6 +10,7 @@ mod tests {
         let text_ptr = text.as_ptr();
         let row = RowOwned::new(names.clone(), vec![Value::Varchar(Some(Cow::Owned(text)))]);
         let values_ptr = row.values.as_ptr();
+        assert!(!row.is_empty());
         assert!(matches!(row.value(0), Some(Cow::Borrowed(_))));
         assert!(matches!(row.get_column("name"), Some(Cow::Borrowed(_))));
         assert!(matches!(row.values().next(), Some(Cow::Borrowed(_))));
@@ -27,6 +28,7 @@ mod tests {
             panic!("Expected stored text")
         };
         assert_eq!(text.as_ptr(), text_ptr);
+        assert_eq!(owned.into_iter().count(), 1);
     }
 
     #[derive(Debug)]

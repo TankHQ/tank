@@ -18,6 +18,8 @@ This document records the core architectural invariants, ABI/LLVM optimization r
 1. **Minimal Public Surface**: Keep `Driver`, `Executor`, `Row`, `Entity`, and `AsValue` free of internal optimization hooks. Never expose driver-specific or macro-internal helper methods on public traits.
 2. **No Module-Level Functions or Variables in Type Modules**: Avoid free/module-level functions and module-level variables (even private ones) in regular modules. Encapsulate type-specific helpers and constants as associated functions, methods, or associated constants inside `impl` blocks on the relevant type. Genuinely shared, type-independent free functions belong in dedicated utility modules such as `util.rs`.
 3. **Prefer `use` Imports Over Inline Path Qualification**: Import types, traits, functions, and macros at the top of the file via `use` (e.g., `use tank_core::Error;`) rather than referring to them with inline namespace prefixes (e.g., `tank_core::Error`), unless disambiguating colliding names (e.g., `wtx::Error` vs `tank_core::Error`).
+   - In tests, place imports at the top of the enclosing `mod tests` (or the top of the file for top-level tests), not inside individual test functions.
+   - Re-exported paths must use the facade crate: import from `tank`, not `tank_core` (e.g., `use tank::Value;`, not `use tank_core::Value;`). Do not import from both.
 4. **Terse, Combinator-Oriented Code**: Prefer iterator/stream combinators and straightforward data flow over verbose state machines or extra helper types.
 5. **Comment the *Why*, Not the *What***: Keep comments concise (1–3 lines) and reserve them for non-obvious invariants, ABI/LLVM SROA constraints, or protocol subtleties.
 

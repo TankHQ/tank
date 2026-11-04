@@ -72,10 +72,12 @@ impl Interval {
     }
 
     pub const fn from_duration(duration: &Duration) -> Self {
+        let secs = duration.as_secs();
         Self {
             months: 0,
-            days: 0,
-            nanos: duration.as_nanos() as i64,
+            days: Self::saturating_i32((secs / Self::SECS_IN_DAY as u64) as i128),
+            nanos: ((secs % Self::SECS_IN_DAY as u64) as i128 * Self::NANOS_IN_SEC
+                + duration.subsec_nanos() as i128) as i64,
         }
     }
 
@@ -310,7 +312,7 @@ macro_rules! sum_intervals {
             months: (($lhs.months as i128) $op ($rhs.months as i128))
                 .clamp(i32::MIN as i128, i32::MAX as i128) as _,
             days: days as _,
-            nanos: nanos as _,
+            nanos: nanos.clamp(i64::MIN as i128, i64::MAX as i128) as _,
         }
     }};
 }
@@ -350,14 +352,7 @@ impl Neg for Interval {
 
 impl From<Duration> for Interval {
     fn from(value: Duration) -> Self {
-        Self {
-            months: 0,
-            days: (value.as_secs() as i64 / Interval::SECS_IN_DAY)
-                .clamp(i32::MIN as _, i32::MAX as _) as _,
-            nanos: ((value.as_secs() as i64 % Interval::SECS_IN_DAY) as i128
-                * Interval::NANOS_IN_SEC
-                + value.subsec_nanos() as i128) as _,
-        }
+        Self::from_duration(&value)
     }
 }
 

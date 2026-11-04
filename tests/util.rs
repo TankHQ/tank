@@ -5,16 +5,23 @@ mod tests {
     use std::{
         borrow::Cow,
         collections::{BTreeMap, HashMap},
+        ffi::{CString, c_char},
         fmt::Write,
+        ptr,
+        vec::IntoIter,
     };
+    use syn::{Path, parse_str};
     use tank::{
         CollectionType, Context, Dataset, DeclareTableRef, DynQuery, EitherIterator, Entity,
-        FixedDecimal, Fragment, GenericSqlWriter, Interval, MapType, QueryBuilder, QueryResult,
-        References, Row, RowLabels, RowOwned, RowsAffected, SqlWriter, StructType, TableRef, Value,
-        as_c_string, column_def, consume_while, extract_number, quote_btree_map, quote_cow,
-        quote_option, separated_by, truncate_long, value_to_json, write_escaped,
+        Expression, FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType,
+        QueryBuilder, QueryResult, References, Row, RowLabels, RowOwned, RowsAffected, SqlWriter,
+        StructType, TRUNCATE_LONG_LIMIT, TableRef, Value, as_c_string, column_def, consume_while,
+        decimal_from_scaled, error_message_from_ptr, extract_number, matches_path, month_to_number,
+        number_to_month, quote_btree_map, quote_cow, quote_option, separated_by, truncate_bound,
+        truncate_long, value_to_json, write_escaped,
     };
-    use time::{Date, Month, OffsetDateTime, Time, UtcOffset};
+    use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
+    use uuid::Uuid;
 
     #[test]
     fn table_ref_full_name_no_schema() {
@@ -99,7 +106,7 @@ mod tests {
             rendered_borrowed.as_str().as_ref(),
             r#""analytics"."events" e"#
         );
-        assert_eq!((&table).table_ref(), table);
+        assert_eq!((&&table).table_ref(), table);
         assert!(!<&TableRef as Dataset>::qualified_columns());
 
         let declared = DeclareTableRef(table.clone());
@@ -567,7 +574,7 @@ mod tests {
         let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
 
-        let empty_cols: &[&dyn tank::Expression] = &[];
+        let empty_cols: &[&dyn Expression] = &[];
         writer.write_select(
             &mut q,
             &QueryBuilder::new()
@@ -644,6 +651,48 @@ mod tests {
             serde_json::from_str::<String>(q.as_str().as_ref()).unwrap(),
             r#"folder\queue"#
         );
+
+        let date = Date::from_calendar_date(2024, Month::January, 2).unwrap();
+        let time = Time::from_hms(1, 2, 3).unwrap();
+        let ts = PrimitiveDateTime::new(date, time);
+        for (fragment, value, expected) in [
+            (Fragment::Json, Value::Null, "null"),
+            (Fragment::Json, Value::Date(Some(date)), "\"2024-01-02\""),
+            (Fragment::Json, Value::Time(Some(time)), "\"01:02:03.0\""),
+            (
+                Fragment::Json,
+                Value::Timestamp(Some(ts)),
+                "\"2024-01-02 01:02:03.0\"",
+            ),
+            (
+                Fragment::Json,
+                Value::TimestampWithTimezone(Some(ts.assume_utc())),
+                "\"2024-01-02 01:02:03.0\"",
+            ),
+            (
+                Fragment::Json,
+                Value::Blob(Some(vec![1, 2].into())),
+                "\"\\x01\\x02\"",
+            ),
+            (
+                Fragment::Json,
+                Value::Uuid(Some(Uuid::nil())),
+                "\"00000000-0000-0000-0000-000000000000\"",
+            ),
+            (
+                Fragment::Json,
+                Value::Interval(Some(Interval::from_secs(1))),
+                "INTERVAL \"1 SECOND\"",
+            ),
+            (Fragment::JsonKey, Value::Boolean(Some(true)), "\"true\""),
+            (Fragment::JsonKey, Value::Boolean(Some(false)), "\"false\""),
+            (Fragment::JsonKey, Value::Int32(Some(3)), "\"3\""),
+            (Fragment::JsonKey, Value::Float64(Some(1.5)), "\"1.5\""),
+        ] {
+            let mut out = DynQuery::default();
+            writer.write_value(&mut Context::new(fragment, false), &mut out, &value);
+            assert_eq!(out.as_str(), expected);
+        }
     }
 
     #[test]
@@ -664,24 +713,25 @@ mod tests {
         let dt = OffsetDateTime::new_in_offset(
             Date::from_calendar_date(2025, Month::June, 15).unwrap(),
             Time::from_hms(10, 30, 0).unwrap(),
-            UtcOffset::from_hms(5, 30, 0).unwrap(),
+            UtcOffset::from_hms(5, 30, 15).unwrap(),
         );
         let val = Value::TimestampWithTimezone(Some(dt));
         writer.write_value(&mut Default::default(), &mut q, &val);
         let s = q.as_str().to_string();
         assert!(s.contains("2025"));
-        assert!(s.contains("10:30"));
+        assert!(s.contains("+05:30:15"));
     }
 
     #[test]
     fn sql_writer_write_infinity_float() {
         let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
-        let val = Value::Float64(Some(f64::INFINITY));
-        writer.write_value(&mut Default::default(), &mut q, &val);
-        let s = q.as_str().to_string();
-        assert!(s.contains("CAST"));
-        assert!(s.contains("inf"));
+        for f in [f64::INFINITY, f64::NEG_INFINITY] {
+            let mut q = DynQuery::default();
+            writer.write_value(&mut Default::default(), &mut q, &Value::Float64(Some(f)));
+            let s = q.as_str().to_string();
+            assert!(s.contains("CAST"));
+            assert!(s.contains("inf"));
+        }
     }
 
     #[test]
@@ -716,14 +766,13 @@ mod tests {
         let mut q1 = DynQuery::default();
         writer.write_transaction_begin(&mut q1);
         assert_eq!(q1.as_str().as_ref(), "BEGIN;");
-
-        let mut q2 = DynQuery::default();
-        writer.write_transaction_commit(&mut q2);
-        assert_eq!(q2.as_str().as_ref(), "COMMIT;");
-
-        let mut q3 = DynQuery::default();
-        writer.write_transaction_rollback(&mut q3);
-        assert_eq!(q3.as_str().as_ref(), "ROLLBACK;");
+        writer.write_transaction_commit(&mut q1);
+        assert_eq!(q1.as_str().as_ref(), "BEGIN;\nCOMMIT;");
+        writer.write_transaction_rollback(&mut q1);
+        assert_eq!(q1.as_str().as_ref(), "BEGIN;\nCOMMIT;\nROLLBACK;");
+        let mut q2 = DynQuery::new("SELECT 1".into());
+        writer.write_transaction_begin(&mut q2);
+        assert_eq!(q2.as_str(), "SELECT 1\nBEGIN;");
     }
 
     #[test]
@@ -749,7 +798,7 @@ mod tests {
         let mut q = DynQuery::new("-- comment".into());
         writer.write_select(
             &mut q,
-            &tank::QueryBuilder::new()
+            &QueryBuilder::new()
                 .select(AppendTable::columns())
                 .from(AppendTable::table()),
         );
@@ -774,11 +823,11 @@ mod tests {
 
     #[test]
     fn util_either_iterator() {
-        let left: EitherIterator<std::vec::IntoIter<i32>, std::vec::IntoIter<i32>> =
+        let left: EitherIterator<IntoIter<i32>, IntoIter<i32>> =
             EitherIterator::Left(vec![1, 2, 3].into_iter());
         assert_eq!(left.collect::<Vec<_>>(), vec![1, 2, 3]);
 
-        let right: EitherIterator<std::vec::IntoIter<i32>, std::vec::IntoIter<i32>> =
+        let right: EitherIterator<IntoIter<i32>, IntoIter<i32>> =
             EitherIterator::Right(vec![4, 5].into_iter());
         assert_eq!(right.collect::<Vec<_>>(), vec![4, 5]);
     }
@@ -938,8 +987,8 @@ mod tests {
         struct Tbl2 {
             _y: i32,
         }
-        let join = tank::Join::<_, _, ()> {
-            join: tank::JoinType::Inner,
+        let join = Join::<_, _, ()> {
+            join: JoinType::Inner,
             lhs: Tbl1::table().clone(),
             rhs: Tbl2::table().clone(),
             on: None,
@@ -961,8 +1010,8 @@ mod tests {
         struct Right1 {
             _b: i32,
         }
-        let join = tank::Join::<_, _, ()> {
-            join: tank::JoinType::Left,
+        let join = Join::<_, _, ()> {
+            join: JoinType::Left,
             lhs: Left1::table().clone(),
             rhs: Right1::table().clone(),
             on: None,
@@ -1054,15 +1103,12 @@ mod tests {
 
     #[test]
     fn util_decimal_from_scaled() {
+        assert_eq!(decimal_from_scaled(1234, 2).unwrap(), Decimal::new(1234, 2));
         assert_eq!(
-            tank::decimal_from_scaled(1234, 2).unwrap(),
-            Decimal::new(1234, 2)
-        );
-        assert_eq!(
-            tank::decimal_from_scaled(200_i128, 29).unwrap(),
+            decimal_from_scaled(200_i128, 29).unwrap(),
             Decimal::new(20, 28)
         );
-        assert!(tank::decimal_from_scaled(i128::MAX, 0).is_err());
+        assert!(decimal_from_scaled(i128::MAX, 0).is_err());
     }
 
     #[test]
@@ -1081,25 +1127,25 @@ mod tests {
             (11, Month::November),
             (12, Month::December),
         ] {
-            assert_eq!(tank::month_to_number!(month), number);
-            assert_eq!(tank::number_to_month!(number, Month::January), month);
+            assert_eq!(month_to_number!(month), number);
+            assert_eq!(number_to_month!(number, Month::January), month);
         }
-        assert_eq!(tank::number_to_month!(13, Month::January), Month::January);
+        assert_eq!(number_to_month!(13, Month::January), Month::January);
     }
 
     #[test]
     fn util_truncate_long_multibyte() {
         assert_eq!(format!("{}", truncate_long!("SELECT 1")), "SELECT 1");
 
-        let long_ascii = "X".repeat(tank::TRUNCATE_LONG_LIMIT + 100);
+        let long_ascii = "X".repeat(TRUNCATE_LONG_LIMIT + 100);
         let truncated = format!("{}", truncate_long!(long_ascii));
         assert!(truncated.ends_with("...\n"));
         assert_eq!(
             truncated.trim_end_matches("...\n").trim().len(),
-            tank::TRUNCATE_LONG_LIMIT
+            TRUNCATE_LONG_LIMIT
         );
 
-        let long_utf8 = "€".repeat(tank::TRUNCATE_LONG_LIMIT);
+        let long_utf8 = "€".repeat(TRUNCATE_LONG_LIMIT);
         let truncated = format!("{}", truncate_long!(long_utf8));
         assert!(truncated.ends_with("...\n"));
 
@@ -1121,10 +1167,28 @@ mod tests {
 
     #[test]
     fn truncate_bound_edges() {
-        assert_eq!(tank::truncate_bound("abc", 10), 3);
-        assert_eq!(tank::truncate_bound("abcdef", 3), 3);
-        assert_eq!(tank::truncate_bound("aé", 2), 1);
-        assert_eq!(tank::truncate_bound("aé", 3), 3);
-        assert_eq!(tank::truncate_bound("", 0), 0);
+        assert_eq!(truncate_bound("abc", 10), 3);
+        assert_eq!(truncate_bound("abcdef", 3), 3);
+        assert_eq!(truncate_bound("aé", 2), 1);
+        assert_eq!(truncate_bound("aé", 3), 3);
+        assert_eq!(truncate_bound("", 0), 0);
+    }
+
+    #[test]
+    fn error_message_from_ptr_handles_null_and_text() {
+        let text = CString::new("boom").unwrap();
+        let raw: *const c_char = text.as_ptr();
+        assert_eq!(error_message_from_ptr(&raw), "boom");
+
+        let null: *const c_char = ptr::null();
+        assert!(error_message_from_ptr(&null).contains("Unknown error"));
+    }
+
+    #[test]
+    fn matches_path_matches_trailing_segments() {
+        let path: Path = parse_str("std::num::NonZeroI32").unwrap();
+        assert!(matches_path(&path, &["std", "num", "NonZeroI32"]));
+        assert!(matches_path(&path, &["num", "NonZeroI32"]));
+        assert!(!matches_path(&path, &["std", "num", "NonZeroI64"]));
     }
 }
