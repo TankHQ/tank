@@ -1,8 +1,9 @@
+mod comments;
 mod init;
 
 #[cfg(test)]
 mod tests {
-    use super::init::init;
+    use super::{comments::comments, init::init};
     use std::{env, path::PathBuf, sync::Mutex};
     use tank_core::{Connection, ConnectionPool, Driver, PoolConfig};
     use tank_postgres::{PostgresConnection, PostgresDriver};
@@ -25,6 +26,7 @@ mod tests {
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
+        comments(&mut pool).await;
         drop(container);
 
         // SSL

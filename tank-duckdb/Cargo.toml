@@ -27,5 +27,6 @@ uuid.workspace = true
 
 [dev-dependencies]
 indoc.workspace = true
+tank.workspace = true
 tank-tests = { path = "../tank-tests" }
 uuid.workspace = true

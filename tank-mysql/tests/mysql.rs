@@ -1,8 +1,9 @@
+mod comments;
 mod init;
 
 #[cfg(test)]
 mod tests {
-    use crate::init::init_mysql;
+    use crate::{comments::comments, init::init_mysql};
     use std::sync::Mutex;
     use tank_core::{Connection, Driver, PoolConfig};
     use tank_mysql::{MySQLConnection, MySQLDriver};
@@ -25,6 +26,7 @@ mod tests {
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
+        comments(&mut pool).await;
         drop(container);
 
         // SSL

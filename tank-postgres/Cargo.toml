@@ -27,7 +27,9 @@ url.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+indoc.workspace = true
 rcgen.workspace = true
+tank.workspace = true
 tank-tests = { path = "../tank-tests", features = [
     "disable-glob",
     "disable-large-integers",

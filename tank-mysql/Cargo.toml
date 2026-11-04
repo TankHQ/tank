@@ -42,7 +42,9 @@ time.workspace = true
 url.workspace = true
 
 [dev-dependencies]
+indoc.workspace = true
 rcgen.workspace = true
+tank.workspace = true
 tank-tests = { path = "../tank-tests", features = [
     "disable-glob",
     "disable-infinity",

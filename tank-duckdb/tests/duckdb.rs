@@ -1,8 +1,9 @@
+mod comments;
 mod structure;
 
 #[cfg(test)]
 mod tests {
-    use crate::structure::structure;
+    use crate::{comments::comments, structure::structure};
     use std::{path::Path, sync::Mutex};
     use tank_core::{ConnectionPool, Driver, PoolConfig};
     use tank_duckdb::DuckDBDriver;
@@ -38,5 +39,6 @@ mod tests {
         );
         execute_tests(&mut pool).await;
         structure(&mut pool).await;
+        comments(&mut pool).await;
     }
 }
