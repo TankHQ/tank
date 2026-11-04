@@ -16,13 +16,20 @@ impl Prepared for YourDBPrepared {
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
+
+    fn is_empty(&self) -> bool {
+        false
+    }
+
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         // Clear
         Ok(self)
     }
+
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         self.bind_index(value, self.index)
     }
+
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
         self.index = index + 1;
         Ok(self)

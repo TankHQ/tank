@@ -29,9 +29,11 @@ impl SQLitePrepared {
             index: 1,
         }
     }
+
     pub(crate) fn statement(&self) -> *mut sqlite3_stmt {
         *self.statement
     }
+
     pub fn last_error(&self) -> String {
         unsafe {
             let db = sqlite3_db_handle(self.statement());
@@ -48,6 +50,11 @@ impl Prepared for SQLitePrepared {
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
+
+    fn is_empty(&self) -> bool {
+        self.statement().is_null()
+    }
+
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         self.index = 1;
         unsafe {
@@ -68,10 +75,12 @@ impl Prepared for SQLitePrepared {
         }
         Ok(self)
     }
+
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         self.bind_index(value, self.index)?;
         Ok(self)
     }
+
     fn bind_index(&mut self, v: impl AsValue, index: u64) -> Result<&mut Self> {
         let index = index as c_int;
         unsafe {

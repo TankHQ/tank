@@ -27,6 +27,7 @@ impl MySQLPrepared {
             index: 0,
         }
     }
+
     pub(crate) fn take_params(&mut self) -> Result<mysql_async::Params> {
         self.index = 0;
         Ok(mysql_async::Params::Positional(
@@ -42,14 +43,21 @@ impl Prepared for MySQLPrepared {
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
+
+    fn is_empty(&self) -> bool {
+        false
+    }
+
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         self.params.clear();
         self.index = 0;
         Ok(self)
     }
+
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         self.bind_index(value, self.index)
     }
+
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
         let len = self.statement.num_params();
         if self.params.is_empty() {

@@ -12,6 +12,7 @@ impl ValkeyPrepared {
     pub fn is_empty(&self) -> bool {
         self.commands.is_empty()
     }
+
     pub fn make_pipeline(&self) -> Pipeline {
         let mut pipeline = Pipeline::new();
         for cmd in &self.commands {
@@ -19,6 +20,7 @@ impl ValkeyPrepared {
         }
         pipeline
     }
+
     pub fn into_pipeline(self) -> Pipeline {
         let mut pipeline = Pipeline::new();
         for cmd in self.commands {
@@ -52,6 +54,10 @@ impl Prepared for ValkeyPrepared {
         Self: Sized,
     {
         Ok(self)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.commands.is_empty()
     }
 }
 

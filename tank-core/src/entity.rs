@@ -103,7 +103,7 @@ pub trait Entity: AsEntity + Expression {
                     column,
                 );
             }
-            if !query.is_empty() || matches!(query, DynQuery::Prepared(..)) {
+            if !query.is_empty() {
                 executor.execute(query).await?;
             }
             Ok(())

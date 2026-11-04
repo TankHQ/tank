@@ -958,8 +958,6 @@ pub trait SqlWriter: Send {
             self.write_create_table_primary_key_fragment(&mut context, out, pk.iter().map(|v| *v));
         }
         for unique in E::unique_defs() {
-            // A declared single-column group still emits a UNIQUE constraint;
-            // the column-level flag is only set by `#[tank(unique)]`.
             if unique.len() > 0 {
                 out.push_str(",\nUNIQUE (");
                 separated_by(

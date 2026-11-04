@@ -24,6 +24,7 @@ impl ScyllaDBPrepared {
             index: 0,
         }
     }
+
     pub(crate) fn take_params(&mut self) -> Result<Vec<ValueWrap>> {
         self.index = 0;
         Ok(mem::take(&mut self.params))
@@ -34,14 +35,21 @@ impl Prepared for ScyllaDBPrepared {
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
+
+    fn is_empty(&self) -> bool {
+        self.statement.get_statement().is_empty()
+    }
+
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         self.params.clear();
         self.index = 0;
         Ok(self)
     }
+
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         self.bind_index(value, self.index)
     }
+
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
         let len = self.statement.get_variable_col_specs().len();
         if self.params.is_empty() {

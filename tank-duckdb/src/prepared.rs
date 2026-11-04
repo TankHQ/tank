@@ -26,6 +26,7 @@ impl DuckDBPrepared {
             index: 1,
         }
     }
+
     pub(crate) fn statement(&self) -> duckdb_prepared_statement {
         *self.statement
     }
@@ -45,6 +46,11 @@ impl Prepared for DuckDBPrepared {
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
+
+    fn is_empty(&self) -> bool {
+        self.statement().is_null()
+    }
+
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         self.index = 1;
         unsafe {
@@ -57,10 +63,12 @@ impl Prepared for DuckDBPrepared {
         }
         Ok(self)
     }
+
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         self.bind_index(value, self.index)?;
         Ok(self)
     }
+
     fn bind_index(&mut self, v: impl AsValue, index: u64) -> Result<&mut Self> {
         unsafe {
             let prepared = self.statement();

@@ -61,8 +61,8 @@ impl DynQuery {
     }
     pub fn is_empty(&self) -> bool {
         match self {
-            Self::Raw(RawQuery(sql)) => sql.is_empty(),
-            Self::Prepared(..) => true,
+            Self::Raw(RawQuery(v)) => v.is_empty(),
+            Self::Prepared(v) => v.is_empty(),
         }
     }
 
