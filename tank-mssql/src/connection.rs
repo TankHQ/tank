@@ -55,13 +55,11 @@ impl MSSQLConnection {
 
     fn is_dml_only(sql: &str) -> bool {
         let trimmed = sql.trim_start();
-        let starts_with_dml = ["INSERT", "UPDATE", "DELETE", "MERGE"]
-            .iter()
-            .any(|kw| {
-                trimmed.len() > kw.len()
-                    && trimmed[..kw.len()].eq_ignore_ascii_case(kw)
-                    && trimmed.as_bytes()[kw.len()].is_ascii_whitespace()
-            });
+        let starts_with_dml = ["INSERT", "UPDATE", "DELETE", "MERGE"].iter().any(|kw| {
+            trimmed.len() > kw.len()
+                && trimmed[..kw.len()].eq_ignore_ascii_case(kw)
+                && trimmed.as_bytes()[kw.len()].is_ascii_whitespace()
+        });
         if !starts_with_dml {
             return false;
         }
@@ -94,10 +92,7 @@ impl Connection for MSSQLConnection {
             config.port(port);
         }
         let user = Self::percent_decode(url.username());
-        let password = url
-            .password()
-            .map(Self::percent_decode)
-            .unwrap_or_default();
+        let password = url.password().map(Self::percent_decode).unwrap_or_default();
         if !user.is_empty() || !password.is_empty() {
             config.authentication(AuthMethod::sql_server(user, password));
         }
@@ -105,35 +100,32 @@ impl Connection for MSSQLConnection {
             .path_segments()
             .and_then(|mut s| s.find(|seg| !seg.is_empty()))
             .map(Self::percent_decode);
-        let mut trust_set = false;
+        let mut encryption = EncryptionLevel::Off;
+        let mut trust_cert = false;
+        let mut ssl_ca: Option<String> = None;
         for (key, value) in url.query_pairs() {
             match key.to_ascii_lowercase().as_str() {
                 "trustservercertificate" | "trust_cert" => {
-                    trust_set = true;
-                    if matches!(value.to_ascii_lowercase().as_str(), "true" | "yes" | "1") {
-                        config.trust_cert();
-                    }
+                    trust_cert =
+                        matches!(value.to_ascii_lowercase().as_str(), "true" | "yes" | "1");
                 }
                 "trustservercertificateca" | "ssl_ca" | "sslrootcert" => {
-                    trust_set = true;
-                    let ca_path = PathBuf::from(value.as_ref());
-                    if !ca_path.exists() {
-                        let error =
-                            anyhow!("SSL CA file not found: `{}`", ca_path.to_string_lossy())
-                                .context(make_context(&url));
-                        log::error!("{error:#}");
-                        return Err(error);
-                    }
-                    config.trust_cert_ca(value);
+                    ssl_ca = Some(value.into_owned());
                 }
-                "encrypt" => {
-                    let level = match value.to_ascii_lowercase().as_str() {
-                        "true" | "yes" | "1" | "required" => EncryptionLevel::Required,
-                        "false" | "no" | "0" | "off" => EncryptionLevel::Off,
+                "encrypt" | "require_ssl" | "sslmode" => {
+                    encryption = match value.to_ascii_lowercase().as_str() {
+                        "true" | "yes" | "1" | "required" | "require" | "prefer" => {
+                            EncryptionLevel::Required
+                        }
+                        "false" | "no" | "0" | "off" | "disable" => EncryptionLevel::Off,
                         "not_supported" | "danger_plaintext" => EncryptionLevel::NotSupported,
-                        _ => EncryptionLevel::Required,
+                        _ => {
+                            let error = anyhow!("Unexpected value `{value}` for `{key}`")
+                                .context(make_context(&url));
+                            log::error!("{error:#}");
+                            return Err(error);
+                        }
                     };
-                    config.encryption(level);
                 }
                 "applicationname" | "application name" | "application_name" => {
                     config.application_name(value);
@@ -150,19 +142,22 @@ impl Connection for MSSQLConnection {
                 _ => {}
             }
         }
-        if !trust_set {
-            if let Ok(ca) = env::var("MSSQL_SSL_CA") {
-                let ca_path = PathBuf::from(&ca);
-                if !ca_path.exists() {
-                    let error = anyhow!("SSL CA file not found: `{}`", ca_path.to_string_lossy())
-                        .context(make_context(&url));
-                    log::error!("{error:#}");
-                    return Err(error);
-                }
-                config.trust_cert_ca(ca);
-            } else {
-                config.trust_cert();
+        config.encryption(encryption);
+        if ssl_ca.is_none() {
+            ssl_ca = env::var("MSSQL_SSL_CA").ok();
+        }
+        if let Some(ca) = ssl_ca {
+            let ca_path = PathBuf::from(&ca);
+            if !ca_path.exists() {
+                let error = anyhow!("SSL CA file not found: `{}`", ca_path.to_string_lossy())
+                    .context(make_context(&url));
+                log::error!("{error:#}");
+                return Err(error);
             }
+            config.trust_cert_ca(ca);
+        } else if trust_cert || encryption == EncryptionLevel::Off {
+            // TDS encrypts the login packet even when `EncryptionLevel::Off` is used.
+            config.trust_cert();
         }
         if let Some(ref db) = database {
             config.database(db);

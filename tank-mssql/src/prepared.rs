@@ -37,7 +37,9 @@ impl MSSQLPrepared {
                 let mut n = 0usize;
                 let mut j = i + 2;
                 while j < bytes.len() && bytes[j].is_ascii_digit() {
-                    n = n.saturating_mul(10).saturating_add((bytes[j] - b'0') as usize);
+                    n = n
+                        .saturating_mul(10)
+                        .saturating_add((bytes[j] - b'0') as usize);
                     j += 1;
                 }
                 if n > max_param {

@@ -174,7 +174,7 @@ use tank_mssql::MSSQLDriver;
 async fn establish_mssql_connection(driver: &MSSQLDriver) -> Result<impl ConnectionPool<MSSQLDriver>> {
     let pool = driver
         .connect_pool(
-            "mssql://sa:yourStrong(!)Password@localhost:1433/operations_db?TrustServerCertificate=true",
+            "mssql://sa:yourStrong(!)Password@localhost:1433/operations_db?encrypt=true&ssl_ca=/home/user/Git/tank/tank-mssql/tests/assets/ca.pem",
             PoolConfig::new(),
         )
         .await?;
@@ -187,9 +187,9 @@ async fn establish_mssql_connection(driver: &MSSQLDriver) -> Result<impl Connect
 - `sqlserver://user:password@host:port/database`
 
 Parameters:
+- `encrypt` / `require_ssl` / `sslmode`: TLS encryption mode (`true` / `required` / `require`, `false` / `off` / `disable`, or `not_supported` / `DANGER_PLAINTEXT`). Defaults to `off` (encrypting only the login packet).
+- `ssl_ca` / `sslrootcert` / `TrustServerCertificateCA`: Path to a custom CA certificate file (falls back to environment variable `MSSQL_SSL_CA`).
 - `TrustServerCertificate` / `trust_cert (bool)`: Trust the server TLS certificate without CA validation.
-- `TrustServerCertificateCA` / `ssl_ca` / `sslrootcert`: Path to a custom CA certificate file (falls back to environment variable `MSSQL_SSL_CA`).
-- `encrypt`: TLS encryption mode (`true` / `required`, `false` / `off`, or `not_supported` / `DANGER_PLAINTEXT`).
 - `ApplicationName` / `application_name`: Sets the client application name visible in `APP_NAME()`.
 - `instance` / `instance_name`: Named SQL Server instance.
 - `readonly (bool)`: Sets `ApplicationIntent=ReadOnly`.

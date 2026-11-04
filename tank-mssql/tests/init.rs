@@ -1,6 +1,7 @@
 #![allow(dead_code)]
-use std::{env, future, process::Command, time::Duration};
-use tank_core::future::{BoxFuture, FutureExt};
+use std::{borrow::Cow, env, future, path::PathBuf, process::Command, time::Duration};
+use tank::future::{BoxFuture, FutureExt};
+use tank_tests::generate_ssl_files;
 use testcontainers_modules::{
     mssql_server::MssqlServer,
     testcontainers::{
@@ -27,7 +28,7 @@ impl LogConsumer for TestcontainersLogConsumer {
     }
 }
 
-pub async fn init_mssql() -> (String, Option<ContainerAsync<MssqlServer>>) {
+pub async fn init_mssql(ssl: bool) -> (String, Option<ContainerAsync<MssqlServer>>) {
     if let Ok(url) = env::var("TANK_MSSQL_TEST") {
         return (url, None);
     }
@@ -39,11 +40,30 @@ pub async fn init_mssql() -> (String, Option<ContainerAsync<MssqlServer>>) {
     {
         log::error!("Cannot access docker");
     }
-    let container = MssqlServer::default()
+    let mut container = MssqlServer::default()
         .with_accept_eula()
         .with_tag("2025-latest")
         .with_startup_timeout(Duration::from_secs(120))
-        .with_log_consumer(TestcontainersLogConsumer)
+        .with_log_consumer(TestcontainersLogConsumer);
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    if ssl {
+        generate_ssl_files(path.join("tests/assets"))
+            .expect("Could not create the certificate files for SSL session");
+        container = container
+            .with_copy_to(
+                "/var/opt/mssql/mssql.conf",
+                path.join("tests/assets/mssql.conf"),
+            )
+            .with_copy_to(
+                "/etc/ssl/mssql/server.crt",
+                path.join("tests/assets/server-cert.pem"),
+            )
+            .with_copy_to(
+                "/etc/ssl/mssql/server.key",
+                path.join("tests/assets/server-key.pem"),
+            );
+    }
+    let container = container
         .start()
         .await
         .expect("Could not start the MSSQL container");
@@ -53,7 +73,17 @@ pub async fn init_mssql() -> (String, Option<ContainerAsync<MssqlServer>>) {
         .expect("Cannot get the port of MSSQL");
     let password = MssqlServer::DEFAULT_SA_PASSWORD;
     (
-        format!("mssql://sa:{password}@localhost:{port}/master?TrustServerCertificate=true"),
+        format!(
+            "mssql://sa:{password}@localhost:{port}/master{}",
+            if ssl {
+                Cow::Owned(format!(
+                    "?encrypt=true&ssl_ca={}",
+                    path.join("tests/assets/ca.pem").to_str().unwrap(),
+                ))
+            } else {
+                Cow::Borrowed("")
+            }
+        ),
         Some(container),
     )
 }
