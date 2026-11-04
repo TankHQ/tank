@@ -78,9 +78,10 @@ pub(crate) async fn comments<D: Driver>(pool: &mut impl ConnectionPool<D>) {
                         Multi-line comment
                         It's got a quote and a second line
 
-                        And a third after an empty line"
+                        And a third after an empty line
                     "#
                 )
+                .trim()
                 .into(),
             },
         ]

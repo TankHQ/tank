@@ -27,7 +27,7 @@ struct PgColumn {
     table_name: String,
     column_name: String,
     ordinal_position: i32,
-    comment: Option<String>,
+    comment: String,
 }
 
 pub(crate) async fn comments<D: Driver>(pool: &mut impl ConnectionPool<D>) {
@@ -78,7 +78,7 @@ pub(crate) async fn comments<D: Driver>(pool: &mut impl ConnectionPool<D>) {
                 table_name: "commented_entity".into(),
                 column_name: "title".into(),
                 ordinal_position: 2,
-                comment: Some("Simple single-line comment".into()),
+                comment: "Simple single-line comment".into(),
             },
             PgColumn {
                 table_schema: "comment_schema".into(),
@@ -90,9 +90,10 @@ pub(crate) async fn comments<D: Driver>(pool: &mut impl ConnectionPool<D>) {
                         Multi-line comment
                         It's got a quote and a second line
 
-                        And a third after an empty line"
+                        And a third after an empty line
                     "#
                 )
+                .trim()
                 .into(),
             },
         ]

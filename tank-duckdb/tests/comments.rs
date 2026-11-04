@@ -27,7 +27,7 @@ struct DuckDBColumn {
     table_name: String,
     column_name: String,
     column_index: i64,
-    comment: Option<String>,
+    comment: String,
 }
 
 pub(crate) async fn comments<D: Driver>(pool: &mut impl ConnectionPool<D>) {
@@ -66,7 +66,7 @@ pub(crate) async fn comments<D: Driver>(pool: &mut impl ConnectionPool<D>) {
                 table_name: "commented_entity".into(),
                 column_name: "title".into(),
                 column_index: 2,
-                comment: Some("Simple single-line comment".into()),
+                comment: "Simple single-line comment".into(),
             },
             DuckDBColumn {
                 schema_name: "comment_schema".into(),
@@ -78,9 +78,10 @@ pub(crate) async fn comments<D: Driver>(pool: &mut impl ConnectionPool<D>) {
                         Multi-line comment
                         It's got a quote and a second line
 
-                        And a third after an empty line"
+                        And a third after an empty line
                     "#
                 )
+                .trim()
                 .into(),
             },
         ]
