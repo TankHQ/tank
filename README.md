@@ -98,7 +98,7 @@ async fn data() -> Result<()> {
     let driver = DuckDBDriver::new();
     let pool = driver
         .connect_pool(
-            "duckdb://tests.duckdb?mode=rw".into(),
+            "duckdb://tests.duckdb?mode=rw",
             PoolConfig::new(),
         )
         .await?;

@@ -10,7 +10,7 @@ use tank_postgres::PostgresDriver;
 let mut config = PoolConfig::new();
 config.max_size = 4;
 let pool = PostgresDriver::new()
-    .connect_pool("postgres://user:pass@host:5432/db".into(), config)
+    .connect_pool("postgres://user:pass@host:5432/db", config)
     .await?;
 let mut connection = pool.get().await?;
 ```
@@ -35,7 +35,7 @@ use tank::{Driver, ConnectionPool, PoolConfig};
 use tank_mysql::MySQLDriver;
 
 let pool: Arc<dyn ConnectionPool<MySQLDriver>> = MySQLDriver::mysql()
-    .connect_pool("mysql://user:pass@host:3306/db".into(), PoolConfig::new())
+    .connect_pool("mysql://user:pass@host:3306/db", PoolConfig::new())
     .await?
     .into_arc();
 ```

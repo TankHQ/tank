@@ -514,7 +514,7 @@ mod tests {
                 ..PoolConfig::default()
             };
             let pool = TestDriver
-                .connect_pool("test://localhost".into(), config)
+                .connect_pool("test://localhost", config)
                 .await
                 .unwrap();
             let mut conn = pool.get().await.unwrap();
@@ -544,12 +544,12 @@ mod tests {
             pool.resize(2).unwrap();
             let _ = pool.into_arc();
             let pool2 = TestDriver
-                .connect_pool("test://localhost".into(), PoolConfig::new())
+                .connect_pool(String::from("test://localhost"), PoolConfig::new())
                 .await
                 .unwrap();
             let _ = pool2.into_box();
             let pool3 = TestDriver
-                .connect_pool("test://localhost".into(), PoolConfig::new())
+                .connect_pool(Cow::Borrowed("test://localhost"), PoolConfig::new())
                 .await
                 .unwrap();
             pool3.close().await.unwrap();

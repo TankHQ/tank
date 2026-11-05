@@ -22,7 +22,7 @@ mod tests {
         let (url, container) = init_mysql(false).await;
         let container = container.expect("Could not launch the container");
         let mut pool = driver
-            .connect_pool(url.clone().into(), PoolConfig::new())
+            .connect_pool(url.clone(), PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
@@ -57,7 +57,7 @@ mod tests {
         );
 
         let mut pool = driver
-            .connect_pool(ssl_url.to_string().into(), PoolConfig::new())
+            .connect_pool(ssl_url, PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;

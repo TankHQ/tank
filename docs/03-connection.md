@@ -24,7 +24,7 @@ Before you can unleash Tank's firepower, secure your supply lines. Open a **Conn
 
 ## Connection Lifecycle
 1. **Establish**: Connect to the database with a URL.
-    * **Preferred**: [`driver.connect_pool("dbms://...".into(), PoolConfig::new()).await?`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect_pool) creates a managed pool. Call `.get().await?` to borrow a [`PooledConnection`](https://docs.rs/tank/latest/tank/struct.PooledConnection.html) from it.
+    * **Preferred**: [`driver.connect_pool("dbms://...", PoolConfig::new()).await?`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect_pool) creates a managed pool. Call `.get().await?` to borrow a [`PooledConnection`](https://docs.rs/tank/latest/tank/struct.PooledConnection.html) from it.
     * **Direct**: [`PostgresConnection::connect(&driver, "postgres://...".into()).await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.connect) opens a single unmanaged connection using the driver-specific connection type.
 
 2. **Deploy**: Use the connection for queries, inserts, updates, and deletes.
@@ -32,7 +32,7 @@ Before you can unleash Tank's firepower, secure your supply lines. Open a **Conn
 4. **Terminate**: Direct connections close when dropped. Pooled connections return to their pool instead. [`disconnect().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#method.disconnect) requests an explicit shutdown when supported, but does not force a pooled connection to close.
 
 ## Connect
-Every database connection abstraction implements the [`Connection`](https://docs.rs/tank/latest/tank/trait.Connection.html) trait. This is your communication link to the database server. Call [`driver.connect_pool("dbms://...".into(), PoolConfig::new())`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect_pool) with a URL to create a connection pool, then call `.get().await?` to obtain a [`PooledConnection`](https://docs.rs/tank/latest/tank/struct.PooledConnection.html) from it. Every driver is its own crate. Load only what you need for the operation. Check the [drivers](01-introduction.md#drivers) to see the available connections.
+Every database connection abstraction implements the [`Connection`](https://docs.rs/tank/latest/tank/trait.Connection.html) trait. This is your communication link to the database server. Call [`driver.connect_pool("dbms://...", PoolConfig::new())`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect_pool) with a URL to create a connection pool, then call `.get().await?` to obtain a [`PooledConnection`](https://docs.rs/tank/latest/tank/struct.PooledConnection.html) from it. Every driver is its own crate. Load only what you need for the operation. Check the [drivers](01-introduction.md#drivers) to see the available connections.
 
 Once the line is open, the connection exposes both the [`Connection`](https://docs.rs/tank/latest/tank/trait.Connection.html) and [`Executor`](https://docs.rs/tank/latest/tank/trait.Executor.html) interfaces. Supported operations depend on the driver: MongoDB and Valkey use native query representations rather than raw SQL or SQL preparation. Check the [capability matrix](04-capabilities.md) before deploying.
 
@@ -48,7 +48,7 @@ use tank_postgres::PostgresDriver;
 async fn establish_postgres_connection(driver: &PostgresDriver) -> Result<impl ConnectionPool<PostgresDriver>> {
     let pool = driver
         .connect_pool(
-            "postgres://tank-user:armored@127.0.0.1:5432/military?sslmode=require&sslrootcert=ROOT_PATH&sslcert=CERT_PATH&sslkey=KEY_PATH".into(),
+            "postgres://tank-user:armored@127.0.0.1:5432/military?sslmode=require&sslrootcert=ROOT_PATH&sslcert=CERT_PATH&sslkey=KEY_PATH",
             PoolConfig::new(),
         )
         .await?;
@@ -80,7 +80,7 @@ use tank_sqlite::SQLiteDriver;
 async fn establish_sqlite_connection(driver: &SQLiteDriver) -> Result<impl ConnectionPool<SQLiteDriver>> {
     let pool = driver
         .connect_pool(
-            "sqlite://database.sqlite?mode=rwc".into(),
+            "sqlite://database.sqlite?mode=rwc",
             PoolConfig::new(),
         )
         .await?;
@@ -110,7 +110,7 @@ use tank_mysql::MySQLDriver;
 async fn establish_mysql_connection(driver: &MySQLDriver) -> Result<impl ConnectionPool<MySQLDriver>> {
     let pool = driver
         .connect_pool(
-            "mysql://tank-mysql-user@localhost:3306/operations_db?require_ssl=true&ssl_ca=/home/user/Git/tank/tank-mysql/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-mysql/tests/assets/client-cert.pem&ssl_key=/home/user/Git/tank/tank-mysql/tests/assets/client-key.pem".into(),
+            "mysql://tank-mysql-user@localhost:3306/operations_db?require_ssl=true&ssl_ca=/home/user/Git/tank/tank-mysql/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-mysql/tests/assets/client-cert.pem&ssl_key=/home/user/Git/tank/tank-mysql/tests/assets/client-key.pem",
             PoolConfig::new(),
         )
         .await?;
@@ -144,7 +144,7 @@ use tank_duckdb::DuckDBDriver;
 async fn establish_duckdb_connection(driver: &DuckDBDriver) -> Result<impl ConnectionPool<DuckDBDriver>> {
     let pool = driver
         .connect_pool(
-            "duckdb://database.duckdb?mode=rw".into(),
+            "duckdb://database.duckdb?mode=rw",
             PoolConfig::new(),
         )
         .await?;
@@ -174,7 +174,7 @@ use tank_mongodb::MongoDBDriver;
 async fn establish_mongodb_connection(driver: &MongoDBDriver) -> Result<impl ConnectionPool<MongoDBDriver>> {
     let pool = driver
         .connect_pool(
-            "mongodb://tank-user:armored@127.0.0.1:27017/military?directConnection=true&authSource=admin&tls=true&tlsCAFile=/home/user/Git/tank/tank-mongodb/tests/assets/ca.pem&tlsCertificateKeyFile=/home/user/Git/tank/tank-mongodb/tests/assets/client.pem".into(),
+            "mongodb://tank-user:armored@127.0.0.1:27017/military?directConnection=true&authSource=admin&tls=true&tlsCAFile=/home/user/Git/tank/tank-mongodb/tests/assets/ca.pem&tlsCertificateKeyFile=/home/user/Git/tank/tank-mongodb/tests/assets/client.pem",
             PoolConfig::new(),
         )
         .await?;
@@ -197,7 +197,7 @@ use tank_valkey::ValkeyDriver;
 async fn establish_valkey_connection(driver: &ValkeyDriver) -> Result<impl ConnectionPool<ValkeyDriver>> {
     let pool = driver
         .connect_pool(
-            "valkeys://valkey-commander:supreme@127.0.0.1:32823/0?sslrootcert=/home/user/Git/tank/tank-valkey/tests/assets/ca.pem&sslcert=/home/user/Git/tank/tank-valkey/tests/assets/client-cert.pem&sslkey=/home/user/Git/tank/tank-valkey/tests/assets/client-key.pem".into(),
+            "valkeys://valkey-commander:supreme@127.0.0.1:32823/0?sslrootcert=/home/user/Git/tank/tank-valkey/tests/assets/ca.pem&sslcert=/home/user/Git/tank/tank-valkey/tests/assets/client-cert.pem&sslkey=/home/user/Git/tank/tank-valkey/tests/assets/client-key.pem",
             PoolConfig::new(),
         )
         .await?;
@@ -228,7 +228,7 @@ use tank_scylladb::ScyllaDBDriver;
 async fn establish_scylla_connection(driver: &ScyllaDBDriver) -> Result<impl ConnectionPool<ScyllaDBDriver>> {
     let pool = driver
         .connect_pool(
-            "scylladb://localhost:9142/scylla_keyspace?ssl_ca=/home/user/Git/tank/tank-scylladb/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-scylladb/tests/assets/client-cert.pem&ssl_key=/home/user/Git/tank/tank-scylladb/tests/assets/client-key.pem".into(),
+            "scylladb://localhost:9142/scylla_keyspace?ssl_ca=/home/user/Git/tank/tank-scylladb/tests/assets/ca.pem&ssl_cert=/home/user/Git/tank/tank-scylladb/tests/assets/client-cert.pem&ssl_key=/home/user/Git/tank/tank-scylladb/tests/assets/client-key.pem",
             PoolConfig::new(),
         )
         .await?;
@@ -290,7 +290,7 @@ struct AppState {
 impl AppState {
     async fn new(db_url: &'static str) -> Result<Self> {
         let pool = DBType::new()
-            .connect_pool(db_url.into(), PoolConfig::new())
+            .connect_pool(db_url, PoolConfig::new())
             .await?
             .into_box();
         Ok(Self { db_connection: pool })

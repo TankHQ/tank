@@ -207,10 +207,7 @@ mod tests {
         );
         let driver = SQLiteDriver::new();
         let mut pool = driver
-            .connect_pool(
-                format!("sqlite://{DB_PATH}?mode=rwc").into(),
-                Default::default(),
-            )
+            .connect_pool(format!("sqlite://{DB_PATH}?mode=rwc"), Default::default())
             .await
             .expect("Could not open the database");
         let connection = pool
@@ -231,10 +228,7 @@ mod tests {
         let _ = fs::remove_file(DB_PATH).await;
         let driver = SQLiteDriver::new();
         let pool = driver
-            .connect_pool(
-                format!("sqlite://{DB_PATH}?mode=rwc").into(),
-                Default::default(),
-            )
+            .connect_pool(format!("sqlite://{DB_PATH}?mode=rwc"), Default::default())
             .await
             .expect("Could not open the database");
         let mut connection = pool.get().await.expect("Could not get a connection");
@@ -250,10 +244,7 @@ mod tests {
         let _ = fs::remove_file(DB_PATH).await;
         let driver = SQLiteDriver::new();
         let pool = driver
-            .connect_pool(
-                format!("sqlite://{DB_PATH}?mode=rwc").into(),
-                Default::default(),
-            )
+            .connect_pool(format!("sqlite://{DB_PATH}?mode=rwc"), Default::default())
             .await
             .expect("Could not open the database");
         let mut connection = pool.get().await.expect("Could not get a connection");

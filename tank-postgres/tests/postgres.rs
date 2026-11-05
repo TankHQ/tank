@@ -22,7 +22,7 @@ mod tests {
         let (url, container) = init(false).await;
         let container = container.expect("Could not launch the container");
         let mut pool = DRIVER
-            .connect_pool(url.into(), PoolConfig::new())
+            .connect_pool(url, PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
@@ -33,7 +33,7 @@ mod tests {
         let (url, container) = init(true).await;
         let container = container.expect("Could not launch the SSL container");
         let mut pool = DRIVER
-            .connect_pool(url.into(), PoolConfig::new())
+            .connect_pool(url, PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
@@ -44,7 +44,7 @@ mod tests {
     async fn wrong_url() {
         init_logs();
         silent_logs! {
-            let pool = DRIVER.connect_pool("mysql://some_url".into(), PoolConfig::new()).await;
+            let pool = DRIVER.connect_pool("mysql://some_url", PoolConfig::new()).await;
             assert!(pool.is_err() || pool.unwrap().get().await.is_err());
         }
     }
@@ -77,7 +77,7 @@ mod tests {
             );
         }
         PostgresDriver::new()
-            .connect_pool(url.to_string().into(), PoolConfig::new())
+            .connect_pool(url.to_string(), PoolConfig::new())
             .await
             .expect("Connection should succeed with environment variable replacing sslrootcert");
         unsafe {

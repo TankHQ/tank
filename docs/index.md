@@ -39,11 +39,11 @@ features:
     link: /08-advanced-operations
   - icon: 🛡️
     title: Adaptable Chassis
-    details: Share entity and query code across SQL and NoSQL backends, within each driver's operational limits.
+    details: Share entity and query code across SQL and NoSQL backends, within each driver's limits.
     link: /04-capabilities
   - icon: 🎖️
     title: Rich Type Arsenal
-    details: Map standard Rust types straight to native columns, and forge custom payloads with <code>AsValue</code>.
+    details: Map standard Rust types to native columns, and forge custom payloads with <code>AsValue</code>.
     link: /05-types
 ---
 

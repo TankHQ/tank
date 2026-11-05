@@ -14,7 +14,7 @@ mod tests {
         let _lock = MUTEX.lock().unwrap();
         let driver = YourDBDriver::new();
         let mut pool = driver
-            .connect_pool(URL.into(), PoolConfig::new())
+            .connect_pool(URL, PoolConfig::new())
             .await
             .expect("Could not open the database");
         execute_tests(&mut pool).await;

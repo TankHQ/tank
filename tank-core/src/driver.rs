@@ -24,12 +24,13 @@ pub trait Driver: Default + Clone + Sync + Send + Debug {
         Self::NAME[0]
     }
 
-    /// Creates a new connection to the database at the specified URL.
+    /// Creates a connection pool from a string literal, owned `String`, or `Cow` URL.
     fn connect_pool(
         &self,
-        url: Cow<'static, str>,
+        url: impl Into<Cow<'static, str>>,
         config: PoolConfig,
     ) -> impl Future<Output = Result<impl ConnectionPool<Self>>> + Send {
+        let url = url.into();
         let config = config.into();
         async move {
             Ok(Pool::builder(DBConnectionManager::new(self.clone(), url))

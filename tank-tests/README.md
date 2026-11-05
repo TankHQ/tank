@@ -71,7 +71,7 @@ mod tests {
         let _guard = MUTEX.lock().unwrap();
         let driver = MyDBDriver::new();
         let mut pool = driver
-            .connect_pool("mydb://localhost:5555".into(), PoolConfig::new())
+            .connect_pool("mydb://localhost:5555", PoolConfig::new())
             .await
             .expect("Could not connect to MyDB");
         execute_tests(&mut pool).await; // Runs all enabled modules sequentially

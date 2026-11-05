@@ -33,7 +33,7 @@ use tank_scylladb::ScyllaDBDriver;
 let driver = ScyllaDBDriver::new();
 let pool = driver
     .connect_pool(
-        "scylladb://user:password@127.0.0.1:9142/keyspace?ssl_ca=ca.pem&ssl_cert=client-cert.pem&ssl_key=client-key.pem".into(),
+        "scylladb://user:password@127.0.0.1:9142/keyspace?ssl_ca=ca.pem&ssl_cert=client-cert.pem&ssl_key=client-key.pem",
         PoolConfig::new(),
     )
     .await?;

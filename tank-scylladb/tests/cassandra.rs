@@ -20,7 +20,7 @@ mod tests {
         let container = container.expect("Could not launch the container");
         let driver = CassandraDriver::new();
         let mut pool = driver
-            .connect_pool(url.into(), PoolConfig::new())
+            .connect_pool(url, PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
@@ -31,7 +31,7 @@ mod tests {
         let container = container.expect("Could not launch the SSL container");
         let driver = CassandraDriver::new();
         let mut pool = driver
-            .connect_pool(ssl_url.into(), PoolConfig::new())
+            .connect_pool(ssl_url, PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;

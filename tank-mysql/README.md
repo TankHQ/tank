@@ -33,7 +33,7 @@ use tank_mysql::MySQLDriver;
 let driver = MySQLDriver::new();
 let pool = driver
     .connect_pool(
-        "mysql://user:password@127.0.0.1:3306/database?require_ssl=true&ssl_ca=ca.pem&ssl_cert=client-cert.pem&ssl_key=client-key.pem".into(),
+        "mysql://user:password@127.0.0.1:3306/database?require_ssl=true&ssl_ca=ca.pem&ssl_cert=client-cert.pem&ssl_key=client-key.pem",
         PoolConfig::new(),
     )
     .await?;

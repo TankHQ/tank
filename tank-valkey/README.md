@@ -36,7 +36,7 @@ use tank_valkey::ValkeyDriver;
 let driver = ValkeyDriver::default();
 let pool = driver
     .connect_pool(
-        "valkeys://user:password@127.0.0.1:6379/0?sslmode=require&sslrootcert=ca.pem&sslcert=client-cert.pem&sslkey=client-key.pem".into(),
+        "valkeys://user:password@127.0.0.1:6379/0?sslmode=require&sslrootcert=ca.pem&sslcert=client-cert.pem&sslkey=client-key.pem",
         PoolConfig::new(),
     )
     .await?;
