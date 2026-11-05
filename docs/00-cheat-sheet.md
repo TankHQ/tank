@@ -4,7 +4,7 @@
 
 ### Connection pool
 ```rust
-use tank::{PoolConfig, Driver};
+use tank::{ConnectionPool, Driver, PoolConfig};
 use tank_postgres::PostgresDriver;
 
 let mut config = PoolConfig::new();
@@ -47,7 +47,7 @@ use std::collections::HashMap;
 use tank::Entity;
 use uuid::Uuid;
 
-#[derive(Entity, Debug, PartialEq)]
+#[derive(Entity)]
 #[tank(
     schema = "army",
     name = "deployments",
@@ -68,17 +68,16 @@ struct EntityExample {
 ```
 
 `primary_key` is composite: `unit_id` is the partition key and `region` is the clustering key (relevant for Scylla/Cassandra). `clustering_key` is ignored by SQL drivers.
-The field transient_cache is ignored by the database (not stored in the table)
+The `transient_cache` field is not stored in the table.
 
 ### Conversion Types
 
-`conversion_type` lets you use any type as an entity field by routing reads and writes through a local wrapper that implements [`AsValue`](./05-types.md), the only requirement is that the type can be cloned:
+`conversion_type` routes field reads and writes through a local wrapper implementing [`AsValue`](05-types.md) and `From` conversions to and from the cloneable field type:
 
 ```rust
-use anyhow::anyhow;
-use tank::{AsValue, Entity, Result, Value, ValueOwned};
+use tank::{AsValue, Entity, Result, Value, ValueOwned, anyhow};
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone)]
 pub struct Notes(pub String); // Third party type
 pub struct NotesWrap(pub Notes); // Local wrapper
 
@@ -113,7 +112,7 @@ impl From<NotesWrap> for Notes {
 }
 ```
 
-Tank calls `NotesWrap::from(field_value)` when writing and reconstructs the field via `Notes::from(NotesWrap::try_from_value(db_value)?)` when reading. See [Types](./05-types.md) for full `AsValue` documentation and the built-in type table.
+Tank calls `NotesWrap::from(field_value)` when writing and reconstructs the field via `Notes::from(NotesWrap::try_from_value(db_value)?)` when reading. See [Types](05-types.md) for full `AsValue` documentation and the built-in type table.
 
 ## Table setup
 
@@ -133,7 +132,7 @@ entity.delete(&mut tx).await?;
 tx.commit().await?;
 ```
 
-Both transactions and connections can be provided as a executors to run the queries in methods like: `EntityExample::create_table(&mut tx, ...)`.
+Both transactions and connections can serve as executors in methods such as `EntityExample::create_table(&mut tx, ...)`.
 
 ## Insert
 
@@ -143,7 +142,7 @@ EntityExample::insert_many(&mut connection, [&entity2, ...]).await?;
 connection.append([&entity3, ...]).await?;
 ```
 
-Insert and append methods accept any container that can be turned into a iterator yielding either a entity value or reference.
+`insert_many` and `append` accept any iterable yielding entity values or references.
 
 ## Save and Delete
 
@@ -176,7 +175,7 @@ let entity = EntityExample::find_one(
         println!("{}", entity.callsign);
     }
 }
-let uid = Uuid::from_str("94f0cbcc-1fce-454e-a6e4-4e3587741808")?;
+let uid = Uuid::parse_str("94f0cbcc-1fce-454e-a6e4-4e3587741808")?;
 let entities: Vec<EntityExample> =
     EntityExample::find_many(
         &mut connection,
@@ -226,33 +225,36 @@ expr!(EntityExample::region == #regions as IN);
 ## Prepared statement
 
 ```rust
-use tank::{Entity, expr, stream::TryStreamExt};
+use tank::{Entity, expr, stream::{StreamExt, TryStreamExt}};
 
+EntityExample::insert_one(&mut connection, &entity).await?;
 let mut query = EntityExample::prepare_find(
     &mut connection,
     expr!(EntityExample::unit_id == ?),
     Some(50),
 )
 .await?;
-query.bind(Uuid::from_str("2f4f97da-0278-4c99-bc22-2b3986aeee85")?)?;
+query.bind(entity.unit_id)?;
 let entities = connection
     .fetch(&mut query)
-    .map_ok(|row| EntityExample::from_row(row).unwrap())
+    .map(|row| row.and_then(EntityExample::from_row))
     .try_collect::<Vec<EntityExample>>()
     .await?;
 query.clear_bindings()?;
-query.bind(Uuid::from_str("962f2c1c-7caa-468d-a387-53ed9860c4bf")?)?;
+query.bind(entity2.unit_id)?;
 ```
 
 ## Query Builder
 
 ```rust
-use tank::{cols, expr, stream::TryStreamExt, QueryBuilder};
+use tank::{cols, expr, stream::{StreamExt, TryStreamExt}, QueryBuilder};
+
+#[derive(Entity)]
+struct Slim { callsign: String, casualties: i32 }
 
 let uid = entity.unit_id;
 let results = connection.fetch(
     QueryBuilder::new()
-        // Selecting fewer columns requires the entity to have the Default trait
         .select(cols!(EntityExample::callsign, EntityExample::casualties))
         .from(EntityExample::table())
         .where_expr(expr!(EntityExample::unit_id == #uid))
@@ -260,7 +262,7 @@ let results = connection.fetch(
         .limit(Some(50))
         .build(&connection.driver()),
 )
-.map_ok(|row| EntityExample::from_row(row).unwrap())
+.map(|row| row.and_then(Slim::from_row))
 .try_collect::<Vec<_>>()
 .await?;
 ```
@@ -276,7 +278,7 @@ use tank::{
     Entity, QueryBuilder, cols, expr, join, stream::StreamExt, stream::TryStreamExt,
 };
 
-#[derive(Entity, Debug)]
+#[derive(Entity)]
 struct BookWithAuthor {
     title: String,
     author: String,
@@ -332,7 +334,7 @@ let rows = connection
 ```rust
 use indoc::indoc;
 use std::pin::pin;
-use tank::{QueryResult, stream::TryStreamExt};
+use tank::{QueryResult, Row, stream::TryStreamExt};
 
 {
     let mut stream = pin!(connection.run(indoc! {r#"
@@ -353,6 +355,7 @@ use tank::{QueryResult, stream::TryStreamExt};
 }
 let rows: Vec<_> = connection
     .fetch("SELECT * FROM army.deployments")
+    .map_ok(Row::into_owned)
     .try_collect()
     .await?;
 let affected = connection
@@ -364,26 +367,29 @@ let affected = connection
 ```
 
 ### Prepared
+
+This raw SQL uses PostgreSQL's `$1`, `$2` placeholders. Other drivers, such as DuckDB and MySQL will use `?`.
+
 ```rust
 use indoc::indoc;
 use tank::{Entity, stream::TryStreamExt};
 
 let mut query = connection.prepare(indoc! {"
-    SELECT unit_id, callsign
+    SELECT unit_id, region, callsign, casualties, metadata
     FROM army.deployments
-    WHERE unit_id = ?
-    LIMIT ?
-"}.into()
+    WHERE unit_id = $1
+    LIMIT $2
+"}
 ).await?;
 query.bind(uid)?;
 query.bind(25)?;
 
 let rows = connection.fetch(&mut query).try_collect::<Vec<_>>().await?;
-let entity = EntityExample::from_row(row)?;
 
-#[derive(Entity)]
-struct Slim { callsign: String, casualties: i32 }
-let slim = Slim::from_row(row)?;
+for row in rows {
+    let entity = EntityExample::from_row(&row)?;
+    let slim = Slim::from_row(&row)?;
+}
 query.clear_bindings()?;
 query.bind(other_uid)?;
 query.bind(10)?;
@@ -392,7 +398,7 @@ query.bind(10)?;
 ### SqlWriter
 
 ```rust
-use tank::{DynQuery, QueryBuilder, QueryResult, SqlWriter, stream::TryStreamExt};
+use tank::{DynQuery, QueryBuilder, SqlWriter, stream::TryStreamExt};
 
 let writer = connection.driver().sql_writer();
 let mut query = DynQuery::default();
@@ -408,5 +414,5 @@ writer.write_select(
         .limit(Some(100)),
 );
 
-let results: Vec<QueryResult> = connection.run(query).try_collect().await?;
+let results: Vec<_> = connection.run(query).try_collect().await?;
 ```

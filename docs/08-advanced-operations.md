@@ -1,11 +1,13 @@
 # Advanced Operations
-###### *Section 8* - Tactical Coordination
+###### *Field Manual Section 8* - Tactical Coordination
 
 In the field, isolated units rarely win the battle. Coordination is key. Joins let you link data across tables like synchronized squads advancing under fire.
-In Tank, a join is a first-class `Dataset`, just like a `TableRef`. That means you can call `select()` and then filter, map, reduce, etc., using the same composable [Stream API](https://docs.rs/futures/latest/futures/prelude/trait.Stream.html) you already know.
+In Tank, a join is a first-class `Dataset`, just like a `TableRef`. Pass it to `QueryBuilder::from()`, fetch the selected rows, then process them with the composable [Stream API](https://docs.rs/futures/latest/futures/prelude/trait.Stream.html) you already know.
 
 ## Schema
 Continuing with the `Operator` and `RadioLog` schema introduced earlier. The following examples show more advanced query capabilities: operations that go beyond simple CRUD while still avoiding raw SQL.
+
+The SQL below uses PostgreSQL syntax. Other drivers choose their own column types.
 ::: code-group
 ```rust [Rust]
 #[derive(Entity)]
@@ -50,7 +52,7 @@ CREATE TABLE IF NOT EXISTS operations.radio_log (
     message TEXT NOT NULL,
     unit_callsign TEXT NOT NULL,
     tx_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    rssi TINYINT NOT NULL);
+    rssi SMALLINT NOT NULL);
 ```
 :::
 
@@ -73,7 +75,7 @@ CREATE TABLE IF NOT EXISTS operations.radio_log (
 | Affirmative, engaging.                   | Alpha-1       | 2025-11-03T23:11:54+00 | -54  |
 
 ## Selecting & Ordering
-The [`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) supports aliasing and ordering. When you only need raw columns, prefer the terse array `[Operator::callsign, Operator::service_rank, Operator::enlisted]` or `Operator::columns()` syntax.
+The [`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) macro supports aliasing and ordering. When you only need raw columns, prefer the terse array `[Operator::callsign, Operator::service_rank, Operator::enlisted]` or `Operator::columns()` syntax.
 
 Objective: strongest certified transmissions excluding routine radio checks.
 ```rust
@@ -118,7 +120,7 @@ assert!(
 ```
 
 ## Expr
-[`expr!()`](https://docs.rs/tank/latest/tank/macro.expr.html) parses a Rust-like expression into a typed AST that drivers translate into backend-specific SQL. Use it for conditions or default values.
+[`expr!()`](https://docs.rs/tank/latest/tank/macro.expr.html) parses a Rust-like expression into a typed AST that drivers translate into backend-specific queries. Use it for conditions or default values.
 
 It accepts a subset of Rust syntax with additional sentinel tokens for SQL semantics:
 - `42`, `1.2`, `"Alpha"`, `true`, `NULL`, `[1, 2, 3]` literal values
@@ -160,9 +162,9 @@ Example of valid syntax
 - `AVG(RadioLog::signal_strength)` function calls
 - `*` wildcard
 - `COUNT(*)` counting
-- `operations.radio_log.signal_strength.rssi` raw database identifier
+- `operations.radio_log.rssi` raw database identifier
 - `Operator::enlisted DESC` ordering
-- `AVG(ABS(Operator::enlisted - operations.radio_log.transmission_time)) as difference DESC` combination of the previous
+- `AVG(ABS(Operator::enlisted - operations.radio_log.tx_time)) as difference DESC` combination of the previous
 
 ## Performance Notes
 - Request only the necessary columns.

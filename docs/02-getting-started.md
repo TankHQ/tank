@@ -1,16 +1,17 @@
 # Getting Started
 ###### *Field Manual Section 2* - Deployment Orders
 
-What follows is just a visit to the shooting range, not the full campaign. This minimal example shows Tank in action: connecting, defining a unit and executing basic maneuvers. Just enough to get mud on your boots and feel the recoil.
+What follows is just a visit to the shooting range, not the full campaign. This minimal example shows Tank in action: connecting, defining a unit and executing basic maneuvers.
 
 **Mission brief**: install Tank and a driver, define an entity, create the table, insert a few rows, then fire a query. For full tactical exercises including transactions, complex queries and multi-driver deployments, proceed to the [*Field Manual Section 3* - Supply Lines](03-connection.md).
 
 > [!TIP]
-> Tank is async. Run these examples under an async runtime like [Tokio](https://crates.io/crates/tokio) and `.await` your operations.
+> Tank exposes an async API. Run these examples under an async runtime like [Tokio](https://crates.io/crates/tokio) and `.await` your operations. Embedded drivers may still perform synchronous native work.
 
 1) Arm your cargo
 ```sh
 cargo add tank
+cargo add tokio --features macros,rt-multi-thread
 ```
 
 2) Choose your battlefield
@@ -50,7 +51,7 @@ async fn data() -> Result<()> {
     let driver = DuckDBDriver::new();
     let pool = driver
         .connect_pool(
-            "duckdb://../target/debug/tests.duckdb?mode=rw".into(),
+            "duckdb://tests.duckdb?mode=rw".into(),
             PoolConfig::new(),
         )
         .await?;
@@ -90,7 +91,7 @@ async fn data() -> Result<()> {
     my_tank.save(&mut connection).await?;
 
     /*
-     * DuckDB uses the appender API. Other drivers generate an INSERT:
+     * DuckDB uses the appender API. Equivalent SQL:
      * INSERT INTO "army"."tank" ("name", "country", "caliber", "speed", "is_operational", "units_produced") VALUES
      *     ('T-34/85', 'Soviet Union', 85, 53.0, false, 49200),
      *     ('M1 Abrams', 'USA', 120, 72.0, true, NULL);
@@ -136,12 +137,16 @@ async fn data() -> Result<()> {
         HashSet::from_iter(["Tiger I".into(), "T-34/85".into()])
     );
     println!("Tank is operational: {} units found.", tanks.len());
-    Tank::drop_table(&mut connection, true, true).await?;
     Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    data().await
 }
 ```
 
-Run `cargo run`. Tank will create `../target/debug/tests.duckdb` and report `Tank is operational: 2 units found.`
+Place both Rust snippets in `src/main.rs` and run `cargo run`. Tank will create `tests.duckdb` in the current directory and report `Tank is operational: 2 units found.`
 
 > [!NOTE]
 > The `expr!` macro is explained in the [Field Manual Section 8 - Tactical Coordination](08-advanced-operations.md#expr).

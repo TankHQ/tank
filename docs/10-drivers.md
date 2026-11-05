@@ -22,7 +22,7 @@ A driver is a thin composite of five parts:
 | `Driver`      | Public entry point for all the database abstractions                               |
 | `Connection`  | Live session running queries and possibly starting a transaction                   |
 | `Transaction` | Abstraction over transactional database capabilities, borrows mutably a connection |
-| `Prepared`    | Owns a compiled statement, binds positional parameters                             |
+| `Prepared`    | Owns backend-specific executable query state, binds positional parameters          |
 | `SqlWriter`   | Converts Tank's operations and semantic AST fragments into backend query language  |
 
 All other machinery (entities, expressions, joins) already speak through these interfaces.
@@ -42,7 +42,8 @@ Create `tank-yourdb` in your favorite source repository.
 Responsibilities:
 - Validate and parse URL (enforce `yourdb://` prefix)
 - Open backend session(s) (pool if applicable)
-- Implement `prepare` (compile statement) & `run` (stream `QueryResult::{Row,Affected}`)
+- Implement `do_prepare` for raw SQL preparation, if supported, and `run` to stream `QueryResult::{Row,Affected}`
+- Return `false` from `accepts_multiple_statements` on executors that cannot accept statement batches.
 - Optionally implement fast-path bulk `append` (DuckDB style)
 
 Skeleton:
@@ -58,28 +59,19 @@ Keep one doctrine in mind: a `Prepared` value is driver-local executable state, 
 
 ### 4. SQL Writer (`SqlWriter`)
 
-The writer has two faces:
-
-- **`SqlWriter`** is the *user-facing* trait. It owns complete statements:
-  - `write_create_table`,
-  - `write_select`,
-  - `write_insert`,
-  - `write_delete`,
-  - `write_drop_table`,
-  - transactions.
-- The rest of the traits writing smaller pieces of a query. This is what **driver authors** implement.
+`SqlWriter` owns complete statements (`write_create_table`, `write_select`, `write_insert`, `write_delete`, `write_drop_table`, transactions) and smaller query fragments. Driver authors implement `as_dyn` and override only dialect differences.
 
 Override only differences from the generic fallback:
 - Identifier quoting style
 - Column type mapping
 - Literal escaping quirks (BLOB, INTERVAL, UUID, arrays)
 - Parameter placeholder (override `write_question_mark`) if not `?`
-- Schema operations (skip if engine lacks schemas like SQLite)
+- Schema operations (override as no-ops if the engine lacks schemas, as SQLite does)
 - Upsert syntax via `write_insert_update_fragment` if divergence
 
-Only `SqlCoreWriter` declares `as_dyn`. It upcasts to the `SqlWriter` view so a fragment can reach any other fragment. Calls between fragments from a default body must go through `self.as_dyn()` so backend overrides are picked up. Calls within the same trait (or to a supertrait) resolve directly. Statements in `SqlWriter` call fragments with plain `self.method()`.
+Call writer methods directly; overrides are dispatched normally. Use `self.as_dyn()` when passing the writer to an expression or dataset interface that requires a trait object.
 
-Tip: Start from `tank-core`'s `GenericSqlWriter` implementation; copy then trim.
+Tip: Check `tank-core`'s `SqlWriter` default methods when overriding dialect behavior.
 
 <<< @/../tank-yourdb/src/sql_writer.rs
 
@@ -105,7 +97,7 @@ Enable feature flags to disable specific functionality until green.
 - `disable-infinity`: infinite values for floating point numbers
 - `disable-intervals`: interval / duration value types
 - `disable-joins`: SQL join semantics
-- `disable-large-integers`: `i128` and `u128` unsupported
+- `disable-large-integers`: `i128`, `u128`, or full-range `u64` values unsupported
 - `disable-large-dates`: very large dates unsupported
 - `disable-large-decimals`: decimals beyond IEEE-754 double precision unsupported
 - `disable-large-intervals`: disable testing very large interval values
@@ -113,7 +105,7 @@ Enable feature flags to disable specific functionality until green.
 - `disable-log10`: `LOG10` math function not supported
 - `disable-maps`: avoid testing `HashMap`, `BTreeMap`
 - `disable-multiple-statements`: statement batching unsupported
-- `disable-nested-collections`: nested collection values unsupported
+- `disable-nested-collections`: selected nested-collection cases unsupported, Multidimensional array tests are controlled by `disable-arrays`
 - `disable-old-dates`: historical date ranges unsupported
 - `disable-ordering`: ordered result sets unsupported
 - `disable-references`: foreign keys not enforced
@@ -124,7 +116,7 @@ Enable feature flags to disable specific functionality until green.
 - `Driver::NAME` correct and used consistently
 - `prepare` handles multiple statements cleanly, or rejects them with an explicit error
 - Streams drop promptly (no leaked locks or file handles)
-- `SqlWriter` prints multi-statement sequences with proper separators and terminal `;`
+- For SQL-text drivers, `SqlWriter` prints multi-statement sequences with proper separators and terminal `;`
 - Upsert path (`save()`) works if PK exists; documented fallback if not supported
 
 Remove a flag the moment your driver truly supports the capability. Each removed flag unlocks corresponding test sorties.
@@ -136,6 +128,7 @@ Remove a flag the moment your driver truly supports the capability. Each removed
 
 ## Errors
 Return early with rich context:
+- Return errors for recoverable failures rather than panicking
 - Wrong URL prefix: immediate `anyhow!("YourDB connection URL must start with yourdb://")`
 - Prepare failure: attach truncated query text (`truncate_long!` style) to context
 - Bind failure: specify parameter index and offending value type

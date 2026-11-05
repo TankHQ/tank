@@ -117,6 +117,6 @@
             <b>&darr;</b>
         </div>
         <Terminal ref="terminal" />
-        <p class="hint">Drag a card to throw it &nbsp;·&nbsp; the generated SQL follows the top card</p>
+        <p class="hint">Drag a card to throw it. The generated output follows the top card</p>
     </section>
 </template>

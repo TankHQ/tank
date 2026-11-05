@@ -1044,11 +1044,6 @@ SELECT callsign, casualties
 FROM army.deployments
 WHERE operational = false
 ```
-```sql [SQLite]
-SELECT callsign, casualties
-FROM army.deployments
-WHERE operational = false
-```
 ```text [MongoDB]
 Query is not the expected tank::Query::Prepared variant (MongoDB driver uses prepared)
 ```

@@ -1,77 +1,84 @@
 # Types
 ###### *Field Manual Section 5* - Payload Specs
 
-Tank brings a full type arsenal to the field. The `Entity` derive macro identifies the type you're using by inspecting its final path segment (the trailer). For example, `std::collections::VecDeque`, `collections::VecDeque`, or simply `VecDeque` all resolve to the same type: `Value::List`.
+Tank brings a full type arsenal to the field. The `Entity` derive macro identifies known types by matching trailing path segments. For example, `std::collections::VecDeque`, `collections::VecDeque`, or simply `VecDeque` all resolve to the same type: `Value::List`.
 
-Tank maps ordinary Rust types (check the table below) to the closest column types each driver supports, falling back to generic representations when appropriate. Below is the standard mapping of Rust types to each driver's column type. The symbol ❌ indicates no native support at this time. Collection types may be emulated in some drivers using generic JSON or text representations.
+Tank maps ordinary Rust types to the closest column types each driver supports, falling back to generic representations when appropriate. The table shows column/storage mappings, not a guarantee of every operation or parameter binding. ❌ indicates unsupported mappings; ⚠️ marks fallback encodings or important limitations.
 
 ## Column Types
 <div class="sticky-table">
 
-| Rust                      | Postgres       | SQLite    | MySQL                     | MariaDB                   | DuckDB         | MongoDB     | ScyllaDB/Cassandra | Valkey/Redis |
-| ------------------------- | -------------- | --------- | ------------------------- | ------------------------- | -------------- | ----------- | ------------------ | ------------ |
-| `bool`                    | `BOOLEAN`      | `INTEGER` | `BOOLEAN`                 | `BOOLEAN`                 | `BOOLEAN`      | `Boolean`   | `BOOLEAN`          | `String`     |
-| `i8`, `NonZeroI8`         | `SMALLINT`     | `INTEGER` | `TINYINT`                 | `TINYINT`                 | `TINYINT`      | `Int32`     | `TINYINT`          | `String`     |
-| `i16`, `NonZeroI16`       | `SMALLINT`     | `INTEGER` | `SMALLINT`                | `SMALLINT`                | `SMALLINT`     | `Int32`     | `SMALLINT`         | `String`     |
-| `i32`, `NonZeroI32`       | `INTEGER`      | `INTEGER` | `INTEGER`                 | `INTEGER`                 | `INTEGER`      | `Int32`     | `INT`              | `String`     |
-| `i64`, `NonZeroI64`       | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`                  | `BIGINT`       | `Int64`     | `BIGINT`           | `String`     |
-| `i128`, `NonZeroI128`     | `NUMERIC(39)`  | ❌        | `NUMERIC(39)`             | `NUMERIC(39)`             | `HUGEINT`      | ❌          | `VARINT`           | `String`     |
-| `u8`, `NonZeroU8`         | `SMALLINT`     | `INTEGER` | `TINYINT UNSIGNED`        | `TINYINT UNSIGNED`        | `UTINYINT`     | `Int32`     | `SMALLINT`         | `String`     |
-| `u16`, `NonZeroU16`       | `INTEGER`      | `INTEGER` | `SMALLINT UNSIGNED`       | `SMALLINT UNSIGNED`       | `USMALLINT`    | `Int32`     | `INT`              | `String`     |
-| `u32`, `NonZeroU32`       | `BIGINT`       | `INTEGER` | `INTEGER UNSIGNED`        | `INTEGER UNSIGNED`        | `UINTEGER`     | `Int64`     | `BIGINT`           | `String`     |
-| `u64`, `NonZeroU64`       | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`     | `VARINT`           | `String`     |
-| `u128`, `NonZeroU128`     | `NUMERIC(39)`  | ❌        | `NUMERIC(39) UNSIGNED`    | `NUMERIC(39) UNSIGNED`    | `UHUGEINT`     | ❌          | `VARINT`           | `String`     |
-| `isize`, `NonZeroIsize`   | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`                  | `BIGINT`       | `Int64`     | `BIGINT`           | `String`     |
-| `usize`, `NonZeroUsize`   | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`     | `VARINT`           | `String`     |
-| `f32`                     | `REAL`         | `REAL`    | `FLOAT`                   | `FLOAT`                   | `FLOAT`        | `Double`    | `FLOAT`            | `String`     |
-| `f64`                     | `DOUBLE`       | `REAL`    | `DOUBLE`                  | `DOUBLE`                  | `DOUBLE`       | `Double`    | `DOUBLE`           | `String`     |
+| Rust                      | Postgres       | SQLite    | MySQL                     | MariaDB                   | DuckDB         | MongoDB      | ScyllaDB/Cassandra | Valkey/Redis |
+| ------------------------- | -------------- | --------- | ------------------------- | ------------------------- | -------------- | ------------ | ------------------ | ------------ |
+| `bool`                    | `BOOLEAN`      | `INTEGER` | `BOOLEAN`                 | `BOOLEAN`                 | `BOOLEAN`      | `Boolean`    | `BOOLEAN`          | `String`     |
+| `i8`, `NonZeroI8`         | `SMALLINT`     | `INTEGER` | `TINYINT`                 | `TINYINT`                 | `TINYINT`      | `Int32`      | `TINYINT`          | `String`     |
+| `i16`, `NonZeroI16`       | `SMALLINT`     | `INTEGER` | `SMALLINT`                | `SMALLINT`                | `SMALLINT`     | `Int32`      | `SMALLINT`         | `String`     |
+| `i32`, `NonZeroI32`       | `INTEGER`      | `INTEGER` | `INTEGER`                 | `INTEGER`                 | `INTEGER`      | `Int32`      | `INT`              | `String`     |
+| `i64`, `NonZeroI64`       | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`                  | `BIGINT`       | `Int64`      | `BIGINT`           | `String`     |
+| `i128`, `NonZeroI128`     | `NUMERIC(39)`  | ❌        | `NUMERIC(39)`             | `NUMERIC(39)`             | `HUGEINT`      | ❌           | `VARINT`           | `String`     |
+| `u8`, `NonZeroU8`         | `SMALLINT`     | `INTEGER` | `TINYINT UNSIGNED`        | `TINYINT UNSIGNED`        | `UTINYINT`     | `Int32`      | `SMALLINT`         | `String`     |
+| `u16`, `NonZeroU16`       | `INTEGER`      | `INTEGER` | `SMALLINT UNSIGNED`       | `SMALLINT UNSIGNED`       | `USMALLINT`    | `Int32`      | `INT`              | `String`     |
+| `u32`, `NonZeroU32`       | `BIGINT`       | `INTEGER` | `INTEGER UNSIGNED`        | `INTEGER UNSIGNED`        | `UINTEGER`     | `Int64`      | `BIGINT`           | `String`     |
+| `u64`, `NonZeroU64`       | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`      | `VARINT`           | `String`     |
+| `u128`, `NonZeroU128`     | `NUMERIC(39)`  | ❌        | `NUMERIC(39) UNSIGNED`    | `NUMERIC(39) UNSIGNED`    | `UHUGEINT`     | ❌           | `VARINT`           | `String`     |
+| `isize`, `NonZeroIsize`   | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`                  | `BIGINT`       | `Int64`      | `BIGINT`           | `String`     |
+| `usize`, `NonZeroUsize`   | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`      | `VARINT`           | `String`     |
+| `f32`                     | `REAL`         | `REAL`    | `FLOAT`                   | `FLOAT`                   | `FLOAT`        | `Double`     | `FLOAT`            | `String`     |
+| `f64`                     | `FLOAT8`       | `REAL`    | `DOUBLE`                  | `DOUBLE`                  | `DOUBLE`       | `Double`     | `DOUBLE`           | `String`     |
 | `rust_decimal::Decimal`   | `NUMERIC`      | `REAL`    | `DECIMAL`                 | `DECIMAL`                 | `DECIMAL`      | `Decimal128` | `DECIMAL`          | `String`     |
 | `tank::FixedDecimal<W,S>` | `NUMERIC(W,S)` | `REAL`    | `DECIMAL(W,S)`            | `DECIMAL(W,S)`            | `DECIMAL(W,S)` | `Decimal128` | `DECIMAL`          | `String`     |
-| `char`                    | `CHAR(1)`      | `TEXT`    | `CHAR(1)`                 | `CHAR(1)`                 | `CHAR(1)`      | `String`    | `ASCII`            | `String`     |
-| `String`                  | `TEXT`         | `TEXT`    | `TEXT, VARCHAR(60) if pk` | `TEXT, VARCHAR(60) if pk` | `TEXT`         | `String`    | `TEXT`             | `String`     |
-| `Box<[u8]>`               | `BYTEA`        | `BLOB`    | `BLOB`                    | `BLOB`                    | `BLOB`         | `Binary`    | `BLOB`             | `String`     |
-| `time::Date`              | `DATE`         | `TEXT` ⚠️ | `DATE`                    | `DATE`                    | `DATE`         | `Date`      | `DATE`             | `String`     |
-| `time::Time`              | `TIME`         | `TEXT` ⚠️ | `TIME(6)`                 | `TIME(6)`                 | `TIME`         | `String` ⚠️ | `TIME`             | `String`     |
-| `time::PrimitiveDateTime` | `TIMESTAMP`    | `TEXT` ⚠️ | `DATETIME`                | `DATETIME`                | `TIMESTAMP`    | `DateTime`  | `TIMESTAMP`        | `String`     |
-| `time::UtcDateTime`       | `TIMESTAMP`    | `TEXT` ⚠️ | `DATETIME`                | `DATETIME`                | `TIMESTAMP`    | `DateTime`  | `TIMESTAMP`        | `String`     |
-| `time::OffsetDateTime`    | `TIMESTAMPTZ`  | `TEXT` ⚠️ | `DATETIME`                | `DATETIME`                | `TIMESTAMPTZ`  | `DateTime`  | `TIMESTAMP`        | `String`     |
-| `std::time::Duration`     | `INTERVAL`     | ❌        | `TIME(6)`                 | `TIME(6)`                 | `INTERVAL`     | ❌          | `DURATION`         | `String`     |
-| `time::Duration`          | `INTERVAL`     | ❌        | `TIME(6)`                 | `TIME(6)`                 | `INTERVAL`     | ❌          | `DURATION`         | `String`     |
-| `tank::Interval`          | `INTERVAL`     | ❌        | `TIME(6)`                 | `TIME(6)`                 | `INTERVAL`     | ❌          | `DURATION`         | `String`     |
-| `uuid::Uuid`              | `UUID`         | `TEXT`    | `CHAR(36)`                | `UUID`                    | `UUID`         | `Uuid`      | `UUID`             | `String`     |
-| `[T; N]`                  | `T[N]`         | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[N]`         | `Array`     | `VECTOR<T,N>`      | `List`       |
-| `VecDeque<T>`             | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array`     | `LIST<T>`          | `List`       |
-| `LinkedList<T>`           | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array`     | `LIST<T>`          | `List`       |
-| `Vec<T>`                  | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array`     | `LIST<T>`          | `List`       |
-| `HashMap<K,V>`            | ❌             | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `MAP(K,V)`     | `Document`  | `MAP<K,V>`         | `Hash`       |
-| `BTreeMap<K,V>`           | ❌             | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `MAP(K,V)`     | `Document`  | `MAP<K,V>`         | `Hash`       |
+| `char`                    | `CHAR(1)`      | `TEXT`    | `CHAR(1)`                 | `CHAR(1)`                 | `CHAR(1)`      | `String`     | `ASCII`            | `String`     |
+| `String`                  | `TEXT`         | `TEXT`    | `TEXT, VARCHAR(60) if pk` | `TEXT, VARCHAR(60) if pk` | `TEXT`         | `String`     | `TEXT`             | `String`     |
+| `Box<[u8]>`               | `BYTEA`        | `BLOB`    | `BLOB`                    | `BLOB`                    | `BLOB`         | `Binary`     | `BLOB`             | `String` ⚠️  |
+| `time::Date`              | `DATE`         | `TEXT` ⚠️ | `DATE`                    | `DATE`                    | `DATE`         | `DateTime`   | `DATE`             | `String`     |
+| `time::Time`              | `TIME`         | `TEXT` ⚠️ | `TIME(6)`                 | `TIME(6)`                 | `TIME`         | `String` ⚠️  | `TIME`             | `String`     |
+| `time::PrimitiveDateTime` | `TIMESTAMP`    | `TEXT` ⚠️ | `DATETIME`                | `DATETIME`                | `TIMESTAMP`    | `DateTime`   | `TIMESTAMP`        | `String`     |
+| `time::UtcDateTime`       | `TIMESTAMP`    | `TEXT` ⚠️ | `DATETIME`                | `DATETIME`                | `TIMESTAMP`    | `DateTime`   | `TIMESTAMP`        | `String`     |
+| `time::OffsetDateTime`    | `TIMESTAMPTZ`  | `TEXT` ⚠️ | `DATETIME`                | `DATETIME`                | `TIMESTAMPTZ`  | `DateTime`   | `TIMESTAMP`        | `String`     |
+| `std::time::Duration`     | `INTERVAL`     | ❌        | `TIME(6)`                 | `TIME(6)`                 | `INTERVAL`     | ❌           | `DURATION`         | ❌           |
+| `time::Duration`          | `INTERVAL`     | ❌        | `TIME(6)`                 | `TIME(6)`                 | `INTERVAL`     | ❌           | `DURATION`         | ❌           |
+| `tank::Interval`          | `INTERVAL`     | ❌        | `TIME(6)`                 | `TIME(6)`                 | `INTERVAL`     | ❌           | `DURATION`         | ❌           |
+| `uuid::Uuid`              | `UUID`         | `TEXT`    | `CHAR(36)`                | `UUID`                    | `UUID`         | `Uuid`       | `UUID`             | `String`     |
+| `[T; N]`                  | `T[N]`         | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[N]`         | `Array`      | `VECTOR<T,N>`      | `List`       |
+| `VecDeque<T>`             | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array`      | `LIST<T>`          | `List`       |
+| `LinkedList<T>`           | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array`      | `LIST<T>`          | `List`       |
+| `Vec<T>`                  | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array`      | `LIST<T>`          | `List`       |
+| `HashMap<K,V>`            | ❌             | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `MAP(K,V)`     | `Document`   | `MAP<K,V>`         | `Hash`       |
+| `BTreeMap<K,V>`           | ❌             | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `MAP(K,V)`     | `Document`   | `MAP<K,V>`         | `Hash`       |
 </div>
 
 > [!WARNING]
-> When a type falls back to a generic representation (like `TEXT` or `JSON`), Tank encodes it predictably such that equality and ordering comparisons (where meaningful) behave as expected. Advanced indexing or operator support may vary by driver.
+> Fallback encodings such as `TEXT` or `JSON` have driver-specific comparison, ordering, indexing, and operator semantics. For example, text timestamps with different offsets need not sort chronologically.
 >
-> The special `isize`/`usize` types map to the native pointer-width integer (64-bit on 64-bit targets, 32-bit on 32-bit targets). For cross-database portability prefer explicit `i64`/`u64` unless you truly need platform width.
+> Mappings do not imply the full Rust integer range: PostgreSQL's `NUMERIC(19)` cannot hold `u64::MAX`, SQLite and MongoDB limit `u64` to signed 64-bit values, and decimal-based 128-bit conversions have additional limits. The table assumes 64-bit builds for `isize`/`usize`; prefer explicit `i64`/`u64` for portable schemas.
+
+Driver-specific limits:
+- MariaDB's native `UUID` requires MariaDB mode and server 10.7+, MySQL mode uses `CHAR(36)`.
+- MongoDB stores dates as BSON `DateTime` at UTC midnight. Timestamps use UTC milliseconds, losing original offsets and sub-millisecond precision.
+- ScyllaDB maps `[char; N]` to `ASCII`, not `VECTOR<T,N>`. Collection element/key types depend on the backend: Valkey requires scalar elements and map keys/values, and MongoDB requires string-convertible document keys.
+- Prepared parameters have additional restrictions: MySQL collections and DuckDB arrays/lists/maps are not supported, and ScyllaDB's `DURATION`, `TIMESTAMP`, and `VARINT` bindings are unimplemented. Valkey blob round trips are not supported reliably, despite Redis strings being binary-safe.
 
 ## Wrapper Types
-Built-in wrappers you can use directly in entities, the SQL type is inferred from the inner type:
+Built-in wrappers usable directly in entities infer the SQL type from the inner type. Persisted fields must also be cloneable:
 - `Option<T>`: Nullable column.
 - `Box<T>`
 - `Cell<T>`
 - `RefCell<T>`
-- `RwLock<T>`
 - `Arc<T>`
 - `Rc<T>`
 
+`RwLock<T>` implements `AsValue` for standalone conversions, but is not directly usable as a persisted entity field because it does not implement `Clone`.
+
 ## Custom Types
-To handle custom types you just need to implement [`tank::AsValue`](https://docs.rs/tank/latest/tank/trait.AsValue.html). It will be your conversion contract: it turns your Rust type into a [`tank::Value`](https://docs.rs/tank/latest/tank/enum.Value.html) that can be sent to the database, and turns a `tank::Value` back into the original when decoding rows. Once implemented, you can use the type directly as an `Entity` field.
+To handle custom types, implement [`tank::AsValue`](https://docs.rs/tank/latest/tank/trait.AsValue.html). It turns your Rust type into a [`tank::Value`](https://docs.rs/tank/latest/tank/enum.Value.html) for the database and back when decoding rows. With `AsValue` and `Clone`, the type can be used directly as a persisted `Entity` field.
 
 ### Example: Custom Struct
 Here’s a `host:port` example that encodes a network address as a string that must be stored in a single column:
 
 ```rust
-use tank::{AsValue, Error, Result, Value, ValueOwned};
+use tank::{AsValue, Error, Result, Value, ValueOwned, anyhow};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct HostPort {
     pub host: String,
     pub port: u16,
@@ -116,12 +123,14 @@ impl AsValue for HostPort {
 ### Example: Conversion Type
 When the custom type lives outside your crate or when you want to change the serialization logic for known types, you can use a conversion wrapper type that implements `AsValue`.
 
-```rust
-use anyhow::Context;
-use reqwest::Method;
-use std::{any, str::FromStr};
+For recognized field types, changing the stored representation may also require a matching `column_type` override. Use separate required and nullable converters so SQL `NULL` becomes `None` only for optional fields, rather than causing a panic during required-field conversion.
 
-#[derive(Clone, PartialEq, Eq, tank::Entity, Debug)]
+```rust
+use reqwest::Method;
+use std::str::FromStr;
+use tank::{AsValue, Entity, ErrorContext, Result, Value, ValueOwned};
+
+#[derive(Entity)]
 pub struct Request {
     #[tank(primary_key)]
     pub id: i64,
@@ -131,76 +140,75 @@ pub struct Request {
     pub begin_timestamp_ms: i64,
     pub end_timestamp_ms: Option<i64>,
 }
-#[derive(Clone, PartialEq, Eq, tank::Entity, Debug)]
+#[derive(Entity)]
 pub struct RequestLimit {
     #[tank(primary_key)]
     pub id: i64,
     pub target_pattern: String,
     pub requests: u32,
-    #[tank(conversion_type = MethodWrap)]
+    #[tank(conversion_type = OptionalMethodWrap)]
     pub method: Option<Method>,
     pub interval_ms: Option<u32>,
 }
 
-// Declare a local wrapper making it possible to implement `tank::AsValue`
-pub struct MethodWrap(Option<Method>);
-impl tank::AsValue for MethodWrap {
-    fn as_empty_value() -> tank::ValueOwned {
-        tank::Value::Varchar(None)
+// Required values are validated before the infallible From conversion.
+pub struct MethodWrap(Method);
+impl AsValue for MethodWrap {
+    fn as_empty_value() -> ValueOwned {
+        Value::Varchar(None)
     }
 
-    fn as_value<'a>(self) -> tank::Value<'a>
+    fn as_value<'a>(self) -> Value<'a>
     where
         Self: 'a,
     {
-        self.0.map(|v| v.to_string()).as_value()
+        self.0.to_string().as_value()
     }
 
-    fn try_from_value(value: impl tank::AsValue) -> tank::Result<Self>
-    where
-        Self: Sized,
-    {
-        let value = value.as_value();
-        if value.is_null() {
-            return Ok(Self(None));
-        }
-        // Always call try_as before checking the received value
-        match value.try_as(&tank::Value::Varchar(None)) {
-            Ok(tank::Value::Varchar(Some(v), ..)) => {
-                let method = Method::from_str(&v).with_context(|| {
-                    format!("Could not convert {v:?} into {}", any::type_name::<Method>())
-                })?;
-
-                Ok(method.into())
-            }
-            _ => Err(tank::Error::msg(format!(
-                "Could not convert value into {}",
-                any::type_name::<Method>()
-            ))),
-        }
+    fn try_from_value(value: impl AsValue) -> Result<Self> {
+        let text = String::try_from_value(value)?;
+        Method::from_str(&text)
+            .with_context(|| format!("Could not parse HTTP method {text:?}"))
+            .map(Self)
     }
 }
 
-// Implement conversion logic for each type this method has to convert
 impl From<Method> for MethodWrap {
     fn from(value: Method) -> Self {
-        Self(Some(value))
+        Self(value)
     }
 }
 impl From<MethodWrap> for Method {
     fn from(value: MethodWrap) -> Self {
-        value
-            .0
-            .expect("Unexpected error: no value stored in this MethodWrap object")
+        value.0
     }
 }
-impl From<Option<Method>> for MethodWrap {
+
+pub struct OptionalMethodWrap(Option<Method>);
+impl AsValue for OptionalMethodWrap {
+    fn as_empty_value() -> ValueOwned {
+        MethodWrap::as_empty_value()
+    }
+
+    fn as_value<'a>(self) -> Value<'a>
+    where
+        Self: 'a,
+    {
+        self.0.map(MethodWrap).as_value()
+    }
+
+    fn try_from_value(value: impl AsValue) -> Result<Self> {
+        Option::<MethodWrap>::try_from_value(value)
+            .map(|value| Self(value.map(|method| method.0)))
+    }
+}
+impl From<Option<Method>> for OptionalMethodWrap {
     fn from(value: Option<Method>) -> Self {
         Self(value)
     }
 }
-impl From<MethodWrap> for Option<Method> {
-    fn from(value: MethodWrap) -> Self {
+impl From<OptionalMethodWrap> for Option<Method> {
+    fn from(value: OptionalMethodWrap) -> Self {
         value.0
     }
 }

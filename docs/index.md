@@ -23,7 +23,7 @@ hero:
 features:
   - icon: ⚡
     title: Async Firepower
-    details: Non-blocking, streaming database operations built for async Rust.
+    details: Streaming database operations exposed through an async Rust API.
     link: /03-connection
     linkText: Supply lines
   - icon: 🧩
@@ -33,7 +33,7 @@ features:
     linkText: Entity definition
   - icon: ⚔️
     title: Precision Fire Control
-    details: The <code>expr!</code> macro builds a typed AST driver compiles to its own SQL.
+    details: The <code>expr!</code> macro builds a typed AST that each driver translates into its query language.
     link: /08-advanced-operations
     linkText: Tactical coordination
   - icon: 🎯
@@ -43,7 +43,7 @@ features:
     linkText: Joins
   - icon: 🛡️
     title: Adaptable Chassis
-    details: Swap SQL and NoSQL backends like changing magazines mid-battle without touching your entity or query code.
+    details: Share entity and query code across SQL and NoSQL backends, within each driver's operational limits.
     link: /04-capabilities
     linkText: Operational limits
   - icon: 🎖️
@@ -74,10 +74,10 @@ const drivers = [
 Welcome to the armored division, commander. Tank (**T**able **A**bstraction & **N**avigation **K**it) is the Rust data layer built for teams fighting across multiple fronts. Whether you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or holding a Postgres stronghold, you define your entities once and issue the same explicit orders everywhere. You call the targets, Tank and your driver handle the ballistics.
 
 <dl class="home-stats">
-  <div><dt>9</dt><dd>Database backends</dd></div>
+  <div><dt>10</dt><dd>Database backends</dd></div>
   <div><dt>1</dt><dd>Entity model</dd></div>
   <div><dt>0</dt><dd>Boilerplate</dd></div>
-  <div><dt>100%</dt><dd>Async</dd></div>
+  <div><dt>100%</dt><dd>Async API</dd></div>
 </dl>
 
 <div class="driver-marquee">
@@ -95,6 +95,7 @@ Welcome to the armored division, commander. Tank (**T**able **A**bstraction & **
 Field operations shouldn't require filling out forms in triplicate. Rig a plain Rust struct with `#[derive(Entity)]` and your frontline fighter is combat-ready: field types map to the closest native column each backend supports, `#[tank(...)]` attributes dial in the armor specs, and `#[tank(ignore)]` keeps local recon off the wire.
 
 ```rust [schema.rs]
+use std::collections::HashMap;
 use tank::Entity;
 use uuid::Uuid;
 
@@ -125,10 +126,11 @@ pub struct Operator {
 ###### 02 · Live Fire
 ## Every maneuver, one typed API
 
-Below are sample operations you can issue from Rust and the corresponding SQL executed on each battlefield. Swipe through the deck to cycle maneuvers and inspect the live fire across backends.
+Below are sample Rust operations and representative SQL or native query output for each backend. Each card defines its own entities and uses illustrative UUIDs; bulk-insert SQL may represent a native ingestion path. Swipe through the deck to cycle maneuvers and inspect the live fire across backends.
 
 <SwipeDeck>
-<!--@include: ./components/queries.md-->
+
+<!--@include: components/queries.md-->
 </SwipeDeck>
 
 ###### 03 · Terrain
@@ -142,7 +144,7 @@ Not all tanks are built for every terrain, and a lone-wolf SQLite operative has 
 ###### 04 · Deployment
 ## Skip training, go straight to live fire
 
-Two commands to arm the command vehicle and choose your battlefield, then report to the [getting started briefing](/02-getting-started) to open supply lines, define a unit, and fire for effect. Tank is 100% async, run your campaign under a runtime like [Tokio](https://crates.io/crates/tokio) and `.await` your orders.
+Two commands to arm the command vehicle and choose your battlefield, then report to the [getting started briefing](/02-getting-started) to open supply lines, define a unit, and fire for effect. Tank exposes an async API: run your campaign under a runtime like [Tokio](https://crates.io/crates/tokio) and `.await` your orders.
 
 ```sh
 cargo add tank          # the command vehicle

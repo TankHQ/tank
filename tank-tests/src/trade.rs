@@ -8,7 +8,7 @@ use tank::{
 };
 use time::macros::datetime;
 use tokio::sync::Mutex;
-use uuid::Uuid;
+use uuid::{Uuid, uuid};
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
@@ -17,7 +17,7 @@ static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 pub struct Trade {
     #[tank(name = "trade_id")]
     pub trade: u64,
-    #[tank(name = "order_id", default = Uuid::from_str("241d362d-797e-4769-b3f6-412440c8cf68").unwrap().as_value())]
+    #[tank(name = "order_id", default = uuid!("241d362d-797e-4769-b3f6-412440c8cf68").as_value())]
     pub order: Uuid,
     /// Ticker symbol
     pub symbol: String,

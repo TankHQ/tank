@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    AsValue, Driver, DynQuery, Entity, Executor, QueryBuilder, QueryResult, Result, Row,
-    RowsAffected, SqlWriter, cols, expr, join,
+    Driver, DynQuery, Entity, Executor, QueryBuilder, QueryResult, Result, RowsAffected, SqlWriter,
+    anyhow, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, OffsetDateTime, Time, UtcOffset, macros::date};
@@ -73,11 +73,8 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     RadioLog::insert_many(executor, &logs).await?;
 
     // Find
-    if let Some(radio_log) = RadioLog::find_one(
-        executor,
-        expr!(RadioLog::unit_callsign == "Alpha-%" as LIKE),
-    )
-    .await?
+    if let Some(radio_log) =
+        RadioLog::find_one(executor, expr!(RadioLog::unit_callsign == "Alpha-1")).await?
     {
         log::debug!("Found radio log: {:?}", radio_log.id);
     }
@@ -101,9 +98,25 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
 
     let mut log = RadioLog::find_one(executor, expr!(RadioLog::message == "Ping #2"))
         .await?
-        .expect("Missing log");
+        .ok_or_else(|| anyhow!("Missing log"))?;
     log.message = "Ping #2 ACK".into();
     log.save(executor).await?;
+
+    // Prepare
+    let mut query =
+        RadioLog::prepare_find(executor, expr!(RadioLog::signal_strength > ?), None).await?;
+    query.bind(40)?;
+    let messages: Vec<_> = executor
+        .fetch(query)
+        .map(|row| row.and_then(RadioLog::from_row).map(|log| log.message))
+        .try_collect()
+        .await?;
+    assert_eq!(messages.len(), 5);
+    assert!(
+        ["Ping #0", "Ping #1", "Ping #2 ACK", "Ping #3", "Ping #4"]
+            .into_iter()
+            .all(|message| messages.iter().any(|actual| actual.as_str() == message))
+    );
 
     // Delete
     RadioLog::delete_many(executor, log.primary_key_expr()).await?;
@@ -112,16 +125,6 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     RadioLog::delete_many(executor, expr!(RadioLog::operator == #operator_id)).await?;
 
     operator.delete(executor).await?;
-
-    // Prepare
-    let mut query =
-        RadioLog::prepare_find(executor, expr!(RadioLog::signal_strength > ?), None).await?;
-    query.bind(40)?;
-    let _messages: Vec<_> = executor
-        .fetch(query)
-        .map_ok(|row| row.value(0).unwrap().as_value().into_owned())
-        .try_collect()
-        .await?;
 
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]

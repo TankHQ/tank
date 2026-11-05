@@ -18,8 +18,18 @@ Core operations on `Entity`:
 
 ## Operations Schema
 This is the schema we will use for every operation example that follows. All CRUD, streaming, prepared, and batching demonstrations below act on these two tables so you can focus on behavior instead of switching contexts. `Operator` is the identity table, `RadioLog` references an operator (foreign key) to record transmissions.
+
+The SQL below uses PostgreSQL syntax. Other drivers choose their own column types.
 ::: code-group
 ```rust [Rust]
+use std::pin::pin;
+use tank::{
+    Driver, DynQuery, Entity, QueryBuilder, QueryResult, RowsAffected, SqlWriter, anyhow, expr,
+    stream::{StreamExt, TryStreamExt},
+};
+use time::{Date, OffsetDateTime, macros::date};
+use uuid::Uuid;
+
 #[derive(Entity)]
 #[tank(schema = "operations", name = "radio_operator")]
 pub struct Operator {
@@ -62,7 +72,7 @@ CREATE TABLE IF NOT EXISTS operations.radio_log (
     message TEXT NOT NULL,
     unit_callsign TEXT NOT NULL,
     tx_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    rssi TINYINT NOT NULL);
+    rssi SMALLINT NOT NULL);
 ```
 :::
 
@@ -150,12 +160,25 @@ Instance method to save the current entity (works only for entities defining a p
 ```rust
 let mut log = RadioLog::find_one(executor, expr!(RadioLog::message == "Ping #2"))
     .await?
-    .expect("Missing log");
+    .ok_or_else(|| anyhow!("Missing log"))?;
 log.message = "Ping #2 ACK".into();
 log.save(executor).await?;
 ```
 
 If a table has no primary key, `save()` returns an error, use `insert_one` instead.
+
+## Prepared
+Filter by strength (prepared):
+```rust
+let mut query =
+    RadioLog::prepare_find(executor, expr!(RadioLog::signal_strength > ?), None).await?;
+query.bind(40)?;
+let messages: Vec<_> = executor
+    .fetch(query)
+    .map(|row| row.and_then(RadioLog::from_row).map(|log| log.message))
+    .try_collect()
+    .await?;
+```
 
 ## Delete
 Delete many entities matching an expression:
@@ -167,19 +190,6 @@ RadioLog::delete_many(executor, expr!(RadioLog::operator == #operator_id)).await
 Instance method to delete the current entity (works only for entities defining a primary key):
 ```rust
 operator.delete(executor).await?;
-```
-
-## Prepared
-Filter by strength (prepared):
-```rust
-let mut query =
-    RadioLog::prepare_find(executor, expr!(RadioLog::signal_strength > ?), None).await?;
-query.bind(40)?;
-let _messages: Vec<_> = executor
-    .fetch(query)
-    .map_ok(|row| row.value(0).unwrap().as_value().into_owned())
-    .try_collect()
-    .await?;
 ```
 
 ## Multi-Statement
@@ -203,10 +213,11 @@ writer.write_insert(
 );
 writer.write_select(
     &mut query,
-    RadioLog::columns(),
-    RadioLog::table(),
-    true,
-    Some(50),
+    &QueryBuilder::new()
+        .select(RadioLog::columns())
+        .from(RadioLog::table())
+        .where_expr(true)
+        .limit(Some(50)),
 );
 {
     let mut stream = pin!(executor.run(query));
@@ -220,12 +231,12 @@ writer.write_select(
     }
 }
 ```
-While the stream is alive, the executor is borrowed by it and cannot service other queries. Enclose the pinned stream in a scope, or drop it after execution.
+While the stream is alive, it borrows the executor, which cannot service other queries. Enclose the pinned stream in a scope so both it and the borrow end before the next operation.
 
 ## Errors & Edge Cases
 - `save()`/`delete()` on entities without PK result in immediate error.
-- `delete()` with affected rows not exactly one results in error.
-- Prepared binds validate conversion, failures return `Result::Err`.
+- `delete()` errors when the driver reports an affected-row count other than one. Unknown counts are accepted.
+- Parameter conversion failures return errors during binding or execution, depending on the driver.
 
 ## Performance
 - Use prepared statements for hot paths (changing only parameters).
