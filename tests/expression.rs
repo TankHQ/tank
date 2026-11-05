@@ -833,9 +833,17 @@ mod tests {
         let mut out = DynQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         ordered.write_query(&WRITER, &mut ctx, &mut out);
-        // precedence delegates to inner expression
         let p = ordered.precedence(&WRITER);
         assert_eq!(p, Operand::LitInt(1).precedence(&WRITER));
+
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlSelectOrderBy, false);
+        (Ordered {
+            expression: Operand::LitIdent("c"),
+            order: Order::DESC,
+        })
+        .write_query(&WRITER, &mut ctx, &mut out);
+        assert_eq!(out.as_str(), "c DESC");
     }
 
     #[test]

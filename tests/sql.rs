@@ -305,6 +305,78 @@ mod tests {
             assert_eq!(out.as_str(), expected);
         }
 
+        let arr = Value::Array(
+            Some(vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into()),
+            Box::new(tank::CollectionType {
+                element: Value::Int32(None),
+                len: 2,
+            }),
+        );
+        let mut out = DynQuery::default();
+        WRITER.write_value(&mut Context::empty(), &mut out, &arr);
+        assert_eq!(out.as_str(), "[1,2]");
+
+        let list = Value::List(
+            Some(vec![Value::Varchar(Some("a".into()))].into()),
+            Box::new(tank::CollectionType {
+                element: Value::Varchar(None),
+                len: 0,
+            }),
+        );
+        let mut out = DynQuery::default();
+        WRITER.write_value(&mut Context::empty(), &mut out, &list);
+        assert_eq!(out.as_str(), "[a]");
+
+        let mut map = std::collections::HashMap::new();
+        map.insert(Value::Varchar(Some("k".into())), Value::Int32(Some(1)));
+        let map = Value::Map(
+            Some(Box::new(map)),
+            Box::new(tank::MapType {
+                key: Value::Varchar(None),
+                value: Value::Int32(None),
+            }),
+        );
+        let mut out = DynQuery::default();
+        WRITER.write_value(&mut Context::empty(), &mut out, &map);
+        assert_eq!(out.as_str(), "{k:1}");
+
+        let strukt = Value::Struct(
+            Some(vec![("f".into(), Value::Int32(Some(1)))].into()),
+            Box::new(tank::StructType {
+                fields: vec![],
+                name: tank::TableRef::new("t".into()),
+            }),
+        );
+        let mut out = DynQuery::default();
+        WRITER.write_value(&mut Context::empty(), &mut out, &strukt);
+        assert_eq!(out.as_str(), "{f:1}");
+
+        let args: &[&dyn Expression] = &[];
+        let lit_list = [Operand::LitInt(1), Operand::LitInt(2)];
+        for (operand, expected) in [
+            (Operand::Call("NOW", args), "NOW()"),
+            (Operand::LitList(&lit_list), "[1,2]"),
+            (Operand::LitIdent("ident"), "ident"),
+        ] {
+            let mut out = DynQuery::default();
+            WRITER.write_operand(&mut Context::empty(), &mut out, &operand);
+            assert_eq!(out.as_str(), expected);
+        }
+
+        // CAST goes through the dedicated cast fragment.
+        let mut out = DynQuery::default();
+        BinaryOp {
+            op: BinaryOpType::Cast,
+            lhs: Operand::LitInt(1),
+            rhs: Operand::Type(Value::Int64(None)),
+        }
+        .write_query(
+            &WRITER,
+            &mut Context::new(Fragment::SqlSelect, false),
+            &mut out,
+        );
+        assert_eq!(out.as_str(), "CAST(1 AS BIGINT)");
+
         for (op, expected) in [
             (BinaryOpType::Is, "a IS 'x'"),
             (BinaryOpType::Regexp, "a REGEXP 'x'"),

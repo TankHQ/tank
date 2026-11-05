@@ -476,6 +476,7 @@ mod tests {
             bool::try_from_value(Value::Json(Some(serde_json::json!(1)))).unwrap(),
             true
         );
+        assert!(bool::try_from_value(Value::Json(Some(serde_json::json!(2)))).is_err());
     }
 
     #[test]
@@ -706,6 +707,8 @@ mod tests {
         );
         assert!(f32::try_from_value(Value::Json(Some(serde_json::json!(1.5)))).is_ok());
         assert!(f64::try_from_value(Value::Json(Some(serde_json::json!(2.5)))).is_ok());
+        assert!(f32::try_from_value(Value::Json(Some(serde_json::json!("x")))).is_err());
+        assert!(f64::try_from_value(Value::Json(Some(serde_json::json!("x")))).is_err());
     }
 
     #[test]
@@ -750,10 +753,16 @@ mod tests {
             'é'
         );
         assert_eq!(char::parse("é").unwrap(), 'é');
+        assert_eq!(char::try_from_value(Value::Int32(Some(0x41))).unwrap(), 'A');
+        assert!(char::try_from_value(Value::Int32(Some(0x11_0000))).is_err());
+        assert!(char::try_from_value(Value::Int32(Some(-1))).is_err());
     }
 
     #[test]
     fn blob_parse() {
+        let v = Box::<[u8]>::try_from_value(Value::Unknown(Some(r"\x41".into()))).unwrap();
+        assert_eq!(v.as_ref(), [0x41]);
+        assert!(Box::<[u8]>::try_from_value(Value::Int32(Some(1))).is_err());
         let v = Box::<[u8]>::try_from_value(Value::Varchar(Some("deadbeef".into()))).unwrap();
         assert_eq!(v.as_ref(), &[0xde, 0xad, 0xbe, 0xef]);
         let v2 = Box::<[u8]>::parse("\\xCAFE").unwrap();

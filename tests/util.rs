@@ -457,6 +457,42 @@ mod tests {
     }
 
     #[test]
+    fn sql_writer_select_without_from_is_ignored() {
+        use tank::SelectQuery;
+        struct NoFrom;
+        impl SelectQuery<TableRef> for NoFrom {
+            fn get_select(&self) -> impl Iterator<Item = impl Expression> + Clone {
+                std::iter::empty::<tank::Operand<'_>>()
+            }
+            fn get_from(&self) -> &Option<TableRef> {
+                &None
+            }
+            fn get_where(&self) -> &Option<impl Expression> {
+                &None::<bool>
+            }
+            fn get_group_by(&self) -> impl Iterator<Item = impl Expression> + Clone {
+                std::iter::empty::<tank::Operand<'_>>()
+            }
+            fn get_having(&self) -> &Option<impl Expression> {
+                &None::<bool>
+            }
+            fn get_order_by(&self) -> impl Iterator<Item = impl Expression> + Clone {
+                std::iter::empty::<tank::Operand<'_>>()
+            }
+            fn get_limit(&self) -> Option<u32> {
+                None
+            }
+            fn build<D: tank::Driver>(&self, _: &D) -> DynQuery {
+                DynQuery::default()
+            }
+            fn build_into<D: tank::Driver>(&self, _: &D, _: &mut DynQuery) {}
+        }
+        let mut out = DynQuery::default();
+        GenericSqlWriter::new().write_select(&mut out, &NoFrom);
+        assert!(out.is_empty());
+    }
+
+    #[test]
     fn sql_writer_select_star() {
         #[derive(Entity)]
         struct StarTable {

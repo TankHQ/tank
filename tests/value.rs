@@ -1578,6 +1578,22 @@ mod tests {
                 })
             ))
         );
+        assert!(
+            Value::List(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 4
+                })
+            )
+            .same_type(&Value::List(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 4
+                })
+            ))
+        );
 
         assert!(
             Value::Map(
@@ -1782,6 +1798,38 @@ mod tests {
                 .try_as(&Value::Uuid(None))
                 .unwrap(),
             Value::Uuid(Some(Uuid::nil()))
+        );
+
+        // Cross-type conversions that route through each target arm (errors are fine).
+        let d = time::Date::from_calendar_date(2024, time::Month::January, 1).unwrap();
+        let ts = time::PrimitiveDateTime::new(d, time::Time::MIDNIGHT);
+        assert!(
+            Value::Timestamp(Some(ts))
+                .try_as(&Value::Blob(None))
+                .is_err()
+        );
+        assert!(
+            Value::Timestamp(Some(ts))
+                .try_as(&Value::TimestampWithTimezone(None))
+                .is_ok()
+        );
+        assert!(
+            Value::Int32(Some(1))
+                .try_as(&Value::Interval(None))
+                .is_err()
+        );
+        assert!(Value::Int32(Some(1)).try_as(&Value::Date(None)).is_err());
+        assert!(Value::Int32(Some(1)).try_as(&Value::Uuid(None)).is_err());
+        assert!(
+            Value::Int32(Some(1))
+                .try_as(&Value::Struct(
+                    None,
+                    Box::new(tank::StructType {
+                        fields: vec![],
+                        name: TableRef::new("t".into()),
+                    }),
+                ))
+                .is_err()
         );
     }
 
@@ -2118,6 +2166,17 @@ fn value_value() {
         )
     );
     assert!(Value::parse("some input").is_err());
+    // `From<&str>` builds a borrowed Varchar.
+    assert_eq!(
+        Value::from("borrowed"),
+        Value::Varchar(Some(Cow::Borrowed("borrowed")))
+    );
+    // `Cow<Value>` decodes into an owned value.
+    let borrowed: Cow<'_, Value<'_>> = Cow::Borrowed(&Value::Int32(Some(7)));
+    assert_eq!(
+        Cow::<Value<'_>>::try_from_value(borrowed).unwrap(),
+        Cow::Owned(Value::Int32(Some(7)))
+    );
 }
 
 #[cfg(test)]
