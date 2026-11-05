@@ -1,89 +1,59 @@
-# Tank Architecture & Performance Guide
+# Tank Development Guide
 
-This document records the core architectural invariants, ABI/LLVM optimization rules, and driver design patterns in `tank`. Read this before modifying `tank-core`, `tank-macros`, or any database driver.
+Read before modifying `tank-core`, `tank-macros`, or database drivers.
 
-## 1. Workspace & Toolchain
+## Workspace
 
-- **Crates**:
-  - `tank`: Public facade re-exporting `tank-core` and `tank-macros`.
-  - `tank-core`: Core traits (`Driver`, `Executor`, `Connection`, `Transaction`, `Entity`, `Row`, `AsValue`, `SqlWriter`), `Value<'a>`, and query builders.
-  - `tank-macros`: Proc-macros for `#[derive(Entity)]`, `expr!`, `cols!`, and `join!`.
-  - `tank-tests`: Shared integration test suite executed by every driver.
-  - Drivers: `tank-postgres`, `tank-sqlite`, `tank-duckdb`, `tank-chdb`, `tank-clickhouse`, `tank-mysql`, `tank-mongodb`, `tank-scylladb`, `tank-valkey` (plus `tank-yourdb` template).
-- **Toolchain**: Use `rustup run nightly-2026-10-12`.
-- **Testing**: Run `./test.sh` (or `rustup run nightly-2026-10-12 cargo test -p <crate> --all-targets`).
+- `tank`: Public facade re-exporting `tank-core` and `tank-macros`.
+- `tank-core`: Traits (`Driver`, `Executor`, `Connection`, `Transaction`, `Entity`, `Row`, `AsValue`, `SqlWriter`), `Value<'a>`, and query builders.
+- `tank-macros`: `#[derive(Entity)]`, `expr!`, `cols!`, and `join!` proc-macros.
+- `tank-tests`: Shared integration suite run by every driver's `tests/` against `tank-core`.
+- Drivers: `tank-postgres`, `tank-sqlite`, `tank-duckdb`, `tank-chdb`, `tank-clickhouse`, `tank-mysql`, `tank-mongodb`, `tank-scylladb`, `tank-valkey`. Template: `tank-yourdb`.
 
-## 2. Code Style & API Design Rules
+## Validation
 
-1. **Minimal Public Surface**: Keep `Driver`, `Executor`, `Row`, `Entity`, and `AsValue` free of internal optimization hooks. Never expose driver-specific or macro-internal helper methods on public traits.
-2. **No Module-Level Functions or Variables in Type Modules**: Avoid free/module-level functions and module-level variables (even private ones) in regular modules. Encapsulate type-specific helpers and constants as associated functions, methods, or associated constants inside `impl` blocks on the relevant type. Genuinely shared, type-independent free functions belong in dedicated utility modules such as `util.rs`.
-3. **Prefer `use` Imports Over Inline Path Qualification**: Import types, traits, functions, and macros at the top of the file via `use` (e.g., `use tank_core::Error;`) rather than referring to them with inline namespace prefixes (e.g., `tank_core::Error`), unless disambiguating colliding names (e.g., `wtx::Error` vs `tank_core::Error`).
-   - In tests, place imports at the top of the enclosing `mod tests` (or the top of the file for top-level tests), not inside individual test functions.
-   - Re-exported paths must use the facade crate: import from `tank`, not `tank_core` (e.g., `use tank::Value;`, not `use tank_core::Value;`). Do not import from both.
-4. **Terse, Combinator-Oriented Code**: Prefer iterator/stream combinators and straightforward data flow over verbose state machines or extra helper types.
-5. **Comment the *Why*, Not the *What***: Keep comments concise (1–3 lines) and reserve them for non-obvious invariants, ABI/LLVM SROA constraints, or protocol subtleties.
+- Toolchain: `rustup run nightly-2026-10-12`.
+- Always run `./test.sh` after changes. It runs `cargo check`, then `cargo test -p <crate> --all-targets` independently for every workspace member, preserving each driver's `tank-tests` feature combination. Only this full run is the validation and coverage signal.
+- Partial package tests or coverage runs cannot establish full-suite coverage. Workspace-wide commands such as `cargo test --workspace` may mask driver-specific configurations through cross-member feature resolution and do not replace `./test.sh`.
 
-## 3. `Value<'a>` Layout & Memory Invariants (`tank-core/src/value/`)
+## Code Style & API
 
-- **`size_of::<Value>() == 32` and `align_of::<Value>() == 8`**:
-  - Enforced by `tests/value.rs::value_layout_is_compact`.
-  - Never add an unboxed variant to `Value<'a>` whose payload exceeds 24 bytes (or 16 bytes if it lacks a niche and requires 16-byte alignment).
-  - Wide/rare variants are boxed:
-    - `Int128(Option<Box<i128>>)` and `UInt128(Option<Box<u128>>)`
-    - `Array(Option<Box<[Value<'a>]>>, Box<CollectionType<'a>>)`
-    - `List(Option<Vec<Value<'a>>>, Box<Value<'a>>)`
-    - `Map(Option<HashMap<Value<'a>, Value<'a>>>, Box<(Value<'a>, Value<'a>)>)`
-    - `Struct(Option<Vec<(String, Value<'a>)>>, Box<StructType<'a>>)`
-  - `Value::Json(Option<JsonValue>)` stores `Option<serde_json::Value>` inline (24 bytes via `serde_json::Value`'s niche) so JSON values do not require an extra `Box` allocation.
-- **`Interval` Layout (`tank-core/src/value/interval.rs`)**:
-  - `Interval` is 16 bytes (`nanos: i64`, `days: i32`, `months: i32` with `align == 8`), so `Option<Interval>` is 24 bytes and fits inline in `Value::Interval(Option<Interval>)`.
-  - Arithmetic in `Interval` uses `i128` intermediates only during computation when `nanos` overflows `i64`.
+- Avoid panics in production code. Return errors for recoverable failures, including invalid input, decoding, I/O, and startup. Use `unwrap` or `expect` only when the call site guarantees success.
+- Keep public traits (`Driver`, `Executor`, `Row`, `Entity`, `AsValue`) free of driver-specific, macro-internal, or optimization helpers.
+- Put type-specific helpers and constants in the relevant `impl`, not at module scope, even when private. Only shared, type-independent functions belong in utility modules such as `util.rs`.
+- Import types, traits, functions, and macros with top-level `use`, qualifying inline only to disambiguate collisions (e.g. `wtx::Error`). Test imports belong at file or enclosing `mod tests` scope, never inside tests. Import re-exports from `tank`, not `tank_core`, and do not mix both.
+- Prefer iterator/stream combinators and direct data flow over verbose state machines or extra helper types.
+- Comments explain non-obvious invariants, ABI/LLVM constraints, or protocol subtleties, not obvious behavior. Keep them to 1-3 lines.
 
-## 4. LLVM SROA, `sret` Aliasing & Hot-Loop Decoding Rules
+## Value Layout (`tank-core/src/value/`)
 
-Because `size_of::<Value>() == 32` exceeds the two-register (16-byte) return limit of the x86-64 System V ABI, any non-inlined function returning `Value<'a>`, `Option<Cow<'_, Value<'_>>>`, or `Result<Value<'a>>` uses a hidden `sret` pointer (`ptr sret([32 x i8]) %_0`) on the stack.
+- Preserve `size_of::<Value>() == 32` and `align_of::<Value>() == 8`, enforced by `tests/value.rs::value_layout_is_compact`. Unboxed payloads must not exceed 24 bytes, or 16 bytes when niche-free and requiring 16-byte alignment.
+- Box wide/rare variants as follows: `Int128(Option<Box<i128>>)`, `UInt128(Option<Box<u128>>)`, `Array(Option<Box<[Value<'a>]>>, Box<CollectionType<'a>>)`, `List(Option<Vec<Value<'a>>>, Box<Value<'a>>)`, `Map(Option<HashMap<Value<'a>, Value<'a>>>, Box<(Value<'a>, Value<'a>)>)`, `Struct(Option<Vec<(String, Value<'a>)>>, Box<StructType<'a>>)`.
+- Keep `Value::Json(Option<JsonValue>)` inline. `serde_json::Value`'s niche makes its `Option` 24 bytes, avoiding an extra allocation.
+- In `interval.rs`, `Interval` is 16 bytes, aligned to 8 (`nanos: i64`, `days: i32`, `months: i32`). Its 24-byte `Option` fits inline in `Value::Interval`. Use `i128` arithmetic intermediates only when `nanos` overflows `i64`.
 
-To allow LLVM's Scalar Replacement of Aggregates (`SROA`) and `Mem2Reg` passes to keep `Value<'a>` entirely in SSA registers during `Entity::from_row` decoding:
+## Streams & Borrowing (`tank-core/src/executor.rs`, `tank-postgres/src/rows.rs`)
 
-1. **Keep Hot-Path `Value` Predicates `#[inline(always)]` and Consume `Value` by Value in Cold Error Helpers**:
-   - When `PostgresRow::value` is inlined into `Entity::from_row`, a decoded `v: Value` does not exist in memory yet—its discriminant and payload live solely in CPU registers. Because CPU registers do not have a memory address, calling any **non-inlined** method taking `&Value` on the hot path (such as `v.is_null()` if it were not `#[inline(always)]`) forces LLVM to spill the register values into a 32-byte stack `alloca` just to form the `&Value` pointer.
-   - In `AsValue::try_from_value`, the cold `Err` arm moves `v` **by value** into `#[cold] #[inline(never)] fn unexpected_value(value: Value<'_>, ...)` rather than formatting `{v:?}` inline:
-     1. Moving `v` by value consumes ownership in the `Err` branch, eliminating `drop_in_place::<Value>(&mut v)` at function exit (which would otherwise take `&mut v` on the shared local slot).
-     2. `rustc` materializes the outgoing argument slot only inside the cold `Err` basic block, so the `Ok` path keeps `v` in SSA registers with zero stack stores.
-2. **Avoid `sret` Return-Slot Forwarding into Cold Functions**:
-   - When an `#[inline(always)]` function returns a large type `T` (written via `sret`) and delegates its slow path to a `#[cold] #[inline(never)]` function with the **exact same return type `T`**, `rustc` forwards the caller's `sret` pointer directly into the cold call (`call cold_fn(ptr sret %0)`). LLVM `SROA` sees the `sret` pointer escape into an opaque call and refuses to promote the hot path's fields to registers.
-   - **Solution**: Give the cold helper a slightly different return type so `rustc` allocates a separate temporary stack slot inside the cold branch:
-     - `PostgresRow::value` (`tank-postgres/src/rows.rs`) returns `Option<Cow<'_, Value<'_>>>`, while `PostgresRow::decode_fallback` returns `Option<Value<'a>>`.
-     - `PostgresStream::poll_next` (`tank-postgres/src/rows.rs`) returns `Poll<Option<Result<T>>>`, while `PostgresStream::poll_init` returns `Poll<Result<()>>`.
-3. **Why `Ty::Bool` Must Stay in `PostgresRow::value`'s Inline Switch (`tank-postgres/src/rows.rs`)**:
-   - In `Value<'a>`, byte `0..1` is the 1-byte `u8` tag and bytes `4..8` hold `Option<i32>`'s 4-byte discriminant (`Value::Int32`), leaving a 3-byte (`24`-bit) gap at bytes `1..4`.
-   - Because `i24` is not a legal integer width in the x86-64 DataLayout (`n8:16:32:64`), if only `Int32` and `Varchar` are constructed inline, LLVM `SROA` creates an unpromotable `alloca [3 x i8]` for bytes `1..4` and emits `movzbl` + `movzwl` stack copies on every decoded column.
-   - Including `Ty::Bool` (`Value::Boolean(Option<bool>)`, which writes its 1-byte payload at offset `1..2`) in `PostgresRow::value` forces LLVM `SROA` to split `1..4` into `1..2` (`i8`) and `2..4` (`i16`), both legal widths that `Mem2Reg` promotes to SSA registers and dead-code-eliminates.
-4. **Move Out of `Cow<Value>` via `&mut Value` + `mem::forget` (`tank-core/src/value/as_value.rs`, `tank-macros/src/from_row_trait.rs`)**:
-   - Calling `Cow::into_owned()` on `Cow<'_, Value<'_>>` introduces a branch that clones borrowed `Value`s through the stack.
-   - Instead, `impl AsValue for &mut Value<'a>` uses `mem::take(self)` (`Value` is `Default` -> `Value::Null`), and `#[derive(Entity)]` passes `&mut *value` to `AsValue::try_from_value`.
-   - In `String::try_from_value` and `Cow<str>::try_from_value`, after allocating `s.to_owned()` from `Value::Varchar(Some(Cow::Borrowed(s)))`, call `mem::forget(v)`. Because `Cow::Borrowed` has no destructor, forgetting `v` eliminates the `drop_in_place::<Value>()` tag check without leaking memory.
-   - In `Option<T>::try_from_value` (`tank-core/src/as_value.rs`), keep `if same` and `if val.is_null()` with distinct branch targets (`!same` calls `fallback(&mut other)`, whereas `same && val.is_null()` returns `Ok(None)` directly). Combining them as `if same && !val.is_null()` causes LLVM `SimplifyCFG` to fold both checks into one basic block and speculatively hoist `val.is_null()` ahead of `same`, exceeding `JumpThreading`'s block-duplication threshold and preventing `PostgresRow::value`'s inline arms from jump-threading through `Option<T>::try_from_value`.
-5. **Delegate Cell Decoding to `wtx::codec::Decode` (`tank-postgres/src/rows.rs`)**:
-   - `PostgresRow::value` inspects `*dw.ty()` directly on `wtx`'s `PostgresDecodeWrapper` (from `self.record.value(index)`) and delegates decoding to `wtx`'s `Decode<Postgres<wtx::Error>>` implementations (`bool`, `i8`, `i16`, `i32`, `i64`, `f32`, `f64`, `Decimal`, `Uuid`, `&str`, `&[u8]`) rather than maintaining a separate `ColumnDecoder` array or duplicating raw byte parsing.
-   - In `PostgresRow::value`'s inline arms (`Ty::Bool`, `Ty::Int4`, `Ty::Varchar | Ty::Text`), `mem::forget(e)` is called on the `Err(e)` branch because those `wtx` decoders only return stack-only `DatabaseError::UnexpectedBufferSize` or `Error::InvalidUTF8` variants, eliding `wtx::Error` drop glue on the hot path.
+- `Executor::run` returns `impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send`, with `QueryResult::Row(R)` or `QueryResult::Affected(RowsAffected)`.
+- `Executor::fetch` returns `impl Stream<Item = Result<impl Row + 's>> + Send`. Its default `Fetched<S>` adapter filters affected counts from `self.run(query)` without `async_stream!`. PostgreSQL overrides it to avoid `QueryResult::Row` wrapping.
+- Bound rows to the executor's `&'s mut self` borrow. `PostgresRow<'s>` borrows `wtx`'s wire buffer (`PostgresRecord<'s>`) and connection-cached `RowLabels` (`Arc<[String]>`), avoiding per-row `Arc` clones, `Vec<ValueOwned>` allocations, and borrowed text/blob copies.
+- Avoid `async_stream::try_stream!` in hot drivers: its channel-like sender/receiver state machine polls a generator per item. `PostgresStream<F, I>` awaits query execution once in `#[cold] #[inline(never)] poll_init`, then steps `PostgresRows<'s>` or `PostgresResults<'s>` inline in `poll_next`.
+- Box very large generators: `tank-mongodb` applies `.boxed()` to `run`'s 12-arm stream, moving its state to the heap to avoid debug-build thread-stack overflow.
+- Preserve `try_collect` size hints (`tank-core/src/lib.rs`). Futures' version calls `items.extend(iter::once(item))` with `(1, Some(1))` per item, ignoring stream hints and causing about 15 `Vec` reallocations for 10,000 rows. `tank_core::stream::TryStreamExt::try_collect` drains through `ReadyItems`, forwarding `Iterator::size_hint` to `self.stream.size_hint()`. After `poll_init` initializes `PostgresRows` on the first item, `Vec::spec_extend` reserves the exact remaining count in one allocation.
 
-## 5. `#[derive(Entity)]` Row Decoding (`tank-macros/src/from_row_trait.rs`)
+## Entity & Value Conversion
 
-- **Positional Fast Path**: `from_row` first checks `if names == Self::column_names()`. When column names match the entity's declaration order (the common case for `Entity::find_many`, `Entity::find_one`, and ordered `SELECT` queries), columns are decoded directly by index `(0..N)` with zero per-row column name comparisons, and the loop is unrolled by the macro.
-- **Byte-Slice Column Name Matching**: In the fallback path (arbitrary column order or subset), column names are matched via `match __n__.as_bytes() { [#(#name),*] => ... }` rather than `match __n__.as_str()`. Matching `&str` literals causes `rustc` to lower string patterns to `bcmp` with variable length before LLVM `SwitchConversion` runs, leaving `call bcmp@GLIBC` in the loop for non-power-of-two column name lengths (e.g. length 10). Byte-slice array patterns lower directly to a length check plus register-width integer loads (`movq` + `movzwl`).
+- **Positional decoding** (`tank-macros/src/from_row_trait.rs`): First check `names == Self::column_names()`. Matching declaration order (usual for `find_many`, `find_one`, and ordered `SELECT`s) uses macro-unrolled indices `0..N`, avoiding per-column name comparisons on each row.
+- **Name matching** (same file): For arbitrary column order/subsets, match byte-slice arrays (`match __n__.as_bytes() { [#(#name),*] => ... }`), not `as_str()` literals. String patterns become variable-length `bcmp` before LLVM SwitchConversion, leaving `bcmp@GLIBC` calls for non-power-of-two lengths (e.g. 10). Byte patterns become length checks and register-width loads (`movq` + `movzwl`).
+- **Ownership** (`tank-core/src/value/as_value.rs`): Use `mem::take(self)` for `AsValue for &mut Value<'a>` (`Value::default()` is `Null`). The derive macro passes `&mut *value` to `AsValue::try_from_value`. Avoid `Cow::into_owned()`, which adds a borrowed-value cloning branch through the stack.
+- **Borrowed strings**: In `String::try_from_value` and `Cow<str>::try_from_value`, call `mem::forget(v)` after `s.to_owned()` from `Value::Varchar(Some(Cow::Borrowed(s)))`. This removes the `drop_in_place::<Value>()` tag check without leaking, since `Cow::Borrowed` has no destructor.
+- **Optional values** (`tank-core/src/as_value.rs`): Keep distinct branch targets: `!same` calls `fallback(&mut other)`, while `same && val.is_null()` returns `Ok(None)` directly. Retain separate `if same` and `if val.is_null()` checks. Combining them as `if same && !val.is_null()` lets SimplifyCFG hoist the null check ahead of `same`, exceeding JumpThreading's duplication threshold and blocking jump-threading of `PostgresRow::value`'s inline arms through the conversion.
 
-## 6. Streaming & Zero-Copy Row Architecture (`tank-core/src/executor.rs`, `tank-postgres/src/rows.rs`)
+## PostgreSQL & LLVM Optimization
 
-- **`Executor::run` and `Executor::fetch` Return `impl Stream`**:
-  - `Executor::run` returns `impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send` where `QueryResult<R>` is `QueryResult::Row(R) | QueryResult::Affected(RowsAffected)`.
-  - `Executor::fetch` returns `impl Stream<Item = Result<impl Row + 's>> + Send`, defaulting to a lightweight `Fetched<S>` stream adapter over `self.run(query)` that filters out `QueryResult::Affected` without `async_stream!` overhead. Drivers like `tank-postgres` override `fetch` directly to skip wrapping rows in `QueryResult::Row`.
-- **Borrowing Native Rows (`impl Row + 's`)**:
-  - Returning `impl Row + 's` (bounded by the `&'s mut self` borrow of the executor) allows `PostgresRow<'s>` to borrow directly from `wtx`'s wire read buffer (`PostgresRecord<'s>`) and connection-cached `RowLabels` (`Arc<[String]>`), avoiding per-row `Arc` clones, `Vec<ValueOwned>` allocations, and `String` copies for borrowed text/blobs.
-- **Avoid `async_stream::try_stream!` on Hot Drivers**:
-  - `try_stream!` allocates a channel-like sender/receiver state machine and polls a generator on every yielded item.
-  - In `tank-postgres`, `PostgresStream<F, I>` awaits the query execution future once in an outlined `#[cold] #[inline(never)] fn poll_init` and then steps the inline iterator (`PostgresRows<'s>` or `PostgresResults<'s>`) directly in `poll_next`.
-  - In drivers with very large multi-arm async generators (`tank-mongodb`), `.boxed()` is applied to the stream returned by `run` so the 12-arm generator state machine is heap-allocated and does not overflow thread stacks in unoptimized debug builds.
-- **`TryStreamExt::try_collect` `size_hint` Forwarding (`tank-core/src/lib.rs`)**:
-  - `futures::stream::TryStreamExt::try_collect` calls `items.extend(iter::once(item))` per yielded item (`size_hint() == (1, Some(1))`), ignoring `Stream::size_hint` and causing `Vec` to reallocate ~15 times across a 10,000-row result set.
-  - `tank_core::stream::TryStreamExt::try_collect` drains ready items through `ReadyItems`, which delegates `Iterator::size_hint` to `self.stream.size_hint()`. Once `PostgresStream::poll_init` initializes `PostgresRows` on the first item, `Vec::spec_extend` reads the exact remaining row count from `size_hint()` and reserves the full `Vec` capacity in one allocation.
+`Value` exceeds the x86-64 System V ABI's two-register, 16-byte return limit. Non-inlined returns of `Value<'a>`, `Option<Cow<'_, Value<'_>>>`, and `Result<Value<'a>>` use a hidden stack `sret` pointer (`ptr sret([32 x i8]) %_0`). Preserve these rules so Scalar Replacement of Aggregates (SROA) and Mem2Reg keep `Entity::from_row` decoding in SSA registers. PostgreSQL code is in `tank-postgres/src/rows.rs`.
+
+- **Inline predicates, move cold errors.** Keep hot `Value` predicates such as `is_null` `#[inline(always)]`. A non-inlined `&Value` call forces a 32-byte stack spill of the inlined `PostgresRow::value` result. In `AsValue::try_from_value`, move `v` into `#[cold] #[inline(never)] fn unexpected_value(value: Value<'_>, ...)`, rather than formatting `{v:?}` inline. Consuming it removes exit-time `drop_in_place::<Value>(&mut v)` on the shared slot, and confines outgoing argument storage to `Err`, leaving `Ok` store-free.
+- **Give cold helpers different return types.** If an `#[inline(always)]` large-type return delegates to a `#[cold] #[inline(never)]` helper returning the same type, rustc forwards the caller's `sret` slot into the opaque call, preventing SROA. A different type confines the temporary to the cold branch. Keep `PostgresRow::value -> Option<Cow<'_, Value<'_>>>` versus `decode_fallback -> Option<Value<'a>>`, and `PostgresStream::poll_next -> Poll<Option<Result<T>>>` versus `poll_init -> Poll<Result<()>>`.
+- **Keep `Ty::Bool` inline in `PostgresRow::value`.** `Value`'s `u8` tag occupies `0..1`, and `Int32`'s `Option<i32>` discriminant occupies `4..8`. With only `Int32` and `Varchar` inline, the gap at `1..4` becomes an unpromotable `alloca [3 x i8]`: x86-64's `n8:16:32:64` DataLayout has no legal `i24`, causing per-column `movzbl` + `movzwl` stack copies. `Value::Boolean(Option<bool>)` writes at `1..2`, splitting the gap into legal `i8` and `i16` slices that Mem2Reg promotes and eliminates.
+- **Delegate decoding to `wtx::codec::Decode`.** Inspect `*dw.ty()` on the `PostgresDecodeWrapper` from `self.record.value(index)`. Use `Decode<Postgres<wtx::Error>>` for `bool`, `i8`, `i16`, `i32`, `i64`, `f32`, `f64`, `Decimal`, `Uuid`, `&str`, and `&[u8]`, not a separate `ColumnDecoder` array or duplicate byte parsing. The inline `Ty::Bool`, `Ty::Int4`, and `Ty::Varchar | Ty::Text` error arms use `mem::forget(e)` to remove hot-path `wtx::Error` drop glue: these decoders return only stack-only `DatabaseError::UnexpectedBufferSize` or `Error::InvalidUTF8` variants.

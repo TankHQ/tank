@@ -476,6 +476,16 @@ mod tests {
             let mut exec_ref = &mut exec;
             assert!(Executor::accepts_multiple_statements(&&mut exec_ref));
             assert_eq!(Executor::driver(&&mut exec_ref).name(), "test");
+            assert!(
+                Executor::do_prepare(&mut exec_ref, "SELECT 1".to_string())
+                    .await
+                    .unwrap()
+                    .is_prepared()
+            );
+            {
+                let mut stream = pin!(Executor::run(&mut exec_ref, ""));
+                assert!(stream.next().await.is_none());
+            }
             assert!(Connection::disconnect(exec_ref).await.is_err());
             exec.disconnect().await.unwrap();
 

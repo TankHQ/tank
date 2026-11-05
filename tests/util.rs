@@ -110,6 +110,16 @@ mod tests {
         );
         assert_eq!(declared.table_ref(), table);
         assert!(!<DeclareTableRef as Dataset>::qualified_columns());
+
+        let dynamic: &dyn Dataset = &table;
+        let mut query = DynQuery::default();
+        (&dynamic).write_table_name(
+            &writer,
+            &mut Context::fragment(Fragment::SqlSelectFrom),
+            &mut query,
+        );
+        assert_eq!(query.as_str().as_ref(), r#""analytics"."events" e"#);
+        assert_eq!((&dynamic).table_ref(), table);
     }
 
     #[test]
