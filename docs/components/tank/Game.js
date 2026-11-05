@@ -92,8 +92,6 @@ export class Game {
         this.camera.addShake(11)
     }
 
-    // --- loop -----------------------------------------------------------------
-
     _frame(now) {
         if (!this.running) return
         this._raf = requestAnimationFrame((t) => this._frame(t))

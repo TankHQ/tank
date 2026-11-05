@@ -1,8 +1,8 @@
 <script setup>
-import { onMounted, onUnmounted, ref } from "vue"
-import { VPButton } from "vitepress/theme-without-fonts"
+    import { onMounted, onUnmounted, ref } from "vue"
+    import { VPButton } from "vitepress/theme-without-fonts"
 
-const joke = ref(null)
+    const joke = ref(null)
     let jokes = []
     let timer = null
 

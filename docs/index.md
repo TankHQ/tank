@@ -25,32 +25,26 @@ features:
     title: Async Firepower
     details: Streaming database operations exposed through an async Rust API.
     link: /03-connection
-    linkText: Supply lines
   - icon: 🧩
     title: One Entity Model
     details: Derive <code>Entity</code> on a plain struct and get table DDL, selects, inserts and row decoding.
     link: /06-entity-definition
-    linkText: Entity definition
   - icon: ⚔️
     title: Precision Fire Control
     details: The <code>expr!</code> macro builds a typed AST that each driver translates into its query language.
     link: /08-advanced-operations
-    linkText: Tactical coordination
   - icon: 🎯
     title: Explicit Joins
     details: Joins are first-class datasets, never hidden behind entity fields. Every alliance is signed.
     link: /08-advanced-operations
-    linkText: Joins
   - icon: 🛡️
     title: Adaptable Chassis
     details: Share entity and query code across SQL and NoSQL backends, within each driver's operational limits.
     link: /04-capabilities
-    linkText: Operational limits
   - icon: 🎖️
     title: Rich Type Arsenal
     details: Map standard Rust types straight to native columns, and forge custom payloads with <code>AsValue</code>.
     link: /05-types
-    linkText: Payload specs
 ---
 
 <script setup>
@@ -158,5 +152,7 @@ Building and maintaining drivers for several database families is a major effort
 Sponsorship helps keep Tank maintained, well-tested and moving toward new capabilities faster.
 
 🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**. Tank is carefully designed, written and maintained by (human) [barsdeveloper](https://github.com/barsdeveloper).
+
+###### 06 · Get a joke
 
 <TankJoke />

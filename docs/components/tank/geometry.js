@@ -1,21 +1,12 @@
 import { SVG_MM } from './silhouette.js'
 import { RUNNING_GEAR } from './config.js'
 
-// Everything here is *derived* from the raw settings in `config.js` and the
-// reference outline in `silhouette.js`. Nothing in this file is tunable: change
-// the settings and these values follow. The renderer, the physics and the
-// ballistics all read the same derived geometry, so the art and the simulation
-// can never disagree.
-
 const SV = SVG_MM
-
-// Bounding box of the SVG hull, used to anchor the scale and the deck line.
 const svgHullMinX = Math.min(...SV.hull.map((p) => p[0]))
 const svgHullMaxX = Math.max(...SV.hull.map((p) => p[0]))
 const svgHullMinY = Math.min(...SV.hull.map((p) => p[1])) // deck line (y points down)
 const svgHullMaxY = Math.max(...SV.hull.map((p) => p[1])) // skirt / belly
 
-// Area centroid of a polygon, matching how Matter recentres body vertices.
 function polygonCentroid(pts) {
     let twiceArea = 0
     let cx = 0
@@ -32,9 +23,6 @@ function polygonCentroid(pts) {
     return { x: cx / (6 * twiceArea), y: cy / (6 * twiceArea) }
 }
 
-// Turn the running-gear ratios into concrete pixel positions for the hull, the
-// road wheels, the idlers, the cannon and the camouflage, all in the centred,
-// body-local frame Matter uses.
 function buildRunningGear(rg) {
     const L = rg.hullPixelLength
 
