@@ -1,15 +1,15 @@
-use crate::{sql_writer::SQLiteSqlWriter, CBox};
+use crate::{CBox, sql_writer::SQLiteSqlWriter};
 use anyhow::anyhow;
 use libsqlite3_sys::*;
 use rust_decimal::prelude::ToPrimitive;
 use std::{
-    ffi::{c_int, CStr},
+    ffi::{CStr, c_int},
     fmt::{self, Display},
     os::raw::{c_char, c_void},
 };
 use tank_core::{
-    error_message_from_ptr, truncate_long, AsValue, Context, DynQuery, Error, Fragment, Prepared,
-    Result, SqlWriter, Value,
+    AsValue, Context, DynQuery, Error, Fragment, Prepared, Result, SqlWriter, Value,
+    error_message_from_ptr, truncate_long,
 };
 
 /// Prepared statement wrapper for SQLite.
@@ -26,12 +26,14 @@ impl SQLitePrepared {
     pub(crate) fn new(statement: CBox<*mut sqlite3_stmt>) -> Self {
         Self {
             statement: statement.into(),
-            index: 1,
+            index: 0,
         }
     }
+
     pub(crate) fn statement(&self) -> *mut sqlite3_stmt {
         *self.statement
     }
+
     pub fn last_error(&self) -> String {
         unsafe {
             let db = sqlite3_db_handle(self.statement());
@@ -48,8 +50,13 @@ impl Prepared for SQLitePrepared {
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
+
+    fn is_empty(&self) -> bool {
+        self.statement().is_null()
+    }
+
     fn clear_bindings(&mut self) -> Result<&mut Self> {
-        self.index = 1;
+        self.index = 0;
         unsafe {
             let rc = sqlite3_reset(self.statement());
             let error = || {
@@ -68,12 +75,15 @@ impl Prepared for SQLitePrepared {
         }
         Ok(self)
     }
+
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         self.bind_index(value, self.index)?;
         Ok(self)
     }
+
     fn bind_index(&mut self, v: impl AsValue, index: u64) -> Result<&mut Self> {
-        let index = index as c_int;
+        // SQLite's parameter index is 1-based.
+        let index = index as c_int + 1;
         unsafe {
             let value = v.as_value();
             let statement = self.statement();
@@ -84,33 +94,42 @@ impl Prepared for SQLitePrepared {
                 Value::Int16(Some(v), ..) => sqlite3_bind_int(statement, index, v as c_int),
                 Value::Int32(Some(v), ..) => sqlite3_bind_int(statement, index, v as c_int),
                 Value::Int64(Some(v), ..) => sqlite3_bind_int64(statement, index, v),
-                Value::Int128(Some(v), ..) => {
-                    if *v as sqlite3_int64 as i128 != *v {
-                        return Err(anyhow!(
+                Value::Int128(Some(v), ..) => sqlite3_bind_int64(
+                    statement,
+                    index,
+                    sqlite3_int64::try_from(*v).map_err(|_| {
+                        anyhow!(
                             "Cannot bind i128 value `{v}` into sqlite integer because it's out of bounds"
-                        ));
-                    }
-                    sqlite3_bind_int64(statement, index, *v as sqlite3_int64)
-                }
-                Value::UInt8(Some(v), ..) => sqlite3_bind_int(statement, index, v as c_int),
-                Value::UInt16(Some(v), ..) => sqlite3_bind_int(statement, index, v as c_int),
-                Value::UInt32(Some(v), ..) => sqlite3_bind_int(statement, index, v as c_int),
-                Value::UInt64(Some(v), ..) => {
-                    if v as sqlite3_int64 as u64 != v {
-                        return Err(anyhow!(
-                            "Cannot bind i128 value `{v}` into sqlite integer because it's out of bounds"
-                        ));
-                    }
+                        )
+                    })?,
+                ),
+                Value::UInt8(Some(v), ..) => {
                     sqlite3_bind_int64(statement, index, v as sqlite3_int64)
                 }
-                Value::UInt128(Some(v), ..) => {
-                    if *v as sqlite3_int64 as u128 != *v {
-                        return Err(anyhow!(
-                            "Cannot bind i128 value `{v}` into sqlite integer because it's out of bounds"
-                        ));
-                    }
-                    sqlite3_bind_int64(statement, index, *v as sqlite3_int64)
+                Value::UInt16(Some(v), ..) => {
+                    sqlite3_bind_int64(statement, index, v as sqlite3_int64)
                 }
+                Value::UInt32(Some(v), ..) => {
+                    sqlite3_bind_int64(statement, index, v as sqlite3_int64)
+                }
+                Value::UInt64(Some(v), ..) => sqlite3_bind_int64(
+                    statement,
+                    index,
+                    sqlite3_int64::try_from(v).map_err(|_| {
+                        anyhow!(
+                            "Cannot bind u64 value `{v}` into sqlite integer because it's out of bounds"
+                        )
+                    })?,
+                ),
+                Value::UInt128(Some(v), ..) => sqlite3_bind_int64(
+                    statement,
+                    index,
+                    sqlite3_int64::try_from(*v).map_err(|_| {
+                        anyhow!(
+                            "Cannot bind u128 value `{v}` into sqlite integer because it's out of bounds"
+                        )
+                    })?,
+                ),
                 Value::Float32(Some(v), ..) => sqlite3_bind_double(statement, index, v as f64),
                 Value::Float64(Some(v), ..) => sqlite3_bind_double(statement, index, v),
                 Value::Decimal(Some(v), ..) => sqlite3_bind_double(
@@ -230,7 +249,7 @@ impl Prepared for SQLitePrepared {
                 log::error!("{error:#}");
                 return Err(error);
             }
-            self.index = index as u64 + 1;
+            self.index = index as u64;
             Ok(self)
         }
     }

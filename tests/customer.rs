@@ -24,7 +24,7 @@ mod tests {
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
-    fn test_customer() {
+    fn customer_metadata() {
         assert!(matches!(
             Customer::table(),
             TableRef {
@@ -59,16 +59,16 @@ mod tests {
         ));
         assert!(matches!(
             columns[1].value,
-            Value::List(.., ref t) if matches!(t.element, Value::Varchar(..))
+            Value::List(_, ref t, ..) if matches!(t.element, Value::Varchar(..))
         ));
         assert!(matches!(
             columns[2].value,
-            Value::List(.., ref t) if matches!(t.element, Value::Float32(..))
+            Value::List(_, ref t, ..) if matches!(t.element, Value::Float32(..))
         ));
         assert!(matches!(columns[3].value, Value::Interval(..)));
         assert!(matches!(
             columns[4].value,
-            Value::List(.., ref t) if matches!(t.element, Value::List(.., ref t) if matches!(t.element, Value::Int64(..))),
+            Value::List(_, ref t, ..) if matches!(t.element, Value::List(_, ref t, ..) if matches!(t.element, Value::Int64(..))),
         ));
         assert_eq!(columns[0].nullable, false);
         assert_eq!(columns[1].nullable, true);
@@ -125,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn test_customer_create_table() {
+    fn customer_sql() {
         let mut query = DynQuery::default();
         WRITER.write_create_table::<Customer>(&mut query, false);
         assert_eq!(
@@ -133,10 +133,20 @@ mod tests {
             indoc! {r#"
                 CREATE TABLE "customers" (
                 "transaction_ids" UBIGINT[] NOT NULL,
-                "settings" VARCHAR[] DEFAULT ['discount','newsletter'],
+                "settings" TEXT[] DEFAULT ['discount','newsletter'],
                 "values" FLOAT[],
                 "signup_duration" INTERVAL NOT NULL,
                 "recent_purchases" BIGINT[][]);
+            "#}
+            .trim()
+        );
+        let mut query = DynQuery::default();
+        for column in Customer::columns().iter().filter(|c| !c.comment.is_empty()) {
+            WRITER.write_column_comment(&mut Default::default(), &mut query, column);
+        }
+        assert_eq!(
+            query.as_str(),
+            indoc! {r#"
                 COMMENT ON COLUMN "customers"."recent_purchases" IS 'List of all the full cart products
                 It''s a list of lists of ids
                 
@@ -144,17 +154,9 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_customer_drop_table() {
         let mut query = DynQuery::default();
         WRITER.write_drop_table::<Customer>(&mut query, false);
         assert_eq!(query.as_str(), r#"DROP TABLE "customers";"#);
-    }
-
-    #[test]
-    fn test_customer_select() {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
@@ -174,10 +176,6 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_customer_delete() {
         let mut query = DynQuery::default();
         WRITER.write_delete::<Customer>(&mut query, true);
         assert_eq!(

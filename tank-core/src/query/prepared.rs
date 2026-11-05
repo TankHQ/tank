@@ -13,20 +13,22 @@ use std::{
 /// * `bind_index`: Set value at 0-based index.
 pub trait Prepared: Any + Send + Sync + Display + Debug {
     fn as_any(self: Box<Self>) -> Box<dyn Any>;
-    /// Clear all bindings.
+
+    /// Clear all the values currently bound to query parameters.
     fn clear_bindings(&mut self) -> Result<&mut Self>
     where
         Self: Sized;
+
     /// Bind next value.
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self>
     where
         Self: Sized;
+
     /// Bind value at index.
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self>
     where
         Self: Sized;
+
     /// True if the query has no meaningful value (the meaning depends on the driver).
-    fn is_empty(&self) -> bool {
-        false
-    }
+    fn is_empty(&self) -> bool;
 }

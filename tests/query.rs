@@ -1,7 +1,11 @@
 #[cfg(test)]
 mod tests {
     use indoc::indoc;
-    use tank::{DynQuery, Entity, GenericSqlWriter, QueryBuilder, SqlWriter, cols, expr};
+    use std::fmt::Write;
+    use tank::{
+        DynQuery, Entity, GenericSqlWriter, QueryBuilder, QueryResult, QueryResultOwned, RawQuery,
+        RowOwned, RowsAffected, SqlWriter, cols, expr,
+    };
 
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
@@ -84,6 +88,24 @@ mod tests {
                 SELECT "customer_id", SUM("amount")
                 FROM "orders"
                 WHERE "status" = 'completed'
+                GROUP BY "customer_id";
+            "#}
+            .trim()
+        );
+
+        let mut sql = DynQuery::default();
+        WRITER.write_select(
+            &mut sql,
+            &QueryBuilder::new()
+                .select(cols!(Orders::customer_id as cid, SUM(Orders::amount)))
+                .from(Orders::table())
+                .group_by(cols!(Orders::customer_id as cid)),
+        );
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                SELECT "customer_id" AS "cid", SUM("amount")
+                FROM "orders"
                 GROUP BY "customer_id";
             "#}
             .trim()
@@ -279,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn query_10() {
+    fn query_create_table() {
         #[derive(Entity)]
         struct Widget {
             id: u32,
@@ -290,23 +312,13 @@ mod tests {
         let result = sql.as_str();
         assert!(result.contains("CREATE TABLE"));
         assert!(result.contains("\"widget\""));
-    }
-
-    #[test]
-    fn query_11() {
-        #[derive(Entity)]
-        struct Widget {
-            id: u32,
-            name: String,
-        }
         let mut sql = DynQuery::default();
         WRITER.write_create_table::<Widget>(&mut sql, true);
-        let result = sql.as_str();
-        assert!(result.contains("IF NOT EXISTS"));
+        assert!(sql.as_str().contains("IF NOT EXISTS"));
     }
 
     #[test]
-    fn query_12() {
+    fn query_drop_table() {
         #[derive(Entity)]
         struct Widget {
             id: u32,
@@ -314,21 +326,13 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_drop_table::<Widget>(&mut sql, false);
         assert!(sql.as_str().contains("DROP TABLE"));
-    }
-
-    #[test]
-    fn query_13() {
-        #[derive(Entity)]
-        struct Widget {
-            id: u32,
-        }
         let mut sql = DynQuery::default();
         WRITER.write_drop_table::<Widget>(&mut sql, true);
         assert!(sql.as_str().contains("IF EXISTS"));
     }
 
     #[test]
-    fn query_14() {
+    fn query_insert() {
         #[derive(Entity)]
         struct Item {
             id: u32,
@@ -349,27 +353,13 @@ mod tests {
         let result = sql.as_str();
         assert!(result.contains("INSERT INTO"));
         assert!(result.contains("\"item\""));
-    }
-
-    #[test]
-    fn query_15() {
-        #[derive(Entity)]
-        struct Item {
-            id: u32,
-            label: String,
-        }
-        let items = vec![Item {
-            id: 1,
-            label: "x".into(),
-        }];
         let mut sql = DynQuery::default();
         WRITER.write_insert(&mut sql, &items, true);
-        let result = sql.as_str();
-        assert!(result.contains("INSERT INTO"));
+        assert!(sql.as_str().contains("INSERT INTO"));
     }
 
     #[test]
-    fn query_16() {
+    fn query_limit() {
         #[derive(Entity)]
         struct Limitable {
             x: u32,
@@ -384,21 +374,13 @@ mod tests {
                 .limit(Some(10)),
         );
         assert!(sql.as_str().contains("LIMIT 10"));
-    }
-
-    #[test]
-    fn query_17() {
-        #[derive(Entity)]
-        struct Limitable2 {
-            x: u32,
-        }
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
             &QueryBuilder::new()
-                .select(Limitable2::columns())
-                .from(Limitable2::table())
-                .order_by(cols!(Limitable2::x ASC))
+                .select(Limitable::columns())
+                .from(Limitable::table())
+                .order_by(cols!(Limitable::x ASC))
                 .limit(None),
         );
         assert!(!sql.as_str().contains("LIMIT"));
@@ -433,46 +415,103 @@ mod tests {
     }
 
     #[test]
-    fn query_19() {
+    fn query_builder_getters() {
         #[derive(Entity)]
         struct Foo {
             id: u32,
         }
-        let ct = QueryBuilder::new().create_table::<Foo>();
-        assert!(!ct.get_not_exists());
-        let ct2 = QueryBuilder::new().create_table::<Foo>().if_not_exists();
-        assert!(ct2.get_not_exists());
-
-        let dt = QueryBuilder::new().drop_table::<Foo>();
-        assert!(!dt.get_exists());
-        let dt2 = QueryBuilder::new().drop_table::<Foo>().if_exists();
-        assert!(dt2.get_exists());
+        assert!(!QueryBuilder::new().create_table::<Foo>().get_not_exists());
+        assert!(
+            QueryBuilder::new()
+                .create_table::<Foo>()
+                .if_not_exists()
+                .get_not_exists()
+        );
+        assert!(!QueryBuilder::new().drop_table::<Foo>().get_exists());
+        assert!(
+            QueryBuilder::new()
+                .drop_table::<Foo>()
+                .if_exists()
+                .get_exists()
+        );
+        let rows = vec![Foo { id: 1 }];
+        assert!(!QueryBuilder::new().insert_into().values(&rows).get_update());
     }
 
     #[test]
-    fn query_20() {
-        #[derive(Entity)]
-        struct Bar {
-            val: u32,
-        }
-        let rows = vec![Bar { val: 1 }];
-        let query = QueryBuilder::new().insert_into().values(&rows);
-        assert!(!query.get_update());
-    }
+    fn raw_query_helpers() {
+        let rq = RawQuery("SELECT * FROM t".to_string());
+        assert_eq!(format!("{rq}"), "SELECT * FROM t");
+        let mut rq = RawQuery("SELECT ?".to_string());
+        assert_eq!(rq.0, "SELECT ?");
+        rq.0.clear();
+        assert!(rq.0.is_empty());
 
-    #[test]
-    fn query_21() {
-        use std::fmt::Write;
+        let rq = RawQuery("hello".to_string());
+        assert_eq!(rq.0, "hello");
+
         let mut q = DynQuery::default();
         let _ = q.write_str("SELECT 1");
         let s: String = q.into();
         assert_eq!(s, "SELECT 1");
+
+        let row = tank::RowOwned::default();
+        let QueryResult::Row(_row) = QueryResult::Row(row) else {
+            unreachable!()
+        };
+        assert!(matches!(
+            QueryResult::<tank::RowOwned>::from(RowsAffected::default()),
+            QueryResult::Affected(_)
+        ));
     }
 
     #[test]
-    fn query_22() {
-        use tank::RawQuery;
-        let rq = RawQuery("SELECT * FROM t".into());
-        assert_eq!(format!("{rq}"), "SELECT * FROM t");
+    fn owned_results() {
+        let results: Vec<QueryResultOwned> = vec![
+            QueryResult::Affected(RowsAffected {
+                rows_affected: Some(2),
+                last_affected_id: Some(7),
+            }),
+            QueryResult::Row(RowOwned::default()),
+            QueryResult::Row(RowOwned::default()),
+        ];
+        assert_eq!(results.len(), 3);
+        assert!(matches!(&results[0], QueryResult::Affected(_)));
+        assert!(matches!(&results[1], QueryResult::Row(_)));
+        assert_eq!(
+            results
+                .into_iter()
+                .filter_map(|result| match result {
+                    QueryResult::Row(row) => Some(row),
+                    QueryResult::Affected(_) => None,
+                })
+                .count(),
+            2,
+        );
+    }
+
+    #[test]
+    fn affected_aggregation() {
+        let results = [
+            QueryResult::Affected(RowsAffected {
+                rows_affected: Some(2),
+                last_affected_id: Some(7),
+            }),
+            QueryResult::Row(0),
+            QueryResult::Row(1),
+            QueryResult::Affected(RowsAffected::default()),
+            QueryResult::Affected(RowsAffected {
+                rows_affected: Some(4),
+                last_affected_id: Some(9),
+            }),
+        ];
+        let mut affected = RowsAffected::default();
+        for result in results {
+            if let QueryResult::Affected(result) = result {
+                affected.extend([result]);
+            }
+        }
+        assert_eq!(affected.rows_affected, Some(6));
+        assert_eq!(affected.last_affected_id, Some(9));
     }
 }

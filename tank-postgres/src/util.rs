@@ -266,7 +266,7 @@ pub(crate) fn flatten_array<'a>(
     }
     loop {
         match element_type {
-            Value::Array(.., t) | Value::List(.., t) => element_type = &t.element,
+            Value::Array(_, t, ..) | Value::List(_, t, ..) => element_type = &t.element,
             _ => break,
         }
     }
@@ -344,7 +344,7 @@ pub fn value_to_postgres_type(value: &Value<'_>) -> Type {
         Value::UInt128(..) => Type::NUMERIC,
         Value::Float32(..) => Type::FLOAT4,
         Value::Float64(..) => Type::FLOAT8,
-        Value::Decimal(.., _, _) => Type::NUMERIC,
+        Value::Decimal(..) => Type::NUMERIC,
         Value::Char(..) => Type::BPCHAR,
         Value::Varchar(..) => Type::TEXT,
         Value::Blob(..) => Type::BYTEA,
@@ -354,7 +354,7 @@ pub fn value_to_postgres_type(value: &Value<'_>) -> Type {
         Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ,
         Value::Interval(..) => Type::INTERVAL,
         Value::Uuid(..) => Type::UUID,
-        Value::Array(.., t) | Value::List(.., t) => match t.element {
+        Value::Array(_, t, ..) | Value::List(_, t, ..) => match t.element {
             Value::Boolean(..) => Type::BOOL_ARRAY,
             Value::Int8(..) => Type::INT2_ARRAY,
             Value::Int16(..) => Type::INT2_ARRAY,

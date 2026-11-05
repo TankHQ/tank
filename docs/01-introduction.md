@@ -1,3 +1,6 @@
+> [!NOTE]
+> Just show me the code: [Cheat sheet](00-cheat-sheet.md)
+
 # Introduction
 ###### *Field Manual Section 1* - Mission Briefing
 
@@ -8,15 +11,15 @@ In plain terms, Tank is a thin layer over your database workflow for Rust teams 
 ## Mission Objectives
 Tank aims to provide a clean ORM design focused on ergonomics, flexibility and broad database support.
 
-- **Async operations** - Non-blocking database operations built for async Rust.
+- **Async operations** - Streaming database operations exposed through an async Rust API.
 - **Designed to be extensible** - Add or swap database drivers without changing Tank's core.
 - **SQL and NoSQL support** - One Tank, all terrains.
 - **Transaction abstraction** - Commit on success or rollback and retreat.
 - **Rich type arsenal** - Automatic conversions between Rust and database types.
 - **Optional appender API** - High caliber bulk inserts where the database supports them.
-- **TLS** - No open radios for drivers that connect over the network.
+- **TLS** - Encrypted supply lines for network drivers when configured.
 - **Joins** - Explicit multi-unit coordination.
-- **Raw SQL** - You're never limited by the abstractions provided.
+- **Raw SQL** - Bypass the query builder on drivers that accept SQL or CQL.
 - **Zero setup** - Skip training. Go straight to live fire.
 
 ## No-Fly Zone
@@ -53,6 +56,6 @@ Building and maintaining drivers for several database families is a major effort
 
 Sponsorship helps keep Tank maintained, well-tested and moving toward new capabilities faster.
 
-🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**. Tank is independently designed, written and maintained by [barsdeveloper](https://github.com/barsdeveloper).
+🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**. Tank is carefully designed, written and maintained by (human) [barsdeveloper](https://github.com/barsdeveloper).
 
 *Hold the line. Maintain discipline. Tank out.*

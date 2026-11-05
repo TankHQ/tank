@@ -13,10 +13,16 @@ autotests = false
 name = "escaping"
 
 [[test]]
+name = "interval"
+
+[[test]]
 name = "mariadb"
 
 [[test]]
 name = "mysql"
+
+[[test]]
+name = "quoted_collections"
 
 [features]
 
@@ -25,18 +31,20 @@ anyhow.workspace = true
 async-stream.workspace = true
 log.workspace = true
 mysql_async = { version = "0", features = [
-    "native-tls-tls",
+    "default-rustls",
     "rust_decimal",
     "time",
 ] }
 rust_decimal.workspace = true
+rustls.workspace = true
 serde_json.workspace = true
 tank-core.workspace = true
 time.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-rcgen.workspace = true
+indoc.workspace = true
+tank.workspace = true
 tank-tests = { path = "../tank-tests", features = [
     "disable-glob",
     "disable-infinity",
@@ -47,4 +55,3 @@ tank-tests = { path = "../tank-tests", features = [
 ] }
 testcontainers-modules = { version = "0", features = ["mysql", "mariadb"] }
 tokio.workspace = true
-urlencoding.workspace = true

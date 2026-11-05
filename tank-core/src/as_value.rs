@@ -702,38 +702,39 @@ impl_as_value!(Interval, Value::Interval, |mut input: &str| {
         if unit.is_empty() {
             break;
         }
+        let count64 = count.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
         match unit {
             x if x.eq_ignore_ascii_case("y")
                 || x.eq_ignore_ascii_case("year")
                 || x.eq_ignore_ascii_case("years") =>
             {
-                interval += Interval::from_years(count as _)
+                interval += Interval::from_years(count64)
             }
             x if x.eq_ignore_ascii_case("mon")
                 || x.eq_ignore_ascii_case("mons")
                 || x.eq_ignore_ascii_case("month")
                 || x.eq_ignore_ascii_case("months") =>
             {
-                interval += Interval::from_months(count as _)
+                interval += Interval::from_months(count64)
             }
             x if x.eq_ignore_ascii_case("d")
                 || x.eq_ignore_ascii_case("day")
                 || x.eq_ignore_ascii_case("days") =>
             {
-                interval += Interval::from_days(count as _)
+                interval += Interval::from_days(count64)
             }
             x if x.eq_ignore_ascii_case("h")
                 || x.eq_ignore_ascii_case("hour")
                 || x.eq_ignore_ascii_case("hours") =>
             {
-                interval += Interval::from_hours(count as _)
+                interval += Interval::from_hours(count64)
             }
             x if x.eq_ignore_ascii_case("min")
                 || x.eq_ignore_ascii_case("mins")
                 || x.eq_ignore_ascii_case("minute")
                 || x.eq_ignore_ascii_case("minutes") =>
             {
-                interval += Interval::from_mins(count as _)
+                interval += Interval::from_mins(count64)
             }
             x if x.eq_ignore_ascii_case("s")
                 || x.eq_ignore_ascii_case("sec")
@@ -741,14 +742,14 @@ impl_as_value!(Interval, Value::Interval, |mut input: &str| {
                 || x.eq_ignore_ascii_case("second")
                 || x.eq_ignore_ascii_case("seconds") =>
             {
-                interval += Interval::from_secs(count as _)
+                interval += Interval::from_secs(count64)
             }
             x if x.eq_ignore_ascii_case("micro")
                 || x.eq_ignore_ascii_case("micros")
                 || x.eq_ignore_ascii_case("microsecond")
                 || x.eq_ignore_ascii_case("microseconds") =>
             {
-                interval += Interval::from_micros(count as _)
+                interval += Interval::from_micros(count)
             }
             x if x.eq_ignore_ascii_case("ns")
                 || x.eq_ignore_ascii_case("nano")
@@ -756,7 +757,7 @@ impl_as_value!(Interval, Value::Interval, |mut input: &str| {
                 || x.eq_ignore_ascii_case("nanosecond")
                 || x.eq_ignore_ascii_case("nanoseconds") =>
             {
-                interval += Interval::from_nanos(count as _)
+                interval += Interval::from_nanos(count)
             }
             _ => return Err(make_context()),
         }
@@ -769,23 +770,24 @@ impl_as_value!(Interval, Value::Interval, |mut input: &str| {
         false
     };
     let mut time_interval = Interval::ZERO;
+    let clamp64 = |n: u64| n.min(i64::MAX as u64) as i64;
     let num = extract_number::<true>(&mut input);
     if !num.is_empty() {
         let num = num.parse::<u64>().with_context(make_context)?;
-        time_interval += Interval::from_hours(num as _);
+        time_interval += Interval::from_hours(clamp64(num));
         if Some(':') == input.chars().next() {
             input = &input[1..];
             let num = extract_number::<false>(&mut input).parse::<u64>()?;
             if input.is_empty() {
                 return Err(make_context());
             }
-            time_interval += Interval::from_mins(num as _);
+            time_interval += Interval::from_mins(clamp64(num));
             if Some(':') == input.chars().next() {
                 input = &input[1..];
                 let num = extract_number::<false>(&mut input)
                     .parse::<u64>()
                     .with_context(make_context)?;
-                time_interval += Interval::from_secs(num as _);
+                time_interval += Interval::from_secs(clamp64(num));
                 if Some('.') == input.chars().next() {
                     input = &input[1..];
                     let fraction = extract_number::<false>(&mut input);
@@ -902,7 +904,9 @@ impl_as_value!(
     },
     Value::Interval(Some(v), ..) => {
         let (h, m, s, ns) = v.as_hmsns();
-        if h < 0 {
+        // The sign-carrying decomposition places the sign on the first
+        // non-zero component, so every component must be checked.
+        if h < 0 || m < 0 || s < 0 || ns < 0 {
             return Err(anyhow!(
                 "Cannot convert negative interval `{v:?}` to `time::Time`"
             ));

@@ -18,51 +18,35 @@ Core operations on `Entity`:
 
 ## Operations Schema
 This is the schema we will use for every operation example that follows. All CRUD, streaming, prepared, and batching demonstrations below act on these two tables so you can focus on behavior instead of switching contexts. `Operator` is the identity table, `RadioLog` references an operator (foreign key) to record transmissions.
+
+The SQL below uses PostgreSQL syntax. Other drivers choose their own column types.
 ::: code-group
 ```rust [Rust]
-#[derive(Entity)]
-#[tank(schema = "operations", name = "radio_operator")]
-pub struct Operator {
-    #[tank(primary_key)]
-    pub id: Uuid,
-    pub callsign: String,
-    #[tank(name = "rank")]
-    pub service_rank: String,
-    #[tank(name = "enlistment_date")]
-    pub enlisted: Date,
-    pub is_certified: bool,
-}
+use std::pin::pin;
+use tank::{
+    Driver, DynQuery, Entity, QueryBuilder, QueryResult, RowsAffected, SqlWriter, anyhow, expr,
+    stream::{StreamExt, TryStreamExt},
+};
+use time::{Date, OffsetDateTime, macros::date};
+use uuid::Uuid;
 
-#[derive(Entity)]
-#[tank(schema = "operations")]
-pub struct RadioLog {
-    #[tank(primary_key)]
-    pub id: Uuid,
-    #[tank(references = Operator::id)]
-    pub operator: Uuid,
-    pub message: String,
-    pub unit_callsign: String,
-    #[tank(name = "tx_time")]
-    pub transmission_time: OffsetDateTime,
-    #[tank(name = "rssi")]
-    pub signal_strength: i8,
-}
+<!--@include: @/../tank-tests/src/operations.rs#operations-schema-->
 ```
 ```sql [SQL]
 CREATE TABLE IF NOT EXISTS operations.radio_operator (
     id UUID PRIMARY KEY,
-    callsign VARCHAR NOT NULL,
-    rank VARCHAR NOT NULL,
+    callsign TEXT NOT NULL,
+    rank TEXT NOT NULL,
     enlistment_date DATE NOT NULL,
     is_certified BOOLEAN NOT NULL);
 
 CREATE TABLE IF NOT EXISTS operations.radio_log (
     id UUID PRIMARY KEY,
     operator UUID NOT NULL REFERENCES operations.radio_operator(id),
-    message VARCHAR NOT NULL,
-    unit_callsign VARCHAR NOT NULL,
+    message TEXT NOT NULL,
+    unit_callsign TEXT NOT NULL,
     tx_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    rssi TINYINT NOT NULL);
+    rssi SMALLINT NOT NULL);
 ```
 :::
 
@@ -95,20 +79,8 @@ Operator::insert_one(executor, &operator).await?;
 ```
 
 Insert many:
-```rust
-let op_id = operator.id;
-let logs: Vec<RadioLog> = (0..5)
-    .map(|i| RadioLog {
-        id: Uuid::new_v4(),
-        operator: op_id,
-        message: format!("Ping #{i}"),
-        unit_callsign: "Alpha-1".into(),
-        transmission_time: OffsetDateTime::now_utc(),
-        signal_strength: 42,
-    })
-    .collect();
-RadioLog::insert_many(executor, &logs).await?;
-```
+
+<<< @/../tank-tests/src/operations.rs#operations-insert-many
 
 ## Find
 First matching row (use a predicate):
@@ -123,19 +95,9 @@ if let Some(radio_log) =
 Under the hood: `find_one` is just `find_many` with a limit of 1.
 
 Stream matching rows with a limit:
-```rust
-{
-    let mut stream = pin!(RadioLog::find_many(
-        executor,
-        expr!(RadioLog::signal_strength >= 40),
-        Some(100)
-    ));
-    while let Some(radio_log) = stream.try_next().await? {
-        log::debug!("Found radio log: {:?}", radio_log.id);
-    }
-    // Executor is released from the stream at the end of the scope
-}
-```
+
+<<< @/../tank-tests/src/operations.rs#operations-stream
+
 The stream must be pinned with [`std::pin::pin`](https://doc.rust-lang.org/std/pin/macro.pin.html) so the async machinery can safely borrow it without relocation mid-flight.
 
 ## Save
@@ -150,12 +112,17 @@ Instance method to save the current entity (works only for entities defining a p
 ```rust
 let mut log = RadioLog::find_one(executor, expr!(RadioLog::message == "Ping #2"))
     .await?
-    .expect("Missing log");
+    .ok_or_else(|| anyhow!("Missing log"))?;
 log.message = "Ping #2 ACK".into();
 log.save(executor).await?;
 ```
 
 If a table has no primary key, `save()` returns an error, use `insert_one` instead.
+
+## Prepared
+Filter by strength (prepared):
+
+<<< @/../tank-tests/src/operations.rs#operations-prepared
 
 ## Delete
 Delete many entities matching an expression:
@@ -169,63 +136,17 @@ Instance method to delete the current entity (works only for entities defining a
 operator.delete(executor).await?;
 ```
 
-## Prepared
-Filter by strength (prepared):
-```rust
-let mut query =
-    RadioLog::prepare_find(executor, expr!(RadioLog::signal_strength > ?), None).await?;
-query.bind(40)?;
-let _messages: Vec<_> = executor
-    .fetch(query)
-    .map_ok(|row| row.value(0).unwrap().as_value().into_owned())
-    .try_collect()
-    .await?;
-```
-
 ## Multi-Statement
 Delete + insert + select in one roundtrip:
-```rust
-let writer = executor.driver().sql_writer();
-let mut query = DynQuery::default();
-writer.write_delete::<RadioLog>(&mut query, expr!(RadioLog::signal_strength < 10));
-writer.write_insert(&mut query, [&operator], false);
-writer.write_insert(
-    &mut query,
-    [&RadioLog {
-        id: Uuid::new_v4(),
-        operator: operator.id,
-        message: "Status report".into(),
-        unit_callsign: "Alpha-1".into(),
-        transmission_time: OffsetDateTime::now_utc(),
-        signal_strength: 55,
-    }],
-    false,
-);
-writer.write_select(
-    &mut query,
-    RadioLog::columns(),
-    RadioLog::table(),
-    true,
-    Some(50),
-);
-{
-    let mut stream = pin!(executor.run(query));
-    while let Some(result) = stream.try_next().await? {
-        match result {
-            QueryResult::Row(row) => log::debug!("Row: {row:?}"),
-            QueryResult::Affected(RowsAffected { rows_affected, .. }) => {
-                log::debug!("Affected rows: {rows_affected:?}")
-            }
-        }
-    }
-}
-```
-While the stream is alive, the executor is borrowed by it and cannot service other queries. Enclose the pinned stream in a scope, or drop it after execution.
+
+<<< @/../tank-tests/src/operations.rs#operations-batch
+
+While the stream is alive, it borrows the executor, which cannot service other queries. Enclose the pinned stream in a scope so both it and the borrow end before the next operation.
 
 ## Errors & Edge Cases
 - `save()`/`delete()` on entities without PK result in immediate error.
-- `delete()` with affected rows not exactly one results in error.
-- Prepared binds validate conversion, failures return `Result::Err`.
+- `delete()` errors when the driver reports an affected-row count other than one. Unknown counts are accepted.
+- Parameter conversion failures return errors during binding or execution, depending on the driver.
 
 ## Performance
 - Use prepared statements for hot paths (changing only parameters).

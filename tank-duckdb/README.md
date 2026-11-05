@@ -40,7 +40,7 @@ use tank_duckdb::DuckDBDriver;
 
 let driver = DuckDBDriver::new();
 let pool = driver
-    .connect_pool("duckdb://path/to/database.duckdb?mode=rw".into(), PoolConfig::new())
+    .connect_pool("duckdb://path/to/database.duckdb?mode=rw", PoolConfig::new())
     .await?;
 let mut connection = pool.get().await?;
 ```

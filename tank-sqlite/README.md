@@ -24,6 +24,14 @@ cargo add tank
 cargo add tank-sqlite
 ```
 
+Optional feature flags:
+- `bundled` (default): compiles and links SQLite statically, so the binary is self-contained.
+
+Disable it to link a system SQLite instead:
+```sh
+cargo add tank-sqlite --no-default-features
+```
+
 ## Quick Start
 ```rust
 use tank::{ConnectionPool, Driver, PoolConfig};
@@ -31,7 +39,7 @@ use tank_sqlite::SQLiteDriver;
 
 let driver = SQLiteDriver::new();
 let pool = driver
-    .connect_pool("sqlite://path/to/database.sqlite?mode=rw".into(), PoolConfig::new())
+    .connect_pool("sqlite://path/to/database.sqlite?mode=rw", PoolConfig::new())
     .await?;
 let mut connection = pool.get().await?;
 ```

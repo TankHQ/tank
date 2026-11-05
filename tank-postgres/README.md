@@ -33,7 +33,7 @@ use tank_postgres::PostgresDriver;
 let driver = PostgresDriver::new();
 let pool = driver
     .connect_pool(
-        "postgres://user:password@127.0.0.1:5432/database?sslmode=require&sslrootcert=root.crt&sslcert=client.crt&sslkey=client.key".into(),
+        "postgres://user:password@127.0.0.1:5432/database?sslmode=require&sslrootcert=root.crt&sslcert=client.crt&sslkey=client.key",
         PoolConfig::new(),
     )
     .await?;

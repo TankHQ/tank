@@ -7,7 +7,7 @@ use libduckdb_sys::*;
 use std::{ffi::c_char, ptr};
 use tank_core::{Value, as_c_string};
 
-pub(crate) fn tank_value_to_duckdb_logical_type(v: &Value<'_>) -> CBox<duckdb_logical_type> {
+pub(crate) fn tank_value_to_duckdb_logical_type(v: &Value) -> CBox<duckdb_logical_type> {
     unsafe {
         let mut result = CBox::new(ptr::null_mut(), |mut p| duckdb_destroy_logical_type(&mut p));
         match v {
@@ -51,7 +51,7 @@ pub(crate) fn tank_value_to_duckdb_logical_type(v: &Value<'_>) -> CBox<duckdb_lo
             Value::Float64(..) => {
                 *result = duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_DOUBLE)
             }
-            Value::Decimal(.., w, s) => *result = duckdb_create_decimal_type(*w, *s),
+            Value::Decimal(_, w, s, ..) => *result = duckdb_create_decimal_type(*w, *s),
             Value::Char(..) | Value::Varchar(..) => {
                 *result = duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR)
             }
@@ -89,13 +89,13 @@ pub(crate) fn tank_value_to_duckdb_logical_type(v: &Value<'_>) -> CBox<duckdb_lo
                     .iter()
                     .map(|name| as_c_string(name.0.to_string()))
                     .collect::<Vec<_>>();
-                let fields = t
+                let types = t
                     .fields
                     .iter()
                     .map(|v| tank_value_to_duckdb_logical_type(&v.1))
                     .collect::<Vec<_>>();
                 *result = duckdb_create_struct_type(
-                    fields.iter().map(|v| **v).collect::<Vec<_>>().as_mut_ptr(),
+                    types.iter().map(|v| **v).collect::<Vec<_>>().as_mut_ptr(),
                     names
                         .iter()
                         .map(|n| n.as_ptr())
@@ -103,11 +103,11 @@ pub(crate) fn tank_value_to_duckdb_logical_type(v: &Value<'_>) -> CBox<duckdb_lo
                         .as_mut_ptr(),
                     t.fields.len() as u64,
                 );
-                let name = as_c_string(&t.name.name as &str);
+                let name = as_c_string(t.name.name.as_ref());
                 duckdb_logical_type_set_alias(*result, name.as_ptr());
             }
             _ => {
-                log::error!("tank::Value `{:?}` is unsupported", v);
+                log::error!("Value `{:?}` is unsupported by DuckDB", v);
                 *result = duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_INVALID)
             }
         }
@@ -115,7 +115,7 @@ pub(crate) fn tank_value_to_duckdb_logical_type(v: &Value<'_>) -> CBox<duckdb_lo
     }
 }
 
-pub(crate) fn tank_value_to_duckdb_value(value: &Value<'_>) -> CBox<duckdb_value> {
+pub(crate) fn tank_value_to_duckdb_value(value: &Value) -> CBox<duckdb_value> {
     unsafe {
         CBox::new(
             match value {
@@ -133,7 +133,7 @@ pub(crate) fn tank_value_to_duckdb_value(value: &Value<'_>) -> CBox<duckdb_value
                 Value::UInt128(Some(v)) => duckdb_create_uhugeint(u128_to_duckdb_uhugeint(**v)),
                 Value::Float32(Some(v)) => duckdb_create_float(*v),
                 Value::Float64(Some(v)) => duckdb_create_double(*v),
-                Value::Decimal(Some(v), w, s) => {
+                Value::Decimal(Some(v), w, s, ..) => {
                     duckdb_create_decimal(decimal_to_duckdb_decimal(v, *w, *s))
                 }
                 Value::Char(Some(v)) => {
@@ -154,27 +154,21 @@ pub(crate) fn tank_value_to_duckdb_value(value: &Value<'_>) -> CBox<duckdb_value
                 }
                 Value::Interval(Some(v)) => duckdb_create_interval(interval_to_duckdb_interval(v)),
                 Value::Uuid(Some(v)) => duckdb_create_uuid(u128_to_duckdb_uhugeint(v.as_u128())),
-                Value::Array(Some(v), t, ..) => {
-                    let values = v
-                        .iter()
-                        .map(|v| tank_value_to_duckdb_value(v))
-                        .collect::<Vec<_>>();
-                    duckdb_create_array_value(
-                        *tank_value_to_duckdb_logical_type(&t.element),
-                        values.iter().map(|v| **v).collect::<Vec<_>>().as_mut_ptr(),
-                        t.len as u64,
-                    )
-                }
-                Value::List(Some(v), t, ..) => {
-                    let values = v
-                        .iter()
-                        .map(|v| tank_value_to_duckdb_value(v))
-                        .collect::<Vec<_>>();
-                    duckdb_create_list_value(
-                        *tank_value_to_duckdb_logical_type(&t.element),
-                        values.iter().map(|v| **v).collect::<Vec<_>>().as_mut_ptr(),
-                        values.len() as u64,
-                    )
+                Value::Array(Some(v), t, ..) | Value::List(Some(v), t, ..) => {
+                    let values = v.iter().map(tank_value_to_duckdb_value).collect::<Vec<_>>();
+                    if matches!(value, Value::Array(..)) {
+                        duckdb_create_array_value(
+                            *tank_value_to_duckdb_logical_type(&t.element),
+                            values.iter().map(|v| **v).collect::<Vec<_>>().as_mut_ptr(),
+                            t.len as u64,
+                        )
+                    } else {
+                        duckdb_create_list_value(
+                            *tank_value_to_duckdb_logical_type(&t.element),
+                            values.iter().map(|v| **v).collect::<Vec<_>>().as_mut_ptr(),
+                            values.len() as u64,
+                        )
+                    }
                 }
                 Value::Map(Some(v), ..) => {
                     let keys = v.keys().map(tank_value_to_duckdb_value).collect::<Vec<_>>();

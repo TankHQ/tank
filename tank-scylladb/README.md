@@ -16,6 +16,7 @@ It maps Tank operations and queries to native CQL commands. Use it with the main
 
 ## Features
 - Async connection and execution via [`scylla`](https://crates.io/crates/scylla)
+- TLS support via `rustls`
 - CQL mapping for Tank operations
 
 ## Install
@@ -32,7 +33,7 @@ use tank_scylladb::ScyllaDBDriver;
 let driver = ScyllaDBDriver::new();
 let pool = driver
     .connect_pool(
-        "scylladb://user:password@127.0.0.1:9142/keyspace?ssl_ca=ca.pem&ssl_cert=client-cert.pem&ssl_key=client-key.pem".into(),
+        "scylladb://user:password@127.0.0.1:9142/keyspace?ssl_ca=ca.pem&ssl_cert=client-cert.pem&ssl_key=client-key.pem",
         PoolConfig::new(),
     )
     .await?;

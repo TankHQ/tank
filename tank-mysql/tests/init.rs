@@ -1,32 +1,18 @@
 // Shared by the `mysql` and `mariadb` test binaries, so each sees the other's
 // helpers as dead code.
 #![allow(dead_code)]
-use rcgen::{
-    CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose,
-    SanType,
-};
-use std::{
-    env, future,
-    net::{IpAddr, Ipv4Addr},
-    path::PathBuf,
-    process::Command,
-    str::FromStr,
-    time::Duration,
-};
-use tank_core::{
-    Result,
-    future::{BoxFuture, FutureExt},
-};
+use std::{env, future, path::PathBuf, process::Command, time::Duration};
+use tank_core::future::{BoxFuture, FutureExt};
+use tank_tests::generate_ssl_files;
 use testcontainers_modules::{
     mariadb::Mariadb,
     mysql::Mysql,
     testcontainers::{
-        ContainerAsync, ImageExt,
+        ContainerAsync, Image, ImageExt,
         core::logs::{LogFrame, consumer::LogConsumer},
         runners::AsyncRunner,
     },
 };
-use tokio::fs;
 
 struct TestcontainersLogConsumer;
 impl LogConsumer for TestcontainersLogConsumer {
@@ -36,7 +22,7 @@ impl LogConsumer for TestcontainersLogConsumer {
             .trim();
         future::ready(if !log.is_empty() {
             match record {
-                LogFrame::StdOut(..) => log::trace!("{log}",),
+                LogFrame::StdOut(..) => log::trace!("{log}"),
                 LogFrame::StdErr(..) => log::debug!("{log}"),
             }
         })
@@ -44,10 +30,40 @@ impl LogConsumer for TestcontainersLogConsumer {
     }
 }
 
-pub async fn init_mysql(ssl: bool) -> (String, Option<ContainerAsync<Mysql>>) {
-    if let Ok(url) = env::var("TANK_MYSQL_TEST") {
+fn init_sql(db: &str, user: &str, password: &str, ssl: bool) -> Vec<u8> {
+    format!(
+        r#"
+            CREATE DATABASE {db};
+            CREATE USER '{user}'@'%' {};
+            GRANT ALL PRIVILEGES ON *.* TO '{user}'@'%';
+            DROP USER IF EXISTS 'root'@'localhost';
+            DROP USER IF EXISTS 'root'@'127.0.0.1';
+            DROP USER IF EXISTS 'root'@'::1';
+            FLUSH PRIVILEGES;
+        "#,
+        if ssl {
+            "REQUIRE X509".to_string()
+        } else {
+            format!("IDENTIFIED BY '{password}'")
+        }
+    )
+    .into_bytes()
+}
+
+async fn start_db<I>(
+    image: I,
+    env_var: &str,
+    db: &str,
+    user: &str,
+    password: &str,
+    ssl: bool,
+) -> (String, Option<ContainerAsync<I>>)
+where
+    I: Image + Default + Send + 'static,
+{
+    if let Ok(url) = env::var(env_var) {
         return (url, None);
-    };
+    }
     if !Command::new("docker")
         .arg("ps")
         .output()
@@ -56,53 +72,17 @@ pub async fn init_mysql(ssl: bool) -> (String, Option<ContainerAsync<Mysql>>) {
     {
         log::error!("Cannot access docker");
     }
-    let mut container = Mysql::default()
-        .with_init_sql(
-            format!(
-                r#"
-                    CREATE DATABASE mysql_database;
-                    CREATE USER 'tank-mysql-user'@'%' {};
-                    GRANT ALL PRIVILEGES ON *.* TO 'tank-mysql-user'@'%';
-                    DROP USER IF EXISTS 'root'@'localhost';
-                    DROP USER IF EXISTS 'root'@'127.0.0.1';
-                    DROP USER IF EXISTS 'root'@'::1';
-                    FLUSH PRIVILEGES;
-                "#,
-                if ssl {
-                    "REQUIRE X509"
-                } else {
-                    "IDENTIFIED BY 'Sup3r$ecur3'"
-                }
-            )
-            .into_bytes(),
-        )
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/assets");
+    let mut container = image
         .with_startup_timeout(Duration::from_secs(60))
         .with_log_consumer(TestcontainersLogConsumer);
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     if ssl {
-        generate_ssl_files()
-            .await
-            .expect("Could not create the certificate files for ssl session");
-
-        // Mount certs into container (override auto-generated ones)
+        generate_ssl_files(&path).expect("Could not create the certificate files for ssl session");
         container = container
-            .with_copy_to("/etc/mysql/conf.d/my.cnf", path.join("tests/assets/my.cnf"))
-            .with_copy_to(
-                "/docker-entrypoint-initdb.d/ca.pem",
-                path.join("tests/assets/ca.pem"),
-            )
-            .with_copy_to(
-                "/docker-entrypoint-initdb.d/server-cert.pem",
-                path.join("tests/assets/server-cert.pem"),
-            )
-            .with_copy_to(
-                "/docker-entrypoint-initdb.d/server-key.pem",
-                path.join("tests/assets/server-key.pem"),
-            )
-            .with_copy_to(
-                "/docker-entrypoint-initdb.d/00-ssl.sh",
-                path.join("tests/assets/00-ssl.sh"),
-            );
+            .with_copy_to("/etc/mysql/conf.d/my.cnf", path.join("my.cnf"))
+            .with_copy_to("/etc/mysql/ca.pem", path.join("ca.pem"))
+            .with_copy_to("/etc/mysql/server-cert.pem", path.join("server-cert.pem"))
+            .with_copy_to("/etc/mysql/server-key.pem", path.join("server-key.pem"));
     }
     let container = container
         .start()
@@ -111,187 +91,42 @@ pub async fn init_mysql(ssl: bool) -> (String, Option<ContainerAsync<Mysql>>) {
     let port = container
         .get_host_port_ipv4(3306)
         .await
-        .expect("Cannot get the port of Mysql");
+        .expect("Cannot get the port of MySQL/MariaDB");
+    let url = if ssl {
+        format!(
+            "mysql://{user}@localhost:{port}/{db}?require_ssl=true&ssl_ca={}&ssl_cert={}&ssl_key={}",
+            path.join("ca.pem").to_str().unwrap(),
+            path.join("client-cert.pem").to_str().unwrap(),
+            path.join("client-key.pem").to_str().unwrap(),
+        )
+    } else {
+        format!("mysql://{user}:{password}@localhost:{port}/{db}")
+    };
+    (url, Some(container))
+}
 
-    (
-        if ssl {
-            format!(
-                "mysql://tank-mysql-user@localhost:{port}/mysql_database?require_ssl=true&ssl_ca={}&ssl_cert={}&ssl_pass={}",
-                path.join("tests/assets/ca.pem").to_str().unwrap(),
-                path.join("tests/assets/client.p12").to_str().unwrap(),
-                urlencoding::encode("my&pass?is=P@$$"),
-            )
-        } else {
-            format!("mysql://tank-mysql-user:Sup3r$ecur3@localhost:{port}/mysql_database",)
-        },
-        Some(container),
+pub async fn init_mysql(ssl: bool) -> (String, Option<ContainerAsync<Mysql>>) {
+    let sql = init_sql("mysql_database", "tank-mysql-user", "Sup3r$ecur3", ssl);
+    start_db(
+        Mysql::default().with_init_sql(sql),
+        "TANK_MYSQL_TEST",
+        "mysql_database",
+        "tank-mysql-user",
+        "Sup3r$ecur3",
+        ssl,
     )
+    .await
 }
 
 pub async fn init_mariadb(ssl: bool) -> (String, Option<ContainerAsync<Mariadb>>) {
-    if let Ok(url) = env::var("TANK_MARIADB_TEST") {
-        return (url, None);
-    };
-    if !Command::new("docker")
-        .arg("ps")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or_default()
-    {
-        log::error!("Cannot access docker");
-    }
-    let mut container = Mariadb::default()
-        .with_init_sql(
-            format!(
-                r#"
-                    CREATE DATABASE mariadb_database;
-                    CREATE USER 'tank-mariadb-user'@'%' {};
-                    GRANT ALL PRIVILEGES ON *.* TO 'tank-mariadb-user'@'%';
-                    DROP USER IF EXISTS 'root'@'localhost';
-                    DROP USER IF EXISTS 'root'@'127.0.0.1';
-                    DROP USER IF EXISTS 'root'@'::1';
-                    FLUSH PRIVILEGES;
-                "#,
-                if ssl {
-                    "REQUIRE X509"
-                } else {
-                    "IDENTIFIED BY 'Th3M0$tS3cu4e'"
-                }
-            )
-            .into_bytes(),
-        )
-        .with_startup_timeout(Duration::from_secs(60))
-        .with_log_consumer(TestcontainersLogConsumer);
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    if ssl {
-        generate_ssl_files()
-            .await
-            .expect("Could not create the certificate files for ssl session");
-
-        container = container
-            .with_copy_to("/etc/mysql/conf.d/my.cnf", path.join("tests/assets/my.cnf"))
-            .with_copy_to("//var/lib/mysql/ca.pem", path.join("tests/assets/ca.pem"))
-            .with_copy_to(
-                "/var/lib/mysql/server-cert.pem",
-                path.join("tests/assets/server-cert.pem"),
-            )
-            .with_copy_to(
-                "/var/lib/mysql/server-key.pem",
-                path.join("tests/assets/server-key.pem"),
-            );
-    }
-    let container = container
-        .start()
-        .await
-        .expect("Could not start the container");
-    let port = container
-        .get_host_port_ipv4(3306)
-        .await
-        .expect("Cannot get the port of MariaDB");
-
-    (
-        if ssl {
-            format!(
-                "mysql://tank-mariadb-user@localhost:{port}/mariadb_database?require_ssl=true&ssl_ca={}&ssl_cert={}&ssl_pass={}",
-                path.join("tests/assets/ca.pem").to_str().unwrap(),
-                path.join("tests/assets/client.p12").to_str().unwrap(),
-                urlencoding::encode("my&pass?is=P@$$"),
-            )
-        } else {
-            format!("mysql://tank-mariadb-user:Th3M0$tS3cu4e@localhost:{port}/mariadb_database")
-        },
-        Some(container),
+    let sql = init_sql("mariadb_database", "tank-mariadb-user", "Th3M0$tS3cu4e", ssl);
+    start_db(
+        Mariadb::default().with_init_sql(sql),
+        "TANK_MARIADB_TEST",
+        "mariadb_database",
+        "tank-mariadb-user",
+        "Th3M0$tS3cu4e",
+        ssl,
     )
-}
-
-async fn generate_ssl_files() -> Result<()> {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
-    let mut ca_params = CertificateParams::new(vec!["Test CA".to_string()])?;
-    ca_params.is_ca = IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
-    ca_params.key_usages.push(KeyUsagePurpose::KeyCertSign);
-    ca_params.key_usages.push(KeyUsagePurpose::CrlSign);
-    ca_params.use_authority_key_identifier_extension = true;
-    let ca_key = KeyPair::generate()?;
-    let ca_cert = ca_params.self_signed(&ca_key)?;
-    let _ = fs::create_dir_all("tests/assets").await;
-    fs::write(path.join("tests/assets/ca.pem"), ca_cert.pem()).await?;
-
-    let ca_issuer = Issuer::from_params(&ca_params, ca_key);
-
-    let server_key = KeyPair::generate()?;
-    let mut server_params = CertificateParams::new(vec!["localhost".to_string()])?;
-    server_params.use_authority_key_identifier_extension = true;
-    server_params
-        .key_usages
-        .push(KeyUsagePurpose::DigitalSignature);
-    server_params
-        .key_usages
-        .push(KeyUsagePurpose::KeyEncipherment);
-    server_params
-        .extended_key_usages
-        .push(ExtendedKeyUsagePurpose::ServerAuth);
-    server_params.subject_alt_names = vec![
-        SanType::DnsName("localhost".try_into()?),
-        SanType::IpAddress(IpAddr::V4(Ipv4Addr::from_str("127.0.0.1")?)),
-    ];
-    server_params
-        .distinguished_name
-        .push(DnType::CommonName, "localhost");
-    let server_cert = server_params.signed_by(&server_key, &ca_issuer)?;
-    fs::write(path.join("tests/assets/server-cert.pem"), server_cert.pem()).await?;
-    fs::write(
-        path.join("tests/assets/server-key.pem"),
-        server_key.serialize_pem(),
-    )
-    .await?;
-
-    let client_key = KeyPair::generate()?;
-    let mut client_params = CertificateParams::new(vec!["tank-mysql-user".to_string()])?;
-    client_params.is_ca = IsCa::NoCa;
-    client_params
-        .key_usages
-        .push(KeyUsagePurpose::DigitalSignature);
-    client_params
-        .extended_key_usages
-        .push(ExtendedKeyUsagePurpose::ClientAuth);
-    client_params
-        .distinguished_name
-        .push(DnType::CommonName, "tank-mysql-user");
-    let client_cert = client_params.signed_by(&client_key, &ca_issuer)?;
-    fs::write(path.join("tests/assets/client-cert.pem"), client_cert.pem()).await?;
-    fs::write(
-        path.join("tests/assets/client-key.pem"),
-        client_key.serialize_pem(),
-    )
-    .await?;
-
-    let client_p12_path = path.join("tests/assets/client.p12");
-    if client_p12_path.exists() {
-        fs::remove_file(&client_p12_path).await.ok();
-    }
-
-    let openssl_output = Command::new("openssl")
-        .args([
-            "pkcs12",
-            "-export",
-            "-in",
-            "tests/assets/client-cert.pem",
-            "-inkey",
-            "tests/assets/client-key.pem",
-            "-passout",
-            "pass:my&pass?is=P@$$",
-            "-out",
-            &client_p12_path.to_string_lossy(),
-        ])
-        .current_dir(&path)
-        .output()
-        .expect("Failed to run openssl");
-
-    if !openssl_output.status.success() {
-        let stderr = String::from_utf8_lossy(&openssl_output.stderr);
-        log::error!("OpenSSL failed to create PKCS#12: {stderr}");
-    }
-
-    Ok(())
+    .await
 }

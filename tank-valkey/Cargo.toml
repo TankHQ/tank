@@ -25,14 +25,15 @@ log.workspace = true
 redis = { version = "1.0.4", features = [
     "aio",
     "rust_decimal",
+    "tls-rustls-webpki-roots",
     "tokio-comp",
-    "tokio-native-tls-comp",
+    "tokio-rustls-comp",
 ] }
+rustls.workspace = true
 tank-core.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-rcgen.workspace = true
 tank = { path = ".." }
 tank-tests = { path = "../tank-tests", features = [
     "disable-glob",

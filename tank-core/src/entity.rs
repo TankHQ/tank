@@ -1,7 +1,7 @@
 use crate::{
-    ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Query, QueryBuilder,
-    RawQuery, Result, Row, RowOwned, RowValues, RowsAffected, TableRef, future::Either,
-    stream::Stream, truncate_long, writer::SqlWriter,
+    ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Fragment, Query,
+    QueryBuilder, RawQuery, Result, Row, RowOwned, RowValues, RowsAffected, TableRef,
+    future::Either, stream::Stream, truncate_long, writer::SqlWriter,
 };
 use anyhow::anyhow;
 use futures::{FutureExt, StreamExt};
@@ -86,12 +86,27 @@ pub trait Entity: AsEntity + Expression {
             if !executor.accepts_multiple_statements() && !query.is_empty() {
                 let mut q = query.into_query(executor.driver());
                 executor.execute(&mut q).await?;
-                // To reuse the allocated buffer
                 query = q.into();
-                query.clear();
+                query.clear(); // Reuse the buffer
             }
             writer.write_create_table::<Self>(&mut query, if_not_exists);
-            executor.execute(query).await.map(|_| ())
+            for column in Self::columns().iter().filter(|c| !c.comment.is_empty()) {
+                if !executor.accepts_multiple_statements() && !query.is_empty() {
+                    let mut q = query.into_query(executor.driver());
+                    executor.execute(&mut q).await?;
+                    query = q.into();
+                    query.clear(); // Reuse the buffer
+                }
+                writer.write_column_comment(
+                    &mut Context::new(Fragment::SqlCommentOnColumn, true),
+                    &mut query,
+                    column,
+                );
+            }
+            if !query.is_empty() {
+                executor.execute(query).await?;
+            }
+            Ok(())
         }
     }
 

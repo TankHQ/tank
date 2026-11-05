@@ -16,7 +16,7 @@ It maps Tank operations and queries to native MySQL and MariaDB commands. Use it
 
 ## Features
 - Async connection and execution via [`mysql_async`](https://crates.io/crates/mysql_async)
-- TLS support via `native-tls`
+- TLS support via `rustls`
 - Support for MariaDB and MySQL
 
 ## Install
@@ -33,7 +33,7 @@ use tank_mysql::MySQLDriver;
 let driver = MySQLDriver::new();
 let pool = driver
     .connect_pool(
-        "mysql://user:password@127.0.0.1:3306/database?require_ssl=true&ssl_ca=ca.pem&ssl_cert=client.p12&ssl_pass=certificate-password".into(),
+        "mysql://user:password@127.0.0.1:3306/database?require_ssl=true&ssl_ca=ca.pem&ssl_cert=client-cert.pem&ssl_key=client-key.pem",
         PoolConfig::new(),
     )
     .await?;

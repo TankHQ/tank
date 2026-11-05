@@ -4,18 +4,11 @@ mod tests {
     use std::borrow::Cow;
     use syn::parse_str;
     use tank::{
-        BinaryOp, BinaryOpType, ColumnRef, Dataset, DeclareTableRef, DynQuery, Entity, Join,
-        JoinType, Operand, SqlWriter, TableRef, join,
+        BinaryOp, BinaryOpType, ColumnRef, Dataset, DeclareTableRef, DynQuery, Entity,
+        GenericSqlWriter, Join, JoinType, Operand, TableRef, join,
     };
 
-    struct Writer;
-    impl SqlWriter for Writer {
-        fn as_dyn(&self) -> &dyn SqlWriter {
-            self
-        }
-    }
-
-    const WRITER: Writer = Writer {};
+    const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[derive(Entity)]
     #[tank(schema = "my_data")]
@@ -63,6 +56,7 @@ mod tests {
             query.as_str(),
             r#""my_data"."alpha" AA JOIN "bravo" BB ON AA.a = BB.first"#
         );
+        assert!(Join::<DeclareTableRef, DeclareTableRef, ()>::qualified_columns());
 
         let join = join!(Alpha INNER JOIN Bravo ON Alpha::_a == Bravo::_first);
         assert!(matches!(
@@ -597,7 +591,7 @@ mod tests {
         ];
 
         for (input, expected, tokenized) in cases {
-            let join_type = parse_str::<JoinType>(input).expect("join type should parse");
+            let join_type = parse_str::<JoinType>(input).expect("Join type should parse");
             assert!(
                 matches!(join_type, value if std::mem::discriminant(&value) == std::mem::discriminant(&expected))
             );
@@ -607,7 +601,7 @@ mod tests {
 
     #[test]
     fn join_invalid_syntax() {
-        let error = parse_str::<JoinType>("SIDE JOIN").expect_err("invalid join should fail");
+        let error = parse_str::<JoinType>("SIDE JOIN").expect_err("Invalid join should fail");
         assert!(error.to_string().contains("Not a join keyword"));
     }
 }

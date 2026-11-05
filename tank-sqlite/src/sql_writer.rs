@@ -90,7 +90,7 @@ impl SqlWriter for SQLiteSqlWriter {
             Value::UInt64(..) => out.push_str("INTEGER"),
             Value::Float32(..) => out.push_str("REAL"),
             Value::Float64(..) => out.push_str("REAL"),
-            Value::Decimal(.., precision, scale) => {
+            Value::Decimal(_, precision, scale, ..) => {
                 out.push_str("REAL");
                 if (precision, scale) != (&0, &0) {
                     let _ = write!(out, "({precision},{scale})");
@@ -188,10 +188,11 @@ impl SqlWriter for SQLiteSqlWriter {
         // SQLite does not support schema
     }
 
-    fn write_column_comments_statements<E>(&self, _context: &mut Context, _out: &mut DynQuery)
-    where
-        Self: Sized,
-        E: Entity,
-    {
+    fn write_column_comment(
+        &self,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        _column: &ColumnDef,
+    ) {
     }
 }

@@ -1,8 +1,10 @@
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use tank::{
-        Entity, Expression, FindOrder, GenericSqlWriter, IsAggregateFunction, IsAlias, IsAsterisk,
-        IsConstant, IsFalse, IsQuestionMark, IsTrue, Order, expr,
+        CollectionType, Context, DynQuery, Entity, Expression, ExpressionVisitor, FindOrder,
+        Fragment, GenericSqlWriter, IsAggregateFunction, IsAlias, IsAsterisk, IsConstant, IsFalse,
+        IsQuestionMark, IsTrue, Operand, Order, Value, WriteInList, cols, expr,
     };
 
     #[derive(Entity)]
@@ -16,21 +18,15 @@ mod tests {
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
-    fn visitor_is_true() {
+    fn visitor_boolean() {
         let mut out = Default::default();
         let mut ctx = Default::default();
-        let error = expr!(true);
-        assert!(error.accept_visitor(&mut IsTrue, &WRITER, &mut ctx, &mut out));
+        let e = expr!(true);
+        assert!(e.accept_visitor(&mut IsTrue, &WRITER, &mut ctx, &mut out));
         let e = expr!(false);
         assert!(!e.accept_visitor(&mut IsTrue, &WRITER, &mut ctx, &mut out));
         let e = expr!(42);
         assert!(!e.accept_visitor(&mut IsTrue, &WRITER, &mut ctx, &mut out));
-    }
-
-    #[test]
-    fn visitor_is_false() {
-        let mut out = Default::default();
-        let mut ctx = Default::default();
         let e = expr!(false);
         assert!(e.accept_visitor(&mut IsFalse, &WRITER, &mut ctx, &mut out));
         let e = expr!(true);
@@ -54,6 +50,15 @@ mod tests {
         // Column reference is not constant
         let e = expr!(Table::col_a);
         assert!(!e.accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
+        assert!(expr!([1, 2, 3]).accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
+        assert!(expr!((1, 2)).accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
+        assert!(!expr!([alpha, bravo]).accept_visitor(
+            &mut IsConstant,
+            &WRITER,
+            &mut ctx,
+            &mut out
+        ));
+        assert!(expr!(true as total).accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
     }
 
     #[test]
@@ -78,22 +83,22 @@ mod tests {
         assert!(!e.accept_visitor(&mut IsAggregateFunction, &WRITER, &mut ctx, &mut out));
         let e = expr!(42);
         assert!(!e.accept_visitor(&mut IsAggregateFunction, &WRITER, &mut ctx, &mut out));
+        assert!(expr!(COUNT(*) as n).accept_visitor(
+            &mut IsAggregateFunction,
+            &WRITER,
+            &mut ctx,
+            &mut out
+        ));
     }
 
     #[test]
-    fn visitor_is_asterisk() {
+    fn visitor_markers() {
         let mut out = Default::default();
         let mut ctx = Default::default();
         let e = expr!(*);
         assert!(e.accept_visitor(&mut IsAsterisk, &WRITER, &mut ctx, &mut out));
         let e = expr!(42);
         assert!(!e.accept_visitor(&mut IsAsterisk, &WRITER, &mut ctx, &mut out));
-    }
-
-    #[test]
-    fn visitor_is_question_mark() {
-        let mut out = Default::default();
-        let mut ctx = Default::default();
         let e = expr!(?);
         assert!(e.accept_visitor(&mut IsQuestionMark, &WRITER, &mut ctx, &mut out));
         let e = expr!(42);
@@ -111,11 +116,11 @@ mod tests {
         let mut alias_visitor2 = IsAlias::default();
         let e = expr!(Table::col_a);
         assert!(!e.accept_visitor(&mut alias_visitor2, &WRITER, &mut ctx, &mut out));
+        assert!(!expr!(1 + 2).accept_visitor(&mut alias_visitor2, &WRITER, &mut ctx, &mut out));
     }
 
     #[test]
     fn visitor_find_order() {
-        use tank::cols;
         let mut out = Default::default();
         let mut ctx = Default::default();
         {
@@ -132,5 +137,63 @@ mod tests {
             assert!(ordered.accept_visitor(&mut finder, &WRITER, &mut ctx, &mut out));
             assert_eq!(finder.order, Order::DESC);
         }
+        let mut finder = FindOrder::default();
+        assert!(expr!(true).accept_visitor(&mut finder, &WRITER, &mut ctx, &mut out));
+        assert!(expr!(Table::col_a).accept_visitor(&mut finder, &WRITER, &mut ctx, &mut out));
+        assert!(expr!(!true).accept_visitor(&mut finder, &WRITER, &mut ctx, &mut out));
+        assert!(expr!(1 + 2).accept_visitor(&mut finder, &WRITER, &mut ctx, &mut out));
+    }
+
+    #[test]
+    fn visitor_default_impls_return_false() {
+        struct Defaults;
+        impl ExpressionVisitor for Defaults {}
+        let mut visitor = Defaults;
+        let mut out = Default::default();
+        let mut ctx = Default::default();
+        assert!(!expr!(1).accept_visitor(&mut visitor, &WRITER, &mut ctx, &mut out));
+        assert!(!expr!(Table::col_a).accept_visitor(&mut visitor, &WRITER, &mut ctx, &mut out));
+        assert!(!expr!(1 + 2).accept_visitor(&mut visitor, &WRITER, &mut ctx, &mut out));
+        assert!(!expr!(!true).accept_visitor(&mut visitor, &WRITER, &mut ctx, &mut out));
+        let binding = cols!(Table::col_a ASC);
+        assert!(!binding[0].accept_visitor(&mut visitor, &WRITER, &mut ctx, &mut out));
+    }
+
+    #[test]
+    fn visitor_delegates_through_wrappers() {
+        let mut out = Default::default();
+        let mut ctx = Default::default();
+        let arc_true = Arc::new(expr!(true));
+        assert!(arc_true.accept_visitor(&mut IsTrue, &WRITER, &mut ctx, &mut out));
+        let boxed_true = Box::new(expr!(true));
+        assert!(boxed_true.accept_visitor(&mut IsTrue, &WRITER, &mut ctx, &mut out));
+        let inner = expr!(true);
+        let dyn_ref: &dyn Expression = &inner;
+        assert!(dyn_ref.accept_visitor(&mut IsTrue, &WRITER, &mut ctx, &mut out));
+        let boxed_arc = Arc::new(expr!(false));
+        assert!(boxed_arc.accept_visitor(&mut IsFalse, &WRITER, &mut ctx, &mut out));
+    }
+
+    #[test]
+    fn visitor_write_in_list() {
+        let mut visitor = WriteInList;
+        let mut out = DynQuery::default();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+        let values: Box<[Value<'static>]> =
+            vec![Value::Int32(Some(3)), Value::Int32(Some(4))].into();
+        assert!(visitor.visit_operand(
+            &WRITER,
+            &mut ctx,
+            &mut out,
+            &Operand::Variable(Value::List(
+                Some(values),
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 0,
+                })
+            ))
+        ));
+        assert_eq!(out.as_str(), "(3,4)");
+        assert!(!visitor.visit_operand(&WRITER, &mut ctx, &mut out, &Operand::LitInt(1)));
     }
 }

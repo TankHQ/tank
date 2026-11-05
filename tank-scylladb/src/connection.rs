@@ -1,7 +1,11 @@
 use crate::{RowWrap, ScyllaDBDriver, ScyllaDBPrepared, ScyllaDBTransaction};
 use anyhow::anyhow;
 use async_stream::stream;
-use openssl::ssl::{SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
+use rustls::{
+    ClientConfig, RootCertStore,
+    crypto::{CryptoProvider, aws_lc_rs::default_provider},
+    pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
+};
 use scylla::{
     client::{PoolSize, WriteCoalescingDelay, session::Session, session_builder::SessionBuilder},
     response::PagingState,
@@ -185,8 +189,12 @@ impl Connection for ScyllaDBConnection {
                 session = session.use_keyspace(keyspace, true);
             }
         }
-        let mut context_builder = SslContextBuilder::new(SslMethod::tls()).context(context)?;
-        context_builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
+        if CryptoProvider::get_default().is_none() {
+            let _ = default_provider().install_default();
+        }
+        let mut root_store = RootCertStore::empty();
+        let mut client_certs = Vec::new();
+        let mut client_key = None;
         let mut ssl = false;
         let mut keyspaces = Vec::new();
         for (k, v) in url.query_pairs() {
@@ -206,20 +214,19 @@ impl Connection for ScyllaDBConnection {
             }
             match k.as_ref() {
                 "ssl_ca" => {
-                    context_try!(context_builder.set_ca_file(v.as_ref()));
+                    for cert in context_try!(CertificateDer::pem_file_iter(v.as_ref())) {
+                        context_try!(root_store.add(context_try!(cert)));
+                    }
                     ssl = true;
                 }
                 "ssl_cert" => {
-                    context_try!(
-                        context_builder.set_certificate_file(v.as_ref(), SslFiletype::PEM)
-                    );
+                    for cert in context_try!(CertificateDer::pem_file_iter(v.as_ref())) {
+                        client_certs.push(context_try!(cert));
+                    }
                     ssl = true;
                 }
                 "ssl_key" => {
-                    context_try!(
-                        context_builder.set_private_key_file(v.as_ref(), SslFiletype::PEM)
-                    );
-                    context_try!(context_builder.check_private_key());
+                    client_key = Some(context_try!(PrivateKeyDer::from_pem_file(v.as_ref())));
                     ssl = true;
                 }
                 "local_ip_address" => {
@@ -347,7 +354,28 @@ impl Connection for ScyllaDBConnection {
         }
 
         if ssl {
-            session = session.tls_context(Some(context_builder.build()));
+            let builder = ClientConfig::builder().with_root_certificates(root_store);
+            let config = match (client_certs.is_empty(), client_key) {
+                (false, Some(key)) => builder
+                    .with_client_auth_cert(client_certs, key)
+                    .context(context)?,
+                (true, None) => builder.with_no_client_auth(),
+                (false, None) => {
+                    let error =
+                        anyhow!("SSL KEY file must be provided when SSL CERT is specified")
+                            .context(context);
+                    log::error!("{error:#}");
+                    return Err(error);
+                }
+                (true, Some(_)) => {
+                    let error =
+                        anyhow!("SSL CERT file must be provided when SSL KEY is specified")
+                            .context(context);
+                    log::error!("{error:#}");
+                    return Err(error);
+                }
+            };
+            session = session.tls_context(Some(Arc::new(config)));
         }
         if !keyspaces.is_empty() {
             session = session.keyspaces_to_fetch(keyspaces);

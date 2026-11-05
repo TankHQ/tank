@@ -9,7 +9,7 @@ use std::{
     ffi::c_void,
     fmt::{self, Display},
 };
-use tank_core::{error_message_from_ptr, AsValue, Error, Prepared, Result, Value};
+use tank_core::{AsValue, Error, Prepared, Result, Value, error_message_from_ptr};
 
 /// Prepared statement wrapper for DuckDB.
 ///
@@ -23,9 +23,10 @@ impl DuckDBPrepared {
     pub(crate) fn new(statement: CBox<duckdb_prepared_statement>) -> Self {
         Self {
             statement: statement.into(),
-            index: 1,
+            index: 0,
         }
     }
+
     pub(crate) fn statement(&self) -> duckdb_prepared_statement {
         *self.statement
     }
@@ -45,8 +46,13 @@ impl Prepared for DuckDBPrepared {
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
+
+    fn is_empty(&self) -> bool {
+        self.statement().is_null()
+    }
+
     fn clear_bindings(&mut self) -> Result<&mut Self> {
-        self.index = 1;
+        self.index = 0;
         unsafe {
             let rc = duckdb_clear_bindings(self.statement());
             if rc != duckdb_state_DuckDBSuccess {
@@ -57,11 +63,15 @@ impl Prepared for DuckDBPrepared {
         }
         Ok(self)
     }
+
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         self.bind_index(value, self.index)?;
         Ok(self)
     }
+
     fn bind_index(&mut self, v: impl AsValue, index: u64) -> Result<&mut Self> {
+        // DuckDB's parameter index is 1-based.
+        let index = index + 1;
         unsafe {
             let prepared = self.statement();
             let value = v.as_value();
@@ -154,7 +164,7 @@ impl Prepared for DuckDBPrepared {
                 log::error!("{error:#}");
                 return Err(error);
             }
-            self.index = index + 1;
+            self.index = index;
             Ok(self)
         }
     }

@@ -18,6 +18,7 @@ Use it with the main [`tank`](https://crates.io/crates/tank) crate, which provid
 
 ## Features
 - Async connection and execution via [`redis`](https://crates.io/crates/redis)
+- TLS support via `rustls`
 - Key-Value mapping for Tank entities
 - Support for nested types such as `Vec` and `HashMap`, stored in auxiliary keys
 
@@ -35,7 +36,7 @@ use tank_valkey::ValkeyDriver;
 let driver = ValkeyDriver::default();
 let pool = driver
     .connect_pool(
-        "valkeys://user:password@127.0.0.1:6379/0?sslmode=require&sslrootcert=ca.pem&sslcert=client-cert.pem&sslkey=client-key.pem".into(),
+        "valkeys://user:password@127.0.0.1:6379/0?sslmode=require&sslrootcert=ca.pem&sslcert=client-cert.pem&sslkey=client-key.pem",
         PoolConfig::new(),
     )
     .await?;

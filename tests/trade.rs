@@ -61,7 +61,7 @@ mod tests {
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
-    fn test_trade() {
+    fn trade_metadata() {
         assert!(matches!(
             Trade::table(),
             TableRef {
@@ -227,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn test_trade_create_table() {
+    fn trade_sql() {
         let mut query = DynQuery::default();
         WRITER.write_create_table::<Trade>(&mut query, false);
         assert_eq!(
@@ -236,38 +236,40 @@ mod tests {
                 CREATE TABLE "trading.company"."trade_execution" (
                 "trade_id" UBIGINT,
                 "order_id" UUID NOT NULL DEFAULT '241d362d-797e-4769-b3f6-412440c8cf68',
-                "symbol" VARCHAR NOT NULL,
+                "symbol" TEXT NOT NULL,
                 "isin" CHAR(1)[12] NOT NULL,
                 "price" DECIMAL(18,4) NOT NULL,
                 "quantity" UINTEGER NOT NULL,
                 "execution_time" TIMESTAMP,
-                "currency" VARCHAR,
+                "currency" TEXT,
                 "is_internalized" BOOLEAN NOT NULL,
-                "venue" VARCHAR,
+                "venue" TEXT,
                 "child_trade_ids" BIGINT[],
                 "metadata" BLOB,
-                "tags" MAP(VARCHAR,VARCHAR),
+                "tags" MAP(TEXT,TEXT),
                 PRIMARY KEY ("trade_id", "execution_time"),
                 FOREIGN KEY ("order_id") REFERENCES "order"("id") ON DELETE SET DEFAULT ON UPDATE RESTRICT);
+            "#}
+            .trim()
+        );
+        let mut query = DynQuery::default();
+        for column in Trade::columns().iter().filter(|c| !c.comment.is_empty()) {
+            WRITER.write_column_comment(&mut Default::default(), &mut query, column);
+        }
+        assert_eq!(
+            query.as_str(),
+            indoc! {r#"
                 COMMENT ON COLUMN "trading.company"."trade_execution"."symbol" IS 'Ticker symbol';
                 COMMENT ON COLUMN "trading.company"."trade_execution"."venue" IS 'Exchange';
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_trade_drop_table() {
         let mut query = DynQuery::default();
         WRITER.write_drop_table::<Trade>(&mut query, true);
         assert_eq!(
             query.as_str(),
             r#"DROP TABLE IF EXISTS "trading.company"."trade_execution";"#
         );
-    }
-
-    #[test]
-    fn test_trade_select() {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
@@ -285,10 +287,6 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_trade_insert() {
         let mut docs = HashMap::new();
         docs.insert("contract.pdf".to_string(), vec![1, 2, 3, 4]);
         let employee = Trade::sample();
@@ -301,10 +299,6 @@ mod tests {
                 (46923, '550e8400-e29b-41d4-a716-446655440000', 'RIVN', ['U','S','7','6','9','5','4','A','1','0','3','4'], 12.26, 500, '2025-06-07 14:32:00.0', 'USD', true, 'NASDAQ', [36209,85320], '\x4D\x65\x74\x61\x64\x61\x74\x61\x20\x42\x79\x74\x65\x73',
             "#}.trim())
     );
-    }
-
-    #[test]
-    fn test_trade_delete() {
         let mut query = DynQuery::default();
         WRITER.write_delete::<Trade>(&mut query, expr!(Trade::trade == 68391));
         assert_eq!(
@@ -318,7 +312,7 @@ mod tests {
     }
 
     #[test]
-    fn test_references() {
+    fn trade_references() {
         #[derive(Entity)]
         #[tank(schema = "army", name = "deployments")]
         struct Deployment {

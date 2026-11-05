@@ -1,56 +1,30 @@
 # Advanced Operations
-###### *Section 8* - Tactical Coordination
+###### *Field Manual Section 8* - Tactical Coordination
 
 In the field, isolated units rarely win the battle. Coordination is key. Joins let you link data across tables like synchronized squads advancing under fire.
-In Tank, a join is a first-class `Dataset`, just like a `TableRef`. That means you can call `select()` and then filter, map, reduce, etc., using the same composable [Stream API](https://docs.rs/futures/latest/futures/prelude/trait.Stream.html) you already know.
+In Tank, a join is a first-class `Dataset`, just like a `TableRef`. Pass it to `QueryBuilder::from()`, fetch the selected rows, then process them with the composable [Stream API](https://docs.rs/futures/latest/futures/prelude/trait.Stream.html) you already know.
 
 ## Schema
 Continuing with the `Operator` and `RadioLog` schema introduced earlier. The following examples show more advanced query capabilities: operations that go beyond simple CRUD while still avoiding raw SQL.
-::: code-group
-```rust [Rust]
-#[derive(Entity)]
-#[tank(schema = "operations", name = "radio_operator")]
-pub struct Operator {
-    #[tank(primary_key)]
-    pub id: Uuid,
-    pub callsign: String,
-    #[tank(name = "rank")]
-    pub service_rank: String,
-    #[tank(name = "enlistment_date")]
-    pub enlisted: Date,
-    pub is_certified: bool,
-}
 
-#[derive(Entity)]
-#[tank(schema = "operations")]
-pub struct RadioLog {
-    #[tank(primary_key)]
-    pub id: Uuid,
-    #[tank(references = Operator::id)]
-    pub operator: Uuid,
-    pub message: String,
-    pub unit_callsign: String,
-    #[tank(name = "tx_time")]
-    pub transmission_time: OffsetDateTime,
-    #[tank(name = "rssi")]
-    pub signal_strength: i8,
-}
-```
+The SQL below uses PostgreSQL syntax. Other drivers choose their own column types.
+::: code-group
+<<< @/../tank-tests/src/operations.rs#operations-schema [Rust]
 ```sql [SQL]
 CREATE TABLE IF NOT EXISTS operations.radio_operator (
     id UUID PRIMARY KEY,
-    callsign VARCHAR NOT NULL,
-    rank VARCHAR NOT NULL,
+    callsign TEXT NOT NULL,
+    rank TEXT NOT NULL,
     enlistment_date DATE NOT NULL,
     is_certified BOOLEAN NOT NULL);
 
 CREATE TABLE IF NOT EXISTS operations.radio_log (
     id UUID PRIMARY KEY,
     operator UUID NOT NULL REFERENCES operations.radio_operator(id),
-    message VARCHAR NOT NULL,
-    unit_callsign VARCHAR NOT NULL,
+    message TEXT NOT NULL,
+    unit_callsign TEXT NOT NULL,
     tx_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    rssi TINYINT NOT NULL);
+    rssi SMALLINT NOT NULL);
 ```
 :::
 
@@ -73,52 +47,14 @@ CREATE TABLE IF NOT EXISTS operations.radio_log (
 | Affirmative, engaging.                   | Alpha-1       | 2025-11-03T23:11:54+00 | -54  |
 
 ## Selecting & Ordering
-The [`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) supports aliasing and ordering. When you only need raw columns, prefer the terse array `[Operator::callsign, Operator::service_rank, Operator::enlisted]` or `Operator::columns()` syntax.
+The [`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) macro supports aliasing and ordering. When you only need raw columns, prefer the terse array `[Operator::callsign, Operator::service_rank, Operator::enlisted]` or `Operator::columns()` syntax.
 
 Objective: strongest certified transmissions excluding routine radio checks.
-```rust
-let messages = executor
-    .fetch(
-        QueryBuilder::new()
-            .select(cols!(
-                RadioLog::signal_strength as strength,
-                Operator::callsign,
-                RadioLog::message,
-            ))
-            .from(join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operator))
-            .where_expr(expr!(
-                // X != Y as LIKE => X NOT LIKE Y
-                Operator::is_certified && RadioLog::message != "Radio check%" as LIKE
-            ))
-            .order_by(cols!(RadioLog::signal_strength DESC, Operator::callsign ASC))
-            .limit(Some(100))
-            .build(&executor.driver()),
-    )
-    .map(|row| {
-        row.and_then(|row| {
-            #[derive(Entity)]
-            struct Row {
-                message: String,
-                callsign: String,
-            }
-            Row::from_row(row).and_then(|row| Ok((row.message, row.callsign)))
-        })
-    })
-    .try_collect::<Vec<_>>()
-    .await?;
-assert!(
-    messages.iter().map(|(a, b)| (a.as_str(), b.as_str())).eq([
-        ("Heavy armor spotted, grid 4C.", "SteelHammer"),
-        ("Affirmative, engaging.", "SteelHammer"),
-        ("Target acquired. Requesting coordinates.", "SteelHammer"),
-        ("Perimeter secure. All clear.", "Viper"),
-    ]
-    .into_iter())
-);
-```
+
+<<< @/../tank-tests/src/operations.rs#operations-select-order
 
 ## Expr
-[`expr!()`](https://docs.rs/tank/latest/tank/macro.expr.html) parses a Rust-like expression into a typed AST that drivers translate into backend-specific SQL. Use it for conditions or default values.
+[`expr!()`](https://docs.rs/tank/latest/tank/macro.expr.html) parses a Rust-like expression into a typed AST that drivers translate into backend-specific queries. Use it for conditions or default values.
 
 It accepts a subset of Rust syntax with additional sentinel tokens for SQL semantics:
 - `42`, `1.2`, `"Alpha"`, `true`, `NULL`, `[1, 2, 3]` literal values
@@ -138,6 +74,7 @@ It accepts a subset of Rust syntax with additional sentinel tokens for SQL seman
 - `Operator::callsign == #signs as IN`, becomes: `callsign IN ('Alpha', 'Bravo-2')`
 - `-(-PI) + 2 * (5 % (2 + 1)) == 7 && !(4 < 2)` combination of the previous
 - `CAST((2 > 1) as i32)` casting expression (mind the parentheses), the type names are automatically converted by the driver
+- `current_timestamp_ms!()` milliseconds since epoch. Each driver renders it in its own dialect: `CAST(EXTRACT(EPOCH FROM NOW()) * 1000 AS BIGINT)`, `(unixepoch('subsec') * 1000)`, `epoch_ms(current_timestamp)`, ...
 
 Parentheses obey standard Rust precedence. Empty invocation (`expr!()`) yields `false`. Ultimately, the drivers decide if and how these expressions are translated into the specific query language.
 
@@ -159,9 +96,9 @@ Example of valid syntax
 - `AVG(RadioLog::signal_strength)` function calls
 - `*` wildcard
 - `COUNT(*)` counting
-- `operations.radio_log.signal_strength.rssi` raw database identifier
+- `operations.radio_log.rssi` raw database identifier
 - `Operator::enlisted DESC` ordering
-- `AVG(ABS(Operator::enlisted - operations.radio_log.transmission_time)) as difference DESC` combination of the previous
+- `AVG(ABS(Operator::enlisted - operations.radio_log.tx_time)) as difference DESC` combination of the previous
 
 ## Performance Notes
 - Request only the necessary columns.

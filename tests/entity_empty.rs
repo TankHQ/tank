@@ -11,7 +11,7 @@ mod tests {
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
-    fn test_simple_entity() {
+    fn empty_entity_sql() {
         assert!(matches!(
             SomeEmptyEntity::table(),
             TableRef {
@@ -21,15 +21,9 @@ mod tests {
                 ..
             }
         ));
-
         assert_eq!(SomeEmptyEntity::primary_key_def().len(), 0);
+        assert_eq!(SomeEmptyEntity::columns().len(), 0);
 
-        let columns = SomeEmptyEntity::columns();
-        assert_eq!(columns.len(), 0);
-    }
-
-    #[test]
-    fn test_simple_entity_create_table() {
         let mut query = DynQuery::default();
         WRITER.write_create_table::<SomeEmptyEntity>(&mut query, true);
         assert_eq!(
@@ -40,17 +34,11 @@ mod tests {
             "#}
             .trim()
         );
-    }
 
-    #[test]
-    fn test_simple_entity_drop_table() {
         let mut query = DynQuery::default();
         WRITER.write_drop_table::<SomeEmptyEntity>(&mut query, false);
         assert_eq!(query.as_str(), r#"DROP TABLE "the_schema"."empty_entity";"#);
-    }
 
-    #[test]
-    fn test_simple_entity_select() {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
@@ -66,10 +54,7 @@ mod tests {
             "#}
             .trim()
         );
-    }
 
-    #[test]
-    fn test_simple_entity_insert() {
         let mut query = DynQuery::default();
         WRITER.write_insert(&mut query, [&SomeEmptyEntity::default()], true);
         assert_eq!(
@@ -80,10 +65,7 @@ mod tests {
             "#}
             .trim()
         );
-    }
 
-    #[test]
-    fn test_simple_entity_delete() {
         let mut query = DynQuery::default();
         WRITER.write_delete::<SomeEmptyEntity>(&mut query, false);
         assert_eq!(

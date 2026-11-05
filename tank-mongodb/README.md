@@ -16,7 +16,7 @@ It maps Tank operations and queries to native MongoDB commands. Use it with the 
 
 ## Features
 - Async connection and execution via [`mongodb`](https://crates.io/crates/mongodb)
-- TLS support
+- TLS support via `rustls`
 - BSON to Tank Value mapping
 
 ## Install
@@ -33,7 +33,7 @@ use tank_mongodb::MongoDBDriver;
 let driver = MongoDBDriver::new();
 let pool = driver
     .connect_pool(
-        "mongodb://user:password@127.0.0.1:27017/database?authSource=admin&tls=true&tlsCAFile=ca.pem&tlsCertificateKeyFile=client-combined.pem".into(),
+        "mongodb://user:password@127.0.0.1:27017/database?authSource=admin&tls=true&tlsCAFile=ca.pem&tlsCertificateKeyFile=client-combined.pem",
         PoolConfig::new(),
     )
     .await?;

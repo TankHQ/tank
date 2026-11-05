@@ -15,10 +15,10 @@ use mongodb::{
 };
 use std::{borrow::Cow, collections::HashMap, f64, iter, mem, ops::Deref, sync::Arc};
 use tank_core::{
-    AsEntity, AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, Dataset, DynQuery, Entity,
-    ErrorContext, Expression, FindOrder, Fragment, Interval, IsAggregateFunction, IsAsterisk,
-    IsConstant, Operand, Order, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType, Value,
-    truncate_long,
+    AsEntity, AsValue, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Context, Dataset, DynQuery,
+    Entity, ErrorContext, Expression, FindOrder, Fragment, Interval, IsAggregateFunction,
+    IsAsterisk, IsConstant, Operand, Order, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType,
+    Value, truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -559,7 +559,10 @@ impl SqlWriter for MongoDBSqlWriter {
                 }
                 .write_query(self, context, out);
             }
-            BinaryOpType::Alias => return value.lhs.write_query(self, context, out),
+            // MongoDB is schemaless, render the operand as-is and let the value flow through
+            BinaryOpType::Cast | BinaryOpType::Alias => {
+                return value.lhs.write_query(self, context, out);
+            }
             _ => {}
         }
         let Some(document) = out
@@ -750,6 +753,14 @@ impl SqlWriter for MongoDBSqlWriter {
             }
             .into(),
         );
+    }
+
+    fn write_column_comment(
+        &self,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        _column: &ColumnDef,
+    ) {
     }
 
     fn write_drop_table<E>(&self, out: &mut DynQuery, _if_exists: bool)

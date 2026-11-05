@@ -10,11 +10,14 @@ mod tests {
     use serde_json::Number;
     use std::{
         borrow::Cow,
-        collections::{HashSet, LinkedList, VecDeque},
+        cell::{Cell, RefCell},
+        collections::{BTreeMap, HashMap, HashSet, LinkedList, VecDeque, hash_map::DefaultHasher},
+        hash::{Hash, Hasher},
+        rc::Rc,
         str::FromStr,
+        sync::Arc,
     };
-    use tank::TableRef;
-    use tank_core::{AsValue, CollectionType, Interval, MapType, StructType, Value};
+    use tank::{AsValue, CollectionType, Interval, MapType, StructType, TableRef, Value};
     use time::Month;
     use uuid::Uuid;
 
@@ -1139,12 +1142,7 @@ mod tests {
     }
 
     #[test]
-    fn value_shared_wrappers_arc_rc_cell_refcell() {
-        use std::{
-            cell::{Cell, RefCell},
-            rc::Rc,
-            sync::Arc,
-        };
+    fn value_shared_wrappers() {
         let arc_v = Arc::new(5_u8).as_value();
         assert_eq!(arc_v, Value::UInt8(Some(5)));
         let rc_v = Rc::new(7_u16).as_value();
@@ -1166,7 +1164,6 @@ mod tests {
 
     #[test]
     fn value_map_semantics() {
-        use std::collections::{BTreeMap, HashMap};
         let mut m1: HashMap<String, i32> = HashMap::new();
         m1.insert("a".into(), 1);
         let mut m2: HashMap<String, i32> = HashMap::new();
@@ -1581,6 +1578,22 @@ mod tests {
                 })
             ))
         );
+        assert!(
+            Value::List(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 4
+                })
+            )
+            .same_type(&Value::List(
+                None,
+                Box::new(CollectionType {
+                    element: Value::Int32(None),
+                    len: 4
+                })
+            ))
+        );
 
         assert!(
             Value::Map(
@@ -1775,16 +1788,48 @@ mod tests {
             Value::TimestampWithTimezone(Some(tstz))
         );
         assert_eq!(
-            Value::Interval(Some(tank_core::Interval::from_days(5)))
+            Value::Interval(Some(Interval::from_days(5)))
                 .try_as(&Value::Interval(None))
                 .unwrap(),
-            Value::Interval(Some(tank_core::Interval::from_days(5)))
+            Value::Interval(Some(Interval::from_days(5)))
         );
         assert_eq!(
             Value::Uuid(Some(Uuid::nil()))
                 .try_as(&Value::Uuid(None))
                 .unwrap(),
             Value::Uuid(Some(Uuid::nil()))
+        );
+
+        // Cross-type conversions that route through each target arm (errors are fine).
+        let d = time::Date::from_calendar_date(2024, time::Month::January, 1).unwrap();
+        let ts = time::PrimitiveDateTime::new(d, time::Time::MIDNIGHT);
+        assert!(
+            Value::Timestamp(Some(ts))
+                .try_as(&Value::Blob(None))
+                .is_err()
+        );
+        assert!(
+            Value::Timestamp(Some(ts))
+                .try_as(&Value::TimestampWithTimezone(None))
+                .is_ok()
+        );
+        assert!(
+            Value::Int32(Some(1))
+                .try_as(&Value::Interval(None))
+                .is_err()
+        );
+        assert!(Value::Int32(Some(1)).try_as(&Value::Date(None)).is_err());
+        assert!(Value::Int32(Some(1)).try_as(&Value::Uuid(None)).is_err());
+        assert!(
+            Value::Int32(Some(1))
+                .try_as(&Value::Struct(
+                    None,
+                    Box::new(tank::StructType {
+                        fields: vec![],
+                        name: TableRef::new("t".into()),
+                    }),
+                ))
+                .is_err()
         );
     }
 
@@ -1944,7 +1989,6 @@ mod tests {
 
     #[test]
     fn value_hash() {
-        use std::collections::HashSet;
         let mut set = HashSet::new();
         set.insert(Value::Null);
         set.insert(Value::Boolean(Some(true)));
@@ -2029,7 +2073,7 @@ mod tests {
         set.insert(Value::TimestampWithTimezone(Some(
             time::PrimitiveDateTime::new(d, t).assume_utc(),
         )));
-        set.insert(Value::Interval(Some(tank_core::Interval::from_days(7))));
+        set.insert(Value::Interval(Some(Interval::from_days(7))));
         assert!(set.len() >= 25);
     }
 
@@ -2052,9 +2096,6 @@ mod tests {
 
     #[test]
     fn value_map_hash_matches_equality() {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
         let empty = Value::Map(
             Some(std::collections::HashMap::new().into()),
             Box::new(MapType {
@@ -2125,15 +2166,28 @@ fn value_value() {
         )
     );
     assert!(Value::parse("some input").is_err());
+    // `From<&str>` builds a borrowed Varchar.
+    assert_eq!(
+        Value::from("borrowed"),
+        Value::Varchar(Some(Cow::Borrowed("borrowed")))
+    );
+    // `Cow<Value>` decodes into an owned value.
+    let borrowed: Cow<'_, Value<'_>> = Cow::Borrowed(&Value::Int32(Some(7)));
+    assert_eq!(
+        Cow::<Value<'_>>::try_from_value(borrowed).unwrap(),
+        Cow::Owned(Value::Int32(Some(7)))
+    );
 }
 
 #[cfg(test)]
 mod as_value_tests {
-    use tank::{AsValue, Value};
+    use rust_decimal::Decimal;
+    use serde_json::Number;
+    use std::{collections::HashMap, mem, num::*, rc::Rc, sync::Arc};
+    use tank::{AsValue, FixedDecimal, Interval, Value};
 
     #[test]
     fn nonzero_conversions() {
-        use std::num::*;
         let v = NonZeroI32::new(42).unwrap().as_value();
         assert_eq!(v, Value::Int32(Some(42)));
         let back = NonZeroI32::try_from_value(v).unwrap();
@@ -2190,7 +2244,6 @@ mod as_value_tests {
 
     #[test]
     fn decimal_from_various_types() {
-        use rust_decimal::Decimal;
         assert_eq!(
             Decimal::try_from_value(Value::Int8(Some(5))).unwrap(),
             Decimal::new(5, 0)
@@ -2227,7 +2280,7 @@ mod as_value_tests {
     }
 
     #[test]
-    fn integer_from_json() {
+    fn integer_from_json_and_text() {
         assert_eq!(
             i32::try_from_value(Value::Json(Some(serde_json::json!(42)))).unwrap(),
             42
@@ -2240,10 +2293,6 @@ mod as_value_tests {
             i32::try_from_value(Value::Json(Some(serde_json::json!(5.0)))).unwrap(),
             5
         );
-    }
-
-    #[test]
-    fn integer_from_varchar_and_unknown() {
         assert_eq!(
             i32::try_from_value(Value::Varchar(Some("42".into()))).unwrap(),
             42
@@ -2252,10 +2301,6 @@ mod as_value_tests {
             i32::try_from_value(Value::Unknown(Some("99".into()))).unwrap(),
             99
         );
-    }
-
-    #[test]
-    fn integer_from_float64() {
         assert_eq!(i32::try_from_value(Value::Float64(Some(10.0))).unwrap(), 10);
         assert!(i32::try_from_value(Value::Float64(Some(10.5))).is_err());
     }
@@ -2283,7 +2328,6 @@ mod as_value_tests {
 
     #[test]
     fn integer_decimal_conversions() {
-        use rust_decimal::Decimal;
         assert_eq!(
             i32::try_from_value(Value::Decimal(Some(Decimal::new(42, 0)), 0, 0)).unwrap(),
             42
@@ -2377,7 +2421,6 @@ mod as_value_tests {
 
     #[test]
     fn interval_parse() {
-        use tank_core::Interval;
         let i = Interval::parse("'1 year 2 months 3 days'").unwrap();
         assert_eq!(i.months, 14); // 12 + 2
         assert_eq!(i.days, 3);
@@ -2390,30 +2433,16 @@ mod as_value_tests {
     }
 
     #[test]
-    fn date_parse() {
+    fn temporal_parse() {
         let d = <time::Date as AsValue>::parse("2024-06-15").unwrap();
         assert_eq!(
             d,
             time::Date::from_calendar_date(2024, time::Month::June, 15).unwrap()
         );
-    }
-
-    #[test]
-    fn time_parse() {
         let t = <time::Time as AsValue>::parse("14:30:00").unwrap();
         assert_eq!(t, time::Time::from_hms(14, 30, 0).unwrap());
-    }
-
-    #[test]
-    fn timestamp_parse() {
         let ts = <time::PrimitiveDateTime as AsValue>::parse("2024-06-15T14:30:00").unwrap();
-        let d = time::Date::from_calendar_date(2024, time::Month::June, 15).unwrap();
-        let t = time::Time::from_hms(14, 30, 0).unwrap();
         assert_eq!(ts, time::PrimitiveDateTime::new(d, t));
-    }
-
-    #[test]
-    fn offset_datetime_parse() {
         let odt = <time::OffsetDateTime as AsValue>::parse("2024-06-15T14:30:00+05:00").unwrap();
         assert_eq!(odt.offset().whole_hours(), 5);
     }
@@ -2428,33 +2457,20 @@ mod as_value_tests {
     }
 
     #[test]
-    fn time_from_interval() {
-        use tank_core::Interval;
+    fn temporal_from_value() {
         let t = time::Time::try_from_value(Value::Interval(Some(
             Interval::from_hours(2) + Interval::from_mins(30),
         )))
         .unwrap();
         assert_eq!(t, time::Time::from_hms(2, 30, 0).unwrap());
-    }
-
-    #[test]
-    fn date_from_timestamp() {
         let d = time::Date::from_calendar_date(2024, time::Month::January, 1).unwrap();
-        let t = time::Time::MIDNIGHT;
-        let ts = time::PrimitiveDateTime::new(d, t);
-        let result = time::Date::try_from_value(Value::Timestamp(Some(ts))).unwrap();
-        assert_eq!(result, d);
-
-        let t2 = time::Time::from_hms(12, 0, 0).unwrap();
-        let ts2 = time::PrimitiveDateTime::new(d, t2);
-        assert!(time::Date::try_from_value(Value::Timestamp(Some(ts2))).is_err());
-    }
-
-    #[test]
-    fn offset_datetime_from_timestamp() {
-        let d = time::Date::from_calendar_date(2024, time::Month::January, 1).unwrap();
-        let t = time::Time::from_hms(12, 0, 0).unwrap();
-        let ts = time::PrimitiveDateTime::new(d, t);
+        let ts = time::PrimitiveDateTime::new(d, time::Time::MIDNIGHT);
+        assert_eq!(
+            time::Date::try_from_value(Value::Timestamp(Some(ts))).unwrap(),
+            d
+        );
+        let ts = time::PrimitiveDateTime::new(d, time::Time::from_hms(12, 0, 0).unwrap());
+        assert!(time::Date::try_from_value(Value::Timestamp(Some(ts))).is_err());
         let odt = time::OffsetDateTime::try_from_value(Value::Timestamp(Some(ts))).unwrap();
         assert_eq!(odt.date(), d);
     }
@@ -2479,7 +2495,6 @@ mod as_value_tests {
 
     #[test]
     fn hashmap_conversions() {
-        use std::collections::HashMap;
         let mut m = HashMap::new();
         m.insert("key".to_string(), 42_i32);
         let v = m.clone().as_value();
@@ -2500,17 +2515,13 @@ mod as_value_tests {
         let back: Box<i32> = Box::try_from_value(Value::Int32(Some(42))).unwrap();
         assert_eq!(*back, 42);
 
-        use std::sync::Arc;
         assert_eq!(Arc::new(42_i32).as_value(), Value::Int32(Some(42)));
 
-        use std::rc::Rc;
         assert_eq!(Rc::new(42_i32).as_value(), Value::Int32(Some(42)));
     }
 
     #[test]
     fn fixed_decimal_round_trip() {
-        use rust_decimal::Decimal;
-        use tank_core::FixedDecimal;
         let fd: FixedDecimal<10, 2> = Decimal::new(1234, 2).into();
         let v = fd.as_value();
         let back: FixedDecimal<10, 2> = FixedDecimal::try_from_value(v).unwrap();
@@ -2526,5 +2537,80 @@ mod as_value_tests {
         assert_eq!(42_usize.as_value(), Value::UInt64(Some(42)));
         let back: usize = usize::try_from_value(Value::UInt64(Some(42))).unwrap();
         assert_eq!(back, 42);
+    }
+
+    // Tests kept from the branch that were not present on master
+    #[test]
+    fn value_float_to_integer() {
+        assert_eq!(i64::try_from_value(5.0_f64.as_value()).unwrap(), 5);
+        assert_eq!(i32::try_from_value((5.0_f32).as_value()).unwrap(), 5);
+        assert_eq!(u8::try_from_value((200.0_f32).as_value()).unwrap(), 200);
+        assert_eq!(i128::try_from_value((-7.0_f64).as_value()).unwrap(), -7);
+
+        assert!(i64::try_from_value(1.5_f64.as_value()).is_err());
+        assert!(i32::try_from_value((1.5_f32).as_value()).is_err());
+        assert!(i64::try_from_value(1e30_f64.as_value()).is_err());
+        assert!(i64::try_from_value(f64::MAX.as_value()).is_err());
+        assert!(u64::try_from_value(1e30_f64.as_value()).is_err());
+        assert!(i32::try_from_value(1e30_f64.as_value()).is_err());
+        assert!(i8::try_from_value(200.0_f64.as_value()).is_err());
+        assert!(i8::try_from_value((-200.0_f64).as_value()).is_err());
+        assert!(i8::try_from_value((200.0_f32).as_value()).is_err());
+        assert!(u32::try_from_value((-1.0_f64).as_value()).is_err());
+
+        assert!(i64::try_from_value(9_223_372_036_854_775_808.0_f64.as_value()).is_err());
+        assert!(i64::try_from_value((9_223_372_036_854_775_808.0_f32).as_value()).is_err());
+        assert!(i32::try_from_value(2_147_483_648.0_f64.as_value()).is_err());
+        assert!(i8::try_from_value(128.0_f64.as_value()).is_err());
+        assert!(u64::try_from_value(18_446_744_073_709_551_616.0_f64.as_value()).is_err());
+        assert!(u8::try_from_value(256.0_f64.as_value()).is_err());
+        assert!(
+            i128::try_from_value(
+                170_141_183_460_469_231_731_687_303_715_884_105_728.0_f64.as_value()
+            )
+            .is_err()
+        );
+        assert!(
+            u128::try_from_value(
+                340_282_366_920_938_463_463_374_607_431_768_211_456.0_f64.as_value()
+            )
+            .is_err()
+        );
+        assert_eq!(
+            i64::try_from_value((9_223_372_036_854_775_808.0_f64 - 1024.0).as_value()).unwrap(),
+            9_223_372_036_854_774_784,
+        );
+        assert_eq!(
+            i64::try_from_value((-9_223_372_036_854_775_808.0_f64).as_value()).unwrap(),
+            i64::MIN,
+        );
+        assert_eq!(
+            i8::try_from_value((-128.0_f64).as_value()).unwrap(),
+            i8::MIN
+        );
+        assert!(
+            i64::try_from_value((-9_223_372_036_854_775_808.0_f64 - 2048.0).as_value()).is_err()
+        );
+
+        let json = |f: f64| serde_json::Value::Number(Number::from_f64(f).unwrap()).as_value();
+        assert_eq!(i128::try_from_value(json(42.0)).unwrap(), 42);
+        assert_eq!(i128::try_from_value(json(-7.0)).unwrap(), -7);
+        assert!(i128::try_from_value(json(1e40)).is_err());
+        assert!(i128::try_from_value(json(-1e40)).is_err());
+        assert!(i64::try_from_value(json(1e30)).is_err());
+    }
+
+    #[test]
+    fn value_layout_is_compact() {
+        assert!(
+            mem::size_of::<Value<'_>>() <= 32,
+            "Value grew to {} bytes; it must stay <= 32",
+            mem::size_of::<Value<'_>>(),
+        );
+        assert!(
+            mem::align_of::<Value<'_>>() <= 16,
+            "Value alignment grew to {}; it must stay <= 16",
+            mem::align_of::<Value<'_>>(),
+        );
     }
 }

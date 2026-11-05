@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
-use tank::{AsValue, DynQuery, QueryBuilder, Result, Row};
+use tank::{AsValue, DynQuery, QueryBuilder, Result, Row, expr};
 use tank::{Driver, Entity, Executor, QueryResult, SqlWriter, stream::TryStreamExt};
 use tokio::sync::Mutex;
 
@@ -112,21 +112,67 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
             .from(Two::table())
             .where_expr(true),
     );
+    // 13: An empty SELECT still contributes a statement result.
+    writer.write_select(
+        &mut query,
+        &QueryBuilder::new()
+            .select([Two::a2, Two::string])
+            .from(Two::table())
+            .where_expr(false),
+    );
+    // 14: A write that affects no rows must not disappear either.
+    writer.write_delete::<Two>(&mut query, expr!(Two::a2 == 0));
     query.push_str("            \t    \t\t  \n \n \n \t    \n\n\n ");
+    let mut query = <DynQuery as tank::AsQuery<_>>::as_query(query);
     let result = executor
-        .run(query)
+        .run(&mut query)
+        .map_ok(|result| match result {
+            QueryResult::Row(row) => QueryResult::Row(row.into_owned()),
+            QueryResult::Affected(affected) => QueryResult::Affected(affected),
+        })
         .try_collect::<Vec<_>>()
         .await
         .expect("Could not run the composite query");
-    // 12 statements but one select returns 3 rows and another one returns 2 rows (12 - 2 + 3 + 2 = 15)
-    assert_eq!(result.len(), 15);
-    let mut result = result
+    // 14 statements: 8 writes + 2 rows + 1 write + 1 row + 3 rows + 0 rows + 1 write = 16 items
+    assert_eq!(result.len(), 16);
+    for (index, result) in result.iter().enumerate() {
+        assert_eq!(
+            matches!(result, QueryResult::Row(_)),
+            [8, 9, 11, 12, 13, 14].contains(&index),
+            "Unexpected result kind at index {}",
+            index,
+        );
+    }
+    let result = result
         .into_iter()
-        .filter_map(|v| match v {
+        .enumerate()
+        .filter_map(|(index, result)| match result {
             QueryResult::Row(row) => Some(row),
-            QueryResult::Affected(..) => None,
+            QueryResult::Affected(affected) => {
+                if index == 15 {
+                    if let Some(count) = affected.rows_affected {
+                        assert_eq!(count, 0);
+                    }
+                }
+                None
+            }
         })
         .collect::<Vec<_>>();
+    let expected = result
+        .iter()
+        .map(|row| String::try_from_value(row.get_column("string").unwrap().clone()).unwrap())
+        .collect::<Vec<_>>();
+    let projected = executor
+        .fetch(&mut query)
+        .map_ok(|row| String::try_from_value(row.get_column("string").unwrap().clone()).unwrap())
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Could not fetch the composite query");
+    assert_eq!(
+        projected, expected,
+        "Fetch flattens all statement rowsets in order"
+    );
+    let mut result = result;
     result.sort_by(|a, b| {
         let a = a
             .get_column("string")
@@ -195,5 +241,14 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
         }
     );
     result.next();
+    assert!(result.next().is_none());
+    drop(result);
+    let affected = executor
+        .execute(&mut query)
+        .await
+        .expect("Could not execute the composite query");
+    if let Some(count) = affected.rows_affected {
+        assert_eq!(count, 6, "Execute counts writes, not the six selected rows");
+    }
     Ok(())
 }

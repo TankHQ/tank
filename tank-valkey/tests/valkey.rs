@@ -21,7 +21,7 @@ mod tests {
         {
             let driver: ValkeyDriver = ValkeyDriver::default();
             let mut pool = driver
-                .connect_pool(url.clone().into(), PoolConfig::new())
+                .connect_pool(url.clone(), PoolConfig::new())
                 .await
                 .expect("Failed to connect");
             execute_tests(&mut pool).await.expect("A tank-tests test failed");
@@ -29,7 +29,7 @@ mod tests {
         {
             let driver = ValkeyDriver::new(".", false);
             let mut pool = driver
-                .connect_pool(url.clone().into(), PoolConfig::new())
+                .connect_pool(url.clone(), PoolConfig::new())
                 .await
                 .expect("Failed to connect");
             execute_tests(&mut pool).await.expect("A tank-tests test failed");
@@ -37,18 +37,28 @@ mod tests {
         drop(container);
 
         // SSL
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        unsafe {
-            std::env::set_var("SSL_CERT_FILE", path.join("tests/assets/ca.pem"));
-        }
         let (url, container) = init_valkey(true).await;
         let container = container.expect("Could not launch the SSL container");
-        let driver = ValkeyDriver::new(".", false);
-        let mut pool = driver
-            .connect_pool(url.clone().into(), PoolConfig::new())
-            .await
-            .expect("Failed to connect");
-        execute_tests(&mut pool).await.expect("A tank-tests test failed");
+        {
+            let driver: ValkeyDriver = ValkeyDriver::default();
+            let mut pool = driver
+                .connect_pool(url.clone(), PoolConfig::new())
+                .await
+                .expect("Failed to connect");
+            execute_tests(&mut pool)
+                .await
+                .expect("A tank-tests test failed");
+        }
+        {
+            let driver = ValkeyDriver::new(".", false);
+            let mut pool = driver
+                .connect_pool(url.clone(), PoolConfig::new())
+                .await
+                .expect("Failed to connect");
+            execute_tests(&mut pool)
+                .await
+                .expect("A tank-tests test failed");
+        }
         drop(container);
     }
 }

@@ -15,7 +15,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.45.0"
+version = "0.46.0"
 authors = ["barsdeveloper <barsdeveloper@gmail.com>"]
 license = "Apache-2.0"
 edition = "2024"
@@ -37,6 +37,7 @@ quote = "1"
 rcgen = "0"
 regex = "1"
 rust_decimal = "1"
+rustls = "0"
 serde = "1"
 serde_json = "1"
 syn = { version = "2", features = ["full"] }
@@ -51,7 +52,6 @@ tokio = { version = "1", features = [
     "sync",
 ] }
 url = "2"
-urlencoding = "2"
 uuid = "1"
 
 [package]
@@ -68,10 +68,14 @@ tank-core = { workspace = true, default-features = false }
 tank-macros.workspace = true
 
 [dev-dependencies]
+chrono.workspace = true
+futures.workspace = true
+http = "1"
 indoc.workspace = true
 quote.workspace = true
 rust_decimal.workspace = true
 syn.workspace = true
+tank-core = { workspace = true, features = ["chrono"] }
 time.workspace = true
 uuid.workspace = true
 serde_json.workspace = true

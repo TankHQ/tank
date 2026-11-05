@@ -1,13 +1,13 @@
 use crate::{cbox::CBox, duckdb_hugeint_to_i128, duckdb_uhugeint_to_u128};
 use anyhow::anyhow;
 use libduckdb_sys::*;
-use rust_decimal::Decimal;
 use std::{
     ffi::{CStr, c_void},
     ptr, slice,
 };
 use tank_core::{
     CollectionType, Error, Interval, MapType, Result, StructType, TableRef, Value, ValueOwned,
+    decimal_from_scaled,
 };
 use uuid::Uuid;
 
@@ -92,13 +92,13 @@ pub(crate) fn extract_value(
             }),
             DUCKDB_TYPE_DUCKDB_TYPE_HUGEINT => Value::Int128(if is_valid {
                 let data = *(data as *const duckdb_hugeint).add(row);
-                Some(Box::new(duckdb_hugeint_to_i128(&data)))
+                Some(duckdb_hugeint_to_i128(&data).into())
             } else {
                 None
             }),
             DUCKDB_TYPE_DUCKDB_TYPE_UHUGEINT => Value::UInt128(if is_valid {
                 let data = *(data as *const duckdb_uhugeint).add(row);
-                Some(Box::new(duckdb_uhugeint_to_u128(&data)))
+                Some(duckdb_uhugeint_to_u128(&data).into())
             } else {
                 None
             }),
@@ -194,7 +194,7 @@ pub(crate) fn extract_value(
                                 return Err(error);
                             }
                         };
-                        Some(Decimal::from_i128_with_scale(num, scale as u32))
+                        Some(decimal_from_scaled(num, scale as u32)?)
                     } else {
                         None
                     },
@@ -272,22 +272,18 @@ pub(crate) fn extract_value(
                 } else {
                     None
                 };
+                let values = value
+                    .map(Iterator::collect::<Result<_>>)
+                    .transpose()?
+                    .map(|v: Vec<ValueOwned>| v.into_boxed_slice());
+                let t = Box::new(CollectionType {
+                    element: element_type,
+                    len: if is_array { len as u32 } else { 0 },
+                });
                 if is_array {
-                    Value::Array(
-                        value.map(Iterator::collect::<Result<_>>).transpose()?,
-                        Box::new(CollectionType {
-                            element: element_type,
-                            len: len as u32,
-                        }),
-                    )
+                    Value::Array(values, t)
                 } else {
-                    Value::List(
-                        value.map(Iterator::collect::<Result<_>>).transpose()?,
-                        Box::new(CollectionType {
-                            element: element_type,
-                            len: 0,
-                        }),
-                    )
+                    Value::List(values, t)
                 }
             }
             DUCKDB_TYPE_DUCKDB_TYPE_STRUCT => {
@@ -362,24 +358,23 @@ pub(crate) fn extract_value(
                             ))
                         })
                         .collect::<Result<_>>()?;
-                    Some(Box::new(map))
+                    Some(map)
                 } else {
                     None
                 };
-                let k_type = extract_value(keys, 0, *k_type, k_id, ptr::null(), ptr::null_mut())?;
-                let v_type = extract_value(vals, 0, *v_type, v_id, ptr::null(), ptr::null_mut())?;
+                let key_t = extract_value(keys, 0, *k_type, k_id, ptr::null(), ptr::null_mut())?;
+                let value_t = extract_value(vals, 0, *v_type, v_id, ptr::null(), ptr::null_mut())?;
                 Value::Map(
-                    value,
+                    value.map(Box::new),
                     Box::new(MapType {
-                        key: k_type,
-                        value: v_type,
+                        key: key_t,
+                        value: value_t,
                     }),
                 )
             }
             DUCKDB_TYPE_DUCKDB_TYPE_UUID => Value::Uuid(if is_valid {
                 let data = &*(data as *const duckdb_uhugeint).add(row);
                 // TODO: remove first bit swap once this is fixed https://github.com/duckdb/duckdb-rs/issues/519
-                // Closed upstream, but the raw C API vector path still returns flipped bits (libduckdb-sys 1.20000.1).
                 Some(Uuid::from_u64_pair(data.upper ^ (1 << 63), data.lower))
             } else {
                 None

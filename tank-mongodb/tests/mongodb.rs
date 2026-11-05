@@ -20,7 +20,7 @@ mod tests {
         let (url, container) = init(false).await;
         let container = container.expect("Could not launch the container");
         let mut pool = driver
-            .connect_pool(url.into(), PoolConfig::new())
+            .connect_pool(url, PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;
@@ -30,7 +30,7 @@ mod tests {
         let (url, container) = init(true).await;
         let container = container.expect("Could not launch the SSL container");
         let mut pool = driver
-            .connect_pool(url.into(), PoolConfig::new())
+            .connect_pool(url, PoolConfig::new())
             .await
             .expect("Failed to connect");
         execute_tests(&mut pool).await;

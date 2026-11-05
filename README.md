@@ -28,15 +28,15 @@ In plain terms, Tank is a thin layer over your database workflow for Rust teams 
 ## Mission Objectives
 Tank aims to provide a clean ORM design focused on ergonomics, flexibility and broad database support.
 
-- **Async operations** - Non-blocking database operations built for async Rust.
+- **Async operations** - Streaming database operations exposed through an async Rust API.
 - **Designed to be extensible** - Add or swap database drivers without changing Tank's core.
 - **SQL and NoSQL support** - One Tank, all terrains.
 - **Transaction abstraction** - Commit on success or rollback and retreat.
 - **Rich type arsenal** - Automatic conversions between Rust and database types.
 - **Optional appender API** - High caliber bulk inserts where the database supports them.
-- **TLS** - No open radios for drivers that connect over the network.
+- **TLS** - Encrypted supply lines for network drivers when configured.
 - **Joins** - Explicit multi-unit coordination.
-- **Raw SQL** - You're never limited by the abstractions provided.
+- **Raw SQL** - Bypass the query builder on drivers that accept SQL or CQL.
 - **Zero setup** - Skip training. Go straight to live fire.
 
 ## No-Fly Zone
@@ -54,12 +54,16 @@ Tank aims to provide a clean ORM design focused on ergonomics, flexibility and b
 
 *For more examples, check the [cheat sheet](https://tankhq.github.io/tank/00-cheat-sheet.html).*
 
+<!-- #region getting-started -->
 1) Arm your cargo
 ```sh
 cargo add tank
+cargo add tokio --features macros,rt-multi-thread
 ```
 
 2) Choose your battlefield
+
+Check the [drivers list](https://tankhq.github.io/tank/01-introduction.html#drivers) and select one that matches your terrain.
 ```sh
 cargo add tank-duckdb
 ```
@@ -94,7 +98,7 @@ async fn data() -> Result<()> {
     let driver = DuckDBDriver::new();
     let pool = driver
         .connect_pool(
-            "duckdb://../target/debug/tests.duckdb?mode=rw".into(),
+            "duckdb://tests.duckdb?mode=rw",
             PoolConfig::new(),
         )
         .await?;
@@ -112,8 +116,8 @@ async fn data() -> Result<()> {
     /*
      * CREATE SCHEMA IF NOT EXISTS "army";
      * CREATE TABLE IF NOT EXISTS "army"."tank" (
-     *     "name" VARCHAR PRIMARY KEY,
-     *     "country" VARCHAR NOT NULL,
+     *     "name" TEXT PRIMARY KEY,
+     *     "country" TEXT NOT NULL,
      *     "caliber" USMALLINT NOT NULL,
      *     "speed" FLOAT NOT NULL,
      *     "is_operational" BOOLEAN NOT NULL,
@@ -134,7 +138,7 @@ async fn data() -> Result<()> {
     my_tank.save(&mut connection).await?;
 
     /*
-     * DuckDB uses the appender API. Other drivers generate an INSERT:
+     * DuckDB uses the appender API. Equivalent SQL:
      * INSERT INTO "army"."tank" ("name", "country", "caliber", "speed", "is_operational", "units_produced") VALUES
      *     ('T-34/85', 'Soviet Union', 85, 53.0, false, 49200),
      *     ('M1 Abrams', 'USA', 120, 72.0, true, NULL);
@@ -180,10 +184,17 @@ async fn data() -> Result<()> {
         HashSet::from_iter(["Tiger I".into(), "T-34/85".into()])
     );
     println!("Tank is operational: {} units found.", tanks.len());
-    Tank::drop_table(&mut connection, true, true).await?;
     Ok(())
 }
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    data().await
+}
 ```
+
+Place both Rust snippets in `src/main.rs` and run `cargo run`. Tank will create `tests.duckdb` in the current directory and report `Tank is operational: 2 units found.`
+<!-- #endregion getting-started -->
 
 ## Support the Mission
 Building and maintaining drivers for several database families is a major effort. **If Tank saves your company time, infrastructure headaches, or boilerplate, please consider supporting its development.**

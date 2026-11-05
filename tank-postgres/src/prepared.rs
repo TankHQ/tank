@@ -56,6 +56,10 @@ impl Prepared for PostgresPrepared {
         self
     }
 
+    fn is_empty(&self) -> bool {
+        false
+    }
+
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         self.params.clear();
         self.index = 0;

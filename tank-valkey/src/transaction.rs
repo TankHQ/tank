@@ -17,6 +17,10 @@ pub struct ValkeyTransaction<'c> {
 impl<'c> Executor for ValkeyTransaction<'c> {
     type Driver = ValkeyDriver;
 
+    fn accepts_multiple_statements(&self) -> bool {
+        false
+    }
+
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<ValkeyDriver> + 's,

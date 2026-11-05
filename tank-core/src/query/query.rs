@@ -50,7 +50,7 @@ impl<D: Driver> Query<D> {
         prepared.bind(value)?;
         Ok(self)
     }
-    /// Bind value at index.
+    /// Bind value at 0-based index (drivers will adjust if they are 1-based).
     ///
     /// Error if not prepared.
     pub fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {

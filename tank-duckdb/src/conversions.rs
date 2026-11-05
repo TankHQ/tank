@@ -3,6 +3,7 @@ use libduckdb_sys::{
     duckdb_uhugeint,
 };
 use rust_decimal::Decimal;
+use std::cmp::{max, min};
 use tank_core::Interval;
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time, macros::date};
 
@@ -29,6 +30,18 @@ pub(crate) fn duckdb_uhugeint_to_u128(v: &duckdb_uhugeint) -> u128 {
 }
 
 pub(crate) fn decimal_to_duckdb_decimal(v: &Decimal, width: u8, scale: u8) -> duckdb_decimal {
+    let scale = min(scale, 38);
+    let width = if width == 0 || width < scale {
+        let mut digits = 1_u32;
+        let mut magnitude = v.mantissa().unsigned_abs();
+        while magnitude >= 10 {
+            magnitude /= 10;
+            digits += 1;
+        }
+        max(scale as u32, digits).clamp(1, 38) as u8
+    } else {
+        min(width, 38)
+    };
     duckdb_decimal {
         width,
         scale,

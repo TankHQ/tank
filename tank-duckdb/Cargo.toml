@@ -7,13 +7,6 @@ license.workspace = true
 edition.workspace = true
 repository.workspace = true
 categories.workspace = true
-autotests = false
-
-[[test]]
-name = "connection"
-
-[[test]]
-name = "duckdb"
 
 [features]
 default = ["bundled"]
@@ -21,9 +14,9 @@ bundled = ["libduckdb-sys/bundled"]
 
 [dependencies]
 anyhow.workspace = true
-async-stream.workspace = true
-flume = "0"
-libduckdb-sys = "1"
+# Pinned: DuckDB >= 1.20 surfaces streaming CAST errors before the first chunk,
+# breaking the lazy per-chunk error propagation this driver relies on.
+libduckdb-sys = { version = "=1.10506.0", features = ["buildtime_bindgen"] }
 log.workspace = true
 rust_decimal.workspace = true
 tank-core.workspace = true
@@ -34,5 +27,6 @@ uuid.workspace = true
 
 [dev-dependencies]
 indoc.workspace = true
+tank.workspace = true
 tank-tests = { path = "../tank-tests" }
 uuid.workspace = true

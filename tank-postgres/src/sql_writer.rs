@@ -70,7 +70,7 @@ impl SqlWriter for PostgresSqlWriter {
             Value::UInt128(..) => out.push_str("NUMERIC(39)"),
             Value::Float32(..) => out.push_str("FLOAT4"),
             Value::Float64(..) => out.push_str("FLOAT8"),
-            Value::Decimal(.., precision, scale) => {
+            Value::Decimal(_, precision, scale, ..) => {
                 out.push_str("NUMERIC");
                 if (precision, scale) != (&0, &0) {
                     let _ = write!(out, "({},{})", precision, scale);

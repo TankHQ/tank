@@ -182,14 +182,14 @@ pub trait SqlWriter: Send {
             Value::UInt128(..) => out.push_str("UHUGEINT"),
             Value::Float32(..) => out.push_str("FLOAT"),
             Value::Float64(..) => out.push_str("DOUBLE"),
-            Value::Decimal(.., precision, scale) => {
+            Value::Decimal(_, precision, scale, ..) => {
                 out.push_str("DECIMAL");
                 if (precision, scale) != (&0, &0) {
                     let _ = write!(out, "({precision},{scale})");
                 }
             }
             Value::Char(..) => out.push_str("CHAR(1)"),
-            Value::Varchar(..) => out.push_str("VARCHAR"),
+            Value::Varchar(..) => out.push_str("TEXT"),
             Value::Blob(..) => out.push_str("BLOB"),
             Value::Date(..) => out.push_str("DATE"),
             Value::Time(..) => out.push_str("TIME"),
@@ -460,7 +460,7 @@ pub trait SqlWriter: Send {
         let mut nanos = value.nanos as i128 + value.days as i128 * Interval::NANOS_IN_DAY;
         let mut len = out.len();
         if months != 0 {
-            if months.abs() > 48 || months % 12 == 0 {
+            if months.unsigned_abs() > 48 || months % 12 == 0 {
                 write_unit!(out, len, months / 12, "YEAR");
                 months = months % 12;
             }
@@ -641,15 +641,12 @@ pub trait SqlWriter: Send {
 
     fn expression_binary_op_fragments(
         &self,
-        context: &mut Context,
+        _context: &Context,
         op_type: BinaryOpType,
     ) -> (&str, &str, &str, bool, bool) {
         match op_type {
             BinaryOpType::Indexing => ("", "[", "]", false, true),
-            BinaryOpType::Cast => {
-                context.switch_fragment(Fragment::Casting);
-                ("CAST(", " AS ", ")", true, true)
-            }
+            BinaryOpType::Cast => ("CAST(", " AS ", ")", true, true),
             BinaryOpType::Multiplication => ("", " * ", "", false, false),
             BinaryOpType::Division => ("", " / ", "", false, false),
             BinaryOpType::Remainder => ("", " % ", "", false, false),
@@ -677,10 +674,7 @@ pub trait SqlWriter: Send {
             BinaryOpType::GreaterEqual => ("", " >= ", "", false, false),
             BinaryOpType::And => ("", " AND ", "", false, false),
             BinaryOpType::Or => ("", " OR ", "", false, false),
-            BinaryOpType::Alias => {
-                context.switch_fragment(Fragment::Aliasing);
-                ("", " AS ", "", false, false)
-            }
+            BinaryOpType::Alias => ("", " AS ", "", false, false),
         }
     }
 
@@ -756,7 +750,13 @@ pub trait SqlWriter: Send {
         out: &mut DynQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) {
-        if value.op == BinaryOpType::Alias && context.fragment == Fragment::SqlSelectOrderBy {
+        // Standard SQL does not allow select-list aliases in GROUP BY/ORDER BY.
+        if value.op == BinaryOpType::Alias
+            && matches!(
+                context.fragment,
+                Fragment::SqlSelectOrderBy | Fragment::SqlSelectGroupBy
+            )
+        {
             return value.lhs.write_query(self.as_dyn(), context, out);
         }
         let (prefix, infix, suffix, lhs_parenthesized, rhs_parenthesized) =
@@ -769,10 +769,10 @@ pub trait SqlWriter: Send {
             value.lhs.write_query(self.as_dyn(), context, out)
         );
         out.push_str(infix);
-        let mut context = context.switch_fragment(if value.op == BinaryOpType::Alias {
-            Fragment::Aliasing
-        } else {
-            context.fragment
+        let mut context = context.switch_fragment(match value.op {
+            BinaryOpType::Cast => Fragment::Casting,
+            BinaryOpType::Alias => Fragment::Aliasing,
+            _ => context.fragment,
         });
         if matches!(value.op, BinaryOpType::In | BinaryOpType::NotIn)
             && value
@@ -864,16 +864,25 @@ pub trait SqlWriter: Send {
 
     /// Emit BEGIN statement.
     fn write_transaction_begin(&self, out: &mut DynQuery) {
+        if !out.is_empty() {
+            out.push('\n');
+        }
         out.push_str("BEGIN;");
     }
 
     /// Emit COMMIT statement.
     fn write_transaction_commit(&self, out: &mut DynQuery) {
+        if !out.is_empty() {
+            out.push('\n');
+        }
         out.push_str("COMMIT;");
     }
 
     /// Emit ROLLBACK statement.
     fn write_transaction_rollback(&self, out: &mut DynQuery) {
+        if !out.is_empty() {
+            out.push('\n');
+        }
         out.push_str("ROLLBACK;");
     }
 
@@ -917,7 +926,7 @@ pub trait SqlWriter: Send {
         out.push(';');
     }
 
-    /// Emit CREATE TABLE with columns, constraints & comments.
+    /// Emit CREATE TABLE with columns and constraints.
     fn write_create_table<E>(&self, out: &mut DynQuery, if_not_exists: bool)
     where
         Self: Sized,
@@ -949,7 +958,7 @@ pub trait SqlWriter: Send {
             self.write_create_table_primary_key_fragment(&mut context, out, pk.iter().map(|v| *v));
         }
         for unique in E::unique_defs() {
-            if unique.len() > 1 {
+            if unique.len() > 0 {
                 out.push_str(",\nUNIQUE (");
                 separated_by(
                     out,
@@ -994,7 +1003,6 @@ pub trait SqlWriter: Send {
             "",
         );
         out.push_str(");");
-        self.write_column_comments_statements::<E>(&mut context, out);
     }
 
     /// Emit single column definition fragment.
@@ -1089,21 +1097,18 @@ pub trait SqlWriter: Send {
     {
     }
 
-    /// Write column comments.
-    fn write_column_comments_statements<E>(&self, context: &mut Context, out: &mut DynQuery)
-    where
-        Self: Sized,
-        E: Entity,
-    {
+    /// Write the `COMMENT ON COLUMN` statement of a single column.
+    fn write_column_comment(&self, context: &mut Context, out: &mut DynQuery, column: &ColumnDef) {
         let mut context = context.switch_fragment(Fragment::SqlCommentOnColumn);
         context.current.qualify_columns = true;
-        for c in E::columns().iter().filter(|c| !c.comment.is_empty()) {
-            out.push_str("\nCOMMENT ON COLUMN ");
-            self.write_column_ref(&mut context.current, out, c.into());
-            out.push_str(" IS ");
-            self.write_string(&mut context.current, out, c.comment);
-            out.push(';');
+        if !out.is_empty() {
+            out.push('\n');
         }
+        out.push_str("COMMENT ON COLUMN ");
+        self.write_column_ref(&mut context.current, out, column.into());
+        out.push_str(" IS ");
+        self.write_string(&mut context.current, out, column.comment);
+        out.push(';');
     }
 
     /// Write DROP TABLE statement.

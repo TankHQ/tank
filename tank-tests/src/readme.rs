@@ -19,7 +19,7 @@ pub struct Tank {
 }
 
 pub async fn readme(connection: &mut impl Executor) -> Result<()> {
-    let _lock = MUTEX.lock();
+    let _lock = MUTEX.lock().await;
 
     let my_tank = Tank {
         name: "Tiger I".into(),
@@ -33,8 +33,8 @@ pub async fn readme(connection: &mut impl Executor) -> Result<()> {
     /*
      * CREATE SCHEMA IF NOT EXISTS "army";
      * CREATE TABLE IF NOT EXISTS "army"."tank" (
-     *     "name" VARCHAR PRIMARY KEY,
-     *     "country" VARCHAR NOT NULL,
+     *     "name" TEXT PRIMARY KEY,
+     *     "country" TEXT NOT NULL,
      *     "caliber" USMALLINT NOT NULL,
      *     "speed" FLOAT NOT NULL,
      *     "is_operational" BOOLEAN NOT NULL,
@@ -55,7 +55,7 @@ pub async fn readme(connection: &mut impl Executor) -> Result<()> {
     my_tank.save(connection).await?;
 
     /*
-     * DuckDB uses the appender API. Other drivers generate an INSERT:
+     * DuckDB uses the appender API. Equivalent SQL:
      * INSERT INTO "army"."tank" ("name", "country", "caliber", "speed", "is_operational", "units_produced") VALUES
      *     ('T-34/85', 'Soviet Union', 85, 53.0, false, 49200),
      *     ('M1 Abrams', 'USA', 120, 72.0, true, NULL);
@@ -100,5 +100,6 @@ pub async fn readme(connection: &mut impl Executor) -> Result<()> {
             .collect::<HashSet<_>>(),
         HashSet::from_iter(["Tiger I".into(), "T-34/85".into()])
     );
+    println!("Tank is operational: {} units found.", tanks.len());
     Ok(())
 }

@@ -12,6 +12,7 @@ impl ValkeyPrepared {
     pub fn is_empty(&self) -> bool {
         self.commands.is_empty()
     }
+
     pub fn make_pipeline(&self) -> Pipeline {
         let mut pipeline = Pipeline::new();
         for cmd in &self.commands {
@@ -19,6 +20,7 @@ impl ValkeyPrepared {
         }
         pipeline
     }
+
     pub fn into_pipeline(self) -> Pipeline {
         let mut pipeline = Pipeline::new();
         for cmd in self.commands {
@@ -53,10 +55,14 @@ impl Prepared for ValkeyPrepared {
     {
         Ok(self)
     }
+
+    fn is_empty(&self) -> bool {
+        self.commands.is_empty()
+    }
 }
 
 impl Display for ValkeyPrepared {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ValkeyPrepared {:?}", self.commands)
     }
 }

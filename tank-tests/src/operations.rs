@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    AsValue, Driver, DynQuery, Entity, Executor, QueryBuilder, QueryResult, Result, Row,
-    RowsAffected, SqlWriter, cols, expr, join,
+    Driver, DynQuery, Entity, Executor, QueryBuilder, QueryResult, Result, RowsAffected, SqlWriter,
+    anyhow, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, OffsetDateTime, Time, UtcOffset, macros::date};
@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+// #region operations-schema
 #[derive(Entity)]
 #[tank(schema = "operations", name = "radio_operator")]
 pub struct Operator {
@@ -38,6 +39,7 @@ pub struct RadioLog {
     #[tank(name = "rssi")]
     pub signal_strength: i8,
 }
+// #endregion operations-schema
 
 pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
@@ -59,6 +61,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     };
     Operator::insert_one(executor, &operator).await?;
 
+    // #region operations-insert-many
     let op_id = operator.id;
     let logs: Vec<RadioLog> = (0..5)
         .map(|i| RadioLog {
@@ -71,17 +74,16 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
         })
         .collect();
     RadioLog::insert_many(executor, &logs).await?;
+    // #endregion operations-insert-many
 
     // Find
-    if let Some(radio_log) = RadioLog::find_one(
-        executor,
-        expr!(RadioLog::unit_callsign == "Alpha-%" as LIKE),
-    )
-    .await?
+    if let Some(radio_log) =
+        RadioLog::find_one(executor, expr!(RadioLog::unit_callsign == "Alpha-1")).await?
     {
         log::debug!("Found radio log: {:?}", radio_log.id);
     }
 
+    // #region operations-stream
     {
         let mut stream = pin!(RadioLog::find_many(
             executor,
@@ -93,6 +95,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
         }
         // Executor is released from the stream at the end of the scope
     }
+    // #endregion operations-stream
 
     // Save
     let mut operator = operator;
@@ -101,9 +104,27 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
 
     let mut log = RadioLog::find_one(executor, expr!(RadioLog::message == "Ping #2"))
         .await?
-        .expect("Missing log");
+        .ok_or_else(|| anyhow!("Missing log"))?;
     log.message = "Ping #2 ACK".into();
     log.save(executor).await?;
+
+    // Prepare
+    // #region operations-prepared
+    let mut query =
+        RadioLog::prepare_find(executor, expr!(RadioLog::signal_strength > ?), None).await?;
+    query.bind(40)?;
+    let messages: Vec<_> = executor
+        .fetch(query)
+        .map(|row| row.and_then(RadioLog::from_row).map(|log| log.message))
+        .try_collect()
+        .await?;
+    // #endregion operations-prepared
+    assert_eq!(messages.len(), 5);
+    assert!(
+        ["Ping #0", "Ping #1", "Ping #2 ACK", "Ping #3", "Ping #4"]
+            .into_iter()
+            .all(|message| messages.iter().any(|actual| actual.as_str() == message))
+    );
 
     // Delete
     RadioLog::delete_many(executor, log.primary_key_expr()).await?;
@@ -113,19 +134,10 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
 
     operator.delete(executor).await?;
 
-    // Prepare
-    let mut query =
-        RadioLog::prepare_find(executor, expr!(RadioLog::signal_strength > ?), None).await?;
-    query.bind(40)?;
-    let _messages: Vec<_> = executor
-        .fetch(query)
-        .map_ok(|row| row.value(0).unwrap().as_value().into_owned())
-        .try_collect()
-        .await?;
-
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
+        // #region operations-batch
         let writer = executor.driver().sql_writer();
         let mut query = DynQuery::default();
         writer.write_delete::<RadioLog>(&mut query, expr!(RadioLog::signal_strength < 10));
@@ -161,6 +173,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
                 }
             }
         }
+        // #endregion operations-batch
     }
 
     Ok(())
@@ -281,6 +294,7 @@ pub async fn advanced_operations(executor: &mut impl Executor) -> Result<()> {
 
     #[cfg(not(feature = "disable-joins"))]
     {
+        // #region operations-select-order
         let messages = executor
             .fetch(
                 QueryBuilder::new()
@@ -319,6 +333,7 @@ pub async fn advanced_operations(executor: &mut impl Executor) -> Result<()> {
             ]
             .into_iter())
         );
+        // #endregion operations-select-order
     }
     Ok(())
 }
