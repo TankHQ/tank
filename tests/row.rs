@@ -62,6 +62,14 @@ mod tests {
         assert!(matches!(row.value(0), Some(Cow::Owned(_))));
         assert_eq!(Row::labels(&&row), &["name".to_owned()]);
         assert_eq!(Row::iter(&&row).count(), 1);
+        assert!(!Row::is_empty(&&row));
+        assert!(Row::get_column(&&row, "name").is_some());
+        assert_eq!(Row::values(&&row).count(), 1);
+        assert_eq!(Row::len(&&row), 1);
+        assert_eq!(
+            Row::value(&&row, 0).map(Cow::into_owned),
+            Some(Value::Varchar(Some("decoded".into())))
+        );
         let owned = RowOwned::new(row.labels().into(), row.into_values().collect());
         assert_eq!(Arc::strong_count(&names), 1);
         assert!(!Arc::ptr_eq(&names, &owned.labels));

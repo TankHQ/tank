@@ -756,6 +756,9 @@ mod tests {
         assert_eq!(char::try_from_value(Value::Int32(Some(0x41))).unwrap(), 'A');
         assert!(char::try_from_value(Value::Int32(Some(0x11_0000))).is_err());
         assert!(char::try_from_value(Value::Int32(Some(-1))).is_err());
+        let error = char::try_from_value(Value::Json(Some(serde_json::json!("ab")))).unwrap_err();
+        assert!(error.to_string().contains("more than one character"));
+        assert!(char::try_from_value(Value::Json(Some(serde_json::json!(1)))).is_err());
     }
 
     #[test]
@@ -767,6 +770,11 @@ mod tests {
         assert_eq!(v.as_ref(), &[0xde, 0xad, 0xbe, 0xef]);
         let v2 = Box::<[u8]>::parse("\\xCAFE").unwrap();
         assert_eq!(v2.as_ref(), &[0xCA, 0xFE]);
+        let blob: Box<[u8]> =
+            Box::<[u8]>::try_from_value(Value::Blob(Some(vec![9].into()))).unwrap();
+        assert_eq!(blob.as_ref(), [9]);
+        let error = Box::<[u8]>::parse("zz").unwrap_err();
+        assert!(format!("{error:#}").contains("While decoding"));
     }
 
     #[test]
@@ -790,6 +798,9 @@ mod tests {
             time::Duration::minutes(30)
         );
         assert!(Duration::parse("nonsense").is_err());
+        assert!(Interval::parse("04:05:").is_err());
+        assert!(Interval::parse("04:").is_err());
+        assert!(Interval::parse("'2 days").is_err());
     }
 
     #[test]
@@ -934,9 +945,8 @@ mod tests {
         assert_eq!(Box::new(42_i32).as_value(), Value::Int32(Some(42)));
         let back: Box<i32> = Box::try_from_value(Value::Int32(Some(42))).unwrap();
         assert_eq!(*back, 42);
-
+        assert_eq!(*Box::<i32>::parse("7").unwrap(), 7);
         assert_eq!(Arc::new(42_i32).as_value(), Value::Int32(Some(42)));
-
         assert_eq!(Rc::new(42_i32).as_value(), Value::Int32(Some(42)));
     }
 
@@ -1015,6 +1025,8 @@ mod tests {
             ))
             .is_err()
         );
+        assert!(<[i32; 2]>::try_from_value(Value::Json(Some(serde_json::json!([6])))).is_err());
+        assert!(<[i32; 2]>::try_from_value(Value::Int32(Some(1))).is_err());
         assert_eq!(
             <[i32; 2]>::try_from_value(Value::Json(Some(serde_json::json!([6, 7])))).unwrap(),
             [6, 7]

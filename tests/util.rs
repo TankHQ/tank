@@ -454,6 +454,19 @@ mod tests {
         let mut q4 = DynQuery::default();
         writer.write_drop_schema::<SchemaEntity>(&mut q4, false);
         assert_eq!(q4.as_str().as_ref(), "DROP SCHEMA \"analytics\";");
+
+        let mut q5 = DynQuery::new("-- c".into());
+        writer.write_create_schema::<SchemaEntity>(&mut q5, false);
+        assert!(q5.as_str().starts_with("-- c\nCREATE SCHEMA"));
+
+        let mut out = DynQuery::default();
+        writer.write_cast(
+            &mut Context::empty(),
+            &mut out,
+            &tank::Operand::LitInt(1),
+            &tank::Operand::Type(Value::Int64(None)),
+        );
+        assert_eq!(out.as_str(), "CAST(1 AS BIGINT)");
     }
 
     #[test]
@@ -716,7 +729,27 @@ mod tests {
                 .select(AppendTable::columns())
                 .from(AppendTable::table()),
         );
+        let mut q = DynQuery::new("-- comment".into());
+        writer.write_select(
+            &mut q,
+            &QueryBuilder::new()
+                .select(AppendTable::columns())
+                .from(AppendTable::table()),
+        );
         assert!(q.as_str().starts_with("-- comment\nSELECT"));
+
+        let mut q = DynQuery::new("-- c".into());
+        writer.write_create_table::<AppendTable>(&mut q, false);
+        assert!(q.as_str().starts_with("-- c\nCREATE TABLE"));
+        let mut q = DynQuery::new("-- c".into());
+        writer.write_drop_table::<AppendTable>(&mut q, false);
+        assert!(q.as_str().starts_with("-- c\nDROP TABLE"));
+        let mut q = DynQuery::new("-- c".into());
+        writer.write_delete::<AppendTable>(&mut q, true);
+        assert!(q.as_str().starts_with("-- c\nDELETE FROM"));
+        let mut q = DynQuery::new("-- c".into());
+        writer.write_insert(&mut q, [&AppendTable { id: 1 }], false);
+        assert!(q.as_str().starts_with("-- c\nINSERT INTO"));
     }
 
     #[test]
@@ -730,6 +763,14 @@ mod tests {
         let mut q = DynQuery::default();
         writer.write_insert(&mut q, [&PkOnly { id: 1 }], true);
         assert!(q.as_str().contains("DO NOTHING"));
+
+        #[derive(Entity)]
+        struct NoPk {
+            value: i32,
+        }
+        let mut q = DynQuery::default();
+        writer.write_insert(&mut q, [&NoPk { value: 1 }], true);
+        assert!(!q.as_str().contains("ON CONFLICT"));
     }
 
     #[test]

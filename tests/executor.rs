@@ -290,6 +290,8 @@ mod tests {
             "v"
         );
 
+        let matching: DynQuery = Query::<TestDriver>::prepared(TestDriver).into();
+        assert!(AsQuery::<TestDriver>::as_query(matching).is_prepared());
         let mut dyn_q: DynQuery = prepared.into_dyn();
         assert!(dyn_q.as_str().contains("TestDriver"));
         assert_eq!(dyn_q.len(), 0);
