@@ -32,7 +32,7 @@ You now have a view of your table. Use a connection or transaction to run operat
 
 ## Attributes
 Tank's `#[tank(...)]` attributes configure tables and columns. DDL and constraint support depend on the driver. Declaring metadata does not guarantee backend enforcement.
-- <Badge type="tip" text="struct" /><Badge type="tip" text="field" /> `name = "the_name"`: Table name on a struct or column name on a field. **Default**: snake_case struct name; field identifier for columns, with one leading underscore removed.
+- <Badge type="tip" text="struct" /><Badge type="tip" text="field" /> `name = "the_name"`: Table name on a struct or column name on a field. **Default**: snake_case struct name, field identifier for columns, with one leading underscore removed.
 - <Badge type="tip" text="struct" /> `schema = "your_schema"`: Database schema. Default: none.
 - <Badge type="tip" text="struct" /> `primary_key = "some_field"` or `primary_key = ("column_1", Self::column_2, ..)`: Table primary key.
 - <Badge type="tip" text="field" /> `primary_key`: Marks field as part of primary key. Cannot be combined with struct-level `primary_key`.
