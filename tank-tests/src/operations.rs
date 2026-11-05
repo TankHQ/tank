@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+// #region operations-schema
 #[derive(Entity)]
 #[tank(schema = "operations", name = "radio_operator")]
 pub struct Operator {
@@ -38,6 +39,7 @@ pub struct RadioLog {
     #[tank(name = "rssi")]
     pub signal_strength: i8,
 }
+// #endregion operations-schema
 
 pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
@@ -59,6 +61,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     };
     Operator::insert_one(executor, &operator).await?;
 
+    // #region operations-insert-many
     let op_id = operator.id;
     let logs: Vec<RadioLog> = (0..5)
         .map(|i| RadioLog {
@@ -71,6 +74,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
         })
         .collect();
     RadioLog::insert_many(executor, &logs).await?;
+    // #endregion operations-insert-many
 
     // Find
     if let Some(radio_log) =
@@ -79,6 +83,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
         log::debug!("Found radio log: {:?}", radio_log.id);
     }
 
+    // #region operations-stream
     {
         let mut stream = pin!(RadioLog::find_many(
             executor,
@@ -90,6 +95,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
         }
         // Executor is released from the stream at the end of the scope
     }
+    // #endregion operations-stream
 
     // Save
     let mut operator = operator;
@@ -103,6 +109,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     log.save(executor).await?;
 
     // Prepare
+    // #region operations-prepared
     let mut query =
         RadioLog::prepare_find(executor, expr!(RadioLog::signal_strength > ?), None).await?;
     query.bind(40)?;
@@ -111,6 +118,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
         .map(|row| row.and_then(RadioLog::from_row).map(|log| log.message))
         .try_collect()
         .await?;
+    // #endregion operations-prepared
     assert_eq!(messages.len(), 5);
     assert!(
         ["Ping #0", "Ping #1", "Ping #2 ACK", "Ping #3", "Ping #4"]
@@ -129,6 +137,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
+        // #region operations-batch
         let writer = executor.driver().sql_writer();
         let mut query = DynQuery::default();
         writer.write_delete::<RadioLog>(&mut query, expr!(RadioLog::signal_strength < 10));
@@ -164,6 +173,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
                 }
             }
         }
+        // #endregion operations-batch
     }
 
     Ok(())
@@ -284,6 +294,7 @@ pub async fn advanced_operations(executor: &mut impl Executor) -> Result<()> {
 
     #[cfg(not(feature = "disable-joins"))]
     {
+        // #region operations-select-order
         let messages = executor
             .fetch(
                 QueryBuilder::new()
@@ -322,6 +333,7 @@ pub async fn advanced_operations(executor: &mut impl Executor) -> Result<()> {
             ]
             .into_iter())
         );
+        // #endregion operations-select-order
     }
     Ok(())
 }

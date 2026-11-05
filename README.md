@@ -54,6 +54,7 @@ Tank aims to provide a clean ORM design focused on ergonomics, flexibility and b
 
 *For more examples, check the [cheat sheet](https://tankhq.github.io/tank/00-cheat-sheet.html).*
 
+<!-- #region getting-started -->
 1) Arm your cargo
 ```sh
 cargo add tank
@@ -61,6 +62,8 @@ cargo add tokio --features macros,rt-multi-thread
 ```
 
 2) Choose your battlefield
+
+Check the [drivers list](https://tankhq.github.io/tank/01-introduction.html#drivers) and select one that matches your terrain.
 ```sh
 cargo add tank-duckdb
 ```
@@ -191,6 +194,7 @@ async fn main() -> Result<()> {
 ```
 
 Place both Rust snippets in `src/main.rs` and run `cargo run`. Tank will create `tests.duckdb` in the current directory and report `Tank is operational: 2 units found.`
+<!-- #endregion getting-started -->
 
 ## Support the Mission
 Building and maintaining drivers for several database families is a major effort. **If Tank saves your company time, infrastructure headaches, or boilerplate, please consider supporting its development.**

@@ -47,24 +47,7 @@ use std::collections::HashMap;
 use tank::Entity;
 use uuid::Uuid;
 
-#[derive(Entity)]
-#[tank(
-    schema = "army",
-    name = "deployments",
-    primary_key = (Self::unit_id, Self::region),
-)]
-struct EntityExample {
-    unit_id: Uuid,
-    #[tank(clustering_key)]
-    region: String,
-    #[tank(name = "callsign")]
-    callsign: String,
-    casualties: i32,
-    #[tank(conversion_type = NotesWrap)]
-    metadata: Notes,
-    #[tank(ignore)]
-    transient_cache: HashMap<String, String>,
-}
+<!--@include: @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-entity-->
 ```
 
 `primary_key` is composite: `unit_id` is the partition key and `region` is the clustering key (relevant for Scylla/Cassandra). `clustering_key` is ignored by SQL drivers.
@@ -77,39 +60,7 @@ The `transient_cache` field is not stored in the table.
 ```rust
 use tank::{AsValue, Entity, Result, Value, ValueOwned, anyhow};
 
-#[derive(Clone)]
-pub struct Notes(pub String); // Third party type
-pub struct NotesWrap(pub Notes); // Local wrapper
-
-impl AsValue for NotesWrap {
-    fn as_empty_value() -> ValueOwned {
-        Value::Varchar(None)
-    }
-    fn as_value<'a>(self) -> Value<'a>
-    where
-        Self: 'a,
-    {
-        Value::Varchar(Some(self.0.0.into()))
-    }
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
-        match value.as_value().try_as(&Value::Varchar(None)) {
-            Ok(Value::Varchar(Some(s))) => {
-                Ok(NotesWrap(Notes(s.to_string())))
-            }
-            _ => Err(anyhow!("Expected Varchar for Notes")),
-        }
-    }
-}
-impl From<Notes> for NotesWrap {
-    fn from(v: Notes) -> Self {
-        NotesWrap(v)
-    }
-}
-impl From<NotesWrap> for Notes {
-    fn from(v: NotesWrap) -> Self {
-        v.0
-    }
-}
+<!--@include: @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-conversion-->
 ```
 
 Tank calls `NotesWrap::from(field_value)` when writing and reconstructs the field via `Notes::from(NotesWrap::try_from_value(db_value)?)` when reading. See [Types](05-types.md) for full `AsValue` documentation and the built-in type table.
@@ -156,35 +107,7 @@ entity.delete(&mut connection).await?;
 
 ## Find
 
-```rust
-use std::pin::pin;
-use tank::{Entity, expr, stream::TryStreamExt};
-
-let entity = EntityExample::find_one(
-    &mut connection,
-    entity.primary_key_expr()
-).await?;
-{
-    let uid = entity2.unit_id;
-    let mut stream = pin!(EntityExample::find_many(
-        &mut connection,
-        expr!(EntityExample::unit_id == #uid),
-        Some(100),
-    ));
-    while let Some(entity) = stream.try_next().await? {
-        println!("{}", entity.callsign);
-    }
-}
-let uid = Uuid::parse_str("94f0cbcc-1fce-454e-a6e4-4e3587741808")?;
-let entities: Vec<EntityExample> =
-    EntityExample::find_many(
-        &mut connection,
-        expr!(EntityExample::unit_id == #uid),
-        None
-    )
-    .try_collect()
-    .await?;
-```
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-find [Rust]
 
 ## Delete Many
 
@@ -224,48 +147,11 @@ expr!(EntityExample::region == #regions as IN);
 
 ## Prepared statement
 
-```rust
-use tank::{Entity, expr, stream::{StreamExt, TryStreamExt}};
-
-EntityExample::insert_one(&mut connection, &entity).await?;
-let mut query = EntityExample::prepare_find(
-    &mut connection,
-    expr!(EntityExample::unit_id == ?),
-    Some(50),
-)
-.await?;
-query.bind(entity.unit_id)?;
-let entities = connection
-    .fetch(&mut query)
-    .map(|row| row.and_then(EntityExample::from_row))
-    .try_collect::<Vec<EntityExample>>()
-    .await?;
-query.clear_bindings()?;
-query.bind(entity2.unit_id)?;
-```
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-prepared [Rust]
 
 ## Query Builder
 
-```rust
-use tank::{cols, expr, stream::{StreamExt, TryStreamExt}, QueryBuilder};
-
-#[derive(Entity)]
-struct Slim { callsign: String, casualties: i32 }
-
-let uid = entity.unit_id;
-let results = connection.fetch(
-    QueryBuilder::new()
-        .select(cols!(EntityExample::callsign, EntityExample::casualties))
-        .from(EntityExample::table())
-        .where_expr(expr!(EntityExample::unit_id == #uid))
-        .order_by(cols!(EntityExample::region ASC))
-        .limit(Some(50))
-        .build(&connection.driver()),
-)
-.map(|row| row.and_then(Slim::from_row))
-.try_collect::<Vec<_>>()
-.await?;
-```
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-query-builder [Rust]
 
 ## Joins
 
@@ -273,60 +159,7 @@ The `join!` macro builds the `FROM` clause for `QueryBuilder`. Define a result s
 
 Supported keywords: `JOIN`, `INNER JOIN`, `LEFT JOIN`, `LEFT OUTER JOIN`, `RIGHT JOIN`, `RIGHT OUTER JOIN`, `FULL OUTER JOIN`, `CROSS JOIN`, `NATURAL JOIN`.
 
-```rust
-use tank::{
-    Entity, QueryBuilder, cols, expr, join, stream::StreamExt, stream::TryStreamExt,
-};
-
-#[derive(Entity)]
-struct BookWithAuthor {
-    title: String,
-    author: String,
-}
-
-let rows: Vec<BookWithAuthor> = connection
-    .fetch(
-        QueryBuilder::new()
-            .select(cols!(Book::title, Author::name as author))
-            .from(join!(Book JOIN Author ON Book::author == Author::id))
-            .where_expr(expr!(Book::year > 2000))
-            .order_by(cols!(Book::title ASC))
-            .build(&connection.driver()),
-    )
-    .map_ok(BookWithAuthor::from_row)
-    .map(Result::flatten)
-    .try_collect()
-    .await?;
-
-let rows: Vec<BookWithAuthor> = connection
-    .fetch(
-        QueryBuilder::new()
-            .select(cols!(B.title, A.name as author))
-            .from(join!(Book B LEFT JOIN Author A ON B.author == A.author_id))
-            .where_expr(true)
-            .build(&connection.driver()),
-    )
-    .map_ok(BookWithAuthor::from_row)
-    .map(Result::flatten)
-    .try_collect()
-    .await?;
-
-let dataset = join!(
-    Book B
-        LEFT JOIN Author A1 ON B.author == A1.author_id
-        LEFT JOIN Author A2 ON B.co_author == A2.author_id
-);
-let rows = connection
-    .fetch(
-        QueryBuilder::new()
-            .select(cols!(B.title, A1.name as author, A2.name as co_author))
-            .from(dataset)
-            .where_expr(true)
-            .build(&connection.driver()),
-    )
-    .try_collect::<Vec<_>>()
-    .await?;
-```
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-joins [Rust]
 
 ## Raw SQL
 

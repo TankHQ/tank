@@ -30,33 +30,7 @@ use tank::{
 use time::{Date, OffsetDateTime, macros::date};
 use uuid::Uuid;
 
-#[derive(Entity)]
-#[tank(schema = "operations", name = "radio_operator")]
-pub struct Operator {
-    #[tank(primary_key)]
-    pub id: Uuid,
-    pub callsign: String,
-    #[tank(name = "rank")]
-    pub service_rank: String,
-    #[tank(name = "enlistment_date")]
-    pub enlisted: Date,
-    pub is_certified: bool,
-}
-
-#[derive(Entity)]
-#[tank(schema = "operations")]
-pub struct RadioLog {
-    #[tank(primary_key)]
-    pub id: Uuid,
-    #[tank(references = Operator::id)]
-    pub operator: Uuid,
-    pub message: String,
-    pub unit_callsign: String,
-    #[tank(name = "tx_time")]
-    pub transmission_time: OffsetDateTime,
-    #[tank(name = "rssi")]
-    pub signal_strength: i8,
-}
+<!--@include: @/../tank-tests/src/operations.rs#operations-schema-->
 ```
 ```sql [SQL]
 CREATE TABLE IF NOT EXISTS operations.radio_operator (
@@ -105,20 +79,8 @@ Operator::insert_one(executor, &operator).await?;
 ```
 
 Insert many:
-```rust
-let op_id = operator.id;
-let logs: Vec<RadioLog> = (0..5)
-    .map(|i| RadioLog {
-        id: Uuid::new_v4(),
-        operator: op_id,
-        message: format!("Ping #{i}"),
-        unit_callsign: "Alpha-1".into(),
-        transmission_time: OffsetDateTime::now_utc(),
-        signal_strength: 42,
-    })
-    .collect();
-RadioLog::insert_many(executor, &logs).await?;
-```
+
+<<< @/../tank-tests/src/operations.rs#operations-insert-many
 
 ## Find
 First matching row (use a predicate):
@@ -133,19 +95,9 @@ if let Some(radio_log) =
 Under the hood: `find_one` is just `find_many` with a limit of 1.
 
 Stream matching rows with a limit:
-```rust
-{
-    let mut stream = pin!(RadioLog::find_many(
-        executor,
-        expr!(RadioLog::signal_strength >= 40),
-        Some(100)
-    ));
-    while let Some(radio_log) = stream.try_next().await? {
-        log::debug!("Found radio log: {:?}", radio_log.id);
-    }
-    // Executor is released from the stream at the end of the scope
-}
-```
+
+<<< @/../tank-tests/src/operations.rs#operations-stream
+
 The stream must be pinned with [`std::pin::pin`](https://doc.rust-lang.org/std/pin/macro.pin.html) so the async machinery can safely borrow it without relocation mid-flight.
 
 ## Save
@@ -169,16 +121,8 @@ If a table has no primary key, `save()` returns an error, use `insert_one` inste
 
 ## Prepared
 Filter by strength (prepared):
-```rust
-let mut query =
-    RadioLog::prepare_find(executor, expr!(RadioLog::signal_strength > ?), None).await?;
-query.bind(40)?;
-let messages: Vec<_> = executor
-    .fetch(query)
-    .map(|row| row.and_then(RadioLog::from_row).map(|log| log.message))
-    .try_collect()
-    .await?;
-```
+
+<<< @/../tank-tests/src/operations.rs#operations-prepared
 
 ## Delete
 Delete many entities matching an expression:
@@ -194,43 +138,9 @@ operator.delete(executor).await?;
 
 ## Multi-Statement
 Delete + insert + select in one roundtrip:
-```rust
-let writer = executor.driver().sql_writer();
-let mut query = DynQuery::default();
-writer.write_delete::<RadioLog>(&mut query, expr!(RadioLog::signal_strength < 10));
-writer.write_insert(&mut query, [&operator], false);
-writer.write_insert(
-    &mut query,
-    [&RadioLog {
-        id: Uuid::new_v4(),
-        operator: operator.id,
-        message: "Status report".into(),
-        unit_callsign: "Alpha-1".into(),
-        transmission_time: OffsetDateTime::now_utc(),
-        signal_strength: 55,
-    }],
-    false,
-);
-writer.write_select(
-    &mut query,
-    &QueryBuilder::new()
-        .select(RadioLog::columns())
-        .from(RadioLog::table())
-        .where_expr(true)
-        .limit(Some(50)),
-);
-{
-    let mut stream = pin!(executor.run(query));
-    while let Some(result) = stream.try_next().await? {
-        match result {
-            QueryResult::Row(row) => log::debug!("Row: {row:?}"),
-            QueryResult::Affected(RowsAffected { rows_affected, .. }) => {
-                log::debug!("Affected rows: {rows_affected:?}")
-            }
-        }
-    }
-}
-```
+
+<<< @/../tank-tests/src/operations.rs#operations-batch
+
 While the stream is alive, it borrows the executor, which cannot service other queries. Enclose the pinned stream in a scope so both it and the borrow end before the next operation.
 
 ## Errors & Edge Cases

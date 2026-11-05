@@ -15,7 +15,7 @@ Read before modifying `tank-core`, `tank-macros`, or database drivers.
 - Toolchain: `rustup run nightly-2026-10-12`.
 - Always run `./test.sh` after changes. It runs `cargo check`, then `cargo test -p <crate> --all-targets` independently for every workspace member, preserving each driver's `tank-tests` feature combination. Only this full run is the validation and coverage signal.
 - Partial package tests or coverage runs cannot establish full-suite coverage. Workspace-wide commands such as `cargo test --workspace` may mask driver-specific configurations through cross-member feature resolution and do not replace `./test.sh`.
-- Keep documentation snippets synchronized with their test copies in `tank-tests/src/`. Keep duplicated README content aligned with `docs/01-introduction.md` and `docs/02-getting-started.md`.
+- Prefer named-region source includes for tested documentation snippets. Keep remaining copies synchronized with `tank-tests/src/` and duplicated README content aligned with the introduction and Getting Started.
 
 ## Code Style & API
 

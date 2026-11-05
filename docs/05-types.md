@@ -78,141 +78,15 @@ Here’s a `host:port` example that encodes a network address as a string that m
 ```rust
 use tank::{AsValue, Error, Result, Value, ValueOwned, anyhow};
 
-#[derive(Clone)]
-pub struct HostPort {
-    pub host: String,
-    pub port: u16,
-}
-
-impl AsValue for HostPort {
-    fn as_empty_value() -> ValueOwned {
-        Value::Varchar(None)
-    }
-
-    fn as_value<'a>(self) -> Value<'a>
-    where
-        Self: 'a,
-    {
-        Value::Varchar(Some(format!("{}:{}", self.host, self.port).into()))
-    }
-
-    fn try_from_value(value: impl AsValue) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        // Always call try_as before checking the received value
-        match value.as_value().try_as(&Value::Varchar(None)) {
-            Ok(Value::Varchar(Some(v))) => {
-                let context = || anyhow!("Failed to parse HostPort from value `{v}`");
-                let (host, port) = v.split_once(':').ok_or_else(context)?;
-                Ok(Self {
-                    host: host.to_string(),
-                    port: port
-                        .parse::<u16>()
-                        .map_err(|e| Error::new(e).context(context()))?,
-                })
-            }
-            _ => Err(Error::msg(
-                "Could not convert value into HostPort (expected Value::Varchar)",
-            )),
-        }
-    }
-}
+<!--@include: @/../tank-tests/src/service.rs#host-port-->
 ```
 
 ### Example: Conversion Type
 When the custom type lives outside your crate or when you want to change the serialization logic for known types, you can use a conversion wrapper type that implements `AsValue`.
 
-For recognized field types, changing the stored representation may also require a matching `column_type` override. Use separate required and nullable converters so SQL `NULL` becomes `None` only for optional fields, rather than causing a panic during required-field conversion.
+For recognized field types, changing the stored representation may also require a matching `column_type` override. One `AsValue` implementation handles both `MethodWrap` and `MethodWrap::<Option<Method>>`. `TryFrom` rejects SQL `NULL` for required methods, while optional methods preserve it as `None`. The example uses `http::Method`, also re-exported as `reqwest::Method`.
 
-```rust
-use reqwest::Method;
-use std::str::FromStr;
-use tank::{AsValue, Entity, ErrorContext, Result, Value, ValueOwned};
-
-#[derive(Entity)]
-pub struct Request {
-    #[tank(primary_key)]
-    pub id: i64,
-    pub target: String,
-    #[tank(conversion_type = MethodWrap)]
-    pub method: Method,
-    pub begin_timestamp_ms: i64,
-    pub end_timestamp_ms: Option<i64>,
-}
-#[derive(Entity)]
-pub struct RequestLimit {
-    #[tank(primary_key)]
-    pub id: i64,
-    pub target_pattern: String,
-    pub requests: u32,
-    #[tank(conversion_type = OptionalMethodWrap)]
-    pub method: Option<Method>,
-    pub interval_ms: Option<u32>,
-}
-
-// Required values are validated before the infallible From conversion.
-pub struct MethodWrap(Method);
-impl AsValue for MethodWrap {
-    fn as_empty_value() -> ValueOwned {
-        Value::Varchar(None)
-    }
-
-    fn as_value<'a>(self) -> Value<'a>
-    where
-        Self: 'a,
-    {
-        self.0.to_string().as_value()
-    }
-
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
-        let text = String::try_from_value(value)?;
-        Method::from_str(&text)
-            .with_context(|| format!("Could not parse HTTP method {text:?}"))
-            .map(Self)
-    }
-}
-
-impl From<Method> for MethodWrap {
-    fn from(value: Method) -> Self {
-        Self(value)
-    }
-}
-impl From<MethodWrap> for Method {
-    fn from(value: MethodWrap) -> Self {
-        value.0
-    }
-}
-
-pub struct OptionalMethodWrap(Option<Method>);
-impl AsValue for OptionalMethodWrap {
-    fn as_empty_value() -> ValueOwned {
-        MethodWrap::as_empty_value()
-    }
-
-    fn as_value<'a>(self) -> Value<'a>
-    where
-        Self: 'a,
-    {
-        self.0.map(MethodWrap).as_value()
-    }
-
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
-        Option::<MethodWrap>::try_from_value(value)
-            .map(|value| Self(value.map(|method| method.0)))
-    }
-}
-impl From<Option<Method>> for OptionalMethodWrap {
-    fn from(value: Option<Method>) -> Self {
-        Self(value)
-    }
-}
-impl From<OptionalMethodWrap> for Option<Method> {
-    fn from(value: OptionalMethodWrap) -> Self {
-        value.0
-    }
-}
-```
+<<< @/../tests/conversion_type.rs#method-conversion
 
 > [!TIP]
 > Keep the encoding stable. Your `as_value` output becomes the output format for that field.

@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+// #region cheat-sheet-conversion
 #[derive(Clone)]
 pub struct Notes(pub String); // Third party type
 pub struct NotesWrap(pub Notes); // Local wrapper
@@ -37,7 +38,9 @@ impl From<NotesWrap> for Notes {
         v.0
     }
 }
+// #endregion cheat-sheet-conversion
 
+// #region cheat-sheet-entity
 #[derive(Entity)]
 #[tank(
     schema = "army",
@@ -56,6 +59,7 @@ struct EntityExample {
     #[tank(ignore)]
     transient_cache: HashMap<String, String>,
 }
+// #endregion cheat-sheet-entity
 
 pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<()> {
     let _lock = MUTEX.lock().await;
@@ -113,6 +117,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     }
 
     {
+        // #region cheat-sheet-find
         use std::pin::pin;
         use tank::{Entity, expr, stream::TryStreamExt};
 
@@ -133,6 +138,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
             EntityExample::find_many(&mut connection, expr!(EntityExample::unit_id == #uid), None)
                 .try_collect()
                 .await?;
+        // #endregion cheat-sheet-find
     }
 
     {
@@ -159,6 +165,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     }
 
     {
+        // #region cheat-sheet-prepared
         use tank::{
             Entity, expr,
             stream::{StreamExt, TryStreamExt},
@@ -177,14 +184,17 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
             .map(|row| row.and_then(EntityExample::from_row))
             .try_collect::<Vec<EntityExample>>()
             .await?;
+        query.clear_bindings()?;
+        query.bind(entity2.unit_id)?;
+        // #endregion cheat-sheet-prepared
+
         assert_eq!(entities.len(), 1);
         assert_eq!(entities[0].callsign, entity.callsign);
         assert!(entities[0].transient_cache.is_empty());
-        query.clear_bindings()?;
-        query.bind(entity2.unit_id)?;
     }
 
     {
+        // #region cheat-sheet-query-builder
         use tank::{
             QueryBuilder, cols, expr,
             stream::{StreamExt, TryStreamExt},
@@ -210,6 +220,8 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
             .map(|row| row.and_then(Slim::from_row))
             .try_collect::<Vec<_>>()
             .await?;
+        // #endregion cheat-sheet-query-builder
+
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].callsign, entity.callsign);
         assert_eq!(results[0].casualties, entity.casualties);
@@ -218,6 +230,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     #[cfg(not(feature = "disable-joins"))]
     {
         use crate::{Author, AuthorColumnTrait, Book, BookColumnTrait};
+        // #region cheat-sheet-joins
         use tank::{
             Entity, QueryBuilder, cols, expr, join, stream::StreamExt, stream::TryStreamExt,
         };
@@ -270,6 +283,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
             )
             .try_collect::<Vec<_>>()
             .await?;
+        // #endregion cheat-sheet-joins
     }
 
     Ok(())

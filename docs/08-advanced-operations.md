@@ -9,35 +9,7 @@ Continuing with the `Operator` and `RadioLog` schema introduced earlier. The fol
 
 The SQL below uses PostgreSQL syntax. Other drivers choose their own column types.
 ::: code-group
-```rust [Rust]
-#[derive(Entity)]
-#[tank(schema = "operations", name = "radio_operator")]
-pub struct Operator {
-    #[tank(primary_key)]
-    pub id: Uuid,
-    pub callsign: String,
-    #[tank(name = "rank")]
-    pub service_rank: String,
-    #[tank(name = "enlistment_date")]
-    pub enlisted: Date,
-    pub is_certified: bool,
-}
-
-#[derive(Entity)]
-#[tank(schema = "operations")]
-pub struct RadioLog {
-    #[tank(primary_key)]
-    pub id: Uuid,
-    #[tank(references = Operator::id)]
-    pub operator: Uuid,
-    pub message: String,
-    pub unit_callsign: String,
-    #[tank(name = "tx_time")]
-    pub transmission_time: OffsetDateTime,
-    #[tank(name = "rssi")]
-    pub signal_strength: i8,
-}
-```
+<<< @/../tank-tests/src/operations.rs#operations-schema [Rust]
 ```sql [SQL]
 CREATE TABLE IF NOT EXISTS operations.radio_operator (
     id UUID PRIMARY KEY,
@@ -78,46 +50,8 @@ CREATE TABLE IF NOT EXISTS operations.radio_log (
 The [`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) macro supports aliasing and ordering. When you only need raw columns, prefer the terse array `[Operator::callsign, Operator::service_rank, Operator::enlisted]` or `Operator::columns()` syntax.
 
 Objective: strongest certified transmissions excluding routine radio checks.
-```rust
-let messages = executor
-    .fetch(
-        QueryBuilder::new()
-            .select(cols!(
-                RadioLog::signal_strength as strength,
-                Operator::callsign,
-                RadioLog::message,
-            ))
-            .from(join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operator))
-            .where_expr(expr!(
-                // X != Y as LIKE => X NOT LIKE Y
-                Operator::is_certified && RadioLog::message != "Radio check%" as LIKE
-            ))
-            .order_by(cols!(RadioLog::signal_strength DESC, Operator::callsign ASC))
-            .limit(Some(100))
-            .build(&executor.driver()),
-    )
-    .map(|row| {
-        row.and_then(|row| {
-            #[derive(Entity)]
-            struct Row {
-                message: String,
-                callsign: String,
-            }
-            Row::from_row(row).and_then(|row| Ok((row.message, row.callsign)))
-        })
-    })
-    .try_collect::<Vec<_>>()
-    .await?;
-assert!(
-    messages.iter().map(|(a, b)| (a.as_str(), b.as_str())).eq([
-        ("Heavy armor spotted, grid 4C.", "SteelHammer"),
-        ("Affirmative, engaging.", "SteelHammer"),
-        ("Target acquired. Requesting coordinates.", "SteelHammer"),
-        ("Perimeter secure. All clear.", "Viper"),
-    ]
-    .into_iter())
-);
-```
+
+<<< @/../tank-tests/src/operations.rs#operations-select-order
 
 ## Expr
 [`expr!()`](https://docs.rs/tank/latest/tank/macro.expr.html) parses a Rust-like expression into a typed AST that drivers translate into backend-specific queries. Use it for conditions or default values.

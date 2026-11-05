@@ -8,19 +8,12 @@ use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+// #region host-port
+#[derive(Clone)]
 pub struct HostPort {
     pub host: String,
     pub port: u16,
-}
-
-impl HostPort {
-    pub fn new(host: impl Into<String>, port: u16) -> Self {
-        Self {
-            host: host.into(),
-            port,
-        }
-    }
 }
 
 impl AsValue for HostPort {
@@ -54,6 +47,16 @@ impl AsValue for HostPort {
             _ => Err(anyhow!(
                 "Could not convert value into HostPort (expected Value::Varchar)",
             )),
+        }
+    }
+}
+// #endregion host-port
+
+impl HostPort {
+    pub fn new(host: impl Into<String>, port: u16) -> Self {
+        Self {
+            host: host.into(),
+            port,
         }
     }
 }
