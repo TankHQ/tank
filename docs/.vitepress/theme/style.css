@@ -161,7 +161,6 @@ h1 .text {
     font-size: 17px;
     line-height: 1.7;
     color: var(--vp-c-text-2);
-    text-align: left;
 }
 
 :where(.VPHome .vp-doc) strong {
@@ -281,13 +280,13 @@ h1 .text {
     animation: marquee 28s linear infinite;
 }
 
-.driver-marquee:hover ul {
+.driver-marquee:hover ul,
+.driver-marquee:focus-within ul {
     animation-play-state: paused;
 }
 
 .driver-marquee li {
     margin: 0;
-    padding: 5px 14px;
     border: 1px solid var(--vp-c-divider);
     border-radius: 999px;
     background: var(--vp-c-bg-soft);
@@ -295,6 +294,19 @@ h1 .text {
     font-size: 13px;
     font-weight: 600;
     white-space: nowrap;
+}
+
+.driver-marquee a {
+    display: block;
+    padding: 5px 14px;
+    border-radius: inherit;
+    color: inherit;
+    text-decoration: none;
+}
+
+.driver-marquee a:hover,
+.driver-marquee a:focus-visible {
+    color: var(--vp-c-brand-1);
 }
 
 @keyframes marquee {

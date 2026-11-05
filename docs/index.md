@@ -48,20 +48,21 @@ features:
 ---
 
 <script setup>
+import { withBase } from "vitepress"
 import SwipeDeck from "./components/SwipeDeck.vue"
 import TankJoke from "./components/TankJoke.vue"
 
 const drivers = [
-  "Postgres",
-  "SQLite",
-  "MySQL",
-  "MariaDB",
-  "DuckDB",
-  "MongoDB",
-  "ScyllaDB",
-  "Cassandra",
-  "Valkey",
-  "Redis",
+  { name: "Postgres", section: "postgres" },
+  { name: "SQLite", section: "sqlite" },
+  { name: "MySQL", section: "mysql-mariadb" },
+  { name: "MariaDB", section: "mysql-mariadb" },
+  { name: "DuckDB", section: "duckdb" },
+  { name: "MongoDB", section: "mongodb" },
+  { name: "ScyllaDB", section: "scylladb-cassandra" },
+  { name: "Cassandra", section: "scylladb-cassandra" },
+  { name: "Valkey", section: "valkey-redis" },
+  { name: "Redis", section: "valkey-redis" },
 ]
 </script>
 
@@ -78,7 +79,9 @@ Welcome to the armored division, commander. Tank (**T**able **A**bstraction & **
   <strong>Supports</strong>
   <div>
     <ul>
-      <li v-for="(d, i) in [...drivers, ...drivers]" :key="i">{{ d }}</li>
+      <li v-for="(d, i) in [...drivers, ...drivers]" :key="i">
+        <a :href="withBase(`/03-connection.html#${d.section}`)">{{ d.name }}</a>
+      </li>
     </ul>
   </div>
 </div>
