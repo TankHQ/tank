@@ -440,7 +440,7 @@ mod tests {
 
     #[test]
     fn raw_query_helpers() {
-        let mut rq = RawQuery("SELECT * FROM t".to_string());
+        let rq = RawQuery("SELECT * FROM t".to_string());
         assert_eq!(format!("{rq}"), "SELECT * FROM t");
         let mut rq = RawQuery("SELECT ?".to_string());
         assert_eq!(rq.0, "SELECT ?");

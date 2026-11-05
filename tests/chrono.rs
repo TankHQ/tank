@@ -4,14 +4,14 @@ mod tests {
 
     #[test]
     fn chrono_fixed_offset_roundtrip() {
+        let date_time = chrono::NaiveDate::from_ymd_opt(2025, 6, 15)
+            .unwrap()
+            .and_hms_nano_opt(14, 30, 0, 123_456_789)
+            .unwrap();
         for offset_secs in [0, 5 * 3600 + 30 * 60, -(4 * 3600), 45 * 60] {
             let fixed = chrono::FixedOffset::east_opt(offset_secs).unwrap();
-            let naive = chrono::NaiveDate::from_ymd_opt(2025, 6, 15)
-                .unwrap()
-                .and_hms_nano_opt(14, 30, 0, 123_456_789)
-                .unwrap();
             let original: chrono::DateTime<chrono::FixedOffset> =
-                chrono::DateTime::from_naive_utc_and_offset(naive, fixed);
+                chrono::DateTime::from_naive_utc_and_offset(date_time, fixed);
             let back = chrono::DateTime::<chrono::FixedOffset>::try_from_value(original.as_value())
                 .expect("Could not convert back to chrono::DateTime<FixedOffset>");
             assert_eq!(

@@ -1,10 +1,11 @@
 #[cfg(test)]
 mod tests {
     use quote::ToTokens;
-    use std::collections::HashSet;
+    use std::{borrow::Cow, collections::HashSet};
     use tank::{
-        Action, AsValue, ColumnRef, Context, DefaultValueType, DynQuery, Entity, Expression,
-        Fragment, GenericSqlWriter, IsAsterisk, OpPrecedence, PrimaryKeyType, Row, Value,
+        Action, AsValue, ColumnDef, ColumnRef, Context, DefaultValueType, DynQuery, Entity,
+        Expression, Fragment, GenericSqlWriter, IsAsterisk, OpPrecedence, PrimaryKeyType, Row,
+        Value,
     };
 
     #[test]
@@ -16,7 +17,7 @@ mod tests {
             col: i32,
         }
 
-        let column = &Entity::columns()[0];
+        let column: &ColumnDef = &Entity::columns()[0];
         assert_eq!(column.name(), "solo_column");
         assert_eq!(column.table(), "my_table");
         assert_eq!(column.schema(), "the_schema");
@@ -52,14 +53,14 @@ mod tests {
             id: i32,
             name: String,
         }
-        let cols = TestTable::columns();
-        assert_ne!(cols[0], cols[1]);
-        assert_eq!(cols[0], cols[0]);
+        let columns = TestTable::columns();
+        assert_ne!(columns[0], columns[1]);
+        assert_eq!(columns[0], columns[0]);
         let mut set = HashSet::new();
-        set.insert(&cols[0]);
-        set.insert(&cols[1]);
+        set.insert(&columns[0]);
+        set.insert(&columns[1]);
         assert_eq!(set.len(), 2);
-        set.insert(&cols[0]);
+        set.insert(&columns[0]);
         assert_eq!(set.len(), 2);
     }
 
@@ -89,11 +90,10 @@ mod tests {
         ));
 
         let writer = GenericSqlWriter::new();
-
-        let none = DefaultValueType::None;
-        assert!(!none.is_set());
-        assert_eq!(none.precedence(&writer), 0);
-        assert_eq!(format!("{none:?}"), "None");
+        let default_value = DefaultValueType::None;
+        assert!(!default_value.is_set());
+        assert_eq!(default_value.precedence(&writer), 0);
+        assert_eq!(format!("{default_value:?}"), "None");
 
         let value = DefaultValueType::Value(Value::Int64(Some(7)));
         assert!(value.is_set());
@@ -116,7 +116,7 @@ mod tests {
         ));
         assert!(matches!(
             DefaultValueType::from("x"),
-            DefaultValueType::Value(Value::Varchar(Some(_)))
+            DefaultValueType::Value(Value::Varchar(Some(Cow::Borrowed("x"))))
         ));
         assert!(matches!(
             DefaultValueType::from(1_i64),
@@ -145,7 +145,6 @@ mod tests {
         let column = &VTable::columns()[0];
         let mut out = DynQuery::default();
         let mut context = Context::empty();
-        // Column visits as a column, not an operand, so IsAsterisk does not match.
         assert!(!column.accept_visitor(
             &mut IsAsterisk,
             &GenericSqlWriter::new(),

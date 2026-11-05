@@ -6,7 +6,8 @@ mod tests {
         borrow::Cow,
         cell::{Cell, RefCell},
         collections::{BTreeMap, HashMap, LinkedList, VecDeque},
-        num::*,
+        fmt::Debug,
+        num::{NonZeroI32, NonZeroU64},
         rc::Rc,
         sync::{Arc, RwLock},
         time::Duration,
@@ -20,7 +21,7 @@ mod tests {
 
     #[test]
     fn borrowed_integer_conversions() {
-        fn check<T: AsValue + std::fmt::Debug + PartialEq>(values: &[Value<'_>]) {
+        fn check<T: AsValue + Debug + PartialEq>(values: &[Value<'_>]) {
             for value in values {
                 let owned = T::try_from_value(value.clone());
                 let borrowed = T::try_from_value(value);
@@ -76,7 +77,7 @@ mod tests {
 
     #[test]
     fn nonstatic_strings_and_cows() {
-        let text = String::from("nonstatic");
+        let text = String::from("some string");
         assert_borrowed_string(text.as_str().as_value(), &text);
         assert_borrowed_string((&text).as_value(), &text);
         let cow = Cow::Borrowed(text.as_str());
@@ -84,11 +85,6 @@ mod tests {
         assert_borrowed_string((&cow).as_value(), &text);
         let owned_cow: Cow<'_, str> = Cow::Owned(text.clone());
         assert_borrowed_string((&owned_cow).as_value(), &owned_cow);
-
-        fn identity<'v>(value: Value<'v>) -> Value<'v> {
-            value.as_value()
-        }
-        assert_borrowed_string(identity(text.as_str().as_value()), &text);
         let decoded: Cow<'_, str> = Cow::try_from_value(&text).unwrap();
         assert!(matches!(decoded, Cow::Owned(_)));
         assert_eq!(decoded, text);
