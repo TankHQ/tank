@@ -6,7 +6,7 @@ use tank_core::{
 use tank_sqlite::{SQLiteConnection, SQLiteDriver};
 
 #[tokio::test]
-async fn late_step_errors_are_fallible_and_connection_is_reusable() {
+async fn late_step_errors_reusable() {
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -38,7 +38,7 @@ async fn late_step_errors_are_fallible_and_connection_is_reusable() {
 }
 
 #[tokio::test]
-async fn outer_advance_drains_active_rows_and_reports_drain_errors() {
+async fn outer_advance_reports_drain_errors() {
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -83,7 +83,7 @@ async fn outer_advance_drains_active_rows_and_reports_drain_errors() {
 }
 
 #[tokio::test]
-async fn partial_rows_survive_outer_drop_and_move_between_threads() {
+async fn partial_rows_survive_drop() {
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -136,7 +136,7 @@ async fn partial_rows_survive_outer_drop_and_move_between_threads() {
 }
 
 #[tokio::test]
-async fn abandoned_returning_finishes_write_but_not_later_statements() {
+async fn abandoned_returning_finishes_write() {
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -193,7 +193,7 @@ async fn abandoned_returning_finishes_write_but_not_later_statements() {
 }
 
 #[tokio::test]
-async fn fetch_reports_late_prepare_errors_and_rejects_interior_nul() {
+async fn fetch_late_prepare_errors() {
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -221,7 +221,7 @@ async fn fetch_reports_late_prepare_errors_and_rejects_interior_nul() {
 }
 
 #[tokio::test]
-async fn skipping_returning_rows_reports_write_errors_on_outer_advance() {
+async fn skipping_rows_reports_write_errors() {
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -247,7 +247,7 @@ async fn skipping_returning_rows_reports_write_errors_on_outer_advance() {
 }
 
 #[tokio::test]
-async fn huge_select_steps_only_on_demand_and_drop_cancels_it() {
+async fn huge_select_cancels_on_drop() {
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::default(), "sqlite://:memory:".into())
             .await

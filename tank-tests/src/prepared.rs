@@ -70,6 +70,26 @@ pub async fn prepared(executor: &mut impl Executor) -> Result<()> {
         "Bound u32 parameter above i32::MAX did not round-trip"
     );
 
+    let mut query =
+        PreparedBinding::prepare_find(executor, expr!(PreparedBinding::id == ?), Some(1))
+            .await
+            .expect("Failed to prepare the indexed query");
+    query
+        .bind_index(entity.id, 0)
+        .expect("bind_index(0) must bind the first parameter");
+    let loaded = executor
+        .fetch(query)
+        .map_ok(PreparedBinding::from_row)
+        .map(Result::flatten)
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("Failed to query by the zero-based bound key");
+    assert_eq!(
+        loaded,
+        [entity.clone()],
+        "bind_index(0) did not bind the first parameter"
+    );
+
     // The same prepared statement must be reusable with a different binding.
     let mut query =
         PreparedBinding::prepare_find(executor, expr!(PreparedBinding::id == ?), Some(1))

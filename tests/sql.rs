@@ -262,7 +262,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sql_writer_types_and_operators() {
+    fn sql_writer_types_operators() {
         let mut ctx = Context::new(Fragment::SqlCreateTable, false);
         for (value, expected) in [
             (Value::Int128(None), "HUGEINT"),

@@ -142,7 +142,7 @@ mod tests {
     }
 
     #[test]
-    fn native_row_view_decodes_fresh_values_without_materializing() {
+    fn native_row_fresh_values() {
         #[derive(Debug)]
         struct NativeRow {
             names: RowLabels,
@@ -202,7 +202,7 @@ mod tests {
     }
 
     #[test]
-    fn retained_entity_row_values_own_normalized_payloads() {
+    fn retained_row_owns_payloads() {
         #[derive(Debug, Entity)]
         struct Retained {
             text: ValueOwned,
@@ -219,7 +219,7 @@ mod tests {
     }
 
     #[test]
-    fn required_decodes_lazy_columns_once_in_row_order() {
+    fn required_decodes_lazy_once() {
         let source = CountingSource::new(vec![
             Some(Value::Null),
             Some("converted".as_value()),
@@ -245,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn ordered_rows_preserve_conversion_hooks_for_lazy_and_owned_values() {
+    fn ordered_rows_conversion_hooks() {
         let source = CountingSource::new(vec![
             Some(42_i32.as_value()),
             Some("converted".as_value()),
@@ -264,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn borrowed_conversion_reuses_lazy_and_owned_rows_without_cloning_labels() {
+    fn borrowed_conversion_reuses_rows() {
         let source = CountingSource::new(vec![
             Some(42_i32.as_value()),
             Some("converted".as_value()),
@@ -340,7 +340,7 @@ mod tests {
     }
 
     #[test]
-    fn borrowed_and_consuming_paths_match_for_ordered_and_fallback_labels() {
+    fn borrowed_consuming_parity() {
         for labels in [
             vec!["id", "db_text", "direct"],
             vec!["direct", "id", "db_text"],
@@ -391,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    fn row_conversion_initializes_default_once_per_call() {
+    fn default_initialized_once() {
         thread_local! {
             static DEFAULT_CALLS: Cell<usize> = const { Cell::new(0) };
         }
@@ -433,7 +433,7 @@ mod tests {
     }
 
     #[test]
-    fn borrowed_and_consuming_conversion_preserve_error_order() {
+    fn conversion_error_order() {
         for labels in [["id", "db_text", "direct"], ["direct", "id", "db_text"]] {
             let source = CountingSource::new(
                 labels
@@ -468,7 +468,7 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_entity_names_keep_first_field_dispatch() {
+    fn duplicate_names_first_field() {
         #[derive(Default, Debug, Entity)]
         struct DuplicateNames {
             #[tank(name = "value")]
@@ -509,7 +509,7 @@ mod tests {
     }
 
     #[test]
-    fn default_decodes_lazy_columns_and_keeps_missing_defaults() {
+    fn default_decodes_lazy_columns() {
         let source = CountingSource::new(vec![
             Some(Value::Null),
             Some("direct".as_value()),
@@ -531,7 +531,7 @@ mod tests {
     }
 
     #[test]
-    fn absent_unmapped_value_still_stops_decoding() {
+    fn absent_unmapped_stops() {
         let source = CountingSource::new(vec![None, Some(42_i32.as_value())]);
         let labels = ["unknown", "id"];
         let error = Required::from_row(&source.row(&labels)).unwrap_err();
@@ -545,7 +545,7 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_labels_keep_the_last_value_with_and_without_default() {
+    fn duplicate_labels_last_value() {
         let source = CountingSource::new(vec![
             Some(1_i32.as_value()),
             Some("first".as_value()),
@@ -578,7 +578,7 @@ mod tests {
     }
 
     #[test]
-    fn absent_mapped_value_still_stops_decoding() {
+    fn absent_mapped_stops() {
         let source = CountingSource::new(vec![
             Some(1_i32.as_value()),
             None,
@@ -605,7 +605,7 @@ mod tests {
     }
 
     #[test]
-    fn ordered_rows_preserve_early_stop_parity_without_retrying_hooks() {
+    fn ordered_early_stop_parity() {
         let labels = ["id", "db_text", "direct"];
         let values = [
             1_i32.as_value(),
@@ -664,7 +664,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_entities_support_borrowed_ordered_and_fallback_rows() {
+    fn empty_entity_rows() {
         #[derive(Debug, Entity)]
         struct Empty {}
         #[derive(Debug, Default, Entity)]
@@ -681,7 +681,7 @@ mod tests {
     }
 
     #[test]
-    fn short_materialized_row_keeps_defaults_or_reports_missing_column() {
+    fn short_row_defaults() {
         let row = RowOwned::new(
             ["id".into(), "db_text".into(), "direct".into()].into(),
             vec![1_i32.as_value()],
@@ -702,7 +702,7 @@ mod tests {
     }
 
     #[test]
-    fn null_value_is_converted_rather_than_treated_as_absent() {
+    fn null_value_converted() {
         #[derive(Debug, Entity)]
         struct Nullable {
             text: Option<String>,
@@ -722,7 +722,7 @@ mod tests {
     }
 
     #[test]
-    fn from_row_moves_owned_string_buffers_without_reallocating() {
+    fn from_row_moves_string_buffers() {
         #[derive(Debug, Entity)]
         struct OwnedStrings {
             required: String,

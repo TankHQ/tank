@@ -4,7 +4,7 @@ mod tests {
     use tank::{Row, RowLabels, RowOwned, Value};
 
     #[test]
-    fn owned_values_are_borrowed_and_ownership_moves_storage() {
+    fn owned_values_borrowed() {
         let names: RowLabels = ["name".to_owned()].into();
         let text = "sensitive payload".to_owned();
         let text_ptr = text.as_ptr();
@@ -52,7 +52,7 @@ mod tests {
     }
 
     #[test]
-    fn native_views_and_references_materialize_borrowed_payloads() {
+    fn native_view_materialization() {
         let names: RowLabels = ["name".to_owned()].into();
         let text = "decoded".to_owned();
         let row = NativeRow {
@@ -93,7 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_cells_stop_iteration_and_materialization_without_shifting_columns() {
+    fn missing_cells_stop_iteration() {
         for gap in [0, 1, 2] {
             let row = GappedRow {
                 names: ["first".to_owned(), "second".to_owned(), "third".to_owned()],

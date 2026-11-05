@@ -1142,7 +1142,7 @@ mod tests {
     }
 
     #[test]
-    fn value_shared_wrappers_arc_rc_cell_refcell() {
+    fn value_shared_wrappers() {
         let arc_v = Arc::new(5_u8).as_value();
         assert_eq!(arc_v, Value::UInt8(Some(5)));
         let rc_v = Rc::new(7_u16).as_value();

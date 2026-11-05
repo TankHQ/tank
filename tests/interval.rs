@@ -440,7 +440,7 @@ mod tests {
 
     // Tests kept from the branch that were not present on master
     #[test]
-    fn large_and_negative_interval_to_time_duration() {
+    fn large_negative_durations() {
         let negative: time::Duration = Interval::from_mins(-30).into();
         assert_eq!(negative, time::Duration::minutes(-30));
 
@@ -524,13 +524,13 @@ mod tests {
     }
 
     #[test]
-    fn neg_min_months_does_not_panic() {
+    fn negate_min_months() {
         let value = Interval::new(i32::MIN, 0, 0);
         let _ = -value;
     }
 
     #[test]
-    fn parse_huge_interval_does_not_panic() {
+    fn parse_huge_interval() {
         let parsed =
             Interval::try_from_value(Value::Varchar(Some("1000000000000000000 years".into())));
         if let Ok(v) = parsed {
@@ -566,6 +566,47 @@ mod tests {
         assert_eq!(
             (Interval::from_days(-1) + Interval::from_mins(30)).as_ns(),
             -23 * Interval::NANOS_IN_HOUR - 30 * Interval::NANOS_IN_SEC * 60
+        );
+    }
+
+    #[test]
+    fn large_interval_addition() {
+        let max = Interval::new(0, i32::MAX, i64::MAX);
+        assert!((max + max).as_ns() >= max.as_ns());
+        let min = Interval::new(0, i32::MIN, i64::MIN);
+        assert!((min + min).as_ns() <= min.as_ns());
+        assert!((max - min).as_ns() >= max.as_ns());
+    }
+
+    #[test]
+    fn long_duration_conversion() {
+        for secs in [1_000_000_000_000_u64, 10_000_000_000, 20_000_000_000] {
+            assert_eq!(
+                Interval::from_duration(&std::time::Duration::from_secs(secs)).as_ns(),
+                secs as i128 * 1_000_000_000
+            );
+        }
+        let d = std::time::Duration::from_secs(1_000_000_000_000);
+        assert_eq!(Interval::from_duration(&d), Interval::from(d));
+        assert!(Interval::from(std::time::Duration::new(u64::MAX, 0)).as_ns() > 0);
+        assert!(Interval::from(std::time::Duration::MAX).as_ns() > 0);
+    }
+
+    #[test]
+    fn huge_component_sign() {
+        for input in [
+            "9223372036854775808 seconds",
+            "9223372036854775808 days",
+            "9223372036854775808:00:00",
+            "18446744073709551615:00:00",
+        ] {
+            assert!(Interval::parse(input).unwrap().as_ns() > 0, "{input:?}");
+        }
+        assert!(
+            Interval::parse("-9223372036854775809 seconds")
+                .unwrap()
+                .as_ns()
+                < 0
         );
     }
 

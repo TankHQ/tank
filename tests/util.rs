@@ -24,13 +24,13 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn table_ref_full_name_no_schema() {
+    fn table_ref_name_no_schema() {
         let t = TableRef::new("users".into());
         assert_eq!(t.full_name("."), "users");
     }
 
     #[test]
-    fn table_ref_full_name_with_schema() {
+    fn table_ref_name_schema() {
         let t = TableRef {
             name: "users".into(),
             schema: "public".into(),
@@ -41,7 +41,7 @@ mod tests {
     }
 
     #[test]
-    fn table_ref_full_name_with_alias() {
+    fn table_ref_name_alias() {
         let t = TableRef {
             name: "users".into(),
             schema: "public".into(),
@@ -388,7 +388,7 @@ mod tests {
     }
 
     #[test]
-    fn util_value_to_json_null_variants() {
+    fn value_to_json_nulls() {
         assert_eq!(
             value_to_json(&Value::Boolean(None)),
             Some(serde_json::Value::Null)
@@ -428,7 +428,7 @@ mod tests {
     }
 
     #[test]
-    fn util_value_to_json_array_and_list() {
+    fn value_to_json_collections() {
         let arr = Value::Array(
             Some(vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into()),
             Box::new(CollectionType {
@@ -502,13 +502,13 @@ mod tests {
     }
 
     #[test]
-    fn util_value_to_json_interval_returns_none() {
+    fn value_to_json_interval() {
         let v = Value::Interval(Some(Interval::from_days(1)));
         assert_eq!(value_to_json(&v), None);
     }
 
     #[test]
-    fn util_value_to_json_nan_returns_none() {
+    fn value_to_json_nan() {
         assert_eq!(value_to_json(&Value::Float64(Some(f64::NAN))), None);
     }
 
@@ -807,7 +807,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_do_nothing_on_pk_only() {
+    fn do_nothing_pk_only() {
         #[derive(Entity)]
         struct PkOnly {
             #[tank(primary_key)]
@@ -1052,7 +1052,7 @@ mod tests {
     }
 
     #[test]
-    fn util_value_to_json_unrepresentable_returns_none() {
+    fn value_to_json_unrepresentable() {
         let mut map = HashMap::new();
         map.insert(
             Value::Int32(Some(1)),
@@ -1175,7 +1175,7 @@ mod tests {
     }
 
     #[test]
-    fn error_message_from_ptr_handles_null_and_text() {
+    fn error_ptr_messages() {
         let text = CString::new("boom").unwrap();
         let raw: *const c_char = text.as_ptr();
         assert_eq!(error_message_from_ptr(&raw), "boom");

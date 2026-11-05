@@ -23,7 +23,7 @@ impl DuckDBPrepared {
     pub(crate) fn new(statement: CBox<duckdb_prepared_statement>) -> Self {
         Self {
             statement: statement.into(),
-            index: 1,
+            index: 0,
         }
     }
 
@@ -52,7 +52,7 @@ impl Prepared for DuckDBPrepared {
     }
 
     fn clear_bindings(&mut self) -> Result<&mut Self> {
-        self.index = 1;
+        self.index = 0;
         unsafe {
             let rc = duckdb_clear_bindings(self.statement());
             if rc != duckdb_state_DuckDBSuccess {
@@ -70,6 +70,8 @@ impl Prepared for DuckDBPrepared {
     }
 
     fn bind_index(&mut self, v: impl AsValue, index: u64) -> Result<&mut Self> {
+        // DuckDB's parameter index is 1-based.
+        let index = index + 1;
         unsafe {
             let prepared = self.statement();
             let value = v.as_value();
@@ -162,7 +164,7 @@ impl Prepared for DuckDBPrepared {
                 log::error!("{error:#}");
                 return Err(error);
             }
-            self.index = index + 1;
+            self.index = index;
             Ok(self)
         }
     }

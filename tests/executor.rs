@@ -151,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    fn fetch_preserves_late_row_and_statement_errors() {
+    fn fetch_late_errors() {
         block_on(async {
             let mut executor = TestExecutor {
                 results: vec![
@@ -180,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn execute_propagates_late_row_and_statement_errors() {
+    fn execute_late_errors() {
         block_on(async {
             for row_error in [true, false] {
                 let mut results = vec![
@@ -214,7 +214,7 @@ mod tests {
     }
 
     #[test]
-    fn execute_drains_rowsets_and_aggregates_effects() {
+    fn execute_aggregates_effects() {
         block_on(async {
             let mut executor = TestExecutor {
                 results: vec![

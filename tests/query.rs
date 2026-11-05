@@ -517,7 +517,7 @@ mod tests {
     }
 
     #[test]
-    fn owned_results_preserve_rows_and_affected() {
+    fn owned_results() {
         let results: Vec<QueryResultOwned> = vec![
             QueryResult::Affected(RowsAffected {
                 rows_affected: Some(2),
@@ -542,7 +542,7 @@ mod tests {
     }
 
     #[test]
-    fn affected_aggregation_skips_rows_and_keeps_last_known_id() {
+    fn affected_aggregation() {
         let results = [
             QueryResult::Affected(RowsAffected {
                 rows_affected: Some(2),

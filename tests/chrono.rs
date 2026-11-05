@@ -3,7 +3,7 @@ mod tests {
     use tank::AsValue;
 
     #[test]
-    fn chrono_fixed_offset_roundtrip_preserves_instant() {
+    fn chrono_fixed_offset_roundtrip() {
         for offset_secs in [0, 5 * 3600 + 30 * 60, -(4 * 3600), 45 * 60] {
             let fixed = chrono::FixedOffset::east_opt(offset_secs).unwrap();
             let naive = chrono::NaiveDate::from_ymd_opt(2025, 6, 15)
@@ -51,7 +51,7 @@ mod tests {
     }
 
     #[test]
-    fn chrono_out_of_range_does_not_panic() {
+    fn chrono_out_of_range() {
         let far = chrono::DateTime::<chrono::Utc>::from_timestamp(253_402_300_800, 0)
             .expect("Should be a valid chrono timestamp");
         let value = far.as_value();

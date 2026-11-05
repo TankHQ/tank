@@ -26,7 +26,7 @@ impl SQLitePrepared {
     pub(crate) fn new(statement: CBox<*mut sqlite3_stmt>) -> Self {
         Self {
             statement: statement.into(),
-            index: 1,
+            index: 0,
         }
     }
 
@@ -56,7 +56,7 @@ impl Prepared for SQLitePrepared {
     }
 
     fn clear_bindings(&mut self) -> Result<&mut Self> {
-        self.index = 1;
+        self.index = 0;
         unsafe {
             let rc = sqlite3_reset(self.statement());
             let error = || {
@@ -82,7 +82,8 @@ impl Prepared for SQLitePrepared {
     }
 
     fn bind_index(&mut self, v: impl AsValue, index: u64) -> Result<&mut Self> {
-        let index = index as c_int;
+        // SQLite's parameter index is 1-based.
+        let index = index as c_int + 1;
         unsafe {
             let value = v.as_value();
             let statement = self.statement();
@@ -248,7 +249,7 @@ impl Prepared for SQLitePrepared {
                 log::error!("{error:#}");
                 return Err(error);
             }
-            self.index = index as u64 + 1;
+            self.index = index as u64;
             Ok(self)
         }
     }

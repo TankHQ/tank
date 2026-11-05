@@ -73,7 +73,7 @@ mod tests {
     }
 
     #[test]
-    fn test_column_def_equality_and_hash() {
+    fn column_def_equality() {
         #[derive(Entity)]
         struct TestTable {
             id: i32,
@@ -165,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn test_primary_key_and_action_tokens() {
+    fn primary_key_action_tokens() {
         assert_eq!(
             PrimaryKeyType::PrimaryKey.to_token_stream().to_string(),
             ":: tank :: PrimaryKeyType :: PrimaryKey"

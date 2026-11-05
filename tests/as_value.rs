@@ -19,7 +19,7 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn borrowed_integer_conversions_match_owned_conversions() {
+    fn borrowed_integer_conversions() {
         fn check<T: AsValue + std::fmt::Debug + PartialEq>(values: &[Value<'_>]) {
             for value in values {
                 let owned = T::try_from_value(value.clone());
@@ -97,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn owned_string_buffers_move_through_conversions() {
+    fn owned_string_buffers_move() {
         let text = String::from("move encoding and decoding without reallocating");
         let pointer = text.as_ptr();
         let value = text.as_value();
@@ -180,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn reference_wrappers_copy_or_own_guarded_data() {
+    fn reference_wrapper_data() {
         let cell = Cell::new(42);
         assert_eq!((&cell).as_value(), Value::Int32(Some(42)));
         let text = String::from("guarded");
@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn byte_containers_keep_list_and_blob_distinct() {
+    fn byte_container_kinds() {
         let bytes = vec![1_u8, 2, 3];
         assert!(matches!((&bytes).as_value(), Value::List(..)));
         assert!(matches!(bytes.as_value(), Value::List(..)));
@@ -233,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn decoding_reference_targets_returns_clear_errors() {
+    fn reference_decode_errors() {
         fn check<T: AsValue>() {
             let error = T::try_from_value("temporary".to_string()).err().unwrap();
             assert_eq!(
@@ -263,7 +263,7 @@ mod tests {
     }
 
     #[test]
-    fn encode_only_owned_types_use_default_decoder() {
+    fn encode_only_default_decoder() {
         struct InputOnly(i32);
 
         impl AsValue for InputOnly {
@@ -291,7 +291,7 @@ mod tests {
     }
 
     #[test]
-    fn reborrow_recursively_preserves_container_payloads_and_metadata() {
+    fn reborrow_metadata() {
         fn check(original: &Value<'_>, borrowed: &Value<'_>) {
             assert_eq!(original, borrowed);
             match (original, borrowed) {
@@ -622,7 +622,7 @@ mod tests {
     }
 
     #[test]
-    fn signed_unsigned_boundaries_match_rust_tryfrom() {
+    fn signed_unsigned_boundaries() {
         macro_rules! assert_same {
             ($target:ty, $value:expr) => {{
                 let value = $value;

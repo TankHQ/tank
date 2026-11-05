@@ -832,21 +832,14 @@ mod tests {
     }
 
     #[test]
-    fn test_binary_op_as_identifier_alias() {
-        // Alias uses rhs as identifier
-        let expr = expr!(my_col as my_alias);
-        let mut ctx = Context::new(Fragment::SqlSelect, false);
-        let ident = expr.as_identifier(&mut ctx);
+    fn binary_op_identifier_alias() {
+        let ident = expr!(my_col as my_alias).as_identifier(&mut Default::default());
         assert_eq!(ident, "my_alias");
     }
 
     #[test]
-    fn test_binary_op_as_identifier_non_alias() {
-        // Non-alias renders the full expression
-        let expr = expr!(1 + 2);
-        let mut ctx = Context::new(Fragment::SqlSelect, false);
-        let ident = expr.as_identifier(&mut ctx);
-        assert_eq!(ident, "1 + 2");
+    fn binary_op_identifier_non_alias() {
+        assert_eq!(expr!(1 + 2).as_identifier(&mut Default::default()), "1 + 2");
     }
 
     #[test]
@@ -925,7 +918,7 @@ mod tests {
     }
 
     #[test]
-    fn test_default_value_type_visitor_and_precedence() {
+    fn default_value_visitor_precedence() {
         struct Count;
         impl ExpressionVisitor for Count {
             fn visit_operand(
@@ -993,7 +986,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ordered_to_tokens_and_rendering() {
+    fn ordered_tokens_rendering() {
         assert_eq!(
             Order::ASC.to_token_stream().to_string(),
             ":: tank :: Order :: ASC"

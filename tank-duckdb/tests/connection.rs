@@ -13,7 +13,7 @@ mod tests {
     static MUTEX: Mutex<()> = Mutex::new(());
 
     #[tokio::test]
-    async fn consumes_rows_incrementally_and_keeps_owned_snapshots() {
+    async fn incremental_owned_snapshots() {
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
                 .await
@@ -53,7 +53,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn late_native_fetch_error_is_observable_and_terminal() {
+    async fn late_fetch_error_terminal() {
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
                 .await
@@ -90,7 +90,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn late_extraction_error_is_not_hidden_by_outer_advance() {
+    async fn late_extraction_error_surfaced() {
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
                 .await
@@ -123,7 +123,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn outer_advance_drains_active_rows_and_preserves_statement_order() {
+    async fn outer_advance_drains_rows() {
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())
                 .await
@@ -176,7 +176,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn draining_active_rowset_propagates_native_fetch_error() {
+    async fn drain_propagates_fetch_error() {
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
                 .await
@@ -201,7 +201,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prepared_drop_reuse_and_send_iterators() {
+    async fn prepared_reuse_send_iterators() {
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())
                 .await
@@ -259,7 +259,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn statement_results_group_rows_and_distinguish_changed_counts() {
+    async fn statement_results_group_rows() {
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())
                 .await

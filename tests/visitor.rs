@@ -172,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn visitor_is_constant_lists_and_alias() {
+    fn visitor_constant_lists_alias() {
         let mut out = Default::default();
         let mut ctx = Default::default();
         assert!(expr!([1, 2, 3]).accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
