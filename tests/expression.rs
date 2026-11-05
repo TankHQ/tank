@@ -21,7 +21,7 @@ mod tests {
     const WRITER: Writer = Writer {};
 
     #[test]
-    fn test_simple_expressions() {
+    fn simple_expressions() {
         let expr = expr!();
         assert!(matches!(expr, Operand::LitBool(false)));
         let mut query = DynQuery::default();
@@ -262,7 +262,7 @@ mod tests {
     }
 
     #[test]
-    fn test_asterisk_expressions() {
+    fn asterisk_expressions() {
         let expr = expr!(COUNT(*));
         assert!(matches!(expr, Operand::Call("COUNT", _)));
         let mut query = DynQuery::default();
@@ -290,7 +290,7 @@ mod tests {
     }
 
     #[test]
-    fn test_in_with_rust_collections() {
+    fn in_with_collections() {
         let ids = [1, 2, 3, 4, 5];
         let expr = expr!(col == #ids as IN);
         assert!(matches!(
@@ -338,7 +338,7 @@ mod tests {
     }
 
     #[test]
-    fn test_question_mark_expressions() {
+    fn question_mark_expressions() {
         let expr = expr!(alpha == ? && bravo > ?);
         assert!(matches!(
             expr,
@@ -384,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn test_complex_expressions() {
+    fn complex_expressions() {
         let expr = expr!(90.5 - -0.54 * 2 < 7 / 2);
         assert!(matches!(
             expr,
@@ -509,7 +509,7 @@ mod tests {
     }
 
     #[test]
-    fn test_variables_expressions() {
+    fn variable_expressions() {
         let one = 1;
         let three = 3;
         let expr = expr!(#one + 2 == #three);
@@ -567,7 +567,7 @@ mod tests {
     }
 
     #[test]
-    fn test_columns_expressions() {
+    fn column_expressions() {
         #[derive(Entity)]
         #[tank(name = "the_table")]
         struct MyEntity {
@@ -662,7 +662,7 @@ mod tests {
     }
 
     #[test]
-    fn test_op_precedence() {
+    fn op_precedence() {
         assert!(().precedence(&WRITER) > 1000);
         assert_eq!(true.precedence(&WRITER), 0);
         assert_eq!("hello".precedence(&WRITER), 0);
@@ -687,7 +687,7 @@ mod tests {
     }
 
     #[test]
-    fn test_operand_eq() {
+    fn operand_equality() {
         assert_eq!(Operand::LitBool(true), Operand::LitBool(true));
         assert_ne!(Operand::LitBool(true), Operand::LitBool(false));
         assert_eq!(Operand::LitFloat(1.5), Operand::LitFloat(1.5));
@@ -725,46 +725,31 @@ mod tests {
     }
 
     #[test]
-    fn test_expression_unit_impl() {
-        let mut out = DynQuery::default();
+    fn scalar_expression_impls() {
         let mut ctx = Context::new(Fragment::SqlSelect, false);
+        let mut out = DynQuery::default();
         ().write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "");
-    }
-
-    #[test]
-    fn test_expression_bool_impl() {
         let mut out = DynQuery::default();
-        let mut ctx = Context::new(Fragment::SqlSelect, false);
         true.write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "true");
-    }
-
-    #[test]
-    fn test_expression_str_impl() {
         let mut out = DynQuery::default();
-        let mut ctx = Context::new(Fragment::SqlSelect, false);
         "hello".write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "'hello'");
-    }
-
-    #[test]
-    fn test_expression_value_impl() {
         let mut out = DynQuery::default();
-        let mut ctx = Context::new(Fragment::SqlSelect, false);
         Value::Int32(Some(42)).write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "42");
     }
 
     #[test]
-    fn test_expression_as_identifier() {
+    fn expression_as_identifier() {
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         let ident = Operand::LitIdent("my_col").as_identifier(&mut ctx);
         assert_eq!(ident, "my_col");
     }
 
     #[test]
-    fn test_expression_ref_delegation() {
+    fn expression_ref_delegation() {
         let op = Operand::LitInt(99);
         let mut out = DynQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelect, false);
@@ -776,7 +761,7 @@ mod tests {
     }
 
     #[test]
-    fn test_default_value_type() {
+    fn default_value_type() {
         // None
         let dvt = DefaultValueType::None;
         assert!(!dvt.is_set());
@@ -808,7 +793,7 @@ mod tests {
     }
 
     #[test]
-    fn test_unary_op_expression() {
+    fn unary_op_expression() {
         let expr = expr!(-42);
         let mut out = DynQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelect, false);
@@ -832,18 +817,15 @@ mod tests {
     }
 
     #[test]
-    fn binary_op_identifier_alias() {
+    fn binary_op_identifier() {
         let ident = expr!(my_col as my_alias).as_identifier(&mut Default::default());
         assert_eq!(ident, "my_alias");
+        let ident = expr!(1 + 2).as_identifier(&mut Default::default());
+        assert_eq!(ident, "1 + 2");
     }
 
     #[test]
-    fn binary_op_identifier_non_alias() {
-        assert_eq!(expr!(1 + 2).as_identifier(&mut Default::default()), "1 + 2");
-    }
-
-    #[test]
-    fn test_ordered_expression() {
+    fn ordered_expression() {
         let ordered = Ordered {
             expression: Operand::LitInt(1),
             order: Order::ASC,
@@ -857,7 +839,7 @@ mod tests {
     }
 
     #[test]
-    fn test_dyn_expression_ref() {
+    fn dyn_expression_ref() {
         let op = Operand::LitStr("test");
         let dyn_ref: &dyn Expression = &op;
         let mut out = DynQuery::default();
@@ -871,7 +853,7 @@ mod tests {
 
     // Tests kept from the branch that were not present on master
     #[test]
-    fn test_binary_op_to_tokens() {
+    fn binary_op_to_tokens() {
         assert_eq!(
             BinaryOpType::Addition.to_token_stream().to_string(),
             ":: tank :: BinaryOpType :: \"Addition\""
@@ -883,7 +865,7 @@ mod tests {
     }
 
     #[test]
-    fn test_current_timestamp_ms_macro() {
+    fn current_timestamp_ms_macro() {
         {
             let expr = expr!(current_timestamp_ms!());
             assert!(matches!(expr, Operand::CurrentTimestampMs));
@@ -960,7 +942,7 @@ mod tests {
     }
 
     #[test]
-    fn test_operand_debug() {
+    fn operand_debug() {
         assert_eq!(format!("{:?}", Operand::Null), "Null");
         assert_eq!(format!("{:?}", Operand::LitBool(true)), "LitBool(true)");
         assert_eq!(format!("{:?}", Operand::LitInt(3)), "LitInt(3)");
@@ -1012,7 +994,7 @@ mod tests {
     }
 
     #[test]
-    fn test_precedence_of_wrapper_expressions() {
+    fn wrapper_expression_precedence() {
         assert_eq!(String::from("x").precedence(&WRITER), 0);
         let cow: Cow<'static, str> = Cow::Borrowed("x");
         assert_eq!(cow.precedence(&WRITER), 0);
@@ -1031,7 +1013,7 @@ mod tests {
     }
 
     #[test]
-    fn test_scalar_expression_impls() {
+    fn scalar_expression_dialects() {
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         let mut render = |e: &dyn Expression| {
             let mut out = DynQuery::default();
@@ -1089,7 +1071,7 @@ mod tests {
     }
 
     #[test]
-    fn test_unary_and_ordered_visitors() {
+    fn unary_ordered_visitors() {
         struct Recorder {
             saw_unary: bool,
             saw_ordered: bool,
@@ -1139,7 +1121,7 @@ mod tests {
     }
 
     #[test]
-    fn test_utc_datetime_expression() {
+    fn utc_datetime_expression() {
         let pdt = PrimitiveDateTime::new(
             Date::from_calendar_date(2025, Month::June, 15).unwrap(),
             Time::from_hms(10, 30, 0).unwrap(),
@@ -1153,7 +1135,7 @@ mod tests {
     }
 
     #[test]
-    fn test_wrapper_expression_accept_visitor() {
+    fn wrapper_expression_visitor() {
         struct Always;
         impl ExpressionVisitor for Always {
             fn visit_operand(

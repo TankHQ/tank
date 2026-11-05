@@ -13,7 +13,7 @@ mod tests {
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
-    fn test_sql_simple_table() {
+    fn sql_simple_table() {
         #[derive(Default, Entity)]
         #[tank(name = "my_table")]
         struct Table {
@@ -102,7 +102,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sql_cart() {
+    fn sql_cart() {
         #[derive(Entity)]
         #[tank(name = "cart")]
         struct Cart {
@@ -219,7 +219,7 @@ mod tests {
     }
 
     #[test]
-    fn test_timestamptz_negative_offset() {
+    fn timestamptz_negative_offset() {
         let ts = OffsetDateTime::new_in_offset(
             Date::from_calendar_date(2025, Month::June, 15).unwrap(),
             Time::from_hms(14, 30, 0).unwrap(),

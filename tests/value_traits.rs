@@ -609,10 +609,7 @@ mod tests {
                 .unwrap(),
             Value::Uuid(Some(Uuid::nil()))
         );
-    }
 
-    #[test]
-    fn value_try_as_remaining_targets() {
         assert!(Value::Int32(Some(1)).try_as(&Value::Char(None)).is_ok());
         assert!(
             Value::Varchar(Some("hi".into()))
@@ -930,7 +927,7 @@ mod tests {
     }
 
     #[test]
-    fn value_float_hash_matches_equality() {
+    fn value_hash_consistency() {
         let mut f32_set = HashSet::new();
         f32_set.insert(Value::Float32(Some(0.0)));
         f32_set.insert(Value::Float32(Some(-0.0)));
@@ -944,10 +941,7 @@ mod tests {
         f64_set.insert(Value::Float64(Some(f64::from_bits(0x7ff8_0000_0000_0000))));
         f64_set.insert(Value::Float64(Some(f64::from_bits(0x7ff8_0000_0000_0001))));
         assert_eq!(f64_set.len(), 2);
-    }
 
-    #[test]
-    fn value_collection_hash_matches_equality() {
         let a = Value::Array(
             Some(vec![Value::Int32(Some(1))].into()),
             Box::new(CollectionType {
@@ -1010,10 +1004,7 @@ mod tests {
             }),
         );
         assert_ne!(m1, m2);
-    }
 
-    #[test]
-    fn value_map_hash_matches_equality() {
         let empty = Value::Map(
             Some(HashMap::new().into()),
             Box::new(MapType {

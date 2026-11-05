@@ -301,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn query_10() {
+    fn query_create_table() {
         #[derive(Entity)]
         struct Widget {
             id: u32,
@@ -312,23 +312,13 @@ mod tests {
         let result = sql.as_str();
         assert!(result.contains("CREATE TABLE"));
         assert!(result.contains("\"widget\""));
-    }
-
-    #[test]
-    fn query_11() {
-        #[derive(Entity)]
-        struct Widget {
-            id: u32,
-            name: String,
-        }
         let mut sql = DynQuery::default();
         WRITER.write_create_table::<Widget>(&mut sql, true);
-        let result = sql.as_str();
-        assert!(result.contains("IF NOT EXISTS"));
+        assert!(sql.as_str().contains("IF NOT EXISTS"));
     }
 
     #[test]
-    fn query_12() {
+    fn query_drop_table() {
         #[derive(Entity)]
         struct Widget {
             id: u32,
@@ -336,21 +326,13 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_drop_table::<Widget>(&mut sql, false);
         assert!(sql.as_str().contains("DROP TABLE"));
-    }
-
-    #[test]
-    fn query_13() {
-        #[derive(Entity)]
-        struct Widget {
-            id: u32,
-        }
         let mut sql = DynQuery::default();
         WRITER.write_drop_table::<Widget>(&mut sql, true);
         assert!(sql.as_str().contains("IF EXISTS"));
     }
 
     #[test]
-    fn query_14() {
+    fn query_insert() {
         #[derive(Entity)]
         struct Item {
             id: u32,
@@ -371,27 +353,13 @@ mod tests {
         let result = sql.as_str();
         assert!(result.contains("INSERT INTO"));
         assert!(result.contains("\"item\""));
-    }
-
-    #[test]
-    fn query_15() {
-        #[derive(Entity)]
-        struct Item {
-            id: u32,
-            label: String,
-        }
-        let items = vec![Item {
-            id: 1,
-            label: "x".into(),
-        }];
         let mut sql = DynQuery::default();
         WRITER.write_insert(&mut sql, &items, true);
-        let result = sql.as_str();
-        assert!(result.contains("INSERT INTO"));
+        assert!(sql.as_str().contains("INSERT INTO"));
     }
 
     #[test]
-    fn query_16() {
+    fn query_limit() {
         #[derive(Entity)]
         struct Limitable {
             x: u32,
@@ -406,21 +374,13 @@ mod tests {
                 .limit(Some(10)),
         );
         assert!(sql.as_str().contains("LIMIT 10"));
-    }
-
-    #[test]
-    fn query_17() {
-        #[derive(Entity)]
-        struct Limitable2 {
-            x: u32,
-        }
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
             &QueryBuilder::new()
-                .select(Limitable2::columns())
-                .from(Limitable2::table())
-                .order_by(cols!(Limitable2::x ASC))
+                .select(Limitable::columns())
+                .from(Limitable::table())
+                .order_by(cols!(Limitable::x ASC))
                 .limit(None),
         );
         assert!(!sql.as_str().contains("LIMIT"));
@@ -455,49 +415,33 @@ mod tests {
     }
 
     #[test]
-    fn query_19() {
+    fn query_builder_getters() {
         #[derive(Entity)]
         struct Foo {
             id: u32,
         }
-        let ct = QueryBuilder::new().create_table::<Foo>();
-        assert!(!ct.get_not_exists());
-        let ct2 = QueryBuilder::new().create_table::<Foo>().if_not_exists();
-        assert!(ct2.get_not_exists());
-
-        let dt = QueryBuilder::new().drop_table::<Foo>();
-        assert!(!dt.get_exists());
-        let dt2 = QueryBuilder::new().drop_table::<Foo>().if_exists();
-        assert!(dt2.get_exists());
-    }
-
-    #[test]
-    fn query_20() {
-        #[derive(Entity)]
-        struct Bar {
-            val: u32,
-        }
-        let rows = vec![Bar { val: 1 }];
-        let query = QueryBuilder::new().insert_into().values(&rows);
-        assert!(!query.get_update());
-    }
-
-    #[test]
-    fn query_21() {
-        let mut q = DynQuery::default();
-        let _ = q.write_str("SELECT 1");
-        let s: String = q.into();
-        assert_eq!(s, "SELECT 1");
-    }
-
-    #[test]
-    fn query_22() {
-        let rq = RawQuery("SELECT * FROM t".to_string());
-        assert_eq!(format!("{rq}"), "SELECT * FROM t");
+        assert!(!QueryBuilder::new().create_table::<Foo>().get_not_exists());
+        assert!(
+            QueryBuilder::new()
+                .create_table::<Foo>()
+                .if_not_exists()
+                .get_not_exists()
+        );
+        assert!(!QueryBuilder::new().drop_table::<Foo>().get_exists());
+        assert!(
+            QueryBuilder::new()
+                .drop_table::<Foo>()
+                .if_exists()
+                .get_exists()
+        );
+        let rows = vec![Foo { id: 1 }];
+        assert!(!QueryBuilder::new().insert_into().values(&rows).get_update());
     }
 
     #[test]
     fn raw_query_helpers() {
+        let mut rq = RawQuery("SELECT * FROM t".to_string());
+        assert_eq!(format!("{rq}"), "SELECT * FROM t");
         let mut rq = RawQuery("SELECT ?".to_string());
         assert_eq!(rq.0, "SELECT ?");
         rq.0.clear();
@@ -505,6 +449,11 @@ mod tests {
 
         let rq = RawQuery("hello".to_string());
         assert_eq!(rq.0, "hello");
+
+        let mut q = DynQuery::default();
+        let _ = q.write_str("SELECT 1");
+        let s: String = q.into();
+        assert_eq!(s, "SELECT 1");
 
         let row = tank::RowOwned::default();
         let QueryResult::Row(_row) = QueryResult::Row(row) else {

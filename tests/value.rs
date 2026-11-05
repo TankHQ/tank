@@ -2221,7 +2221,7 @@ mod as_value_tests {
     }
 
     #[test]
-    fn integer_from_json() {
+    fn integer_from_json_and_text() {
         assert_eq!(
             i32::try_from_value(Value::Json(Some(serde_json::json!(42)))).unwrap(),
             42
@@ -2234,10 +2234,6 @@ mod as_value_tests {
             i32::try_from_value(Value::Json(Some(serde_json::json!(5.0)))).unwrap(),
             5
         );
-    }
-
-    #[test]
-    fn integer_from_varchar_and_unknown() {
         assert_eq!(
             i32::try_from_value(Value::Varchar(Some("42".into()))).unwrap(),
             42
@@ -2246,10 +2242,6 @@ mod as_value_tests {
             i32::try_from_value(Value::Unknown(Some("99".into()))).unwrap(),
             99
         );
-    }
-
-    #[test]
-    fn integer_from_float64() {
         assert_eq!(i32::try_from_value(Value::Float64(Some(10.0))).unwrap(), 10);
         assert!(i32::try_from_value(Value::Float64(Some(10.5))).is_err());
     }
@@ -2382,30 +2374,16 @@ mod as_value_tests {
     }
 
     #[test]
-    fn date_parse() {
+    fn temporal_parse() {
         let d = <time::Date as AsValue>::parse("2024-06-15").unwrap();
         assert_eq!(
             d,
             time::Date::from_calendar_date(2024, time::Month::June, 15).unwrap()
         );
-    }
-
-    #[test]
-    fn time_parse() {
         let t = <time::Time as AsValue>::parse("14:30:00").unwrap();
         assert_eq!(t, time::Time::from_hms(14, 30, 0).unwrap());
-    }
-
-    #[test]
-    fn timestamp_parse() {
         let ts = <time::PrimitiveDateTime as AsValue>::parse("2024-06-15T14:30:00").unwrap();
-        let d = time::Date::from_calendar_date(2024, time::Month::June, 15).unwrap();
-        let t = time::Time::from_hms(14, 30, 0).unwrap();
         assert_eq!(ts, time::PrimitiveDateTime::new(d, t));
-    }
-
-    #[test]
-    fn offset_datetime_parse() {
         let odt = <time::OffsetDateTime as AsValue>::parse("2024-06-15T14:30:00+05:00").unwrap();
         assert_eq!(odt.offset().whole_hours(), 5);
     }
@@ -2420,32 +2398,20 @@ mod as_value_tests {
     }
 
     #[test]
-    fn time_from_interval() {
+    fn temporal_from_value() {
         let t = time::Time::try_from_value(Value::Interval(Some(
             Interval::from_hours(2) + Interval::from_mins(30),
         )))
         .unwrap();
         assert_eq!(t, time::Time::from_hms(2, 30, 0).unwrap());
-    }
-
-    #[test]
-    fn date_from_timestamp() {
         let d = time::Date::from_calendar_date(2024, time::Month::January, 1).unwrap();
-        let t = time::Time::MIDNIGHT;
-        let ts = time::PrimitiveDateTime::new(d, t);
-        let result = time::Date::try_from_value(Value::Timestamp(Some(ts))).unwrap();
-        assert_eq!(result, d);
-
-        let t2 = time::Time::from_hms(12, 0, 0).unwrap();
-        let ts2 = time::PrimitiveDateTime::new(d, t2);
-        assert!(time::Date::try_from_value(Value::Timestamp(Some(ts2))).is_err());
-    }
-
-    #[test]
-    fn offset_datetime_from_timestamp() {
-        let d = time::Date::from_calendar_date(2024, time::Month::January, 1).unwrap();
-        let t = time::Time::from_hms(12, 0, 0).unwrap();
-        let ts = time::PrimitiveDateTime::new(d, t);
+        let ts = time::PrimitiveDateTime::new(d, time::Time::MIDNIGHT);
+        assert_eq!(
+            time::Date::try_from_value(Value::Timestamp(Some(ts))).unwrap(),
+            d
+        );
+        let ts = time::PrimitiveDateTime::new(d, time::Time::from_hms(12, 0, 0).unwrap());
+        assert!(time::Date::try_from_value(Value::Timestamp(Some(ts))).is_err());
         let odt = time::OffsetDateTime::try_from_value(Value::Timestamp(Some(ts))).unwrap();
         assert_eq!(odt.date(), d);
     }

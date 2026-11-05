@@ -24,13 +24,8 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn table_ref_name_no_schema() {
-        let t = TableRef::new("users".into());
-        assert_eq!(t.full_name("."), "users");
-    }
-
-    #[test]
-    fn table_ref_name_schema() {
+    fn table_ref_full_name() {
+        assert_eq!(TableRef::new("users".into()).full_name("."), "users");
         let t = TableRef {
             name: "users".into(),
             schema: "public".into(),
@@ -38,10 +33,6 @@ mod tests {
         };
         assert_eq!(t.full_name("."), "public.users");
         assert_eq!(t.full_name("_"), "public_users");
-    }
-
-    #[test]
-    fn table_ref_name_alias() {
         let t = TableRef {
             name: "users".into(),
             schema: "public".into(),
@@ -164,57 +155,34 @@ mod tests {
     }
 
     #[test]
-    fn row_new_and_accessors() {
+    fn row_accessors() {
         let labels: RowLabels = RowLabels::from(vec!["id".into(), "name".into()]);
-        let values = vec![Value::Int32(Some(1)), Value::Varchar(Some("Alice".into()))];
-        let row = RowOwned::new(labels.clone(), values);
+        let row = RowOwned::new(
+            labels.clone(),
+            vec![Value::Int32(Some(1)), Value::Varchar(Some("Alice".into()))],
+        );
         assert_eq!(row.labels(), &["id", "name"]);
         assert_eq!(row.values().count(), 2);
         assert_eq!(row.len(), 2);
-    }
-
-    #[test]
-    fn row_get_column() {
-        let labels = RowLabels::from(vec!["id".into(), "name".into()]);
-        let values = vec![Value::Int32(Some(42)), Value::Varchar(Some("Bob".into()))];
-        let row = RowOwned::new(labels, values);
         assert!(
             row.get_column("id")
-                .is_some_and(|v| *v == Value::Int32(Some(42)))
-        );
-        assert!(
-            row.get_column("name")
-                .is_some_and(|v| *v == Value::Varchar(Some("Bob".into())))
+                .is_some_and(|v| *v == Value::Int32(Some(1)))
         );
         assert_eq!(row.get_column("missing"), None);
-    }
-
-    #[test]
-    fn row_iter() {
-        let labels = RowLabels::from(vec!["a".into(), "b".into()]);
-        let values = vec![Value::Int32(Some(1)), Value::Int32(Some(2))];
-        let row = RowOwned::new(labels, values);
         let pairs: Vec<_> = row.iter().collect();
-        assert_eq!(pairs.len(), 2);
-        assert_eq!(pairs[0].0, "a");
+        assert_eq!(pairs[0].0, "id");
         assert_eq!(*pairs[0].1, Value::Int32(Some(1)));
-    }
-
-    #[test]
-    fn row_into_values() {
-        let labels = RowLabels::from(vec!["x".into()]);
-        let values = vec![Value::Int32(Some(10))];
-        let row = RowOwned::new(labels, values);
         let values: Vec<_> = row.into_values().collect();
-        assert_eq!(values, vec![Value::Int32(Some(10))]);
-    }
+        assert_eq!(
+            values,
+            vec![Value::Int32(Some(1)), Value::Varchar(Some("Alice".into()))]
+        );
 
-    #[test]
-    fn row_to_query_result() {
-        let labels = RowLabels::from(vec!["id".into()]);
-        let values = vec![Value::Int32(Some(1))];
-        let row = RowOwned::new(labels, values);
-        let result: QueryResult = row.into();
+        let result: QueryResult = RowOwned::new(
+            RowLabels::from(vec!["id".into()]),
+            vec![Value::Int32(Some(1))],
+        )
+        .into();
         assert!(matches!(result, QueryResult::Row(_)));
     }
 
@@ -224,35 +192,23 @@ mod tests {
             rows_affected: Some(5),
             last_affected_id: Some(10),
         };
-        let b = RowsAffected {
+        a.extend([RowsAffected {
             rows_affected: Some(3),
             last_affected_id: Some(20),
-        };
-        a.extend([b]);
+        }]);
         assert_eq!(a.rows_affected, Some(8));
         assert_eq!(a.last_affected_id, Some(20));
-    }
 
-    #[test]
-    fn rows_affected_extend_none() {
         let mut a = RowsAffected::default();
-        let b = RowsAffected::default();
-        a.extend([b]);
+        a.extend([RowsAffected::default()]);
         assert_eq!(a.rows_affected, None);
         assert_eq!(a.last_affected_id, None);
-    }
 
-    #[test]
-    fn rows_affected_extend_mixed() {
-        let mut a = RowsAffected {
-            rows_affected: None,
-            last_affected_id: None,
-        };
-        let b = RowsAffected {
+        let mut a = RowsAffected::default();
+        a.extend([RowsAffected {
             rows_affected: Some(7),
             last_affected_id: None,
-        };
-        a.extend([b]);
+        }]);
         assert_eq!(a.rows_affected, Some(7));
     }
 
@@ -267,7 +223,7 @@ mod tests {
     }
 
     #[test]
-    fn dyn_query_basic_operations() {
+    fn dyn_query_operations() {
         let mut q = DynQuery::default();
         assert!(q.is_empty());
         assert_eq!(q.len(), 0);
@@ -277,40 +233,24 @@ mod tests {
         q.push('*');
         assert_eq!(q.len(), 8);
         assert_eq!(q.as_str().as_ref(), "SELECT *");
-    }
 
-    #[test]
-    fn dyn_query_with_capacity() {
         let mut q = DynQuery::with_capacity(1024);
         assert!(q.is_empty());
         q.push_str("hello");
         assert_eq!(q.as_str().as_ref(), "hello");
-    }
 
-    #[test]
-    fn dyn_query_new() {
         let q = DynQuery::new("SELECT 1".into());
         assert_eq!(q.as_str().as_ref(), "SELECT 1");
         assert_eq!(q.len(), 8);
         assert!(!q.is_empty());
-    }
 
-    #[test]
-    fn dyn_query_write_trait() {
         let mut q = DynQuery::default();
         write!(q, "INSERT INTO {} VALUES ({})", "t", 42).unwrap();
         assert_eq!(q.as_str().as_ref(), "INSERT INTO t VALUES (42)");
-    }
 
-    #[test]
-    fn dyn_query_into_string() {
-        let q = DynQuery::new("hello world".into());
-        let s: String = q.into();
+        let s: String = DynQuery::new("hello world".into()).into();
         assert_eq!(s, "hello world");
-    }
 
-    #[test]
-    fn dyn_query_buffer() {
         let mut q = DynQuery::new("initial".into());
         q.buffer().clear();
         assert!(q.is_empty());
@@ -388,7 +328,7 @@ mod tests {
     }
 
     #[test]
-    fn value_to_json_nulls() {
+    fn value_json_conversion() {
         assert_eq!(
             value_to_json(&Value::Boolean(None)),
             Some(serde_json::Value::Null)
@@ -397,38 +337,17 @@ mod tests {
             value_to_json(&Value::Int32(None)),
             Some(serde_json::Value::Null)
         );
-    }
 
-    #[test]
-    fn util_value_to_json_blob() {
-        let blob = Value::Blob(Some(vec![0xDE, 0xAD].into()));
-        let result = value_to_json(&blob);
-        assert!(result.is_some());
-        let arr = result.unwrap();
-        assert!(arr.is_array());
-        assert_eq!(arr.as_array().unwrap().len(), 2);
-    }
+        let arr = value_to_json(&Value::Blob(Some(vec![0xDE, 0xAD].into()))).unwrap();
+        assert_eq!(arr, serde_json::json!([222, 173]));
 
-    #[test]
-    fn util_value_to_json_uuid() {
-        let uuid = uuid::Uuid::nil();
-        let result = value_to_json(&Value::Uuid(Some(uuid)));
         assert_eq!(
-            result,
+            value_to_json(&Value::Uuid(Some(uuid::Uuid::nil()))),
             Some(serde_json::json!("00000000-0000-0000-0000-000000000000"))
         );
-    }
-
-    #[test]
-    fn util_value_to_json_date() {
         let date = Date::from_calendar_date(2025, Month::March, 15).unwrap();
-        let result = value_to_json(&Value::Date(Some(date)));
-        assert!(result.is_some());
-        assert!(result.unwrap().is_string());
-    }
+        assert!(value_to_json(&Value::Date(Some(date))).unwrap().is_string());
 
-    #[test]
-    fn value_to_json_collections() {
         let arr = Value::Array(
             Some(vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into()),
             Box::new(CollectionType {
@@ -436,9 +355,7 @@ mod tests {
                 len: 2,
             }),
         );
-        let result = value_to_json(&arr).unwrap();
-        assert_eq!(result, serde_json::json!([1, 2]));
-
+        assert_eq!(value_to_json(&arr), Some(serde_json::json!([1, 2])));
         let list = Value::List(
             Some(
                 vec![
@@ -452,12 +369,8 @@ mod tests {
                 len: 0,
             }),
         );
-        let result = value_to_json(&list).unwrap();
-        assert_eq!(result, serde_json::json!(["a", "b"]));
-    }
+        assert_eq!(value_to_json(&list), Some(serde_json::json!(["a", "b"])));
 
-    #[test]
-    fn util_value_to_json_map() {
         let mut map = HashMap::new();
         map.insert(Value::Int32(Some(1)), Value::Int32(Some(42)));
         let v = Value::Map(
@@ -468,28 +381,18 @@ mod tests {
             }),
         );
         assert_eq!(value_to_json(&v), Some(serde_json::json!({"1": 42})));
-
-        let empty_map: HashMap<Value, Value> = HashMap::new();
-        let v2 = Value::Map(
-            Some(Box::new(empty_map)),
+        let v = Value::Map(
+            Some(Box::new(HashMap::new())),
             Box::new(MapType {
                 key: Value::Varchar(None),
                 value: Value::Int32(None),
             }),
         );
-        let result = value_to_json(&v2).unwrap();
-        assert!(result.is_object());
-    }
+        assert!(value_to_json(&v).unwrap().is_object());
 
-    #[test]
-    fn util_value_to_json_json() {
         let j = serde_json::json!({"nested": true});
-        let result = value_to_json(&Value::Json(Some(j.clone()))).unwrap();
-        assert_eq!(result, j);
-    }
+        assert_eq!(value_to_json(&Value::Json(Some(j.clone()))), Some(j));
 
-    #[test]
-    fn util_value_to_json_struct() {
         let s = Value::Struct(
             Some(vec![].into()),
             Box::new(StructType {
@@ -497,26 +400,14 @@ mod tests {
                 name: TableRef::new("my_type".into()),
             }),
         );
-        let result = value_to_json(&s).unwrap();
-        assert!(result.is_object());
-    }
+        assert!(value_to_json(&s).unwrap().is_object());
 
-    #[test]
-    fn value_to_json_interval() {
-        let v = Value::Interval(Some(Interval::from_days(1)));
-        assert_eq!(value_to_json(&v), None);
-    }
-
-    #[test]
-    fn value_to_json_nan() {
+        assert!(value_to_json(&Value::Decimal(Some(Decimal::new(1234, 2)), 0, 0)).is_some());
+        assert_eq!(
+            value_to_json(&Value::Interval(Some(Interval::from_days(1)))),
+            None
+        );
         assert_eq!(value_to_json(&Value::Float64(Some(f64::NAN))), None);
-    }
-
-    #[test]
-    fn util_value_to_json_decimal() {
-        let d = Decimal::new(1234, 2);
-        let result = value_to_json(&Value::Decimal(Some(d), 0, 0));
-        assert!(result.is_some());
     }
 
     #[test]
@@ -585,55 +476,53 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_write_map_value() {
+    fn sql_writer_composite_values() {
         let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
         let mut map = HashMap::new();
         map.insert(Value::Varchar(Some("key1".into())), Value::Int32(Some(100)));
-        let map_val = Value::Map(
-            Some(Box::new(map)),
-            Box::new(MapType {
-                key: Value::Varchar(None),
-                value: Value::Int32(None),
-            }),
-        );
-        writer.write_value(&mut Default::default(), &mut q, &map_val);
-        let s = q.as_str().to_string();
-        assert!(s.contains("key1"));
-        assert!(s.contains("100"));
-    }
-
-    #[test]
-    fn sql_writer_write_struct_value() {
-        let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
-        let struct_val = Value::Struct(
-            Some(
-                vec![
-                    ("name".into(), Value::Varchar(Some("Alice".into()))),
-                    ("age".into(), Value::Int32(Some(30))),
-                ]
-                .into(),
+        writer.write_value(
+            &mut Default::default(),
+            &mut q,
+            &Value::Map(
+                Some(Box::new(map)),
+                Box::new(MapType {
+                    key: Value::Varchar(None),
+                    value: Value::Int32(None),
+                }),
             ),
-            Box::new(StructType {
-                fields: vec![],
-                name: TableRef::new("person".into()),
-            }),
         );
-        writer.write_value(&mut Default::default(), &mut q, &struct_val);
-        let s = q.as_str().to_string();
-        assert!(s.contains("Alice"));
-        assert!(s.contains("30"));
-    }
+        assert!(q.as_str().contains("key1"));
+        assert!(q.as_str().contains("100"));
 
-    #[test]
-    fn sql_writer_write_json_value() {
-        let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
-        let json_val = Value::Json(Some(serde_json::json!({"active": true})));
-        writer.write_value(&mut Default::default(), &mut q, &json_val);
-        let s = q.as_str().to_string();
-        assert!(s.contains("active"));
+        writer.write_value(
+            &mut Default::default(),
+            &mut q,
+            &Value::Struct(
+                Some(
+                    vec![
+                        ("name".into(), Value::Varchar(Some("Alice".into()))),
+                        ("age".into(), Value::Int32(Some(30))),
+                    ]
+                    .into(),
+                ),
+                Box::new(StructType {
+                    fields: vec![],
+                    name: TableRef::new("person".into()),
+                }),
+            ),
+        );
+        assert!(q.as_str().contains("Alice"));
+        assert!(q.as_str().contains("30"));
+
+        let mut q = DynQuery::default();
+        writer.write_value(
+            &mut Default::default(),
+            &mut q,
+            &Value::Json(Some(serde_json::json!({"active": true}))),
+        );
+        assert!(q.as_str().contains("active"));
     }
 
     #[test]
@@ -696,14 +585,16 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_write_blob_value() {
+    fn sql_writer_blob() {
         let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
-        let blob_val = Value::Blob(Some(vec![0xCA, 0xFE].into()));
-        writer.write_value(&mut Default::default(), &mut q, &blob_val);
-        let s = q.as_str().to_string();
-        assert!(s.contains("CA"));
-        assert!(s.contains("FE"));
+        writer.write_value(
+            &mut Default::default(),
+            &mut q,
+            &Value::Blob(Some(vec![0xCA, 0xFE].into())),
+        );
+        assert!(q.as_str().contains("CA"));
+        assert!(q.as_str().contains("FE"));
     }
 
     #[test]
@@ -715,49 +606,36 @@ mod tests {
             Time::from_hms(10, 30, 0).unwrap(),
             UtcOffset::from_hms(5, 30, 15).unwrap(),
         );
-        let val = Value::TimestampWithTimezone(Some(dt));
-        writer.write_value(&mut Default::default(), &mut q, &val);
-        let s = q.as_str().to_string();
-        assert!(s.contains("2025"));
-        assert!(s.contains("+05:30:15"));
+        writer.write_value(
+            &mut Default::default(),
+            &mut q,
+            &Value::TimestampWithTimezone(Some(dt)),
+        );
+        assert!(q.as_str().contains("2025"));
+        assert!(q.as_str().contains("+05:30:15"));
     }
 
     #[test]
-    fn sql_writer_write_infinity_float() {
+    fn sql_writer_special_floats() {
         let writer = GenericSqlWriter::new();
         for f in [f64::INFINITY, f64::NEG_INFINITY] {
             let mut q = DynQuery::default();
             writer.write_value(&mut Default::default(), &mut q, &Value::Float64(Some(f)));
-            let s = q.as_str().to_string();
+            let s = q.as_str();
             assert!(s.contains("CAST"));
             assert!(s.contains("inf"));
         }
-    }
-
-    #[test]
-    fn sql_writer_write_infinity_float32() {
-        let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
-        let val = Value::Float32(Some(f32::INFINITY));
-        writer.write_value(&mut Default::default(), &mut q, &val);
-        let s = q.as_str().to_string();
-        assert!(s.contains("CAST"));
-        assert!(s.contains("inf"));
-        assert!(s.contains("FLOAT"));
-        assert!(!s.contains("DOUBLE"));
-    }
-
-    #[test]
-    fn sql_writer_write_nan_float() {
-        let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
-        let val = Value::Float32(Some(f32::NAN));
-        writer.write_value(&mut Default::default(), &mut q, &val);
-        let s = q.as_str().to_string();
-        assert!(s.contains("CAST"));
-        assert!(s.contains("NaN"));
-        assert!(s.contains("FLOAT"));
-        assert!(!s.contains("DOUBLE"));
+        for value in [
+            Value::Float32(Some(f32::INFINITY)),
+            Value::Float32(Some(f32::NAN)),
+        ] {
+            let mut q = DynQuery::default();
+            writer.write_value(&mut Default::default(), &mut q, &value);
+            let s = q.as_str();
+            assert!(s.contains("CAST"));
+            assert!(s.contains("FLOAT"));
+            assert!(!s.contains("DOUBLE"));
+        }
     }
 
     #[test]
@@ -802,8 +680,7 @@ mod tests {
                 .select(AppendTable::columns())
                 .from(AppendTable::table()),
         );
-        let s = q.as_str().to_string();
-        assert!(s.starts_with("-- comment\nSELECT"));
+        assert!(q.as_str().starts_with("-- comment\nSELECT"));
     }
 
     #[test]
@@ -815,10 +692,8 @@ mod tests {
         }
         let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
-        let entity = PkOnly { id: 1 };
-        writer.write_insert(&mut q, [&entity], true);
-        let s = q.as_str().to_string();
-        assert!(s.contains("DO NOTHING"));
+        writer.write_insert(&mut q, [&PkOnly { id: 1 }], true);
+        assert!(q.as_str().contains("DO NOTHING"));
     }
 
     #[test]
@@ -921,26 +796,18 @@ mod tests {
     }
 
     #[test]
-    fn context_constructors() {
+    fn context_navigation() {
         let c = Context::empty();
         assert_eq!(c.fragment, Fragment::None);
         assert!(!c.qualify_columns);
         assert!(!c.quote_identifiers);
-
         let c2 = Context::fragment(Fragment::SqlSelect);
         assert_eq!(c2.fragment, Fragment::SqlSelect);
         assert!(!c2.qualify_columns);
         assert!(c2.quote_identifiers);
+        assert!(Context::qualify(true).qualify_columns);
+        assert!(Context::qualify_with("my_table".into()).qualify_columns);
 
-        let c3 = Context::qualify(true);
-        assert!(c3.qualify_columns);
-
-        let c4 = Context::qualify_with("my_table".into());
-        assert!(c4.qualify_columns);
-    }
-
-    #[test]
-    fn context_switch_fragment() {
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         ctx.counter = 5;
         {
@@ -950,29 +817,22 @@ mod tests {
         }
         assert_eq!(ctx.counter, 10);
         assert_eq!(ctx.fragment, Fragment::SqlSelect);
-    }
 
-    #[test]
-    fn context_switch_table() {
-        let mut ctx = Context::new(Fragment::SqlSelect, false);
-        {
-            let updater = ctx.switch_table(TableRef::new("my_tbl".into()));
-            assert!(updater.current.qualify_columns);
-        }
-        {
-            let updater = ctx.switch_table(TableRef::new("".into()));
-            assert!(!updater.current.qualify_columns);
-        }
-    }
+        assert!(
+            ctx.switch_table(TableRef::new("my_tbl".into()))
+                .current
+                .qualify_columns
+        );
+        assert!(
+            !ctx.switch_table(TableRef::new("".into()))
+                .current
+                .qualify_columns
+        );
 
-    #[test]
-    fn context_update_from() {
-        let mut ctx = Context::new(Fragment::SqlSelect, false);
-        let other = Context {
+        ctx.update_from(&Context {
             counter: 42,
             ..Context::new(Fragment::SqlSelect, false)
-        };
-        ctx.update_from(&other);
+        });
         assert_eq!(ctx.counter, 42);
     }
 

@@ -31,7 +31,7 @@ mod tests {
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
-    fn test_simple_entity() {
+    fn simple_entity_metadata() {
         assert!(matches!(
             SomeSimpleEntity::table(),
             TableRef {
@@ -82,7 +82,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simple_entity_create_table() {
+    fn simple_entity_sql() {
         let mut query = DynQuery::default();
         WRITER.write_create_table::<SomeSimpleEntity>(&mut query, false);
         assert_eq!(
@@ -98,17 +98,9 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_simple_entity_drop_table() {
         let mut query = DynQuery::default();
         WRITER.write_drop_table::<SomeSimpleEntity>(&mut query, true);
         assert_eq!(query.as_str(), r#"DROP TABLE IF EXISTS "simple_entity";"#);
-    }
-
-    #[test]
-    fn test_simple_entity_select() {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
@@ -128,10 +120,6 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_simple_entity_insert() {
         let mut query = DynQuery::default();
         WRITER.write_insert(&mut query, [&SomeSimpleEntity::make_some()], true);
         assert_eq!(
@@ -142,10 +130,6 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_simple_entity_delete() {
         let mut query = DynQuery::default();
         WRITER.write_delete::<SomeSimpleEntity>(&mut query, expr!(SomeSimpleEntity::b != "hello"));
         assert_eq!(

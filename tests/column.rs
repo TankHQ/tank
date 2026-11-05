@@ -8,7 +8,7 @@ mod tests {
     };
 
     #[test]
-    fn test_column_conversions() {
+    fn column_conversions() {
         #[derive(Entity)]
         #[tank(schema = "the_schema", name = "my_table")]
         struct Entity {
@@ -33,43 +33,16 @@ mod tests {
     }
 
     #[test]
-    fn test_column_ref_table() {
-        let col = ColumnRef {
+    fn column_ref_table() {
+        let table = ColumnRef {
             name: "id".into(),
             table: "users".into(),
             schema: "public".into(),
-        };
-        let table = col.table();
+        }
+        .table();
         assert_eq!(table.name, "users");
         assert_eq!(table.schema, "public");
         assert_eq!(table.alias, "");
-    }
-
-    #[test]
-    fn test_column_default_types() {
-        #[derive(Entity)]
-        struct Defaults {
-            #[tank(default = 0)]
-            a: i64,
-            #[tank(default = 1.5)]
-            b: f64,
-            #[tank(default = 'x')]
-            c: char,
-        }
-
-        let columns = Defaults::columns();
-        assert!(matches!(
-            columns[0].default,
-            tank::DefaultValueType::Value(tank::Value::Int64(Some(0)))
-        ));
-        assert!(matches!(
-            columns[1].default,
-            tank::DefaultValueType::Value(tank::Value::Float64(Some(v))) if v == 1.5
-        ));
-        assert!(matches!(
-            columns[2].default,
-            tank::DefaultValueType::Value(tank::Value::Char(Some('x')))
-        ));
     }
 
     #[test]
@@ -91,7 +64,30 @@ mod tests {
     }
 
     #[test]
-    fn test_default_value_type() {
+    fn default_value_type() {
+        #[derive(Entity)]
+        struct Defaults {
+            #[tank(default = 0)]
+            a: i64,
+            #[tank(default = 1.5)]
+            b: f64,
+            #[tank(default = 'x')]
+            c: char,
+        }
+        let columns = Defaults::columns();
+        assert!(matches!(
+            columns[0].default,
+            DefaultValueType::Value(Value::Int64(Some(0)))
+        ));
+        assert!(matches!(
+            columns[1].default,
+            DefaultValueType::Value(Value::Float64(Some(v))) if v == 1.5
+        ));
+        assert!(matches!(
+            columns[2].default,
+            DefaultValueType::Value(Value::Char(Some('x')))
+        ));
+
         let writer = GenericSqlWriter::new();
 
         let none = DefaultValueType::None;
@@ -141,7 +137,7 @@ mod tests {
     }
 
     #[test]
-    fn test_column_accepts_visitor() {
+    fn column_accepts_visitor() {
         #[derive(Entity)]
         struct VTable {
             id: i32,
@@ -203,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn test_entity_row() {
+    fn entity_row() {
         #[derive(Entity)]
         struct RTable {
             id: i32,

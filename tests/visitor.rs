@@ -18,21 +18,15 @@ mod tests {
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
-    fn visitor_is_true() {
+    fn visitor_boolean() {
         let mut out = Default::default();
         let mut ctx = Default::default();
-        let error = expr!(true);
-        assert!(error.accept_visitor(&mut IsTrue, &WRITER, &mut ctx, &mut out));
+        let e = expr!(true);
+        assert!(e.accept_visitor(&mut IsTrue, &WRITER, &mut ctx, &mut out));
         let e = expr!(false);
         assert!(!e.accept_visitor(&mut IsTrue, &WRITER, &mut ctx, &mut out));
         let e = expr!(42);
         assert!(!e.accept_visitor(&mut IsTrue, &WRITER, &mut ctx, &mut out));
-    }
-
-    #[test]
-    fn visitor_is_false() {
-        let mut out = Default::default();
-        let mut ctx = Default::default();
         let e = expr!(false);
         assert!(e.accept_visitor(&mut IsFalse, &WRITER, &mut ctx, &mut out));
         let e = expr!(true);
@@ -56,6 +50,15 @@ mod tests {
         // Column reference is not constant
         let e = expr!(Table::col_a);
         assert!(!e.accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
+        assert!(expr!([1, 2, 3]).accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
+        assert!(expr!((1, 2)).accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
+        assert!(!expr!([alpha, bravo]).accept_visitor(
+            &mut IsConstant,
+            &WRITER,
+            &mut ctx,
+            &mut out
+        ));
+        assert!(expr!(true as total).accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
     }
 
     #[test]
@@ -80,22 +83,22 @@ mod tests {
         assert!(!e.accept_visitor(&mut IsAggregateFunction, &WRITER, &mut ctx, &mut out));
         let e = expr!(42);
         assert!(!e.accept_visitor(&mut IsAggregateFunction, &WRITER, &mut ctx, &mut out));
+        assert!(expr!(COUNT(*) as n).accept_visitor(
+            &mut IsAggregateFunction,
+            &WRITER,
+            &mut ctx,
+            &mut out
+        ));
     }
 
     #[test]
-    fn visitor_is_asterisk() {
+    fn visitor_markers() {
         let mut out = Default::default();
         let mut ctx = Default::default();
         let e = expr!(*);
         assert!(e.accept_visitor(&mut IsAsterisk, &WRITER, &mut ctx, &mut out));
         let e = expr!(42);
         assert!(!e.accept_visitor(&mut IsAsterisk, &WRITER, &mut ctx, &mut out));
-    }
-
-    #[test]
-    fn visitor_is_question_mark() {
-        let mut out = Default::default();
-        let mut ctx = Default::default();
         let e = expr!(?);
         assert!(e.accept_visitor(&mut IsQuestionMark, &WRITER, &mut ctx, &mut out));
         let e = expr!(42);
@@ -169,28 +172,6 @@ mod tests {
         assert!(dyn_ref.accept_visitor(&mut IsTrue, &WRITER, &mut ctx, &mut out));
         let boxed_arc = Arc::new(expr!(false));
         assert!(boxed_arc.accept_visitor(&mut IsFalse, &WRITER, &mut ctx, &mut out));
-    }
-
-    #[test]
-    fn visitor_constant_lists_alias() {
-        let mut out = Default::default();
-        let mut ctx = Default::default();
-        assert!(expr!([1, 2, 3]).accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
-        assert!(expr!((1, 2)).accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
-        assert!(!expr!([alpha, bravo]).accept_visitor(
-            &mut IsConstant,
-            &WRITER,
-            &mut ctx,
-            &mut out
-        ));
-
-        assert!(expr!(true as total).accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
-        assert!(expr!(COUNT(*) as n).accept_visitor(
-            &mut IsAggregateFunction,
-            &WRITER,
-            &mut ctx,
-            &mut out
-        ));
     }
 
     #[test]

@@ -39,7 +39,7 @@ mod tests {
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
-    fn test_product() {
+    fn product_metadata() {
         assert!(matches!(
             Product::table(),
             TableRef {
@@ -127,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn test_product_create_table() {
+    fn product_sql() {
         let mut query = DynQuery::default();
         WRITER.write_create_table::<Product>(&mut query, false);
         assert_eq!(
@@ -143,10 +143,6 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_product_insert() {
         let mut query = DynQuery::default();
         WRITER.write_insert(&mut query, [&Product::sample()], false);
         assert_eq!(
@@ -157,10 +153,6 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_product_insert_multiple() {
         let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,

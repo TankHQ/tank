@@ -529,10 +529,15 @@ mod tests {
             i32::try_from_value(Value::Json(Some(serde_json::json!(5.0)))).unwrap(),
             5
         );
-    }
-
-    #[test]
-    fn integer_from_json_boundary() {
+        assert!(i8::try_from_value(Value::Json(Some(serde_json::json!(1000)))).is_err());
+        assert_eq!(
+            i8::try_from_value(Value::Json(Some(serde_json::json!(-128)))).unwrap(),
+            -128
+        );
+        assert_eq!(
+            i16::try_from_value(Value::Json(Some(serde_json::json!("300")))).unwrap(),
+            300
+        );
         let json =
             |f: f64| serde_json::Value::Number(serde_json::Number::from_f64(f).unwrap()).as_value();
         assert!(i64::try_from_value(json(9_223_372_036_854_775_808.0)).is_err());
@@ -551,7 +556,7 @@ mod tests {
     }
 
     #[test]
-    fn integer_from_varchar_and_unknown() {
+    fn integer_from_text_and_float() {
         assert_eq!(
             i32::try_from_value(Value::Varchar(Some("42".into()))).unwrap(),
             42
@@ -560,10 +565,6 @@ mod tests {
             i32::try_from_value(Value::Unknown(Some("99".into()))).unwrap(),
             99
         );
-    }
-
-    #[test]
-    fn integer_from_float64() {
         assert_eq!(i32::try_from_value(Value::Float64(Some(10.0))).unwrap(), 10);
         assert!(i32::try_from_value(Value::Float64(Some(10.5))).is_err());
     }
@@ -783,29 +784,18 @@ mod tests {
     }
 
     #[test]
-    fn date_parse() {
+    fn temporal_parse() {
         let d = <time::Date as AsValue>::parse("2024-06-15").unwrap();
         assert_eq!(
             d,
             time::Date::from_calendar_date(2024, time::Month::June, 15).unwrap()
         );
-
         let bc = <time::Date as AsValue>::parse("0044-03-15 BC").unwrap();
         assert!(bc.year() < 0);
-        let ad = <time::Date as AsValue>::parse("2024-06-15 AD").unwrap();
-        assert_eq!(ad, d);
+        assert_eq!(<time::Date as AsValue>::parse("2024-06-15 AD").unwrap(), d);
         assert!(<time::Date as AsValue>::parse("2024-06-15 trailing").is_err());
         assert!(<time::Date as AsValue>::parse("not a date").is_err());
 
-        let ts = time::PrimitiveDateTime::new(d, time::Time::MIDNIGHT);
-        assert_eq!(
-            time::Date::try_from_value(Value::Timestamp(Some(ts))).unwrap(),
-            d
-        );
-    }
-
-    #[test]
-    fn time_parse() {
         let t = <time::Time as AsValue>::parse("14:30:00").unwrap();
         assert_eq!(t, time::Time::from_hms(14, 30, 0).unwrap());
         assert_eq!(
@@ -817,16 +807,8 @@ mod tests {
             time::Time::from_hms_nano(14, 30, 0, 500_000_000).unwrap()
         );
         assert!(<time::Time as AsValue>::parse("14:30:00 trailing").is_err());
-        assert!(
-            time::Time::try_from_value(Value::Interval(Some(Interval::from_mins(-30)))).is_err()
-        );
-    }
 
-    #[test]
-    fn timestamp_parse() {
         let ts = <time::PrimitiveDateTime as AsValue>::parse("2024-06-15T14:30:00").unwrap();
-        let d = time::Date::from_calendar_date(2024, time::Month::June, 15).unwrap();
-        let t = time::Time::from_hms(14, 30, 0).unwrap();
         assert_eq!(ts, time::PrimitiveDateTime::new(d, t));
         assert_eq!(
             <time::PrimitiveDateTime as AsValue>::parse("2024-06-15 14:30").unwrap(),
@@ -849,13 +831,9 @@ mod tests {
         let utc = <time::OffsetDateTime as AsValue>::parse("2024-06-15T14:30:00").unwrap();
         assert_eq!(utc.offset().whole_seconds(), 0);
         assert!(<time::OffsetDateTime as AsValue>::parse("not a timestamp").is_err());
-    }
-
-    #[test]
-    fn seconds_offset_datetime() {
         for (text, seconds) in [
             ("2024-06-15T14:30:00+00:19:32", 19 * 60 + 32),
-            ("2024-06-15 14:30:00-00:00:45", -(45)),
+            ("2024-06-15 14:30:00-00:00:45", -45),
             ("2024-06-15T14:30:00+00:19", 19 * 60),
         ] {
             let odt = <time::OffsetDateTime as AsValue>::parse(text)
@@ -878,32 +856,24 @@ mod tests {
     }
 
     #[test]
-    fn time_from_interval() {
+    fn temporal_from_value() {
         let t = time::Time::try_from_value(Value::Interval(Some(
             Interval::from_hours(2) + Interval::from_mins(30),
         )))
         .unwrap();
         assert_eq!(t, time::Time::from_hms(2, 30, 0).unwrap());
-    }
+        assert!(
+            time::Time::try_from_value(Value::Interval(Some(Interval::from_mins(-30)))).is_err()
+        );
 
-    #[test]
-    fn date_from_timestamp() {
         let d = time::Date::from_calendar_date(2024, time::Month::January, 1).unwrap();
-        let t = time::Time::MIDNIGHT;
-        let ts = time::PrimitiveDateTime::new(d, t);
-        let result = time::Date::try_from_value(Value::Timestamp(Some(ts))).unwrap();
-        assert_eq!(result, d);
-
-        let t2 = time::Time::from_hms(12, 0, 0).unwrap();
-        let ts2 = time::PrimitiveDateTime::new(d, t2);
-        assert!(time::Date::try_from_value(Value::Timestamp(Some(ts2))).is_err());
-    }
-
-    #[test]
-    fn offset_datetime_from_timestamp() {
-        let d = time::Date::from_calendar_date(2024, time::Month::January, 1).unwrap();
-        let t = time::Time::from_hms(12, 0, 0).unwrap();
-        let ts = time::PrimitiveDateTime::new(d, t);
+        let ts = time::PrimitiveDateTime::new(d, time::Time::MIDNIGHT);
+        assert_eq!(
+            time::Date::try_from_value(Value::Timestamp(Some(ts))).unwrap(),
+            d
+        );
+        let ts = time::PrimitiveDateTime::new(d, time::Time::from_hms(12, 0, 0).unwrap());
+        assert!(time::Date::try_from_value(Value::Timestamp(Some(ts))).is_err());
         let odt = time::OffsetDateTime::try_from_value(Value::Timestamp(Some(ts))).unwrap();
         assert_eq!(odt.date(), d);
     }
@@ -1057,12 +1027,11 @@ mod tests {
     }
 
     #[test]
-    fn decimal_from_json_and_unknown() {
+    fn decimal_conversions() {
         let d = Decimal::try_from_value(Value::Json(Some(serde_json::json!(12.5)))).unwrap();
         assert_eq!(d, Decimal::new(125, 1));
         assert!(Decimal::try_from_value(Value::Json(Some(serde_json::json!("x")))).is_err());
         assert!(Decimal::try_from_value(Value::Boolean(Some(true))).is_err());
-
         assert_eq!(
             Decimal::try_from_value(Value::Unknown(Some("3.14".into()))).unwrap(),
             Decimal::new(314, 2)
@@ -1072,27 +1041,20 @@ mod tests {
             Decimal::new(25, 1)
         );
         assert_eq!(Decimal::parse("7.25").unwrap(), Decimal::new(725, 2));
-
         let fd = <FixedDecimal<10, 2> as AsValue>::parse("1.25").unwrap();
         assert_eq!(fd.0, Decimal::new(125, 2));
         assert_eq!(
             FixedDecimal::<10, 2>::as_empty_value(),
             Value::Decimal(None, 0, 0)
         );
-    }
 
-    #[test]
-    fn decimal_from_float64_overflow() {
         assert!(Decimal::try_from_value(Value::Float64(Some(f64::NAN))).is_err());
         assert!(Decimal::try_from_value(Value::Float64(Some(f64::INFINITY))).is_err());
         assert_eq!(
             Decimal::try_from_value(Value::Float64(Some(2.0))).unwrap(),
             Decimal::new(2, 0)
         );
-    }
 
-    #[test]
-    fn u128_and_i128_decimal_conversions() {
         assert_eq!(
             u128::try_from_value(Value::Decimal(Some(Decimal::new(7, 0)), 0, 0)).unwrap(),
             7
@@ -1112,19 +1074,6 @@ mod tests {
             13
         );
         assert!(u64::try_from_value(Value::Decimal(Some(Decimal::new(1, 1)), 0, 0)).is_err());
-    }
-
-    #[test]
-    fn json_number_integer_boundaries() {
-        assert!(i8::try_from_value(Value::Json(Some(serde_json::json!(1000)))).is_err());
-        assert_eq!(
-            i8::try_from_value(Value::Json(Some(serde_json::json!(-128)))).unwrap(),
-            -128
-        );
-        assert_eq!(
-            i16::try_from_value(Value::Json(Some(serde_json::json!("300")))).unwrap(),
-            300
-        );
     }
 
     #[test]

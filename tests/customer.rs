@@ -24,7 +24,7 @@ mod tests {
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
-    fn test_customer() {
+    fn customer_metadata() {
         assert!(matches!(
             Customer::table(),
             TableRef {
@@ -125,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn test_customer_create_table() {
+    fn customer_sql() {
         let mut query = DynQuery::default();
         WRITER.write_create_table::<Customer>(&mut query, false);
         assert_eq!(
@@ -140,10 +140,6 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_customer_create_table_comments() {
         let mut query = DynQuery::default();
         for column in Customer::columns().iter().filter(|c| !c.comment.is_empty()) {
             WRITER.write_column_comment(&mut Default::default(), &mut query, column);
@@ -158,17 +154,9 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_customer_drop_table() {
         let mut query = DynQuery::default();
         WRITER.write_drop_table::<Customer>(&mut query, false);
         assert_eq!(query.as_str(), r#"DROP TABLE "customers";"#);
-    }
-
-    #[test]
-    fn test_customer_select() {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
@@ -188,10 +176,6 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_customer_delete() {
         let mut query = DynQuery::default();
         WRITER.write_delete::<Customer>(&mut query, true);
         assert_eq!(

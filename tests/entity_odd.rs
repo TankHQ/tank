@@ -38,7 +38,7 @@ mod tests {
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
-    fn test_odd_entity() {
+    fn odd_entity_metadata() {
         assert!(matches!(
             MyEntity::table(),
             TableRef {
@@ -133,7 +133,7 @@ mod tests {
     }
 
     #[test]
-    fn test_odd_entity_create_table() {
+    fn odd_entity_sql() {
         let mut query = DynQuery::default();
         WRITER.write_create_table::<MyEntity>(&mut query, true);
         assert_eq!(
@@ -150,17 +150,9 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_odd_entity_drop_table() {
         let mut query = DynQuery::default();
         WRITER.write_drop_table::<MyEntity>(&mut query, false);
         assert_eq!(query.as_str(), r#"DROP TABLE "a_table";"#);
-    }
-
-    #[test]
-    fn test_odd_entity_select() {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
@@ -180,10 +172,6 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_odd_entity_insert() {
         let mut query = DynQuery::default();
         WRITER.write_insert(&mut query, [&MyEntity::sample()], true);
         assert_eq!(
@@ -199,10 +187,6 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_odd_entity_delete() {
         let mut query = DynQuery::default();
         WRITER.write_delete::<MyEntity>(&mut query, expr!(MyEntity::_echo == 5));
         assert_eq!(
@@ -247,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn test_references_metadata() {
+    fn references_metadata() {
         let columns = Animal::columns();
         let farm_ref = columns[2].references.as_ref().unwrap();
         assert_eq!(farm_ref.name, "id");
@@ -272,7 +256,7 @@ mod tests {
     }
 
     #[test]
-    fn test_references_ddl() {
+    fn references_ddl() {
         let mut query = DynQuery::default();
         WRITER.write_create_table::<Animal>(&mut query, true);
         let sql = query.as_str().into_owned();

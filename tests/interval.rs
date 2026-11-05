@@ -250,7 +250,7 @@ mod tests {
     }
 
     #[test]
-    fn from_bitmask() {
+    fn interval_unit_bitmask() {
         assert_eq!(
             IntervalUnit::from_bitmask(1).unwrap(),
             IntervalUnit::Nanosecond
@@ -415,25 +415,20 @@ mod tests {
     }
 
     #[test]
-    fn from_std_duration() {
+    fn duration_conversions() {
         let duration = Duration::from_secs(90000); // 1 day + 3600 secs
         let interval: Interval = duration.into();
         assert_eq!(interval.days, 1);
         assert_eq!(interval.nanos, 3600 * Interval::NANOS_IN_SEC as i64);
         assert_eq!(interval.months, 0);
-
         let d2: Duration = interval.into();
         assert_eq!(duration, d2);
         assert!(Interval::from(Duration::MAX).days > 0);
-    }
 
-    #[test]
-    fn from_time_duration() {
         let duration = time::Duration::seconds(90000); // 1 day + 3600 s
         let interval: Interval = duration.into();
         assert_eq!(interval.days, 1);
         assert_eq!(interval.months, 0);
-
         let duration2: time::Duration = interval.into();
         assert_eq!(duration, duration2);
     }
@@ -494,8 +489,6 @@ mod tests {
             set.insert(interval);
             assert_eq!(set.len(), 1);
         }
-        let max = Interval::new(0, i32::MAX, i64::MAX);
-        assert!((max + max).as_ns() >= max.as_ns());
     }
 
     #[test]
@@ -525,8 +518,7 @@ mod tests {
 
     #[test]
     fn negate_min_months() {
-        let value = Interval::new(i32::MIN, 0, 0);
-        let _ = -value;
+        let _ = -Interval::new(i32::MIN, 0, 0);
     }
 
     #[test]

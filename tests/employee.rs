@@ -52,7 +52,7 @@ mod tests {
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
-    fn test_employee() {
+    fn employee_metadata() {
         assert!(matches!(
             Employee::table(),
             TableRef {
@@ -156,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn test_employee_create_table() {
+    fn employee_sql() {
         let mut query = DynQuery::default();
         WRITER.write_create_table::<Employee>(&mut query, false);
         assert_eq!(
@@ -175,20 +175,12 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_employee_drop_table() {
         let mut query = DynQuery::default();
         WRITER.write_drop_table::<Employee>(&mut query, true);
         assert_eq!(
             query.as_str(),
             r#"DROP TABLE IF EXISTS "company"."employee";"#
         );
-    }
-
-    #[test]
-    fn test_employee_select() {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
@@ -208,10 +200,6 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_employee_insert() {
         let mut docs = HashMap::new();
         docs.insert("contract.pdf".to_string(), vec![1, 2, 3, 4]);
         let employee = Employee::sample();
@@ -239,10 +227,6 @@ mod tests {
             "#}
             .trim()
         );
-    }
-
-    #[test]
-    fn test_sql_delete() {
         let mut query = DynQuery::default();
         WRITER.write_delete::<Employee>(&mut query, expr!(Employee::name == "Bob"));
         assert_eq!(
