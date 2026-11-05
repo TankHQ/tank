@@ -48,7 +48,7 @@ Tank maps ordinary Rust types to the closest column types each driver supports, 
 </div>
 
 > [!WARNING]
-> Fallback encodings such as `TEXT` or `JSON` have driver-specific comparison, ordering, indexing, and operator semantics. For example, text timestamps with different offsets need not sort chronologically.
+> Fallback encodings such as `TEXT` or `JSON` have predictable encodings. Usually (but not always) equality and ordering comparisons behave as expected. Advanced indexing or operator support may vary by driver.
 >
 > Mappings do not imply the full Rust integer range: PostgreSQL's `NUMERIC(19)` cannot hold `u64::MAX`, SQLite and MongoDB limit `u64` to signed 64-bit values, and decimal-based 128-bit conversions have additional limits. The table assumes 64-bit builds for `isize`/`usize`; prefer explicit `i64`/`u64` for portable schemas.
 

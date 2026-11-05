@@ -66,7 +66,9 @@ Parameters:
     - `require`
 - `sslrootcert`: CA certificate path (or environment variable `PGSSLROOTCERT`).
 - `sslcert`: Client certificate path (or environment variable `PGSSLCERT`).
-- `sslkey`: Client private key path (or environment variable `PGSSLKEY`). Use explicit paths: the driver does not expand `~` to the home directory.
+- `sslkey`: Client private key path (or environment variable `PGSSLKEY`).
+
+Use explicit paths: the driver does not expand `~` to the home directory.
 
 ### SQLite
 SQLite is the lone wolf operative, deep behind enemy lines: lightweight, reliable, zero configuration. Deploy anywhere, anytime.
