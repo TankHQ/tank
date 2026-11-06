@@ -70,7 +70,7 @@ impl SqlWriter for PostgresSqlWriter {
             Value::UInt128(..) => out.push_str("NUMERIC(39)"),
             Value::Float32(..) => out.push_str("FLOAT4"),
             Value::Float64(..) => out.push_str("FLOAT8"),
-            Value::Decimal(_, precision, scale, ..) => {
+            Value::Decimal(.., precision, scale) => {
                 out.push_str("NUMERIC");
                 if (precision, scale) != (&0, &0) {
                     let _ = write!(out, "({},{})", precision, scale);
@@ -85,11 +85,11 @@ impl SqlWriter for PostgresSqlWriter {
             Value::TimestampWithTimezone(..) => out.push_str("TIMESTAMP WITH TIME ZONE"),
             Value::Interval(..) => out.push_str("INTERVAL"),
             Value::Uuid(..) => out.push_str("UUID"),
-            Value::Array(_, t, ..) => {
+            Value::Array(.., t) => {
                 self.write_column_type(context, out, &t.element);
                 let _ = write!(out, "[{}]", t.len);
             }
-            Value::List(_, t, ..) => {
+            Value::List(.., t) => {
                 self.write_column_type(context, out, &t.element);
                 out.push_str("[]");
             }
@@ -180,15 +180,12 @@ impl SqlWriter for PostgresSqlWriter {
             out,
             &PrimitiveDateTime::new(value.date(), value.time()),
         );
-        let total_minutes = value.offset().whole_minutes();
-        let sign = if total_minutes >= 0 { '+' } else { '-' };
-        let _ = write!(
-            out,
-            "{}{:02}:{:02}",
-            sign,
-            (total_minutes.abs() / 60) as u8,
-            (total_minutes.abs() % 60) as u8
-        );
+        let (h, m, s) = value.offset().as_hms();
+        let sign = if h < 0 || m < 0 || s < 0 { '-' } else { '+' };
+        let _ = write!(out, "{sign}{:02}:{:02}", h.unsigned_abs(), m.unsigned_abs());
+        if s != 0 {
+            let _ = write!(out, ":{:02}", s.unsigned_abs());
+        }
         if value.date().year() <= 0 {
             out.push_str(" BC");
         }

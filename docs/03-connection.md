@@ -59,11 +59,10 @@ async fn establish_postgres_connection(driver: &PostgresDriver) -> Result<impl C
 **URL Format**:
 - `postgres://user:pass@host:port/database`
 
+The driver uses `wtx` for the PostgreSQL protocol. TLS is enabled by the default `tls` crate feature and uses the native TLS backend.
+
 Parameters:
-- `sslmode`: TLS negotiation mode. When omitted, the driver consults `PGSSLMODE`, falling back to `disable` if that variable is also unset. To require TLS, set `sslmode=require` explicitly in the URL rather than relying on the environment variable. The supported `tokio_postgres` modes are:
-    - `disable`
-    - `prefer`
-    - `require`
+- `sslmode`: When omitted, the driver consults `PGSSLMODE`, falling back to `disable`. `disable` uses plaintext; other values, including `prefer` and `require`, require TLS without falling back to plaintext. Without the `tls` crate feature, only `disable` is supported.
 - `sslrootcert`: CA certificate path (or environment variable `PGSSLROOTCERT`).
 - `sslcert`: Client certificate path (or environment variable `PGSSLCERT`).
 - `sslkey`: Client private key path (or environment variable `PGSSLKEY`).
