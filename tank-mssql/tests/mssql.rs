@@ -5,7 +5,10 @@ mod init;
 mod tests {
     use crate::{comments::comments, init::init_mssql};
     use std::{env, path::PathBuf, sync::Mutex};
-    use tank::{Connection, ConnectionPool, Driver, Entity, PoolConfig, expr};
+    use tank::{
+        AsValue, Connection, ConnectionPool, Driver, Entity, Executor, PoolConfig, Query,
+        QueryResult, Row, expr, stream::TryStreamExt,
+    };
     use tank_mssql::{MSSQLConnection, MSSQLDriver};
     use tank_tests::{execute_tests, init_logs, silent_logs};
     use url::Url;
@@ -55,6 +58,108 @@ mod tests {
         assert_eq!(loaded, item);
     }
 
+    async fn test_results<D: Driver>(pool: &mut impl ConnectionPool<D>) {
+        let mut conn = pool.get().await.expect("Could not get connection");
+        conn.execute(
+            "SET NOCOUNT OFF;
+             DROP TABLE IF EXISTS #tank_results;
+             CREATE TABLE #tank_results (id INT NOT NULL PRIMARY KEY);",
+        )
+        .await
+        .expect("Failed to create result test table");
+
+        for prepared in [false, true] {
+            conn.execute(
+                "TRUNCATE TABLE #tank_results;
+                 INSERT INTO #tank_results (id) VALUES (1), (2), (3);",
+            )
+            .await
+            .expect("Failed to seed result test table");
+
+            for (sql, parameter, expected) in [
+                (
+                    "-- Leading comment\nUPDATE #tank_results SET id = id WHERE id <= @P1;",
+                    0,
+                    vec![(Some(0), None)],
+                ),
+                (
+                    "/* Leading comment */ UPDATE #tank_results SET id = id WHERE id <= @P1;",
+                    2,
+                    vec![(Some(2), None)],
+                ),
+                (
+                    "WITH targets AS (SELECT id FROM #tank_results WHERE id <= @P1)
+                     UPDATE targets SET id = id;",
+                    0,
+                    vec![(Some(0), None)],
+                ),
+                (
+                    "WITH targets AS (SELECT id FROM #tank_results WHERE id <= @P1)
+                     UPDATE targets SET id = id;",
+                    2,
+                    vec![(Some(2), None)],
+                ),
+                (
+                    "UPDATE #tank_results SET id = id + 10 WHERE id <= @P1;
+                     SELECT id FROM #tank_results ORDER BY id;
+                     SELECT id FROM #tank_results WHERE id = 0;
+                     DELETE FROM #tank_results WHERE id > 10;",
+                    2,
+                    vec![
+                        (Some(2), None),
+                        (None, Some(3)),
+                        (None, Some(11)),
+                        (None, Some(12)),
+                        (Some(2), None),
+                    ],
+                ),
+                (
+                    "INSERT INTO #tank_results (id) OUTPUT inserted.id VALUES (@P1);",
+                    4,
+                    vec![(None, Some(4))],
+                ),
+                (
+                    "UPDATE #tank_results SET id = id + 1 OUTPUT inserted.id WHERE id = @P1;",
+                    4,
+                    vec![(None, Some(5))],
+                ),
+                (
+                    "UPDATE #tank_results SET id = id + 1 OUTPUT inserted.id WHERE id = @P1;",
+                    0,
+                    vec![],
+                ),
+            ] {
+                let query = if prepared {
+                    let mut query = conn.prepare(sql).await.expect("Failed to prepare query");
+                    query.bind(parameter).expect("Failed to bind parameter");
+                    query
+                } else {
+                    Query::raw(sql.replace("@P1", &parameter.to_string()))
+                };
+                let results = conn
+                    .run(query)
+                    .map_ok(|result| match result {
+                        QueryResult::Affected(affected) => (affected.rows_affected, None),
+                        QueryResult::Row(row) => (
+                            None,
+                            Some(
+                                i32::try_from_value(row.value(0).expect("Missing result id"))
+                                    .expect("Failed to decode result id"),
+                            ),
+                        ),
+                    })
+                    .try_collect::<Vec<_>>()
+                    .await
+                    .expect("Failed to run result query");
+                assert_eq!(results, expected, "prepared={prepared}, sql={sql}");
+            }
+        }
+
+        conn.execute("DROP TABLE #tank_results;")
+            .await
+            .expect("Failed to drop result test table");
+    }
+
     #[tokio::test]
     pub async fn mssql() {
         init_logs();
@@ -71,6 +176,7 @@ mod tests {
         execute_tests(&mut pool).await;
         comments(&mut pool).await;
         test_vector_and_json(&mut pool).await;
+        test_results(&mut pool).await;
         drop(container);
 
         // SSL
@@ -118,6 +224,7 @@ mod tests {
         execute_tests(&mut pool).await;
         comments(&mut pool).await;
         test_vector_and_json(&mut pool).await;
+        test_results(&mut pool).await;
         drop(container);
     }
 

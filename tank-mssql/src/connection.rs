@@ -52,27 +52,6 @@ impl MSSQLConnection {
         tcp.set_nodelay(true)?;
         Ok(Client::connect(config, tcp.compat_write()).await?)
     }
-
-    fn is_dml_only(sql: &str) -> bool {
-        let trimmed = sql.trim_start();
-        let starts_with_dml = ["INSERT", "UPDATE", "DELETE", "MERGE"].iter().any(|kw| {
-            trimmed.len() > kw.len()
-                && trimmed[..kw.len()].eq_ignore_ascii_case(kw)
-                && trimmed.as_bytes()[kw.len()].is_ascii_whitespace()
-        });
-        if !starts_with_dml {
-            return false;
-        }
-        !trimmed
-            .split(';')
-            .map(str::trim_start)
-            .filter(|s| !s.is_empty())
-            .any(|s| {
-                s.len() > 6
-                    && s[..6].eq_ignore_ascii_case("SELECT")
-                    && s.as_bytes()[6].is_ascii_whitespace()
-            })
-    }
 }
 
 impl Connection for MSSQLConnection {
@@ -226,33 +205,9 @@ impl Executor for MSSQLConnection {
         let mut query = query.as_query();
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         try_stream! {
-            match query.as_mut() {
+            let mut stream = match query.as_mut() {
                 Query::Raw(RawQuery(sql)) => {
-                    if Self::is_dml_only(sql) {
-                        let result = self.client.execute(sql.as_str(), &[]).await?;
-                        yield QueryResult::Affected(RowsAffected {
-                            rows_affected: Some(result.total()),
-                            last_affected_id: None,
-                        });
-                    } else {
-                        let mut stream = self.client.simple_query(sql.as_str()).await?;
-                        let mut labels: Option<RowLabels> = None;
-                        while let Some(item) = stream.try_next().await? {
-                            match item {
-                                QueryItem::Metadata(meta) => {
-                                    labels = Some(
-                                        meta.columns()
-                                            .iter()
-                                            .map(|c| c.name().to_owned())
-                                            .collect(),
-                                    );
-                                }
-                                QueryItem::Row(row) => {
-                                    yield QueryResult::Row(ValueWrap::from_row(row, labels.as_ref())?);
-                                }
-                            }
-                        }
-                    }
+                    self.client.simple_query(sql.as_str()).await?
                 }
                 Query::Prepared(prepared) => {
                     let params = prepared.take_params()?;
@@ -260,30 +215,23 @@ impl Executor for MSSQLConnection {
                     for param in params {
                         tiberius_query.bind(param);
                     }
-                    if Self::is_dml_only(&prepared.sql) {
-                        let result = tiberius_query.execute(&mut self.client).await?;
+                    tiberius_query.query(&mut self.client).await?
+                }
+            };
+            let mut labels: Option<RowLabels> = None;
+            while let Some(item) = stream.try_next().await? {
+                match item {
+                    QueryItem::Metadata(meta) => {
+                        labels = Some(meta.columns().iter().map(|c| c.name().to_owned()).collect());
+                    }
+                    QueryItem::Row(row) => {
+                        yield QueryResult::Row(ValueWrap::from_row(row, labels.as_ref())?);
+                    }
+                    QueryItem::RowsAffected(rows) => {
                         yield QueryResult::Affected(RowsAffected {
-                            rows_affected: Some(result.total()),
+                            rows_affected: Some(rows),
                             last_affected_id: None,
                         });
-                    } else {
-                        let mut stream = tiberius_query.query(&mut self.client).await?;
-                        let mut labels: Option<RowLabels> = None;
-                        while let Some(item) = stream.try_next().await? {
-                            match item {
-                                QueryItem::Metadata(meta) => {
-                                    labels = Some(
-                                        meta.columns()
-                                            .iter()
-                                            .map(|c| c.name().to_owned())
-                                            .collect(),
-                                    );
-                                }
-                                QueryItem::Row(row) => {
-                                    yield QueryResult::Row(ValueWrap::from_row(row, labels.as_ref())?);
-                                }
-                            }
-                        }
                     }
                 }
             }
