@@ -12,7 +12,7 @@ Three firing modes:
 Anything implementing [`AsQuery`](https://docs.rs/tank/latest/tank/trait.AsQuery.html) works: `&str`, `String`, `Query<D>`, `&mut Query<D>` or `AnyQuery`. The conversion receives the executor's driver instance, so a query can be rendered with the exact dialect of that connection. Custom implementations follow `fn as_query(self, driver: &D) -> Self::Output`.
 
 ## Composing SQL With `SqlWriter`
-SQL drivers expose a `SqlWriter` that knows DB-specific SQL fragments. The writer writes into an `AnyQuery`: SQL drivers append text to the `AnyQuery::Raw` variant containing a string buffer, while NoSQL drivers (like MongoDB and Valkey) switch to `AnyQuery::Prepared` and construct their native payload.
+SQL drivers expose a `SqlWriter` that knows DB-specific SQL fragments. The writer writes into an `AnyQuery`: SQL drivers append text to the `AnyQuery::Raw` variant containing a string buffer, while NoSQL drivers (like MongoDB and Valkey) switch to `AnyQuery::Prepared` and construct their native payload. Buffer multiple statements into one `AnyQuery` only when the driver supports batches. ClickHouse and chDB accept one statement per request.
 
 `AnyQuery` is a type erased representation of a query. Hand it to an executor as it is and the call consumes it or turn it into a driver specific `Query<D>` by calling `into_query(executor.driver())` and hand it as `&mut query` to fire it as many times as needed.
 
@@ -61,7 +61,7 @@ let results = executor.run(query).try_collect::<Vec<_>>().await?;
 ```
 
 ### Mixed Results
-Each statement yields `Affected` or one or more `Row` values. Collect and filter as needed:
+A statement can yield `Affected` or one or more `Row` values; an empty SELECT can yield no items. Collect and filter as needed:
 ```rust
 use tank::QueryResult;
 let rows = results
@@ -173,6 +173,6 @@ Prepared statements reuse backend preparation state when available. Parameter co
 - When selecting a subset of columns, ensure the labels match the entity fields present. Missing labels require `Default` on the entity, not just on the omitted field types.
 - Prepared queries use positional parameters across drivers. `bind` sets the next placeholder, while `bind_index(value, index)` targets a position explicitly with a 0-based index.
 - Reuse prepared queries across multiple executions: call `clear_bindings()` to reset parameters and `bind(...)` again before the next shot.
-- Prepared queries are backend-owned state. Treat their string formatting as diagnostic output, not as executable SQL.
+- Prepared queries are driver-specific state, which may be a native handle or local emulation. Treat their string formatting as diagnostic output, not as executable SQL.
 
 *Raw fire authorized. Execute with precision. Tank out.*

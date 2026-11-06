@@ -39,7 +39,7 @@ Tank's `#[tank(...)]` attributes configure tables and columns. DDL and constrain
 - <Badge type="tip" text="struct" /> `unique = "some_field"` or `unique = ("column_1", Self::column_2, ..)`: Unique constraint.
 - <Badge type="tip" text="field" /> `unique`: Field-level unique constraint.
 - <Badge type="tip" text="field" /> `clustering_key`: Marks an existing primary-key field as a clustering key for ScyllaDB/Cassandra. Declare partition-key fields before clustering-key fields.
-- <Badge type="tip" text="field" /> `column_type = (postgres = "TEXT", mysql = "VARCHAR(128)")`: Override column type in DDL (support depends on the driver). Keys are `postgres` (or `postgresql`), `sqlite`, `mysql`, `mariadb`, `duckdb`, `scylladb` and `cassandra`.
+- <Badge type="tip" text="field" /> `column_type = (postgres = "TEXT", mysql = "VARCHAR(128)")`: Override column type in DDL (support depends on the driver). Keys are `postgres` (or `postgresql`), `sqlite`, `mysql`, `mariadb`, `duckdb`, `clickhouse`, `scylladb` and `cassandra`.
 - <Badge type="tip" text="field" /> `conversion_type = T`: Controls how a field is stored and loaded. `T` must implement `AsValue` and `From` conversions to and from the field type. Recognized field types may also need a matching `column_type` override when changing representation.
 - <Badge type="tip" text="field" /> `ignore`: Excludes the field from storage and decoding. It retains the entity's `Default` value, or the field's default when the entity has no `Default` implementation.
 - <Badge type="tip" text="field" /> `default = expression`: Column default expression, convertible to `DefaultValueType`.
@@ -48,22 +48,5 @@ Tank's `#[tank(...)]` attributes configure tables and columns. DDL and constrain
 - <Badge type="tip" text="field" /> `on_update = no_action|restrict|cascade|set_null|set_default`: Action for foreign key when referenced row is updated.
 
 Rust doc comments on persisted fields become column comments where the driver supports them: `COMMENT ON COLUMN` on Postgres and DuckDB, an inline `COMMENT` in `CREATE TABLE` on MySQL/MariaDB. Other drivers ignore them.
-
-### Examples
-```rust
-use tank::{AsValue, Entity};
-use time::PrimitiveDateTime;
-use uuid::{Uuid, uuid};
-
-#[derive(Entity)]
-#[tank(schema = "trading", name = "trade_execution", primary_key = ("trade_id", "execution_time"))]
-pub struct Trade {
-    #[tank(name = "trade_id")]
-    pub trade: u64,
-    #[tank(name = "order_id", default = uuid!("241d362d-797e-4769-b3f6-412440c8cf68").as_value())]
-    pub order: Uuid,
-    pub execution_time: PrimitiveDateTime,
-}
-```
 
 *All units accounted for. Stand by.*
