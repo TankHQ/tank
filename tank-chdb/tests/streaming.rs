@@ -40,6 +40,7 @@ async fn streaming_public_execution_and_reuse() {
             .len(),
         1
     );
+    // #region clickhouse-prepared
     let marker = "{p0:Nullable(String)}";
     let mut prepared = connection
         .prepare(format!(
@@ -56,6 +57,7 @@ async fn streaming_public_execution_and_reuse() {
         assert_eq!(i64::try_from_value(row.value(0).unwrap()).unwrap(), value);
         // Drop early, rebind and reuse the same prepared statement.
     }
+    // #endregion clickhouse-prepared
     {
         let mut rows = pin!(connection.fetch(
             "SELECT number FROM numbers(1000000000000) SETTINGS max_block_size=2, max_threads=1"

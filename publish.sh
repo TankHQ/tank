@@ -1,38 +1,24 @@
-# Remember to increase the version first
-cd tank-core/ &&
-cargo publish &&
-cd ../ &&
-cd tank-macros/ &&
-cargo publish &&
-cd ../ &&
-cargo publish &&
-cd tank-tests/ &&
-cargo publish &&
-cd ../ &&
-cd tank-clickhouse/ &&
-cargo publish &&
-cd ../ &&
-cd tank-chdb/ &&
-cargo publish &&
-cd ../ &&
-cd tank-duckdb/ &&
-cargo publish &&
-cd ../ &&
-cd tank-mongodb/ &&
-cargo publish &&
-cd ../ &&
-cd tank-mysql/ &&
-cargo publish &&
-cd ../ &&
-cd tank-postgres/ &&
-cargo publish &&
-cd ../ &&
-cd tank-scylladb/ &&
-cargo publish &&
-cd ../ &&
-cd tank-sqlite/ &&
-cargo publish &&
-cd ../ &&
-cd tank-valkey/ &&
-cargo publish &&
-cd ../
+#!/bin/sh
+set -eu
+
+# Increase the workspace version in Cargo.toml before publishing.
+cd -- "$(dirname -- "$0")"
+
+# Publish dependencies first; chDB depends on the ClickHouse driver.
+for package in \
+    tank-core \
+    tank-macros \
+    tank \
+    tank-tests \
+    tank-clickhouse \
+    tank-chdb \
+    tank-duckdb \
+    tank-mongodb \
+    tank-mysql \
+    tank-postgres \
+    tank-scylladb \
+    tank-sqlite \
+    tank-valkey
+do
+    cargo publish -p "$package" "$@"
+done

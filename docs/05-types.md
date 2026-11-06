@@ -8,7 +8,7 @@ Tank maps ordinary Rust types to the closest column types each driver supports, 
 ## Column Types
 <div class="sticky-table">
 
-| Rust                      | Postgres       | SQLite    | MySQL                     | MariaDB                   | DuckDB         | ClickHouse            | MongoDB      | ScyllaDB/Cassandra | Valkey/Redis |
+| Rust                      | Postgres       | SQLite    | MySQL                     | MariaDB                   | DuckDB         | ClickHouse/chDB        | MongoDB      | ScyllaDB/Cassandra | Valkey/Redis |
 | ------------------------- | -------------- | --------- | ------------------------- | ------------------------- | -------------- | --------------------- | ------------ | ------------------ | ------------ |
 | `bool`                    | `BOOLEAN`      | `INTEGER` | `BOOLEAN`                 | `BOOLEAN`                 | `BOOLEAN`      | `Bool`                | `Boolean`    | `BOOLEAN`          | `String`     |
 | `i8`, `NonZeroI8`         | `SMALLINT`     | `INTEGER` | `TINYINT`                 | `TINYINT`                 | `TINYINT`      | `Int8`                | `Int32`      | `TINYINT`          | `String`     |
@@ -39,15 +39,15 @@ Tank maps ordinary Rust types to the closest column types each driver supports, 
 | `time::Duration`          | `INTERVAL`     | ❌        | `TIME(6)`                 | `TIME(6)`                 | `INTERVAL`     | `String` ⚠️           | ❌           | `DURATION`         | ❌           |
 | `tank::Interval`          | `INTERVAL`     | ❌        | `TIME(6)`                 | `TIME(6)`                 | `INTERVAL`     | `String` ⚠️           | ❌           | `DURATION`         | ❌           |
 | `uuid::Uuid`              | `UUID`         | `TEXT`    | `CHAR(36)`                | `UUID`                    | `UUID`         | `UUID`                | `Uuid`       | `UUID`             | `String`     |
-| `[T; N]`                  | `T[N]`         | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[N]`         | `Array(T)`            | `Array`      | `VECTOR<T,N>`      | `List`       |
-| `VecDeque<T>`             | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array(T)`            | `Array`      | `LIST<T>`          | `List`       |
-| `LinkedList<T>`           | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array(T)`            | `Array`      | `LIST<T>`          | `List`       |
-| `Vec<T>`                  | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array(T)`            | `Array`      | `LIST<T>`          | `List`       |
-| `HashMap<K,V>`            | ❌             | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `MAP(K,V)`     | `Map(K,V)`            | `Document`   | `MAP<K,V>`         | `Hash`       |
-| `BTreeMap<K,V>`           | ❌             | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `MAP(K,V)`     | `Map(K,V)`            | `Document`   | `MAP<K,V>`         | `Hash`       |
+| `[T; N]`                  | `T[N]`         | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[N]`         | `Array(T)` ⚠️         | `Array`      | `VECTOR<T,N>`      | `List`       |
+| `VecDeque<T>`             | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array(T)` ⚠️         | `Array`      | `LIST<T>`          | `List`       |
+| `LinkedList<T>`           | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array(T)` ⚠️         | `Array`      | `LIST<T>`          | `List`       |
+| `Vec<T>`                  | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array(T)` ⚠️         | `Array`      | `LIST<T>`          | `List`       |
+| `HashMap<K,V>`            | ❌             | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `MAP(K,V)`     | `Map(K,V)` ⚠️         | `Document`   | `MAP<K,V>`         | `Hash`       |
+| `BTreeMap<K,V>`           | ❌             | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `MAP(K,V)`     | `Map(K,V)` ⚠️         | `Document`   | `MAP<K,V>`         | `Hash`       |
 </div>
 
-`tank-chdb` shares the ClickHouse column types above as it runs the same ClickHouse SQL engine.
+`tank-chdb` shares the ClickHouse SQL column mappings, but uses JSONCompact rather than native binary result decoding. See [driver-specific limits](#clickhouse-and-chdb) below.
 
 > [!WARNING]
 > Fallback encodings such as `TEXT` or `JSON` have predictable encodings. Usually (but not always) equality and ordering comparisons behave as expected. Advanced indexing or operator support may vary by driver.
@@ -60,9 +60,19 @@ Driver-specific limits:
 - ScyllaDB maps `[char; N]` to `ASCII`, not `VECTOR<T,N>`. Collection element/key types depend on the backend: Valkey requires scalar elements and map keys/values, and MongoDB requires string-convertible document keys.
 - Prepared parameters have additional restrictions: MySQL collections and DuckDB arrays/lists/maps are not supported, and ScyllaDB's `DURATION`, `TIMESTAMP`, and `VARINT` bindings are unimplemented. Valkey blob round trips are not supported reliably, despite Redis strings being binary-safe.
 
+### ClickHouse and chDB
+- Blobs are stored as uppercase hexadecimal text in a `String` column, not raw binary. Converting back to a Rust blob hex-decodes the string; arbitrary externally populated binary strings are not guaranteed to round-trip.
+- Times are formatted strings. Durations/intervals are strings containing total nanoseconds followed by `ns`; calendar month components are flattened, not preserved as calendar arithmetic. Offset timestamps are normalized to UTC, losing the original offset.
+- The default `Date` column has a narrower range than Rust dates; the shared tests use 1970-01-01 through 2149-06-06 rather than historical or very large dates. `DateTime64(9,'UTC')` also has backend range limits.
+- Decimal decoding is limited by `rust_decimal::Decimal`; `Decimal(38,...)` does not imply arbitrary 38-digit Rust values. For fractional prepared parameters, use an appropriately sized `FixedDecimal<W,S>`: precision is not inferred for plain fractional `Decimal` bindings.
+- `Array(T)` and `Map(K,V)` describe SQL rendering, not general collection round-trip or parameter-binding support. Inferred arrays, lists, and maps are not nullable at the column level, even inside `Option`. Both drivers exclude these collection cases from the shared integration suite.
+- chDB decodes JSON nulls as `Value::Null`, strings as `Value::Varchar`, and other JSON values as `Value::Json`; entity decoding then uses `AsValue` conversions. Unlike the native ClickHouse driver, chDB's shared suite does not cover full-range large integers or nonfinite floats.
+
+Nullable non-key scalar fields are rendered as `Nullable(T)`. Both drivers use the `clickhouse` override key, including when the driver is chDB: `#[tank(column_type = (clickhouse = "Nullable(String)"))]`. Overrides are emitted verbatim, without automatic nullability wrapping. See [table and constraint semantics](04-capabilities.md#generated-tables-and-save).
+
 ## Wrapper Types
 Built-in wrappers usable directly in entities infer the SQL type from the inner type. Persisted fields must also be cloneable:
-- `Option<T>`: Nullable column.
+- `Option<T>`: Nullable column where supported; see the ClickHouse/chDB collection and primary-key exceptions above.
 - `Box<T>`
 - `Cell<T>`
 - `RefCell<T>`
