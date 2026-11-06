@@ -15,9 +15,9 @@ It maps Tank operations and queries to native Postgres commands. Use it with the
 📦 **Crate:** https://crates.io/crates/tank-postgres
 
 ## Features
-- Async connection and execution via [`tokio-postgres`](https://crates.io/crates/tokio-postgres)
-- TLS via [`postgres-openssl`](https://crates.io/crates/postgres-openssl)
-- Fast bulk inserts using the COPY binary protocol
+- Async connection and execution via [`wtx`](https://crates.io/crates/wtx)
+- TLS via the native TLS backend, enabled by the default `tls` feature
+- Borrowed row decoding and reusable prepared queries
 
 ## Install
 ```sh
