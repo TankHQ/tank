@@ -21,6 +21,8 @@ In plain terms, Tank is a thin layer over your database workflow for Rust teams 
 - SQLite
 - MySQL/MariaDB
 - DuckDB
+- ClickHouse
+- chDB
 - MongoDB
 - ScyllaDB/Cassandra
 - Valkey/Redis
