@@ -16,7 +16,7 @@ use std::{
 
 /// The [`Manager`] that backs every Tank connection pool.
 ///
-/// A manager holds the [`Driver`] and the database URL; it knows how to open
+/// A manager holds the [`Driver`] and the database URL. It knows how to open
 /// new connections on demand and how to validate recycled ones.  You do not
 /// need to construct or interact with this type directly, it is created
 /// internally by [`Driver::connect_pool`].

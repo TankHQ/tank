@@ -15,6 +15,9 @@ cd ../ &&
 cd tank-mongodb/ &&
 cargo publish &&
 cd ../ &&
+cd tank-mssql/ &&
+cargo publish &&
+cd ../ &&
 cd tank-mysql/ &&
 cargo publish &&
 cd ../ &&

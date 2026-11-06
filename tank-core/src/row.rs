@@ -45,7 +45,7 @@ pub trait Row: Debug + Send + Sync {
     fn len(&self) -> usize;
 
     /// Borrows a stored value or returns a freshly decoded value.
-    /// SQL NULL is a `Value`; `None` means no value at this index.
+    /// SQL NULL is a `Value`. `None` means no value at this index.
     fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>>;
 
     fn is_empty(&self) -> bool {

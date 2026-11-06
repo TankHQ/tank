@@ -52,7 +52,7 @@ export class Tank {
             density: CONFIG.bodyDensity,
             frictionAir: CONFIG.airResistance,
             label: 'hull',
-            // The hull never collides with anything; ground contact is handled by the
+            // The hull never collides with anything. Ground contact is handled by the
             // suspension, which is why it can drive smoothly over a heightfield. A
             // zero mask disables all collisions, so no category is needed.
             collisionFilter: { mask: 0 },
@@ -131,7 +131,7 @@ export class Tank {
     }
 
     // Guarantee no wheel penetrates past its bump stop. The spring can be
-    // overpowered by a fast hit; this is a positional constraint, so it cannot.
+    // overpowered by a fast hit. This is a positional constraint, so it cannot.
     _enforceGround() {
         const pose = this._pose()
         const { Body } = this.Matter
@@ -144,7 +144,7 @@ export class Tank {
             if (penetration > push) push = penetration
         }
         if (push > 0) {
-            // Body.setPosition keeps vertices/bounds consistent; Body.setVelocity is
+            // Body.setPosition keeps vertices/bounds consistent. Body.setVelocity is
             // required because Matter's Verlet integrator ignores a raw field write.
             Body.setPosition(this.hull, { x: this.hull.position.x, y: this.hull.position.y - push })
             if (this.hull.velocity.y > 0) {
@@ -231,7 +231,7 @@ export class Tank {
 
     // Interpolated snapshot for rendering. `alpha` is how far we are between the
     // previous and current physics step (0..1). Matter keeps the hull's previous
-    // transform in `positionPrev`/`anglePrev`; wheels keep their own snapshots.
+    // transform in `positionPrev`/`anglePrev`. Wheels keep their own snapshots.
     view(alpha) {
         if (!this.alive || !this.hull) return null
         const t = clamp(alpha, 0, 1)

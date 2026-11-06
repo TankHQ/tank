@@ -965,7 +965,7 @@ mod tests {
         assert_eq!(back, 42);
 
         // Unsigned sources wider than isize::MAX must not silently wrap around.
-        // On 64-bit these only fit up to isize::MAX; on 32-bit even u32 values
+        // On 64-bit these only fit up to isize::MAX. On 32-bit even u32 values
         // above i32::MAX are out of range, so this asserts the checked path is
         // taken rather than an unchecked `as` cast.
         let over_isize = (isize::MAX as u128 + 1) as u64;

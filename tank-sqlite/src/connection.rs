@@ -38,7 +38,7 @@ impl SQLiteConnection {
 
 // Both iterator levels own this state. Even a rowset retained after the outer iterator
 // is dropped keeps the connection and prepared query borrowed. All native access is
-// serialized by the mutex; no worker can outlive those borrows.
+// serialized by the mutex. No worker can outlive those borrows.
 struct SQLiteCursor<'s, Q: AsMut<Query<SQLiteDriver>>> {
     connection: &'s mut SQLiteConnection,
     query: Q,
@@ -171,7 +171,7 @@ impl<Q: AsMut<Query<SQLiteDriver>>> SQLiteCursor<'_, Q> {
             let connection = *self.connection.connection;
             let before = sqlite3_total_changes64(connection);
             while self.row()?.is_some() {}
-            // changes64 is stale after DDL; total_changes distinguishes it from DML.
+            // changes64 is stale after DDL - total_changes distinguishes it from DML.
             // Use changes64 rather than the delta to exclude trigger side effects.
             Ok(Some(RowsAffected {
                 rows_affected: Some(if sqlite3_total_changes64(connection) != before {
@@ -195,7 +195,7 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Drop for SQLiteCursor<'_, Q> {
                     Ok(Some(_)) => {}
                     Ok(None) => break,
                     Err(error) => {
-                        // Drop cannot return errors; normal row/outer advancement can.
+                        // Drop cannot return errors. Normal row/outer advancement can.
                         log::error!("While finishing an abandoned SQLite write: {error:#}");
                         break;
                     }

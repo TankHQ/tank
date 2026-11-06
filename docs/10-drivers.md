@@ -69,7 +69,7 @@ Override only differences from the generic fallback:
 - Schema operations (override as no-ops if the engine lacks schemas, as SQLite does)
 - Upsert syntax via `write_insert_update_fragment` if divergence
 
-Call writer methods directly; overrides are dispatched normally. Use `self.as_dyn()` when passing the writer to an expression or dataset interface that requires a trait object.
+Call writer methods directly. Overrides are dispatched normally. Use `self.as_dyn()` when passing the writer to an expression or dataset interface that requires a trait object.
 
 Tip: Check `tank-core`'s `SqlWriter` default methods when overriding dialect behavior.
 
@@ -117,7 +117,7 @@ Enable feature flags to disable specific functionality until green.
 - `prepare` handles multiple statements cleanly, or rejects them with an explicit error
 - Streams drop promptly (no leaked locks or file handles)
 - For SQL-text drivers, `SqlWriter` prints multi-statement sequences with proper separators and terminal `;`
-- Upsert path (`save()`) works if PK exists; documented fallback if not supported
+- Upsert path (`save()`) works if PK exists. Documented fallback if not supported
 
 Remove a flag the moment your driver truly supports the capability. Each removed flag unlocks corresponding test sorties.
 

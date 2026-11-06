@@ -28,7 +28,7 @@ Before you can unleash Tank's firepower, secure your supply lines. Open a **Conn
     * **Direct**: [`PostgresConnection::connect(&driver, "postgres://...".into()).await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.connect) opens a single unmanaged connection using the driver-specific connection type.
 
 2. **Deploy**: Use the connection for queries, inserts, updates, and deletes.
-3. **Lock (optional)**: Start a transaction with [`connection.begin().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.begin). This borrows the connection; all operations route through the transactional executor until `commit()` or `rollback()`.
+3. **Lock (optional)**: Start a transaction with [`connection.begin().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.begin). This borrows the connection. All operations route through the transactional executor until `commit()` or `rollback()`.
 4. **Terminate**: Direct connections close when dropped. Pooled connections return to their pool instead. [`disconnect().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#method.disconnect) requests an explicit shutdown when supported, but does not force a pooled connection to close.
 
 ## Connect
@@ -132,7 +132,7 @@ Additional URL parameters are passed directly to the mysql_async API. See the fu
 > [!NOTE]
 > **MariaDB support**: use `MariaDBDriver::mariadb()` with a `mysql://` URL to enable MariaDB mode. When active, Tank uses MariaDB native column types where they differ from MySQL, most notably `UUID` instead of `CHAR(36)` (MariaDB 10.7+).
 >
-> Use the `column_type` attribute for other native DDL (e.g. `#[tank(column_type = (mariadb = "INET6", mysql = "VARCHAR(39)"))]` on a `String` field). The `mariadb` key applies only in MariaDB mode; the `mysql` key applies to both modes.
+> Use the `column_type` attribute for other native DDL (e.g. `#[tank(column_type = (mariadb = "INET6", mysql = "VARCHAR(39)"))]` on a `String` field). The `mariadb` key applies only in MariaDB mode. The `mysql` key applies to both modes.
 
 ### DuckDB
 DuckDB is your embedded artillery piece: fast, local, and always ready. Perfect for rapid deployment scenarios and testing under fire.
@@ -165,7 +165,7 @@ Modes:
 The `mode` parameter provides a common syntax for specifying connection access, similar to SQLite. The values map respectively to `access_mode=READ_ONLY`, `access_mode=READ_WRITE`, `access_mode=READ_WRITE` and the special `duckdb://:memory:` path. Additional URL parameters are passed directly to the DuckDB C API. See the full list of supported options on the [DuckDB website](https://duckdb.org/docs/stable/configuration/overview#global-configuration-options).
 
 ### MSSQL / SQL Server
-Microsoft SQL Server (and Azure SQL) is your enterprise command bunker: fortified T-SQL dialect, full transactional discipline, and native `JSON` and `VECTOR` support in SQL Server 2025.
+Microsoft SQL Server (and Azure SQL) is your enterprise command bunker: fortified T-SQL dialect, battle-tested armor, and the firepower to keep large operations moving.
 
 ```rust
 use tank::{ConnectionPool, Driver, PoolConfig, Result};
@@ -306,7 +306,7 @@ The parameters are used to create an object of type [`SessionBuilder`](https://d
 
 `driver.connect_pool(...)` returns an opaque `impl ConnectionPool<Driver>` type. The compiler knows its concrete type, but you cannot name that return type directly in a struct field.
 
-Use [`into_box()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_box) or [`into_arc()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_arc) to type-erase the pool into a `Box<dyn ConnectionPool<D>>` or `Arc<dyn ConnectionPool<D>>` respectively. Both can be stored in struct fields; use `Arc` for a clonable shared handle:
+Use [`into_box()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_box) or [`into_arc()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_arc) to type-erase the pool into a `Box<dyn ConnectionPool<D>>` or `Arc<dyn ConnectionPool<D>>` respectively. Both can be stored in struct fields. Use `Arc` for a clonable shared handle:
 
 ```rust
 use tank::{ConnectionPool, Driver, PoolConfig, Result};

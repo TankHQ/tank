@@ -3,89 +3,90 @@
 layout: home
 
 hero:
-  name: "TANK"
-  text: "Table Abstraction & Navigation Kit"
-  tagline: The Rust data layer
-  image:
-    src: logo.png
-    alt: Tank logo
-  actions:
-    - theme: brand
-      text: Get started
-      link: /02-getting-started
-    - theme: alt
-      text: Cheat sheet
-      link: /00-cheat-sheet
-    - theme: alt
-      text: View on crates.io
-      link: https://crates.io/crates/tank
+    name: "TANK"
+    text: "Table Abstraction & Navigation Kit"
+    tagline: The Rust data layer
+    image:
+        src: logo.png
+        alt: Tank logo
+    actions:
+        - theme: brand
+          text: Get started
+          link: /02-getting-started
+        - theme: alt
+          text: Cheat sheet
+          link: /00-cheat-sheet
+        - theme: alt
+          text: View on crates.io
+          link: https://crates.io/crates/tank
 
 features:
-  - icon: ⚡
-    title: Async Firepower
-    details: Streaming database operations exposed through an async Rust API.
-    link: /03-connection
-  - icon: 🧩
-    title: One Entity Model
-    details: Derive <code>Entity</code> on a plain struct and get table DDL, selects, inserts and row decoding.
-    link: /06-entity-definition
-  - icon: ⚔️
-    title: Precision Fire Control
-    details: The <code>expr!</code> macro builds a typed AST that each driver translates into its query language.
-    link: /08-advanced-operations
-  - icon: 🎯
-    title: Explicit Joins
-    details: Joins are first-class datasets, never hidden behind entity fields. Every alliance is signed.
-    link: /08-advanced-operations
-  - icon: 🛡️
-    title: Adaptable Chassis
-    details: Share entity and query code across SQL and NoSQL backends, within each driver's limits.
-    link: /04-capabilities
-  - icon: 🎖️
-    title: Rich Type Arsenal
-    details: Map standard Rust types to native columns, and forge custom payloads with <code>AsValue</code>.
-    link: /05-types
+    - icon: ⚡
+      title: Async Firepower
+      details: Streaming database operations exposed through an async Rust API.
+      link: /03-connection
+    - icon: 🧩
+      title: One Entity Model
+      details: Derive <code>Entity</code> on a plain struct and get table DDL, selects, inserts and row decoding.
+      link: /06-entity-definition
+    - icon: ⚔️
+      title: Precision Fire Control
+      details: The <code>expr!</code> macro builds a typed AST that each driver translates into its query language.
+      link: /08-advanced-operations
+    - icon: 🎯
+      title: Explicit Joins
+      details: Joins are first-class datasets, never hidden behind entity fields. Every alliance is signed.
+      link: /08-advanced-operations
+    - icon: 🛡️
+      title: Adaptable Chassis
+      details: Share entity and query code across SQL and NoSQL backends, within each driver's limits.
+      link: /04-capabilities
+    - icon: 🎖️
+      title: Rich Type Arsenal
+      details: Map standard Rust types to native columns, and forge custom payloads with <code>AsValue</code>.
+      link: /05-types
 ---
 
 <script setup>
-import { withBase } from "vitepress"
-import SwipeDeck from "./components/SwipeDeck.vue"
-import TankJoke from "./components/TankJoke.vue"
+    import { withBase } from "vitepress"
+    import SwipeDeck from "./components/SwipeDeck.vue"
+    import TankJoke from "./components/TankJoke.vue"
 
-const drivers = [
-  { name: "Postgres", section: "postgres" },
-  { name: "SQLite", section: "sqlite" },
-  { name: "MySQL", section: "mysql-mariadb" },
-  { name: "MariaDB", section: "mysql-mariadb" },
-  { name: "DuckDB", section: "duckdb" },
-  { name: "MSSQL", section: "mssql-sql-server" },
-  { name: "SQL Server", section: "mssql-sql-server" },
-  { name: "MongoDB", section: "mongodb" },
-  { name: "ScyllaDB", section: "scylladb-cassandra" },
-  { name: "Cassandra", section: "scylladb-cassandra" },
-  { name: "Valkey", section: "valkey-redis" },
-  { name: "Redis", section: "valkey-redis" },
-]
+    const drivers = [
+        { name: "Postgres", section: "postgres" },
+        { name: "SQLite", section: "sqlite" },
+        { name: "MySQL", section: "mysql-mariadb" },
+        { name: "MariaDB", section: "mysql-mariadb" },
+        { name: "DuckDB", section: "duckdb" },
+        { name: "MSSQL", section: "mssql-sql-server" },
+        { name: "SQL Server", section: "mssql-sql-server" },
+        { name: "Azure SQL", section: "mssql-sql-server" },
+        { name: "MongoDB", section: "mongodb" },
+        { name: "ScyllaDB", section: "scylladb-cassandra" },
+        { name: "Cassandra", section: "scylladb-cassandra" },
+        { name: "Valkey", section: "valkey-redis" },
+        { name: "Redis", section: "valkey-redis" },
+    ]
 </script>
 
 Welcome to the armored division, commander. Tank (**T**able **A**bstraction & **N**avigation **K**it) is the Rust data layer built for teams fighting across multiple fronts. Whether you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or holding a Postgres stronghold, you define your entities once and issue the same explicit orders everywhere. You call the targets, Tank and your driver handle the ballistics.
 
 <dl class="home-stats">
-  <div><dt>11</dt><dd>Database backends</dd></div>
-  <div><dt>1</dt><dd>Entity model</dd></div>
-  <div><dt>0</dt><dd>Boilerplate</dd></div>
-  <div><dt>100%</dt><dd>Async API</dd></div>
+    <div><dt>1</dt><dd>Entity model</dd></div>
+    <div><dt>13</dt><dd>Database backends</dd></div>
+    <div><dt>0</dt><dd>Boilerplate</dd></div>
+    <div><dt>100%</dt><dd>Async API</dd></div>
 </dl>
 
 <div class="driver-marquee">
-  <strong>Supports</strong>
-  <div>
-    <ul>
-      <li v-for="(d, i) in [...drivers, ...drivers]" :key="i">
-        <a :href="withBase(`/03-connection.html#${d.section}`)">{{ d.name }}</a>
-      </li>
-    </ul>
-  </div>
+    <strong>Supports</strong>
+    <div>
+        <ul>
+            <li v-for="(d, i) in [...drivers, ...drivers]" :key="i">
+                <a :href="withBase(`/03-connection.html#${d.section}`)">{{ d.name }}</a>
+            </li>
+        </ul>
+    </div>
 </div>
 
 ###### 01 · Unit Schematics
@@ -125,7 +126,7 @@ pub struct Operator {
 ###### 02 · Live Fire
 ## Every maneuver, one typed API
 
-Below are sample Rust operations and representative SQL or native query output for each backend. Each card defines its own entities and uses illustrative UUIDs; bulk-insert SQL may represent a native ingestion path. Swipe through the deck to cycle maneuvers and inspect the live fire across backends.
+Below are sample Rust operations and representative SQL or native query output for each backend. Each card defines its own entities and uses illustrative UUIDs. Bulk-insert SQL may represent a native ingestion path. Swipe through the deck to cycle maneuvers and inspect the live fire across backends.
 
 <SwipeDeck>
 
@@ -138,7 +139,7 @@ Below are sample Rust operations and representative SQL or native query output f
 Not all tanks are built for every terrain, and a lone-wolf SQLite operative has very different mechanical limits from a Postgres artillery battery or a Valkey ammo depot. Every driver implements the same core traits and reports what its engine can pull off: transactions, joins, high-caliber bulk appends, filtering, and aggregations. Consult the [capability matrix](/04-capabilities) before rolling out.
 
 > [!WARNING]
-> **No-Fly Zone.** Tank deliberately ships no schema migrations (only table creation and drop for rapid deployment) and no implicit joins. Every alliance is signed in full view — bring a dedicated migration tool for schema evolution and write your joins explicitly.
+> **No-Fly Zone.** Tank deliberately ships no schema migrations (only table creation and drop for rapid deployment) and no implicit joins. Every alliance is signed in full view: bring a dedicated migration tool for schema evolution and write your joins explicitly.
 
 ###### 04 · Deployment
 ## Skip training, go straight to live fire

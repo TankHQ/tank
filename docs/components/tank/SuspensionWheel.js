@@ -64,8 +64,8 @@ export class SuspensionWheel {
 
     // Move the wheel toward the ground and record the resulting contact.
     //
-    // Compression is instantaneous (the ground can shove the wheel up at once);
-    // extension is rate-limited, which is the "rebound lag" that lets the tank
+    // Compression is instantaneous (the ground can shove the wheel up at once).
+    // Extension is rate-limited, which is the "rebound lag" that lets the tank
     // leave the ground over a sudden drop.
     advance(pose, groundY, maxExtensionThisStep) {
         const target = this.groundContactLength(pose, groundY)
@@ -118,7 +118,7 @@ export class SuspensionWheel {
 
     // Spring/damper force in weight units. `staticLoad` is the weight resting on
     // one wheel, `vDown` is the hull's downward velocity at the contact. The
-    // spring carries the weight; the damper only ever removes velocity, so it can
+    // spring carries the weight. The damper only ever removes velocity, so it can
     // never lift the chassis on its own.
     //
     // The damper is capped at the force that can remove one wheel's share of the

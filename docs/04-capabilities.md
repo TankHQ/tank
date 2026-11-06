@@ -13,7 +13,7 @@ Not all tanks are built for every terrain. While Tank provides a unified API, th
 | **Filtering**    | ✅       | ✅        | ✅              | ✅     | ✅     | ✅       | ⚠️                  | ⚠️            |
 | **Aggregations** | ✅       | ✅        | ✅              | ✅     | ✅     | ✅       | ⚠️                  | ❌            |
 
-✅ supported, ⚠️ limited support, ❌ unavailable through Tank. **Bulk Append** means a specialized ingestion path; `insert_many` still works without one.
+✅ supported, ⚠️ limited support, ❌ unavailable through Tank. **Bulk Append** means a specialized ingestion path. `insert_many` still works without one.
 
 > [!WARNING]
 > - **ScyllaDB/Cassandra** uses logged [batches](https://docs.scylladb.com/manual/stable/cql/dml/batch.html), accumulating mutations until commit. Logged batches provide eventual all-or-none completion, but isolation only within a partition. Transactional reads are unavailable. CQL aggregate functions such as `MAX` are supported. SQL-style grouping and `HAVING` are not generally portable.

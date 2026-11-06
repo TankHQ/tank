@@ -4,7 +4,7 @@
 // simulation pixels against the running gear, so the drawing and the physics
 // stay aligned.
 //
-// The cannon is not part of this reference; the renderer draws it separately.
+// The cannon is not part of this reference. The renderer draws it separately.
 export const SVG_MM = {
     // Chassis outline (rear plate -> deck -> glacis -> nose -> belly -> rear).
     hull: [[18.39, 31.38], [17.05, 29.87], [3.88, 29.81], [3.13, 26.32], [0.61, 21.71], [0.02, 17.15], [0.12, 16.57], [49.86, 19.51], [98, 19.35], [132.35, 26.19], [134.69, 29.75], [133.93, 30.56], [130.81, 30.4], [126.27, 32.7], [19.73, 32.88]],

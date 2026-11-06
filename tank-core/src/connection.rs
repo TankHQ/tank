@@ -12,7 +12,7 @@ use url::Url;
 ///
 /// # Lifecycle
 /// - `connect` creates (or fetches) an underlying connection. It may eagerly
-///   establish network I/O; always await it.
+///   establish network I/O. Always await it.
 /// - `begin` starts a transaction scope. Commit/rollback MUST be awaited to
 ///   guarantee resource release.
 pub trait Connection: Executor {

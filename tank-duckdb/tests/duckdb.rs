@@ -250,7 +250,7 @@ mod tests {
         )
         .await
         .unwrap();
-        // `bind_index` is 0-based; index 0 must bind the first parameter.
+        // `bind_index` is 0-based. Index 0 must bind the first parameter.
         let query = connection.prepare("SELECT ?, ?").await.unwrap();
         let Query::Prepared(mut prepared) = query else {
             panic!("expected a prepared statement")

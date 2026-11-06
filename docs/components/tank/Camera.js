@@ -17,7 +17,7 @@ export class Camera {
         this.shakeDecay = 0.88
     }
 
-    // `dt` is the frame's wall-clock time in ms; `speed01` is the tank's forward
+    // `dt` is the frame's wall-clock time in ms. `speed01` is the tank's forward
     // speed as a fraction of the cruise speed (negative when reversing), used to
     // bias the framing.
     follow(pose, viewportWidth, viewportHeight, speed01 = 0, dt = BASE_FRAME_MS) {

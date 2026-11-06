@@ -35,7 +35,7 @@ function buildRunningGear(rg) {
     const hullPoints = SV.hull.map(raw)
     const hullPhysics = SV.hullPhysics.map(raw)
     const turret = SV.turret.map(raw)
-    // Each camo field is a polygon; pair it with its source fill colour.
+    // Each camo field is a polygon. Pair it with its source fill colour.
     const camo = SV.camo.map((field, i) => ({
         fill: SV.camoFills[i % SV.camoFills.length],
         points: field.map(raw),
@@ -49,7 +49,7 @@ function buildRunningGear(rg) {
     const idlerRise = rg.idlerRiseRatio * L
     const restLength = rg.restLengthRatio * L
 
-    // Deck = top of the hull; skirt = bottom. Both read off the scaled SVG.
+    // Deck = top of the hull, skirt = bottom. Both read off the scaled SVG.
     const skirtY = (svgHullMaxY - svgHullMinY) * k
     const hubCentreY = skirtY + hubDrop
 
@@ -108,7 +108,7 @@ function buildRunningGear(rg) {
     // is shorter than its top, inset by `sponsonTaperRatio` each side.
     const wheelTopY = hubCentreY - wheelRadius
     const sponsorBottomY = wheelTopY + 2 * wheelRadius * rg.sponsonDropRatio
-    // The belly is the hull's lowest edge; take its two extreme x points.
+    // The belly is the hull's lowest edge. Take its two extreme x points.
     const belly = hullPoints
         .filter((p) => p.y >= skirtY - 1)
         .sort((a, b) => a.x - b.x)

@@ -3,7 +3,7 @@
 
 Tank brings a full type arsenal to the field. The `Entity` derive macro identifies known types by matching trailing path segments. For example, `std::collections::VecDeque`, `collections::VecDeque`, or simply `VecDeque` all resolve to the same type: `Value::List`.
 
-Tank maps ordinary Rust types to the closest column types each driver supports, falling back to generic representations when appropriate. The table shows column/storage mappings, not a guarantee of every operation or parameter binding. ❌ indicates unsupported mappings; ⚠️ marks fallback encodings or important limitations.
+Tank maps ordinary Rust types to the closest column types each driver supports, falling back to generic representations when appropriate. The table shows column/storage mappings, not a guarantee of every operation or parameter binding. ❌ indicates unsupported mappings. ⚠️ marks fallback encodings or important limitations.
 
 ## Column Types
 <div class="sticky-table">
@@ -50,7 +50,7 @@ Tank maps ordinary Rust types to the closest column types each driver supports, 
 > [!WARNING]
 > Fallback encodings such as `TEXT` or `JSON` have predictable encodings. Usually (but not always) equality and ordering comparisons behave as expected. Advanced indexing or operator support may vary by driver.
 >
-> Mappings do not imply the full Rust integer range: PostgreSQL's `NUMERIC(19)` cannot hold `u64::MAX`, SQLite and MongoDB limit `u64` to signed 64-bit values, and decimal-based 128-bit conversions have additional limits. The table assumes 64-bit builds for `isize`/`usize`; prefer explicit `i64`/`u64` for portable schemas.
+> Mappings do not imply the full Rust integer range: PostgreSQL's `NUMERIC(19)` cannot hold `u64::MAX`, SQLite and MongoDB limit `u64` to signed 64-bit values, and decimal-based 128-bit conversions have additional limits. The table assumes 64-bit builds for `isize`/`usize`. Prefer explicit `i64`/`u64` for portable schemas.
 
 Driver-specific limits:
 - MariaDB's native `UUID` requires MariaDB mode and server 10.7+, MySQL mode uses `CHAR(36)`.

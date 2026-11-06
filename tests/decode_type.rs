@@ -204,7 +204,7 @@ mod tests {
                 })
             )
         );
-        // A slice of `u8` is a blob; any other slice is a list.
+        // A slice of `u8` is a blob. Any other slice is a list.
         assert_eq!(value("[u8]"), Value::Blob(None));
         assert_eq!(
             value("[i32]"),

@@ -1,7 +1,7 @@
 // A pool of short-lived visual particles (dust, muzzle flash, impact debris).
 //
 // Each particle is a simple point with velocity, gravity, lifetime and colour.
-// The field owns them all; callers just spawn named kinds.
+// The field owns them all. Callers just spawn named kinds.
 export class ParticleField {
     constructor() {
         this.particles = []
