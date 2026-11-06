@@ -64,6 +64,18 @@ CREATE TABLE IF NOT EXISTS "army"."deployments" (
 "operational" BOOLEAN NOT NULL,
 "supply_ratio" DECIMAL);
 ```
+```sql [MSSQL]
+IF Schema_ID(N'army') IS NULL EXEC(N'CREATE SCHEMA "army"');
+IF OBJECT_ID(N'"army"."deployments"', N'U') IS NULL
+CREATE TABLE "army"."deployments" (
+"unit_id" UNIQUEIDENTIFIER PRIMARY KEY,
+"callsign" NVARCHAR(MAX) NOT NULL,
+"crew" TINYINT NOT NULL,
+"casualties" INT NOT NULL,
+"fuel_ratio" REAL NOT NULL,
+"operational" BIT NOT NULL,
+"supply_ratio" DECIMAL(38,10));
+```
 ```sql [ScyllaDB]
 CREATE KEYSPACE IF NOT EXISTS "army"
 WITH replication = {
@@ -265,6 +277,19 @@ INSERT INTO `army`.`missions` (`id`, `code_name`, `progress`, `complete`) VALUES
 ON DUPLICATE KEY UPDATE`code_name` = VALUES(`code_name`),
 `progress` = VALUES(`progress`),
 `complete` = VALUES(`complete`);
+```
+```sql [MSSQL]
+MERGE INTO "army"."missions" AS "target"
+USING (VALUES
+(N'94f0cbcc-1fce-454e-a6e4-4e3587741808', N'Red Dawn', 0.4, 0)
+) AS "source" ("id", "code_name", "progress", "complete")
+ON "target"."id" = "source"."id"
+WHEN MATCHED THEN UPDATE SET
+"target"."code_name" = "source"."code_name",
+"target"."progress" = "source"."progress",
+"target"."complete" = "source"."complete"
+WHEN NOT MATCHED THEN INSERT ("id", "code_name", "progress", "complete")
+VALUES ("source"."id", "source"."code_name", "source"."progress", "source"."complete");
 ```
 ```json [MongoDB]
 {

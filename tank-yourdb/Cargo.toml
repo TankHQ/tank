@@ -10,7 +10,7 @@ categories = ["database"]
 
 [features]
 # Example: default = ["bundled"]
-# Add backend-specific toggles; keep minimal.
+# Add backend-specific toggles. Keep minimal.
 
 [dependencies]
 log.workspace = true

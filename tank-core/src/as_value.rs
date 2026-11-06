@@ -33,7 +33,7 @@ pub trait AsValue {
     fn as_value<'a>(self) -> Value<'a>
     where
         Self: 'a;
-    /// Decode into `Self`; input-only implementations can use the default.
+    /// Decode into `Self`. Input-only implementations can use the default.
     fn try_from_value(_value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
@@ -1637,7 +1637,7 @@ impl<T: AsValue> AsValue for Option<T> {
                         | Value::Json(..)
                 );
                 if !drop_empty {
-                    // Scalar empty values own no heap data; forgetting elides drop glue.
+                    // Scalar empty values own no heap data. Forgetting elides drop glue.
                     mem::forget(empty);
                 }
                 if same {

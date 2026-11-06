@@ -5,7 +5,7 @@ import { BODY } from './geometry.js'
 //   x' = a*x + c*y + e
 //   y' = b*x + d*y + f
 //
-// The renderer applies these with `ctx.transform(...)`; Tank applies `apply()`
+// The renderer applies these with `ctx.transform(...)`. Tank applies `apply()`
 // to a single point (for the muzzle). Sharing the builders keeps the drawn art
 // and the shell spawn in exactly the same place.
 

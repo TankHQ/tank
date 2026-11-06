@@ -73,12 +73,12 @@ export const CONFIG = {
     // Spring force as a multiple of the weight resting on one wheel:
     //   F = staticLoad * (springLinearStiffness * u + springProgressiveStiffness * u^3)
     // where u is compression as a fraction of full travel (0 = fully extended,
-    // 1 = fully compressed). The linear term sets the soft ride; the progressive
+    // 1 = fully compressed). The linear term sets the soft ride. The progressive
     // term makes the spring much stiffer near the bump stop.
     springLinearStiffness: 50,
     springProgressiveStiffness: 2,
 
-    // Shock absorbers. Higher = tauter and heavier; too high and bumps stop
+    // Shock absorbers. Higher = tauter and heavier. Too high and bumps stop
     // being absorbed at all.
     shockAbsorberDamping: 3,
 
@@ -98,7 +98,7 @@ export const CONFIG = {
     // 0.5 = lively, 0.2 = twitchy, below 0.1 it can flip.
     bodyRotationInertiaScale: 0.6,
 
-    // Air resistance; also settles any spin once airborne.
+    // Air resistance, also settles any spin once airborne.
     airResistance: 0.001,
 
     // ---------------------------------------------------------------------------
@@ -127,7 +127,7 @@ export const CONFIG = {
     // wheels that are touching the ground, so it does nothing in mid-air.
     //
     // It is deliberately strong. Measured on flat ground, ~100 gives roughly 4-5x
-    // the baseline pitch under power and ~10x on the brakes; beyond ~115 the torque
+    // the baseline pitch under power and ~10x on the brakes. Beyond ~115 the torque
     // overcomes the springs and the tank can tumble over bumps, so this is set just
     // under that with margin.
     tractionArm: 100,
@@ -167,7 +167,7 @@ export const RENDER = {
 // `forwardTargetX` when driving and `reverseTargetX` when reversing.
 export const CAMERA = {
     // Where the tank sits across the viewport width (fraction) and down its
-    // height. `baseTargetX` is the resting start; forward/reverse are the extremes
+    // height. `baseTargetX` is the resting start. Forward/reverse are the extremes
     // reached at full speed.
     baseTargetX: 0.42,
     forwardTargetX: 0.05,
@@ -180,7 +180,7 @@ export const CAMERA = {
     cruiseSpeed: 18,
 
     // How fast the camera moves to catch up with the tank (per frame, 0..1).
-    // Higher = snappier and tighter; lower = looser, more trailing.
+    // Higher = snappier and tighter. Lower = looser, more trailing.
     smoothingX: 0.12,
     smoothingY: 0.08,
     idleSmoothing: 0.05,

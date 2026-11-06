@@ -5,6 +5,7 @@ members = [
     "tank-macros",
     "tank-duckdb",
     "tank-mongodb",
+    "tank-mssql",
     "tank-mysql",
     "tank-postgres",
     "tank-scylladb",

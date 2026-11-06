@@ -71,7 +71,7 @@ let rows = results
 ```
 
 ## Decoding Rows Into Entities
-`QueryResult::Row` carries labeled columns. Any type with `#[derive(Entity)]` can be reconstructed using `Entity::from_row(row)` provided by the derive. Labels must match the field mapping (custom column names via `#[tank(name = "...")]` are respected). Missing columns retain the entity's `Default` values when it implements that trait; otherwise an error is returned.
+`QueryResult::Row` carries labeled columns. Any type with `#[derive(Entity)]` can be reconstructed using `Entity::from_row(row)` provided by the derive. Labels must match the field mapping (custom column names via `#[tank(name = "...")]` are respected). Missing columns retain the entity's `Default` values when it implements that trait. Otherwise an error is returned.
 ```rust
 #[derive(Entity)]
 struct Two { a2: u32, string: String }
@@ -89,7 +89,7 @@ let (callsign, strength) = Projection::from_row(row).map(|p| (p.callsign, p.stre
 ## Prepared Statements
 When the objective is fixed and only the parameters change, prepare the firing solution once, then reload with new values. Use `executor.prepare("...")` with parameter placeholders, bind values, and then fire again. Bind untrusted values rather than concatenating them into SQL.
 
-Using the operations schema (`Operator`, `RadioLog`) from Section 7, with PostgreSQL's `$n` placeholders. DuckDB and MySQL use `?`; raw SQL is not rewritten into another dialect.
+Using the operations schema (`Operator`, `RadioLog`) from Section 7, with PostgreSQL's `$n` placeholders. DuckDB and MySQL use `?`. Raw SQL is not rewritten into another dialect.
 ```rust
 use tank::{Entity, stream::{StreamExt, TryStreamExt}};
 
@@ -136,7 +136,7 @@ Prepared statements reuse backend preparation state when available. Parameter co
 
 ### Notes & Driver Support
 - `SqlWriter::write_create_table::<T>(&mut sql, if_not_exists)` emits only table DDL. Use `write_create_schema` separately, or `Entity::create_table` to coordinate schema and table creation.
-- Streams returned by `executor.run(...)` are ordered by statement execution; interleave `Affected` and `Row` accordingly.
+- Streams returned by `executor.run(...)` are ordered by statement execution. Interleave `Affected` and `Row` accordingly.
 - `executor.fetch(...)` is convenient for row-only workloads, but it discards `Affected` results from mixed batches. Use `run(...)` when you need both result types.
 - When selecting a subset of columns, ensure the labels match the entity fields present. Missing labels require `Default` on the entity, not just on the omitted field types.
 - Prepared queries use positional parameters across drivers.

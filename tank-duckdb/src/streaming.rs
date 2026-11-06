@@ -84,7 +84,7 @@ impl NativeRows {
                         return Ok(Some(RowOwned::new(self.names.clone(), values)));
                     }
                 }
-                // Free the previous chunk before fetching another; never queue rows or chunks.
+                // Free the previous chunk before fetching another. Never queue rows or chunks.
                 self.chunk = None;
                 let chunk = CBox::new(
                     if self.streaming {

@@ -22,7 +22,7 @@ export class Terrain {
 		this._Composite.add(world, this._ground)
 	}
 
-	// Ground height at a world x. Pure function of x; no state.
+	// Ground height at a world x. Pure function of x, no state.
 	heightAt(x) {
 		let h = 0
 		h += 62 * Math.sin(x * 0.0009)

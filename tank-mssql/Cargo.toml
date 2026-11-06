@@ -1,0 +1,46 @@
+[package]
+name = "tank-mssql"
+description = "Microsoft SQL Server / Azure SQL driver implementation for Tank: the Rust data layer"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+categories.workspace = true
+autotests = false
+
+[[test]]
+name = "mssql"
+
+[dependencies]
+anyhow.workspace = true
+async-stream.workspace = true
+futures.workspace = true
+log.workspace = true
+rust_decimal.workspace = true
+serde_json.workspace = true
+tank-core.workspace = true
+tiberius = { version = "0.12", default-features = false, features = [
+    "tds73",
+    "rust_decimal",
+    "time",
+    "rustls",
+] }
+time.workspace = true
+tokio = { workspace = true, features = ["net"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+indoc.workspace = true
+tank.workspace = true
+tank-tests = { path = "../tank-tests", features = [
+    "disable-glob",
+    "disable-infinity",
+    "disable-large-integers",
+    "disable-multiple-statements",
+    "disable-old-dates",
+] }
+testcontainers-modules = { version = "0", features = ["mssql_server"] }
+tokio.workspace = true
