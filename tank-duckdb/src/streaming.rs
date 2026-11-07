@@ -1,140 +1,169 @@
-use crate::{DuckDBConnection, DuckDBDriver, cbox::CBox, extract::extract_value};
+use crate::{
+    DuckDBConnection, DuckDBDriver, ValueWrap,
+    cbox::CBox,
+    check_rc,
+    extract::VectorNode,
+    str_from_v2,
+};
 use anyhow::anyhow;
-use libduckdb_sys::*;
+use libduckdb_sys::v2::*;
 use std::{
-    ffi::{CStr, CString},
-    mem, ptr,
+    ffi::CString,
+    mem,
+    pin::Pin,
+    ptr,
+    task::{Context, Poll},
 };
 use tank_core::{
-    Error, Query, QueryResult, Result, RowLabels, RowOwned, RowsAffected, error_message_from_ptr,
+    Error, Prepared, Query, QueryResult, Result, RowLabels, RowOwned, RowsAffected, ValueOwned,
+    stream::Stream,
 };
 
 // Chunk storage is released before its result. Rows returned to callers own their values.
 struct NativeRows {
-    chunk: Option<CBox<duckdb_data_chunk>>,
-    result: CBox<duckdb_result>,
+    vectors: Vec<VectorNode>,
+    chunk: Option<CBox<duckdb_v2_data_chunk_handle>>,
+    result: CBox<duckdb_v2_result_handle>,
     names: RowLabels,
-    types: Vec<(CBox<duckdb_logical_type>, u32)>,
-    position: u64,
-    streaming: bool,
+    types: Vec<ValueOwned>,
+    chunk_size: usize,
+    position: usize,
 }
 
 impl NativeRows {
-    fn new(mut result: CBox<duckdb_result>) -> Result<Self> {
+    fn new(result: CBox<duckdb_v2_result_handle>) -> Result<Self> {
         unsafe {
-            let cols = duckdb_column_count(&mut *result);
-            let names = (0..cols)
-                .map(|i| {
-                    let name = duckdb_column_name(&mut *result, i);
-                    if name.is_null() {
-                        return Err(anyhow!("Missing DuckDB column name at index {i}"));
-                    }
-                    Ok(CStr::from_ptr(name).to_str()?.to_owned())
-                })
-                .collect::<Result<RowLabels>>()?;
-            let types = (0..cols)
-                .map(|i| {
-                    let ty = CBox::new(duckdb_column_logical_type(&mut *result, i), |mut ty| {
-                        duckdb_destroy_logical_type(&mut ty)
-                    });
-                    if ty.is_null() {
-                        return Err(anyhow!("Missing DuckDB column type at index {i}"));
-                    }
-                    let id = duckdb_get_type_id(*ty);
-                    Ok((ty, id))
-                })
-                .collect::<Result<_>>()?;
-            let streaming = duckdb_result_is_streaming(*result);
+            let mut schema = CBox::new(ptr::null_mut(), |mut s| {
+                duckdb_v2_schema_destroy(&mut s);
+            });
+            check_rc(|err| duckdb_v2_result_get_schema(*result, &mut *schema, err))?;
+            let mut cols = 0;
+            check_rc(|err| duckdb_v2_schema_get_count(*schema, &mut cols, err))?;
+            let mut names = Vec::with_capacity(cols as usize);
+            let mut types = Vec::with_capacity(cols as usize);
+            for i in 0..cols {
+                let mut name = duckdb_v2_identifier_t::default();
+                let mut ty = ptr::null_mut();
+                check_rc(|err| {
+                    duckdb_v2_schema_get_field(*schema, i, &mut name, &mut ty, err)
+                })?;
+                names.push(str_from_v2(name).to_owned());
+                types.push(ValueWrap::try_from(ty)?.into());
+            }
             Ok(Self {
+                vectors: Vec::with_capacity(cols as usize),
                 chunk: None,
                 result,
-                names,
+                names: names.into(),
                 types,
+                chunk_size: 0,
                 position: 0,
-                streaming,
             })
         }
     }
 
-    fn next(&mut self) -> Result<Option<RowOwned>> {
+    #[inline(always)]
+    fn next_buffered_row(&mut self) -> Result<Option<RowOwned>> {
+        if self.position >= self.chunk_size {
+            return Ok(None);
+        }
+        let row = self.position;
+        let values = self
+            .vectors
+            .iter()
+            .zip(self.types.iter())
+            .map(|(vec_node, ty)| vec_node.extract(row, ty))
+            .collect::<Result<Vec<_>>>()?;
+        self.position += 1;
+        if self.position == self.chunk_size {
+            self.vectors.clear();
+            self.chunk = None;
+            self.chunk_size = 0;
+            self.position = 0;
+        }
+        Ok(Some(RowOwned::new(self.names.clone(), values)))
+    }
+
+    fn load_chunk(&mut self, chunk: CBox<duckdb_v2_data_chunk_handle>) -> Result<bool> {
         unsafe {
-            loop {
-                if let Some(chunk) = &self.chunk {
-                    if self.position < duckdb_data_chunk_get_size(**chunk) {
-                        let values = self
-                            .types
-                            .iter()
-                            .enumerate()
-                            .map(|(col, (ty, id))| {
-                                let vector = duckdb_data_chunk_get_vector(**chunk, col as u64);
-                                extract_value(
-                                    vector,
-                                    self.position as usize,
-                                    **ty,
-                                    *id,
-                                    duckdb_vector_get_data(vector),
-                                    duckdb_vector_get_validity(vector),
-                                )
-                            })
-                            .collect::<Result<Vec<_>>>()?;
-                        self.position += 1;
-                        if self.position == duckdb_data_chunk_get_size(**chunk) {
-                            self.chunk = None;
-                        }
-                        return Ok(Some(RowOwned::new(self.names.clone(), values)));
-                    }
-                }
-                // Free the previous chunk before fetching another; never queue rows or chunks.
-                self.chunk = None;
-                let chunk = CBox::new(
-                    if self.streaming {
-                        duckdb_stream_fetch_chunk(*self.result)
-                    } else {
-                        duckdb_fetch_chunk(*self.result)
-                    },
-                    |mut chunk| duckdb_destroy_data_chunk(&mut chunk),
-                );
-                if chunk.is_null() {
-                    let error = duckdb_result_error(&mut *self.result);
-                    return if error.is_null() {
-                        Ok(None)
-                    } else {
-                        Err(Error::msg(
-                            CStr::from_ptr(error).to_string_lossy().into_owned(),
-                        ))
-                    };
-                }
-                self.position = 0;
-                self.chunk = Some(chunk);
+            let mut size = 0;
+            check_rc(|err| duckdb_v2_data_chunk_get_size(*chunk, &mut size, err))?;
+            if size == 0 {
+                return Ok(false);
             }
+            self.vectors.clear();
+            for (col, ty) in self.types.iter().enumerate() {
+                let mut vector = ptr::null_mut();
+                check_rc(|err| {
+                    duckdb_v2_data_chunk_get_vector(*chunk, col as idx_t, &mut vector, err)
+                })?;
+                self.vectors.push(VectorNode::from_vector(vector, ty)?);
+            }
+            self.chunk_size = size as usize;
+            self.position = 0;
+            self.chunk = Some(chunk);
+            Ok(true)
         }
     }
 }
 
-struct Execution<'s, Q: AsMut<Query<DuckDBDriver>>> {
+enum ActiveResult {
+    Rows(NativeRows),
+    Affected {
+        result: CBox<duckdb_v2_result_handle>,
+        rows_changed: Option<u64>,
+    },
+}
+
+pub struct Statements<'s, Q: AsMut<Query<DuckDBDriver>>> {
     // Drop dependent native resources before the query and connection borrow.
-    rows: Option<NativeRows>,
-    prepared: Option<CBox<duckdb_prepared_statement>>,
-    extracted: Option<CBox<duckdb_extracted_statements>>,
+    active: Option<ActiveResult>,
+    statement: Option<CBox<duckdb_v2_sql_statement_handle>>,
+    iterator: Option<CBox<duckdb_v2_statement_iterator_handle>>,
     query: Q,
     connection: &'s mut DuckDBConnection,
     context: String,
-    count: u64,
-    index: u64,
-    generation: u64,
+    executed_prepared: bool,
     finished: bool,
 }
 
-enum Statement {
-    Rows,
-    Affected(RowsAffected),
-}
+impl<'s, Q: AsMut<Query<DuckDBDriver>>> Statements<'s, Q> {
+    const STEP_BUDGET: usize = 64;
 
-impl<Q: AsMut<Query<DuckDBDriver>>> Execution<'_, Q> {
+    pub(crate) fn new(connection: &'s mut DuckDBConnection, mut query: Q) -> Result<Self> {
+        let context = format!("While running the query:\n{}", query.as_mut());
+        let iterator = if let Query::Raw(raw) = query.as_mut() {
+            let sql = CString::new(raw.0.as_bytes())
+                .map_err(|error| Error::new(error).context(context.clone()))?;
+            let mut iter = CBox::new(ptr::null_mut(), |mut p| unsafe {
+                duckdb_v2_statement_iterator_destroy(&mut p);
+            });
+            unsafe {
+                check_rc(|err| {
+                    duckdb_v2_parse_sql(*connection.connection, sql.as_ptr(), &mut *iter, err)
+                })
+                .map_err(|e| e.context(context.clone()))?;
+            }
+            Some(iter)
+        } else {
+            None
+        };
+        Ok(Self {
+            active: None,
+            statement: None,
+            iterator,
+            query,
+            connection,
+            context,
+            executed_prepared: false,
+            finished: false,
+        })
+    }
+
     fn finish(&mut self) -> Result<()> {
-        self.rows = None;
-        self.prepared = None;
-        self.extracted = None;
+        self.active = None;
+        self.statement = None;
+        self.iterator = None;
         if !self.finished {
             self.finished = true;
             self.query.as_mut().clear_bindings()?;
@@ -149,86 +178,173 @@ impl<Q: AsMut<Query<DuckDBDriver>>> Execution<'_, Q> {
         error.context(self.context.clone())
     }
 
-    fn next_row(&mut self) -> Result<Option<RowOwned>> {
-        let Some(rows) = self.rows.as_mut() else {
-            return Ok(None);
-        };
-        match rows.next() {
-            Ok(Some(row)) => Ok(Some(row)),
-            Ok(None) => {
-                self.rows = None;
-                self.prepared = None;
-                Ok(None)
+    fn step_once(
+        result: duckdb_v2_result_handle,
+        steps: &mut usize,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(DUCKDB_V2_RESULT_STEP_STATUS, Option<CBox<duckdb_v2_data_chunk_handle>>)>> {
+        if *steps >= Self::STEP_BUDGET {
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
+        *steps += 1;
+        let mut raw_chunk = ptr::null_mut();
+        let mut status = DUCKDB_V2_RESULT_STEP_STATUS::DUCKDB_V2_RESULT_STEP_STATUS_WAITING;
+        if let Err(e) = unsafe {
+            check_rc(|err| duckdb_v2_result_step(result, &mut raw_chunk, &mut status, err))
+        } {
+            return Poll::Ready(Err(e));
+        }
+        let chunk = (!raw_chunk.is_null()).then(|| {
+            CBox::new(raw_chunk, |mut c| unsafe {
+                duckdb_v2_data_chunk_destroy(&mut c);
+            })
+        });
+        Poll::Ready(Ok((status, chunk)))
+    }
+
+    pub(crate) fn poll_affected(
+        result: duckdb_v2_result_handle,
+        rows_changed: &mut Option<u64>,
+        steps: &mut usize,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<RowsAffected>> {
+        loop {
+            let Poll::Ready(step) = Self::step_once(result, steps, cx) else {
+                return Poll::Pending;
+            };
+            let (status, chunk) = step?;
+            match status {
+                DUCKDB_V2_RESULT_STEP_STATUS::DUCKDB_V2_RESULT_STEP_STATUS_WAITING => {}
+                DUCKDB_V2_RESULT_STEP_STATUS::DUCKDB_V2_RESULT_STEP_STATUS_CHUNK => {
+                    if let (None, Some(chunk)) = (&*rows_changed, chunk) {
+                        *rows_changed = Some(unsafe { Self::extract_changed_rows(*chunk)? });
+                    }
+                }
+                DUCKDB_V2_RESULT_STEP_STATUS::DUCKDB_V2_RESULT_STEP_STATUS_FINISHED => {
+                    return Poll::Ready(Ok(RowsAffected {
+                        rows_affected: Some(rows_changed.unwrap_or(0)),
+                        last_affected_id: None,
+                    }));
+                }
+                _ => return Poll::Ready(Err(anyhow!("DuckDB query was interrupted"))),
             }
-            Err(error) => Err(error),
         }
     }
 
-    fn next_statement(&mut self) -> Result<Option<Statement>> {
-        if self.finished {
-            return Ok(None);
+    unsafe fn extract_changed_rows(chunk: duckdb_v2_data_chunk_handle) -> Result<u64> {
+        unsafe {
+            let mut size = 0;
+            check_rc(|err| duckdb_v2_data_chunk_get_size(chunk, &mut size, err))?;
+            if size == 0 {
+                return Ok(0);
+            }
+            let mut vec = ptr::null_mut();
+            check_rc(|err| duckdb_v2_data_chunk_get_vector(chunk, 0, &mut vec, err))?;
+            let mut vt = DUCKDB_V2_VECTOR_TYPE::DUCKDB_V2_VECTOR_TYPE_OTHER;
+            check_rc(|err| duckdb_v2_vector_get_vector_type(vec, &mut vt, err))?;
+            if vt != DUCKDB_V2_VECTOR_TYPE::DUCKDB_V2_VECTOR_TYPE_FLAT {
+                check_rc(|err| duckdb_v2_vector_flatten(vec, err))?;
+            }
+            let mut view: duckdb_v2_vector_view = mem::zeroed();
+            check_rc(|err| duckdb_v2_vector_get_view(vec, &mut view, err))?;
+            if view.data.is_null() {
+                return Ok(0);
+            }
+            Ok((*(view.data as *const i64)).max(0) as u64)
         }
-        // An outer advance invalidates the previous row iterator, but does not hide errors
-        // in unread rows. Extract and discard one row at a time before executing more SQL.
-        while self.next_row()?.is_some() {}
-        if self.index == self.count {
-            self.finish()?;
-            return Ok(None);
+    }
+
+    fn classify_result(result: CBox<duckdb_v2_result_handle>) -> Result<ActiveResult> {
+        unsafe {
+            let mut result_type = DUCKDB_V2_RESULT_TYPE::DUCKDB_V2_RESULT_TYPE_NOTHING;
+            check_rc(|err| duckdb_v2_result_get_result_type(*result, &mut result_type, err))?;
+            match result_type {
+                DUCKDB_V2_RESULT_TYPE::DUCKDB_V2_RESULT_TYPE_QUERY_RESULT => {
+                    Ok(ActiveResult::Rows(NativeRows::new(result)?))
+                }
+                DUCKDB_V2_RESULT_TYPE::DUCKDB_V2_RESULT_TYPE_CHANGED_ROWS => {
+                    Ok(ActiveResult::Affected {
+                        result,
+                        rows_changed: None,
+                    })
+                }
+                _ => Ok(ActiveResult::Affected {
+                    result,
+                    rows_changed: Some(0),
+                }),
+            }
+        }
+    }
+
+    fn start_next_statement(&mut self) -> Result<bool> {
+        if self.finished {
+            return Ok(false);
         }
         unsafe {
-            let statement = if let Some(extracted) = &self.extracted {
-                let mut prepared =
-                    CBox::new(ptr::null_mut(), |mut p| duckdb_destroy_prepare(&mut p));
-                let rc = duckdb_prepare_extracted_statement(
-                    *self.connection.connection,
-                    **extracted,
-                    self.index,
-                    &mut *prepared,
-                );
-                if rc != duckdb_state_DuckDBSuccess {
-                    return Err(Error::msg(
-                        error_message_from_ptr(&duckdb_prepare_error(*prepared)).into_owned(),
-                    ));
+            let mut result = CBox::new(ptr::null_mut(), |mut r| {
+                duckdb_v2_result_destroy(&mut r);
+            });
+            if let Some(iterator) = &self.iterator {
+                self.statement = None;
+                let mut stmt = CBox::new(ptr::null_mut(), |mut s| {
+                    duckdb_v2_sql_statement_destroy(&mut s);
+                });
+                check_rc(|err| duckdb_v2_statement_iterator_next(**iterator, &mut *stmt, err))?;
+                if stmt.is_null() {
+                    self.finish()?;
+                    return Ok(false);
                 }
-                let statement = *prepared;
-                self.prepared = Some(prepared);
-                statement
+                check_rc(|err| {
+                    duckdb_v2_statement_execute(
+                        *self.connection.connection,
+                        *stmt,
+                        ptr::null(),
+                        ptr::null(),
+                        0,
+                        &mut *result,
+                        err,
+                    )
+                })?;
+                self.statement = Some(stmt);
             } else {
-                match self.query.as_mut() {
-                    Query::Prepared(query) => query.statement(),
-                    Query::Raw(_) => unreachable!(),
+                if self.executed_prepared {
+                    self.finish()?;
+                    return Ok(false);
                 }
-            };
-            self.index += 1;
-            self.generation += 1;
-            let mut result = CBox::new(mem::zeroed(), |mut r| duckdb_destroy_result(&mut r));
-            if duckdb_execute_prepared_streaming(statement, &mut *result)
-                != duckdb_state_DuckDBSuccess
-            {
-                return Err(Error::msg(
-                    error_message_from_ptr(&duckdb_result_error(&mut *result)).into_owned(),
-                ));
-            }
-            if duckdb_result_return_type(*result)
-                == duckdb_result_type_DUCKDB_RESULT_TYPE_QUERY_RESULT
-            {
-                self.rows = Some(NativeRows::new(result)?);
-                Ok(Some(Statement::Rows))
-            } else {
-                let affected = RowsAffected {
-                    rows_affected: Some(duckdb_rows_changed(&mut *result)),
-                    ..Default::default()
+                self.executed_prepared = true;
+                let factory = self.connection.factory;
+                let Query::Prepared(prepared) = self.query.as_mut() else {
+                    unreachable!()
                 };
-                // The native result must die before its temporary prepared statement.
-                drop(result);
-                self.prepared = None;
-                Ok(Some(Statement::Affected(affected)))
+                if prepared.is_empty() {
+                    self.finish()?;
+                    return Ok(false);
+                }
+                let params = prepared.take_params(factory)?;
+                let raw_params = params.iter().map(|v| **v).collect::<Vec<_>>();
+                check_rc(|err| {
+                    duckdb_v2_prepared_statement_execute(
+                        prepared.statement(),
+                        ptr::null(),
+                        if raw_params.is_empty() {
+                            ptr::null()
+                        } else {
+                            raw_params.as_ptr()
+                        },
+                        raw_params.len() as idx_t,
+                        &mut *result,
+                        err,
+                    )
+                })?;
             }
+            self.active = Some(Self::classify_result(result)?);
+            Ok(true)
         }
     }
 }
 
-impl<Q: AsMut<Query<DuckDBDriver>>> Drop for Execution<'_, Q> {
+impl<Q: AsMut<Query<DuckDBDriver>>> Drop for Statements<'_, Q> {
     fn drop(&mut self) {
         if let Err(error) = self.finish() {
             log::error!("While dropping DuckDB execution: {error:#}");
@@ -236,73 +352,88 @@ impl<Q: AsMut<Query<DuckDBDriver>>> Drop for Execution<'_, Q> {
     }
 }
 
-pub struct Statements<'s, Q: AsMut<Query<DuckDBDriver>>> {
-    execution: Execution<'s, Q>,
-}
-
-impl<'s, Q: AsMut<Query<DuckDBDriver>>> Statements<'s, Q> {
-    pub(crate) fn new(connection: &'s mut DuckDBConnection, mut query: Q) -> Result<Self> {
-        let context = format!("While running the query:\n{}", query.as_mut());
-        let mut count = 1;
-        let extracted = if let Query::Raw(raw) = query.as_mut() {
-            let sql = CString::new(raw.0.as_bytes())
-                .map_err(|error| Error::new(error).context(context.clone()))?;
-            let mut extracted = CBox::new(ptr::null_mut(), |mut p| unsafe {
-                duckdb_destroy_extracted(&mut p)
-            });
-            unsafe {
-                count = duckdb_extract_statements(
-                    *connection.connection,
-                    sql.as_ptr(),
-                    &mut *extracted,
-                );
-                let error = duckdb_extract_statements_error(*extracted);
-                if !error.is_null() {
-                    return Err(
-                        Error::msg(CStr::from_ptr(error).to_string_lossy().into_owned())
-                            .context(context),
-                    );
-                }
-            }
-            Some(extracted)
-        } else {
-            None
-        };
-        Ok(Self {
-            execution: Execution {
-                rows: None,
-                prepared: None,
-                extracted,
-                query,
-                connection,
-                context,
-                count,
-                index: 0,
-                generation: 0,
-                finished: false,
-            },
-        })
-    }
-}
-
-impl<'s, Q: AsMut<Query<DuckDBDriver>>> Iterator for Statements<'s, Q> {
+impl<'s, Q: AsMut<Query<DuckDBDriver>>> Stream for Statements<'s, Q> {
     type Item = Result<QueryResult<RowOwned>>;
 
-    fn next(&mut self) -> Option<Self::Item> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = unsafe { self.get_unchecked_mut() };
+        let mut steps = 0;
         loop {
-            match self.execution.next_row() {
-                Ok(Some(row)) => return Some(Ok(QueryResult::Row(row))),
-                Ok(None) => {}
-                Err(error) => return Some(Err(self.execution.fail(error))),
+            if this.finished {
+                return Poll::Ready(None);
             }
-            match self.execution.next_statement() {
-                Ok(Some(Statement::Rows)) => {}
-                Ok(Some(Statement::Affected(affected))) => {
-                    return Some(Ok(QueryResult::Affected(affected)));
+            match &mut this.active {
+                Some(ActiveResult::Rows(rows)) => {
+                    match rows.next_buffered_row() {
+                        Ok(Some(row)) => return Poll::Ready(Some(Ok(QueryResult::Row(row)))),
+                        Ok(None) => {}
+                        Err(e) => return Poll::Ready(Some(Err(this.fail(e)))),
+                    }
+                    let Poll::Ready(step) = Self::step_once(*rows.result, &mut steps, cx) else {
+                        return Poll::Pending;
+                    };
+                    match step {
+                        Ok((
+                            DUCKDB_V2_RESULT_STEP_STATUS::DUCKDB_V2_RESULT_STEP_STATUS_WAITING,
+                            _,
+                        )) => {}
+                        Ok((
+                            DUCKDB_V2_RESULT_STEP_STATUS::DUCKDB_V2_RESULT_STEP_STATUS_CHUNK,
+                            Some(chunk),
+                        )) => {
+                            if let Err(e) = rows.load_chunk(chunk) {
+                                return Poll::Ready(Some(Err(this.fail(e))));
+                            }
+                        }
+                        Ok((
+                            DUCKDB_V2_RESULT_STEP_STATUS::DUCKDB_V2_RESULT_STEP_STATUS_FINISHED,
+                            _,
+                        )) => {
+                            this.active = None;
+                            this.statement = None;
+                        }
+                        Ok(_) => {
+                            return Poll::Ready(Some(Err(
+                                this.fail(anyhow!("DuckDB query was interrupted"))
+                            )));
+                        }
+                        Err(e) => return Poll::Ready(Some(Err(this.fail(e)))),
+                    }
                 }
-                Ok(None) => return None,
-                Err(error) => return Some(Err(self.execution.fail(error))),
+                Some(ActiveResult::Affected {
+                    result,
+                    rows_changed,
+                }) => {
+                    let Poll::Ready(res) =
+                        Self::poll_affected(**result, rows_changed, &mut steps, cx)
+                    else {
+                        return Poll::Pending;
+                    };
+                    match res {
+                        Ok(affected) => {
+                            this.active = None;
+                            this.statement = None;
+                            return Poll::Ready(Some(Ok(QueryResult::Affected(affected))));
+                        }
+                        Err(e) => return Poll::Ready(Some(Err(this.fail(e)))),
+                    }
+                }
+                None => match this.start_next_statement() {
+                    Ok(true) => {}
+                    Ok(false) => return Poll::Ready(None),
+                    Err(e) => return Poll::Ready(Some(Err(this.fail(e)))),
+                },
             }
+        }
+    }
+
+    #[inline(always)]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match &self.active {
+            Some(ActiveResult::Rows(rows)) if rows.position < rows.chunk_size => {
+                (rows.chunk_size - rows.position, None)
+            }
+            _ => (0, None),
         }
     }
 }

@@ -4,9 +4,18 @@ mod structure;
 #[cfg(test)]
 mod tests {
     use crate::{comments::comments, structure::structure};
-    use std::{path::Path, sync::Mutex};
-    use tank_core::{ConnectionPool, Driver, PoolConfig};
-    use tank_duckdb::DuckDBDriver;
+    use rust_decimal::Decimal;
+    use std::{
+        collections::{BTreeMap, HashMap},
+        path::Path,
+        sync::Mutex,
+    };
+    use tank::{
+        BinaryOp, BinaryOpType, ColumnDef, Connection, ConnectionPool, Context, Driver, DynQuery,
+        Executor, Expression, Fragment, GenericSqlWriter, Interval, MapType, Operand, PoolConfig,
+        Prepared, Query, Row, SqlWriter, Value, stream::TryStreamExt,
+    };
+    use tank_duckdb::{DuckDBConnection, DuckDBDriver};
     use tank_tests::{execute_tests, init_logs};
     use tokio::fs;
 
@@ -42,13 +51,11 @@ mod tests {
         comments(&mut pool).await;
     }
 
-    fn duckdb_writer() -> impl tank_core::SqlWriter {
-        use tank_core::Driver;
-        tank_duckdb::DuckDBDriver::new().sql_writer()
+    fn duckdb_writer() -> impl SqlWriter {
+        DuckDBDriver::new().sql_writer()
     }
 
-    fn duckdb_render(value: tank_core::Value<'_>) -> String {
-        use tank_core::{Context, DynQuery, Fragment, SqlWriter};
+    fn duckdb_render(value: Value<'_>) -> String {
         let mut out = DynQuery::default();
         duckdb_writer().write_value(
             &mut Context::new(Fragment::SqlSelect, false),
@@ -60,7 +67,6 @@ mod tests {
 
     #[test]
     fn duckdb_blob_literals() {
-        use tank_core::Value;
         assert_eq!(
             duckdb_render(Value::Blob(Some(vec![0xDE, 0xAD].into()))),
             "'\\xDE\\xAD'"
@@ -70,8 +76,6 @@ mod tests {
 
     #[test]
     fn duckdb_map_literal() {
-        use std::collections::HashMap;
-        use tank_core::{Context, DynQuery, Fragment, MapType, SqlWriter, Value};
         let writer = duckdb_writer();
         let mut map = HashMap::new();
         map.insert(Value::Varchar(Some("k".into())), Value::Int32(Some(1)));
@@ -92,7 +96,6 @@ mod tests {
 
     #[test]
     fn duckdb_not_glob_wrapping() {
-        use tank_core::{BinaryOp, BinaryOpType, Context, DynQuery, Expression, Fragment, Operand};
         let writer = duckdb_writer();
         let mut out = DynQuery::default();
         BinaryOp {
@@ -123,7 +126,6 @@ mod tests {
 
     #[test]
     fn duckdb_current_timestamp() {
-        use tank_core::{Context, DynQuery, SqlWriter};
         let writer = duckdb_writer();
         let mut out = DynQuery::default();
         writer.write_current_timestamp_ms(&mut Context::empty(), &mut out);
@@ -132,25 +134,22 @@ mod tests {
 
     #[test]
     fn duckdb_interval_units() {
-        use tank_core::Value;
         assert_eq!(
-            duckdb_render(Value::Interval(Some(tank::Interval::from_days(2)))),
+            duckdb_render(Value::Interval(Some(Interval::from_days(2)))),
             "INTERVAL '2 DAYS'"
         );
         assert_eq!(
-            duckdb_render(Value::Interval(Some(tank::Interval::from_hours(3)))),
+            duckdb_render(Value::Interval(Some(Interval::from_hours(3)))),
             "INTERVAL '3 HOURS'"
         );
         assert_eq!(
-            duckdb_render(Value::Interval(Some(tank::Interval::from_micros(5)))),
+            duckdb_render(Value::Interval(Some(Interval::from_micros(5)))),
             "INTERVAL '5 MICROSECONDS'"
         );
     }
 
     #[test]
     fn duckdb_column_type_override() {
-        use std::collections::BTreeMap;
-        use tank_core::{ColumnDef, Context, DynQuery, Fragment, SqlWriter};
         let writer = duckdb_writer();
         let column = ColumnDef::default();
         let mut types = BTreeMap::new();
@@ -178,7 +177,6 @@ mod tests {
 
     #[test]
     fn duckdb_generic_values() {
-        use tank_core::{Context, DynQuery, Fragment, GenericSqlWriter, SqlWriter, Value};
         let writer = duckdb_writer();
         let generic = GenericSqlWriter::new();
         for value in [
@@ -207,17 +205,16 @@ mod tests {
         // A bare `Decimal` decodes to `Value::Decimal(.., 0, scale)`. Binding it
         // used to hand DuckDB a `DECIMAL(width=0, scale=n)` type, tripping the
         // `width >= scale` assertion and aborting the whole process.
-        use tank_core::{AsValue, Connection, Executor, Prepared, Query, Row, Value};
-        let mut connection = tank_duckdb::DuckDBConnection::connect(
+        let mut connection = DuckDBConnection::connect(
             &DuckDBDriver::new(),
             "duckdb://:memory:?threads=1".into(),
         )
         .await
         .unwrap();
         for decimal in [
-            rust_decimal::Decimal::new(125, 2),
-            rust_decimal::Decimal::new(-1, 0),
-            rust_decimal::Decimal::new(123_456_789, 4),
+            Decimal::new(125, 2),
+            Decimal::new(-1, 0),
+            Decimal::new(123_456_789, 4),
         ] {
             let query = connection.prepare("SELECT ?").await.unwrap();
             let Query::Prepared(mut prepared) = query else {
@@ -225,7 +222,6 @@ mod tests {
             };
             prepared.bind(decimal).unwrap();
             let row = {
-                use tank_core::stream::TryStreamExt;
                 let rows: Vec<_> = connection
                     .fetch(Query::<DuckDBDriver>::Prepared(prepared))
                     .try_collect()
@@ -243,8 +239,7 @@ mod tests {
 
     #[tokio::test]
     async fn bind_index_zero_based() {
-        use tank_core::{Connection, Executor, Prepared, Query, Row, Value};
-        let mut connection = tank_duckdb::DuckDBConnection::connect(
+        let mut connection = DuckDBConnection::connect(
             &DuckDBDriver::new(),
             "duckdb://:memory:?threads=1".into(),
         )
@@ -257,7 +252,6 @@ mod tests {
         };
         prepared.bind_index(10_i32, 0).unwrap();
         prepared.bind_index(20_i32, 1).unwrap();
-        use tank_core::stream::TryStreamExt;
         let rows: Vec<_> = connection
             .fetch(Query::<DuckDBDriver>::Prepared(prepared))
             .try_collect()

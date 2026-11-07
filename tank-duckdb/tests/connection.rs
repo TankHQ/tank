@@ -2,7 +2,7 @@
 mod tests {
     use indoc::indoc;
     use std::{path::Path, pin::pin, sync::Mutex};
-    use tank_core::{
+    use tank::{
         AsValue, Connection, Executor, QueryResult, Row, Value,
         stream::{StreamExt, TryStreamExt},
     };

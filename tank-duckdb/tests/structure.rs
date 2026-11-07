@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use indoc::indoc;
-use tank_core::{
+use tank::{
     Connection, ConnectionPool, Driver, Executor, Row, Transaction, Value, stream::TryStreamExt,
 };
 
