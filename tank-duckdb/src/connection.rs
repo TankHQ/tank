@@ -29,8 +29,8 @@ pub(crate) struct DuckDBInstance {
     pub(crate) handle: CBox<duckdb_v2_instance_handle>,
 }
 
-struct DuckDBEnv {
-    env: CBox<duckdb_v2_environment_handle>,
+struct DuckDBEnvironment {
+    handle: CBox<duckdb_v2_environment_handle>,
     instances: Mutex<HashMap<String, Weak<DuckDBInstance>>>,
 }
 
@@ -43,42 +43,38 @@ pub struct DuckDBConnection {
 }
 
 impl DuckDBConnection {
-    fn env() -> Result<&'static DuckDBEnv> {
-        static ENV: OnceLock<DuckDBEnv> = OnceLock::new();
-        if let Some(env) = ENV.get() {
+    fn environment() -> Result<&'static DuckDBEnvironment> {
+        static ENVIRONMENT: OnceLock<DuckDBEnvironment> = OnceLock::new();
+        if let Some(env) = ENVIRONMENT.get() {
             return Ok(env);
         }
-        let mut env = CBox::new(ptr::null_mut(), |mut p| unsafe {
+        let mut environment = CBox::new(ptr::null_mut(), |mut p| unsafe {
             duckdb_v2_environment_destroy(&mut p);
         });
         unsafe {
-            check_rc(|err| duckdb_v2_environment_create(&mut *env, err))
+            check_rc(|err| duckdb_v2_environment_create(&mut *environment, err))
                 .context("While creating the DuckDB environment")?;
         }
-        let _ = ENV.set(DuckDBEnv {
-            env,
-            instances: Mutex::new(HashMap::new()),
+        let _ = ENVIRONMENT.set(DuckDBEnvironment {
+            handle: environment,
+            instances: Default::default(),
         });
-        ENV.get().context("While accessing the DuckDB environment")
+        ENVIRONMENT
+            .get()
+            .context("While accessing the DuckDB environment")
     }
 
-    fn create_instance(path: &str, options: &[(String, String)]) -> Result<Arc<DuckDBInstance>> {
-        let env = Self::env()?;
-        let names = options
-            .iter()
-            .map(|(k, _)| duckdb_v2_str::from(k.as_str()))
-            .collect::<Vec<_>>();
-        let values = options
-            .iter()
-            .map(|(_, v)| duckdb_v2_str::from(v.as_str()))
-            .collect::<Vec<_>>();
+    fn new(path: &str, options: &[(String, String)]) -> Result<Arc<DuckDBInstance>> {
+        let environment = Self::environment()?;
+        let names: Vec<_> = options.iter().map(|(k, _)| k.into()).collect();
+        let values: Vec<_> = options.iter().map(|(_, v)| v.into()).collect();
         unsafe {
-            let mut handle = CBox::new(ptr::null_mut(), |mut p| {
+            let mut instance = CBox::new(ptr::null_mut(), |mut p| {
                 duckdb_v2_instance_destroy(&mut p);
             });
             check_rc(|err| {
                 duckdb_v2_instance_create_with_options(
-                    *env.env,
+                    *environment.handle,
                     if names.is_empty() {
                         ptr::null()
                     } else {
@@ -90,22 +86,15 @@ impl DuckDBConnection {
                         values.as_ptr()
                     },
                     options.len() as idx_t,
-                    &mut *handle,
+                    &mut *instance,
                     err,
                 )
             })?;
-            let path_str = duckdb_v2_str::from(path);
+            let path: duckdb_v2_str = path.into();
             check_rc(|err| {
-                duckdb_v2_instance_attach(
-                    *handle,
-                    ptr::null(),
-                    &path_str,
-                    ptr::null_mut(),
-                    true,
-                    err,
-                )
+                duckdb_v2_instance_attach(*instance, ptr::null(), &path, ptr::null_mut(), true, err)
             })?;
-            Ok(Arc::new(DuckDBInstance { handle }))
+            Ok(Arc::new(DuckDBInstance { handle: instance }))
         }
     }
 
@@ -114,15 +103,15 @@ impl DuckDBConnection {
         vector: duckdb_v2_vector_handle,
         arena: &mut duckdb_v2_arena_handle,
         dst: *mut duckdb_v2_bytes,
-        bytes: &[u8],
+        src: &[u8],
     ) -> Result<()> {
+        let len = src.len();
         unsafe {
-            let len = bytes.len();
             let mut raw: duckdb_v2_bytes = mem::zeroed();
-            if len <= DUCKDB_V2_BYTES_INLINE_LENGTH as usize {
-                raw.value.inlined.length = len as u32;
+            if len <= DUCKDB_V2_BYTES_INLINE_LENGTH as _ {
+                raw.value.inlined.length = len as _;
                 ptr::copy_nonoverlapping(
-                    bytes.as_ptr(),
+                    src.as_ptr(),
                     raw.value.inlined.inlined.as_mut_ptr() as *mut u8,
                     len,
                 );
@@ -132,18 +121,18 @@ impl DuckDBConnection {
                 }
                 let mut buf: *mut u8 = ptr::null_mut();
                 check_rc(|err| duckdb_v2_arena_allocate(*arena, len as idx_t, &mut buf, err))?;
-                ptr::copy_nonoverlapping(bytes.as_ptr(), buf, len);
                 raw.value.pointer.length = len as u32;
+                ptr::copy_nonoverlapping(src.as_ptr(), buf, len);
                 ptr::copy_nonoverlapping(
-                    bytes.as_ptr(),
-                    raw.value.pointer.prefix.as_mut_ptr() as *mut u8,
+                    src.as_ptr(),
+                    raw.value.pointer.prefix.as_mut_ptr() as _,
                     4,
                 );
                 raw.value.pointer.ptr = buf as *mut _;
             }
             *dst = raw;
-            Ok(())
         }
+        Ok(())
     }
 
     fn write_column_batch(
@@ -258,12 +247,7 @@ impl DuckDBConnection {
 impl Connection for DuckDBConnection {
     async fn connect(driver: &DuckDBDriver, url: Cow<'static, str>) -> Result<Self> {
         let url = Self::sanitize_url(driver, url)?;
-        let make_context = || {
-            format!(
-                "While trying to connect to DuckDB {}",
-                describe_path::<DuckDBDriver>(&url)
-            )
-        };
+        let context = "While trying to connect to DuckDB";
         let mut path = format!(
             "{}{}",
             url.host_str()
@@ -271,22 +255,22 @@ impl Connection for DuckDBConnection {
             url.path()
         );
         if path.is_empty() {
-            path = ":memory:".to_owned();
+            path = ":memory:".into();
         }
         let mut options = Vec::new();
-        for (key, value) in url.query_pairs() {
-            match &*key {
+        for (k, v) in url.query_pairs() {
+            match k.as_ref() {
                 "mode" => {
-                    if value == "memory" {
+                    if v == "memory" {
                         path = ":memory:".to_owned();
                         continue;
                     }
-                    let access_mode = match &*value {
+                    let access_mode = match &*v {
                         "ro" => "READ_ONLY",
                         "rw" | "rwc" => "READ_WRITE",
                         _ => {
                             let error = anyhow!(
-                                "Unknown value {value:?} for `mode`, expected one of: `ro`, `rw`, `rwc`, `memory`"
+                                "Unknown value {v:?} for `mode`, expected one of: `ro`, `rw`, `rwc`, `memory`"
                             );
                             log::warn!("{error:#}");
                             return Err(error);
@@ -294,24 +278,24 @@ impl Connection for DuckDBConnection {
                     };
                     options.push(("access_mode".to_owned(), access_mode.to_owned()));
                 }
-                _ => options.push((key.into_owned(), value.into_owned())),
+                _ => options.push((k.into_owned(), v.into_owned())),
             }
         }
         let is_memory = path == ":memory:";
         let instance = if is_memory {
-            Self::create_instance(&path, &options).with_context(make_context)?
+            Self::new(&path, &options).context(context)?
         } else {
-            let mut cache = Self::env()
-                .with_context(make_context)?
+            let mut cache = Self::environment()
+                .context(context)?
                 .instances
                 .lock()
                 .ok()
                 .context("DuckDB instance cache mutex was poisoned")
-                .with_context(make_context)?;
+                .context(context)?;
             if let Some(existing) = cache.get(&path).and_then(Weak::upgrade) {
                 existing
             } else {
-                let created = Self::create_instance(&path, &options).with_context(make_context)?;
+                let created = Self::new(&path, &options).context(context)?;
                 cache.insert(path.clone(), Arc::downgrade(&created));
                 created
             }
@@ -321,19 +305,19 @@ impl Connection for DuckDBConnection {
                 duckdb_v2_connection_destroy(&mut p);
             });
             check_rc(|err| duckdb_v2_connection_create(*instance.handle, &mut *connection, err))
-                .with_context(make_context)?;
+                .context(context)?;
             let mut factory = ptr::null_mut();
             check_rc(|err| duckdb_v2_connection_get_factory(*connection, &mut factory, err))
-                .with_context(make_context)?;
+                .context(context)?;
             if !options
                 .iter()
                 .any(|(k, _)| k.eq_ignore_ascii_case("max_streaming_buffer_size"))
             {
                 let mut config = ptr::null_mut();
                 check_rc(|err| duckdb_v2_connection_get_config(*connection, &mut config, err))
-                    .with_context(make_context)?;
-                let opt_name = duckdb_v2_str::from("max_streaming_buffer_size");
-                let opt_val = duckdb_v2_str::from("1B");
+                    .context(context)?;
+                let opt_name: duckdb_v2_str = "max_streaming_buffer_size".into();
+                let opt_val: duckdb_v2_str = "1B".into();
                 check_rc(|err| {
                     duckdb_v2_config_set_option_text(
                         config,
@@ -343,7 +327,7 @@ impl Connection for DuckDBConnection {
                         err,
                     )
                 })
-                .with_context(make_context)?;
+                .context(context)?;
             }
             Ok(DuckDBConnection {
                 connection,
