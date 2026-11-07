@@ -94,11 +94,11 @@ impl Prepared for DuckDBPrepared {
         if self.params.is_empty() {
             self.params.resize_with(len, Default::default);
         }
-        let target = self.params.get_mut(index as usize).ok_or_else(|| {
-            let error = anyhow!("Index {index} cannot be bound, the query has only {len} parameters");
-            log::error!("{error:#}");
-            error
-        })?;
+        let target = self
+            .params
+            .get_mut(index as usize)
+            .with_context(|| format!("Index {index} cannot be bound, the query has only {len} parameters"))
+            .inspect_err(|error| log::error!("{error:#}"))?;
         let value = v.as_value().into_owned();
         if matches!(value, ValueOwned::Unknown(..)) {
             let error = anyhow!("Cannot use a {value:?} as a query parameter");

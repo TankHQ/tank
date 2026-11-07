@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use libduckdb_sys::v2::{duckdb_v2_hugeint_t, duckdb_v2_interval_t, duckdb_v2_uhugeint_t};
 use rust_decimal::Decimal;
 use std::cmp::{max, min};
-use tank_core::{Error, Interval, Result};
+use tank_core::{ErrorContext, Interval, Result};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time, macros::date};
 use uuid::Uuid;
 
@@ -75,9 +75,8 @@ pub(crate) fn date_to_duckdb_date(v: &Date) -> i32 {
 pub(crate) fn duckdb_date_to_date(days: i32) -> Result<Date> {
     let julian = days
         .checked_add(EPOCH_JULIAN_DAY)
-        .ok_or_else(|| anyhow!("Error while creating extracting a date value: overflow"))?;
-    Date::from_julian_day(julian)
-        .map_err(|e| Error::new(e).context("Error while creating extracting a date value"))
+        .context("Error while creating extracting a date value: overflow")?;
+    Date::from_julian_day(julian).context("Error while creating extracting a date value")
 }
 
 #[inline(always)]
@@ -100,7 +99,7 @@ pub(crate) fn duckdb_time_to_time(micros: i64) -> Result<Time> {
         (secs % 60) as u8,
         sub,
     )
-    .map_err(|e| Error::new(e).context("Error while creating extracting a time value"))
+    .context("Error while creating extracting a time value")
 }
 
 #[inline(always)]
@@ -118,7 +117,7 @@ pub(crate) fn duckdb_time_ns_to_time(nanos: i64) -> Result<Time> {
         (secs % 60) as u8,
         sub,
     )
-    .map_err(|e| Error::new(e).context("Error while creating extracting a time value"))
+    .context("Error while creating extracting a time value")
 }
 
 #[inline(always)]
@@ -134,7 +133,7 @@ pub(crate) fn offsetdatetime_to_duckdb_timestamp(v: &OffsetDateTime) -> i64 {
 #[inline(always)]
 pub(crate) fn nanos_to_primitive_date_time(nanos: i128) -> Result<PrimitiveDateTime> {
     let dt = OffsetDateTime::from_unix_timestamp_nanos(nanos)
-        .map_err(|e| Error::new(e).context("Error while creating a timestamp"))?;
+        .context("Error while creating a timestamp")?;
     Ok(PrimitiveDateTime::new(dt.date(), dt.time()))
 }
 

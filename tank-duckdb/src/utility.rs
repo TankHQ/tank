@@ -10,7 +10,7 @@ use std::{borrow::Cow, cmp::max, ptr, slice};
 use tank_core::{CollectionType, Error, MapType, Result, StructType, TableRef, Value, ValueOwned};
 
 #[inline(always)]
-pub(crate) unsafe fn check_rc(
+pub(crate) fn check_rc(
     f: impl FnOnce(*mut duckdb_v2_error_info_handle) -> DUCKDB_V2_ERROR,
 ) -> Result<()> {
     let mut err: duckdb_v2_error_info_handle = ptr::null_mut();
@@ -42,7 +42,7 @@ pub(crate) unsafe fn check_rc(
 }
 
 #[inline(always)]
-pub(crate) unsafe fn str_from_v2<'a>(s: duckdb_v2_str) -> &'a str {
+pub(crate) fn duckdb_str_to_str<'a>(s: duckdb_v2_str) -> &'a str {
     if s.ptr.is_null() || s.len == 0 {
         ""
     } else {
@@ -54,7 +54,7 @@ pub(crate) unsafe fn str_from_v2<'a>(s: duckdb_v2_str) -> &'a str {
 }
 
 #[inline(always)]
-pub(crate) unsafe fn bytes_from_v2(b: &duckdb_v2_bytes) -> &[u8] {
+pub(crate) fn duckdb_bytes_to_slice(b: &duckdb_v2_bytes) -> &[u8] {
     unsafe {
         let len = b.value.inlined.length;
         if len <= DUCKDB_V2_BYTES_INLINE_LENGTH {
@@ -101,7 +101,7 @@ impl ValueWrap<'_> {
         })
     }
 
-    unsafe fn get_type_param(
+    fn get_type_param(
         logical_type: duckdb_v2_logical_type_handle,
         index: idx_t,
     ) -> Result<(String, CBox<duckdb_v2_value_handle>)> {
@@ -111,11 +111,11 @@ impl ValueWrap<'_> {
             check_rc(|err| {
                 duckdb_v2_logical_type_get_param(logical_type, index, &mut name, &mut *val, err)
             })?;
-            Ok((str_from_v2(name).to_owned(), val))
+            Ok((duckdb_str_to_str(name).to_owned(), val))
         }
     }
 
-    unsafe fn unwrap_child_type(val: duckdb_v2_value_handle) -> Result<ValueOwned> {
+    fn unwrap_child_type(val: duckdb_v2_value_handle) -> Result<ValueOwned> {
         unsafe {
             let mut child_ty = Self::new_type_box();
             check_rc(|err| duckdb_v2_value_get_type(val, &mut *child_ty, err))?;
@@ -123,7 +123,7 @@ impl ValueWrap<'_> {
         }
     }
 
-    unsafe fn create_type_value(
+    fn create_type_value(
         factory: duckdb_v2_factory_handle,
         ty: duckdb_v2_logical_type_handle,
     ) -> Result<CBox<duckdb_v2_value_handle>> {
@@ -134,7 +134,7 @@ impl ValueWrap<'_> {
         Ok(val)
     }
 
-    unsafe fn create_type_from_id(
+    fn create_type_from_id(
         factory: duckdb_v2_factory_handle,
         id: DUCKDB_V2_LOGICAL_TYPE_ID,
         names: *const duckdb_v2_identifier_t,
@@ -612,7 +612,7 @@ impl TryFrom<duckdb_v2_logical_type_handle> for ValueWrap<'static> {
                     check_rc(|err| {
                         duckdb_v2_logical_type_get_name(logical_type, &mut type_name, err)
                     })?;
-                    let raw_name = str_from_v2(type_name);
+                    let raw_name = duckdb_str_to_str(type_name);
                     let alias = if raw_name == "STRUCT" || raw_name == "TUPLE" {
                         ""
                     } else {

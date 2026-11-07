@@ -13,12 +13,11 @@ use std::{
     fmt::{self, Debug, Formatter},
     future::poll_fn,
     mem, ptr,
-    sync::{Arc, LazyLock, Mutex, Weak},
+    sync::{Arc, Mutex, OnceLock, Weak},
 };
 use tank_core::{
-    AsEntity, AsQuery, Connection, Context, Driver, DynQuery, Entity, Error, ErrorContext,
-    Executor, Fragment, Query, QueryResult, Result, Row, RowsAffected, SqlWriter, Value,
-    describe_path,
+    AsEntity, AsQuery, Connection, Context, Driver, DynQuery, Entity, ErrorContext, Executor,
+    Fragment, Query, QueryResult, Result, Row, RowsAffected, SqlWriter, Value, describe_path,
     future::Either,
     separated_by,
     stream::{self, Stream},
@@ -44,23 +43,27 @@ pub struct DuckDBConnection {
 }
 
 impl DuckDBConnection {
-    fn env() -> &'static DuckDBEnv {
-        static ENV: LazyLock<DuckDBEnv> = LazyLock::new(|| unsafe {
-            let mut env = CBox::new(ptr::null_mut(), |mut p| {
-                duckdb_v2_environment_destroy(&mut p);
-            });
-            check_rc(|err| duckdb_v2_environment_create(&mut *env, err))
-                .expect("Failed to initialize DuckDB v2 environment");
-            DuckDBEnv {
-                env,
-                instances: Mutex::new(HashMap::new()),
-            }
+    fn env() -> Result<&'static DuckDBEnv> {
+        static ENV: OnceLock<DuckDBEnv> = OnceLock::new();
+        if let Some(env) = ENV.get() {
+            return Ok(env);
+        }
+        let mut env = CBox::new(ptr::null_mut(), |mut p| unsafe {
+            duckdb_v2_environment_destroy(&mut p);
         });
-        &ENV
+        unsafe {
+            check_rc(|err| duckdb_v2_environment_create(&mut *env, err))
+                .context("While creating the DuckDB environment")?;
+        }
+        let _ = ENV.set(DuckDBEnv {
+            env,
+            instances: Mutex::new(HashMap::new()),
+        });
+        ENV.get().context("While accessing the DuckDB environment")
     }
 
     fn create_instance(path: &str, options: &[(String, String)]) -> Result<Arc<DuckDBInstance>> {
-        let env = Self::env();
+        let env = Self::env()?;
         let names = options
             .iter()
             .map(|(k, _)| duckdb_v2_str::from(k.as_str()))
@@ -107,7 +110,7 @@ impl DuckDBConnection {
     }
 
     #[inline(always)]
-    unsafe fn write_v2_bytes(
+    fn write_duckdb_bytes(
         vector: duckdb_v2_vector_handle,
         arena: &mut duckdb_v2_arena_handle,
         dst: *mut duckdb_v2_bytes,
@@ -143,7 +146,7 @@ impl DuckDBConnection {
         }
     }
 
-    unsafe fn write_column_batch(
+    fn write_column_batch(
         factory: duckdb_v2_factory_handle,
         vector: duckdb_v2_vector_handle,
         col_idx: usize,
@@ -158,7 +161,9 @@ impl DuckDBConnection {
             }
             let mut arena: duckdb_v2_arena_handle = ptr::null_mut();
             for (row_idx, row) in batch.iter().enumerate() {
-                let val = &row[col_idx];
+                let val = row.get(col_idx).with_context(|| {
+                    format!("Missing value at column {col_idx} in row {row_idx}")
+                })?;
                 if val.is_null() {
                     check_rc(|err| duckdb_v2_vector_set_null(vector, row_idx as idx_t, err))?;
                     continue;
@@ -208,7 +213,7 @@ impl DuckDBConnection {
                         Value::Char(Some(v)) => {
                             let mut buf = [0u8; 4];
                             let s = v.encode_utf8(&mut buf);
-                            Self::write_v2_bytes(
+                            Self::write_duckdb_bytes(
                                 vector,
                                 &mut arena,
                                 (data as *mut duckdb_v2_bytes).add(row_idx),
@@ -216,7 +221,7 @@ impl DuckDBConnection {
                             )?;
                         }
                         Value::Varchar(Some(v)) => {
-                            Self::write_v2_bytes(
+                            Self::write_duckdb_bytes(
                                 vector,
                                 &mut arena,
                                 (data as *mut duckdb_v2_bytes).add(row_idx),
@@ -224,7 +229,7 @@ impl DuckDBConnection {
                             )?;
                         }
                         Value::Blob(Some(v)) => {
-                            Self::write_v2_bytes(
+                            Self::write_duckdb_bytes(
                                 vector,
                                 &mut arena,
                                 (data as *mut duckdb_v2_bytes).add(row_idx),
@@ -296,7 +301,13 @@ impl Connection for DuckDBConnection {
         let instance = if is_memory {
             Self::create_instance(&path, &options).with_context(make_context)?
         } else {
-            let mut cache = Self::env().instances.lock().unwrap();
+            let mut cache = Self::env()
+                .with_context(make_context)?
+                .instances
+                .lock()
+                .ok()
+                .context("DuckDB instance cache mutex was poisoned")
+                .with_context(make_context)?;
             if let Some(existing) = cache.get(&path).and_then(Weak::upgrade) {
                 existing
             } else {
@@ -518,18 +529,12 @@ impl Executor for DuckDBConnection {
             let batch_cap = (capacity as usize).max(1);
             for batch in rows.chunks(batch_cap) {
                 check_rc(|err| duckdb_v2_data_chunk_clear(*chunk, err))?;
-                for col_idx in 0..columns.len() {
+                for (col_idx, &direct_write) in direct_flags.iter().enumerate() {
                     let mut vector = ptr::null_mut();
                     check_rc(|err| {
                         duckdb_v2_data_chunk_get_vector(*chunk, col_idx as idx_t, &mut vector, err)
                     })?;
-                    Self::write_column_batch(
-                        factory,
-                        vector,
-                        col_idx,
-                        direct_flags[col_idx],
-                        batch,
-                    )?;
+                    Self::write_column_batch(factory, vector, col_idx, direct_write, batch)?;
                 }
                 check_rc(|err| {
                     duckdb_v2_column_data_collection_append(*collection, *append_state, *chunk, err)
@@ -552,7 +557,8 @@ impl Executor for DuckDBConnection {
             );
             query.push_str(") SELECT * FROM ");
             writer.write_identifier(&mut context, &mut query, "__tank_append", true);
-            let c_sql = CString::new(query.as_str().as_bytes()).map_err(Error::new)?;
+            let c_sql = CString::new(query.as_str().as_bytes())
+                .context("While converting append query to CString")?;
             let mut iterator = CBox::new(ptr::null_mut(), |mut p| {
                 duckdb_v2_statement_iterator_destroy(&mut p);
             });

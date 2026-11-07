@@ -3,7 +3,7 @@ use crate::{
     cbox::CBox,
     check_rc,
     extract::VectorNode,
-    str_from_v2,
+    duckdb_str_to_str,
 };
 use anyhow::anyhow;
 use libduckdb_sys::v2::*;
@@ -15,8 +15,8 @@ use std::{
     task::{Context, Poll},
 };
 use tank_core::{
-    Error, Prepared, Query, QueryResult, Result, RowLabels, RowOwned, RowsAffected, ValueOwned,
-    stream::Stream,
+    Error, ErrorContext, Prepared, Query, QueryResult, Result, RowLabels, RowOwned, RowsAffected,
+    ValueOwned, stream::Stream,
 };
 
 // Chunk storage is released before its result. Rows returned to callers own their values.
@@ -47,7 +47,7 @@ impl NativeRows {
                 check_rc(|err| {
                     duckdb_v2_schema_get_field(*schema, i, &mut name, &mut ty, err)
                 })?;
-                names.push(str_from_v2(name).to_owned());
+                names.push(duckdb_str_to_str(name).to_owned());
                 types.push(ValueWrap::try_from(ty)?.into());
             }
             Ok(Self {
@@ -133,8 +133,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Statements<'s, Q> {
     pub(crate) fn new(connection: &'s mut DuckDBConnection, mut query: Q) -> Result<Self> {
         let context = format!("While running the query:\n{}", query.as_mut());
         let iterator = if let Query::Raw(raw) = query.as_mut() {
-            let sql = CString::new(raw.0.as_bytes())
-                .map_err(|error| Error::new(error).context(context.clone()))?;
+            let sql = CString::new(raw.0.as_bytes()).with_context(|| context.clone())?;
             let mut iter = CBox::new(ptr::null_mut(), |mut p| unsafe {
                 duckdb_v2_statement_iterator_destroy(&mut p);
             });
@@ -142,7 +141,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Statements<'s, Q> {
                 check_rc(|err| {
                     duckdb_v2_parse_sql(*connection.connection, sql.as_ptr(), &mut *iter, err)
                 })
-                .map_err(|e| e.context(context.clone()))?;
+                .with_context(|| context.clone())?;
             }
             Some(iter)
         } else {
@@ -218,7 +217,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Statements<'s, Q> {
                 DUCKDB_V2_RESULT_STEP_STATUS::DUCKDB_V2_RESULT_STEP_STATUS_WAITING => {}
                 DUCKDB_V2_RESULT_STEP_STATUS::DUCKDB_V2_RESULT_STEP_STATUS_CHUNK => {
                     if let (None, Some(chunk)) = (&*rows_changed, chunk) {
-                        *rows_changed = Some(unsafe { Self::extract_changed_rows(*chunk)? });
+                        *rows_changed = Some(Self::extract_changed_rows(*chunk)?);
                     }
                 }
                 DUCKDB_V2_RESULT_STEP_STATUS::DUCKDB_V2_RESULT_STEP_STATUS_FINISHED => {
@@ -232,7 +231,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Statements<'s, Q> {
         }
     }
 
-    unsafe fn extract_changed_rows(chunk: duckdb_v2_data_chunk_handle) -> Result<u64> {
+    fn extract_changed_rows(chunk: duckdb_v2_data_chunk_handle) -> Result<u64> {
         unsafe {
             let mut size = 0;
             check_rc(|err| duckdb_v2_data_chunk_get_size(chunk, &mut size, err))?;
@@ -315,7 +314,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Statements<'s, Q> {
                 self.executed_prepared = true;
                 let factory = self.connection.factory;
                 let Query::Prepared(prepared) = self.query.as_mut() else {
-                    unreachable!()
+                    return Err(anyhow!("Expected a prepared query"));
                 };
                 if prepared.is_empty() {
                     self.finish()?;

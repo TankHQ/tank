@@ -1,12 +1,12 @@
 use crate::{
-    ValueWrap, bytes_from_v2, cbox::CBox, check_rc, duckdb_date_to_date, duckdb_hugeint_to_i128,
+    ValueWrap, duckdb_bytes_to_slice, cbox::CBox, check_rc, duckdb_date_to_date, duckdb_hugeint_to_i128,
     duckdb_hugeint_to_uuid, duckdb_interval_to_interval, duckdb_time_ns_to_time,
-    duckdb_time_to_time, duckdb_uhugeint_to_u128, nanos_to_primitive_date_time, str_from_v2,
+    duckdb_time_to_time, duckdb_uhugeint_to_u128, nanos_to_primitive_date_time, duckdb_str_to_str,
 };
 use anyhow::anyhow;
 use libduckdb_sys::v2::{DUCKDB_V2_LOGICAL_TYPE_ID::*, *};
 use std::{collections::HashMap, ffi::c_void, mem, ptr};
-use tank_core::{Result, Value, ValueOwned, decimal_from_scaled};
+use tank_core::{ErrorContext, Result, Value, ValueOwned, decimal_from_scaled};
 
 pub(crate) struct VectorNode {
     vector: duckdb_v2_vector_handle,
@@ -20,7 +20,7 @@ unsafe impl Send for VectorNode {}
 unsafe impl Sync for VectorNode {}
 
 impl VectorNode {
-    unsafe fn ensure_flat(vector: duckdb_v2_vector_handle) -> Result<()> {
+    fn ensure_flat(vector: duckdb_v2_vector_handle) -> Result<()> {
         unsafe {
             let mut vt = DUCKDB_V2_VECTOR_TYPE::DUCKDB_V2_VECTOR_TYPE_OTHER;
             check_rc(|err| duckdb_v2_vector_get_vector_type(vector, &mut vt, err))?;
@@ -31,7 +31,7 @@ impl VectorNode {
         }
     }
 
-    pub(crate) unsafe fn from_vector(
+    pub(crate) fn from_vector(
         vector: duckdb_v2_vector_handle,
         ty: &ValueOwned,
     ) -> Result<Self> {
@@ -95,7 +95,7 @@ impl VectorNode {
     }
 
     #[inline(always)]
-    unsafe fn is_valid(&self, row: usize) -> bool {
+    fn is_valid(&self, row: usize) -> bool {
         self.validity.is_null()
             || ((unsafe { *self.validity.add(row >> 6) } >> (row & 63)) & 1) != 0
     }
@@ -182,14 +182,14 @@ impl VectorNode {
                         })?;
                         let mut s = duckdb_v2_str::default();
                         check_rc(|err| duckdb_v2_value_get_varchar(*val, &mut s, err))?;
-                        Value::Varchar(Some(str_from_v2(s).to_owned().into()))
+                        Value::Varchar(Some(duckdb_str_to_str(s).to_owned().into()))
                     } else {
-                        let bytes = bytes_from_v2(&*(data as *const duckdb_v2_bytes).add(row));
+                        let bytes = duckdb_bytes_to_slice(&*(data as *const duckdb_v2_bytes).add(row));
                         Value::Varchar(Some(String::from_utf8_lossy(bytes).into_owned().into()))
                     }
                 }
                 Value::Blob(..) => {
-                    let bytes = bytes_from_v2(&*(data as *const duckdb_v2_bytes).add(row));
+                    let bytes = duckdb_bytes_to_slice(&*(data as *const duckdb_v2_bytes).add(row));
                     Value::Blob(Some(bytes.to_vec().into()))
                 }
                 Value::Uuid(..) => {
@@ -200,7 +200,10 @@ impl VectorNode {
                     let entry = *(data as *const duckdb_v2_list_entry).add(row);
                     let begin = entry.offset as usize;
                     let end = begin + entry.length as usize;
-                    let child = &self.children[0];
+                    let child = self
+                        .children
+                        .first()
+                        .context("Missing child vector for DuckDB LIST")?;
                     let values = (begin..end)
                         .map(|i| child.extract(i, &collection_type.element))
                         .collect::<Result<Vec<_>>>()?
@@ -211,7 +214,10 @@ impl VectorNode {
                     let len = collection_type.len as usize;
                     let begin = row * len;
                     let end = begin + len;
-                    let child = &self.children[0];
+                    let child = self
+                        .children
+                        .first()
+                        .context("Missing child vector for DuckDB ARRAY")?;
                     let values = (begin..end)
                         .map(|i| child.extract(i, &collection_type.element))
                         .collect::<Result<Vec<_>>>()?
@@ -222,10 +228,8 @@ impl VectorNode {
                     let entries = struct_type
                         .fields
                         .iter()
-                        .enumerate()
-                        .map(|(i, (name, f_ty))| {
-                            Ok((name.clone(), self.children[i].extract(row, f_ty)?))
-                        })
+                        .zip(self.children.iter())
+                        .map(|((name, f_ty), child)| Ok((name.clone(), child.extract(row, f_ty)?)))
                         .collect::<Result<Vec<_>>>()?
                         .into_boxed_slice();
                     Value::Struct(Some(entries), struct_type.clone())
@@ -234,8 +238,9 @@ impl VectorNode {
                     let entry = *(data as *const duckdb_v2_list_entry).add(row);
                     let begin = entry.offset as usize;
                     let end = begin + entry.length as usize;
-                    let keys_node = &self.children[0];
-                    let vals_node = &self.children[1];
+                    let [keys_node, vals_node] = &*self.children else {
+                        return Err(anyhow!("Missing key/value child vectors for DuckDB MAP"));
+                    };
                     let map = (begin..end)
                         .map(|i| {
                             Ok((
