@@ -641,9 +641,9 @@ dependencies = [
 
 [[package]]
 name = "chdb-rust"
-version = "1.4.0"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc398e2ba793b47e64c0f8aee584def000eacb8adbf70b609060877e37d1530a"
+checksum = "75ab682373f20adbf98372612da9a44cf912232285db9016d09e986144f7a701"
 dependencies = [
  "bindgen 0.70.1",
  "flate2",
