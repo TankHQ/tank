@@ -50,16 +50,22 @@ impl VectorNode {
     fn from_vector(vector: duckdb_v2_vector_handle, t: &ValueOwned) -> Result<Self> {
         unsafe {
             let view = Self::flat_view(vector)?;
-            let id = if matches!(t, Value::Time(..) | Value::Timestamp(..)) {
-                let mut vec_ty = CBox::new(ptr::null_mut(), |mut p| {
-                    duckdb_v2_logical_type_destroy(&mut p);
-                });
-                let mut id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
-                check_rc(|err| duckdb_v2_vector_get_logical_type(vector, &mut *vec_ty, err))?;
-                check_rc(|err| duckdb_v2_logical_type_get_id(*vec_ty, &mut id, err))?;
-                id
-            } else {
-                DUCKDB_V2_LOGICAL_TYPE_ID_INVALID
+            let id = match t {
+                Value::Boolean(..) => DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN,
+                Value::Int32(..) => DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER,
+                Value::Int64(..) => DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT,
+                Value::Float64(..) => DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE,
+                Value::Varchar(..) => DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR,
+                Value::Time(..) | Value::Timestamp(..) => {
+                    let mut vec_ty = CBox::new(ptr::null_mut(), |mut p| {
+                        duckdb_v2_logical_type_destroy(&mut p);
+                    });
+                    let mut id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
+                    check_rc(|err| duckdb_v2_vector_get_logical_type(vector, &mut *vec_ty, err))?;
+                    check_rc(|err| duckdb_v2_logical_type_get_id(*vec_ty, &mut id, err))?;
+                    id
+                }
+                _ => DUCKDB_V2_LOGICAL_TYPE_ID_INVALID,
             };
             let child_vec = |v, i| {
                 let mut c = ptr::null_mut();
@@ -286,34 +292,36 @@ impl Row for DuckDBRow {
 
     #[inline(always)]
     fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>> {
-        let vec_node = self.batch.0.get(index)?;
-        let t = self.batch.1.get(index)?;
+        if index >= self.batch.0.len() {
+            return None;
+        }
         let row = self.row;
         unsafe {
+            let vec_node = self.batch.0.get_unchecked(index);
             let data = vec_node.data;
             if vec_node.is_valid(row) && !data.is_null() {
-                match t {
-                    Value::Boolean(..) => {
+                match vec_node.id {
+                    DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN => {
                         return Some(Cow::Owned(Value::Boolean(Some(
                             *(data as *const bool).add(row),
                         ))));
                     }
-                    Value::Int32(..) => {
+                    DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER => {
                         return Some(Cow::Owned(Value::Int32(Some(
                             *(data as *const i32).add(row),
                         ))));
                     }
-                    Value::Int64(..) => {
+                    DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT => {
                         return Some(Cow::Owned(Value::Int64(Some(
                             *(data as *const i64).add(row),
                         ))));
                     }
-                    Value::Float64(..) => {
+                    DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE => {
                         return Some(Cow::Owned(Value::Float64(Some(
                             *(data as *const f64).add(row),
                         ))));
                     }
-                    Value::Varchar(..) => {
+                    DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR => {
                         return Some(Cow::Owned(Value::Varchar(Some(Cow::Borrowed(
                             std::str::from_utf8_unchecked(duckdb_bytes_to_slice(
                                 &*(data as *const duckdb_v2_bytes).add(row),
@@ -323,7 +331,10 @@ impl Row for DuckDBRow {
                     _ => {}
                 }
             }
-            vec_node.extract(row, t).ok().map(Cow::Owned)
+            match vec_node.extract(row, self.batch.1.get_unchecked(index)) {
+                Ok(v) => Some(Cow::Owned(v)),
+                Err(_) => Some(Cow::Owned(Value::Null)),
+            }
         }
     }
 
