@@ -102,7 +102,6 @@ impl DuckDBConnection {
     #[inline(always)]
     fn write_duckdb_bytes(
         vector: duckdb_v2_vector_handle,
-        arena: &mut duckdb_v2_arena_handle,
         dst: &mut duckdb_v2_bytes,
         src: &[u8],
     ) -> Result<()> {
@@ -117,11 +116,10 @@ impl DuckDBConnection {
                     len,
                 );
             } else {
-                if arena.is_null() {
-                    check_rc(|err| duckdb_v2_vector_get_arena(vector, arena, err))?;
-                }
-                let mut buf: *mut u8 = ptr::null_mut();
-                check_rc(|err| duckdb_v2_arena_allocate(*arena, len as idx_t, &mut buf, err))?;
+                let mut arena = ptr::null_mut();
+                let mut buf = ptr::null_mut();
+                check_rc(|err| duckdb_v2_vector_get_arena(vector, &mut arena, err))?;
+                check_rc(|err| duckdb_v2_arena_allocate(arena, len as idx_t, &mut buf, err))?;
                 raw.value.pointer.length = len as u32;
                 ptr::copy_nonoverlapping(src.as_ptr(), buf, len);
                 ptr::copy_nonoverlapping(
@@ -143,7 +141,6 @@ impl DuckDBConnection {
         col_val: &Value<'static>,
         direct_write: bool,
         data: *mut c_void,
-        arena: &mut duckdb_v2_arena_handle,
         row_idx: usize,
         val: &Value<'_>,
     ) -> Result<()> {
@@ -227,7 +224,6 @@ impl DuckDBConnection {
                         let s = v.encode_utf8(&mut buf);
                         Self::write_duckdb_bytes(
                             vector,
-                            arena,
                             &mut *(data as *mut duckdb_v2_bytes).add(row_idx),
                             s.as_bytes(),
                         )?;
@@ -235,7 +231,6 @@ impl DuckDBConnection {
                     Value::Varchar(Some(v)) => {
                         Self::write_duckdb_bytes(
                             vector,
-                            arena,
                             &mut *(data as *mut duckdb_v2_bytes).add(row_idx),
                             v.as_bytes(),
                         )?;
@@ -243,7 +238,6 @@ impl DuckDBConnection {
                     Value::Blob(Some(v)) => {
                         Self::write_duckdb_bytes(
                             vector,
-                            arena,
                             &mut *(data as *mut duckdb_v2_bytes).add(row_idx),
                             v.as_ref(),
                         )?;
@@ -542,7 +536,6 @@ impl Executor for DuckDBConnection {
                         &col.value,
                         direct_write,
                         ptr::null_mut::<c_void>(),
-                        ptr::null_mut() as duckdb_v2_arena_handle,
                     ));
                 }
                 loop {
@@ -550,11 +543,10 @@ impl Executor for DuckDBConnection {
                         break;
                     };
                     check_rc(|err| duckdb_v2_data_chunk_clear(*chunk, err))?;
-                    for (vector, _, direct_write, data, arena) in &mut col_states {
+                    for (vector, _, direct_write, data) in &mut col_states {
                         check_rc(|err| {
                             duckdb_v2_vector_set_size(*vector, batch_cap as idx_t, err)
                         })?;
-                        *arena = ptr::null_mut();
                         if *direct_write {
                             check_rc(|err| duckdb_v2_vector_get_data_mutable(*vector, data, err))?;
                         }
@@ -562,7 +554,7 @@ impl Executor for DuckDBConnection {
                     let mut batch_len = 0;
                     for item in std::iter::once(first).chain(iter.by_ref().take(batch_cap - 1)) {
                         let row = item.as_entity().row_values();
-                        for (col_idx, (vector, col_val, direct_write, data, arena)) in
+                        for (col_idx, (vector, col_val, direct_write, data)) in
                             col_states.iter_mut().enumerate()
                         {
                             let val = row.get(col_idx).with_context(|| {
@@ -574,7 +566,6 @@ impl Executor for DuckDBConnection {
                                 col_val,
                                 *direct_write,
                                 *data,
-                                arena,
                                 batch_len,
                                 val,
                             )?;
