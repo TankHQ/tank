@@ -24,14 +24,9 @@ use tank_core::{
     truncate_long,
 };
 
-#[derive(Debug)]
-pub(crate) struct DuckDBInstance {
-    pub(crate) handle: CBox<duckdb_v2_instance_handle>,
-}
-
 struct DuckDBEnvironment {
     handle: CBox<duckdb_v2_environment_handle>,
-    instances: Mutex<HashMap<String, Weak<DuckDBInstance>>>,
+    instances: Mutex<HashMap<String, Weak<CBox<duckdb_v2_instance_handle>>>>,
 }
 
 /// Wrapper around a DuckDB `duckdb_v2_connection_handle`.
@@ -40,7 +35,7 @@ pub struct DuckDBConnection {
     pub(crate) connection: CBox<duckdb_v2_connection_handle>,
     pub(crate) factory: duckdb_v2_factory_handle,
     pub(crate) labels: RowLabels,
-    pub(crate) _instance: Arc<DuckDBInstance>,
+    pub(crate) _instance: Arc<CBox<duckdb_v2_instance_handle>>,
 }
 
 impl DuckDBConnection {
@@ -65,7 +60,10 @@ impl DuckDBConnection {
             .context("While accessing the DuckDB environment")
     }
 
-    fn new(path: &str, options: &[(String, String)]) -> Result<Arc<DuckDBInstance>> {
+    fn create_instance(
+        path: &str,
+        options: &[(String, String)],
+    ) -> Result<Arc<CBox<duckdb_v2_instance_handle>>> {
         let environment = Self::environment()?;
         let names: Vec<_> = options.iter().map(|(k, _)| k.into()).collect();
         let values: Vec<_> = options.iter().map(|(_, v)| v.into()).collect();
@@ -86,7 +84,7 @@ impl DuckDBConnection {
                     } else {
                         values.as_ptr()
                     },
-                    options.len() as idx_t,
+                    options.len() as _,
                     &mut *instance,
                     err,
                 )
@@ -95,7 +93,7 @@ impl DuckDBConnection {
             check_rc(|err| {
                 duckdb_v2_instance_attach(*instance, ptr::null(), &path, ptr::null_mut(), true, err)
             })?;
-            Ok(Arc::new(DuckDBInstance { handle: instance }))
+            Ok(Arc::new(instance))
         }
     }
 
@@ -127,7 +125,7 @@ impl DuckDBConnection {
                     bytes.value.pointer.prefix.as_mut_ptr() as _,
                     4,
                 );
-                bytes.value.pointer.ptr = buf as *mut _;
+                bytes.value.pointer.ptr = buf as _;
             }
             *dst = bytes;
         }
@@ -146,7 +144,7 @@ impl DuckDBConnection {
     ) -> Result<()> {
         unsafe {
             if val.is_null() {
-                return check_rc(|err| duckdb_v2_vector_set_null(vector, row_idx as idx_t, err));
+                return check_rc(|err| duckdb_v2_vector_set_null(vector, row_idx as _, err));
             }
             if direct_write {
                 match val {
@@ -297,7 +295,7 @@ impl Connection for DuckDBConnection {
         }
         let is_memory = path == ":memory:";
         let instance = if is_memory {
-            Self::new(&path, &options).context(context)?
+            Self::create_instance(&path, &options).context(context)?
         } else {
             let mut cache = Self::environment()
                 .context(context)?
@@ -309,7 +307,7 @@ impl Connection for DuckDBConnection {
             if let Some(existing) = cache.get(&path).and_then(Weak::upgrade) {
                 existing
             } else {
-                let created = Self::new(&path, &options).context(context)?;
+                let created = Self::create_instance(&path, &options).context(context)?;
                 cache.insert(path.clone(), Arc::downgrade(&created));
                 created
             }
@@ -318,7 +316,7 @@ impl Connection for DuckDBConnection {
             let mut connection = CBox::new(ptr::null_mut(), |mut p| {
                 duckdb_v2_connection_destroy(&mut p);
             });
-            check_rc(|err| duckdb_v2_connection_create(*instance.handle, &mut *connection, err))
+            check_rc(|err| duckdb_v2_connection_create(**instance, &mut *connection, err))
                 .context(context)?;
             let mut factory = ptr::null_mut();
             check_rc(|err| duckdb_v2_connection_get_factory(*connection, &mut factory, err))
@@ -531,12 +529,7 @@ impl Executor for DuckDBConnection {
                     check_rc(|err| {
                         duckdb_v2_data_chunk_get_vector(*chunk, col_idx as idx_t, &mut vector, err)
                     })?;
-                    col_states.push((
-                        vector,
-                        &col.value,
-                        direct_write,
-                        ptr::null_mut::<c_void>(),
-                    ));
+                    col_states.push((vector, &col.value, direct_write, ptr::null_mut::<c_void>()));
                 }
                 loop {
                     let Some(first) = iter.next() else {
