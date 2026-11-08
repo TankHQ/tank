@@ -8,6 +8,7 @@ mod sql_writer;
 mod streaming;
 mod transaction;
 mod utility;
+mod value_wrap;
 
 pub use connection::*;
 pub(crate) use conversions::*;
@@ -17,3 +18,4 @@ pub use sql_writer::*;
 pub use streaming::*;
 pub use transaction::*;
 pub(crate) use utility::*;
+pub(crate) use value_wrap::*;

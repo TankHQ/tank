@@ -138,7 +138,7 @@ impl DuckDBConnection {
     fn write_cell(
         factory: duckdb_v2_factory_handle,
         vector: duckdb_v2_vector_handle,
-        col_val: &Value<'static>,
+        value_t: &Value<'_>,
         direct_write: bool,
         data: *mut c_void,
         row_idx: usize,
@@ -170,7 +170,7 @@ impl DuckDBConnection {
                     Value::Float32(Some(v)) => *(data as *mut f32).add(row_idx) = *v,
                     Value::Float64(Some(v)) => *(data as *mut f64).add(row_idx) = *v,
                     Value::Decimal(Some(v), ..) => {
-                        if let Value::Decimal(_, width, scale) = col_val {
+                        if let Value::Decimal(_, width, scale) = value_t {
                             let scale = min(*scale, 38);
                             let width = max(*width, scale).clamp(1, 38);
                             let d_scale = v.scale() as u8;
@@ -456,12 +456,12 @@ impl Executor for DuckDBConnection {
                 let mut col_types = Vec::with_capacity(columns.len());
                 let mut direct_flags = Vec::with_capacity(columns.len());
                 for col in columns {
-                    if let Some(override_ty) = col
+                    if let Some(override_t) = col
                         .column_type
                         .get("duckdb")
                         .or_else(|| col.column_type.get(""))
                     {
-                        let text = duckdb_v2_str::from(*override_ty);
+                        let text = duckdb_v2_str::from(*override_t);
                         let mut out = CBox::new(ptr::null_mut(), |mut p| {
                             duckdb_v2_logical_type_destroy(&mut p);
                         });
@@ -554,13 +554,13 @@ impl Executor for DuckDBConnection {
                     let mut batch_len = 0;
                     for item in std::iter::once(first).chain(iter.by_ref().take(batch_cap - 1)) {
                         let row = item.as_entity().row_values();
-                        for (&(vector, col_val, direct_write, data), val) in
+                        for (&(vector, value_t, direct_write, data), val) in
                             col_states.iter().zip(&row)
                         {
                             Self::write_cell(
                                 factory,
                                 vector,
-                                col_val,
+                                value_t,
                                 direct_write,
                                 data,
                                 batch_len,

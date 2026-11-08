@@ -6,7 +6,7 @@ use std::{
     fmt::{self, Display},
     sync::Arc,
 };
-use tank_core::{AsValue, ErrorContext, Prepared, Result, RowLabels, ValueOwned};
+use tank_core::{AsValue, ErrorContext, Prepared, Result, RowLabels, Value, ValueOwned};
 
 /// Prepared statement wrapper for DuckDB.
 ///
@@ -102,7 +102,7 @@ impl Prepared for DuckDBPrepared {
             .with_context(|| format!("Index {index} cannot be bound, the query has only {len} parameters"))
             .inspect_err(|error| log::error!("{error:#}"))?;
         let value = v.as_value().into_owned();
-        if matches!(value, ValueOwned::Unknown(..)) {
+        if matches!(value, Value::Unknown(..)) {
             let error = anyhow!("Cannot use a {value:?} as a query parameter");
             log::error!("{error:#}");
             return Err(error);

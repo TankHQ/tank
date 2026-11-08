@@ -47,22 +47,22 @@ impl VectorNode {
         }
     }
 
-    fn from_vector(vector: duckdb_v2_vector_handle, t: &ValueOwned) -> Result<Self> {
+    fn from_vector(vector: duckdb_v2_vector_handle, value_t: &Value<'_>) -> Result<Self> {
         unsafe {
             let view = Self::flat_view(vector)?;
-            let id = match t {
+            let id = match value_t {
                 Value::Boolean(..) => DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN,
                 Value::Int32(..) => DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER,
                 Value::Int64(..) => DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT,
                 Value::Float64(..) => DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE,
                 Value::Varchar(..) => DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR,
                 Value::Time(..) | Value::Timestamp(..) => {
-                    let mut vec_ty = CBox::new(ptr::null_mut(), |mut p| {
+                    let mut vec_t = CBox::new(ptr::null_mut(), |mut p| {
                         duckdb_v2_logical_type_destroy(&mut p);
                     });
                     let mut id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
-                    check_rc(|err| duckdb_v2_vector_get_logical_type(vector, &mut *vec_ty, err))?;
-                    check_rc(|err| duckdb_v2_logical_type_get_id(*vec_ty, &mut id, err))?;
+                    check_rc(|err| duckdb_v2_vector_get_logical_type(vector, &mut *vec_t, err))?;
+                    check_rc(|err| duckdb_v2_logical_type_get_id(*vec_t, &mut id, err))?;
                     id
                 }
                 _ => DUCKDB_V2_LOGICAL_TYPE_ID_INVALID,
@@ -71,7 +71,7 @@ impl VectorNode {
                 let mut c = ptr::null_mut();
                 check_rc(|err| duckdb_v2_vector_get_child(v, i, &mut c, err)).map(|_| c)
             };
-            let children = match t {
+            let children = match value_t {
                 Value::List(_, t) | Value::Array(_, t) => {
                     Box::new([Self::from_vector(child_vec(vector, 0)?, &t.element)?])
                 }
@@ -79,7 +79,9 @@ impl VectorNode {
                     .fields
                     .iter()
                     .enumerate()
-                    .map(|(i, (_, f_ty))| Self::from_vector(child_vec(vector, i as idx_t)?, f_ty))
+                    .map(|(i, (_, field_t))| {
+                        Self::from_vector(child_vec(vector, i as idx_t)?, field_t)
+                    })
                     .collect::<Result<Box<[_]>>>()?,
                 Value::Map(_, t) => {
                     let entries = child_vec(vector, 0)?;
@@ -108,19 +110,19 @@ impl VectorNode {
     }
 
     #[inline(never)]
-    fn extract<'a>(&'a self, row: usize, ty: &'a ValueOwned) -> Result<Value<'a>> {
+    fn extract<'a>(&'a self, row: usize, value_t: &Value<'a>) -> Result<Value<'a>> {
         unsafe {
             let data = self.data;
             if !self.is_valid(row)
-                || (data.is_null() && !matches!(ty, Value::Array(..) | Value::Struct(..)))
+                || (data.is_null() && !matches!(value_t, Value::Array(..) | Value::Struct(..)))
             {
-                return Ok(if matches!(ty, Value::Unknown(..)) {
+                return Ok(if matches!(value_t, Value::Unknown(..)) {
                     Value::Varchar(None)
                 } else {
-                    ty.clone()
+                    value_t.clone()
                 });
             }
-            Ok(match ty {
+            Ok(match value_t {
                 Value::Null => Value::Null,
                 Value::Boolean(..) => Value::Boolean(Some(*(data as *const bool).add(row))),
                 Value::Int8(..) => Value::Int8(Some(*(data as *const i8).add(row))),
@@ -202,7 +204,7 @@ impl VectorNode {
                     &*(data as *const duckdb_v2_hugeint_t).add(row),
                 ))),
                 Value::List(_, t) | Value::Array(_, t) => {
-                    let (begin, len) = if matches!(ty, Value::List(..)) {
+                    let (begin, len) = if matches!(value_t, Value::List(..)) {
                         let e = *(data as *const duckdb_v2_list_entry).add(row);
                         (e.offset as usize, e.length as usize)
                     } else {
@@ -215,7 +217,7 @@ impl VectorNode {
                     let values = (begin..begin + len)
                         .map(|i| child.extract(i, &t.element))
                         .collect::<Result<Box<[_]>>>()?;
-                    if matches!(ty, Value::List(..)) {
+                    if matches!(value_t, Value::List(..)) {
                         Value::List(Some(values), t.clone())
                     } else {
                         Value::Array(Some(values), t.clone())
@@ -227,8 +229,8 @@ impl VectorNode {
                             .fields
                             .iter()
                             .zip(&self.children)
-                            .map(|((name, f_ty), child)| {
-                                Ok((name.clone(), child.extract(row, f_ty)?))
+                            .map(|((name, field_t), child)| {
+                                Ok((name.clone(), child.extract(row, field_t)?))
                             })
                             .collect::<Result<Box<[_]>>>()?,
                     ),
@@ -253,7 +255,7 @@ impl VectorNode {
                         map_type.clone(),
                     )
                 }
-                _ => return Err(anyhow!("Unsupported DuckDB column type: {ty:?}")),
+                _ => return Err(anyhow!("Unsupported DuckDB column type: {value_t:?}")),
             })
         }
     }
@@ -433,8 +435,8 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Stream for Statements<'s, Q> {
             }
             if let Some((current, size)) = &mut this.batch {
                 let row = current.row;
-                for (v, ty) in current.batch.0.iter().zip(current.batch.1.iter()) {
-                    if matches!(ty, Value::Date(..)) && v.is_valid(row) && !v.data.is_null() {
+                for (v, t) in current.batch.0.iter().zip(current.batch.1.iter()) {
+                    if matches!(t, Value::Date(..)) && v.is_valid(row) && !v.data.is_null() {
                         unsafe { duckdb_date_to_date(*(v.data as *const i32).add(row))? };
                     }
                 }
@@ -474,7 +476,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Stream for Statements<'s, Q> {
                                 let vectors = types
                                     .iter()
                                     .enumerate()
-                                    .map(|(col, ty)| {
+                                    .map(|(col, t)| {
                                         let mut vec = ptr::null_mut();
                                         check_rc(|err| {
                                             duckdb_v2_data_chunk_get_vector(
@@ -484,7 +486,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Stream for Statements<'s, Q> {
                                                 err,
                                             )
                                         })?;
-                                        VectorNode::from_vector(vec, ty)
+                                        VectorNode::from_vector(vec, t)
                                     })
                                     .collect::<Result<Box<[_]>>>()?;
                                 this.batch = Some((
@@ -607,15 +609,15 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Stream for Statements<'s, Q> {
                                 let (raw_names, types): (Vec<_>, Vec<_>) = (0..cols)
                                     .map(|i| {
                                         let mut name = duckdb_v2_identifier_t::default();
-                                        let mut ty = ptr::null_mut();
+                                        let mut t = ptr::null_mut();
                                         check_rc(|err| {
                                             duckdb_v2_schema_get_field(
-                                                *schema, i, &mut name, &mut ty, err,
+                                                *schema, i, &mut name, &mut t, err,
                                             )
                                         })?;
                                         Ok((
                                             duckdb_str_to_str(name),
-                                            ValueWrap::try_from(ty)?.into(),
+                                            ValueWrap::try_from(t)?.into(),
                                         ))
                                     })
                                     .collect::<Result<Vec<_>>>()?
