@@ -16,7 +16,7 @@ bundled = ["libduckdb-sys/bundled"]
 anyhow.workspace = true
 libduckdb-sys = { version = "1.20000", default-features = false, features = [
     "buildtime_bindgen",
-    "capi-v2",
+    "capi-v1",
 ] }
 log.workspace = true
 rust_decimal.workspace = true

@@ -1,6 +1,7 @@
+use libduckdb_sys::duckdb_result;
 use std::{
     ops::{Deref, DerefMut},
-    ptr,
+    sync::atomic::AtomicPtr,
 };
 
 pub(crate) trait NullCheck {
@@ -8,16 +9,38 @@ pub(crate) trait NullCheck {
 }
 
 impl<T> NullCheck for *const T {
-    #[inline(always)]
+    fn is_null(&self) -> bool {
+        (*self as *const T).is_null()
+    }
+}
+
+impl<T> NullCheck for *mut T {
+    fn is_null(&self) -> bool {
+        (*self as *const T).is_null()
+    }
+}
+
+impl<T> NullCheck for AtomicPtr<T> {
+    fn is_null(&self) -> bool {
+        self.load(std::sync::atomic::Ordering::Relaxed).is_null()
+    }
+}
+
+impl<T: NullCheck> NullCheck for &T {
     fn is_null(&self) -> bool {
         (*self).is_null()
     }
 }
 
-impl<T> NullCheck for *mut T {
-    #[inline(always)]
+impl<T: NullCheck> NullCheck for &mut T {
     fn is_null(&self) -> bool {
-        (*self).is_null()
+        false
+    }
+}
+
+impl NullCheck for duckdb_result {
+    fn is_null(&self) -> bool {
+        false
     }
 }
 
@@ -28,7 +51,6 @@ pub(crate) struct CBox<T: NullCheck> {
 }
 
 impl<T: NullCheck> CBox<T> {
-    #[inline(always)]
     pub fn new(ptr: T, dealloc: fn(T)) -> Self {
         Self { ptr, dealloc }
     }
@@ -36,9 +58,9 @@ impl<T: NullCheck> CBox<T> {
 
 impl<T: NullCheck> Drop for CBox<T> {
     fn drop(&mut self) {
-        if !self.ptr.is_null() {
+        if !self.is_null() {
             unsafe {
-                (self.dealloc)(ptr::read(&self.ptr));
+                (self.dealloc)(std::ptr::read(&self.ptr as *const T));
             }
         }
     }
@@ -47,14 +69,12 @@ impl<T: NullCheck> Drop for CBox<T> {
 impl<T: NullCheck> Deref for CBox<T> {
     type Target = T;
 
-    #[inline(always)]
     fn deref(&self) -> &Self::Target {
         &self.ptr
     }
 }
 
 impl<T: NullCheck> DerefMut for CBox<T> {
-    #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.ptr
     }

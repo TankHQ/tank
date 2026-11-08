@@ -1,178 +1,495 @@
 use crate::{
-    DuckDBPrepared, DuckDBTransaction, ValueWrap, cbox::CBox, check_rc, date_to_duckdb_date,
-    decimal_to_duckdb_decimal, driver::DuckDBDriver, i128_to_duckdb_hugeint,
-    interval_to_duckdb_interval, offsetdatetime_to_duckdb_timestamp,
-    primitive_date_time_to_duckdb_timestamp, streaming::Statements, time_to_duckdb_time,
-    u128_to_duckdb_uhugeint, uuid_to_duckdb_hugeint,
+    DuckDBPrepared, DuckDBTransaction, cbox::CBox, date_to_duckdb_date, decimal_to_duckdb_decimal,
+    driver::DuckDBDriver, i128_to_duckdb_hugeint, interval_to_duckdb_interval,
+    offsetdatetime_to_duckdb_timestamp, primitive_date_time_to_duckdb_timestamp,
+    streaming::Statements, tank_value_to_duckdb_logical_type, tank_value_to_duckdb_value,
+    time_to_duckdb_time, u128_to_duckdb_uhugeint, uuid_to_duckdb_hugeint,
 };
 use anyhow::anyhow;
-use libduckdb_sys::v2::*;
+use libduckdb_sys::*;
 use std::{
     borrow::Cow,
-    cmp::max,
-    collections::HashMap,
-    ffi::{CString, c_void},
+    ffi::{CStr, CString, c_char, c_void},
     fmt::{self, Debug, Formatter},
-    mem, ptr,
-    sync::{Arc, Mutex, OnceLock, Weak},
+    ptr,
+    str::FromStr,
+    sync::{
+        LazyLock,
+        atomic::{AtomicPtr, Ordering},
+    },
 };
 use tank_core::{
-    AsEntity, AsQuery, Connection, Context, Driver, DynQuery, Entity, ErrorContext, Executor,
-    Fragment, Query, QueryResult, Result, Row, RowLabels, RowsAffected, SqlWriter, Value,
+    AsEntity, AsQuery, ColumnDef, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
+    QueryResult, Result, Row, RowsAffected, SqlWriter, Value, as_c_string, describe_path,
+    error_message_from_ptr,
     future::Either,
     stream::{self, Stream},
     truncate_long,
 };
+use tokio::task::spawn_blocking;
 
-/// Wrapper around a DuckDB `duckdb_v2_connection_handle`.
+/// Wrapper around a DuckDB `duckdb_connection` pointer used by the DuckDB driver.
 /// Provides helpers to execute queries and extract results into `tank_core` types.
 pub struct DuckDBConnection {
-    pub(crate) connection: CBox<duckdb_v2_connection_handle>,
-    pub(crate) factory: duckdb_v2_factory_handle,
-    pub(crate) labels: RowLabels,
-    pub(crate) _instance: Arc<CBox<duckdb_v2_instance_handle>>,
+    pub(crate) connection: CBox<duckdb_connection>,
+}
+
+impl DuckDBConnection {
+    pub(crate) fn database_cache() -> &'static AtomicPtr<_duckdb_instance_cache> {
+        static DATABASE_CACHE: LazyLock<CBox<AtomicPtr<_duckdb_instance_cache>>> =
+            LazyLock::new(|| {
+                CBox::new(
+                    AtomicPtr::new(unsafe { duckdb_create_instance_cache() }),
+                    |ptr| unsafe {
+                        duckdb_destroy_instance_cache(&mut ptr.load(Ordering::Relaxed))
+                    },
+                )
+            });
+        &**DATABASE_CACHE
+    }
+
+    /// Whether every column can be written straight into a data chunk vector.
+    fn supports_chunk_append(columns: &[ColumnDef]) -> bool {
+        !columns.is_empty()
+            && columns.iter().all(|column| {
+                matches!(
+                    column.value,
+                    Value::Boolean(..)
+                        | Value::Int8(..)
+                        | Value::Int16(..)
+                        | Value::Int32(..)
+                        | Value::Int64(..)
+                        | Value::Int128(..)
+                        | Value::UInt8(..)
+                        | Value::UInt16(..)
+                        | Value::UInt32(..)
+                        | Value::UInt64(..)
+                        | Value::UInt128(..)
+                        | Value::Float32(..)
+                        | Value::Float64(..)
+                        | Value::Decimal(..)
+                        | Value::Char(..)
+                        | Value::Varchar(..)
+                        | Value::Blob(..)
+                        | Value::Date(..)
+                        | Value::Time(..)
+                        | Value::Timestamp(..)
+                        | Value::TimestampWithTimezone(..)
+                        | Value::Interval(..)
+                        | Value::Uuid(..)
+                )
+            })
+    }
+
+    /// Appends the rows one cell at a time; needed when a column is not a plain scalar.
+    unsafe fn append_cells<It>(appender: duckdb_appender, rows: It) -> Result<u64>
+    where
+        It: IntoIterator,
+        It::Item: AsEntity,
+    {
+        unsafe {
+            let mut rows_affected = 0;
+            for entity in rows {
+                for value in entity.as_entity().row_values() {
+                    let rc = match value {
+                        Value::Boolean(Some(v)) => duckdb_append_bool(appender, v),
+                        Value::Int8(Some(v)) => duckdb_append_int8(appender, v),
+                        Value::Int16(Some(v)) => duckdb_append_int16(appender, v),
+                        Value::Int32(Some(v)) => duckdb_append_int32(appender, v),
+                        Value::Int64(Some(v)) => duckdb_append_int64(appender, v),
+                        Value::Int128(Some(v)) => {
+                            duckdb_append_hugeint(appender, i128_to_duckdb_hugeint(*v))
+                        }
+                        Value::UInt8(Some(v)) => duckdb_append_uint8(appender, v),
+                        Value::UInt16(Some(v)) => duckdb_append_uint16(appender, v),
+                        Value::UInt32(Some(v)) => duckdb_append_uint32(appender, v),
+                        Value::UInt64(Some(v)) => duckdb_append_uint64(appender, v),
+                        Value::UInt128(Some(v)) => {
+                            duckdb_append_uhugeint(appender, u128_to_duckdb_uhugeint(*v))
+                        }
+                        Value::Float32(Some(v)) => duckdb_append_float(appender, v),
+                        Value::Float64(Some(v)) => duckdb_append_double(appender, v),
+                        Value::Decimal(Some(v), width, scale) => {
+                            let value = CBox::new(
+                                duckdb_create_decimal(decimal_to_duckdb_decimal(&v, width, scale)),
+                                |mut p| duckdb_destroy_value(&mut p),
+                            );
+                            duckdb_append_value(appender, *value)
+                        }
+                        Value::Char(Some(v)) => {
+                            let mut buf = [0u8; 4];
+                            let v = v.encode_utf8(&mut buf);
+                            duckdb_append_varchar_length(appender, v.as_ptr() as *const c_char, v.len() as _)
+                        }
+                        Value::Varchar(Some(v)) => duckdb_append_varchar_length(
+                            appender,
+                            v.as_ptr() as *const c_char,
+                            v.len() as _,
+                        ),
+                        Value::Blob(Some(v)) => {
+                            duckdb_append_blob(appender, v.as_ptr() as *const c_void, v.len() as _)
+                        }
+                        Value::Date(Some(v)) => duckdb_append_date(appender, date_to_duckdb_date(&v)),
+                        Value::Time(Some(v)) => duckdb_append_time(appender, time_to_duckdb_time(&v)),
+                        Value::Timestamp(Some(v)) => duckdb_append_timestamp(
+                            appender,
+                            primitive_date_time_to_duckdb_timestamp(&v),
+                        ),
+                        Value::TimestampWithTimezone(Some(v)) => duckdb_append_timestamp(
+                            appender,
+                            offsetdatetime_to_duckdb_timestamp(&v),
+                        ),
+                        Value::Interval(Some(ref v)) => {
+                            duckdb_append_interval(appender, interval_to_duckdb_interval(v))
+                        }
+                        Value::Uuid(Some(ref v)) => {
+                            let value = CBox::new(
+                                duckdb_create_uuid(u128_to_duckdb_uhugeint(v.as_u128())),
+                                |mut p| duckdb_destroy_value(&mut p),
+                            );
+                            duckdb_append_value(appender, *value)
+                        }
+                        Value::List(Some(ref v), ref ty) | Value::Array(Some(ref v), ref ty) => {
+                            let logical_type = tank_value_to_duckdb_logical_type(&ty.element);
+                            let values = v
+                                .iter()
+                                .map(tank_value_to_duckdb_value)
+                                .collect::<Vec<_>>();
+                            let mut values = values.iter().map(|v| **v).collect::<Vec<_>>();
+                            let is_array = matches!(value, Value::Array(..));
+                            let value = CBox::new(
+                                if is_array {
+                                    duckdb_create_array_value(
+                                        *logical_type,
+                                        values.as_mut_ptr(),
+                                        ty.len as _,
+                                    )
+                                } else {
+                                    duckdb_create_list_value(
+                                        *logical_type,
+                                        values.as_mut_ptr(),
+                                        v.len() as _,
+                                    )
+                                },
+                                |mut p| duckdb_destroy_value(&mut p),
+                            );
+                            if value.is_null() {
+                                let error = anyhow!("Could not create a collection value");
+                                log::error!("{error:#}");
+                                return Err(error);
+                            }
+                            duckdb_append_value(appender, *value)
+                        }
+                        Value::Map(Some(ref v), ..) => {
+                            let logical_type = tank_value_to_duckdb_logical_type(&value);
+                            let keys = v.keys().map(tank_value_to_duckdb_value).collect::<Vec<_>>();
+                            let values = v
+                                .values()
+                                .map(tank_value_to_duckdb_value)
+                                .collect::<Vec<_>>();
+                            let mut raw_keys = keys.iter().map(|v| **v).collect::<Vec<_>>();
+                            let mut raw_values = values.iter().map(|v| **v).collect::<Vec<_>>();
+                            let value = CBox::new(
+                                duckdb_create_map_value(
+                                    *logical_type,
+                                    raw_keys.as_mut_ptr(),
+                                    raw_values.as_mut_ptr(),
+                                    v.len() as _,
+                                ),
+                                |mut p| duckdb_destroy_value(&mut p),
+                            );
+                            if value.is_null() {
+                                let error = anyhow!("Could not create a map value");
+                                log::error!("{error:#}");
+                                return Err(error);
+                            }
+                            duckdb_append_value(appender, *value)
+                        }
+                        Value::Struct(Some(ref v), ..) => {
+                            let values = v
+                                .iter()
+                                .map(|v| tank_value_to_duckdb_value(&v.1))
+                                .collect::<Vec<_>>();
+                            let mut raw_values = values.iter().map(|v| **v).collect::<Vec<_>>();
+                            let value = CBox::new(
+                                duckdb_create_struct_value(
+                                    *tank_value_to_duckdb_logical_type(&value),
+                                    raw_values.as_mut_ptr(),
+                                ),
+                                |mut p| duckdb_destroy_value(&mut p),
+                            );
+                            if value.is_null() {
+                                let error = anyhow!("Could not create a struct value");
+                                log::error!("{error:#}");
+                                return Err(error);
+                            }
+                            duckdb_append_value(appender, *value)
+                        }
+                        _ => duckdb_append_null(appender),
+                    };
+                    Self::check_appender(appender, rc)?;
+                }
+                Self::check_appender(appender, duckdb_appender_end_row(appender))?;
+                rows_affected += 1;
+            }
+            Ok(rows_affected)
+        }
+    }
+
+    /// Writes one cell into a chunk vector, which is typed after the value's own column.
+    #[inline(always)]
+    unsafe fn write_chunk_cell(
+        vector: duckdb_vector,
+        data: *mut c_void,
+        row: usize,
+        width: u8,
+        scale: u8,
+        val: &Value<'_>,
+    ) -> Result<()> {
+        unsafe {
+            if val.is_null() {
+                duckdb_vector_ensure_validity_writable(vector);
+                duckdb_validity_set_row_invalid(duckdb_vector_get_validity(vector), row as _);
+                return Ok(());
+            }
+            let put_string = |src: &[u8]| {
+                duckdb_vector_assign_string_element_len(
+                    vector,
+                    row as _,
+                    src.as_ptr() as *const c_char,
+                    src.len() as _,
+                )
+            };
+            match val {
+                Value::Boolean(Some(v)) => *(data as *mut bool).add(row) = *v,
+                Value::Int8(Some(v)) => *(data as *mut i8).add(row) = *v,
+                Value::Int16(Some(v)) => *(data as *mut i16).add(row) = *v,
+                Value::Int32(Some(v)) => *(data as *mut i32).add(row) = *v,
+                Value::Int64(Some(v)) => *(data as *mut i64).add(row) = *v,
+                Value::Int128(Some(v)) => {
+                    *(data as *mut duckdb_hugeint).add(row) = i128_to_duckdb_hugeint(**v)
+                }
+                Value::UInt8(Some(v)) => *(data as *mut u8).add(row) = *v,
+                Value::UInt16(Some(v)) => *(data as *mut u16).add(row) = *v,
+                Value::UInt32(Some(v)) => *(data as *mut u32).add(row) = *v,
+                Value::UInt64(Some(v)) => *(data as *mut u64).add(row) = *v,
+                Value::UInt128(Some(v)) => {
+                    *(data as *mut duckdb_uhugeint).add(row) = u128_to_duckdb_uhugeint(**v)
+                }
+                Value::Float32(Some(v)) => *(data as *mut f32).add(row) = *v,
+                Value::Float64(Some(v)) => *(data as *mut f64).add(row) = *v,
+                Value::Decimal(Some(v), ..) => {
+                    let raw = decimal_to_duckdb_decimal(v, width, scale);
+                    if width <= 4 {
+                        *(data as *mut i16).add(row) = raw.value.lower as i16;
+                    } else if width <= 9 {
+                        *(data as *mut i32).add(row) = raw.value.lower as i32;
+                    } else if width <= 18 {
+                        *(data as *mut i64).add(row) = raw.value.lower as i64;
+                    } else {
+                        *(data as *mut duckdb_hugeint).add(row) = raw.value;
+                    }
+                }
+                Value::Char(Some(v)) => {
+                    let mut buf = [0u8; 4];
+                    put_string(v.encode_utf8(&mut buf).as_bytes())
+                }
+                Value::Varchar(Some(v)) => put_string(v.as_bytes()),
+                Value::Blob(Some(v)) => put_string(v.as_ref()),
+                Value::Date(Some(v)) => *(data as *mut i32).add(row) = date_to_duckdb_date(v).days,
+                Value::Time(Some(v)) => *(data as *mut i64).add(row) = time_to_duckdb_time(v).micros,
+                Value::Timestamp(Some(v)) => {
+                    *(data as *mut i64).add(row) = primitive_date_time_to_duckdb_timestamp(v).micros
+                }
+                Value::TimestampWithTimezone(Some(v)) => {
+                    *(data as *mut i64).add(row) = offsetdatetime_to_duckdb_timestamp(v).micros
+                }
+                Value::Interval(Some(v)) => {
+                    *(data as *mut duckdb_interval).add(row) = interval_to_duckdb_interval(v)
+                }
+                Value::Uuid(Some(v)) => {
+                    *(data as *mut duckdb_hugeint).add(row) = uuid_to_duckdb_hugeint(v)
+                }
+                _ => return Err(anyhow!("Unsupported value for a vectorised append: {val:?}")),
+            }
+            Ok(())
+        }
+    }
+
+    /// Appends the rows through a single data chunk, one vectorised write per column and batch.
+    unsafe fn append_chunked<It>(
+        appender: duckdb_appender,
+        columns: &[ColumnDef],
+        rows: It,
+    ) -> Result<u64>
+    where
+        It: IntoIterator,
+        It::Item: AsEntity,
+    {
+        unsafe {
+            let types = columns
+                .iter()
+                .map(|column| tank_value_to_duckdb_logical_type(&column.value))
+                .collect::<Box<[_]>>();
+            let mut raw_types = types.iter().map(|t| **t).collect::<Box<[_]>>();
+            let chunk = CBox::new(
+                duckdb_create_data_chunk(raw_types.as_mut_ptr(), raw_types.len() as _),
+                |mut chunk| duckdb_destroy_data_chunk(&mut chunk),
+            );
+            if chunk.is_null() {
+                return Err(anyhow!("Could not create a DuckDB data chunk"));
+            }
+            // A DECIMAL vector stores the digits scaled to the declared scale.
+            let decimals = types
+                .iter()
+                .map(|t| {
+                    if duckdb_get_type_id(**t) == DUCKDB_TYPE_DUCKDB_TYPE_DECIMAL {
+                        (duckdb_decimal_width(**t), duckdb_decimal_scale(**t))
+                    } else {
+                        (0, 0)
+                    }
+                })
+                .collect::<Box<[(u8, u8)]>>();
+            let batch_size = duckdb_vector_size() as usize;
+            let mut rows = rows.into_iter();
+            let mut rows_affected = 0;
+            let mut cells = Vec::with_capacity(raw_types.len());
+            loop {
+                duckdb_data_chunk_reset(*chunk);
+                cells.clear();
+                for i in 0..raw_types.len() {
+                    let vector = duckdb_data_chunk_get_vector(*chunk, i as _);
+                    cells.push((vector, duckdb_vector_get_data(vector)));
+                }
+                let mut len = 0;
+                while len < batch_size {
+                    let Some(entity) = rows.next() else {
+                        break;
+                    };
+                    let row = entity.as_entity().row_values();
+                    for ((value, &(vector, data)), &(width, scale)) in
+                        row.iter().zip(&cells).zip(&decimals)
+                    {
+                        Self::write_chunk_cell(vector, data, len, width, scale, value)?;
+                    }
+                    len += 1;
+                }
+                if len == 0 {
+                    break;
+                }
+                duckdb_data_chunk_set_size(*chunk, len as _);
+                Self::check_appender(appender, duckdb_append_data_chunk(appender, *chunk))?;
+                rows_affected += len as u64;
+            }
+            Ok(rows_affected)
+        }
+    }
+    #[inline(always)]
+    unsafe fn check_appender(appender: duckdb_appender, rc: duckdb_state) -> Result<()> {
+        if rc == duckdb_state_DuckDBSuccess {
+            return Ok(());
+        }
+        let raw = unsafe { duckdb_appender_error(appender) };
+        let error = Error::msg(error_message_from_ptr(&raw).to_string());
+        log::error!("{error:#}");
+        Err(error)
+    }
 }
 
 impl Connection for DuckDBConnection {
     async fn connect(driver: &DuckDBDriver, url: Cow<'static, str>) -> Result<Self> {
-        static ENVIRONMENT: OnceLock<(
-            CBox<duckdb_v2_environment_handle>,
-            Mutex<HashMap<String, Weak<CBox<duckdb_v2_instance_handle>>>>,
-        )> = OnceLock::new();
         let url = Self::sanitize_url(driver, url)?;
-        let mut path = format!(
+        let make_context = || {
+            format!(
+                "While trying to connect to DuckDB {}",
+                describe_path::<DuckDBDriver>(&url)
+            )
+        };
+        let mut config: CBox<duckdb_config> = CBox::new(ptr::null_mut(), |mut p| unsafe {
+            duckdb_destroy_config(&mut p)
+        });
+        unsafe {
+            let rc = duckdb_create_config(&mut *config);
+            if rc != duckdb_state_DuckDBSuccess {
+                let error =
+                    anyhow!("Cannot allocate the duckdb_config object").context(make_context());
+                log::error!("{error:#}");
+                return Err(error);
+            }
+        };
+        let mut path = CString::from_str(&format!(
             "{}{}",
             url.host_str()
                 .map_or(Default::default(), |host| format!("{host}/")),
             url.path()
-        );
-        if path.is_empty() {
-            path = ":memory:".into();
-        }
-        let mut options = Vec::new();
-        for (k, v) in url.query_pairs() {
-            match k.as_ref() {
-                "mode" => {
-                    if v == "memory" {
-                        path = ":memory:".to_owned();
-                        continue;
-                    }
-                    let access_mode = match &*v {
-                        "ro" => "READ_ONLY",
-                        "rw" | "rwc" => "READ_WRITE",
-                        _ => {
-                            let error = anyhow!(
-                                "Unknown value {v:?} for `mode`, expected one of: `ro`, `rw`, `rwc`, `memory`"
-                            );
-                            log::warn!("{error:#}");
-                            return Err(error);
+        ))
+        .with_context(make_context)?;
+        for (key, value) in url.query_pairs() {
+            let rc = unsafe {
+                match &*key {
+                    "mode" => {
+                        if value == "memory" {
+                            path = CString::from_str(":memory:")?;
+                            continue;
                         }
-                    };
-                    options.push((Cow::Borrowed("access_mode"), Cow::Borrowed(access_mode)));
-                }
-                _ => options.push((k, v)),
-            }
-        }
-        (|| -> Result<Self> {
-            unsafe {
-                let (environment, instances) = if let Some(env) = ENVIRONMENT.get() {
-                    env
-                } else {
-                    let mut env = CBox::new(ptr::null_mut(), |mut p| {
-                        duckdb_v2_environment_destroy(&mut p);
-                    });
-                    check_rc(|err| duckdb_v2_environment_create(&mut *env, err))?;
-                    let _ = ENVIRONMENT.set((env, Default::default()));
-                    ENVIRONMENT
-                        .get()
-                        .context("While accessing the DuckDB environment")?
-                };
-                let mut cache = instances
-                    .lock()
-                    .ok()
-                    .context("DuckDB instance cache mutex was poisoned")?;
-                let is_memory = path == ":memory:";
-                let instance = match (!is_memory)
-                    .then(|| cache.get(&path).and_then(Weak::upgrade))
-                    .flatten()
-                {
-                    Some(existing) => existing,
-                    None => {
-                        let names: Vec<duckdb_v2_str> =
-                            options.iter().map(|(k, _)| k.as_ref().into()).collect();
-                        let values: Vec<duckdb_v2_str> =
-                            options.iter().map(|(_, v)| v.as_ref().into()).collect();
-                        let mut instance = CBox::new(ptr::null_mut(), |mut p| {
-                            duckdb_v2_instance_destroy(&mut p);
-                        });
-                        check_rc(|err| {
-                            duckdb_v2_instance_create_with_options(
-                                **environment,
-                                if names.is_empty() {
-                                    ptr::null()
-                                } else {
-                                    names.as_ptr()
-                                },
-                                if values.is_empty() {
-                                    ptr::null()
-                                } else {
-                                    values.as_ptr()
-                                },
-                                options.len() as _,
-                                &mut *instance,
-                                err,
-                            )
-                        })?;
-                        let path_str = path.as_str().into();
-                        check_rc(|err| {
-                            duckdb_v2_instance_attach(
-                                *instance,
-                                ptr::null(),
-                                &path_str,
-                                ptr::null_mut(),
-                                true,
-                                err,
-                            )
-                        })?;
-                        let instance = Arc::new(instance);
-                        if !is_memory {
-                            cache.insert(path, Arc::downgrade(&instance));
-                        }
-                        instance
-                    }
-                };
-                drop(cache);
-                let mut connection = CBox::new(ptr::null_mut(), |mut p| {
-                    duckdb_v2_connection_destroy(&mut p);
-                });
-                check_rc(|err| duckdb_v2_connection_create(**instance, &mut *connection, err))?;
-                let mut factory = ptr::null_mut();
-                check_rc(|err| duckdb_v2_connection_get_factory(*connection, &mut factory, err))?;
-                if !options
-                    .iter()
-                    .any(|(k, _)| k.eq_ignore_ascii_case("max_streaming_buffer_size"))
-                {
-                    let mut config = ptr::null_mut();
-                    check_rc(|err| duckdb_v2_connection_get_config(*connection, &mut config, err))?;
-                    check_rc(|err| {
-                        duckdb_v2_config_set_option_text(
-                            config,
-                            &"max_streaming_buffer_size".into(),
-                            &"256KiB".into(),
-                            DUCKDB_V2_SETTING_SCOPE::DUCKDB_V2_SETTING_SCOPE_SESSION,
-                            err,
+                        duckdb_set_config(
+                            *config,
+                            c"access_mode".as_ptr(),
+                            match &*value {
+                                "ro" => c"READ_ONLY",
+                                "rw" | "rwc" => c"READ_WRITE",
+                                _ => {
+                                    let error = anyhow!("Unknown value {value:?} for `mode`, expected one of: `ro`, `rw`, `rwc`, `memory`");
+                                    log::warn!("{error:#}");
+                                    return Err(error);
+                                }
+                            }
+                            .as_ptr(),
                         )
-                    })?;
+                    }
+                    _ => duckdb_set_config(
+                        *config,
+                        as_c_string(&*key).as_ptr(),
+                        as_c_string(&*value).as_ptr(),
+                    ),
                 }
-                Ok(DuckDBConnection {
-                    connection,
-                    factory,
-                    labels: RowLabels::default(),
-                    _instance: instance,
-                })
+            };
+            if rc != duckdb_state_DuckDBSuccess {
+                let error = anyhow!("Error while setting config `{key}={value}`");
+                log::warn!("{error:#}");
+                return Err(error);
             }
-        })()
-        .context("While trying to connect to DuckDB")
+        }
+        let mut database: duckdb_database = ptr::null_mut();
+        let mut connection;
+        let mut error: CBox<*mut c_char> = CBox::new(ptr::null_mut(), |p| unsafe {
+            duckdb_free(p as *mut c_void)
+        });
+        let db_cache = Self::database_cache().load(Ordering::Relaxed);
+        unsafe {
+            let rc = duckdb_get_or_create_from_cache(
+                db_cache,
+                path.as_ptr(),
+                &mut database,
+                *config,
+                &mut *error,
+            );
+            if rc != duckdb_state_DuckDBSuccess {
+                let error = CStr::from_ptr(*error)
+                    .to_str()
+                    .context("While reading the error from `duckdb_get_or_create_from_cache`")?
+                    .to_owned();
+                return Err(Error::msg(error));
+            };
+            connection = CBox::new(ptr::null_mut(), |mut p| duckdb_disconnect(&mut p));
+            let rc = duckdb_connect(database, &mut *connection);
+            if rc != duckdb_state_DuckDBSuccess {
+                let error = anyhow!("Failed to connect to database url `{url}`");
+                log::error!("{error:#}");
+                return Err(error);
+            };
+        };
+        Ok(DuckDBConnection { connection })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<DuckDBTransaction<'_>>> + Send {
@@ -184,54 +501,37 @@ impl Executor for DuckDBConnection {
     type Driver = DuckDBDriver;
 
     async fn do_prepare(&mut self, sql: String) -> Result<Query<DuckDBDriver>> {
-        let (prepared, param_count) = (|| unsafe {
-            let c_sql =
-                CString::new(sql.as_bytes()).context("Could not convert `String` to `CString`")?;
-            let mut iterator = CBox::new(ptr::null_mut(), |mut p| {
-                duckdb_v2_statement_iterator_destroy(&mut p);
-            });
-            check_rc(|err| {
-                duckdb_v2_parse_sql(*self.connection, c_sql.as_ptr(), &mut *iterator, err)
-            })?;
-            let mut parsed = CBox::new(ptr::null_mut(), |mut p| {
-                duckdb_v2_sql_statement_destroy(&mut p);
-            });
-            check_rc(|err| duckdb_v2_statement_iterator_next(*iterator, &mut *parsed, err))?;
-            if parsed.is_null() {
-                return Err(anyhow!("No statement to prepare"));
-            }
-            let mut extra = CBox::new(ptr::null_mut(), |mut p| {
-                duckdb_v2_sql_statement_destroy(&mut p);
-            });
-            check_rc(|err| duckdb_v2_statement_iterator_next(*iterator, &mut *extra, err))?;
-            if !extra.is_null() {
-                return Err(anyhow!("Cannot prepare multiple statements at once"));
-            }
-            let mut param_count = 0;
-            check_rc(|err| {
-                duckdb_v2_sql_statement_get_parameter_count(*parsed, &mut param_count, err)
-            })?;
-            let mut prepared = CBox::new(ptr::null_mut(), |mut p| {
-                duckdb_v2_prepared_statement_destroy(&mut p);
-            });
-            check_rc(|err| {
-                duckdb_v2_prepared_statement_create(
-                    *self.connection,
-                    *parsed,
-                    false,
-                    &mut *prepared,
-                    err,
+        let connection = AtomicPtr::new(*self.connection);
+        let prepared = spawn_blocking(move || unsafe {
+            let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
+            let mut prepared = CBox::new(ptr::null_mut(), |mut p| duckdb_destroy_prepare(&mut p));
+            let sql = match CString::new(sql.as_bytes()) {
+                Ok(sql) => sql,
+                Err(e) => {
+                    let error = Error::new(e)
+                        .context("Could convert `String` to `CString`")
+                        .context(make_context());
+                    log::error!("{error:#}");
+                    return Err(error);
+                }
+            };
+            let rc = duckdb_prepare(
+                connection.load(Ordering::Relaxed),
+                sql.as_ptr(),
+                &mut *prepared,
+            );
+            if rc != duckdb_state_DuckDBSuccess {
+                let error = Error::msg(
+                    error_message_from_ptr(&duckdb_prepare_error(*prepared)).to_string(),
                 )
-            })?;
-            Ok((prepared, param_count))
-        })()
-        .with_context(|| format!("While preparing the query:\n{}", truncate_long!(sql)))
-        .inspect_err(|error| log::error!("{error:#}"))?;
-        Ok(Query::Prepared(DuckDBPrepared::new(
-            prepared,
-            param_count,
-            sql,
-        )))
+                .context(make_context());
+                log::error!("{error:#}");
+                return Err(error);
+            }
+            Ok(prepared)
+        })
+        .await?;
+        Ok(DuckDBPrepared::new(prepared?).into())
     }
 
     fn run<'s>(
@@ -239,7 +539,7 @@ impl Executor for DuckDBConnection {
         query: impl AsQuery<DuckDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
         match Statements::new(self, query.as_query()) {
-            Ok(statements) => Either::Left(statements),
+            Ok(statements) => Either::Left(stream::iter(statements)),
             Err(error) => Either::Right(stream::once(std::future::ready(Err(error)))),
         }
     }
@@ -251,241 +551,50 @@ impl Executor for DuckDBConnection {
         It::Item: AsEntity,
     {
         type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
-        let mut rows = rows.into_iter();
-        let Some(first) = rows.next() else {
-            return Ok(Default::default());
-        };
         unsafe {
-            let factory = self.factory;
-            let col_types = first
-                .as_entity()
-                .row_values()
-                .iter()
-                .map(|v| ValueWrap::from(v).to_logical_type(factory))
-                .collect::<Result<Box<[_]>>>()?;
-            let raw_types = col_types.iter().map(|t| **t).collect::<Box<[_]>>();
-            let mut collection = CBox::new(ptr::null_mut(), |mut c| {
-                duckdb_v2_column_data_collection_destroy(&mut c);
+            let connection = *self.connection;
+            let table = E::<It>::table();
+            let delimiter = self
+                .driver()
+                .sql_writer()
+                .separator()
+                .chars()
+                .next()
+                .unwrap_or('.');
+            let mut appender = CBox::new(ptr::null_mut(), |mut p| {
+                duckdb_appender_destroy(&mut p);
             });
-            check_rc(|err| {
-                duckdb_v2_column_data_collection_create(
-                    factory,
-                    raw_types.as_ptr(),
-                    raw_types.len() as _,
-                    &mut *collection,
-                    err,
-                )
-            })?;
-            let mut append_state = CBox::new(ptr::null_mut(), |mut s| {
-                duckdb_v2_column_data_collection_append_state_destroy(&mut s);
-            });
-            check_rc(|err| {
-                duckdb_v2_column_data_collection_append_state_create(
-                    *collection,
-                    &mut *append_state,
-                    err,
-                )
-            })?;
-            let mut chunk = CBox::new(ptr::null_mut(), |mut c| {
-                duckdb_v2_data_chunk_destroy(&mut c);
-            });
-            check_rc(|err| {
-                duckdb_v2_data_chunk_create(
-                    factory,
-                    raw_types.as_ptr(),
-                    raw_types.len() as _,
-                    &mut *chunk,
-                    err,
-                )
-            })?;
-            let mut capacity = 0;
-            check_rc(|err| duckdb_v2_data_chunk_get_capacity(*chunk, &mut capacity, err))?;
-            let batch_cap = max(capacity as usize, 1);
-            let mut vectors = (0..raw_types.len())
-                .map(|i| {
-                    let mut vector = ptr::null_mut();
-                    check_rc(|err| {
-                        duckdb_v2_data_chunk_get_vector(*chunk, i as _, &mut vector, err)
-                    })?;
-                    Ok((vector, ptr::null_mut::<c_void>()))
-                })
-                .collect::<Result<Box<[_]>>>()?;
-            let mut first = Some(first);
-            while let Some(head) = first.take().or_else(|| rows.next()) {
-                check_rc(|err| duckdb_v2_data_chunk_clear(*chunk, err))?;
-                for (vector, data) in &mut vectors {
-                    check_rc(|err| duckdb_v2_vector_set_size(*vector, batch_cap as _, err))?;
-                    check_rc(|err| duckdb_v2_vector_get_data_mutable(*vector, data, err))?;
-                }
-                let mut batch_len = 0;
-                for item in std::iter::once(head).chain(rows.by_ref().take(batch_cap - 1)) {
-                    let row = item.as_entity().row_values();
-                    for (&(vector, data), val) in vectors.iter().zip(&row) {
-                        if val.is_null() {
-                            check_rc(|err| duckdb_v2_vector_set_null(vector, batch_len as _, err))?;
-                            continue;
-                        }
-                        match val {
-                            Value::Boolean(Some(v)) => *(data as *mut bool).add(batch_len) = *v,
-                            Value::Int8(Some(v)) => *(data as *mut i8).add(batch_len) = *v,
-                            Value::Int16(Some(v)) => *(data as *mut i16).add(batch_len) = *v,
-                            Value::Int32(Some(v)) => *(data as *mut i32).add(batch_len) = *v,
-                            Value::Int64(Some(v)) => *(data as *mut i64).add(batch_len) = *v,
-                            Value::Int128(Some(v)) => {
-                                *(data as *mut duckdb_v2_hugeint_t).add(batch_len) =
-                                    i128_to_duckdb_hugeint(**v)
-                            }
-                            Value::UInt8(Some(v)) => *(data as *mut u8).add(batch_len) = *v,
-                            Value::UInt16(Some(v)) => *(data as *mut u16).add(batch_len) = *v,
-                            Value::UInt32(Some(v)) => *(data as *mut u32).add(batch_len) = *v,
-                            Value::UInt64(Some(v)) => *(data as *mut u64).add(batch_len) = *v,
-                            Value::UInt128(Some(v)) => {
-                                *(data as *mut duckdb_v2_uhugeint_t).add(batch_len) =
-                                    u128_to_duckdb_uhugeint(**v)
-                            }
-                            Value::Float32(Some(v)) => *(data as *mut f32).add(batch_len) = *v,
-                            Value::Float64(Some(v)) => *(data as *mut f64).add(batch_len) = *v,
-                            Value::Decimal(Some(v), width, scale) if *width > 0 => {
-                                let (raw, width, _) = decimal_to_duckdb_decimal(v, *width, *scale);
-                                if width <= 4 {
-                                    *(data as *mut i16).add(batch_len) = raw.lower as i16;
-                                } else if width <= 9 {
-                                    *(data as *mut i32).add(batch_len) = raw.lower as i32;
-                                } else if width <= 18 {
-                                    *(data as *mut i64).add(batch_len) = raw.lower as i64;
-                                } else {
-                                    *(data as *mut duckdb_v2_hugeint_t).add(batch_len) = raw;
-                                }
-                            }
-                            Value::Date(Some(v)) => {
-                                *(data as *mut i32).add(batch_len) = date_to_duckdb_date(v)
-                            }
-                            Value::Time(Some(v)) => {
-                                *(data as *mut i64).add(batch_len) = time_to_duckdb_time(v)
-                            }
-                            Value::Timestamp(Some(v)) => {
-                                *(data as *mut i64).add(batch_len) =
-                                    primitive_date_time_to_duckdb_timestamp(v)
-                            }
-                            Value::TimestampWithTimezone(Some(v)) => {
-                                *(data as *mut i64).add(batch_len) =
-                                    offsetdatetime_to_duckdb_timestamp(v)
-                            }
-                            Value::Interval(Some(v)) => {
-                                *(data as *mut duckdb_v2_interval_t).add(batch_len) =
-                                    interval_to_duckdb_interval(v)
-                            }
-                            Value::Uuid(Some(v)) => {
-                                *(data as *mut duckdb_v2_hugeint_t).add(batch_len) =
-                                    uuid_to_duckdb_hugeint(v)
-                            }
-                            Value::Char(Some(..))
-                            | Value::Varchar(Some(..))
-                            | Value::Blob(Some(..)) => {
-                                let mut char_buf = [0u8; 4];
-                                let src = match val {
-                                    Value::Char(Some(v)) => v.encode_utf8(&mut char_buf).as_bytes(),
-                                    Value::Varchar(Some(v)) => v.as_bytes(),
-                                    Value::Blob(Some(v)) => v.as_ref(),
-                                    _ => unreachable!(),
-                                };
-                                let len = src.len();
-                                let mut bytes: duckdb_v2_bytes = mem::zeroed();
-                                if len <= DUCKDB_V2_BYTES_INLINE_LENGTH as _ {
-                                    bytes.value.inlined.length = len as _;
-                                    ptr::copy_nonoverlapping(
-                                        src.as_ptr(),
-                                        bytes.value.inlined.inlined.as_mut_ptr() as _,
-                                        len,
-                                    );
-                                } else {
-                                    let mut arena = ptr::null_mut();
-                                    let mut buf = ptr::null_mut();
-                                    check_rc(|err| {
-                                        duckdb_v2_vector_get_arena(vector, &mut arena, err)
-                                    })?;
-                                    check_rc(|err| {
-                                        duckdb_v2_arena_allocate(arena, len as _, &mut buf, err)
-                                    })?;
-                                    bytes.value.pointer.length = len as _;
-                                    ptr::copy_nonoverlapping(src.as_ptr(), buf, len);
-                                    ptr::copy_nonoverlapping(
-                                        src.as_ptr(),
-                                        bytes.value.pointer.prefix.as_mut_ptr() as _,
-                                        4,
-                                    );
-                                    bytes.value.pointer.ptr = buf as _;
-                                }
-                                *(data as *mut duckdb_v2_bytes).add(batch_len) = bytes;
-                            }
-                            _ => {
-                                let d_val = ValueWrap::from(val).to_duckdb_value(factory)?;
-                                check_rc(|err| {
-                                    duckdb_v2_vector_set_value(vector, batch_len as _, *d_val, err)
-                                })?;
-                            }
-                        }
-                    }
-                    batch_len += 1;
-                }
-                if batch_len < batch_cap {
-                    for (vector, ..) in &vectors {
-                        check_rc(|err| duckdb_v2_vector_set_size(*vector, batch_len as _, err))?;
-                    }
-                }
-                check_rc(|err| {
-                    duckdb_v2_column_data_collection_append(
-                        *collection,
-                        *append_state,
-                        *chunk,
-                        err,
-                    )
-                })?;
+            let rc = match table.schema.rsplit_once(delimiter) {
+                Some((catalog, schema)) => duckdb_appender_create_ext(
+                    connection,
+                    as_c_string(catalog).as_ptr(),
+                    as_c_string(schema).as_ptr(),
+                    as_c_string((&table.name) as &str).as_ptr(),
+                    &mut *appender,
+                ),
+                None => duckdb_appender_create(
+                    connection,
+                    as_c_string(&table.schema as &str).as_ptr(),
+                    as_c_string(&table.name as &str).as_ptr(),
+                    &mut *appender,
+                ),
+            };
+            Self::check_appender(*appender, rc)
+                .context("While creating the `duckdb_appender` object")?;
+            for column in E::<It>::columns() {
+                Self::check_appender(
+                    *appender,
+                    duckdb_appender_add_column(*appender, as_c_string(column.name()).as_ptr()),
+                )?;
             }
-            let writer = self.driver().sql_writer();
-            let mut context = Context::new(Fragment::SqlInsertInto, false);
-            let mut query = DynQuery::default();
-            query.push_str("INSERT INTO ");
-            writer.write_table_ref(&mut context, &mut query, E::<It>::table());
-            query.push_str(" SELECT * FROM __tank_append");
-            let c_sql = CString::new(query.as_str().as_bytes())
-                .context("While converting append query to CString")?;
-            let mut iterator = CBox::new(ptr::null_mut(), |mut p| {
-                duckdb_v2_statement_iterator_destroy(&mut p);
-            });
-            check_rc(|err| {
-                duckdb_v2_parse_sql(*self.connection, c_sql.as_ptr(), &mut *iterator, err)
-            })?;
-            let mut stmt = CBox::new(ptr::null_mut(), |mut s| {
-                duckdb_v2_sql_statement_destroy(&mut s);
-            });
-            check_rc(|err| duckdb_v2_statement_iterator_next(*iterator, &mut *stmt, err))?;
-            check_rc(|err| {
-                duckdb_v2_statement_add_collection(
-                    *stmt,
-                    &"__tank_append".into(),
-                    *collection,
-                    ptr::null(),
-                    0,
-                    err,
-                )
-            })?;
-            let mut result = CBox::new(ptr::null_mut(), |mut r| {
-                duckdb_v2_result_destroy(&mut r);
-            });
-            check_rc(|err| {
-                duckdb_v2_statement_execute(
-                    *self.connection,
-                    *stmt,
-                    ptr::null(),
-                    ptr::null(),
-                    0,
-                    &mut *result,
-                    err,
-                )
-            })?;
-            let mut rows_affected = 0;
-            check_rc(|err| duckdb_v2_result_drain(*result, &mut rows_affected, err))?;
+            let columns = E::<It>::columns();
+            let rows_affected = if Self::supports_chunk_append(columns) {
+                Self::append_chunked(*appender, columns, rows)?
+            } else {
+                Self::append_cells(*appender, rows)?
+            };
+            Self::check_appender(*appender, duckdb_appender_close(*appender))
+                .context("While closing the `duckdb_appender` object")?;
             Ok(RowsAffected {
                 rows_affected: Some(rows_affected),
                 last_affected_id: None,
@@ -493,9 +602,6 @@ impl Executor for DuckDBConnection {
         }
     }
 }
-
-unsafe impl Send for DuckDBConnection {}
-unsafe impl Sync for DuckDBConnection {}
 
 impl Debug for DuckDBConnection {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
