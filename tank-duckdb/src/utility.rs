@@ -18,11 +18,8 @@ pub(crate) fn check_rc(
                 == DUCKDB_V2_ERROR::DUCKDB_V2_ERROR_NONE
                 && !text.ptr.is_null()
             {
-                String::from_utf8_lossy(slice::from_raw_parts(
-                    text.ptr as *const u8,
-                    text.len as usize,
-                ))
-                .into_owned()
+                String::from_utf8_lossy(slice::from_raw_parts(text.ptr as _, text.len as usize))
+                    .into_owned()
             } else {
                 format!("DuckDB error ({rc:?})")
             };
@@ -30,18 +27,6 @@ pub(crate) fn check_rc(
             Err(Error::msg(msg))
         } else {
             Err(Error::msg(format!("DuckDB error ({rc:?})")))
-        }
-    }
-}
-
-#[inline(always)]
-pub(crate) fn duckdb_str_to_str<'a>(s: duckdb_v2_str) -> &'a str {
-    if s.ptr.is_null() || s.len == 0 {
-        ""
-    } else {
-        unsafe {
-            let bytes = slice::from_raw_parts(s.ptr as *const u8, s.len as usize);
-            std::str::from_utf8_unchecked(bytes)
         }
     }
 }

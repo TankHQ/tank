@@ -1,6 +1,6 @@
 use crate::{
-    cbox::CBox, check_rc, date_to_duckdb_date, decimal_to_duckdb_decimal, duckdb_str_to_str,
-    i128_to_duckdb_hugeint, interval_to_duckdb_interval, offsetdatetime_to_duckdb_timestamp,
+    cbox::CBox, check_rc, date_to_duckdb_date, decimal_to_duckdb_decimal, i128_to_duckdb_hugeint,
+    interval_to_duckdb_interval, offsetdatetime_to_duckdb_timestamp,
     primitive_date_time_to_duckdb_timestamp, time_to_duckdb_time, u128_to_duckdb_uhugeint,
     uuid_to_duckdb_hugeint,
 };
@@ -9,7 +9,7 @@ use libduckdb_sys::v2::{DUCKDB_V2_LOGICAL_TYPE_ID::*, *};
 use std::{
     borrow::Cow,
     cmp::{max, min},
-    ptr,
+    ptr, slice, str,
 };
 use tank_core::{CollectionType, Error, MapType, Result, StructType, TableRef, Value, ValueOwned};
 
@@ -31,14 +31,14 @@ impl ValueWrap<'_> {
     fn get_type_param(
         logical_type: duckdb_v2_logical_type_handle,
         index: idx_t,
-    ) -> Result<(String, CBox<duckdb_v2_value_handle>)> {
+    ) -> Result<CBox<duckdb_v2_value_handle>> {
         let mut name = duckdb_v2_identifier_t::default();
         let mut val = Self::new_value_box();
         unsafe {
             check_rc(|err| {
                 duckdb_v2_logical_type_get_param(logical_type, index, &mut name, &mut *val, err)
             })?;
-            Ok((duckdb_str_to_str(name).to_owned(), val))
+            Ok(val)
         }
     }
 
@@ -307,7 +307,7 @@ impl ValueWrap<'_> {
                         ptr: if v.is_empty() {
                             ptr::null()
                         } else {
-                            v.as_ptr() as *const _
+                            v.as_ptr() as _
                         },
                         len: v.len() as idx_t,
                     };
@@ -512,8 +512,8 @@ impl TryFrom<duckdb_v2_logical_type_handle> for ValueWrap<'static> {
                 DUCKDB_V2_LOGICAL_TYPE_ID_BLOB => Value::Blob(None),
                 DUCKDB_V2_LOGICAL_TYPE_ID_UUID => Value::Uuid(None),
                 DUCKDB_V2_LOGICAL_TYPE_ID_DECIMAL => {
-                    let (_, w_val) = Self::get_type_param(logical_type, 0)?;
-                    let (_, s_val) = Self::get_type_param(logical_type, 1)?;
+                    let w_val = Self::get_type_param(logical_type, 0)?;
+                    let s_val = Self::get_type_param(logical_type, 1)?;
                     let mut width = 0;
                     let mut scale = 0;
                     check_rc(|err| duckdb_v2_value_get_utinyint(*w_val, &mut width, err))?;
@@ -521,13 +521,13 @@ impl TryFrom<duckdb_v2_logical_type_handle> for ValueWrap<'static> {
                     Value::Decimal(None, width, scale)
                 }
                 DUCKDB_V2_LOGICAL_TYPE_ID_LIST => {
-                    let (_, elem_val) = Self::get_type_param(logical_type, 0)?;
+                    let elem_val = Self::get_type_param(logical_type, 0)?;
                     let element = Self::unwrap_child_type(*elem_val)?;
                     Value::List(None, Box::new(CollectionType { element, len: 0 }))
                 }
                 DUCKDB_V2_LOGICAL_TYPE_ID_ARRAY => {
-                    let (_, elem_val) = Self::get_type_param(logical_type, 0)?;
-                    let (_, len_val) = Self::get_type_param(logical_type, 1)?;
+                    let elem_val = Self::get_type_param(logical_type, 0)?;
+                    let len_val = Self::get_type_param(logical_type, 1)?;
                     let element = Self::unwrap_child_type(*elem_val)?;
                     let mut len = 0_i64;
                     check_rc(|err| duckdb_v2_value_get_bigint(*len_val, &mut len, err))?;
@@ -544,16 +544,38 @@ impl TryFrom<duckdb_v2_logical_type_handle> for ValueWrap<'static> {
                     check_rc(|err| {
                         duckdb_v2_logical_type_get_param_count(logical_type, &mut count, err)
                     })?;
-                    let mut fields = Vec::with_capacity(count as usize);
+                    let mut fields = Vec::with_capacity(count as _);
                     for i in 0..count {
-                        let (name, val) = Self::get_type_param(logical_type, i)?;
-                        fields.push((name, Self::unwrap_child_type(*val)?));
+                        let mut name = duckdb_v2_identifier_t::default();
+                        let mut val = Self::new_value_box();
+                        check_rc(|err| {
+                            duckdb_v2_logical_type_get_param(
+                                logical_type,
+                                i,
+                                &mut name,
+                                &mut *val,
+                                err,
+                            )
+                        })?;
+                        let field_name = if name.ptr.is_null() {
+                            String::new()
+                        } else {
+                            str::from_utf8_unchecked(slice::from_raw_parts(
+                                name.ptr as _,
+                                name.len as _,
+                            ))
+                            .to_owned()
+                        };
+                        fields.push((field_name, Self::unwrap_child_type(*val)?));
                     }
                     let mut type_name = duckdb_v2_identifier_t::default();
                     check_rc(|err| {
                         duckdb_v2_logical_type_get_name(logical_type, &mut type_name, err)
                     })?;
-                    let raw_name = duckdb_str_to_str(type_name);
+                    let raw_name = str::from_utf8_unchecked(slice::from_raw_parts(
+                        type_name.ptr as _,
+                        type_name.len as _,
+                    ));
                     let alias = if raw_name == "STRUCT" || raw_name == "TUPLE" {
                         ""
                     } else {
@@ -568,8 +590,8 @@ impl TryFrom<duckdb_v2_logical_type_handle> for ValueWrap<'static> {
                     )
                 }
                 DUCKDB_V2_LOGICAL_TYPE_ID_MAP => {
-                    let (_, k_val) = Self::get_type_param(logical_type, 0)?;
-                    let (_, v_val) = Self::get_type_param(logical_type, 1)?;
+                    let k_val = Self::get_type_param(logical_type, 0)?;
+                    let v_val = Self::get_type_param(logical_type, 1)?;
                     Value::Map(
                         None,
                         Box::new(MapType {

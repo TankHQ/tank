@@ -1,7 +1,7 @@
 use crate::{
     DuckDBConnection, DuckDBDriver, ValueWrap, cbox::CBox, check_rc, duckdb_bytes_to_slice,
     duckdb_date_to_date, duckdb_hugeint_to_i128, duckdb_hugeint_to_uuid,
-    duckdb_interval_to_interval, duckdb_str_to_str, duckdb_time_ns_to_time, duckdb_time_to_time,
+    duckdb_interval_to_interval, duckdb_time_ns_to_time, duckdb_time_to_time,
     duckdb_uhugeint_to_u128, nanos_to_primitive_date_time,
 };
 use anyhow::anyhow;
@@ -16,7 +16,7 @@ use std::{
     fmt::{self, Debug, Formatter},
     mem,
     pin::Pin,
-    ptr,
+    ptr, slice, str,
     sync::Arc,
     task::{Context, Poll},
 };
@@ -26,10 +26,10 @@ use tank_core::{
 };
 
 struct VectorNode {
-    vector: duckdb_v2_vector_handle,
     id: DUCKDB_V2_LOGICAL_TYPE_ID,
     data: *const c_void,
     validity: *const u64,
+    dict: Box<[Box<str>]>,
     children: Box<[VectorNode]>,
 }
 
@@ -50,19 +50,44 @@ impl VectorNode {
     fn from_vector(vector: duckdb_v2_vector_handle, value_t: &Value<'_>) -> Result<Self> {
         unsafe {
             let view = Self::flat_view(vector)?;
+            let mut dict = Box::new([]) as Box<[Box<str>]>;
             let id = match value_t {
                 Value::Boolean(..) => DUCKDB_V2_LOGICAL_TYPE_ID_BOOLEAN,
                 Value::Int32(..) => DUCKDB_V2_LOGICAL_TYPE_ID_INTEGER,
                 Value::Int64(..) => DUCKDB_V2_LOGICAL_TYPE_ID_BIGINT,
                 Value::Float64(..) => DUCKDB_V2_LOGICAL_TYPE_ID_DOUBLE,
                 Value::Varchar(..) => DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR,
-                Value::Time(..) | Value::Timestamp(..) => {
+                Value::Time(..) | Value::Timestamp(..) | Value::Unknown(..) => {
                     let mut vec_t = CBox::new(ptr::null_mut(), |mut p| {
                         duckdb_v2_logical_type_destroy(&mut p);
                     });
                     let mut id = DUCKDB_V2_LOGICAL_TYPE_ID_INVALID;
                     check_rc(|err| duckdb_v2_vector_get_logical_type(vector, &mut *vec_t, err))?;
                     check_rc(|err| duckdb_v2_logical_type_get_id(*vec_t, &mut id, err))?;
+                    if id == DUCKDB_V2_LOGICAL_TYPE_ID_ENUM {
+                        let mut count = 0;
+                        check_rc(|err| {
+                            duckdb_v2_logical_type_get_param_count(*vec_t, &mut count, err)
+                        })?;
+                        dict = (0..count)
+                            .map(|i| {
+                                let mut name = duckdb_v2_identifier_t::default();
+                                let mut val = ValueWrap::new_value_box();
+                                let mut s = duckdb_v2_str::default();
+                                check_rc(|err| {
+                                    duckdb_v2_logical_type_get_param(
+                                        *vec_t, i, &mut name, &mut *val, err,
+                                    )
+                                })?;
+                                check_rc(|err| duckdb_v2_value_get_varchar(*val, &mut s, err))?;
+                                Ok(str::from_utf8_unchecked(slice::from_raw_parts(
+                                    s.ptr as *const u8,
+                                    s.len as usize,
+                                ))
+                                .into())
+                            })
+                            .collect::<Result<Box<[_]>>>()?;
+                    }
                     id
                 }
                 _ => DUCKDB_V2_LOGICAL_TYPE_ID_INVALID,
@@ -94,10 +119,10 @@ impl VectorNode {
                 _ => Box::new([]),
             };
             Ok(Self {
-                vector,
                 id,
                 data: view.data,
                 validity: view.validity,
+                dict,
                 children,
             })
         }
@@ -184,18 +209,23 @@ impl VectorNode {
                     *(data as *const duckdb_v2_interval_t).add(row),
                 ))),
                 Value::Varchar(..) => {
-                    Value::Varchar(Some(Cow::Borrowed(std::str::from_utf8_unchecked(
+                    Value::Varchar(Some(Cow::Borrowed(str::from_utf8_unchecked(
                         duckdb_bytes_to_slice(&*(data as *const duckdb_v2_bytes).add(row)),
                     ))))
                 }
                 Value::Unknown(..) => {
-                    let mut val = ValueWrap::new_value_box();
-                    let mut s = duckdb_v2_str::default();
-                    check_rc(|err| {
-                        duckdb_v2_vector_get_value(self.vector, row as idx_t, &mut *val, err)
-                    })?;
-                    check_rc(|err| duckdb_v2_value_get_varchar(*val, &mut s, err))?;
-                    Value::Varchar(Some(duckdb_str_to_str(s).to_owned().into()))
+                    let idx = if self.dict.len() <= u8::MAX as usize {
+                        *(data as *const u8).add(row) as usize
+                    } else if self.dict.len() <= u16::MAX as usize {
+                        *(data as *const u16).add(row) as usize
+                    } else {
+                        *(data as *const u32).add(row) as usize
+                    };
+                    Value::Varchar(Some(Cow::Borrowed(
+                        self.dict
+                            .get(idx)
+                            .context("DuckDB ENUM index out of bounds")?,
+                    )))
                 }
                 Value::Blob(..) => Value::Blob(Some(Cow::Borrowed(duckdb_bytes_to_slice(
                     &*(data as *const duckdb_v2_bytes).add(row),
@@ -606,7 +636,8 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Stream for Statements<'s, Q> {
                                 check_rc(|err| {
                                     duckdb_v2_schema_get_count(*schema, &mut cols, err)
                                 })?;
-                                let (raw_names, types): (Vec<_>, Vec<_>) = (0..cols)
+                                let mut same = this.connection.labels.len() == cols as usize;
+                                let types = (0..cols)
                                     .map(|i| {
                                         let mut name = duckdb_v2_identifier_t::default();
                                         let mut t = ptr::null_mut();
@@ -615,26 +646,38 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Stream for Statements<'s, Q> {
                                                 *schema, i, &mut name, &mut t, err,
                                             )
                                         })?;
-                                        Ok((
-                                            duckdb_str_to_str(name),
-                                            ValueWrap::try_from(t)?.into(),
-                                        ))
+                                        same &= this.connection.labels.get(i as usize).is_some_and(
+                                            |l| {
+                                                l == str::from_utf8_unchecked(
+                                                    slice::from_raw_parts(
+                                                        name.ptr as _,
+                                                        name.len as _,
+                                                    ),
+                                                )
+                                            },
+                                        );
+                                        Ok(ValueWrap::try_from(t)?.into())
                                     })
-                                    .collect::<Result<Vec<_>>>()?
-                                    .into_iter()
-                                    .unzip();
-                                if this.connection.labels.len() != raw_names.len()
-                                    || !this
-                                        .connection
-                                        .labels
-                                        .iter()
-                                        .zip(&raw_names)
-                                        .all(|(a, b)| a == b)
-                                {
-                                    this.connection.labels =
-                                        raw_names.into_iter().map(str::to_owned).collect();
+                                    .collect::<Result<Arc<[_]>>>()?;
+                                if !same {
+                                    this.connection.labels = (0..cols)
+                                        .map(|i| {
+                                            let mut name = duckdb_v2_identifier_t::default();
+                                            let mut t = ptr::null_mut();
+                                            check_rc(|err| {
+                                                duckdb_v2_schema_get_field(
+                                                    *schema, i, &mut name, &mut t, err,
+                                                )
+                                            })?;
+                                            Ok(str::from_utf8_unchecked(slice::from_raw_parts(
+                                                name.ptr as _,
+                                                name.len as _,
+                                            ))
+                                            .to_owned())
+                                        })
+                                        .collect::<Result<RowLabels>>()?;
                                 }
-                                let pair = (this.connection.labels.clone(), types.into());
+                                let pair = (this.connection.labels.clone(), types);
                                 if let Some(cache) = prepared_schema {
                                     *cache = Some(pair.clone());
                                 }
