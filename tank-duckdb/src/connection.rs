@@ -554,18 +554,15 @@ impl Executor for DuckDBConnection {
                     let mut batch_len = 0;
                     for item in std::iter::once(first).chain(iter.by_ref().take(batch_cap - 1)) {
                         let row = item.as_entity().row_values();
-                        for (col_idx, (vector, col_val, direct_write, data)) in
-                            col_states.iter_mut().enumerate()
+                        for (&(vector, col_val, direct_write, data), val) in
+                            col_states.iter().zip(&row)
                         {
-                            let val = row.get(col_idx).with_context(|| {
-                                format!("Missing value at column {col_idx} in row {batch_len}")
-                            })?;
                             Self::write_cell(
                                 factory,
-                                *vector,
+                                vector,
                                 col_val,
-                                *direct_write,
-                                *data,
+                                direct_write,
+                                data,
                                 batch_len,
                                 val,
                             )?;

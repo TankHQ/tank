@@ -287,32 +287,43 @@ impl Row for DuckDBRow {
     #[inline(always)]
     fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>> {
         let vec_node = self.batch.0.get(index)?;
-        let ty = self.batch.1.get(index)?;
+        let t = self.batch.1.get(index)?;
         let row = self.row;
         unsafe {
             let data = vec_node.data;
-            if !vec_node.is_valid(row)
-                || (data.is_null() && !matches!(ty, Value::Array(..) | Value::Struct(..)))
-            {
-                return Some(if matches!(ty, Value::Unknown(..)) {
-                    Cow::Owned(Value::Varchar(None))
-                } else {
-                    Cow::Borrowed(ty)
-                });
+            if vec_node.is_valid(row) && !data.is_null() {
+                match t {
+                    Value::Boolean(..) => {
+                        return Some(Cow::Owned(Value::Boolean(Some(
+                            *(data as *const bool).add(row),
+                        ))));
+                    }
+                    Value::Int32(..) => {
+                        return Some(Cow::Owned(Value::Int32(Some(
+                            *(data as *const i32).add(row),
+                        ))));
+                    }
+                    Value::Int64(..) => {
+                        return Some(Cow::Owned(Value::Int64(Some(
+                            *(data as *const i64).add(row),
+                        ))));
+                    }
+                    Value::Float64(..) => {
+                        return Some(Cow::Owned(Value::Float64(Some(
+                            *(data as *const f64).add(row),
+                        ))));
+                    }
+                    Value::Varchar(..) => {
+                        return Some(Cow::Owned(Value::Varchar(Some(Cow::Borrowed(
+                            std::str::from_utf8_unchecked(duckdb_bytes_to_slice(
+                                &*(data as *const duckdb_v2_bytes).add(row),
+                            )),
+                        )))));
+                    }
+                    _ => {}
+                }
             }
-            match ty {
-                Value::Boolean(..) => Some(Value::Boolean(Some(*(data as *const bool).add(row)))),
-                Value::Int32(..) => Some(Value::Int32(Some(*(data as *const i32).add(row)))),
-                Value::Int64(..) => Some(Value::Int64(Some(*(data as *const i64).add(row)))),
-                Value::Float64(..) => Some(Value::Float64(Some(*(data as *const f64).add(row)))),
-                Value::Varchar(..) => Some(Value::Varchar(Some(Cow::Borrowed(
-                    std::str::from_utf8_unchecked(duckdb_bytes_to_slice(
-                        &*(data as *const duckdb_v2_bytes).add(row),
-                    )),
-                )))),
-                _ => vec_node.extract(row, ty).ok(),
-            }
-            .map(Cow::Owned)
+            vec_node.extract(row, t).ok().map(Cow::Owned)
         }
     }
 
@@ -412,20 +423,8 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Stream for Statements<'s, Q> {
             if let Some((current, size)) = &mut this.batch {
                 let row = current.row;
                 for (v, ty) in current.batch.0.iter().zip(current.batch.1.iter()) {
-                    if matches!(
-                        ty,
-                        Value::Date(..)
-                            | Value::Time(..)
-                            | Value::Timestamp(..)
-                            | Value::Unknown(..)
-                            | Value::List(..)
-                            | Value::Array(..)
-                            | Value::Struct(..)
-                            | Value::Map(..)
-                            | Value::Decimal(_, 29.., _)
-                            | Value::Decimal(_, _, 29..)
-                    ) {
-                        v.extract(row, ty)?;
+                    if matches!(ty, Value::Date(..)) && v.is_valid(row) && !v.data.is_null() {
+                        unsafe { duckdb_date_to_date(*(v.data as *const i32).add(row))? };
                     }
                 }
                 let item = if row + 1 == *size {

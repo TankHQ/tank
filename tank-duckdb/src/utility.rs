@@ -61,11 +61,14 @@ pub(crate) fn duckdb_str_to_str<'a>(s: duckdb_v2_str) -> &'a str {
 pub(crate) fn duckdb_bytes_to_slice(b: &duckdb_v2_bytes) -> &[u8] {
     unsafe {
         let len = b.value.inlined.length;
-        if len <= DUCKDB_V2_BYTES_INLINE_LENGTH {
-            slice::from_raw_parts(b.value.inlined.inlined.as_ptr() as *const u8, len as usize)
+        let inlined = b.value.inlined.inlined.as_ptr() as *const u8;
+        let pointed = b.value.pointer.ptr as *const u8;
+        let ptr = if len <= DUCKDB_V2_BYTES_INLINE_LENGTH {
+            inlined
         } else {
-            slice::from_raw_parts(b.value.pointer.ptr as *const u8, len as usize)
-        }
+            pointed
+        };
+        slice::from_raw_parts(ptr, len as usize)
     }
 }
 
@@ -355,9 +358,7 @@ impl ValueWrap<'_> {
                 }
                 Value::UInt128(Some(v)) => {
                     let raw = u128_to_duckdb_uhugeint(**v);
-                    check_rc(|err| {
-                        duckdb_v2_value_create_uhugeint(factory, &raw, &mut *out, err)
-                    })?;
+                    check_rc(|err| duckdb_v2_value_create_uhugeint(factory, &raw, &mut *out, err))?;
                 }
                 Value::Float32(Some(v)) => {
                     check_rc(|err| duckdb_v2_value_create_float(factory, *v, &mut *out, err))?;
@@ -402,9 +403,7 @@ impl ValueWrap<'_> {
                 }
                 Value::Timestamp(Some(v)) => {
                     let raw = primitive_date_time_to_duckdb_timestamp(v);
-                    check_rc(|err| {
-                        duckdb_v2_value_create_timestamp(factory, raw, &mut *out, err)
-                    })?;
+                    check_rc(|err| duckdb_v2_value_create_timestamp(factory, raw, &mut *out, err))?;
                 }
                 Value::TimestampWithTimezone(Some(v)) => {
                     let raw = offsetdatetime_to_duckdb_timestamp(v);
@@ -414,9 +413,7 @@ impl ValueWrap<'_> {
                 }
                 Value::Interval(Some(v)) => {
                     let raw = interval_to_duckdb_interval(v);
-                    check_rc(|err| {
-                        duckdb_v2_value_create_interval(factory, &raw, &mut *out, err)
-                    })?;
+                    check_rc(|err| duckdb_v2_value_create_interval(factory, &raw, &mut *out, err))?;
                 }
                 Value::Uuid(Some(v)) => {
                     let raw = uuid_to_duckdb_hugeint(v);
