@@ -1,9 +1,8 @@
 use crate::{
-    DuckDBConnection, DuckDBDriver, ValueWrap,
-    cbox::CBox,
-    check_rc, duckdb_bytes_to_slice, duckdb_date_to_date, duckdb_hugeint_to_i128,
-    duckdb_hugeint_to_uuid, duckdb_interval_to_interval, duckdb_str_to_str, duckdb_time_ns_to_time,
-    duckdb_time_to_time, duckdb_uhugeint_to_u128, nanos_to_primitive_date_time,
+    DuckDBConnection, DuckDBDriver, ValueWrap, cbox::CBox, check_rc, duckdb_bytes_to_slice,
+    duckdb_date_to_date, duckdb_hugeint_to_i128, duckdb_hugeint_to_uuid,
+    duckdb_interval_to_interval, duckdb_str_to_str, duckdb_time_ns_to_time, duckdb_time_to_time,
+    duckdb_uhugeint_to_u128, nanos_to_primitive_date_time,
 };
 use anyhow::anyhow;
 use libduckdb_sys::v2::{
@@ -53,10 +52,10 @@ impl VectorNode {
         }
     }
 
-    fn from_vector(vector: duckdb_v2_vector_handle, ty: &ValueOwned) -> Result<Self> {
+    fn from_vector(vector: duckdb_v2_vector_handle, t: &ValueOwned) -> Result<Self> {
         unsafe {
             let view = Self::flat_view(vector)?;
-            let id = if matches!(ty, Value::Time(..) | Value::Timestamp(..)) {
+            let id = if matches!(t, Value::Time(..) | Value::Timestamp(..)) {
                 let mut vec_ty = CBox::new(ptr::null_mut(), |mut p| {
                     duckdb_v2_logical_type_destroy(&mut p);
                 });
@@ -71,7 +70,7 @@ impl VectorNode {
                 let mut c = ptr::null_mut();
                 check_rc(|err| duckdb_v2_vector_get_child(v, i, &mut c, err)).map(|_| c)
             };
-            let children = match ty {
+            let children = match t {
                 Value::List(_, t) | Value::Array(_, t) => {
                     Box::new([Self::from_vector(child_vec(vector, 0)?, &t.element)?])
                 }
@@ -150,7 +149,11 @@ impl VectorNode {
                     } else {
                         duckdb_hugeint_to_i128(&*(data as *const duckdb_v2_hugeint_t).add(row))
                     };
-                    Value::Decimal(Some(decimal_from_scaled(num, *scale as u32)?), *width, *scale)
+                    Value::Decimal(
+                        Some(decimal_from_scaled(num, *scale as u32)?),
+                        *width,
+                        *scale,
+                    )
                 }
                 Value::Date(..) => {
                     Value::Date(Some(duckdb_date_to_date(*(data as *const i32).add(row))?))
@@ -177,11 +180,11 @@ impl VectorNode {
                 Value::Interval(..) => Value::Interval(Some(duckdb_interval_to_interval(
                     *(data as *const duckdb_v2_interval_t).add(row),
                 ))),
-                Value::Varchar(..) => Value::Varchar(Some(Cow::Borrowed(
-                    std::str::from_utf8_unchecked(duckdb_bytes_to_slice(
-                        &*(data as *const duckdb_v2_bytes).add(row),
-                    )),
-                ))),
+                Value::Varchar(..) => {
+                    Value::Varchar(Some(Cow::Borrowed(std::str::from_utf8_unchecked(
+                        duckdb_bytes_to_slice(&*(data as *const duckdb_v2_bytes).add(row)),
+                    ))))
+                }
                 Value::Unknown(..) => {
                     let mut val = ValueWrap::new_value_box();
                     let mut s = duckdb_v2_str::default();
@@ -204,7 +207,10 @@ impl VectorNode {
                     } else {
                         (row * t.len as usize, t.len as usize)
                     };
-                    let child = self.children.first().context("Missing DuckDB child vector")?;
+                    let child = self
+                        .children
+                        .first()
+                        .context("Missing DuckDB child vector")?;
                     let values = (begin..begin + len)
                         .map(|i| child.extract(i, &t.element))
                         .collect::<Result<Box<[_]>>>()?;
@@ -532,9 +538,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Stream for Statements<'s, Q> {
                     let mut stmt = CBox::new(ptr::null_mut(), |mut s| {
                         duckdb_v2_sql_statement_destroy(&mut s);
                     });
-                    check_rc(|err| {
-                        duckdb_v2_statement_iterator_next(**iterator, &mut *stmt, err)
-                    })?;
+                    check_rc(|err| duckdb_v2_statement_iterator_next(**iterator, &mut *stmt, err))?;
                     if stmt.is_null() {
                         this.finish()?;
                         return Ok(Poll::Ready(None));
@@ -581,48 +585,54 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Stream for Statements<'s, Q> {
                 check_rc(|err| duckdb_v2_result_get_result_type(*result, &mut result_type, err))?;
                 match result_type {
                     DUCKDB_V2_RESULT_TYPE_QUERY_RESULT => {
-                        this.schema = Some(if let Some(Some(cached)) = prepared_schema.as_deref() {
-                            cached.clone()
-                        } else {
-                            let mut schema = CBox::new(ptr::null_mut(), |mut s| {
-                                duckdb_v2_schema_destroy(&mut s);
+                        this.schema =
+                            Some(if let Some(Some(cached)) = prepared_schema.as_deref() {
+                                cached.clone()
+                            } else {
+                                let mut schema = CBox::new(ptr::null_mut(), |mut s| {
+                                    duckdb_v2_schema_destroy(&mut s);
+                                });
+                                check_rc(|err| {
+                                    duckdb_v2_result_get_schema(*result, &mut *schema, err)
+                                })?;
+                                let mut cols = 0;
+                                check_rc(|err| {
+                                    duckdb_v2_schema_get_count(*schema, &mut cols, err)
+                                })?;
+                                let (raw_names, types): (Vec<_>, Vec<_>) = (0..cols)
+                                    .map(|i| {
+                                        let mut name = duckdb_v2_identifier_t::default();
+                                        let mut ty = ptr::null_mut();
+                                        check_rc(|err| {
+                                            duckdb_v2_schema_get_field(
+                                                *schema, i, &mut name, &mut ty, err,
+                                            )
+                                        })?;
+                                        Ok((
+                                            duckdb_str_to_str(name),
+                                            ValueWrap::try_from(ty)?.into(),
+                                        ))
+                                    })
+                                    .collect::<Result<Vec<_>>>()?
+                                    .into_iter()
+                                    .unzip();
+                                if this.connection.labels.len() != raw_names.len()
+                                    || !this
+                                        .connection
+                                        .labels
+                                        .iter()
+                                        .zip(&raw_names)
+                                        .all(|(a, b)| a == b)
+                                {
+                                    this.connection.labels =
+                                        raw_names.into_iter().map(str::to_owned).collect();
+                                }
+                                let pair = (this.connection.labels.clone(), types.into());
+                                if let Some(cache) = prepared_schema {
+                                    *cache = Some(pair.clone());
+                                }
+                                pair
                             });
-                            check_rc(|err| {
-                                duckdb_v2_result_get_schema(*result, &mut *schema, err)
-                            })?;
-                            let mut cols = 0;
-                            check_rc(|err| duckdb_v2_schema_get_count(*schema, &mut cols, err))?;
-                            let (raw_names, types): (Vec<_>, Vec<_>) = (0..cols)
-                                .map(|i| {
-                                    let mut name = duckdb_v2_identifier_t::default();
-                                    let mut ty = ptr::null_mut();
-                                    check_rc(|err| {
-                                        duckdb_v2_schema_get_field(
-                                            *schema, i, &mut name, &mut ty, err,
-                                        )
-                                    })?;
-                                    Ok((duckdb_str_to_str(name), ValueWrap::try_from(ty)?.into()))
-                                })
-                                .collect::<Result<Vec<_>>>()?
-                                .into_iter()
-                                .unzip();
-                            if this.connection.labels.len() != raw_names.len()
-                                || !this
-                                    .connection
-                                    .labels
-                                    .iter()
-                                    .zip(&raw_names)
-                                    .all(|(a, b)| a == b)
-                            {
-                                this.connection.labels =
-                                    raw_names.into_iter().map(str::to_owned).collect();
-                            }
-                            let pair = (this.connection.labels.clone(), types.into());
-                            if let Some(cache) = prepared_schema {
-                                *cache = Some(pair.clone());
-                            }
-                            pair
-                        });
                     }
                     DUCKDB_V2_RESULT_TYPE_CHANGED_ROWS => this.rows_changed = None,
                     _ => this.rows_changed = Some(0),

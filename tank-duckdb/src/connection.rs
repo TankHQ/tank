@@ -108,12 +108,12 @@ impl DuckDBConnection {
     ) -> Result<()> {
         let len = src.len();
         unsafe {
-            let mut raw: duckdb_v2_bytes = mem::zeroed();
+            let mut bytes: duckdb_v2_bytes = mem::zeroed();
             if len <= DUCKDB_V2_BYTES_INLINE_LENGTH as _ {
-                raw.value.inlined.length = len as _;
+                bytes.value.inlined.length = len as _;
                 ptr::copy_nonoverlapping(
                     src.as_ptr(),
-                    raw.value.inlined.inlined.as_mut_ptr() as *mut u8,
+                    bytes.value.inlined.inlined.as_mut_ptr() as _,
                     len,
                 );
             } else {
@@ -122,16 +122,16 @@ impl DuckDBConnection {
                 }
                 let mut buf: *mut u8 = ptr::null_mut();
                 check_rc(|err| duckdb_v2_arena_allocate(*arena, len as idx_t, &mut buf, err))?;
-                raw.value.pointer.length = len as u32;
+                bytes.value.pointer.length = len as u32;
                 ptr::copy_nonoverlapping(src.as_ptr(), buf, len);
                 ptr::copy_nonoverlapping(
                     src.as_ptr(),
-                    raw.value.pointer.prefix.as_mut_ptr() as _,
+                    bytes.value.pointer.prefix.as_mut_ptr() as _,
                     4,
                 );
-                raw.value.pointer.ptr = buf as *mut _;
+                bytes.value.pointer.ptr = buf as *mut _;
             }
-            *dst = raw;
+            *dst = bytes;
         }
         Ok(())
     }
