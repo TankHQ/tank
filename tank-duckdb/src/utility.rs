@@ -6,7 +6,11 @@ use crate::{
 };
 use anyhow::anyhow;
 use libduckdb_sys::v2::{DUCKDB_V2_LOGICAL_TYPE_ID::*, *};
-use std::{borrow::Cow, cmp::max, ptr, slice};
+use std::{
+    borrow::Cow,
+    cmp::{max, min},
+    ptr, slice,
+};
 use tank_core::{CollectionType, Error, MapType, Result, StructType, TableRef, Value, ValueOwned};
 
 #[inline(always)]
@@ -201,11 +205,11 @@ impl ValueWrap<'_> {
                             (w, s)
                         }
                         None if *w == 0 => {
-                            let scale = (*s).min(38);
+                            let scale = min(*s, 38);
                             (max(18, scale), scale)
                         }
                         None => {
-                            let scale = (*s).min(38);
+                            let scale = min(*s, 38);
                             (max(*w, scale).clamp(1, 38), scale)
                         }
                     };
@@ -565,9 +569,8 @@ impl TryFrom<duckdb_v2_logical_type_handle> for ValueWrap<'static> {
                 | DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_TZ
                 | DUCKDB_V2_LOGICAL_TYPE_ID_TIMESTAMP_TZ_NS => Value::Timestamp(None),
                 DUCKDB_V2_LOGICAL_TYPE_ID_INTERVAL => Value::Interval(None),
-                DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR | DUCKDB_V2_LOGICAL_TYPE_ID_ENUM => {
-                    Value::Varchar(None)
-                }
+                DUCKDB_V2_LOGICAL_TYPE_ID_VARCHAR => Value::Varchar(None),
+                DUCKDB_V2_LOGICAL_TYPE_ID_ENUM => Value::Unknown(None),
                 DUCKDB_V2_LOGICAL_TYPE_ID_BLOB => Value::Blob(None),
                 DUCKDB_V2_LOGICAL_TYPE_ID_UUID => Value::Uuid(None),
                 DUCKDB_V2_LOGICAL_TYPE_ID_DECIMAL => {

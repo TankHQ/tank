@@ -12,6 +12,7 @@ use std::{
     any,
     borrow::Cow,
     cell::{Cell, RefCell},
+    cmp::min,
     collections::{BTreeMap, HashMap, LinkedList, VecDeque},
     hash::Hash,
     mem,
@@ -770,7 +771,7 @@ impl_as_value!(Interval, Value::Interval, |mut input: &str| {
         false
     };
     let mut time_interval = Interval::ZERO;
-    let clamp64 = |n: u64| n.min(i64::MAX as u64) as i64;
+    let clamp64 = |n: u64| min(n, i64::MAX as u64) as i64;
     let num = extract_number::<true>(&mut input);
     if !num.is_empty() {
         let num = num.parse::<u64>().with_context(make_context)?;

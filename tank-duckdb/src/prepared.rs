@@ -4,9 +4,9 @@ use libduckdb_sys::v2::*;
 use std::{
     borrow::Cow,
     fmt::{self, Display},
-    mem,
+    sync::Arc,
 };
-use tank_core::{AsValue, ErrorContext, Prepared, Result, ValueOwned};
+use tank_core::{AsValue, ErrorContext, Prepared, Result, RowLabels, ValueOwned};
 
 /// Prepared statement wrapper for DuckDB.
 ///
@@ -14,6 +14,7 @@ use tank_core::{AsValue, ErrorContext, Prepared, Result, ValueOwned};
 #[derive(Debug)]
 pub struct DuckDBPrepared {
     pub(crate) statement: CBox<duckdb_v2_prepared_statement_handle>,
+    pub(crate) schema: Option<(RowLabels, Arc<[ValueOwned]>)>,
     pub(crate) params: Vec<ValueOwned>,
     pub(crate) param_count: u64,
     pub(crate) index: u64,
@@ -28,7 +29,8 @@ impl DuckDBPrepared {
     ) -> Self {
         Self {
             statement,
-            params: Vec::new(),
+            schema: None,
+            params: Vec::with_capacity(param_count as usize),
             param_count,
             index: 0,
             sql,
@@ -52,8 +54,8 @@ impl DuckDBPrepared {
                 self.params.len()
             ));
         }
-        mem::take(&mut self.params)
-            .into_iter()
+        self.params
+            .drain(..)
             .enumerate()
             .map(|(i, v)| {
                 ValueWrap(Cow::Owned(v))

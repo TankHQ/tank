@@ -5,6 +5,7 @@ use crate::{
     possibly_parenthesized, separated_by, write_escaped, writer::Context,
 };
 use std::{
+    cmp::max,
     collections::{BTreeMap, HashMap},
     fmt::Write,
     mem,
@@ -1232,7 +1233,7 @@ pub trait SqlWriter: Send {
             return;
         };
         let cols = E::<It>::columns().len();
-        let rows = entities.size_hint().0.max(1);
+        let rows = max(entities.size_hint().0, 1);
         out.buffer().reserve(128 + (cols + rows * cols) * 16);
         if !out.is_empty() {
             out.push('\n');
