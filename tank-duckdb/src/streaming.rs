@@ -381,7 +381,7 @@ impl Row for DuckDBRow {
 pub struct Statements<'s, Q: AsMut<Query<DuckDBDriver>>> {
     // Drop dependent native resources before the query and connection borrow.
     batch: Option<(DuckDBRow, usize)>,
-    pub(crate) result: Option<CBox<duckdb_v2_result_handle>>,
+    result: Option<CBox<duckdb_v2_result_handle>>,
     schema: Option<(RowLabels, Arc<[ValueOwned]>)>,
     rows_changed: Option<u64>,
     iterator: Option<CBox<duckdb_v2_statement_iterator_handle>>,

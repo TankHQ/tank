@@ -1277,7 +1277,7 @@ impl<const W: u8, const S: u8> AsValue for FixedDecimal<W, S> {
     where
         Self: 'a,
     {
-        Value::Decimal(Some(self.0), W, self.0.scale() as _)
+        Value::Decimal(Some(self.0), W, S)
     }
     fn try_from_value(value: impl AsValue) -> Result<Self>
     where
@@ -1298,7 +1298,7 @@ impl<const W: u8, const S: u8> AsValue for &FixedDecimal<W, S> {
     where
         Self: 'a,
     {
-        Value::Decimal(Some(self.0), W, self.0.scale() as _)
+        Value::Decimal(Some(self.0), W, S)
     }
 }
 

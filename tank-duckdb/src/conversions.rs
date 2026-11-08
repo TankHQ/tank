@@ -56,14 +56,26 @@ pub(crate) fn decimal_to_duckdb_decimal(
     scale: u8,
 ) -> (duckdb_v2_hugeint_t, u8, u8) {
     let scale = min(scale, 38);
-    let mut digits = 1_u32;
-    let mut magnitude = v.mantissa().unsigned_abs();
-    while magnitude >= 10 {
-        magnitude /= 10;
-        digits += 1;
-    }
-    let width = max(width as u32, max(scale as u32, digits)).clamp(1, 38) as u8;
-    (i128_to_duckdb_hugeint(v.mantissa()), width, scale)
+    let d_scale = v.scale() as u8;
+    let mantissa = if d_scale <= scale {
+        v.mantissa()
+            .saturating_mul(10_i128.pow((scale - d_scale) as u32))
+    } else {
+        let div = 10_i128.pow((d_scale - scale) as u32);
+        (v.mantissa() + (div / 2) * v.mantissa().signum()) / div
+    };
+    let width = if width == 0 || width < scale {
+        let mut digits = 1_u32;
+        let mut magnitude = mantissa.unsigned_abs();
+        while magnitude >= 10 {
+            magnitude /= 10;
+            digits += 1;
+        }
+        max(width as u32, max(scale as u32, digits)).clamp(1, 38) as u8
+    } else {
+        min(width, 38)
+    };
+    (i128_to_duckdb_hugeint(mantissa), width, scale)
 }
 
 #[inline(always)]
