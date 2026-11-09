@@ -1,4 +1,4 @@
-use crate::{ValueWrap, cbox::CBox, streaming::RowSchema};
+use crate::{ValueWrap, cbox::CBox};
 use anyhow::anyhow;
 use libduckdb_sys::*;
 use std::{
@@ -12,7 +12,6 @@ use tank_core::{AsValue, Error, Prepared, Result, Value, error_message_from_ptr}
 pub struct DuckDBPrepared {
     pub(crate) statement: CBox<duckdb_prepared_statement>,
     pub(crate) index: u64,
-    pub(crate) schema: Option<RowSchema>,
 }
 
 impl DuckDBPrepared {
@@ -20,7 +19,6 @@ impl DuckDBPrepared {
         Self {
             statement,
             index: 0,
-            schema: None,
         }
     }
 }
