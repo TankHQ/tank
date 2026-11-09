@@ -380,8 +380,7 @@ impl Executor for DuckDBConnection {
                                         },
                                     )
                                 }
-                                other => {
-                                    mem::forget(other);
+                                _ => {
                                     duckdb_vector_ensure_validity_writable(vector);
                                     duckdb_validity_set_row_invalid(
                                         duckdb_vector_get_validity(vector),
