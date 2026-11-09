@@ -11,7 +11,7 @@ use std::{
     fmt::{self, Display},
     hash::{Hash, Hasher},
     iter,
-    mem::discriminant,
+    mem::{self, discriminant},
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -290,6 +290,7 @@ impl<'a> Value<'a> {
         }
     }
 
+    // Outlining recursive composite arms lets LLVM inline `into_owned` for scalars without a 32-byte `sret` spill.
     #[cold]
     #[inline(never)]
     fn into_owned_nested(self) -> ValueOwned {
@@ -345,43 +346,26 @@ impl<'a> Value<'a> {
     #[inline]
     pub fn into_owned(self) -> ValueOwned {
         match self {
-            Value::Null => Value::Null,
-            Value::Boolean(v) => Value::Boolean(v),
-            Value::Int8(v) => Value::Int8(v),
-            Value::Int16(v) => Value::Int16(v),
-            Value::Int32(v) => Value::Int32(v),
-            Value::Int64(v) => Value::Int64(v),
-            Value::Int128(v) => Value::Int128(v),
-            Value::UInt8(v) => Value::UInt8(v),
-            Value::UInt16(v) => Value::UInt16(v),
-            Value::UInt32(v) => Value::UInt32(v),
-            Value::UInt64(v) => Value::UInt64(v),
-            Value::UInt128(v) => Value::UInt128(v),
-            Value::Float32(v) => Value::Float32(v),
-            Value::Float64(v) => Value::Float64(v),
-            Value::Decimal(v, w, s) => Value::Decimal(v, w, s),
-            Value::Char(v) => Value::Char(v),
             Value::Varchar(Some(Cow::Borrowed(v))) => {
-                Value::Varchar(Some(Cow::Owned(v.to_owned())))
+                let owned = v.to_owned();
+                mem::forget(self);
+                Value::Varchar(Some(Cow::Owned(owned)))
             }
-            Value::Varchar(Some(Cow::Owned(v))) => Value::Varchar(Some(Cow::Owned(v))),
-            Value::Varchar(None) => Value::Varchar(None),
-            Value::Blob(Some(Cow::Borrowed(v))) => Value::Blob(Some(Cow::Owned(v.to_owned()))),
-            Value::Blob(Some(Cow::Owned(v))) => Value::Blob(Some(Cow::Owned(v))),
-            Value::Blob(None) => Value::Blob(None),
-            Value::Date(v) => Value::Date(v),
-            Value::Time(v) => Value::Time(v),
-            Value::Timestamp(v) => Value::Timestamp(v),
-            Value::TimestampWithTimezone(v) => Value::TimestampWithTimezone(v),
-            Value::Interval(v) => Value::Interval(v),
-            Value::Uuid(v) => Value::Uuid(v),
-            Value::Json(v) => Value::Json(v),
+            Value::Blob(Some(Cow::Borrowed(v))) => {
+                let owned = v.to_owned();
+                mem::forget(self);
+                Value::Blob(Some(Cow::Owned(owned)))
+            }
             Value::Unknown(Some(Cow::Borrowed(v))) => {
-                Value::Unknown(Some(Cow::Owned(v.to_owned())))
+                let owned = v.to_owned();
+                mem::forget(self);
+                Value::Unknown(Some(Cow::Owned(owned)))
             }
-            Value::Unknown(Some(Cow::Owned(v))) => Value::Unknown(Some(Cow::Owned(v))),
-            Value::Unknown(None) => Value::Unknown(None),
-            other => other.into_owned_nested(),
+            Value::Array(..) | Value::List(..) | Value::Map(..) | Value::Struct(..) => {
+                self.into_owned_nested()
+            }
+            // All other variants carry no `'a` borrow, and moving `self` avoids `drop_in_place::<Value>`.
+            other => unsafe { mem::transmute::<Value<'a>, ValueOwned>(other) },
         }
     }
 }

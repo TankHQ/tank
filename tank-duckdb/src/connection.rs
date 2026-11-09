@@ -1,19 +1,16 @@
 use crate::{
-    DuckDBPrepared, DuckDBTransaction, ValueWrap,
-    cbox::CBox,
-    driver::DuckDBDriver,
-    streaming::{Batch, DuckDBStream},
+    DuckDBPrepared, DuckDBTransaction, ValueWrap, cbox::CBox, driver::DuckDBDriver,
+    streaming::DuckDBStream,
 };
 use anyhow::anyhow;
 use libduckdb_sys::*;
 use std::{
     borrow::Cow,
     ffi::{CStr, CString, c_char, c_void},
-    fmt::{self, Debug, Formatter},
     future::{self, Future},
     mem, ptr,
     str::FromStr,
-    sync::{Arc, LazyLock},
+    sync::LazyLock,
 };
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
@@ -22,28 +19,12 @@ use tank_core::{
 };
 
 /// Wrapper around a DuckDB `duckdb_connection` pointer used by the DuckDB driver.
+#[derive(Debug)]
 pub struct DuckDBConnection {
     pub(crate) connection: CBox<duckdb_connection>,
-    pub(crate) batch: Option<Arc<Batch>>,
 }
 
 impl DuckDBConnection {
-    pub(crate) fn exec(&mut self, sql: &CStr) -> Result<()> {
-        unsafe {
-            let mut result = CBox(mem::zeroed());
-            if duckdb_query(*self.connection, sql.as_ptr(), &mut *result)
-                != duckdb_state_DuckDBSuccess
-            {
-                let error = Error::msg(
-                    error_message_from_ptr(&duckdb_result_error(&mut *result)).into_owned(),
-                );
-                log::error!("{error:#}");
-                return Err(error);
-            }
-            Ok(())
-        }
-    }
-
     #[inline(always)]
     unsafe fn write<T>(data: *mut c_void, row: usize, value: T) {
         unsafe { data.cast::<T>().add(row).write(value) }
@@ -152,10 +133,7 @@ impl Connection for DuckDBConnection {
                 return Err(error);
             }
         }
-        Ok(DuckDBConnection {
-            connection,
-            batch: None,
-        })
+        Ok(DuckDBConnection { connection })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<DuckDBTransaction<'_>>> + Send {
@@ -429,13 +407,5 @@ impl Executor for DuckDBConnection {
                 last_affected_id: None,
             })
         })())
-    }
-}
-
-impl Debug for DuckDBConnection {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DuckDBConnection")
-            .field("connection", &self.connection)
-            .finish()
     }
 }

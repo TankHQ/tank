@@ -1,6 +1,9 @@
 use crate::{DuckDBConnection, DuckDBDriver};
-use std::future::{self, Future};
-use tank_core::{Result, Transaction, impl_executor_transaction};
+use std::future::Future;
+use tank_core::{
+    Driver, DynQuery, Executor, Result, SqlWriter, Transaction, future::TryFutureExt,
+    impl_executor_transaction,
+};
 
 /// Wrapper for DuckDB transactions.
 pub struct DuckDBTransaction<'c> {
@@ -9,18 +12,33 @@ pub struct DuckDBTransaction<'c> {
 
 impl<'c> DuckDBTransaction<'c> {
     pub async fn new(connection: &'c mut DuckDBConnection) -> Result<Self> {
-        connection.exec(c"BEGIN")?;
-        Ok(Self { connection })
+        let result = Self { connection };
+        let mut query = DynQuery::default();
+        result
+            .connection
+            .driver()
+            .sql_writer()
+            .write_transaction_begin(&mut query);
+        result.connection.execute(query).await?;
+        Ok(result)
     }
 }
 
 impl_executor_transaction!(DuckDBDriver, DuckDBTransaction<'c>, connection);
 impl<'c> Transaction<'c> for DuckDBTransaction<'c> {
     fn commit(self) -> impl Future<Output = Result<()>> + Send {
-        future::ready(self.connection.exec(c"COMMIT"))
+        let mut query = DynQuery::default();
+        self.driver()
+            .sql_writer()
+            .write_transaction_commit(&mut query);
+        self.connection.execute(query).map_ok(|_| ())
     }
 
     fn rollback(self) -> impl Future<Output = Result<()>> + Send {
-        future::ready(self.connection.exec(c"ROLLBACK"))
+        let mut query = DynQuery::default();
+        self.driver()
+            .sql_writer()
+            .write_transaction_rollback(&mut query);
+        self.connection.execute(query).map_ok(|_| ())
     }
 }

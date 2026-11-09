@@ -155,13 +155,11 @@ impl ValueWrap<'_> {
     }
 
     fn take_string(ptr: *mut c_char) -> String {
+        let ptr = CBox(ptr);
         if ptr.is_null() {
-            return String::new();
-        }
-        unsafe {
-            let text = CStr::from_ptr(ptr).to_string_lossy().into_owned();
-            duckdb_free(ptr as _);
-            text
+            String::new()
+        } else {
+            unsafe { CStr::from_ptr(*ptr).to_string_lossy().into_owned() }
         }
     }
 }

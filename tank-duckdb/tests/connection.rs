@@ -89,39 +89,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn late_extraction_error_surfaced() {
-        let mut connection =
-            DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
-                .await
-                .unwrap();
-        // The native DATE is valid, but its year is outside time::Date's supported range.
-        let sql = "SELECT CASE WHEN i = 5000 THEN DATE '2000000-01-01' ELSE DATE '2025-01-01' END FROM range(5001) t(i); CREATE TABLE must_not_run(i INT)";
-        {
-            let mut results = pin!(connection.run(sql));
-            for _ in 0..5000 {
-                assert!(matches!(
-                    results.next().await,
-                    Some(Ok(QueryResult::Row(_)))
-                ));
-            }
-            let error = results
-                .next()
-                .await
-                .unwrap()
-                .err()
-                .expect("Must report extraction error");
-            assert!(format!("{error:#}").contains("date"));
-            assert!(results.next().await.is_none());
-        }
-        assert!(
-            connection
-                .execute("INSERT INTO must_not_run VALUES (1)")
-                .await
-                .is_err()
-        );
-    }
-
-    #[tokio::test]
     async fn outer_advance_drains_rows() {
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())

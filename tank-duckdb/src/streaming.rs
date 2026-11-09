@@ -19,7 +19,7 @@ use tank_core::{
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
-pub(crate) type RowSchema = Arc<(RowLabels, Box<[(ValueOwned, DUCKDB_TYPE)]>, u64)>;
+pub(crate) type RowSchema = Arc<(RowLabels, Box<[(ValueOwned, DUCKDB_TYPE)]>)>;
 pub(crate) type Batch = (Box<[VectorNode]>, RowSchema, CBox<duckdb_data_chunk>);
 
 pub(crate) struct VectorNode {
@@ -44,13 +44,11 @@ impl VectorNode {
                 let logical_type = CBox(duckdb_vector_get_column_type(vector));
                 dict = (0..duckdb_enum_dictionary_size(*logical_type))
                     .map(|i| {
-                        let value = duckdb_enum_dictionary_value(*logical_type, i as _);
+                        let value = CBox(duckdb_enum_dictionary_value(*logical_type, i as _));
                         if value.is_null() {
                             return Err(anyhow!("Missing DuckDB ENUM dictionary value"));
                         }
-                        let text = CStr::from_ptr(value).to_str()?.into();
-                        duckdb_free(value as _);
-                        Ok(text)
+                        Ok(CStr::from_ptr(*value).to_str()?.into())
                     })
                     .collect::<Result<Box<[_]>>>()?;
                 duckdb_enum_internal_type(*logical_type)
@@ -415,7 +413,6 @@ pub struct DuckDBStream<'s, Q: AsMut<Query<DuckDBDriver>>> {
     batch: Option<Arc<Batch>>,
     row: usize,
     size: usize,
-    bad_date: i32,
     result: Option<(CBox<duckdb_result>, RowSchema)>,
     prepared: Option<CBox<duckdb_prepared_statement>>,
     extracted: Option<CBox<duckdb_extracted_statements>>,
@@ -430,10 +427,9 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
     #[inline(always)]
     pub(crate) fn new(connection: &'s mut DuckDBConnection, query: Q) -> Self {
         Self {
-            batch: connection.batch.take(),
+            batch: None,
             row: 0,
             size: 0,
-            bad_date: 0,
             result: None,
             prepared: None,
             extracted: None,
@@ -446,18 +442,12 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
     }
 
     fn finish(&mut self) -> Result<()> {
+        self.batch = None;
         self.row = 0;
         self.size = 0;
-        self.bad_date = 0;
         self.result = None;
         self.prepared = None;
         self.extracted = None;
-        if let Some(mut batch) = self.batch.take()
-            && let Some(inner) = Arc::get_mut(&mut batch)
-        {
-            inner.2 = CBox::null();
-            self.connection.batch = Some(batch);
-        }
         if !self.finished {
             self.finished = true;
             self.query.as_mut().clear_bindings()?;
@@ -478,9 +468,6 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
     #[cold]
     #[inline(never)]
     fn advance(&mut self) -> Result<Option<RowsAffected>> {
-        if self.bad_date != 0 {
-            ValueWrap::to_date(self.bad_date)?;
-        }
         unsafe {
             loop {
                 if let Some((result, schema)) = &mut self.result {
@@ -528,30 +515,8 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                             chunk,
                         )));
                     }
-                    let batch = self.batch.as_ref().unwrap_unchecked();
                     self.row = 0;
                     self.size = size;
-                    let mut dates = schema.2;
-                    while dates != 0 {
-                        let col = dates.trailing_zeros() as usize;
-                        dates &= dates - 1;
-                        let vector = batch.0.get_unchecked(col);
-                        if !vector.data.is_null() {
-                            for r in 0..self.size {
-                                if vector.is_valid(r) {
-                                    let days = (*(vector.data as *const duckdb_date).add(r)).days;
-                                    if ValueWrap::to_date(days).is_err() {
-                                        self.size = r;
-                                        self.bad_date = days;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if self.size == 0 && self.bad_date != 0 {
-                        ValueWrap::to_date(self.bad_date)?;
-                    }
                     return Ok(None);
                 }
                 if !self.finished
@@ -615,34 +580,17 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                         schema.clone()
                     } else {
                         let cols = duckdb_column_count(&mut *result) as usize;
-                        let names = match self
-                            .batch
-                            .as_ref()
-                            .map(|b| &(b.1).0)
-                            .filter(|n| n.len() == cols)
-                        {
-                            Some(cached)
-                                if (0..cols).all(|i| {
-                                    let ptr = duckdb_column_name(&mut *result, i as _);
-                                    !ptr.is_null()
-                                        && cached[i].as_bytes() == CStr::from_ptr(ptr).to_bytes()
-                                }) =>
-                            {
-                                cached.clone()
-                            }
-                            _ => (0..cols)
-                                .map(|i| {
-                                    let ptr = duckdb_column_name(&mut *result, i as _);
-                                    if ptr.is_null() {
-                                        String::new()
-                                    } else {
-                                        CStr::from_ptr(ptr).to_string_lossy().into_owned()
-                                    }
-                                })
-                                .collect::<RowLabels>(),
-                        };
+                        let names = (0..cols)
+                            .map(|i| {
+                                let ptr = duckdb_column_name(&mut *result, i as _);
+                                if ptr.is_null() {
+                                    String::new()
+                                } else {
+                                    CStr::from_ptr(ptr).to_string_lossy().into_owned()
+                                }
+                            })
+                            .collect::<RowLabels>();
                         let mut columns = Vec::with_capacity(cols);
-                        let mut dates = 0_u64;
                         for i in 0..cols {
                             let logical_type =
                                 CBox(duckdb_column_logical_type(&mut *result, i as _));
@@ -650,12 +598,9 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                                 return Err(anyhow!("Missing DuckDB column type at index {i}"));
                             }
                             let kind = duckdb_get_type_id(*logical_type);
-                            if kind == DUCKDB_TYPE_DUCKDB_TYPE_DATE && i < 64 {
-                                dates |= 1 << i;
-                            }
                             columns.push((ValueWrap::try_from(*logical_type)?.into(), kind));
                         }
-                        let schema = Arc::new((names, columns.into_boxed_slice(), dates));
+                        let schema = Arc::new((names, columns.into_boxed_slice()));
                         if let Query::Prepared(query) = self.query.as_mut() {
                             query.schema = Some(schema.clone());
                         }

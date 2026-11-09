@@ -186,6 +186,7 @@ pub fn write_escaped(out: &mut DynQuery, value: &str, search: char, replace: &st
 
 /// Convenience wrapper converting into a `CString`.
 pub fn as_c_string(str: impl AsRef<[u8]>) -> CString {
+    // Pre-allocating `len + 1` avoids `Into<Vec<u8>>`'s copy and `CString::new`'s reallocation for the NUL byte.
     let bytes = str.as_ref();
     let mut buf = Vec::with_capacity(bytes.len() + 1);
     buf.extend(bytes.iter().map(|&b| if b == 0 { b'?' } else { b }));
