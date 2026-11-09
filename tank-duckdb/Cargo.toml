@@ -22,12 +22,12 @@ log.workspace = true
 rust_decimal.workspace = true
 tank-core.workspace = true
 time.workspace = true
-tokio.workspace = true
 url.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
 indoc.workspace = true
+tokio.workspace = true
 tank.workspace = true
 tank-tests = { path = "../tank-tests" }
 uuid.workspace = true

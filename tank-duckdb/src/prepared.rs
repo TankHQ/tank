@@ -54,6 +54,9 @@ impl Prepared for DuckDBPrepared {
     }
 
     fn clear_bindings(&mut self) -> Result<&mut Self> {
+        if self.index == 0 {
+            return Ok(self);
+        }
         self.index = 0;
         unsafe {
             let rc = duckdb_clear_bindings(self.statement());

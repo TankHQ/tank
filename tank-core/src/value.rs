@@ -291,6 +291,7 @@ impl<'a> Value<'a> {
     }
 
     /// Converts this value into an owning [`ValueOwned`], cloning any borrowed payload.
+    #[inline]
     pub fn into_owned(self) -> ValueOwned {
         match self {
             Value::Null => Value::Null,

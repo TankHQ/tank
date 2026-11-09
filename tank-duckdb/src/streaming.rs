@@ -11,8 +11,7 @@ use std::{
     collections::HashMap,
     ffi::{CStr, CString, c_void},
     fmt::{self, Debug, Formatter},
-    mem,
-    ptr, str,
+    mem, ptr, str,
     sync::Arc,
 };
 use tank_core::{
@@ -33,64 +32,65 @@ unsafe impl Send for VectorNode {}
 unsafe impl Sync for VectorNode {}
 
 impl VectorNode {
-    fn from_vector(vector: duckdb_vector, value_t: &Value<'_>) -> Result<Self> {
+    /// Missing cells of an ENUM column decode to a plain NULL string.
+    const NULL_VARCHAR: ValueOwned = ValueOwned::Varchar(None);
+
+    fn from_vector(vector: duckdb_vector, kind: DUCKDB_TYPE, value_t: &Value<'_>) -> Result<Self> {
         unsafe {
             let mut dict = Box::new([]) as Box<[Box<str>]>;
-            let id = match value_t {
-                Value::Boolean(..) => DUCKDB_TYPE_DUCKDB_TYPE_BOOLEAN,
-                Value::Int32(..) => DUCKDB_TYPE_DUCKDB_TYPE_INTEGER,
-                Value::Int64(..) => DUCKDB_TYPE_DUCKDB_TYPE_BIGINT,
-                Value::Float64(..) => DUCKDB_TYPE_DUCKDB_TYPE_DOUBLE,
-                Value::Varchar(..) => DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR,
-                // These need the physical type to pick the unit or the dictionary.
-                Value::Time(..) | Value::Timestamp(..) | Value::Unknown(..) => {
-                    let logical_type = CBox::new(
-                        duckdb_vector_get_column_type(vector),
-                        |mut p| duckdb_destroy_logical_type(&mut p),
-                    );
-                    let id = duckdb_get_type_id(*logical_type);
-                    if id == DUCKDB_TYPE_DUCKDB_TYPE_ENUM {
-                        let count = duckdb_enum_dictionary_size(*logical_type);
-                        dict = (0..count)
-                            .map(|i| {
-                                let value = duckdb_enum_dictionary_value(*logical_type, i as _);
-                                if value.is_null() {
-                                    return Err(anyhow!("Missing DuckDB ENUM dictionary value"));
-                                }
-                                let text = CStr::from_ptr(value).to_str()?.into();
-                                duckdb_free(value as _);
-                                Ok(text)
-                            })
-                            .collect::<Result<Box<[_]>>>()?;
-                        duckdb_enum_internal_type(*logical_type)
-                    } else {
-                        id
-                    }
-                }
-                _ => DUCKDB_TYPE_DUCKDB_TYPE_INVALID,
+            let id = if kind == DUCKDB_TYPE_DUCKDB_TYPE_ENUM {
+                let logical_type = CBox::new(duckdb_vector_get_column_type(vector), |mut p| {
+                    duckdb_destroy_logical_type(&mut p)
+                });
+                let count = duckdb_enum_dictionary_size(*logical_type);
+                dict = (0..count)
+                    .map(|i| {
+                        let value = duckdb_enum_dictionary_value(*logical_type, i as _);
+                        if value.is_null() {
+                            return Err(anyhow!("Missing DuckDB ENUM dictionary value"));
+                        }
+                        let text = CStr::from_ptr(value).to_str()?.into();
+                        duckdb_free(value as _);
+                        Ok(text)
+                    })
+                    .collect::<Result<Box<[_]>>>()?;
+                duckdb_enum_internal_type(*logical_type)
+            } else {
+                kind
             };
             let children = match value_t {
-                Value::List(_, t) => Box::new([Self::from_vector(
-                    duckdb_list_vector_get_child(vector),
-                    &t.element,
-                )?]),
-                Value::Array(_, t) => Box::new([Self::from_vector(
-                    duckdb_array_vector_get_child(vector),
-                    &t.element,
-                )?]),
+                Value::List(_, t) => {
+                    let child = duckdb_list_vector_get_child(vector);
+                    Box::new([Self::from_vector(
+                        child,
+                        Self::child_kind(child, &t.element),
+                        &t.element,
+                    )?])
+                }
+                Value::Array(_, t) => {
+                    let child = duckdb_array_vector_get_child(vector);
+                    Box::new([Self::from_vector(
+                        child,
+                        Self::child_kind(child, &t.element),
+                        &t.element,
+                    )?])
+                }
                 Value::Struct(_, t) => t
                     .fields
                     .iter()
                     .enumerate()
                     .map(|(i, (_, field_t))| {
-                        Self::from_vector(duckdb_struct_vector_get_child(vector, i as _), field_t)
+                        let child = duckdb_struct_vector_get_child(vector, i as _);
+                        Self::from_vector(child, Self::child_kind(child, field_t), field_t)
                     })
                     .collect::<Result<Box<[_]>>>()?,
                 Value::Map(_, t) => {
                     let entries = duckdb_list_vector_get_child(vector);
+                    let key = duckdb_struct_vector_get_child(entries, 0);
+                    let value = duckdb_struct_vector_get_child(entries, 1);
                     Box::new([
-                        Self::from_vector(duckdb_struct_vector_get_child(entries, 0), &t.key)?,
-                        Self::from_vector(duckdb_struct_vector_get_child(entries, 1), &t.value)?,
+                        Self::from_vector(key, Self::child_kind(key, &t.key), &t.key)?,
+                        Self::from_vector(value, Self::child_kind(value, &t.value), &t.value)?,
                     ])
                 }
                 _ => Box::new([]),
@@ -102,6 +102,22 @@ impl VectorNode {
                 dict,
                 children,
             })
+        }
+    }
+
+    /// Nested columns need the vector's own type to know the TIME / TIMESTAMP unit.
+    fn child_kind(vector: duckdb_vector, value_t: &Value<'_>) -> DUCKDB_TYPE {
+        if !matches!(
+            value_t,
+            Value::Time(..) | Value::Timestamp(..) | Value::Unknown(..)
+        ) {
+            return DUCKDB_TYPE_DUCKDB_TYPE_INVALID;
+        }
+        unsafe {
+            let logical_type = CBox::new(duckdb_vector_get_column_type(vector), |mut p| {
+                duckdb_destroy_logical_type(&mut p)
+            });
+            duckdb_get_type_id(*logical_type)
         }
     }
 
@@ -196,10 +212,7 @@ impl VectorNode {
                         _ => *(data as *const u32).add(row) as usize,
                     };
                     Value::Varchar(Some(Cow::Borrowed(
-                        self.dict
-                            .get(idx)
-                            .map(|v| v.as_ref())
-                            .unwrap_or_default(),
+                        self.dict.get(idx).map(|v| v.as_ref()).unwrap_or_default(),
                     )))
                 }
                 Value::Blob(..) => Value::Blob(Some(Cow::Borrowed(duckdb_bytes_to_slice(
@@ -266,11 +279,13 @@ impl VectorNode {
     }
 }
 
-/// Column names and logical types shared by every row of a result.
+/// Column names, logical types and physical kinds shared by every row of a result.
 #[derive(Clone, Debug)]
 pub(crate) struct RowSchema {
     pub(crate) names: RowLabels,
     pub(crate) types: Arc<[ValueOwned]>,
+    kinds: Arc<[DUCKDB_TYPE]>,
+    dates: Box<[u32]>,
 }
 
 impl RowSchema {
@@ -279,6 +294,8 @@ impl RowSchema {
             let cols = duckdb_column_count(result);
             let mut names = Vec::with_capacity(cols as usize);
             let mut types = Vec::with_capacity(cols as usize);
+            let mut kinds = Vec::with_capacity(cols as usize);
+            let mut dates = Vec::new();
             for i in 0..cols {
                 let name = duckdb_column_name(result, i);
                 names.push(if name.is_null() {
@@ -292,11 +309,18 @@ impl RowSchema {
                 if logical_type.is_null() {
                     return Err(anyhow!("Missing DuckDB column type at index {i}"));
                 }
+                let kind = duckdb_get_type_id(*logical_type);
+                if kind == DUCKDB_TYPE_DUCKDB_TYPE_DATE {
+                    dates.push(i as u32);
+                }
+                kinds.push(kind);
                 types.push(crate::extract::type_to_value(*logical_type)?);
             }
             Ok(Self {
                 names: names.into(),
                 types: types.into(),
+                kinds: kinds.into(),
+                dates: dates.into(),
             })
         }
     }
@@ -324,6 +348,26 @@ impl Debug for DuckDBRow {
     }
 }
 
+impl DuckDBRow {
+    /// Slow path for nested kinds, which live in the child vectors.
+    #[cold]
+    #[inline(never)]
+    fn decode<'a>(&'a self, vector: &'a VectorNode, index: usize) -> Cow<'a, Value<'a>> {
+        match unsafe { vector.extract(self.row, self.batch.schema.types.get_unchecked(index)) } {
+            Ok(value) => Cow::Owned(value),
+            Err(_) => Cow::Owned(Value::Null),
+        }
+    }
+
+    #[inline(always)]
+    fn null(&self, index: usize) -> &Value<'_> {
+        match unsafe { self.batch.schema.types.get_unchecked(index) } {
+            Value::Unknown(..) => &VectorNode::NULL_VARCHAR,
+            value => value,
+        }
+    }
+}
+
 impl Row for DuckDBRow {
     #[inline(always)]
     fn labels(&self) -> &[String] {
@@ -344,43 +388,110 @@ impl Row for DuckDBRow {
         unsafe {
             let vector = self.batch.vectors.get_unchecked(index);
             let data = vector.data;
-            if vector.is_valid(row) && !data.is_null() {
-                // Columns decoded on every row avoid the generic path.
-                match vector.id {
-                    DUCKDB_TYPE_DUCKDB_TYPE_BOOLEAN => {
-                        return Some(Cow::Owned(Value::Boolean(Some(
-                            *(data as *const bool).add(row),
-                        ))));
-                    }
-                    DUCKDB_TYPE_DUCKDB_TYPE_INTEGER => {
-                        return Some(Cow::Owned(Value::Int32(Some(
-                            *(data as *const i32).add(row),
-                        ))));
-                    }
-                    DUCKDB_TYPE_DUCKDB_TYPE_BIGINT => {
-                        return Some(Cow::Owned(Value::Int64(Some(
-                            *(data as *const i64).add(row),
-                        ))));
-                    }
-                    DUCKDB_TYPE_DUCKDB_TYPE_DOUBLE => {
-                        return Some(Cow::Owned(Value::Float64(Some(
-                            *(data as *const f64).add(row),
-                        ))));
-                    }
-                    DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR => {
-                        return Some(Cow::Owned(Value::Varchar(Some(Cow::Borrowed(
-                            str::from_utf8_unchecked(duckdb_bytes_to_slice(
-                                &*(data as *const duckdb_string_t).add(row),
-                            )),
-                        )))));
-                    }
-                    _ => {}
+            if data.is_null() {
+                // Nested columns keep their cells in the child vectors.
+                if matches!(
+                    self.batch.schema.types.get_unchecked(index),
+                    Value::Array(..) | Value::Struct(..)
+                ) {
+                    return Some(self.decode(vector, index));
                 }
+                return Some(Cow::Borrowed(self.null(index)));
             }
-            match vector.extract(row, self.batch.schema.types.get_unchecked(index)) {
-                Ok(value) => Some(Cow::Owned(value)),
-                Err(_) => Some(Cow::Owned(Value::Null)),
+            if !vector.is_valid(row) {
+                return Some(Cow::Borrowed(self.null(index)));
             }
+            let value_t = self.batch.schema.types.get_unchecked(index);
+            Some(Cow::Owned(match vector.id {
+                DUCKDB_TYPE_DUCKDB_TYPE_BOOLEAN => {
+                    Value::Boolean(Some(*(data as *const bool).add(row)))
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_TINYINT => Value::Int8(Some(*(data as *const i8).add(row))),
+                DUCKDB_TYPE_DUCKDB_TYPE_SMALLINT => {
+                    Value::Int16(Some(*(data as *const i16).add(row)))
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_INTEGER => {
+                    Value::Int32(Some(*(data as *const i32).add(row)))
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_BIGINT => {
+                    Value::Int64(Some(*(data as *const i64).add(row)))
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_UTINYINT => {
+                    Value::UInt8(Some(*(data as *const u8).add(row)))
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_USMALLINT => {
+                    Value::UInt16(Some(*(data as *const u16).add(row)))
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_UINTEGER => {
+                    Value::UInt32(Some(*(data as *const u32).add(row)))
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_UBIGINT => {
+                    Value::UInt64(Some(*(data as *const u64).add(row)))
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_FLOAT => {
+                    Value::Float32(Some(*(data as *const f32).add(row)))
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_DOUBLE => {
+                    Value::Float64(Some(*(data as *const f64).add(row)))
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_DECIMAL if matches!(value_t, Value::Decimal(..)) => {
+                    let (width, scale) = match value_t {
+                        Value::Decimal(_, width, scale) => (*width, *scale),
+                        _ => (0, 0),
+                    };
+                    match decimal_from_scaled(
+                        match width {
+                            ..=4 => *(data as *const i16).add(row) as i128,
+                            ..=9 => *(data as *const i32).add(row) as i128,
+                            ..=18 => *(data as *const i64).add(row) as i128,
+                            _ => duckdb_hugeint_to_i128(&*(data as *const duckdb_hugeint).add(row)),
+                        },
+                        scale as u32,
+                    ) {
+                        Ok(scaled) => Value::Decimal(Some(scaled), width, scale),
+                        Err(_) => return Some(Cow::Owned(Value::Null)),
+                    }
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR => {
+                    Value::Varchar(Some(Cow::Borrowed(str::from_utf8_unchecked(
+                        duckdb_bytes_to_slice(&*(data as *const duckdb_string_t).add(row)),
+                    ))))
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_BLOB => Value::Blob(Some(Cow::Borrowed(
+                    duckdb_bytes_to_slice(&*(data as *const duckdb_string_t).add(row)),
+                ))),
+                DUCKDB_TYPE_DUCKDB_TYPE_DATE => {
+                    match duckdb_date_to_date((*(data as *const duckdb_date).add(row)).days) {
+                        Ok(date) => Value::Date(Some(date)),
+                        Err(_) => return Some(Cow::Owned(Value::Null)),
+                    }
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_TIME => {
+                    match duckdb_time_to_time((*(data as *const duckdb_time).add(row)).micros) {
+                        Ok(time) => Value::Time(Some(time)),
+                        Err(_) => return Some(Cow::Owned(Value::Null)),
+                    }
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP => match nanos_to_primitive_date_time(
+                    (*(data as *const duckdb_timestamp).add(row)).micros as i128 * 1_000,
+                ) {
+                    Ok(timestamp) => Value::Timestamp(Some(timestamp)),
+                    Err(_) => return Some(Cow::Owned(Value::Null)),
+                },
+                DUCKDB_TYPE_DUCKDB_TYPE_UUID => Value::Uuid(Some(uuid_from_duckdb_hugeint(
+                    &*(data as *const duckdb_hugeint).add(row),
+                ))),
+                DUCKDB_TYPE_DUCKDB_TYPE_HUGEINT => Value::Int128(Some(
+                    duckdb_hugeint_to_i128(&*(data as *const duckdb_hugeint).add(row)).into(),
+                )),
+                DUCKDB_TYPE_DUCKDB_TYPE_UHUGEINT => Value::UInt128(Some(
+                    duckdb_uhugeint_to_u128(&*(data as *const duckdb_uhugeint).add(row)).into(),
+                )),
+                DUCKDB_TYPE_DUCKDB_TYPE_INTERVAL => Value::Interval(Some(
+                    duckdb_interval_to_interval(*(data as *const duckdb_interval).add(row)),
+                )),
+                _ => return Some(self.decode(vector, index)),
+            }))
         }
     }
 
@@ -418,10 +529,13 @@ impl Rows {
             if let Some((current, size)) = &mut self.batch {
                 let row = current.row;
                 // Dates can hold values `time::Date` cannot represent, report that per row.
-                for (vector, value_t) in current.batch.vectors.iter().zip(self.schema.types.iter()) {
-                    if matches!(value_t, Value::Date(..)) && vector.is_valid(row) {
+                for &column in &self.schema.dates {
+                    let vector = &current.batch.vectors[column as usize];
+                    if vector.is_valid(row) && !vector.data.is_null() {
                         unsafe {
-                            duckdb_date_to_date((*(vector.data as *const duckdb_date).add(row)).days)?;
+                            duckdb_date_to_date(
+                                (*(vector.data as *const duckdb_date).add(row)).days,
+                            )?;
                         }
                     }
                 }
@@ -455,7 +569,9 @@ impl Rows {
                     Ok(None)
                 } else {
                     Err(Error::msg(
-                        unsafe { CStr::from_ptr(error) }.to_string_lossy().into_owned(),
+                        unsafe { CStr::from_ptr(error) }
+                            .to_string_lossy()
+                            .into_owned(),
                     ))
                 };
             }
@@ -467,10 +583,12 @@ impl Rows {
                 .schema
                 .types
                 .iter()
+                .zip(self.schema.kinds.iter())
                 .enumerate()
-                .map(|(i, value_t)| unsafe {
+                .map(|(i, (value_t, &kind))| unsafe {
                     VectorNode::from_vector(
                         duckdb_data_chunk_get_vector(*chunk, i as _),
+                        kind,
                         value_t,
                     )
                 })
@@ -500,18 +618,6 @@ impl Rows {
     }
 }
 
-impl Iterator for Rows {
-    type Item = Result<DuckDBRow>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.next_row().transpose()
-    }
-
-    #[inline(always)]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        Rows::size_hint(self)
-    }
-}
 
 struct Execution<'s, Q: AsMut<Query<DuckDBDriver>>> {
     // Drop dependent native resources before the query and connection borrow.
@@ -520,7 +626,6 @@ struct Execution<'s, Q: AsMut<Query<DuckDBDriver>>> {
     extracted: Option<CBox<duckdb_extracted_statements>>,
     query: Q,
     connection: &'s mut DuckDBConnection,
-    context: String,
     count: u64,
     index: u64,
     finished: bool,
@@ -546,25 +651,24 @@ impl<Q: AsMut<Query<DuckDBDriver>>> Execution<'_, Q> {
     #[cold]
     #[inline(never)]
     fn fail(&mut self, error: Error) -> Error {
+        let context = format!("While running the query:\n{}", self.query.as_mut());
         if let Err(cleanup) = self.finish() {
             log::error!("While cleaning up DuckDB execution: {cleanup:#}");
         }
-        error.context(self.context.clone())
+        error.context(context)
     }
 
+    #[inline(always)]
     fn next_row(&mut self) -> Result<Option<DuckDBRow>> {
         let Some(rows) = self.rows.as_mut() else {
             return Ok(None);
         };
-        match rows.next() {
-            Some(Ok(row)) => Ok(Some(row)),
-            Some(Err(error)) => Err(error),
-            None => {
-                self.rows = None;
-                self.prepared = None;
-                Ok(None)
-            }
+        let row = rows.next_row();
+        if matches!(row, Ok(None)) {
+            self.rows = None;
+            self.prepared = None;
         }
+        row
     }
 
     fn next_statement(&mut self) -> Result<Option<Statement>> {
@@ -659,22 +763,25 @@ pub struct Statements<'s, Q: AsMut<Query<DuckDBDriver>>> {
 
 impl<'s, Q: AsMut<Query<DuckDBDriver>>> Statements<'s, Q> {
     pub(crate) fn new(connection: &'s mut DuckDBConnection, mut query: Q) -> Result<Self> {
-        let context = format!("While running the query:\n{}", query.as_mut());
         let mut count = 1;
         let extracted = if let Query::Raw(raw) = query.as_mut() {
-            let sql = CString::new(raw.0.as_bytes())
-                .map_err(|error| Error::new(error).context(context.clone()))?;
+            let sql = CString::new(raw.0.as_bytes()).map_err(|error| {
+                Error::new(error).context(format!("While running the query:\n{}", raw.0))
+            })?;
             let mut extracted = CBox::new(ptr::null_mut(), |mut p| unsafe {
                 duckdb_destroy_extracted(&mut p)
             });
             unsafe {
-                count =
-                    duckdb_extract_statements(*connection.connection, sql.as_ptr(), &mut *extracted);
+                count = duckdb_extract_statements(
+                    *connection.connection,
+                    sql.as_ptr(),
+                    &mut *extracted,
+                );
                 let error = duckdb_extract_statements_error(*extracted);
                 if !error.is_null() {
                     return Err(
                         Error::msg(CStr::from_ptr(error).to_string_lossy().into_owned())
-                            .context(context),
+                            .context(format!("While running the query:\n{}", raw.0)),
                     );
                 }
             }
@@ -689,7 +796,6 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Statements<'s, Q> {
                 extracted,
                 query,
                 connection,
-                context,
                 count,
                 index: 0,
                 finished: false,

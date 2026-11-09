@@ -307,6 +307,7 @@ pub const TRUNCATE_LONG_LIMIT: usize = {
 };
 
 /// Build a `Decimal` from a scaled integer.
+#[inline]
 pub fn decimal_from_scaled(mantissa: i128, scale: u32) -> Result<Decimal> {
     let mut mantissa = mantissa;
     let mut scale = scale;

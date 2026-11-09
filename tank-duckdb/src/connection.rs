@@ -1,5 +1,6 @@
 use crate::{
-    DuckDBPrepared, DuckDBTransaction, cbox::CBox, date_to_duckdb_date, decimal_to_duckdb_decimal,
+    DuckDBPrepared, DuckDBTransaction, cbox::CBox, date_to_duckdb_date, decimal_mantissa_at,
+    decimal_to_duckdb_decimal,
     driver::DuckDBDriver, i128_to_duckdb_hugeint, interval_to_duckdb_interval,
     offsetdatetime_to_duckdb_timestamp, primitive_date_time_to_duckdb_timestamp,
     streaming::Statements, tank_value_to_duckdb_logical_type, tank_value_to_duckdb_value,
@@ -26,7 +27,6 @@ use tank_core::{
     stream::{self, Stream},
     truncate_long,
 };
-use tokio::task::spawn_blocking;
 
 /// Wrapper around a DuckDB `duckdb_connection` pointer used by the DuckDB driver.
 /// Provides helpers to execute queries and extract results into `tank_core` types.
@@ -279,15 +279,15 @@ impl DuckDBConnection {
                 Value::Float32(Some(v)) => *(data as *mut f32).add(row) = *v,
                 Value::Float64(Some(v)) => *(data as *mut f64).add(row) = *v,
                 Value::Decimal(Some(v), ..) => {
-                    let raw = decimal_to_duckdb_decimal(v, width, scale);
+                    let mantissa = decimal_mantissa_at(v, scale);
                     if width <= 4 {
-                        *(data as *mut i16).add(row) = raw.value.lower as i16;
+                        *(data as *mut i16).add(row) = mantissa as i16;
                     } else if width <= 9 {
-                        *(data as *mut i32).add(row) = raw.value.lower as i32;
+                        *(data as *mut i32).add(row) = mantissa as i32;
                     } else if width <= 18 {
-                        *(data as *mut i64).add(row) = raw.value.lower as i64;
+                        *(data as *mut i64).add(row) = mantissa as i64;
                     } else {
-                        *(data as *mut duckdb_hugeint).add(row) = raw.value;
+                        *(data as *mut duckdb_hugeint).add(row) = i128_to_duckdb_hugeint(mantissa);
                     }
                 }
                 Value::Char(Some(v)) => {
@@ -339,7 +339,7 @@ impl DuckDBConnection {
             if chunk.is_null() {
                 return Err(anyhow!("Could not create a DuckDB data chunk"));
             }
-            // A DECIMAL vector stores the digits scaled to the declared scale.
+            // A DECIMAL vector stores its digits scaled to the declared scale.
             let decimals = types
                 .iter()
                 .map(|t| {
@@ -501,37 +501,21 @@ impl Executor for DuckDBConnection {
     type Driver = DuckDBDriver;
 
     async fn do_prepare(&mut self, sql: String) -> Result<Query<DuckDBDriver>> {
-        let connection = AtomicPtr::new(*self.connection);
-        let prepared = spawn_blocking(move || unsafe {
-            let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
+        let prepared = (|| unsafe {
+            let c_sql =
+                CString::new(sql.as_bytes()).context("Could not convert `String` to `CString`")?;
             let mut prepared = CBox::new(ptr::null_mut(), |mut p| duckdb_destroy_prepare(&mut p));
-            let sql = match CString::new(sql.as_bytes()) {
-                Ok(sql) => sql,
-                Err(e) => {
-                    let error = Error::new(e)
-                        .context("Could convert `String` to `CString`")
-                        .context(make_context());
-                    log::error!("{error:#}");
-                    return Err(error);
-                }
-            };
-            let rc = duckdb_prepare(
-                connection.load(Ordering::Relaxed),
-                sql.as_ptr(),
-                &mut *prepared,
-            );
-            if rc != duckdb_state_DuckDBSuccess {
-                let error = Error::msg(
-                    error_message_from_ptr(&duckdb_prepare_error(*prepared)).to_string(),
-                )
-                .context(make_context());
-                log::error!("{error:#}");
-                return Err(error);
+            if duckdb_prepare(*self.connection, c_sql.as_ptr(), &mut *prepared)
+                != duckdb_state_DuckDBSuccess
+            {
+                let raw = duckdb_prepare_error(*prepared);
+                return Err(Error::msg(error_message_from_ptr(&raw).to_string()));
             }
             Ok(prepared)
-        })
-        .await?;
-        Ok(DuckDBPrepared::new(prepared?).into())
+        })()
+        .with_context(|| format!("While preparing the query:\n{}", truncate_long!(sql)))
+        .inspect_err(|error| log::error!("{error:#}"))?;
+        Ok(DuckDBPrepared::new(prepared).into())
     }
 
     fn run<'s>(

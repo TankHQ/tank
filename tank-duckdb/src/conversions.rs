@@ -33,16 +33,25 @@ pub(crate) fn duckdb_uhugeint_to_u128(v: &duckdb_uhugeint) -> u128 {
     (v.upper as u128) << 64 | v.lower as u128
 }
 
-pub(crate) fn decimal_to_duckdb_decimal(v: &Decimal, width: u8, scale: u8) -> duckdb_decimal {
-    let scale = min(scale, 38);
+/// Rounds `v` to `scale` digits and returns its mantissa.
+#[inline(always)]
+pub(crate) fn decimal_mantissa_at(v: &Decimal, scale: u8) -> i128 {
     let d_scale = v.scale() as u8;
-    let mantissa = if d_scale <= scale {
+    if d_scale == scale {
+        // The overwhelmingly common case: the value already carries the column's scale.
+        v.mantissa()
+    } else if d_scale < scale {
         v.mantissa()
             .saturating_mul(10_i128.pow((scale - d_scale) as u32))
     } else {
         let div = 10_i128.pow((d_scale - scale) as u32);
         (v.mantissa() + (div / 2) * v.mantissa().signum()) / div
-    };
+    }
+}
+
+pub(crate) fn decimal_to_duckdb_decimal(v: &Decimal, width: u8, scale: u8) -> duckdb_decimal {
+    let scale = min(scale, 38);
+    let mantissa = decimal_mantissa_at(v, scale);
     let width = if width == 0 || width < scale {
         let mut digits = 1_u32;
         let mut magnitude = mantissa.unsigned_abs();
