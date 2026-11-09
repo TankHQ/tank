@@ -1,6 +1,11 @@
 #[cfg(test)]
 mod tests {
-    use std::{path::Path, pin::pin, sync::Mutex};
+    use std::{
+        backtrace::{Backtrace, BacktraceStatus},
+        path::Path,
+        pin::pin,
+        sync::Mutex,
+    };
     use tank_chdb::{ChDBConnection, ChDBDriver};
     use tank_core::{
         Connection, Entity, Executor, QueryResult,
@@ -240,5 +245,24 @@ mod tests {
             .await
             .expect("Could not query the persisted table");
         assert_eq!(rows.len(), 2, "Persisted table should survive reconnection");
+    }
+
+    #[tokio::test]
+    async fn error_backtrace_with_static_linkage() {
+        init_logs();
+        let _guard = MUTEX.lock().unwrap();
+        let mut connection = ChDBConnection::connect(&ChDBDriver::new(), "chdb://".into())
+            .await
+            .expect("Could not open an in-memory database");
+        silent_logs! {
+            let error = connection
+                .execute("SELECT * FROM nonexistent_backtrace_table")
+                .await
+                .expect_err("Expected query on nonexistent table to fail");
+            assert!(format!("{error:#}").contains("nonexistent_backtrace_table"));
+        }
+        let backtrace = Backtrace::force_capture();
+        assert_eq!(backtrace.status(), BacktraceStatus::Captured);
+        assert!(!backtrace.to_string().is_empty());
     }
 }

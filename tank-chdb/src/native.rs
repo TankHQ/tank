@@ -132,7 +132,7 @@ impl NativeResult {
     }
 
     pub(crate) fn is_finished(&self) -> bool {
-        // chDB 26.5 MaterializedQueryResult::isEmpty uses this counter, not
+        // chDB MaterializedQueryResult::isEmpty uses this counter, not
         // buffer length: an empty SELECT can still carry a JSON schema.
         unsafe { chdb_result_rows_read(self.0.as_ptr()) == 0 }
     }

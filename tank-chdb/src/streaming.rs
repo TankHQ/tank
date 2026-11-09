@@ -55,7 +55,7 @@ pub(crate) fn execute(
     }
     let handle = native.stream(sql)?;
     if let Some(error) = handle.error() {
-        // chDB 26.5 ClientBase::processTextAsSingleQuery rejects non-SELECT
+        // chDB ClientBase::processTextAsSingleQuery rejects non-SELECT
         // ASTs here, before processParsedSingleQuery. No other error may retry.
         let mut rejection =
             format!("Code: 36. DB::Exception: Streaming query is not supported for query: {sql}");
@@ -88,7 +88,7 @@ pub(crate) fn execute(
         context,
         schema_seen: false,
     };
-    // In 26.5 cancel-before-first-fetch hangs. Prime exactly one native chunk
+    // Cancelling before the first fetch can hang. Prime exactly one native chunk
     // before transferring ownership, so even an unconsumed rowset can cancel.
     rows.fetch_chunk()?;
     Ok(ChDBOutput::Rows(rows))
