@@ -73,9 +73,10 @@ impl VectorNode {
                 Self::from_vector(child, child_id, elem_t)
             };
             let children = match value_t {
-                Value::List(_, t) => {
-                    Box::new([child_node(duckdb_list_vector_get_child(vector), &t.element)?])
-                }
+                Value::List(_, t) => Box::new([child_node(
+                    duckdb_list_vector_get_child(vector),
+                    &t.element,
+                )?]),
                 Value::Array(_, t) => Box::new([child_node(
                     duckdb_array_vector_get_child(vector),
                     &t.element,
@@ -111,8 +112,7 @@ impl VectorNode {
 
     #[inline(always)]
     fn is_valid(&self, row: usize) -> bool {
-        self.validity.is_null()
-            || unsafe { (*self.validity.add(row >> 6) >> (row & 63)) & 1 != 0 }
+        self.validity.is_null() || unsafe { (*self.validity.add(row >> 6) >> (row & 63)) & 1 != 0 }
     }
 
     #[inline(never)]
@@ -358,9 +358,7 @@ impl Row for DuckDBRow {
                                 ..=4 => *(data as *const i16).add(row) as i128,
                                 ..=9 => *(data as *const i32).add(row) as i128,
                                 ..=18 => *(data as *const i64).add(row) as i128,
-                                _ => ValueWrap::to_i128(
-                                    &*(data as *const duckdb_hugeint).add(row),
-                                ),
+                                _ => ValueWrap::to_i128(&*(data as *const duckdb_hugeint).add(row)),
                             },
                             scale as u32,
                         ) {
@@ -402,13 +400,17 @@ impl Row for DuckDBRow {
         RowOwned::new(
             (self.batch.1).0.clone(),
             (0..self.len())
-                .map(|i| unsafe { self.value(i).unwrap_unchecked() }.into_owned().into_owned())
+                .map(|i| {
+                    unsafe { self.value(i).unwrap_unchecked() }
+                        .into_owned()
+                        .into_owned()
+                })
                 .collect(),
         )
     }
 }
 
-pub struct Statements<'s, Q: AsMut<Query<DuckDBDriver>>> {
+pub struct DuckDBStream<'s, Q: AsMut<Query<DuckDBDriver>>> {
     // Drop dependent native resources before the query and connection borrow.
     batch: Option<Arc<Batch>>,
     row: usize,
@@ -424,7 +426,7 @@ pub struct Statements<'s, Q: AsMut<Query<DuckDBDriver>>> {
     finished: bool,
 }
 
-impl<'s, Q: AsMut<Query<DuckDBDriver>>> Statements<'s, Q> {
+impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
     #[inline(always)]
     pub(crate) fn new(connection: &'s mut DuckDBConnection, query: Q) -> Self {
         Self {
@@ -498,14 +500,13 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Statements<'s, Q> {
                     if size == 0 {
                         continue;
                     }
-                    let make_node =
-                        |(i, (value_t, kind)): (usize, &(ValueOwned, DUCKDB_TYPE))| {
-                            VectorNode::from_vector(
-                                duckdb_data_chunk_get_vector(*chunk, i as _),
-                                *kind,
-                                value_t,
-                            )
-                        };
+                    let make_node = |(i, (value_t, kind)): (usize, &(ValueOwned, DUCKDB_TYPE))| {
+                        VectorNode::from_vector(
+                            duckdb_data_chunk_get_vector(*chunk, i as _),
+                            *kind,
+                            value_t,
+                        )
+                    };
                     if let Some(batch) = self.batch.as_mut().and_then(Arc::get_mut)
                         && batch.0.len() == schema.1.len()
                     {
@@ -675,15 +676,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> Statements<'s, Q> {
     }
 }
 
-impl<Q: AsMut<Query<DuckDBDriver>>> Drop for Statements<'_, Q> {
-    fn drop(&mut self) {
-        if let Err(error) = self.finish() {
-            log::error!("While dropping DuckDB execution: {error:#}");
-        }
-    }
-}
-
-impl<Q: AsMut<Query<DuckDBDriver>>> Stream for Statements<'_, Q> {
+impl<Q: AsMut<Query<DuckDBDriver>>> Stream for DuckDBStream<'_, Q> {
     type Item = Result<QueryResult<DuckDBRow>>;
 
     #[inline]
@@ -713,5 +706,13 @@ impl<Q: AsMut<Query<DuckDBDriver>>> Stream for Statements<'_, Q> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.size - self.row;
         (remaining, (remaining > 0).then_some(remaining))
+    }
+}
+
+impl<Q: AsMut<Query<DuckDBDriver>>> Drop for DuckDBStream<'_, Q> {
+    fn drop(&mut self) {
+        if let Err(e) = self.finish() {
+            log::error!("{:#}", e.context("While dropping DuckDB execution"));
+        }
     }
 }

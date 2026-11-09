@@ -1,7 +1,8 @@
 use crate::{
-    DuckDBPrepared, DuckDBTransaction, ValueWrap, cbox::CBox,
+    DuckDBPrepared, DuckDBTransaction, ValueWrap,
+    cbox::CBox,
     driver::DuckDBDriver,
-    streaming::{Batch, Statements},
+    streaming::{Batch, DuckDBStream},
 };
 use anyhow::anyhow;
 use libduckdb_sys::*;
@@ -165,7 +166,10 @@ impl Connection for DuckDBConnection {
 impl Executor for DuckDBConnection {
     type Driver = DuckDBDriver;
 
-    fn do_prepare(&mut self, sql: String) -> impl Future<Output = Result<Query<DuckDBDriver>>> + Send {
+    fn do_prepare(
+        &mut self,
+        sql: String,
+    ) -> impl Future<Output = Result<Query<DuckDBDriver>>> + Send {
         future::ready(
             (|| unsafe {
                 let c_sql = CString::new(sql.as_bytes())
@@ -189,7 +193,7 @@ impl Executor for DuckDBConnection {
         &'s mut self,
         query: impl AsQuery<DuckDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        Statements::new(self, query.as_query())
+        DuckDBStream::new(self, query.as_query())
     }
 
     fn append<It>(&mut self, rows: It) -> impl Future<Output = Result<RowsAffected>> + Send
@@ -284,7 +288,12 @@ impl Executor for DuckDBConnection {
                 let batch_size = duckdb_vector_size() as usize;
                 let mut rows = rows.into_iter();
                 let mut cells = (0..types.len())
-                    .map(|i| (duckdb_data_chunk_get_vector(*chunk, i as _), ptr::null_mut()))
+                    .map(|i| {
+                        (
+                            duckdb_data_chunk_get_vector(*chunk, i as _),
+                            ptr::null_mut(),
+                        )
+                    })
                     .collect::<Box<[_]>>();
                 loop {
                     duckdb_data_chunk_reset(*chunk);
@@ -403,7 +412,10 @@ impl Executor for DuckDBConnection {
                     for value in entity.as_entity().row_values() {
                         Self::check_appender(
                             *appender,
-                            duckdb_append_value(*appender, *CBox::try_from(ValueWrap::from(value))?),
+                            duckdb_append_value(
+                                *appender,
+                                *CBox::try_from(ValueWrap::from(value))?,
+                            ),
                         )?;
                     }
                     Self::check_appender(*appender, duckdb_appender_end_row(*appender))?;
