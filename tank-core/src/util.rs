@@ -185,14 +185,12 @@ pub fn write_escaped(out: &mut DynQuery, value: &str, search: char, replace: &st
 }
 
 /// Convenience wrapper converting into a `CString`.
-pub fn as_c_string(str: impl Into<Vec<u8>>) -> CString {
-    CString::new(
-        str.into()
-            .into_iter()
-            .map(|b| if b == 0 { b'?' } else { b })
-            .collect::<Vec<u8>>(),
-    )
-    .unwrap_or_default()
+pub fn as_c_string(str: impl AsRef<[u8]>) -> CString {
+    let bytes = str.as_ref();
+    let mut buf = Vec::with_capacity(bytes.len() + 1);
+    buf.extend(bytes.iter().map(|&b| if b == 0 { b'?' } else { b }));
+    buf.push(0);
+    unsafe { CString::from_vec_with_nul_unchecked(buf) }
 }
 
 pub fn error_message_from_ptr<'a>(ptr: &'a *const c_char) -> Cow<'a, str> {

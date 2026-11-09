@@ -6,9 +6,13 @@ mod tests {
     use crate::{comments::comments, structure::structure};
     use rust_decimal::Decimal;
     use std::{
+        alloc::{GlobalAlloc, Layout, System},
         collections::{BTreeMap, HashMap},
         path::Path,
-        sync::Mutex,
+        sync::{
+            Mutex,
+            atomic::{AtomicUsize, Ordering},
+        },
         time::Instant,
     };
     use tank::{
@@ -21,6 +25,45 @@ mod tests {
     use tank_tests::{execute_tests, init_logs};
     use time::{Date, PrimitiveDateTime, macros::{date, datetime}};
     use tokio::fs;
+
+    struct CountingAlloc;
+
+    static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
+    static ALLOC_BYTES: AtomicUsize = AtomicUsize::new(0);
+
+    #[global_allocator]
+    static GLOBAL_ALLOC: CountingAlloc = CountingAlloc;
+
+    unsafe impl GlobalAlloc for CountingAlloc {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+            ALLOC_BYTES.fetch_add(layout.size(), Ordering::Relaxed);
+            unsafe { System.alloc(layout) }
+        }
+
+        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+            unsafe { System.dealloc(ptr, layout) }
+        }
+
+        unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+            ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+            ALLOC_BYTES.fetch_add(layout.size(), Ordering::Relaxed);
+            unsafe { System.alloc_zeroed(layout) }
+        }
+
+        unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+            ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+            ALLOC_BYTES.fetch_add(new_size, Ordering::Relaxed);
+            unsafe { System.realloc(ptr, layout, new_size) }
+        }
+    }
+
+    fn alloc_snapshot() -> (usize, usize) {
+        (
+            ALLOC_COUNT.load(Ordering::Relaxed),
+            ALLOC_BYTES.load(Ordering::Relaxed),
+        )
+    }
 
     static MUTEX: Mutex<()> = Mutex::new(());
 
@@ -205,6 +248,7 @@ mod tests {
 
     #[tokio::test]
     async fn bare_decimal_binding() {
+        let _guard = MUTEX.lock().unwrap();
         // A bare `Decimal` decodes to `Value::Decimal(.., 0, scale)`. Binding it
         // used to hand DuckDB a `DECIMAL(width=0, scale=n)` type, tripping the
         // `width >= scale` assertion and aborting the whole process.
@@ -242,6 +286,7 @@ mod tests {
 
     #[tokio::test]
     async fn bind_index_zero_based() {
+        let _guard = MUTEX.lock().unwrap();
         let mut connection = DuckDBConnection::connect(
             &DuckDBDriver::new(),
             "duckdb://:memory:?threads=1".into(),
@@ -290,6 +335,8 @@ mod tests {
         const NUM_ROWS: i64 = 10_000;
         const PREPARED_ITERS: i64 = 200;
 
+        let _guard = MUTEX.lock().unwrap();
+
         let mut connection = DuckDBConnection::connect(
             &DuckDBDriver::new(),
             "duckdb://:memory:?threads=2".into(),
@@ -317,22 +364,42 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
+        let (a0, b0) = alloc_snapshot();
         let t0 = Instant::now();
         let affected = BenchItem::insert_many(&mut connection, &items)
             .await
             .unwrap();
         let write_elapsed = t0.elapsed();
+        let (a1, b1) = alloc_snapshot();
+        let (write_allocs, write_bytes) = (a1 - a0, b1 - b0);
         assert_eq!(affected.rows_affected, Some(NUM_ROWS as u64));
 
+        let (a0, b0) = alloc_snapshot();
         let t1 = Instant::now();
         let loaded: Vec<BenchItem> = BenchItem::find_many(&mut connection, true, None)
             .try_collect()
             .await
             .unwrap();
         let read_elapsed = t1.elapsed();
+        let (a1, b1) = alloc_snapshot();
+        let (read_allocs, read_bytes) = (a1 - a0, b1 - b0);
         assert_eq!(loaded.len(), NUM_ROWS as usize);
 
+        let (a0, b0) = alloc_snapshot();
         let t2 = Instant::now();
+        let owned: Vec<_> = connection
+            .fetch("SELECT * FROM bench_items")
+            .map_ok(Row::into_owned)
+            .try_collect()
+            .await
+            .unwrap();
+        let owned_elapsed = t2.elapsed();
+        let (a1, b1) = alloc_snapshot();
+        let (owned_allocs, owned_bytes) = (a1 - a0, b1 - b0);
+        assert_eq!(owned.len(), NUM_ROWS as usize);
+
+        let (a0, b0) = alloc_snapshot();
+        let t3 = Instant::now();
         let mut prepared = BenchItem::prepare_find(
             &mut connection,
             expr!(BenchItem::id >= ? && BenchItem::id < ? && BenchItem::active == ?),
@@ -359,10 +426,13 @@ mod tests {
             assert_eq!(batch.len(), 25);
             total_prepared_rows += batch.len();
         }
-        let prepared_elapsed = t2.elapsed();
+        let prepared_elapsed = t3.elapsed();
+        let (a1, b1) = alloc_snapshot();
+        let (prepared_allocs, prepared_bytes) = (a1 - a0, b1 - b0);
         assert_eq!(total_prepared_rows, (PREPARED_ITERS as usize) * 25);
 
-        let t3 = Instant::now();
+        let (a0, b0) = alloc_snapshot();
+        let t4 = Instant::now();
         let mut tx = connection.begin().await.unwrap();
         let updated = tx
             .execute("UPDATE bench_items SET score = score + 1.0 WHERE active = true")
@@ -370,10 +440,17 @@ mod tests {
             .unwrap();
         assert_eq!(updated.rows_affected, Some((NUM_ROWS / 2) as u64));
         tx.commit().await.unwrap();
-        let tx_elapsed = t3.elapsed();
+        let tx_elapsed = t4.elapsed();
+        let (a1, b1) = alloc_snapshot();
+        let (tx_allocs, tx_bytes) = (a1 - a0, b1 - b0);
 
         println!(
-            "benchmark ({NUM_ROWS} rows): append={write_elapsed:?}, stream_read={read_elapsed:?}, prepared_{PREPARED_ITERS}x={prepared_elapsed:?}, tx_update={tx_elapsed:?}"
+            "benchmark ({NUM_ROWS} rows):\n  \
+             append:       {write_elapsed:>10?} ({write_allocs} allocs, {write_bytes} B)\n  \
+             stream_read:  {read_elapsed:>10?} ({read_allocs} allocs, {read_bytes} B)\n  \
+             owned_read:   {owned_elapsed:>10?} ({owned_allocs} allocs, {owned_bytes} B)\n  \
+             prepared_{PREPARED_ITERS}x: {prepared_elapsed:>10?} ({prepared_allocs} allocs, {prepared_bytes} B)\n  \
+             tx_update:    {tx_elapsed:>10?} ({tx_allocs} allocs, {tx_bytes} B)"
         );
     }
 }

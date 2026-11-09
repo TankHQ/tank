@@ -1,84 +1,102 @@
-use libduckdb_sys::duckdb_result;
+use libduckdb_sys::*;
 use std::{
+    ffi::c_char,
     ops::{Deref, DerefMut},
-    sync::atomic::AtomicPtr,
+    ptr,
 };
 
-pub(crate) trait NullCheck {
+pub(crate) trait CResource: Sized {
     fn is_null(&self) -> bool;
+    unsafe fn finalize(&mut self);
 }
 
-impl<T> NullCheck for *const T {
-    fn is_null(&self) -> bool {
-        (*self as *const T).is_null()
-    }
+macro_rules! impl_resource {
+    ($($ty:ty => $destroy:ident),* $(,)?) => {$(
+        impl CResource for $ty {
+            #[inline(always)]
+            fn is_null(&self) -> bool {
+                (*self).is_null()
+            }
+            #[inline(always)]
+            unsafe fn finalize(&mut self) {
+                unsafe { $destroy(self) };
+            }
+        }
+    )*};
 }
 
-impl<T> NullCheck for *mut T {
-    fn is_null(&self) -> bool {
-        (*self as *const T).is_null()
-    }
+impl_resource! {
+    duckdb_appender => duckdb_appender_destroy,
+    duckdb_config => duckdb_destroy_config,
+    duckdb_connection => duckdb_disconnect,
+    duckdb_data_chunk => duckdb_destroy_data_chunk,
+    duckdb_extracted_statements => duckdb_destroy_extracted,
+    duckdb_instance_cache => duckdb_destroy_instance_cache,
+    duckdb_logical_type => duckdb_destroy_logical_type,
+    duckdb_prepared_statement => duckdb_destroy_prepare,
+    duckdb_value => duckdb_destroy_value,
 }
 
-impl<T> NullCheck for AtomicPtr<T> {
-    fn is_null(&self) -> bool {
-        self.load(std::sync::atomic::Ordering::Relaxed).is_null()
-    }
-}
-
-impl<T: NullCheck> NullCheck for &T {
+impl CResource for *mut c_char {
+    #[inline(always)]
     fn is_null(&self) -> bool {
         (*self).is_null()
     }
-}
-
-impl<T: NullCheck> NullCheck for &mut T {
-    fn is_null(&self) -> bool {
-        false
+    #[inline(always)]
+    unsafe fn finalize(&mut self) {
+        unsafe { duckdb_free(*self as _) };
     }
 }
 
-impl NullCheck for duckdb_result {
+impl CResource for duckdb_result {
+    #[inline(always)]
     fn is_null(&self) -> bool {
         false
     }
+    #[inline(always)]
+    unsafe fn finalize(&mut self) {
+        unsafe { duckdb_destroy_result(self) };
+    }
 }
 
+#[repr(transparent)]
 #[derive(Debug)]
-pub(crate) struct CBox<T: NullCheck> {
-    ptr: T,
-    dealloc: fn(T),
-}
+pub(crate) struct CBox<T: CResource>(pub(crate) T);
 
-impl<T: NullCheck> CBox<T> {
-    pub fn new(ptr: T, dealloc: fn(T)) -> Self {
-        Self { ptr, dealloc }
+impl<T> CBox<*mut T>
+where
+    *mut T: CResource,
+{
+    #[inline(always)]
+    pub const fn null() -> Self {
+        Self(ptr::null_mut())
     }
 }
 
-impl<T: NullCheck> Drop for CBox<T> {
+impl<T: CResource> Drop for CBox<T> {
+    #[inline(always)]
     fn drop(&mut self) {
-        if !self.is_null() {
-            unsafe {
-                (self.dealloc)(std::ptr::read(&self.ptr as *const T));
-            }
+        if !self.0.is_null() {
+            unsafe { self.0.finalize() };
         }
     }
 }
 
-impl<T: NullCheck> Deref for CBox<T> {
+impl<T: CResource> Deref for CBox<T> {
     type Target = T;
 
+    #[inline(always)]
     fn deref(&self) -> &Self::Target {
-        &self.ptr
+        &self.0
     }
 }
 
-impl<T: NullCheck> DerefMut for CBox<T> {
+impl<T: CResource> DerefMut for CBox<T> {
+    #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.ptr
+        &mut self.0
     }
 }
 
-unsafe impl<T: NullCheck> Send for CBox<T> {}
-unsafe impl<T: NullCheck> Sync for CBox<T> {}
+unsafe impl<T: CResource> Send for CBox<T> {}
+unsafe impl<T: CResource> Sync for CBox<T> {}

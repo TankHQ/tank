@@ -290,34 +290,10 @@ impl<'a> Value<'a> {
         }
     }
 
-    /// Converts this value into an owning [`ValueOwned`], cloning any borrowed payload.
-    #[inline]
-    pub fn into_owned(self) -> ValueOwned {
+    #[cold]
+    #[inline(never)]
+    fn into_owned_nested(self) -> ValueOwned {
         match self {
-            Value::Null => Value::Null,
-            Value::Boolean(v) => Value::Boolean(v),
-            Value::Int8(v) => Value::Int8(v),
-            Value::Int16(v) => Value::Int16(v),
-            Value::Int32(v) => Value::Int32(v),
-            Value::Int64(v) => Value::Int64(v),
-            Value::Int128(v) => Value::Int128(v),
-            Value::UInt8(v) => Value::UInt8(v),
-            Value::UInt16(v) => Value::UInt16(v),
-            Value::UInt32(v) => Value::UInt32(v),
-            Value::UInt64(v) => Value::UInt64(v),
-            Value::UInt128(v) => Value::UInt128(v),
-            Value::Float32(v) => Value::Float32(v),
-            Value::Float64(v) => Value::Float64(v),
-            Value::Decimal(v, w, s) => Value::Decimal(v, w, s),
-            Value::Char(v) => Value::Char(v),
-            Value::Varchar(v) => Value::Varchar(v.map(|v| Cow::Owned(v.into_owned()))),
-            Value::Blob(v) => Value::Blob(v.map(|v| Cow::Owned(v.into_owned()))),
-            Value::Date(v) => Value::Date(v),
-            Value::Time(v) => Value::Time(v),
-            Value::Timestamp(v) => Value::Timestamp(v),
-            Value::TimestampWithTimezone(v) => Value::TimestampWithTimezone(v),
-            Value::Interval(v) => Value::Interval(v),
-            Value::Uuid(v) => Value::Uuid(v),
             Value::Array(v, t) => Value::Array(
                 v.map(|v| v.into_vec().into_iter().map(Value::into_owned).collect()),
                 Box::new(CollectionType {
@@ -345,7 +321,6 @@ impl<'a> Value<'a> {
                     value: t.value.into_owned(),
                 }),
             ),
-            Value::Json(v) => Value::Json(v),
             Value::Struct(v, t) => Value::Struct(
                 v.map(|v| {
                     v.into_vec()
@@ -362,7 +337,51 @@ impl<'a> Value<'a> {
                     name: t.name,
                 }),
             ),
-            Value::Unknown(v) => Value::Unknown(v.map(|v| Cow::Owned(v.into_owned()))),
+            _ => unreachable!(),
+        }
+    }
+
+    /// Converts this value into an owning [`ValueOwned`], cloning any borrowed payload.
+    #[inline]
+    pub fn into_owned(self) -> ValueOwned {
+        match self {
+            Value::Null => Value::Null,
+            Value::Boolean(v) => Value::Boolean(v),
+            Value::Int8(v) => Value::Int8(v),
+            Value::Int16(v) => Value::Int16(v),
+            Value::Int32(v) => Value::Int32(v),
+            Value::Int64(v) => Value::Int64(v),
+            Value::Int128(v) => Value::Int128(v),
+            Value::UInt8(v) => Value::UInt8(v),
+            Value::UInt16(v) => Value::UInt16(v),
+            Value::UInt32(v) => Value::UInt32(v),
+            Value::UInt64(v) => Value::UInt64(v),
+            Value::UInt128(v) => Value::UInt128(v),
+            Value::Float32(v) => Value::Float32(v),
+            Value::Float64(v) => Value::Float64(v),
+            Value::Decimal(v, w, s) => Value::Decimal(v, w, s),
+            Value::Char(v) => Value::Char(v),
+            Value::Varchar(Some(Cow::Borrowed(v))) => {
+                Value::Varchar(Some(Cow::Owned(v.to_owned())))
+            }
+            Value::Varchar(Some(Cow::Owned(v))) => Value::Varchar(Some(Cow::Owned(v))),
+            Value::Varchar(None) => Value::Varchar(None),
+            Value::Blob(Some(Cow::Borrowed(v))) => Value::Blob(Some(Cow::Owned(v.to_owned()))),
+            Value::Blob(Some(Cow::Owned(v))) => Value::Blob(Some(Cow::Owned(v))),
+            Value::Blob(None) => Value::Blob(None),
+            Value::Date(v) => Value::Date(v),
+            Value::Time(v) => Value::Time(v),
+            Value::Timestamp(v) => Value::Timestamp(v),
+            Value::TimestampWithTimezone(v) => Value::TimestampWithTimezone(v),
+            Value::Interval(v) => Value::Interval(v),
+            Value::Uuid(v) => Value::Uuid(v),
+            Value::Json(v) => Value::Json(v),
+            Value::Unknown(Some(Cow::Borrowed(v))) => {
+                Value::Unknown(Some(Cow::Owned(v.to_owned())))
+            }
+            Value::Unknown(Some(Cow::Owned(v))) => Value::Unknown(Some(Cow::Owned(v))),
+            Value::Unknown(None) => Value::Unknown(None),
+            other => other.into_owned_nested(),
         }
     }
 }
