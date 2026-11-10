@@ -1,5 +1,6 @@
+import Matter from 'matter-js'
 import { CONFIG, CAMERA } from './config.js'
-import { BODY, PIXELS_PER_METRE } from './geometry.js'
+import { BODY } from './geometry.js'
 import { Terrain } from './Terrain.js'
 import { Tank } from './Tank.js'
 import { Camera } from './Camera.js'
@@ -13,24 +14,18 @@ const COLLISION_CATEGORIES = {
     groundAndShell: 0x0001 | 0x0008,
 }
 
-const FIXED_STEP_MS = 1000 / 60
+const FIXED_STEP_MS = 1000 / 60 // Physics step duration (ms)
 const MAX_STEPS_PER_FRAME = 5
 
 export class Game {
-    constructor({ Matter, canvas, base }) {
+    constructor({ canvas, base }) {
         this.Matter = Matter
         this.running = false
         this._raf = 0
         this._lastTime = 0
         this._accumulator = 0
 
-        this._dist = 0
-        this._fpsAccumulator = 0
-        this._fpsFrames = 0
-        this.fps = 0
-        this._hudAccumulator = 0
-
-        const { Engine, Composite } = Matter
+        const { Engine } = Matter
         this.engine = Engine.create()
         this.engine.gravity.y = CONFIG.gravity
         this.world = this.engine.world
@@ -51,11 +46,6 @@ export class Game {
         this.renderer = new Renderer(canvas, base)
 
         this._dustTimer = 0
-        this._onHud = null
-    }
-
-    onHud(callback) {
-        this._onHud = callback
     }
 
     start(rect) {
@@ -80,7 +70,6 @@ export class Game {
 
     reset() {
         this.tank.spawn(0)
-        this._dist = 0
         this.particles.clear()
         this.shells.clear()
     }
@@ -101,8 +90,7 @@ export class Game {
         if (dt > 100) dt = 100
         this._accumulator += dt
 
-        // Fixed timestep: physics advances in whole 60 Hz steps no matter the
-        // display refresh rate.
+        // Step physics in fixed 60 Hz increments (FIXED_STEP_MS).
         let steps = 0
         while (this._accumulator >= FIXED_STEP_MS && steps < MAX_STEPS_PER_FRAME) {
             this._physicsStep(FIXED_STEP_MS)
@@ -113,16 +101,12 @@ export class Game {
 
         this._updateEffects(dt)
 
-        // Render from an interpolated pose between the last two physics steps,
-        // which is what removes jitter on high-refresh displays.
+        // Interpolate between previous and current physics poses by alpha (0..1).
         const alpha = this._accumulator / FIXED_STEP_MS
         const view = this.tank.view(alpha)
         if (view) view.trackPhase = this.tank.scrollTrack(view.belt, dt)
-        // Normalised speed biases the camera framing: forward pulls the tank left to
-        // reveal the road ahead, reverse pushes it right. The frame's wall-clock dt
-        // keeps the camera smoothing framerate-independent.
         const hull = this.tank.hull
-        const speed01 = hull ? hull.velocity.x / CAMERA.cruiseSpeed : 0
+        const speed01 = hull ? hull.velocity.x / CAMERA.cruiseSpeed : 0 // Normalized speed (-1..1)
         this.camera.follow(view ? view.pose : null, this.renderer.width, this.renderer.height, speed01, dt)
         this.renderer.render({
             camera: this.camera,
@@ -131,8 +115,6 @@ export class Game {
             particles: this.particles.particles,
             shells: this.shells.shells,
         })
-
-        this._updateStats(dt)
     }
 
     _physicsStep(dt) {
@@ -143,13 +125,11 @@ export class Game {
     _updateEffects(dt) {
         if (this.tank.alive) {
             const hull = this.tank.hull
-            this._dist = Math.max(this._dist, hull.position.x)
 
             if (Math.abs(hull.angle) > 2.1 || hull.position.y > this.terrain.heightAt(hull.position.x) + 400) {
                 this.reset()
             }
 
-            // Trailing exhaust while moving.
             if (Math.abs(hull.velocity.x) > 0.2) {
                 this._dustTimer++
                 if (this._dustTimer > 6) {
@@ -157,8 +137,7 @@ export class Game {
                     const exhaust = { x: hull.position.x, y: hull.position.y }
                     const cos = Math.cos(hull.angle)
                     const sin = Math.sin(hull.angle)
-                    // Exhaust leaves the rear of the hull, so scale it with the body.
-                    const rear = BODY.length * 0.2
+                    const rear = BODY.length * 0.2 // Rear exhaust offset from hull center (px)
                     this.particles.exhaust(
                         exhaust.x + cos * -rear,
                         exhaust.y + sin * -rear - BODY.depth * 0.42,
@@ -170,31 +149,5 @@ export class Game {
 
         this.particles.update(dt)
         this.shells.update(dt)
-    }
-
-    _updateStats(dt) {
-        this._fpsAccumulator += dt
-        this._fpsFrames++
-        if (this._fpsAccumulator > 500) {
-            this.fps = Math.round(this._fpsFrames / (this._fpsAccumulator / 1000))
-            this._fpsAccumulator = 0
-            this._fpsFrames = 0
-        }
-
-        this._hudAccumulator += dt
-        if (this._hudAccumulator > 60 && this._onHud) {
-            this._hudAccumulator = 0
-            const hull = this.tank.hull
-            this._onHud({
-                // px/frame -> m/s -> km/h, and px -> m, using the world scale.
-                speed: hull
-                    ? Math.round(Math.abs(hull.velocity.x) * 60 / PIXELS_PER_METRE * 3.6)
-                    : 0,
-                distance: Math.round(this._dist / PIXELS_PER_METRE),
-                throttle: this.input.w || this.input.cruise ? 1 : this.input.s ? -1 : 0,
-                fps: this.fps,
-                wheels: this.tank.wheels.map((w) => w.compression),
-            })
-        }
     }
 }

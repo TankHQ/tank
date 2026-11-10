@@ -47,69 +47,6 @@ h1 .text {
     font-stretch: condensed;
 }
 
-.VPHero {
-    position: relative;
-    overflow: hidden;
-    margin-top: 0 !important;
-    padding: 48px 24px 260px !important;
-    background: linear-gradient(180deg, #241c1a 0%, #4a3220 25%, #8a4f22 50%, #c07a2e 75%, #e6a94e 100%);
-    border-bottom: 1px solid var(--vp-c-divider);
-}
-
-@media (min-width: 640px) {
-    .VPHero {
-        padding: 56px 48px 270px !important;
-    }
-}
-
-@media (min-width: 960px) {
-    .VPHero {
-        padding: 56px 64px 290px !important;
-    }
-}
-
-.VPHero > .container {
-    position: relative;
-    z-index: 1;
-    pointer-events: none;
-}
-
-.VPHero:not(.game-focused) .actions a {
-    pointer-events: auto;
-}
-
-.VPHero .main,
-.VPHero .image {
-    transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.45s ease;
-    will-change: transform, opacity;
-}
-
-@media (max-width: 959px) {
-    .VPHero .image {
-        margin: -24px -24px -48px !important;
-    }
-}
-
-.VPHero.game-focused .main {
-    transform: translateX(-160px);
-    opacity: 0;
-}
-
-.VPHero.game-focused .image {
-    transform: translateX(160px);
-    opacity: 0;
-}
-
-.VPHero .text {
-    color: #f5ebd6;
-    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
-}
-
-.VPHero .tagline {
-    color: #e6d7b8;
-    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.55);
-}
-
 .VPHero .action:nth-child(2) {
     position: relative;
 }
@@ -121,7 +58,7 @@ h1 .text {
     left: calc(50% - 8px);
     width: 44px;
     height: 26px;
-    background: #f5ebd6;
+    background: var(--vp-c-brand-1);
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 26' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M42 20C26 20 14 17 9 3M7 11L9 3L15.5 7.5'/%3E%3C/svg%3E") center / contain no-repeat;
     pointer-events: none;
 }
@@ -131,19 +68,13 @@ h1 .text {
     position: absolute;
     top: calc(100% + 11px);
     left: calc(50% + 40px);
-    font: 300 13px/0.8 var(--vp-font-family-mono);
-    color: #f5ebd6;
-    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
+    font: 300 18px/0.8 var(--vp-font-family-mono);
+    color: var(--vp-c-brand-1);
     white-space: nowrap;
     transform-origin: left center;
     transform: rotate(-4deg);
     pointer-events: none;
     letter-spacing: -1px;
-    font-size: 18px;
-}
-
-.VPHomeFeatures {
-    margin-top: 32px;
 }
 
 .VPNav {
@@ -172,34 +103,26 @@ h1 .text {
     position: absolute;
     width: 8px;
     height: 8px;
-    opacity: 0;
+    border: 0 solid #f0c36d;
+    opacity: var(--op, 0);
     transition: all 0.2s ease-out;
 }
 
 .VPFeature::before {
-    top: 0;
-    left: 0;
-    border-top: 2px solid #f0c36d;
-    border-left: 2px solid #f0c36d;
+    top: var(--o, 0);
+    left: var(--o, 0);
+    border-width: 2px 0 0 2px;
 }
 
 .VPFeature::after {
-    bottom: 0;
-    right: 0;
-    border-bottom: 2px solid #f0c36d;
-    border-right: 2px solid #f0c36d;
+    right: var(--o, 0);
+    bottom: var(--o, 0);
+    border-width: 0 2px 2px 0;
 }
 
-.VPFeature:hover::before {
-    top: -6px;
-    left: -6px;
-    opacity: 1;
-}
-
-.VPFeature:hover::after {
-    bottom: -6px;
-    right: -6px;
-    opacity: 1;
+.VPFeature:hover {
+    --o: -6px;
+    --op: 1;
 }
 
 .box {
@@ -221,7 +144,13 @@ h1 .text {
 }
 
 .VPHome {
+    margin-bottom: 0 !important;
     overflow-x: clip;
+}
+
+.VPFooter {
+    border-top: none !important;
+    padding: 16px 24px !important;
 }
 
 :where(.VPHome .vp-doc) p {
@@ -270,11 +199,16 @@ h1 .text {
     margin: 28px 0;
 }
 
+.home-stats,
+.driver-marquee,
+.swipe-deck {
+    margin: 28px 0 8px;
+}
+
 .home-stats {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 1px;
-    margin: 28px 0 8px;
     border: 1px solid var(--vp-c-divider);
     border-radius: 16px;
     overflow: hidden;
@@ -314,7 +248,6 @@ h1 .text {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    margin: 28px 0 8px;
 }
 
 @media (min-width: 720px) {
@@ -396,7 +329,6 @@ h1 .text {
     display: grid;
     grid-template-columns: 1fr;
     gap: 18px;
-    margin: 28px 0 8px;
 }
 
 .swipe-deck>div[class*="language-"],
@@ -439,6 +371,8 @@ h1 .text {
 .swipe-deck>div[class*="language-"]::after {
     content: "";
     position: absolute;
+    top: 14px;
+    right: 16px;
     width: 64px;
     height: 64px;
     background: url('/icon.png') center / contain no-repeat;
@@ -454,14 +388,8 @@ html:not(.dark) .swipe-deck>div[class*="language-"]::after {
     mix-blend-mode: multiply;
 }
 
-.swipe-deck>div[class*="language-"]::before {
-    top: 14px;
-    right: 16px;
-}
-
 .swipe-deck>div[class*="language-"]::after {
-    bottom: 14px;
-    left: 16px;
+    inset: auto auto 14px 16px;
     transform: rotate(180deg);
 }
 
@@ -483,7 +411,6 @@ html:not(.dark) .swipe-deck>div[class*="language-"]::after {
 .swipe-deck pre {
     flex: 1;
     min-height: 0;
-    margin: 0;
     overflow: auto;
 }
 
@@ -548,11 +475,10 @@ html:not(.dark) .swipe-deck>div[class*="language-"]::after {
     height: 2px;
     vertical-align: sub;
     background: var(--vp-c-brand-1);
-    animation: blink 1s step-end infinite;
 }
 
-.swipe-deck .cursor.typing {
-    animation: none;
+.swipe-deck .cursor:not(.typing) {
+    animation: blink 1s step-end infinite;
 }
 
 @keyframes blink {
@@ -582,7 +508,6 @@ html:not(.dark) .swipe-deck>div[class*="language-"]::after {
 .swipe-deck .hint {
     grid-column: 1 / -1;
     margin: 0;
-    max-width: none;
     text-align: center;
     font-size: 12px;
     letter-spacing: 0.06em;
@@ -634,7 +559,7 @@ html:not(.dark) .swipe-deck>div[class*="language-"]::after {
     min-width: max-content;
 }
 
-.sticky-table :is(th, td):first-child {
+.sticky-table :is(th, td):where(:first-child) {
     position: sticky;
     left: 0;
     max-width: 250px;
@@ -643,24 +568,17 @@ html:not(.dark) .swipe-deck>div[class*="language-"]::after {
     text-wrap: nowrap;
     text-overflow: ellipsis;
     transition: max-width 150ms;
+    background-color: inherit;
 }
 
 .sticky-table.is-scrolled :is(th, td):first-child {
     max-width: 150px;
 }
 
-.sticky-table td:first-child {
-    background-color: var(--vp-c-bg);
-}
-
-.sticky-table tr:nth-child(2n) td:first-child,
-.sticky-table thead th {
-    background-color: var(--vp-c-bg-soft);
-}
-
 .sticky-table thead th {
     position: sticky;
     top: -4px;
+    background-color: var(--vp-c-bg-soft);
 }
 
 .sticky-table thead th:first-child {

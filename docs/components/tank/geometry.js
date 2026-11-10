@@ -4,8 +4,8 @@ import { RUNNING_GEAR } from './config.js'
 const SV = SVG_MM
 const svgHullMinX = Math.min(...SV.hull.map((p) => p[0]))
 const svgHullMaxX = Math.max(...SV.hull.map((p) => p[0]))
-const svgHullMinY = Math.min(...SV.hull.map((p) => p[1])) // deck line (y points down)
-const svgHullMaxY = Math.max(...SV.hull.map((p) => p[1])) // skirt / belly
+const svgHullMinY = Math.min(...SV.hull.map((p) => p[1])) // Hull deck Y in SVG (mm, y down)
+const svgHullMaxY = Math.max(...SV.hull.map((p) => p[1])) // Hull skirt Y in SVG (mm, y down)
 
 function polygonCentroid(pts) {
     let twiceArea = 0
@@ -25,23 +25,17 @@ function polygonCentroid(pts) {
 
 function buildRunningGear(rg) {
     const L = rg.hullPixelLength
-
-    // Pixels per SVG millimetre: the hull is scaled to `hullPixelLength`.
-    const k = L / (svgHullMaxX - svgHullMinX)
-
-    // SVG (mm) -> raw simulation frame (y down, deck at y = 0).
+    const k = L / (svgHullMaxX - svgHullMinX) // Scale factor (px/mm)
     const raw = (p) => ({ x: (p[0] - svgHullMinX) * k, y: (p[1] - svgHullMinY) * k })
 
     const hullPoints = SV.hull.map(raw)
     const hullPhysics = SV.hullPhysics.map(raw)
     const turret = SV.turret.map(raw)
-    // Each camo field is a polygon; pair it with its source fill colour.
     const camo = SV.camo.map((field, i) => ({
         fill: SV.camoFills[i % SV.camoFills.length],
         points: field.map(raw),
     }))
 
-    // Derived running-gear dimensions (all in simulation pixels).
     const wheelRadius = rg.wheelRadiusRatio * L
     const wheelSpacing = rg.wheelSpacingRatio * L
     const idlerRadius = rg.idlerRadiusRatio * L
@@ -49,12 +43,9 @@ function buildRunningGear(rg) {
     const idlerRise = rg.idlerRiseRatio * L
     const restLength = rg.restLengthRatio * L
 
-    // Deck = top of the hull; skirt = bottom. Both read off the scaled SVG.
     const skirtY = (svgHullMaxY - svgHullMinY) * k
     const hubCentreY = skirtY + hubDrop
 
-    // Road wheel mounts, spread evenly about the hull centre. Built in the raw
-    // SVG frame (hull spans 0..hullPixelLength), so they recentre with the hull.
     const span = (rg.wheelCount - 1) * wheelSpacing
     const halfSpan = span / 2
     const hullCentreX = L / 2
@@ -67,15 +58,12 @@ function buildRunningGear(rg) {
         })
     }
 
-    // Idlers sit at the ends, lifted above the wheel-centre line.
     const idlers = [
         { x: hullCentreX + rg.frontIdlerXRatio * L, y: hubCentreY - idlerRise, radius: idlerRadius },
         { x: hullCentreX + rg.rearIdlerXRatio * L, y: hubCentreY - idlerRise, radius: idlerRadius },
     ]
 
-    // Matter recentres a body's vertices on their centroid and treats
-    // `body.position` as that centroid, so the whole running gear must live in
-    // that same centroid-relative frame.
+    // Re-center all local geometry on the physics hull centroid (px) to match Matter's body origin.
     const c = polygonCentroid(hullPhysics)
     const rel = (p) => ({ x: p.x - c.x, y: p.y - c.y })
     const relArr = (arr) => arr.map(rel)
@@ -85,12 +73,9 @@ function buildRunningGear(rg) {
     for (const w of wheels) { w.x -= c.x; w.y -= c.y }
     for (const i of idlers) { i.x -= c.x; i.y -= c.y }
 
-    // The turret and camouflage are in the same frame as the hull, so they get the
-    // same transform. The turret's `roof` is its top edge.
     const turretPoints = relArr(turret)
     const turretRoof = Math.min(...turretPoints.map((p) => p.y))
 
-    // Barrel anchor and muzzle in the same local frame.
     const anchor = rel(raw(SV.gunAnchor))
     const noseX = Math.max(...hull.map((p) => p.x))
     const gun = {
@@ -100,15 +85,10 @@ function buildRunningGear(rg) {
         muzzleY: anchor.y,
     }
 
-    // Camouflage fields, recentred like the hull.
     const camoFields = camo.map((field) => ({ fill: field.fill, points: relArr(field.points) }))
 
-    // The lower side panel behind the road wheels ("sponson"). It hangs from the
-    // hull's belly down over the road wheels, and is trapezoidal: its lower edge
-    // is shorter than its top, inset by `sponsonTaperRatio` each side.
     const wheelTopY = hubCentreY - wheelRadius
     const sponsorBottomY = wheelTopY + 2 * wheelRadius * rg.sponsonDropRatio
-    // The belly is the hull's lowest edge; take its two extreme x points.
     const belly = hullPoints
         .filter((p) => p.y >= skirtY - 1)
         .sort((a, b) => a.x - b.x)
@@ -116,16 +96,13 @@ function buildRunningGear(rg) {
     const bellyFront = belly[belly.length - 1]
     const taper = (bellyFront.x - bellyRear.x) * rg.sponsonTaperRatio
     const sponsonRaw = [
-        { x: bellyRear.x, y: bellyRear.y - 3 }, // top-rear, tucked under the hull
-        { x: bellyFront.x, y: bellyFront.y - 3 }, // top-front
-        { x: bellyFront.x - taper, y: sponsorBottomY }, // bottom-front (inset)
-        { x: bellyRear.x + taper, y: sponsorBottomY }, // bottom-rear (inset)
+        { x: bellyRear.x, y: bellyRear.y - 3 },
+        { x: bellyFront.x, y: bellyFront.y - 3 },
+        { x: bellyFront.x - taper, y: sponsorBottomY },
+        { x: bellyRear.x + taper, y: sponsorBottomY },
     ]
     const sponson = relArr(sponsonRaw)
 
-    // Rectangular fittings typical of the side profile: stowage bins on the upper
-    // hull, a driver's hatch, a headlight and a couple of tow hooks. Positions are
-    // fractions of the body box so they scale with the art.
     const x0 = Math.min(...hull.map((p) => p.x))
     const x1 = Math.max(...hull.map((p) => p.x))
     const yTop = Math.min(...hull.map((p) => p.y))
@@ -157,27 +134,16 @@ function buildRunningGear(rg) {
 
 const GEAR = buildRunningGear(RUNNING_GEAR)
 
-// Road wheels: mount position relative to the hull centre, and radius.
-export const WHEEL_MOUNTS = GEAR.wheels
+export const WHEEL_MOUNTS = GEAR.wheels // Road-wheel mounts in hull-local frame (px)
+export const IDLER_MOUNTS = GEAR.idlers // Fixed idler mounts in hull-local frame (px)
+export const HULL_POINTS = GEAR.hullPhysics // Physics hull polygon in hull-local frame (px)
+export const HULL_ART = GEAR.hullPoints // Drawable hull polygon in hull-local frame (px)
 
-// Idler wheels ("top wheels"): fixed to the chassis (not sprung).
-export const IDLER_MOUNTS = GEAR.idlers
-
-// Chassis outline for the physics body, in body-local coordinates (y down).
-export const HULL_POINTS = GEAR.hullPhysics
-
-// The drawable hull outline (higher detail than the physics body).
-export const HULL_ART = GEAR.hullPoints
-
-// The turret outline (visual overlay on the hull), plus its top edge.
 export const TURRET = {
     points: GEAR.turretPoints,
     roof: GEAR.turretRoof,
 }
 
-// Where the barrel sits in body-local coords, for drawing and for spawning
-// shells. The gun axis leaves the turret at `anchorX/Y` and projects past the
-// nose to `muzzleX`.
 export const GUN = {
     anchorX: GEAR.gun.anchorX,
     anchorY: GEAR.gun.anchorY,
@@ -186,19 +152,14 @@ export const GUN = {
     radius: RUNNING_GEAR.barrelRadiusRatio * RUNNING_GEAR.hullPixelLength,
 }
 
-// Camouflage fields painted over the hull, in the shared body-local frame.
 export const CAMO = GEAR.camo
-
-// The lower side panel behind the road wheels, and the small rectangular
-// fittings on the upper hull (see buildRunningGear).
 export const SPONSON = GEAR.sponson
 export const DECOR = GEAR.decor
 
-// Bounding box of the drawable hull, for the renderer's art.
 const hullMinX = Math.min(...GEAR.hullPoints.map((p) => p.x))
 const hullMaxX = Math.max(...GEAR.hullPoints.map((p) => p.x))
-const hullMinY = Math.min(...GEAR.hullPoints.map((p) => p.y)) // deck line
-const hullMaxY = Math.max(...GEAR.hullPoints.map((p) => p.y)) // skirt line
+const hullMinY = Math.min(...GEAR.hullPoints.map((p) => p.y))
+const hullMaxY = Math.max(...GEAR.hullPoints.map((p) => p.y))
 
 export const BODY = {
     minX: hullMinX,
@@ -208,21 +169,15 @@ export const BODY = {
     depth: hullMaxY - hullMinY,
 }
 
-// Suspension geometry, in pixels, derived from the running gear so the mounts
-// and wheel centres always agree.
 export const SUSPENSION = {
-    restLength: RUNNING_GEAR.restLengthRatio * RUNNING_GEAR.hullPixelLength,
-    fullyCompressedLength: RUNNING_GEAR.fullyCompressedRatio * RUNNING_GEAR.hullPixelLength,
-    fullyExtendedLength: RUNNING_GEAR.fullyExtendedRatio * RUNNING_GEAR.hullPixelLength,
+    restLength: RUNNING_GEAR.restLengthRatio * RUNNING_GEAR.hullPixelLength, // Unloaded spring length (px)
+    fullyCompressedLength: RUNNING_GEAR.fullyCompressedRatio * RUNNING_GEAR.hullPixelLength, // Min spring length (px)
+    fullyExtendedLength: RUNNING_GEAR.fullyExtendedRatio * RUNNING_GEAR.hullPixelLength, // Max spring length (px)
 }
 
-// Track construction, wrapping whatever discs the running gear produces.
 export const TRACK = {
     padLength: RUNNING_GEAR.trackPadLength,
     clearance: RUNNING_GEAR.trackClearance,
     scrollRate: RUNNING_GEAR.trackScrollRate,
     minPads: RUNNING_GEAR.trackMinPads,
 }
-
-// World scale for the HUD: pixels per real-world metre.
-export const PIXELS_PER_METRE = RUNNING_GEAR.hullPixelLength / RUNNING_GEAR.hullLengthMetres

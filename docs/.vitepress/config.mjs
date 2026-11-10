@@ -1,13 +1,11 @@
 import { defineConfig } from "vitepress"
 
-// https://vitepress.dev/reference/site-config
 export default defineConfig({
     title: "Tank",
     description: "Table Abstraction and Navigation Kit",
     base: "/tank/",
     srcExclude: ["components/**"],
     themeConfig: {
-        // https://vitepress.dev/reference/default-theme-config
         search: {
             provider: 'local',
             options: {
@@ -51,6 +49,11 @@ export default defineConfig({
     },
 
     head: [['link', { rel: 'icon', href: 'favicon.ico' }]],
+
+    transformHead({ head }) {
+        const i = head.findIndex(([, a]) => a?.href?.includes('/Game.'))
+        if (i >= 0) head.splice(i, 1)
+    },
 
     markdown: {
         config(md) {

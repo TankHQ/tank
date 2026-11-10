@@ -1,7 +1,4 @@
-// A pool of short-lived visual particles (dust, muzzle flash, impact debris).
-//
-// Each particle is a simple point with velocity, gravity, lifetime and colour.
-// The field owns them all; callers just spawn named kinds.
+// Short-lived particle pool; positions in px, velocities in px/frame, life in s.
 export class ParticleField {
     constructor() {
         this.particles = []
@@ -18,7 +15,6 @@ export class ParticleField {
         })
     }
 
-    // Exhaust puff trailing behind the hull.
     exhaust(x, y, groundSpeed) {
         this._spawn({
             x, y,
@@ -31,7 +27,6 @@ export class ParticleField {
         })
     }
 
-    // Muzzle flash and smoke when the cannon fires.
     muzzleFlash(x, y, direction) {
         for (let i = 0; i < 26; i++) {
             const a = direction + (Math.random() - 0.5) * 0.9
@@ -48,7 +43,6 @@ export class ParticleField {
         }
     }
 
-    // Burst of debris where a shell lands.
     impact(x, y) {
         for (let i = 0; i < 14; i++) {
             this._spawn({

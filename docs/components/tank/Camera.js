@@ -1,7 +1,7 @@
 import { CAMERA } from './config.js'
 import { clamp, mix } from './util.js'
 
-const BASE_FRAME_MS = 1000 / 60
+const BASE_FRAME_MS = 1000 / 60 // 60 Hz reference frame duration (ms)
 
 function smoothFactor(perFrame, dt) {
     return 1 - Math.pow(1 - perFrame, dt / BASE_FRAME_MS)
@@ -17,9 +17,7 @@ export class Camera {
         this.shakeDecay = 0.88
     }
 
-    // `dt` is the frame's wall-clock time in ms; `speed01` is the tank's forward
-    // speed as a fraction of the cruise speed (negative when reversing), used to
-    // bias the framing.
+    // Update camera world origin (px); speed01 is normalized velocity (-1..1), dt in ms.
     follow(pose, viewportWidth, viewportHeight, speed01 = 0, dt = BASE_FRAME_MS) {
         const { baseTargetX, forwardTargetX, reverseTargetX, targetY, framingSmoothing, smoothingX, smoothingY, idleSmoothing } = this.cfg
         const safeDt = clamp(dt, 1, 100)
@@ -36,7 +34,7 @@ export class Camera {
 
         if (pose) {
             this.x = mix(this.x, pose.x - viewportWidth * this.targetX, kX)
-            this.y = mix(this.y, pose.y - viewportHeight * targetY, kY)
+            this.y = mix(this.y, mix(300, pose.y, 0.25) - viewportHeight * targetY, kY)
         } else {
             this.x = mix(this.x, -viewportWidth * this.targetX, kIdle)
         }
@@ -48,7 +46,7 @@ export class Camera {
         this.shake = Math.min(16, this.shake + amount)
     }
 
-    // Random offset applied this frame, from the current shake energy.
+    // Random jitter offset (px) for the current frame.
     shakeOffset() {
         if (this.shake === 0) return { x: 0, y: 0 }
         return { x: (Math.random() - 0.5) * this.shake, y: (Math.random() - 0.5) * this.shake }
@@ -57,7 +55,7 @@ export class Camera {
     reset(pose = null, viewportWidth = 0, viewportHeight = 0) {
         this.targetX = this.cfg.baseTargetX
         this.x = pose ? pose.x - viewportWidth * this.targetX : 0
-        this.y = pose ? pose.y - viewportHeight * this.cfg.targetY : 0
+        this.y = pose ? mix(300, pose.y, 0.25) - viewportHeight * this.cfg.targetY : 0
         this.shake = 0
     }
 }

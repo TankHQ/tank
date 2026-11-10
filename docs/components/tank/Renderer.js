@@ -4,7 +4,6 @@ import { TAU, clamp, mix } from './util.js'
 import { Background } from './Background.js'
 import { tracksMatrix, bodyMatrix } from './transform.js'
 
-// The drawable hull and turret outlines, straight from the reference SVG.
 const HULL_POINTS = HULL_ART
 const TURRET_POINTS = TURRET.points
 const TURRET_ROOF = TURRET.roof
@@ -14,10 +13,8 @@ const GUN_ANCHOR_X = GUN.anchorX
 const MUZZLE_X = GUN.muzzleX
 const BARREL_R = GUN.radius
 
-// Small helpers for drawing in the body-local frame (y points down).
 const toPoints = (pts) => pts.map((p) => ({ x: p.x, y: p.y }))
 
-// Draw a filled + stroked polygon from an array of [x, y] pairs.
 function path(ctx, pts) {
     ctx.beginPath()
     ctx.moveTo(pts[0].x, pts[0].y)
@@ -30,9 +27,9 @@ export class Renderer {
         this.canvas = canvas
         this.ctx = canvas.getContext('2d')
         this.base = base
-        this.dpr = 1
-        this.width = 0
-        this.height = 0
+        this.dpr = 1 // Device pixel ratio (clamped to 1..2)
+        this.width = 0 // Viewport width (CSS px)
+        this.height = 0 // Viewport height (CSS px)
         this.images = { body: null, wheel: null, turret: null }
         this._loadImage('body', 'game/body.png')
         this._loadImage('wheel', 'game/wheel.png')
@@ -57,8 +54,6 @@ export class Renderer {
         this.canvas.style.height = this.height + 'px'
     }
 
-    // --- world ----------------------------------------------------------------
-
     _drawTerrain(ctx, groundY, cameraX, cameraY) {
         const { width: W, height: H } = this
         const x0 = cameraX - 40
@@ -74,10 +69,7 @@ export class Renderer {
         }
         ctx.lineTo(x1, cameraY + H + 40)
         ctx.closePath()
-        const g = ctx.createLinearGradient(0, cameraY + H * 0.4, 0, cameraY + H)
-        g.addColorStop(0, PALETTE.soil)
-        g.addColorStop(1, PALETTE.soilDeep)
-        ctx.fillStyle = g
+        ctx.fillStyle = getComputedStyle(this.canvas).getPropertyValue('--vp-c-bg').trim() || '#181412'
         ctx.fill()
 
         ctx.beginPath()
@@ -91,10 +83,6 @@ export class Renderer {
         ctx.stroke()
     }
 
-    // --- hull and turret ------------------------------------------------------
-
-    // Paint the hull base, then lay the reference camouflage fields over it. Both
-    // are clipped to the hull outline so no field bleeds past the body.
     _drawHullArt(ctx) {
         ctx.save()
         path(ctx, HULL_POINTS)
@@ -107,38 +95,30 @@ export class Renderer {
         ctx.fillStyle = g
         ctx.fillRect(BODY.minX - 40, BODY.deckY - 40, BODY.length + 80, BODY.depth + 80)
 
-        // The reference camouflage fields, painted as flattened polygons in the
-        // order the source SVG layers them.
         CAMO.forEach((field) => {
             path(ctx, toPoints(field.points))
             ctx.fillStyle = field.fill ?? '#bd9868'
             ctx.fill()
         })
 
-        // Panel line work and the small rectangular fittings typical of the side
-        // profile (stowage bins, driver's hatch, headlight, tow hooks).
         this._drawDecor(ctx, HULL_POINTS)
 
-        // Top highlight and lower shadow bands.
         ctx.fillStyle = 'rgba(255,250,235,0.16)'
         ctx.fillRect(BODY.minX - 40, BODY.deckY, BODY.length + 80, 4)
         ctx.fillStyle = 'rgba(60,40,18,0.24)'
         ctx.fillRect(BODY.minX - 40, BODY.skirtY - 6, BODY.length + 80, 6)
         ctx.restore()
 
-        // Outline on top of the fill.
         path(ctx, HULL_POINTS)
         ctx.lineWidth = 2
         ctx.strokeStyle = PALETTE.hullLine
         ctx.stroke()
     }
 
-    // The rectangular fittings on the upper hull, in the body-local frame.
     _drawDecor(ctx, hull) {
         const x0 = Math.min(...hull.map((p) => p.x))
         const y0 = Math.min(...hull.map((p) => p.y))
         const y1 = Math.max(...hull.map((p) => p.y))
-        // A baseline along the skirt for the foot of the bins.
         const panelTop = y0 + (y1 - y0) * 0.14
 
         for (const d of DECOR) {
@@ -151,7 +131,6 @@ export class Renderer {
                 ctx.fillStyle = grad
                 ctx.fillRect(d.x, d.y, d.w, d.h)
                 ctx.strokeRect(d.x, d.y, d.w, d.h)
-                // Latch handle.
                 ctx.beginPath()
                 ctx.moveTo(d.x + d.w * 0.2, d.y + d.h * 0.18)
                 ctx.lineTo(d.x + d.w * 0.8, d.y + d.h * 0.18)
@@ -175,7 +154,6 @@ export class Renderer {
             }
         }
 
-        // Vertical panel divisions across the side.
         ctx.strokeStyle = PALETTE.panel
         ctx.lineWidth = 1
         const panels = 8
@@ -188,9 +166,7 @@ export class Renderer {
         }
     }
 
-    // The lower side panel behind the wheels, hanging from the hull belly down
-    // over the upper part of the road wheels. Drawn between the wheels and the
-    // hull so it covers the wheel tops and the gap between them.
+    // Lower hull sponson drawn behind road wheels in body-local space (px).
     _drawSponson(ctx, pose) {
         ctx.save()
         ctx.transform(...bodyMatrix(pose))
@@ -228,35 +204,26 @@ export class Renderer {
             return
         }
 
-        // The cannon, grown forward from the turret's gun anchor. A tapered barrel
-        // with a thermal sleeve, a fume extractor and a muzzle reference sensor.
         ctx.save()
         const sleeveEnd = GUN_ANCHOR_X + (MUZZLE_X - GUN_ANCHOR_X) * 0.72
         const feX = MUZZLE_X - BARREL_R * 5.0
-        // Breech / mantlet block where the gun meets the turret.
         ctx.fillStyle = PALETTE.barrel
         ctx.fillRect(GUN_ANCHOR_X - BARREL_R * 0.4, GUN_Y - BARREL_R * 1.7, BARREL_R * 2.4, BARREL_R * 3.4)
         ctx.strokeStyle = PALETTE.hullLine
         ctx.lineWidth = 1
         ctx.strokeRect(GUN_ANCHOR_X - BARREL_R * 0.4, GUN_Y - BARREL_R * 1.7, BARREL_R * 2.4, BARREL_R * 3.4)
-        // Barrel.
         ctx.fillStyle = PALETTE.barrel
         ctx.fillRect(GUN_ANCHOR_X + BARREL_R * 1.8, GUN_Y - BARREL_R, sleeveEnd - GUN_ANCHOR_X - BARREL_R * 1.8, BARREL_R * 2)
         ctx.fillRect(sleeveEnd - BARREL_R * 0.4, GUN_Y - BARREL_R * 0.72, MUZZLE_X - sleeveEnd + BARREL_R * 0.4, BARREL_R * 1.44)
-        // Thermal-sleeve highlight.
         ctx.fillStyle = PALETTE.barrelHi
         ctx.fillRect(GUN_ANCHOR_X + BARREL_R * 2.2, GUN_Y - BARREL_R * 0.7, sleeveEnd - GUN_ANCHOR_X - BARREL_R * 3.4, BARREL_R * 0.4)
-        // Fume extractor bulge.
         ctx.fillStyle = PALETTE.barrel
         ctx.fillRect(feX, GUN_Y - BARREL_R * 1.5, BARREL_R * 3.6, BARREL_R * 3)
         ctx.strokeRect(feX, GUN_Y - BARREL_R * 1.5, BARREL_R * 3.6, BARREL_R * 3)
-        // Muzzle brake / reference sensor.
         ctx.fillRect(MUZZLE_X - BARREL_R * 1.6, GUN_Y - BARREL_R * 1.25, BARREL_R * 1.6, BARREL_R * 2.5)
         ctx.strokeRect(MUZZLE_X - BARREL_R * 1.6, GUN_Y - BARREL_R * 1.25, BARREL_R * 1.6, BARREL_R * 2.5)
         ctx.restore()
 
-        // Turret wedge, camo-painted like the hull. The source outline already
-        // carries the roof details (cupola and hatch steps).
         ctx.save()
         path(ctx, TURRET_POINTS)
         ctx.clip()
@@ -285,7 +252,6 @@ export class Renderer {
             return
         }
 
-        // Tyre/rim.
         ctx.beginPath()
         ctx.arc(0, 0, radius, 0, TAU)
         ctx.fillStyle = PALETTE.wheel
@@ -295,8 +261,6 @@ export class Renderer {
         ctx.stroke()
 
         if (isIdler) {
-            // Return idlers read as spoked discs: a rim, spokes and a small hub, with
-            // no red cap, so they are clearly the "top wheels" of the reference.
             ctx.beginPath()
             ctx.arc(0, 0, radius * 0.82, 0, TAU)
             ctx.fillStyle = PALETTE.wheelRim
@@ -320,13 +284,11 @@ export class Renderer {
             return
         }
 
-        // Road-wheel disc, then the red hub cap.
         ctx.beginPath()
         ctx.arc(0, 0, radius * 0.66, 0, TAU)
         ctx.fillStyle = PALETTE.wheelRim
         ctx.fill()
 
-        // Radial lightening holes around the wheel.
         ctx.fillStyle = 'rgba(60,46,24,0.5)'
         for (let i = 0; i < 5; i++) {
             const a = (i / 5) * TAU + 0.3
@@ -406,12 +368,11 @@ export class Renderer {
         }
     }
 
-    // --- frame ----------------------------------------------------------------
-
     render({ camera, view, groundY, particles, shells }) {
         const ctx = this.ctx
         const { width: W, height: H } = this
         ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
+        ctx.clearRect(0, 0, W, H)
 
         this.background.draw(ctx, camera.x, W, H)
 
@@ -430,11 +391,7 @@ export class Renderer {
             ctx.fill()
             ctx.restore()
 
-            // Running gear first: the side skirt (part of the hull) is drawn over it
-            // so the top half of the wheels and the top run of the track are hidden.
-            // The belt, wheels and idlers share the tracks transform (rotation and
-            // scale about the tank's zero point). The sponson sits behind the
-            // wheels, so it is drawn before them.
+            // Draw sponson, belt, and wheels before the hull so the side skirt masks the upper track run.
             if (!this.images.body) this._drawSponson(ctx, view.pose)
             ctx.save()
             ctx.transform(...tracksMatrix(view.pose))
@@ -447,11 +404,5 @@ export class Renderer {
         }
         this._drawParticles(ctx, particles, shells)
         ctx.restore()
-
-        const vignette = ctx.createRadialGradient(W / 2, H / 2, H * 0.4, W / 2, H / 2, H * 0.95)
-        vignette.addColorStop(0, 'rgba(0,0,0,0)')
-        vignette.addColorStop(1, 'rgba(0,0,0,0.45)')
-        ctx.fillStyle = vignette
-        ctx.fillRect(0, 0, W, H)
     }
 }

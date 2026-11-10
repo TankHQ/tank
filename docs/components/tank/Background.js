@@ -22,21 +22,13 @@ export class Background {
         return sum / norm
     }
 
-    _drawSky(ctx, W, H) {
-        const { sky } = this.cfg
-        const g = ctx.createLinearGradient(0, 0, 0, H)
-        for (let i = 0; i < sky.length; i++) g.addColorStop(i / (sky.length - 1), sky[i])
-        ctx.fillStyle = g
-        ctx.fillRect(0, 0, W, H)
-    }
-
     _drawSun(ctx, W, H) {
         const { sun } = this.cfg
         const x = W * sun.x
         const y = H * sun.y
         const r = sun.radius * H
 
-        const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 6)
+        const glow = ctx.createRadialGradient(x, y, 0, x, y, Math.min(r * 6, y))
         glow.addColorStop(0, sun.glow)
         glow.addColorStop(1, 'rgba(255,196,120,0)')
         ctx.fillStyle = glow
@@ -52,7 +44,7 @@ export class Background {
         const step = this.cfg.step
         const camWorld = cameraX * layer.parallax
         const screenX = (worldX) => worldX - camWorld
-        // Vertices sit at fixed world positions, so the profile only translates.
+        // Sample at fixed world X multiples of step (px) so peaks only translate.
         const i0 = Math.floor(camWorld / step) - 1
         const i1 = Math.ceil((camWorld + W) / step) + 1
 
@@ -70,8 +62,6 @@ export class Background {
         ctx.lineTo(screenX(i1 * step), H + 4)
         ctx.closePath()
 
-        // Gradient spans the visible band (peak -> foot), so the light foot tone is
-        // not wasted below the ground line.
         const g = ctx.createLinearGradient(0, baseY - amp, 0, baseY)
         g.addColorStop(0, layer.peak)
         g.addColorStop(1, layer.base)
@@ -80,7 +70,6 @@ export class Background {
     }
 
     draw(ctx, cameraX, W, H) {
-        this._drawSky(ctx, W, H)
         this._drawSun(ctx, W, H)
         for (const layer of this.cfg.layers) this._drawLayer(ctx, W, H, cameraX, layer)
     }

@@ -1,28 +1,22 @@
 import { valueNoise } from './util.js'
 
-// The average ground height. The height function oscillates around this.
-const BASE_Y = 360
+const BASE_Y = 360 // Mean terrain elevation (world px, y down)
 
-// Procedural, effectively infinite terrain.
-//
-// The height function is shared by physics and rendering, so the drawn surface
-// is exactly what the wheels probe against. Physics collision bodies are
-// streamed in chunks around the camera and discarded behind it.
 export class Terrain {
 	constructor({ Matter, world, collisionCategories }) {
 		this._Bodies = Matter.Bodies
 		this._Composite = Matter.Composite
 		this._categories = collisionCategories
 
-		this._chunkWidth = 288
-		this._segmentWidth = 24
+		this._chunkWidth = 288 // Horizontal chunk width (px)
+		this._segmentWidth = 24 // Collision segment width (px)
 		this._chunks = new Map()
 
 		this._ground = this._Composite.create({ label: 'ground' })
 		this._Composite.add(world, this._ground)
 	}
 
-	// Ground height at a world x. Pure function of x; no state.
+	// Ground elevation (world px, y down) at world X (px).
 	heightAt(x) {
 		let h = 0
 		h += 62 * Math.sin(x * 0.0009)
@@ -69,7 +63,7 @@ export class Terrain {
 		this._chunks.set(chunkIndex, bodies)
 	}
 
-	// Stream collision chunks in around the camera and release distant ones.
+	// Stream collision chunks within ±1600 px of cameraX (px).
 	update(cameraX) {
 		const span = 1600
 		const lo = Math.floor((cameraX - span) / this._chunkWidth)

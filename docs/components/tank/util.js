@@ -3,7 +3,7 @@ export const clamp = (value, min, max) => (value < min ? min : value > max ? max
 export const mix = (a, b, t) => a + (b - a) * t
 export const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y)
 
-// Interpolate between two angles along the shortest path (handles wrap-around).
+// Shortest-path angular interpolation (rad, t in 0..1).
 export function mixAngle(a, b, t) {
     let d = (b - a) % TAU
     if (d > Math.PI) d -= TAU
@@ -11,7 +11,7 @@ export function mixAngle(a, b, t) {
     return a + d * t
 }
 
-// Rotate a local point by an angle and translate it to a world position.
+// Transform local (localX, localY) (px) by origin (originX, originY) (px) and angle (rad).
 export function toWorld(originX, originY, angle, localX, localY) {
     const cos = Math.cos(angle)
     const sin = Math.sin(angle)
@@ -21,12 +21,12 @@ export function toWorld(originX, originY, angle, localX, localY) {
     }
 }
 
-// Deterministic 1-D value noise, used by the terrain generator.
 function hash(n) {
     const x = Math.sin(n * 127.1 + 311.7) * 43758.5453123
     return x - Math.floor(x)
 }
 
+// Deterministic 1D smoothstep value noise in 0..1.
 export function valueNoise(x) {
     const i = Math.floor(x)
     const f = x - i

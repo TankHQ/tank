@@ -1,4 +1,3 @@
-// Projectile shells fired by the cannon, and their impacts.
 export class ShellManager {
     constructor({ Matter, world, collisionCategories, particles }) {
         this.Matter = Matter
@@ -6,11 +5,11 @@ export class ShellManager {
         this.categories = collisionCategories
         this.particles = particles
         this.shells = []
-        this._lifeSeconds = 2.6
-        this._speed = 30
+        this._lifeSeconds = 2.6 // Shell time-to-live (s)
+        this._speed = 30 // Muzzle speed (px/frame)
     }
 
-    // Fired from a muzzle position/direction (see Tank.muzzle).
+    // Spawn shell at world muzzle (x, y) (px) along direction dir (rad).
     launch({ x, y, dir }) {
         const { Bodies, Composite } = this.Matter
         const body = Bodies.circle(x, y, 5, {
@@ -20,7 +19,6 @@ export class ShellManager {
             frictionAir: 0.0015,
             label: 'shell',
             collisionFilter: { category: this.categories.shell, mask: this.categories.ground },
-            // Matter applies option velocity directly, so no separate setVelocity call.
             velocity: { x: Math.cos(dir) * this._speed, y: Math.sin(dir) * this._speed },
         })
         Composite.add(this.world, body)

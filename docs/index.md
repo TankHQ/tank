@@ -67,8 +67,6 @@ const drivers = [
 ]
 </script>
 
-<TankGame />
-
 Welcome to the armored division, commander. Tank (**T**able **A**bstraction & **N**avigation **K**it) is the Rust data layer built for teams fighting across multiple fronts. Whether you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or holding a Postgres stronghold, you define your entities once and issue the same explicit orders everywhere. You call the targets, Tank and your driver handle the ballistics.
 
 <dl class="home-stats">
@@ -162,3 +160,5 @@ Sponsorship helps keep Tank maintained, well-tested and moving toward new capabi
 ###### 06 · Get a joke
 
 <TankJoke />
+
+<TankGame />

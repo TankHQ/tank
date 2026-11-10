@@ -1,21 +1,13 @@
 import { TAU, distance } from './util.js'
 
-// The track belt that wraps the wheels.
-//
-// The belt is not simulated as bodies or constraints. Each frame its shape is
-// rebuilt as the convex hull of every wheel and idler disc (inflated by a small
-// clearance). Sampling that hull at a fixed arc spacing yields many short
-// segments, so the belt drapes around each wheel and bends smoothly like a
-// chain. The pads then scroll around the loop at ground speed.
 export class Track {
     constructor({ Matter, trackConfig }) {
         this._Vertices = Matter.Vertices
         this._track = trackConfig
-        this.phase = 0
+        this.phase = 0 // Arc-length scroll offset along the belt (px)
     }
 
-    // Convex hull of the inflated discs. Returns null if there are too few points
-    // to form a loop.
+    // Convex hull of wheel/idler discs inflated by track clearance (px).
     _outline(discs) {
         const points = []
         for (const disc of discs) {
@@ -45,7 +37,6 @@ export class Track {
         const count = Math.max(this._track.minPads, Math.round(total / this._track.padLength))
         const spacing = total / count
 
-        // Cumulative arc length at each vertex, for locating a pad by arc position.
         const cumulative = [0]
         for (let i = 0; i < n; i++) cumulative.push(cumulative[i] + edgeLengths[i])
 
@@ -59,8 +50,7 @@ export class Track {
             const a = hull[seg]
             const b = hull[(seg + 1) % n]
             const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
-            // Keep the belt out of the ground: y points down, so a pad below the
-            // surface (larger y) is lifted up to meet it.
+            // Clamp pads above terrain surface (world px, y down).
             if (groundY) {
                 const surface = groundY(p.x)
                 if (p.y > surface) p.y = surface
@@ -68,8 +58,7 @@ export class Track {
             loop.push(p)
         }
 
-        // Lowest point on the loop: the tangent there tells us the flow direction,
-        // so the belt scrolls the same way the ground moves underneath.
+        // Determine loop winding sign (+1 or -1) from tangent at lowest vertex.
         let lowest = 0
         for (let i = 1; i < loop.length; i++) if (loop[i].y > loop[lowest].y) lowest = i
         const before = loop[(lowest - 1 + loop.length) % loop.length]
@@ -79,8 +68,7 @@ export class Track {
         return { loop, spacing, count, flowSign }
     }
 
-    // Scroll the belt according to ground speed. `dt` is wall-clock time for this
-    // rendered frame, so the scroll speed is refresh-rate independent.
+    // Advance belt phase (px) from groundSpeed (px/frame) and frame dt (ms).
     scroll(loop, groundSpeed, dt) {
         if (!loop) return
         const period = loop.spacing * loop.count
