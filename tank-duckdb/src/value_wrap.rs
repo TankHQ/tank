@@ -9,8 +9,8 @@ use std::{
     slice,
 };
 use tank_core::{
-    CollectionType, Error, ErrorContext, Interval, MapType, Result, StructType, TableRef, Value,
-    as_c_string,
+    CollectionType, Error, Interval, MapType, Result, StructType, TableRef, Value, as_c_string,
+    decimal_from_scaled,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time, macros::date};
 
@@ -69,6 +69,10 @@ impl ValueWrap<'_> {
         }
     }
 
+    pub(crate) fn to_decimal(num: i128, scale: u8) -> Option<Decimal> {
+        decimal_from_scaled(num, scale as u32).ok()
+    }
+
     #[inline(always)]
     pub(crate) fn from_date(v: &Date) -> duckdb_date {
         duckdb_date {
@@ -76,10 +80,8 @@ impl ValueWrap<'_> {
         }
     }
 
-    #[inline(always)]
-    pub(crate) fn to_date(days: i32) -> Result<Date> {
-        Date::from_julian_day(days.saturating_add(Self::EPOCH_JULIAN_DAY))
-            .context("While extracting a date value")
+    pub(crate) fn to_date(days: i32) -> Option<Date> {
+        Date::from_julian_day(days.saturating_add(Self::EPOCH_JULIAN_DAY)).ok()
     }
 
     #[inline(always)]
@@ -90,10 +92,9 @@ impl ValueWrap<'_> {
         }
     }
 
-    #[inline(always)]
-    pub(crate) fn to_time_ns(nanos: i64) -> Result<Time> {
+    pub(crate) fn to_time_ns(nanos: i64) -> Option<Time> {
         if (nanos as u64) >= 86_400_000_000_000 {
-            return Err(anyhow!("While extracting a time value: out of range"));
+            return None;
         }
         let (secs, ns) = (
             (nanos as u64 / 1_000_000_000) as u32,
@@ -105,7 +106,7 @@ impl ValueWrap<'_> {
             (secs % 60) as u8,
             ns,
         )
-        .context("While extracting a time value")
+        .ok()
     }
 
     #[inline(always)]
@@ -116,13 +117,19 @@ impl ValueWrap<'_> {
         }
     }
 
-    #[inline(always)]
-    pub(crate) fn to_timestamp(micros: i64) -> Result<PrimitiveDateTime> {
-        let days = i32::try_from(micros.div_euclid(86_400_000_000))
-            .context("While extracting a timestamp")?;
-        Ok(PrimitiveDateTime::new(
+    pub(crate) fn to_timestamp(micros: i64) -> Option<PrimitiveDateTime> {
+        let days = i32::try_from(micros.div_euclid(86_400_000_000)).ok()?;
+        let rem = micros.rem_euclid(86_400_000_000) as u64;
+        let (secs, us) = ((rem / 1_000_000) as u32, (rem % 1_000_000) as u32);
+        Some(PrimitiveDateTime::new(
             Self::to_date(days)?,
-            Self::to_time_ns(micros.rem_euclid(86_400_000_000) * 1_000)?,
+            Time::from_hms_micro(
+                (secs / 3600) as u8,
+                ((secs / 60) % 60) as u8,
+                (secs % 60) as u8,
+                us,
+            )
+            .ok()?,
         ))
     }
 
@@ -381,8 +388,9 @@ impl TryFrom<duckdb_logical_type> for ValueWrap<'static> {
                 | DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_NS
                 | DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_TZ => Value::Timestamp(None),
                 DUCKDB_TYPE_DUCKDB_TYPE_INTERVAL => Value::Interval(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR => Value::Varchar(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_ENUM => Value::Unknown(None),
+                DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR | DUCKDB_TYPE_DUCKDB_TYPE_ENUM => {
+                    Value::Varchar(None)
+                }
                 DUCKDB_TYPE_DUCKDB_TYPE_BLOB => Value::Blob(None),
                 DUCKDB_TYPE_DUCKDB_TYPE_UUID => Value::Uuid(None),
                 DUCKDB_TYPE_DUCKDB_TYPE_DECIMAL => Value::Decimal(

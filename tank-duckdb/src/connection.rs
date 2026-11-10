@@ -1,6 +1,8 @@
 use crate::{
-    DuckDBPrepared, DuckDBTransaction, ValueWrap, cbox::CBox, driver::DuckDBDriver,
-    streaming::DuckDBStream,
+    DuckDBPrepared, DuckDBTransaction, ValueWrap,
+    cbox::CBox,
+    driver::DuckDBDriver,
+    streaming::{Batch, DuckDBStream},
 };
 use anyhow::anyhow;
 use libduckdb_sys::*;
@@ -10,7 +12,7 @@ use std::{
     future::{self, Future},
     mem, ptr,
     str::FromStr,
-    sync::LazyLock,
+    sync::{Arc, LazyLock},
 };
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
@@ -22,6 +24,7 @@ use tank_core::{
 #[derive(Debug)]
 pub struct DuckDBConnection {
     pub(crate) connection: CBox<duckdb_connection>,
+    pub(crate) batch: Option<Arc<Batch>>,
 }
 
 impl DuckDBConnection {
@@ -133,7 +136,10 @@ impl Connection for DuckDBConnection {
                 return Err(error);
             }
         }
-        Ok(DuckDBConnection { connection })
+        Ok(DuckDBConnection {
+            connection,
+            batch: None,
+        })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<DuckDBTransaction<'_>>> + Send {

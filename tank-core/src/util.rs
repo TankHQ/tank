@@ -9,7 +9,7 @@ use std::{
     collections::BTreeMap,
     ffi::{CStr, CString, c_char},
     fmt::Write,
-    ptr,
+    hint, ptr,
 };
 use syn::Path;
 use url::Url;
@@ -307,9 +307,13 @@ pub const TRUNCATE_LONG_LIMIT: usize = {
 
 /// Build a `Decimal` from a scaled integer.
 #[inline]
-pub fn decimal_from_scaled(mantissa: i128, scale: u32) -> Result<Decimal> {
-    let mut mantissa = mantissa;
-    let mut scale = scale;
+pub fn decimal_from_scaled(mut mantissa: i128, mut scale: u32) -> Result<Decimal> {
+    if scale <= Decimal::MAX_SCALE
+        && let Ok(d) = Decimal::try_from_i128_with_scale(mantissa, scale)
+    {
+        return Ok(d);
+    }
+    hint::cold_path();
     while scale > Decimal::MAX_SCALE && mantissa % 10 == 0 {
         mantissa /= 10;
         scale -= 1;

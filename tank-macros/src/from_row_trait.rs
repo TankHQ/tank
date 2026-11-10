@@ -68,7 +68,7 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
             }
             struct #factory_name<T>(std::marker::PhantomData<T>);
             impl<T: Default + Into<#struct_name>> #factory_name<T> {
-                #[inline(always)]
+                #[inline]
                 fn from_row(row: impl ::tank::Row) -> ::tank::Result<#struct_name> {
                     let mut result = T::default().into();
                     if #is_ordered {
@@ -93,7 +93,7 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
                         stringify!(#struct_name),
                     )
                 }
-                #[inline(always)]
+                #[inline]
                 fn from_row(row: impl ::tank::Row) -> ::tank::Result<#struct_name> {
                     if #is_ordered {
                         return Ok(#struct_name {
