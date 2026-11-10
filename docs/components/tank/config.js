@@ -109,6 +109,7 @@ export const CONFIG = {
     brakingForce: 0.7, // braking push
     reverseForce: 0.1, // reverse push
     maximumSpeed: 40, // top speed in px/frame
+    slowSpeed: 4.5, // cruise speed in px/frame when unfocused
 
     // Grip: a wheel transmits at most `gripLimit * weight on that wheel` before
     // the track slips.
@@ -172,7 +173,7 @@ export const CAMERA = {
     baseTargetX: 0.42,
     forwardTargetX: 0.05,
     reverseTargetX: 0.7,
-    targetY: 0.64,
+    targetY: 0.8,
 
     // How fast the camera reaches full forward/reverse framing: the tank speed
     // (px/frame) at which the shift is fully expressed. Lower = it tucks toward

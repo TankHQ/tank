@@ -54,10 +54,10 @@ export class Camera {
         return { x: (Math.random() - 0.5) * this.shake, y: (Math.random() - 0.5) * this.shake }
     }
 
-    reset() {
-        this.x = 0
-        this.y = 0
+    reset(pose = null, viewportWidth = 0, viewportHeight = 0) {
         this.targetX = this.cfg.baseTargetX
+        this.x = pose ? pose.x - viewportWidth * this.targetX : 0
+        this.y = pose ? pose.y - viewportHeight * this.cfg.targetY : 0
         this.shake = 0
     }
 }

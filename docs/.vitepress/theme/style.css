@@ -47,6 +47,69 @@ h1 .text {
     font-stretch: condensed;
 }
 
+.VPHero {
+    position: relative;
+    overflow: hidden;
+    margin-top: 0 !important;
+    padding: 48px 24px 260px !important;
+    background: linear-gradient(180deg, #241c1a 0%, #4a3220 25%, #8a4f22 50%, #c07a2e 75%, #e6a94e 100%);
+    border-bottom: 1px solid var(--vp-c-divider);
+}
+
+@media (min-width: 640px) {
+    .VPHero {
+        padding: 56px 48px 270px !important;
+    }
+}
+
+@media (min-width: 960px) {
+    .VPHero {
+        padding: 56px 64px 290px !important;
+    }
+}
+
+.VPHero > .container {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.VPHero:not(.game-focused) .actions a {
+    pointer-events: auto;
+}
+
+.VPHero .main,
+.VPHero .image {
+    transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.45s ease;
+    will-change: transform, opacity;
+}
+
+@media (max-width: 959px) {
+    .VPHero .image {
+        margin: -24px -24px -48px !important;
+    }
+}
+
+.VPHero.game-focused .main {
+    transform: translateX(-160px);
+    opacity: 0;
+}
+
+.VPHero.game-focused .image {
+    transform: translateX(160px);
+    opacity: 0;
+}
+
+.VPHero .text {
+    color: #f5ebd6;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+}
+
+.VPHero .tagline {
+    color: #e6d7b8;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.55);
+}
+
 .VPHero .action:nth-child(2) {
     position: relative;
 }
@@ -58,7 +121,7 @@ h1 .text {
     left: calc(50% - 8px);
     width: 44px;
     height: 26px;
-    background: var(--vp-c-brand-1);
+    background: #f5ebd6;
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 26' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M42 20C26 20 14 17 9 3M7 11L9 3L15.5 7.5'/%3E%3C/svg%3E") center / contain no-repeat;
     pointer-events: none;
 }
@@ -69,13 +132,18 @@ h1 .text {
     top: calc(100% + 11px);
     left: calc(50% + 40px);
     font: 300 13px/0.8 var(--vp-font-family-mono);
-    color: var(--vp-c-brand-1);
+    color: #f5ebd6;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
     white-space: nowrap;
     transform-origin: left center;
     transform: rotate(-4deg);
     pointer-events: none;
     letter-spacing: -1px;
     font-size: 18px;
+}
+
+.VPHomeFeatures {
+    margin-top: 32px;
 }
 
 .VPNav {

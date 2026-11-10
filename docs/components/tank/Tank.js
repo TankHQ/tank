@@ -166,11 +166,19 @@ export class Tank {
 
         const vx = this.hull.velocity.x
         const weight = this.hull.mass * this.gravityForcePerMass
-        const { w, s } = this.input
+        const { w, s, cruise } = this.input
 
         let total = 0
         let gripLimit = 0
-        if (w && !s) {
+        if (cruise) {
+            if (vx < CONFIG.slowSpeed) {
+                total = CONFIG.accelerationForce * weight * clamp(1 - vx / CONFIG.slowSpeed, 0, 1)
+                gripLimit = CONFIG.driveGripLimit
+            } else {
+                total = -vx * CONFIG.coastingDrag * 2 * weight
+                gripLimit = CONFIG.rollingResistanceGripLimit
+            }
+        } else if (w && !s) {
             total = CONFIG.accelerationForce * weight * clamp(1 - vx / CONFIG.maximumSpeed, 0, 1)
             gripLimit = CONFIG.driveGripLimit
         } else if (s && !w) {

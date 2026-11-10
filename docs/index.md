@@ -50,6 +50,7 @@ features:
 <script setup>
 import { withBase } from "vitepress"
 import SwipeDeck from "./components/SwipeDeck.vue"
+import TankGame from "./components/TankGame.vue"
 import TankJoke from "./components/TankJoke.vue"
 
 const drivers = [
@@ -65,6 +66,8 @@ const drivers = [
   { name: "Redis", section: "valkey-redis" },
 ]
 </script>
+
+<TankGame />
 
 Welcome to the armored division, commander. Tank (**T**able **A**bstraction & **N**avigation **K**it) is the Rust data layer built for teams fighting across multiple fronts. Whether you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or holding a Postgres stronghold, you define your entities once and issue the same explicit orders everywhere. You call the targets, Tank and your driver handle the ballistics.
 

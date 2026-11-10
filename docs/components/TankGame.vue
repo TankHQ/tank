@@ -5,87 +5,116 @@
     const wrapRef = ref(null)
     const canvasRef = ref(null)
     const active = ref(false)
-    const started = ref(false)
-    const over = ref(false)
 
-    const hud = ref({ speed: 0, distance: 0, throttle: 0, fps: 0, wheels: [] })
+    const hud = ref({ speed: 0, distance: 0, throttle: 1, fps: 0, wheels: [] })
 
     let game = null
     let detach = () => { }
+    let unmounted = false
 
     onMounted(async () => {
-        const mod = await import("matter-js")
-        const Matter = mod.default || mod
-
         const wrap = wrapRef.value
         const canvas = canvasRef.value
+        const hero = document.querySelector(".VPHero")
+        if (hero && wrap) hero.prepend(wrap)
+
+        const mod = await import("matter-js")
+        if (unmounted) return
+        const Matter = mod.default || mod
+
         const base = (import.meta.env && import.meta.env.BASE_URL) || "/"
 
         game = new Game({ Matter, canvas, base })
         game.onHud((stats) => { hud.value = stats })
         game.start(wrap.getBoundingClientRect())
 
+        const setFocused = (focused) => {
+            active.value = focused
+            hero?.classList.toggle("game-focused", focused)
+            if (game && !focused) {
+                game.input.cruise = true
+                game.input.w = false
+                game.input.s = false
+            }
+        }
+
         const keyDown = (e) => {
+            if (!active.value) return
             const tag = (e.target && e.target.tagName) || ""
             if (tag === "INPUT" || tag === "TEXTAREA") return
             const k = e.code
-            const interactive = active.value || over.value
-            if (["KeyW", "KeyS", "ArrowUp", "ArrowDown", "Space"].includes(k) && interactive) e.preventDefault()
+            if (["KeyW", "KeyS", "ArrowUp", "ArrowDown", "Space"].includes(k)) e.preventDefault()
 
             if (k === "KeyW" || k === "ArrowUp") {
+                game.input.cruise = false
                 game.input.w = true
-                started.value = true
             }
             if (k === "KeyS" || k === "ArrowDown") {
+                game.input.cruise = false
                 game.input.s = true
-                started.value = true
             }
             if (k === "KeyR") game.reset()
-            if (k === "Space" && interactive) game.fire()
+            if (k === "Space") game.fire()
+            if (k === "Escape") {
+                setFocused(false)
+                wrap.blur()
+            }
         }
         const keyUp = (e) => {
+            if (!game) return
             if (e.code === "KeyW" || e.code === "ArrowUp") game.input.w = false
             if (e.code === "KeyS" || e.code === "ArrowDown") game.input.s = false
         }
-        const onPointerDown = () => game.fire()
-        const onEnter = () => (over.value = true)
-        const onLeave = () => (over.value = false)
-        const onFocus = () => {
-            active.value = true
-            started.value = true
+        const onPointerDown = (e) => {
+            const wasActive = active.value
+            e.preventDefault()
+            setFocused(true)
+            wrap.focus({ preventScroll: true })
+            if (wasActive) game.fire()
         }
-        const onBlur = () => (active.value = false)
+        const onDocPointerDown = (e) => {
+            if (active.value && !wrap.contains(e.target)) {
+                setFocused(false)
+                wrap.blur()
+            }
+        }
+        const onFocus = () => setFocused(true)
+        const onBlur = () => setFocused(false)
         const onResize = () => game.resize(wrap.getBoundingClientRect())
+        const ro = new ResizeObserver(onResize)
+        ro.observe(wrap)
 
         window.addEventListener("keydown", keyDown, { passive: false })
         window.addEventListener("keyup", keyUp)
         window.addEventListener("resize", onResize)
+        window.addEventListener("pointerdown", onDocPointerDown)
         canvas.addEventListener("pointerdown", onPointerDown)
-        wrap.addEventListener("pointerenter", onEnter)
-        wrap.addEventListener("pointerleave", onLeave)
         wrap.addEventListener("focus", onFocus)
         wrap.addEventListener("blur", onBlur)
 
         detach = () => {
+            ro.disconnect()
+            hero?.classList.remove("game-focused")
             window.removeEventListener("keydown", keyDown)
             window.removeEventListener("keyup", keyUp)
             window.removeEventListener("resize", onResize)
+            window.removeEventListener("pointerdown", onDocPointerDown)
             canvas.removeEventListener("pointerdown", onPointerDown)
-            wrap.removeEventListener("pointerenter", onEnter)
-            wrap.removeEventListener("pointerleave", onLeave)
             wrap.removeEventListener("focus", onFocus)
             wrap.removeEventListener("blur", onBlur)
+            wrap.remove()
         }
     })
 
     onBeforeUnmount(() => {
+        unmounted = true
         detach()
         if (game) game.stop()
     })
 </script>
 
 <template>
-    <section ref="wrapRef" class="tank-game" tabindex="0" @click="started = true">
+    <section ref="wrapRef" class="tank-game" :class="{ 'is-active': active }" tabindex="0">
         <canvas ref="canvasRef" class="tank-game__canvas"></canvas>
 
         <div class="tank-game__hud">
@@ -121,33 +150,25 @@
         <div class="tank-game__hint">
             <b>W</b> / <b>S</b> drive &nbsp;·&nbsp; <b>Click</b> fire &nbsp;·&nbsp; <b>R</b> reset
         </div>
-
-        <transition name="fade">
-            <div v-if="!started" class="tank-game__splash">
-                <div class="tank-game__splash-inner">
-                    <div class="tank-game__splash-title">2D SUSPENSION SIMULATION</div>
-                    <div class="tank-game__splash-sub">
-                        Rigid-body tracked vehicle · independent coil suspension · chain track
-                    </div>
-                    <div class="tank-game__splash-cta">Click to take control</div>
-                </div>
-            </div>
-        </transition>
     </section>
 </template>
 
 <style scoped>
     .tank-game {
-        position: relative;
+        position: absolute;
+        inset: 0;
+        z-index: 0;
         width: 100%;
-        height: clamp(360px, 52vh, 640px);
+        height: 100%;
         overflow: hidden;
         outline: none;
-        cursor: crosshair;
+        cursor: pointer;
         user-select: none;
-        background: #1d2b40;
-        border-top: 1px solid var(--vp-c-divider);
-        border-bottom: 1px solid var(--vp-c-divider);
+        background: #241c1a;
+    }
+
+    .tank-game.is-active {
+        cursor: crosshair;
     }
 
     .tank-game__canvas {
@@ -167,6 +188,13 @@
         font-family: "Courier New", ui-monospace, monospace;
         color: #e8ddc4;
         text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+        opacity: 0;
+        transition: opacity 0.4s ease;
+    }
+
+    .tank-game.is-active .tank-game__hud,
+    .tank-game.is-active .tank-game__hint {
+        opacity: 1;
     }
 
     .tank-game__panel {
@@ -277,68 +305,11 @@
         padding: 5px 14px;
         pointer-events: none;
         text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+        opacity: 0;
+        transition: opacity 0.4s ease;
     }
 
     .tank-game__hint b {
         color: #d8c14a;
-    }
-
-    .tank-game__splash {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: radial-gradient(ellipse at center, rgba(10, 8, 6, 0.35), rgba(6, 5, 4, 0.75));
-        pointer-events: none;
-    }
-
-    .tank-game__splash-inner {
-        text-align: center;
-        font-family: "Courier New", ui-monospace, monospace;
-        color: #e8ddc4;
-    }
-
-    .tank-game__splash-title {
-        font-size: clamp(16px, 2.4vw, 26px);
-        letter-spacing: 6px;
-        font-weight: 700;
-        color: #f0e6cd;
-        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
-    }
-
-    .tank-game__splash-sub {
-        margin-top: 8px;
-        font-size: clamp(10px, 1.1vw, 13px);
-        letter-spacing: 1px;
-        color: #b3a888;
-    }
-
-    .tank-game__splash-cta {
-        margin-top: 16px;
-        font-size: 12px;
-        letter-spacing: 2px;
-        color: #d8c14a;
-        animation: pulse 1.6s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-
-        0%,
-        100% {
-            opacity: 0.45;
-        }
-
-        50% {
-            opacity: 1;
-        }
-    }
-
-    .fade-leave-active {
-        transition: opacity 0.4s ease;
-    }
-
-    .fade-leave-to {
-        opacity: 0;
     }
 </style>

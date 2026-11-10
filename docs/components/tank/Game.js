@@ -45,7 +45,7 @@ export class Game {
             collisionCategories: COLLISION_CATEGORIES,
             particles: this.particles,
         })
-        this.input = { w: false, s: false }
+        this.input = { w: false, s: false, cruise: true }
         this.tank = new Tank({ Matter, engine: this.engine, world: this.world, terrain: this.terrain, input: this.input })
         this.camera = new Camera()
         this.renderer = new Renderer(canvas, base)
@@ -61,7 +61,7 @@ export class Game {
     start(rect) {
         this.renderer.resize(rect)
         this.tank.spawn(0)
-        this.camera.reset()
+        this.camera.reset(this.tank.hull?.position, this.renderer.width, this.renderer.height)
         this.running = true
         this._lastTime = 0
         this._raf = requestAnimationFrame((t) => this._frame(t))
@@ -191,7 +191,7 @@ export class Game {
                     ? Math.round(Math.abs(hull.velocity.x) * 60 / PIXELS_PER_METRE * 3.6)
                     : 0,
                 distance: Math.round(this._dist / PIXELS_PER_METRE),
-                throttle: this.input.w ? 1 : this.input.s ? -1 : 0,
+                throttle: this.input.w || this.input.cruise ? 1 : this.input.s ? -1 : 0,
                 fps: this.fps,
                 wheels: this.tank.wheels.map((w) => w.compression),
             })
