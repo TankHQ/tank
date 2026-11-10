@@ -1,4 +1,4 @@
-use crate::{ValueWrap, cbox::CBox};
+use crate::{ValueWrap, ensure_rc, util::CBox};
 use anyhow::anyhow;
 use libduckdb_sys::*;
 use std::{
@@ -50,8 +50,10 @@ impl Prepared for DuckDBPrepared {
         unsafe {
             if duckdb_clear_bindings(*self.statement) != duckdb_state_DuckDBSuccess {
                 hint::cold_path();
-                return Err(anyhow!("Could not clear the bindings from DuckDB statement"))
-                    .inspect_err(log_error);
+                return Err(anyhow!(
+                    "Could not clear the bindings from DuckDB statement"
+                ))
+                .inspect_err(log_error);
             }
         }
         Ok(self)
@@ -63,13 +65,13 @@ impl Prepared for DuckDBPrepared {
     }
 
     #[inline(always)]
-    fn bind_index(&mut self, v: impl AsValue, index: u64) -> Result<&mut Self> {
+    fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
         // DuckDB's parameter index is 1-based.
         let index = index + 1;
         unsafe {
             let prepared = *self.statement;
-            let mut val = v.as_value();
-            let state = match &mut val {
+            let mut value = value.as_value();
+            let state = match &mut value {
                 Value::Boolean(Some(v)) => Ok(duckdb_bind_boolean(prepared, index, *v)),
                 Value::Int32(Some(v)) => Ok(duckdb_bind_int32(prepared, index, *v)),
                 Value::Int64(Some(v)) => Ok(duckdb_bind_int64(prepared, index, *v)),
@@ -83,33 +85,15 @@ impl Prepared for DuckDBPrepared {
                         v.len() as _,
                     ))
                 }
-                val => {
-                    let other = mem::take(val);
-                    if matches!(
-                        other,
-                        Value::Array(Some(..), ..)
-                            | Value::List(Some(..), ..)
-                            | Value::Map(Some(..), ..)
-                            | Value::Struct(Some(..), ..)
-                    ) {
-                        hint::cold_path();
-                        Err(anyhow!("Cannot use a {other:?} as a query parameter"))
-                            .inspect_err(log_error)
-                    } else {
-                        CBox::try_from(ValueWrap::from(other))
-                            .map(|v| duckdb_bind_value(prepared, index, *v))
-                    }
-                }
+                value => CBox::try_from(ValueWrap::from(mem::take(value)))
+                    .map(|v| duckdb_bind_value(prepared, index, *v)),
             };
-            mem::forget(val);
-            if state? != duckdb_state_DuckDBSuccess {
-                hint::cold_path();
-                return Err(
-                    Error::msg(error_message_from_ptr(&duckdb_prepare_error(prepared)).into_owned())
-                        .context(format!("While trying to bind the parameter {index}")),
-                )
-                .inspect_err(log_error);
-            }
+            mem::forget(value);
+            ensure_rc!(
+                state?,
+                Error::msg(error_message_from_ptr(&duckdb_prepare_error(prepared)).into_owned(),)
+                    .context(format!("While trying to bind the parameter {index}"))
+            );
             self.index = index;
             Ok(self)
         }

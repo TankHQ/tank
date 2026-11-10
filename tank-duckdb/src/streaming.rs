@@ -1,4 +1,4 @@
-use crate::{DuckDBConnection, DuckDBDriver, ValueWrap, cbox::CBox};
+use crate::{DuckDBConnection, DuckDBDriver, ValueWrap, ensure_rc, util::CBox};
 use libduckdb_sys::*;
 use std::{
     borrow::Cow,
@@ -195,17 +195,19 @@ impl Column {
                         _ => (*(data as *const i64).add(row)).saturating_mul(1_000),
                     })?))
                 }
-                DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_TZ => {
+                DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_TZ => Value::Timestamp(Some(
+                    ValueWrap::to_timestamp(*(data as *const i64).add(row))?,
+                )),
+                DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_S => {
                     Value::Timestamp(Some(ValueWrap::to_timestamp(
-                        *(data as *const i64).add(row),
+                        (*(data as *const i64).add(row)).saturating_mul(1_000_000),
                     )?))
                 }
-                DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_S => Value::Timestamp(Some(
-                    ValueWrap::to_timestamp((*(data as *const i64).add(row)).saturating_mul(1_000_000))?,
-                )),
-                DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_MS => Value::Timestamp(Some(
-                    ValueWrap::to_timestamp((*(data as *const i64).add(row)).saturating_mul(1_000))?,
-                )),
+                DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_MS => {
+                    Value::Timestamp(Some(ValueWrap::to_timestamp(
+                        (*(data as *const i64).add(row)).saturating_mul(1_000),
+                    )?))
+                }
                 DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_NS => {
                     let raw = *(data as *const i64).add(row);
                     let days = i32::try_from(raw.div_euclid(86_400_000_000_000)).ok()?;
@@ -535,18 +537,18 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                 }
                 let mut extracted_stmt = CBox::null();
                 let statement = if let Some(extracted) = &self.extracted {
-                    if duckdb_prepare_extracted_statement(
-                        *self.connection.connection,
-                        **extracted,
-                        self.index,
-                        &mut *extracted_stmt,
-                    ) != duckdb_state_DuckDBSuccess
-                    {
-                        return Err(Error::msg(
+                    ensure_rc!(
+                        duckdb_prepare_extracted_statement(
+                            *self.connection.connection,
+                            **extracted,
+                            self.index,
+                            &mut *extracted_stmt,
+                        ),
+                        Error::msg(
                             error_message_from_ptr(&duckdb_prepare_error(*extracted_stmt))
                                 .into_owned(),
-                        ));
-                    }
+                        )
+                    );
                     *extracted_stmt
                 } else {
                     match self.query.as_mut() {
@@ -556,13 +558,12 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                 };
                 self.index += 1;
                 let mut result = CBox(mem::zeroed());
-                if duckdb_execute_prepared_streaming(statement, &mut *result)
-                    != duckdb_state_DuckDBSuccess
-                {
-                    return Err(Error::msg(
+                ensure_rc!(
+                    duckdb_execute_prepared_streaming(statement, &mut *result),
+                    Error::msg(
                         error_message_from_ptr(&duckdb_result_error(&mut *result)).into_owned(),
-                    ));
-                }
+                    )
+                );
                 if duckdb_result_return_type(*result)
                     != duckdb_result_type_DUCKDB_RESULT_TYPE_QUERY_RESULT
                 {

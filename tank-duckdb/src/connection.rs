@@ -1,8 +1,9 @@
 use crate::{
     DuckDBPrepared, DuckDBTransaction, ValueWrap,
-    cbox::CBox,
     driver::DuckDBDriver,
+    ensure_rc,
     streaming::{Batch, DuckDBStream},
+    util::CBox,
 };
 use anyhow::anyhow;
 use libduckdb_sys::*;
@@ -56,13 +57,10 @@ impl Connection for DuckDBConnection {
         let url = Self::sanitize_url(driver, url)?;
         let make_context = || format!("While trying to connect to DuckDB {}", describe_path(&url));
         let mut config = CBox::<duckdb_config>::null();
-        unsafe {
-            if duckdb_create_config(&mut *config) != duckdb_state_DuckDBSuccess {
-                let error =
-                    anyhow!("Cannot allocate the duckdb_config object").context(make_context());
-                return Err(error).inspect_err(log_error);
-            }
-        }
+        ensure_rc!(
+            unsafe { duckdb_create_config(&mut *config) },
+            anyhow!("Cannot allocate the duckdb_config object").context(make_context())
+        );
         let mut path = CString::from_str(&format!(
             "{}{}",
             url.host_str()
@@ -101,37 +99,31 @@ impl Connection for DuckDBConnection {
                     ),
                 }
             };
-            if rc != duckdb_state_DuckDBSuccess {
-                hint::cold_path();
-                return Err(anyhow!("Error while setting config `{k}={v}`")).inspect_err(log_error);
-            }
+            ensure_rc!(rc, anyhow!("Error while setting config `{k}={v}`"));
         }
         let mut database = CBox::<duckdb_database>::null();
-        let mut error = CBox::null();
-        let mut connection = CBox::null();
+        let mut error = CBox::<*mut c_char>::null();
+        let mut connection = CBox::<duckdb_connection>::null();
         unsafe {
-            if duckdb_get_or_create_from_cache(
-                **DATABASE_CACHE,
-                path.as_ptr(),
-                &mut *database,
-                *config,
-                &mut *error,
-            ) != duckdb_state_DuckDBSuccess
-            {
-                hint::cold_path();
-                return Err(Error::msg(
+            ensure_rc!(
+                duckdb_get_or_create_from_cache(
+                    **DATABASE_CACHE,
+                    path.as_ptr(),
+                    &mut *database,
+                    *config,
+                    &mut *error,
+                ),
+                Error::msg(
                     CStr::from_ptr(*error)
                         .to_str()
-                        .context("While reading the error from `duckdb_get_or_create_from_cache`")?
-                        .to_owned(),
-                ))
-                .inspect_err(log_error);
-            }
-            if duckdb_connect(*database, &mut *connection) != duckdb_state_DuckDBSuccess {
-                hint::cold_path();
-                return Err(anyhow!("Failed to connect to database url `{url}`"))
-                    .inspect_err(log_error);
-            }
+                        .context("While reading the error from `duckdb_get_or_create_from_cache`")
+                        .inspect_err(log_error)?
+                ),
+            );
+            ensure_rc!(
+                duckdb_connect(*database, &mut *connection),
+                anyhow!("Failed to connect to database url `{url}`"),
+            );
         }
         Ok(DuckDBConnection {
             batch: None,

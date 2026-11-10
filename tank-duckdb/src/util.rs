@@ -29,8 +29,8 @@ impl_resource! {
     duckdb_appender => duckdb_appender_destroy,
     duckdb_config => duckdb_destroy_config,
     duckdb_connection => duckdb_disconnect,
-    duckdb_database => duckdb_close,
     duckdb_data_chunk => duckdb_destroy_data_chunk,
+    duckdb_database => duckdb_close,
     duckdb_extracted_statements => duckdb_destroy_extracted,
     duckdb_instance_cache => duckdb_destroy_instance_cache,
     duckdb_logical_type => duckdb_destroy_logical_type,
@@ -101,3 +101,15 @@ impl<T: CResource> DerefMut for CBox<T> {
 
 unsafe impl<T: CResource> Send for CBox<T> {}
 unsafe impl<T: CResource> Sync for CBox<T> {}
+
+#[macro_export]
+macro_rules! ensure_rc {
+    ($value:expr, $error:expr $(,)?) => {{
+        let value = $value;
+        if value != ::libduckdb_sys::duckdb_state_DuckDBSuccess {
+            ::std::hint::cold_path();
+            return Err($error).inspect_err(::tank_core::log_error);
+        }
+        value
+    }};
+}

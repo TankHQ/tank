@@ -1,4 +1,4 @@
-use crate::cbox::CBox;
+use crate::util::CBox;
 use anyhow::anyhow;
 use libduckdb_sys::*;
 use rust_decimal::Decimal;
@@ -265,9 +265,8 @@ impl TryFrom<ValueWrap<'_>> for CBox<duckdb_value> {
 
     fn try_from(wrap: ValueWrap<'_>) -> Result<Self> {
         let value = wrap.0.as_ref();
-        unsafe {
-            let mut buf = [0u8; 4];
-            let out = CBox(match value {
+        let result = CBox(unsafe {
+            match value {
                 Value::Boolean(Some(v)) => duckdb_create_bool(*v),
                 Value::Int8(Some(v)) => duckdb_create_int8(*v),
                 Value::Int16(Some(v)) => duckdb_create_int16(*v),
@@ -285,7 +284,8 @@ impl TryFrom<ValueWrap<'_>> for CBox<duckdb_value> {
                     duckdb_create_decimal(ValueWrap::from_decimal(v, *w, *s))
                 }
                 Value::Char(Some(v)) => {
-                    let s = v.encode_utf8(&mut buf);
+                    let mut buffer = [0u8; 4];
+                    let s = v.encode_utf8(&mut buffer);
                     duckdb_create_varchar_length(s.as_ptr() as _, s.len() as _)
                 }
                 Value::Varchar(Some(v)) => {
@@ -303,14 +303,15 @@ impl TryFrom<ValueWrap<'_>> for CBox<duckdb_value> {
                 Value::Array(Some(v), t) | Value::List(Some(v), t) => {
                     let mut values = v
                         .iter()
-                        .map(|el| Self::try_from(ValueWrap::from(el)))
+                        .map(|v| Self::try_from(ValueWrap::from(v)))
                         .collect::<Result<Box<[_]>>>()?;
-                    (if matches!(value, Value::Array(..)) {
+                    let create = if matches!(value, Value::Array(..)) {
                         duckdb_create_array_value
                     } else {
                         duckdb_create_list_value
-                    })(
-                        *CBox::from(ValueWrap::from(&t.element)),
+                    };
+                    create(
+                        *CBox::<duckdb_logical_type>::from(ValueWrap::from(&t.element)),
                         values.as_mut_ptr() as _,
                         v.len() as _,
                     )
@@ -325,7 +326,7 @@ impl TryFrom<ValueWrap<'_>> for CBox<duckdb_value> {
                         .map(|val| Self::try_from(ValueWrap::from(val)))
                         .collect::<Result<Box<[_]>>>()?;
                     duckdb_create_map_value(
-                        *CBox::from(ValueWrap::from(value)),
+                        *CBox::<duckdb_logical_type>::from(ValueWrap::from(value)),
                         keys.as_mut_ptr() as _,
                         values.as_mut_ptr() as _,
                         v.len() as _,
@@ -337,24 +338,20 @@ impl TryFrom<ValueWrap<'_>> for CBox<duckdb_value> {
                         .map(|(_, val)| Self::try_from(ValueWrap::from(val)))
                         .collect::<Result<Box<[_]>>>()?;
                     duckdb_create_struct_value(
-                        *CBox::from(ValueWrap::from(value)),
+                        *CBox::<duckdb_logical_type>::from(ValueWrap::from(value)),
                         values.as_mut_ptr() as _,
                     )
                 }
                 v if v.is_null() => duckdb_create_null_value(),
-                _ => {
-                    hint::cold_path();
-                    return Err(anyhow!("Cannot use a {value:?} as a DuckDB value"))
-                        .inspect_err(log_error);
-                }
-            });
-            if out.is_null() {
-                hint::cold_path();
-                return Err(anyhow!("Could not create a DuckDB value for {value:?}"))
-                    .inspect_err(log_error);
+                _ => Default::default(),
             }
-            Ok(out)
+        });
+        if result.is_null() {
+            hint::cold_path();
+            return Err(anyhow!("Could not create a DuckDB value for {value:?}"))
+                .inspect_err(log_error);
         }
+        Ok(result)
     }
 }
 
