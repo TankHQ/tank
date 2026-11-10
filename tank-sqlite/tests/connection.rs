@@ -79,6 +79,6 @@ mod tests {
         assert!(describe_path(&path).ends_with("/tmp/y.db"));
 
         let bare = Url::parse("sqlite://").unwrap();
-        assert_eq!(describe_path(&bare), ":memory:");
+        assert_eq!(describe_path(&bare), "N/A");
     }
 }

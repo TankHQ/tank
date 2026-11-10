@@ -346,12 +346,24 @@ mod tests {
             !Path::new(DB_PATH).exists(),
             "Database file should not exist before test"
         );
-        DuckDBConnection::connect(
+        let mut c1 = DuckDBConnection::connect(
             &DuckDBDriver::new(),
             format!("duckdb://{DB_PATH}?mode=rw").into(),
         )
         .await
         .expect("Could not open the database");
+        let mut c2 = DuckDBConnection::connect(
+            &DuckDBDriver::new(),
+            format!("duckdb://{DB_PATH}?mode=rw").into(),
+        )
+        .await
+        .expect("Could not open a second connection to the same database");
+        c1.execute("CREATE TABLE shared_db (v INT); INSERT INTO shared_db VALUES (7)")
+            .await
+            .unwrap();
+        drop(c1);
+        assert_eq!(c2.fetch("SELECT v FROM shared_db").count().await, 1);
+        drop(c2);
         assert!(
             Path::new(DB_PATH).exists(),
             "Database file should be created after connection"

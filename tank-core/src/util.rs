@@ -450,9 +450,7 @@ pub fn describe_path(url: &Url) -> String {
 #[macro_export]
 macro_rules! send_value {
     ($tx:ident, $value:expr) => {{
-        if let Err(e) = $tx.send($value) {
-            log::error!("{e:#}");
-        }
+        let _ = $tx.send($value).inspect_err($crate::log_error);
     }};
 }
 

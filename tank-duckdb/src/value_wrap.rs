@@ -6,11 +6,11 @@ use std::{
     borrow::Cow,
     cmp::{max, min},
     ffi::{CStr, c_char},
-    slice,
+    hint, slice,
 };
 use tank_core::{
     CollectionType, Error, Interval, MapType, Result, StructType, TableRef, Value, as_c_string,
-    decimal_from_scaled,
+    decimal_from_scaled, log_error,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time, macros::date};
 
@@ -343,15 +343,15 @@ impl TryFrom<ValueWrap<'_>> for CBox<duckdb_value> {
                 }
                 v if v.is_null() => duckdb_create_null_value(),
                 _ => {
-                    let error = anyhow!("Cannot use a {value:?} as a DuckDB value");
-                    log::error!("{error:#}");
-                    return Err(error);
+                    hint::cold_path();
+                    return Err(anyhow!("Cannot use a {value:?} as a DuckDB value"))
+                        .inspect_err(log_error);
                 }
             });
             if out.is_null() {
-                let error = anyhow!("Could not create a DuckDB value for {value:?}");
-                log::error!("{error:#}");
-                return Err(error);
+                hint::cold_path();
+                return Err(anyhow!("Could not create a DuckDB value for {value:?}"))
+                    .inspect_err(log_error);
             }
             Ok(out)
         }

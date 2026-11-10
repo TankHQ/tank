@@ -23,8 +23,10 @@ use tank_core::{
 /// Wrapper around a DuckDB `duckdb_connection` pointer used by the DuckDB driver.
 #[derive(Debug)]
 pub struct DuckDBConnection {
-    pub(crate) connection: CBox<duckdb_connection>,
+    // Drop order: release cached chunks and disconnect before closing the database handle.
     pub(crate) batch: Option<Arc<Batch>>,
+    pub(crate) connection: CBox<duckdb_connection>,
+    _database: CBox<duckdb_database>,
 }
 
 impl DuckDBConnection {
@@ -132,8 +134,9 @@ impl Connection for DuckDBConnection {
             }
         }
         Ok(DuckDBConnection {
-            connection,
             batch: None,
+            connection,
+            _database: database,
         })
     }
 
@@ -164,7 +167,7 @@ impl Executor for DuckDBConnection {
                 Ok(DuckDBPrepared::new(prepared).into())
             })()
             .with_context(|| format!("While preparing the query:\n{}", truncate_long!(sql)))
-            .inspect_err(|error| log::error!("{error:#}")),
+            .inspect_err(log_error),
         )
     }
 

@@ -12,8 +12,8 @@ use std::{
     task::{Context, Poll},
 };
 use tank_core::{
-    Error, Interval, Query, QueryResult, Result, Row, RowLabels, RowOwned, RowsAffected, Value,
-    error_message_from_ptr, stream::Stream,
+    Error, ErrorContext, Interval, Query, QueryResult, Result, Row, RowLabels, RowOwned,
+    RowsAffected, Value, error_message_from_ptr, log_error, stream::Stream,
 };
 use time::PrimitiveDateTime;
 use uuid::Uuid;
@@ -432,9 +432,10 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
     #[inline(never)]
     fn fail(&mut self, error: Error) -> Error {
         let context = format!("While running the query:\n{}", self.query.as_mut());
-        if let Err(cleanup) = self.finish() {
-            log::error!("While cleaning up DuckDB execution: {cleanup:#}");
-        }
+        let _ = self
+            .finish()
+            .context("While cleaning up DuckDB execution")
+            .inspect_err(log_error);
         error.context(context)
     }
 
@@ -611,8 +612,9 @@ impl<Q: AsMut<Query<DuckDBDriver>>> Stream for DuckDBStream<'_, Q> {
 
 impl<Q: AsMut<Query<DuckDBDriver>>> Drop for DuckDBStream<'_, Q> {
     fn drop(&mut self) {
-        if let Err(e) = self.finish() {
-            log::error!("{:#}", e.context("While dropping DuckDB execution"));
-        }
+        let _ = self
+            .finish()
+            .context("While dropping DuckDB execution")
+            .inspect_err(log_error);
     }
 }

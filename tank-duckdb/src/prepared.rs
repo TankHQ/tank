@@ -3,9 +3,9 @@ use anyhow::anyhow;
 use libduckdb_sys::*;
 use std::{
     fmt::{self, Display},
-    mem,
+    hint, mem,
 };
-use tank_core::{AsValue, Error, Prepared, Result, Value, error_message_from_ptr};
+use tank_core::{AsValue, Error, Prepared, Result, Value, error_message_from_ptr, log_error};
 
 /// Prepared statement wrapper for DuckDB.
 #[derive(Debug)]
@@ -49,9 +49,9 @@ impl Prepared for DuckDBPrepared {
         self.index = 0;
         unsafe {
             if duckdb_clear_bindings(*self.statement) != duckdb_state_DuckDBSuccess {
-                let error = anyhow!("Could not clear the bindings from DuckDB statement");
-                log::error!("{error:#}");
-                return Err(error);
+                hint::cold_path();
+                return Err(anyhow!("Could not clear the bindings from DuckDB statement"))
+                    .inspect_err(log_error);
             }
         }
         Ok(self)
@@ -92,9 +92,9 @@ impl Prepared for DuckDBPrepared {
                             | Value::Map(Some(..), ..)
                             | Value::Struct(Some(..), ..)
                     ) {
-                        let error = anyhow!("Cannot use a {other:?} as a query parameter");
-                        log::error!("{error:#}");
-                        Err(error)
+                        hint::cold_path();
+                        Err(anyhow!("Cannot use a {other:?} as a query parameter"))
+                            .inspect_err(log_error)
                     } else {
                         CBox::try_from(ValueWrap::from(other))
                             .map(|v| duckdb_bind_value(prepared, index, *v))
@@ -103,11 +103,12 @@ impl Prepared for DuckDBPrepared {
             };
             mem::forget(val);
             if state? != duckdb_state_DuckDBSuccess {
-                let error =
+                hint::cold_path();
+                return Err(
                     Error::msg(error_message_from_ptr(&duckdb_prepare_error(prepared)).into_owned())
-                        .context(format!("While trying to bind the parameter {index}"));
-                log::error!("{error:#}");
-                return Err(error);
+                        .context(format!("While trying to bind the parameter {index}")),
+                )
+                .inspect_err(log_error);
             }
             self.index = index;
             Ok(self)

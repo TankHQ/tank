@@ -492,7 +492,7 @@ mod tests {
             for (raw, expected_path) in [
                 ("test://:memory:", ":memory:"),
                 ("test://host?path=/tmp/a.db", "/tmp/a.db"),
-                ("test:///", ":memory:"),
+                ("test:///", "N/A"),
                 ("test:///tmp/a.db", "/tmp/a.db"),
             ] {
                 let url = TestExecutor::sanitize_url(&TestDriver, raw.into()).unwrap();

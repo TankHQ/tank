@@ -1,7 +1,7 @@
 use crate::{
     ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Fragment, Query,
     QueryBuilder, RawQuery, Result, Row, RowOwned, RowValues, RowsAffected, TableRef,
-    future::Either, stream::Stream, truncate_long, writer::SqlWriter,
+    future::Either, log_error, stream::Stream, truncate_long, writer::SqlWriter,
 };
 use anyhow::anyhow;
 use futures::{FutureExt, StreamExt};
@@ -257,11 +257,12 @@ pub trait Entity: AsEntity + Expression {
         for<'s> &'s Self: AsEntity,
     {
         if Self::primary_key_def().is_empty() {
-            let error = anyhow!(
-                "Cannot save an entity without a primary key, it would always result in an insert",
-            );
-            log::error!("{error:#}");
-            return Either::Left(future::ready(Err(error)));
+            return Either::Left(future::ready(
+                Err(anyhow!(
+                    "Cannot save an entity without a primary key, it would always result in an insert",
+                ))
+                .inspect_err(log_error),
+            ));
         }
         let mut query = DynQuery::with_capacity(512);
         executor
@@ -297,10 +298,12 @@ pub trait Entity: AsEntity + Expression {
         Self: Sized,
     {
         if Self::primary_key_def().is_empty() {
-            let error =
-                anyhow!("Cannot delete an entity without a primary key, it would delete nothing",);
-            log::error!("{error:#}");
-            return Either::Left(future::ready(Err(error)));
+            return Either::Left(future::ready(
+                Err(anyhow!(
+                    "Cannot delete an entity without a primary key, it would delete nothing",
+                ))
+                .inspect_err(log_error),
+            ));
         }
         Either::Right(
             Self::delete_many(executor, self.primary_key_expr()).map(|v| {
