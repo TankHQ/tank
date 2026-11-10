@@ -496,7 +496,7 @@ mod tests {
                 ("test:///tmp/a.db", "/tmp/a.db"),
             ] {
                 let url = TestExecutor::sanitize_url(&TestDriver, raw.into()).unwrap();
-                assert_eq!(describe_path::<TestDriver>(&url), expected_path);
+                assert_eq!(describe_path(&url), expected_path);
             }
             let url = TestExecutor::sanitize_url(
                 &TestDriver,

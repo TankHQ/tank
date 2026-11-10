@@ -29,6 +29,7 @@ impl_resource! {
     duckdb_appender => duckdb_appender_destroy,
     duckdb_config => duckdb_destroy_config,
     duckdb_connection => duckdb_disconnect,
+    duckdb_database => duckdb_close,
     duckdb_data_chunk => duckdb_destroy_data_chunk,
     duckdb_extracted_statements => duckdb_destroy_extracted,
     duckdb_instance_cache => duckdb_destroy_instance_cache,

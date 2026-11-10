@@ -10,14 +10,14 @@ use std::{
     borrow::Cow,
     ffi::{CStr, CString, c_char, c_void},
     future::{self, Future},
-    mem, ptr,
+    hint, mem, ptr,
     str::FromStr,
     sync::{Arc, LazyLock},
 };
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
     QueryResult, Result, Row, RowsAffected, SqlWriter, Value, as_c_string, describe_path,
-    error_message_from_ptr, stream::Stream, truncate_long,
+    error_message_from_ptr, log_error, log_warn, stream::Stream, truncate_long,
 };
 
 /// Wrapper around a DuckDB `duckdb_connection` pointer used by the DuckDB driver.
@@ -36,13 +36,14 @@ impl DuckDBConnection {
     #[inline(always)]
     unsafe fn check_appender(appender: duckdb_appender, rc: duckdb_state) -> Result<()> {
         if rc == duckdb_state_DuckDBSuccess {
-            return Ok(());
+            Ok(())
+        } else {
+            hint::cold_path();
+            Err(Error::msg(
+                error_message_from_ptr(&unsafe { duckdb_appender_error(appender) }).into_owned(),
+            ))
+            .inspect_err(log_error)
         }
-        let error = Error::msg(
-            error_message_from_ptr(&unsafe { duckdb_appender_error(appender) }).into_owned(),
-        );
-        log::error!("{error:#}");
-        Err(error)
     }
 }
 
@@ -51,19 +52,13 @@ impl Connection for DuckDBConnection {
         static DATABASE_CACHE: LazyLock<CBox<duckdb_instance_cache>> =
             LazyLock::new(|| CBox(unsafe { duckdb_create_instance_cache() }));
         let url = Self::sanitize_url(driver, url)?;
-        let make_context = || {
-            format!(
-                "While trying to connect to DuckDB {}",
-                describe_path::<DuckDBDriver>(&url)
-            )
-        };
-        let mut config = CBox::null();
+        let make_context = || format!("While trying to connect to DuckDB {}", describe_path(&url));
+        let mut config = CBox::<duckdb_config>::null();
         unsafe {
             if duckdb_create_config(&mut *config) != duckdb_state_DuckDBSuccess {
                 let error =
                     anyhow!("Cannot allocate the duckdb_config object").context(make_context());
-                log::error!("{error:#}");
-                return Err(error);
+                return Err(error).inspect_err(log_error);
             }
         }
         let mut path = CString::from_str(&format!(
@@ -73,26 +68,25 @@ impl Connection for DuckDBConnection {
             url.path()
         ))
         .with_context(make_context)?;
-        for (key, value) in url.query_pairs() {
+        for (k, v) in url.query_pairs() {
             let rc = unsafe {
-                match &*key {
+                match &*k {
                     "mode" => {
-                        if value == "memory" {
+                        if v == "memory" {
                             path = CString::from_str(":memory:")?;
                             continue;
                         }
                         duckdb_set_config(
                             *config,
                             c"access_mode".as_ptr(),
-                            match &*value {
+                            match &*v {
                                 "ro" => c"READ_ONLY",
                                 "rw" | "rwc" => c"READ_WRITE",
                                 _ => {
                                     let error = anyhow!(
-                                        "Unknown value {value:?} for `mode`, expected one of: `ro`, `rw`, `rwc`, `memory`"
+                                        "Unknown value {v:?} for `mode`, expected one of: `ro`, `rw`, `rwc`, `memory`"
                                     );
-                                    log::warn!("{error:#}");
-                                    return Err(error);
+                                    return Err(error).inspect_err(log_warn);
                                 }
                             }
                             .as_ptr(),
@@ -100,40 +94,41 @@ impl Connection for DuckDBConnection {
                     }
                     _ => duckdb_set_config(
                         *config,
-                        as_c_string(&*key).as_ptr(),
-                        as_c_string(&*value).as_ptr(),
+                        as_c_string(k.as_bytes()).as_ptr(),
+                        as_c_string(v.as_bytes()).as_ptr(),
                     ),
                 }
             };
             if rc != duckdb_state_DuckDBSuccess {
-                let error = anyhow!("Error while setting config `{key}={value}`");
-                log::warn!("{error:#}");
-                return Err(error);
+                hint::cold_path();
+                return Err(anyhow!("Error while setting config `{k}={v}`")).inspect_err(log_error);
             }
         }
-        let mut database = ptr::null_mut();
+        let mut database = CBox::<duckdb_database>::null();
         let mut error = CBox::null();
         let mut connection = CBox::null();
         unsafe {
             if duckdb_get_or_create_from_cache(
                 **DATABASE_CACHE,
                 path.as_ptr(),
-                &mut database,
+                &mut *database,
                 *config,
                 &mut *error,
             ) != duckdb_state_DuckDBSuccess
             {
+                hint::cold_path();
                 return Err(Error::msg(
                     CStr::from_ptr(*error)
                         .to_str()
                         .context("While reading the error from `duckdb_get_or_create_from_cache`")?
                         .to_owned(),
-                ));
+                ))
+                .inspect_err(log_error);
             }
-            if duckdb_connect(database, &mut *connection) != duckdb_state_DuckDBSuccess {
-                let error = anyhow!("Failed to connect to database url `{url}`");
-                log::error!("{error:#}");
-                return Err(error);
+            if duckdb_connect(*database, &mut *connection) != duckdb_state_DuckDBSuccess {
+                hint::cold_path();
+                return Err(anyhow!("Failed to connect to database url `{url}`"))
+                    .inspect_err(log_error);
             }
         }
         Ok(DuckDBConnection {

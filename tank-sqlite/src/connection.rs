@@ -216,12 +216,7 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Drop for SQLiteCursor<'_, Q> {
 impl Connection for SQLiteConnection {
     async fn connect(driver: &SQLiteDriver, url: Cow<'static, str>) -> Result<Self> {
         let url = Self::sanitize_url(driver, url)?;
-        let make_context = || {
-            format!(
-                "While trying to connect to SQLite {}",
-                describe_path::<SQLiteDriver>(&url)
-            )
-        };
+        let make_context = || format!("While trying to connect to SQLite {}", describe_path(&url));
         let connection_string = CString::from_str(&url.as_str().replacen("sqlite://", "file:", 1))
             .with_context(make_context)?;
         let mut connection;

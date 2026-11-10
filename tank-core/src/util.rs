@@ -8,7 +8,7 @@ use std::{
     cmp::min,
     collections::BTreeMap,
     ffi::{CStr, CString, c_char},
-    fmt::Write,
+    fmt::{self, Write},
     hint, iter, ptr,
 };
 use syn::Path;
@@ -196,6 +196,16 @@ pub fn as_c_string(str: impl AsRef<[u8]>) -> CString {
                 .collect(),
         )
     }
+}
+
+#[cold]
+pub fn log_error<E: fmt::Display>(error: &E) {
+    log::error!("{error:#}");
+}
+
+#[cold]
+pub fn log_warn<E: fmt::Display>(error: &E) {
+    log::warn!("{error:#}");
 }
 
 pub fn error_message_from_ptr<'a>(ptr: &'a *const c_char) -> Cow<'a, str> {
@@ -407,36 +417,23 @@ pub fn describe_url<D: Driver>(url: &Url) -> String {
     target
 }
 
-/// Builds a short, log friendly description of an embedded connection target:
+/// Builds a short, log-safe description of an embedded connection target:
 /// the database path or `:memory:`.
 #[inline]
-pub fn describe_path<D: Driver>(url: &Url) -> String {
-    let mut target = String::with_capacity(32);
-    if url
-        .query_pairs()
+pub fn describe_path(url: &Url) -> String {
+    url.query_pairs()
         .any(|(k, v)| k.eq_ignore_ascii_case("mode") && v.eq_ignore_ascii_case("memory"))
-    {
-        let _ = write!(&mut target, ":memory:");
-        return target;
-    }
-    if let Some(path) = url
-        .query_pairs()
-        .find_map(|(k, v)| k.eq_ignore_ascii_case("path").then_some(v))
-    {
-        let _ = write!(&mut target, "{}", truncate_long!(path));
-        return target;
-    }
-    let host = url.host_str().unwrap_or_default();
-    let path = url.path();
-    if host.is_empty() && (path.is_empty() || path == "/") {
-        let _ = write!(&mut target, ":memory:");
-        return target;
-    }
-    let _ = write!(&mut target, "{host}");
-    if !path.is_empty() {
-        let _ = write!(&mut target, "{}", truncate_long!(path));
-    }
-    target
+        .then(|| ":memory:".into())
+        .or_else(|| {
+            url.query_pairs()
+                .find(|(k, _)| k.eq_ignore_ascii_case("path"))
+                .map(|(_, v)| format!("{}", truncate_long!(v)))
+        })
+        .unwrap_or_else(|| match (url.host_str().unwrap_or_default(), url.path()) {
+            ("", "" | "/") => "N/A".into(),
+            (host, "") => host.into(),
+            (host, path) => format!("{host}{}", truncate_long!(path)),
+        })
 }
 
 /// Sends the value through the channel and logs in case of error.
