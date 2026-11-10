@@ -14,15 +14,16 @@ async-stream.workspace = true
 byteorder = "1"
 bytes = "1"
 log.workspace = true
-openssl = "0"
-postgres-openssl = "0"
 postgres-protocol = "0"
 postgres-types = "0"
 rust_decimal = { workspace = true, features = ["db-tokio-postgres"] }
+rustls.workspace = true
+rustls-native-certs = "0.8"
 tank-core.workspace = true
 time.workspace = true
 tokio.workspace = true
-tokio-postgres = { version = "0", features = ["with-time-0_3", "with-uuid-1"] }
+tokio-postgres = { version = "0.7", features = ["with-time-0_3", "with-uuid-1"] }
+tokio-postgres-rustls = "0.14"
 url.workspace = true
 uuid.workspace = true
 

@@ -3,27 +3,31 @@ use crate::{
     util::{stream_postgres_simple_query_message_to_tank_query_result, value_to_postgres_type},
 };
 use async_stream::try_stream;
-use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
-use postgres_openssl::MakeTlsConnector;
 use postgres_types::ToSql;
+use rustls::{
+    ClientConfig, RootCertStore,
+    crypto::{CryptoProvider, aws_lc_rs::default_provider},
+    pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
+};
 use std::{
     borrow::Cow,
-    env,
+    env, fs,
     iter::zip,
     mem,
-    path::PathBuf,
+    path::{Path, PathBuf},
     pin::{Pin, pin},
-    str::FromStr,
     sync::Arc,
 };
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
     QueryResult, RawQuery, Result, Row, RowLabels, RowOwned, RowsAffected, SqlWriter, Transaction,
+    anyhow,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
 use tokio::{spawn, task::JoinHandle};
 use tokio_postgres::{NoTls, binary_copy::BinaryCopyInWriter};
+use tokio_postgres_rustls::MakeRustlsConnect;
 
 /// PostgreSQL connection.
 #[derive(Debug)]
@@ -34,6 +38,57 @@ pub struct PostgresConnection {
 }
 
 impl PostgresConnection {
+    fn read_certificates(path: &Path) -> Result<Vec<CertificateDer<'static>>> {
+        let pem = fs::read(path)
+            .with_context(|| format!("Could not read certificate file {}", path.display()))?;
+        let certificates = CertificateDer::pem_slice_iter(&pem)
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .with_context(|| format!("Invalid PEM certificate file {}", path.display()))?;
+        if certificates.is_empty() {
+            return Err(anyhow!("No certificates in {}", path.display()));
+        }
+        Ok(certificates)
+    }
+
+    fn tls_config(
+        root: Option<String>,
+        cert: Option<String>,
+        key: Option<String>,
+    ) -> Result<ClientConfig> {
+        let mut roots = RootCertStore::empty();
+        let native = rustls_native_certs::load_native_certs();
+        roots.add_parsable_certificates(native.certs);
+        let root_path = PathBuf::from(root.as_deref().unwrap_or("~/.postgresql/root.crt"));
+        if root.is_some() || root_path.exists() {
+            for certificate in Self::read_certificates(&root_path)? {
+                roots.add(certificate)?;
+            }
+        }
+        let provider = CryptoProvider::get_default()
+            .cloned()
+            .unwrap_or_else(|| Arc::new(default_provider()));
+        let builder = ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()?
+            .with_root_certificates(roots);
+        let cert_path = PathBuf::from(cert.as_deref().unwrap_or("~/.postgresql/postgresql.crt"));
+        let key_path = PathBuf::from(key.as_deref().unwrap_or("~/.postgresql/postgresql.key"));
+        match (
+            cert.is_some() || cert_path.exists(),
+            key.is_some() || key_path.exists(),
+        ) {
+            (false, false) => Ok(builder.with_no_client_auth()),
+            (true, true) => {
+                let certificates = Self::read_certificates(&cert_path)?;
+                let key = PrivateKeyDer::from_pem_file(&key_path)
+                    .with_context(|| format!("Invalid private key file {}", key_path.display()))?;
+                Ok(builder.with_client_auth_cert(certificates, key)?)
+            }
+            _ => Err(anyhow!(
+                "Both sslcert and sslkey are required for client authentication"
+            )),
+        }
+    }
+
     #[cold]
     #[inline(never)]
     fn query_error(e: impl Into<Error>, query: &Query<PostgresDriver>) -> Error {
@@ -293,36 +348,19 @@ impl Connection for PostgresConnection {
             });
             (client, handle)
         } else {
-            let mut builder = SslConnector::builder(SslMethod::tls())?;
-            let path = PathBuf::from_str(
-                take_url_param("sslrootcert", "PGSSLROOTCERT", true)
-                    .as_deref()
-                    .unwrap_or("~/.postgresql/root.crt"),
-            )
-            .context(context)?;
-            if path.exists() {
-                builder.set_ca_file(path)?;
+            let config = Self::tls_config(
+                take_url_param("sslrootcert", "PGSSLROOTCERT", true),
+                take_url_param("sslcert", "PGSSLCERT", true),
+                take_url_param("sslkey", "PGSSLKEY", true),
+            )?;
+            if !url.query_pairs().any(|(key, _)| key == "sslmode") {
+                let mode = match sslmode.as_str() {
+                    "verify-ca" | "verify-full" => "require",
+                    mode => mode,
+                };
+                url.query_pairs_mut().append_pair("sslmode", mode);
             }
-            let path = PathBuf::from_str(
-                take_url_param("sslcert", "PGSSLCERT", true)
-                    .as_deref()
-                    .unwrap_or("~/.postgresql/postgresql.crt"),
-            )
-            .context(context)?;
-            if path.exists() {
-                builder.set_certificate_chain_file(path)?;
-            }
-            let path = PathBuf::from_str(
-                take_url_param("sslkey", "PGSSLKEY", true)
-                    .as_deref()
-                    .unwrap_or("~/.postgresql/postgresql.key"),
-            )
-            .context(context)?;
-            if path.exists() {
-                builder.set_private_key_file(path, SslFiletype::PEM)?;
-            }
-            builder.set_verify(SslVerifyMode::PEER);
-            let connector = MakeTlsConnector::new(builder.build());
+            let connector = MakeRustlsConnect::new(config);
             let (client, connection) = tokio_postgres::connect(url.as_str(), connector).await?;
             let handle = spawn(async move {
                 if let Err(error) = connection.await

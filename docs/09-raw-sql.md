@@ -12,7 +12,7 @@ Three firing modes:
 Anything implementing [`AsQuery`](https://docs.rs/tank/latest/tank/trait.AsQuery.html) works: `String`, `&str`, `DynQuery`, `Query<D>`, or `&mut Query<D>`.
 
 ## Composing SQL With `SqlWriter`
-SQL drivers expose a `SqlWriter` for dialect-correct SQL fragments. Use the writer to buffer multiple statements into one `DynQuery`. MongoDB and Valkey use native query representations and do not accept raw SQL.
+SQL drivers expose a `SqlWriter` for dialect-correct SQL fragments. Use the writer to buffer multiple statements into one `DynQuery` only when the driver supports batches. ClickHouse and chDB accept one statement per request. MongoDB and Valkey use native query representations and do not accept raw SQL.
 
 `DynQuery` is the raw-query staging area. Use it while composing executable SQL text. Once you call `prepare(...)`, execution moves to a driver-specific prepared handle rather than an extendable SQL buffer.
 
@@ -61,7 +61,7 @@ let results = executor.run(query).try_collect::<Vec<_>>().await?;
 ```
 
 ### Mixed Results
-Each statement yields `Affected` or one or more `Row` values. Collect and filter as needed:
+A statement can yield `Affected` or one or more `Row` values; an empty SELECT can yield no items. Collect and filter as needed:
 ```rust
 use tank::QueryResult;
 let rows = results
@@ -141,6 +141,6 @@ Prepared statements reuse backend preparation state when available. Parameter co
 - When selecting a subset of columns, ensure the labels match the entity fields present. Missing labels require `Default` on the entity, not just on the omitted field types.
 - Prepared queries use positional parameters across drivers.
 - Reuse prepared queries across multiple executions: call `clear_bindings()` to reset parameters and `bind(...)` again before the next shot.
-- Prepared queries are backend-owned state. Treat their string formatting as diagnostic output, not as executable SQL.
+- Prepared queries are driver-specific state, which may be a native handle or local emulation. Treat their string formatting as diagnostic output, not as executable SQL.
 
 *Raw fire authorized. Execute with precision. Tank out.*

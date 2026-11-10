@@ -16,7 +16,7 @@ It maps Tank operations and queries to native Postgres commands. Use it with the
 
 ## Features
 - Async connection and execution via [`tokio-postgres`](https://crates.io/crates/tokio-postgres)
-- TLS via [`postgres-openssl`](https://crates.io/crates/postgres-openssl)
+- TLS via [`rustls`](https://crates.io/crates/rustls) and [`tokio-postgres-rustls`](https://crates.io/crates/tokio-postgres-rustls), including client certificate authentication
 - Fast bulk inserts using the COPY binary protocol
 
 ## Install
@@ -43,6 +43,8 @@ let mut connection = pool.get().await?;
 Run this inside an async function. The returned connection can execute Tank entity operations.
 
 Certificate filenames are resolved relative to the working directory. Use paths appropriate for your deployment.
+
+TLS uses native system trust roots plus `sslrootcert`, and verifies server hostnames and IP addresses. `PGSSLMODE`, `PGSSLROOTCERT`, `PGSSLCERT`, and `PGSSLKEY` provide defaults when the corresponding URL options are absent. Client authentication requires both `sslcert` and `sslkey` in PEM format.
 
 ## Running Tests
 Tests need a Postgres instance. Provide a connection URL via `TANK_POSTGRES_TEST`. If absent, a containerized Postgres will be launched automatically using [testcontainers-modules](https://crates.io/crates/testcontainers-modules).

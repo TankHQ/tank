@@ -47,21 +47,5 @@ Tank's `#[tank(...)]` attributes configure tables and columns. DDL and constrain
 - <Badge type="tip" text="field" /> `on_delete = no_action|restrict|cascade|set_null|set_default`: Action for foreign key when referenced row is deleted.
 - <Badge type="tip" text="field" /> `on_update = no_action|restrict|cascade|set_null|set_default`: Action for foreign key when referenced row is updated.
 
-### Examples
-```rust
-use tank::{AsValue, Entity};
-use time::PrimitiveDateTime;
-use uuid::{Uuid, uuid};
-
-#[derive(Entity)]
-#[tank(schema = "trading", name = "trade_execution", primary_key = ("trade_id", "execution_time"))]
-pub struct Trade {
-    #[tank(name = "trade_id")]
-    pub trade: u64,
-    #[tank(name = "order_id", default = uuid!("241d362d-797e-4769-b3f6-412440c8cf68").as_value())]
-    pub order: Uuid,
-    pub execution_time: PrimitiveDateTime,
-}
-```
 
 *All units accounted for. Stand by.*

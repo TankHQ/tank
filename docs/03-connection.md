@@ -68,8 +68,6 @@ Parameters:
 - `sslcert`: Client certificate path (or environment variable `PGSSLCERT`).
 - `sslkey`: Client private key path (or environment variable `PGSSLKEY`).
 
-Use explicit paths: the driver does not expand `~` to the home directory.
-
 ### SQLite
 SQLite is the lone wolf operative, deep behind enemy lines: lightweight, reliable, zero configuration. Deploy anywhere, anytime.
 
@@ -163,6 +161,66 @@ Modes:
 - `mode=memory`: in-memory access (temporary database that lives only for the duration of the connection)
 
 The `mode` parameter provides a common syntax for specifying connection access, similar to SQLite. The values map respectively to `access_mode=READ_ONLY`, `access_mode=READ_WRITE`, `access_mode=READ_WRITE` and the special `duckdb://:memory:` path. Additional URL parameters are passed directly to the DuckDB C API. See the full list of supported options on the [DuckDB website](https://duckdb.org/docs/stable/configuration/overview#global-configuration-options).
+
+### ClickHouse
+ClickHouse is your long-range artillery battery: columnar, massively parallel, built to flatten mountains of data into a single decisive figure.
+
+```rust
+use tank::{ConnectionPool, Driver, PoolConfig, Result};
+use tank_clickhouse::ClickHouseDriver;
+
+async fn establish_clickhouse_connection(driver: &ClickHouseDriver) -> Result<impl ConnectionPool<ClickHouseDriver>> {
+    let pool = driver
+        .connect_pool(
+            "clickhouse://default@127.0.0.1:9000/default",
+            PoolConfig::new(),
+        )
+        .await?;
+    Ok(pool)
+}
+```
+
+**URL Format**:
+- `clickhouse://user:password@host:port/database`
+
+The driver uses plaintext native TCP, not HTTP, and exposes no TLS configuration. Specify a hostname and an explicit native port (normally `9000`). Omitted credentials use user `default` and an empty password. An omitted database is left unspecified in the client options, so the server chooses its default.
+
+The only supported query parameter is `tcp_nodelay`: it defaults to `true` and accepts only `true` or `false`. Unknown parameters and invalid boolean values return errors. Supply credentials and the database in the URL authority and path, not query parameters.
+
+> [!NOTE]
+> **No transactions or multi-statement execution**: `begin()` returns an error and `commit`/`rollback` are unsupported; issue one statement at a time directly against the connection.
+>
+> On connect, Tank applies `allow_experimental_lightweight_delete=1`, `join_use_nulls=1`, and `final=1`. If any session setting fails, the connection attempt fails. See [ClickHouse/chDB capabilities](04-capabilities.md#clickhouse-and-chdb) for engine and deduplication semantics.
+
+### chDB
+chDB is mobile artillery: long-range firepower embedded in your own line, no emplacement, no supply line.
+
+```rust
+use tank::{ConnectionPool, Driver, PoolConfig, Result};
+use tank_chdb::ChDBDriver;
+
+async fn establish_chdb_connection(driver: &ChDBDriver) -> Result<impl ConnectionPool<ChDBDriver>> {
+    let pool = driver
+        .connect_pool("chdb://", PoolConfig::new())
+        .await?;
+    Ok(pool)
+}
+```
+
+**URL Format**:
+- Memory: `chdb://` opens a fresh in-memory database
+- File: `chdb://?path=/path/to/database`
+
+The first nonempty, case-insensitive `path` query parameter takes precedence. Otherwise, the driver uses the URL path with leading slashes stripped, so `chdb:///relative/database` selects a relative directory. Use `?path=` for absolute paths. The URL authority and other query parameters are ignored. Without a path, the database is in memory and lasts for the connection's lifetime.
+
+> [!NOTE]
+> **No transactions or multi-statement execution**: like its server-backed sibling, chDB does not support `begin()`, `commit` or `rollback`; issue one statement at a time.
+>
+> On connect, Tank applies `allow_experimental_lightweight_delete=1`, `join_use_nulls=1`, `final=1`, and `output_format_json_quote_decimals=1`. If any session setting fails, the connection attempt fails.
+>
+> **Blocking native work**: the async interface offloads connection opening and query initialization to blocking workers, but subsequent chunk fetches can block while polling the stream, and cancellation/cleanup can block when it is dropped.
+
+See [ClickHouse/chDB capabilities](04-capabilities.md#clickhouse-and-chdb), [type mappings](05-types.md#clickhouse-and-chdb), and [raw SQL preparation](09-raw-sql.md#clickhouse-and-chdb) for shared behavior and limitations.
 
 ### MongoDB
 MongoDB is your guerrilla special forces unit operating in the "fog of war", gathering intel in whatever format it arrives.
