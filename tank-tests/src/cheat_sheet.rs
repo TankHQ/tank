@@ -1,6 +1,6 @@
 #![allow(unused_variables)]
 use std::{collections::HashMap, sync::LazyLock};
-use tank::{AsValue, Entity, Result, Value, ValueOwned, anyhow, expr};
+use tank::{AsValue, Entity, QueryBuilder, Result, Value, ValueOwned, anyhow, expr};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -78,16 +78,6 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         transient_cache: HashMap::new(),
     };
 
-    #[cfg(not(feature = "disable-transactions"))]
-    {
-        use tank::{Entity, Transaction};
-
-        let mut tx = connection.begin().await?;
-        EntityExample::insert_one(&mut tx, &entity).await?;
-        entity.delete(&mut tx).await?;
-        tx.commit().await?;
-    }
-
     let entity2 = EntityExample {
         unit_id: Uuid::new_v4(),
         region: "South".into(),
@@ -149,6 +139,16 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
         let uid = entity3.unit_id;
         EntityExample::delete_many(&mut connection, expr!(EntityExample::unit_id == #uid)).await?;
+    }
+
+    #[cfg(not(feature = "disable-transactions"))]
+    {
+        use tank::{Entity, Transaction};
+
+        let mut tx = connection.begin().await?;
+        EntityExample::insert_one(&mut tx, &entity).await?;
+        entity.delete(&mut tx).await?;
+        tx.commit().await?;
     }
 
     {
@@ -284,6 +284,23 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
             .try_collect::<Vec<_>>()
             .await?;
         // #endregion cheat-sheet-joins
+    }
+
+    {
+        use tank::{cols, expr};
+        let result = connection
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!("a", "b"))
+                    .from("mytable")
+                    .where_expr(expr!(mytable.a > 0 && mytable.b < 0))
+                    .group_by(cols!(mytable.c))
+                    .buil(&connection.driver()),
+            )
+            .map_ok(BookAuthorResult::from_row)
+            .map(Result::flatten)
+            .try_collect::<Vec<_>>()
+            .await?;
     }
 
     Ok(())

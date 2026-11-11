@@ -12,10 +12,10 @@ mod tests {
     };
     use syn::{Path, parse_str};
     use tank::{
-        CollectionType, Context, Dataset, DeclareTableRef, DynQuery, EitherIterator, Entity,
-        Expression, FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType,
-        QueryBuilder, QueryResult, References, Row, RowLabels, RowOwned, RowsAffected, SqlWriter,
-        StructType, TRUNCATE_LONG_LIMIT, TableRef, Value, as_c_string, column_def, consume_while,
+        CollectionType, Context, Dataset, DynQuery, EitherIterator, Entity, Expression,
+        FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType, QueryBuilder,
+        QueryResult, References, Row, RowLabels, RowOwned, RowsAffected, SqlWriter, StructType,
+        TRUNCATE_LONG_LIMIT, TableRef, Value, as_c_string, column_def, consume_while,
         decimal_from_scaled, error_message_from_ptr, extract_number, matches_path, month_to_number,
         number_to_month, quote_btree_map, quote_cow, quote_option, separated_by, truncate_bound,
         truncate_long, value_to_json, write_escaped,
@@ -100,17 +100,6 @@ mod tests {
         assert_eq!((&&table).table_ref(), table);
         assert!(!<&TableRef as Dataset>::qualified_columns());
 
-        let declared = DeclareTableRef(table.clone());
-        let mut declared_context = Context::fragment(Fragment::SqlSelectFrom);
-        let mut rendered_declared = DynQuery::default();
-        declared.write_table_name(&writer, &mut declared_context, &mut rendered_declared);
-        assert_eq!(
-            rendered_declared.as_str().as_ref(),
-            r#""analytics"."events" e"#
-        );
-        assert_eq!(declared.table_ref(), table);
-        assert!(!<DeclareTableRef as Dataset>::qualified_columns());
-
         let dynamic: &dyn Dataset = &table;
         let mut query = DynQuery::default();
         (&dynamic).write_table_name(
@@ -151,10 +140,6 @@ mod tests {
         assert!(tokens.contains("events"));
         assert!(tokens.contains("analytics"));
         assert!(tokens.contains("Borrowed"));
-
-        let declare_tokens = DeclareTableRef(table).to_token_stream().to_string();
-        assert!(declare_tokens.contains(":: tank :: DeclareTableRef"));
-        assert!(declare_tokens.contains(":: tank :: TableRef"));
     }
 
     #[test]

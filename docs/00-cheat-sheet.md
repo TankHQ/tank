@@ -72,19 +72,6 @@ EntityExample::create_table(&mut connection, true, true).await?;
 EntityExample::drop_table(&mut connection, true, false).await?;
 ```
 
-## Transaction
-
-```rust
-use tank::{Entity, Transaction};
-
-let mut tx = connection.begin().await?;
-EntityExample::insert_one(&mut tx, &entity).await?;
-entity.delete(&mut tx).await?;
-tx.commit().await?;
-```
-
-Both transactions and connections can serve as executors in methods such as `EntityExample::create_table(&mut tx, ...)`.
-
 ## Insert
 
 ```rust
@@ -126,6 +113,19 @@ EntityExample::delete_many(
     expr!(EntityExample::unit_id == #uid)
 ).await?;
 ```
+
+## Transaction
+
+```rust
+use tank::{Entity, Transaction};
+
+let mut tx = connection.begin().await?;
+EntityExample::insert_one(&mut tx, &entity).await?;
+entity.delete(&mut tx).await?;
+tx.commit().await?; // Or tx.rollback().await?
+```
+
+Both transactions and connections can serve as executors in methods such as `EntityExample::create_table(&mut tx, ...)`.
 
 ## Expressions
 
@@ -248,3 +248,5 @@ writer.write_select(
 
 let results: Vec<_> = connection.run(query).try_collect().await?;
 ```
+
+## Common workflows

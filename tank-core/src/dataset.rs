@@ -31,3 +31,23 @@ impl Dataset for &dyn Dataset {
         (*self).table_ref()
     }
 }
+
+impl<T> Dataset for T
+where
+    for<'a> &'a T: Into<TableRef>,
+{
+    fn qualified_columns() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+
+    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+        writer.write_table_ref(context, out, &self.into())
+    }
+
+    fn table_ref(&self) -> TableRef {
+        self.into()
+    }
+}

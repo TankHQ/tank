@@ -1,7 +1,7 @@
 use crate::{
-    ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Fragment, Query,
-    QueryBuilder, RawQuery, Result, Row, RowOwned, RowValues, RowsAffected, TableRef,
-    future::Either, log_error, stream::Stream, truncate_long, writer::SqlWriter,
+    ColumnDef, Context, Driver, DynQuery, Executor, Expression, Fragment, Query, QueryBuilder,
+    RawQuery, Result, Row, RowOwned, RowValues, RowsAffected, TableRef, future::Either, log_error,
+    stream::Stream, truncate_long, writer::SqlWriter,
 };
 use anyhow::anyhow;
 use futures::{FutureExt, StreamExt};
@@ -328,26 +328,5 @@ pub trait Entity: AsEntity + Expression {
                 })
             }),
         )
-    }
-}
-
-impl<E: Entity> Dataset for E {
-    /// Indicates whether column names should be fully qualified with schema and table name.
-    ///
-    /// For entities this returns `false` to keep queries concise, for joins it returns `true`.
-    fn qualified_columns() -> bool
-    where
-        Self: Sized,
-    {
-        false
-    }
-
-    /// Writes the table reference into the out string.
-    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        Self::table().write_table_name(writer, context, out);
-    }
-
-    fn table_ref(&self) -> TableRef {
-        Self::table().clone()
     }
 }
