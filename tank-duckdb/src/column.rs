@@ -64,15 +64,8 @@ impl Column {
     }
 
     unsafe fn empty_value(&self) -> Option<Value<'static>> {
-        if let Some(value) = ValueWrap::scalar_null(self.id) {
-            return Some(value);
-        }
         unsafe {
-            Some(
-                ValueWrap::try_from(*CBox(duckdb_vector_get_column_type(self.vector)))
-                    .ok()?
-                    .into(),
-            )
+            ValueWrap::empty_value(self.id, || CBox(duckdb_vector_get_column_type(self.vector)))
         }
     }
 

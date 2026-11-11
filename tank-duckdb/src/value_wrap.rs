@@ -9,8 +9,8 @@ use std::{
     hint, slice,
 };
 use tank_core::{
-    CollectionType, Error, Interval, MapType, Result, StructType, TableRef, Value, as_c_string,
-    decimal_from_scaled, log_error,
+    CollectionType, Error, ErrorContext, Interval, MapType, Result, StructType, TableRef, Value,
+    as_c_string, decimal_from_scaled, log_error,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time, macros::date};
 use uuid::Uuid;
@@ -177,8 +177,13 @@ impl ValueWrap<'_> {
         }
     }
 
-    /// Typed NULL of a type that needs no logical type details, `None` for the others.
-    pub(crate) fn scalar_null(id: DUCKDB_TYPE) -> Option<Value<'static>> {
+    /// Typed NULL of a DuckDB type. `logical_type` is only called for the types that need its
+    /// details (decimals and nested types), sparing the others a C allocation.
+    #[inline(always)]
+    pub(crate) unsafe fn empty_value(
+        id: DUCKDB_TYPE,
+        logical_type: impl FnOnce() -> CBox<duckdb_logical_type>,
+    ) -> Option<Value<'static>> {
         Some(match id {
             DUCKDB_TYPE_DUCKDB_TYPE_SQLNULL => Value::Null,
             DUCKDB_TYPE_DUCKDB_TYPE_BOOLEAN => Value::Boolean(None),
@@ -207,7 +212,74 @@ impl ValueWrap<'_> {
             DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR | DUCKDB_TYPE_DUCKDB_TYPE_ENUM => Value::Varchar(None),
             DUCKDB_TYPE_DUCKDB_TYPE_BLOB => Value::Blob(None),
             DUCKDB_TYPE_DUCKDB_TYPE_UUID => Value::Uuid(None),
-            _ => return None,
+            // A different return type keeps the cold call from sharing the caller's return slot.
+            id => return Self::detailed_empty_value(id, logical_type()).ok(),
+        })
+    }
+
+    /// The part of [`Self::empty_value`] reading the logical type.
+    #[cold]
+    #[inline(never)]
+    fn detailed_empty_value(
+        id: DUCKDB_TYPE,
+        owned: CBox<duckdb_logical_type>,
+    ) -> Result<Value<'static>> {
+        let logical_type = *owned;
+        let child = |child| unsafe {
+            let child = CBox(child);
+            let id = duckdb_get_type_id(*child);
+            Self::empty_value(id, || child)
+                .with_context(|| format!("Unsupported DuckDB logical type: {id}"))
+        };
+        Ok(unsafe {
+            match id {
+                DUCKDB_TYPE_DUCKDB_TYPE_DECIMAL => Value::Decimal(
+                    None,
+                    duckdb_decimal_width(logical_type),
+                    duckdb_decimal_scale(logical_type),
+                ),
+                DUCKDB_TYPE_DUCKDB_TYPE_LIST => Value::List(
+                    None,
+                    Box::new(CollectionType {
+                        element: child(duckdb_list_type_child_type(logical_type))?,
+                        len: 0,
+                    }),
+                ),
+                DUCKDB_TYPE_DUCKDB_TYPE_ARRAY => Value::Array(
+                    None,
+                    Box::new(CollectionType {
+                        element: child(duckdb_array_type_child_type(logical_type))?,
+                        len: duckdb_array_type_array_size(logical_type) as u32,
+                    }),
+                ),
+                DUCKDB_TYPE_DUCKDB_TYPE_STRUCT => Value::Struct(
+                    None,
+                    Box::new(StructType {
+                        fields: (0..duckdb_struct_type_child_count(logical_type))
+                            .map(|i| {
+                                Ok((
+                                    Self::take_string(duckdb_struct_type_child_name(
+                                        logical_type,
+                                        i,
+                                    )),
+                                    child(duckdb_struct_type_child_type(logical_type, i))?,
+                                ))
+                            })
+                            .collect::<Result<_>>()?,
+                        name: TableRef::new(
+                            Self::take_string(duckdb_logical_type_get_alias(logical_type)).into(),
+                        ),
+                    }),
+                ),
+                DUCKDB_TYPE_DUCKDB_TYPE_MAP => Value::Map(
+                    None,
+                    Box::new(MapType {
+                        key: child(duckdb_map_type_key_type(logical_type))?,
+                        value: child(duckdb_map_type_value_type(logical_type))?,
+                    }),
+                ),
+                id => return Err(anyhow!("Unsupported DuckDB logical type: {id}")),
+            }
         })
     }
 
@@ -402,74 +474,5 @@ impl TryFrom<ValueWrap<'_>> for CBox<duckdb_value> {
                 .inspect_err(log_error);
         }
         Ok(result)
-    }
-}
-
-impl TryFrom<duckdb_logical_type> for ValueWrap<'static> {
-    type Error = Error;
-
-    fn try_from(logical_type: duckdb_logical_type) -> Result<Self> {
-        unsafe {
-            let id = duckdb_get_type_id(logical_type);
-            if let Some(value) = Self::scalar_null(id) {
-                return Ok(Self(Cow::Owned(value)));
-            }
-            let value = match id {
-                DUCKDB_TYPE_DUCKDB_TYPE_DECIMAL => Value::Decimal(
-                    None,
-                    duckdb_decimal_width(logical_type),
-                    duckdb_decimal_scale(logical_type),
-                ),
-                DUCKDB_TYPE_DUCKDB_TYPE_LIST => Value::List(
-                    None,
-                    Box::new(CollectionType {
-                        element: Self::try_from(*CBox(duckdb_list_type_child_type(logical_type)))?
-                            .into(),
-                        len: 0,
-                    }),
-                ),
-                DUCKDB_TYPE_DUCKDB_TYPE_ARRAY => Value::Array(
-                    None,
-                    Box::new(CollectionType {
-                        element: Self::try_from(*CBox(duckdb_array_type_child_type(logical_type)))?
-                            .into(),
-                        len: duckdb_array_type_array_size(logical_type) as u32,
-                    }),
-                ),
-                DUCKDB_TYPE_DUCKDB_TYPE_STRUCT => Value::Struct(
-                    None,
-                    Box::new(StructType {
-                        fields: (0..duckdb_struct_type_child_count(logical_type))
-                            .map(|i| {
-                                Ok((
-                                    Self::take_string(duckdb_struct_type_child_name(
-                                        logical_type,
-                                        i,
-                                    )),
-                                    Self::try_from(*CBox(duckdb_struct_type_child_type(
-                                        logical_type,
-                                        i,
-                                    )))?
-                                    .into(),
-                                ))
-                            })
-                            .collect::<Result<_>>()?,
-                        name: TableRef::new(
-                            Self::take_string(duckdb_logical_type_get_alias(logical_type)).into(),
-                        ),
-                    }),
-                ),
-                DUCKDB_TYPE_DUCKDB_TYPE_MAP => Value::Map(
-                    None,
-                    Box::new(MapType {
-                        key: Self::try_from(*CBox(duckdb_map_type_key_type(logical_type)))?.into(),
-                        value: Self::try_from(*CBox(duckdb_map_type_value_type(logical_type)))?
-                            .into(),
-                    }),
-                ),
-                id => return Err(anyhow!("Unsupported DuckDB logical type: {id}")),
-            };
-            Ok(Self(Cow::Owned(value)))
-        }
     }
 }
