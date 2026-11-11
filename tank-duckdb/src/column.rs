@@ -100,9 +100,9 @@ impl DuckDBColumn {
                         .then(|| {
                             ValueWrap::to_decimal(
                                 match self.decimal_width {
-                                    ..=4 => *(data as *const i16).add(row) as i128,
-                                    ..=9 => *(data as *const i32).add(row) as i128,
-                                    ..=18 => *(data as *const i64).add(row) as i128,
+                                    ..=4 => *(data as *const i16).add(row) as _,
+                                    ..=9 => *(data as *const i32).add(row) as _,
+                                    ..=18 => *(data as *const i64).add(row) as _,
                                     _ => ValueWrap::to_i128(
                                         &*(data as *const duckdb_hugeint).add(row),
                                     ),
@@ -139,11 +139,11 @@ impl DuckDBColumn {
             let data = self.data;
             let id = self.id;
             if !self.is_valid(row)
-                || (data.is_null()
+                || data.is_null()
                     && !matches!(
                         id,
                         DUCKDB_TYPE_DUCKDB_TYPE_ARRAY | DUCKDB_TYPE_DUCKDB_TYPE_STRUCT
-                    ))
+                    )
             {
                 return self.empty_value();
             }
@@ -402,7 +402,7 @@ impl DuckdbAppender {
     }
 
     #[inline(always)]
-    pub(crate) unsafe fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.data = unsafe { duckdb_vector_get_data(self.vector) };
         self.validity = ptr::null_mut();
     }

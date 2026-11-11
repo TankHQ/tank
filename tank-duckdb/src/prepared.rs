@@ -3,9 +3,9 @@ use anyhow::anyhow;
 use libduckdb_sys::*;
 use std::{
     fmt::{self, Display},
-    hint, mem,
+    mem,
 };
-use tank_core::{AsValue, Error, Prepared, Result, Value, error_message_from_ptr, log_error};
+use tank_core::{AsValue, Error, Prepared, Result, Value, error_message_from_ptr};
 
 /// Prepared statement wrapper for DuckDB.
 #[derive(Debug)]
@@ -86,7 +86,7 @@ impl Prepared for DuckDBPrepared {
             mem::forget(value);
             ensure_rc!(
                 state?,
-                Error::msg(error_message_from_ptr(&duckdb_prepare_error(prepared)).into_owned(),)
+                Error::msg(error_message_from_ptr(duckdb_prepare_error(prepared)).into_owned(),)
                     .context(format!("While trying to bind the parameter {index}"))
             );
             self.index = index;

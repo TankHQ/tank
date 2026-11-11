@@ -208,10 +208,20 @@ pub fn log_warn<E: fmt::Display>(error: &E) {
     log::warn!("{error:#}");
 }
 
-pub fn error_message_from_ptr<'a>(ptr: &'a *const c_char) -> Cow<'a, str> {
+#[inline(always)]
+pub fn char_ptr_to_string(ptr: *mut c_char) -> String {
+    if ptr.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(ptr).to_string_lossy().into_owned() }
+    }
+}
+
+#[inline(always)]
+pub fn error_message_from_ptr<'a>(ptr: *const c_char) -> Cow<'a, str> {
     unsafe {
-        if *ptr != ptr::null() {
-            CStr::from_ptr(*ptr).to_string_lossy()
+        if ptr != ptr::null() {
+            CStr::from_ptr(ptr).to_string_lossy()
         } else {
             Cow::Borrowed("Unknown error: could not extract the error message")
         }

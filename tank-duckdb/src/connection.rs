@@ -1,6 +1,10 @@
 use crate::{
-    DuckDBPrepared, DuckDBTransaction, ValueWrap, column::DuckdbAppender, driver::DuckDBDriver,
-    ensure_rc, stream::DuckDBStream, util::CBox,
+    DuckDBPrepared, DuckDBTransaction, ValueWrap,
+    column::DuckdbAppender,
+    driver::DuckDBDriver,
+    ensure_rc,
+    stream::DuckDBStream,
+    util::{CBox, appender_error},
 };
 use anyhow::anyhow;
 use libduckdb_sys::*;
@@ -8,7 +12,7 @@ use std::{
     borrow::Cow,
     ffi::{CStr, CString, c_char},
     future::{self, Future},
-    hint, ptr,
+    ptr,
     str::FromStr,
     sync::LazyLock,
 };
@@ -24,21 +28,6 @@ pub struct DuckDBConnection {
     // Drop order: disconnect before closing the database handle.
     pub(crate) connection: CBox<duckdb_connection>,
     _database: CBox<duckdb_database>,
-}
-
-impl DuckDBConnection {
-    #[inline(always)]
-    unsafe fn check_appender(appender: duckdb_appender, rc: duckdb_state) -> Result<()> {
-        if rc == duckdb_state_DuckDBSuccess {
-            Ok(())
-        } else {
-            hint::cold_path();
-            Err(Error::msg(
-                error_message_from_ptr(&unsafe { duckdb_appender_error(appender) }).into_owned(),
-            ))
-            .inspect_err(log_error)
-        }
-    }
 }
 
 impl Connection for DuckDBConnection {
@@ -142,7 +131,7 @@ impl Executor for DuckDBConnection {
                 ensure_rc!(
                     duckdb_prepare(*self.connection, c_sql.as_ptr(), &mut *prepared),
                     Error::msg(
-                        error_message_from_ptr(&duckdb_prepare_error(*prepared)).into_owned(),
+                        error_message_from_ptr(duckdb_prepare_error(*prepared)).into_owned(),
                     )
                 );
                 Ok(DuckDBPrepared::new(prepared).into())
@@ -193,13 +182,15 @@ impl Executor for DuckDBConnection {
                 table.as_ptr(),
                 &mut *appender,
             );
-            Self::check_appender(*appender, rc)
-                .context("While creating the `duckdb_appender` object")?;
+            ensure_rc!(
+                rc,
+                appender_error(*appender).context("While creating the `duckdb_appender` object")
+            );
             for column in columns {
-                Self::check_appender(
-                    *appender,
+                ensure_rc!(
                     duckdb_appender_add_column(*appender, as_c_string(column.name()).as_ptr()),
-                )?;
+                    appender_error(*appender)
+                );
             }
             let mut rows_affected = 0;
             if !columns.is_empty() && columns.iter().all(|c| DuckdbAppender::supports(&c.value)) {
@@ -221,7 +212,7 @@ impl Executor for DuckDBConnection {
                     .collect::<Box<[_]>>();
                 loop {
                     duckdb_data_chunk_reset(*chunk);
-                    columns.iter_mut().for_each(|c| c.reset());
+                    columns.iter_mut().for_each(DuckdbAppender::reset);
                     let mut len = 0;
                     for entity in rows.by_ref().take(batch_size) {
                         for (value, column) in entity.as_entity().row_values().zip(&mut columns) {
@@ -233,26 +224,38 @@ impl Executor for DuckDBConnection {
                         break;
                     }
                     duckdb_data_chunk_set_size(*chunk, len as _);
-                    Self::check_appender(*appender, duckdb_append_data_chunk(*appender, *chunk))?;
+                    ensure_rc!(
+                        duckdb_append_data_chunk(*appender, *chunk),
+                        appender_error(*appender),
+                        "While appending data chunk",
+                    );
                     rows_affected += len as u64;
                 }
             } else {
                 for entity in rows {
                     for value in entity.as_entity().row_values() {
-                        Self::check_appender(
-                            *appender,
+                        ensure_rc!(
                             duckdb_append_value(
                                 *appender,
-                                *CBox::try_from(ValueWrap::from(value))?,
+                                *CBox::try_from(ValueWrap::from(&value))?,
                             ),
-                        )?;
+                            appender_error(*appender),
+                            format!("While appending ${value:?}"),
+                        );
                     }
-                    Self::check_appender(*appender, duckdb_appender_end_row(*appender))?;
+                    ensure_rc!(
+                        duckdb_appender_end_row(*appender),
+                        appender_error(*appender),
+                        "While appending to the end row",
+                    );
                     rows_affected += 1;
                 }
             }
-            Self::check_appender(*appender, duckdb_appender_close(*appender))
-                .context("While closing the `duckdb_appender` object")?;
+            ensure_rc!(
+                duckdb_appender_close(*appender),
+                appender_error(*appender),
+                "While closing the `duckdb_appender`",
+            );
             Ok(RowsAffected {
                 rows_affected: Some(rows_affected),
                 last_affected_id: None,

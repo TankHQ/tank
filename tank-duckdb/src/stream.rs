@@ -17,6 +17,7 @@ use tank_core::{
     log_error, stream::Stream,
 };
 
+/// Lazily runs each statement of a query, yielding its rows or affected-row count.
 pub struct DuckDBStream<'s, Q: AsMut<Query<DuckDBDriver>>> {
     // Drop dependent native resources before the query and connection borrow.
     batch: Option<Arc<Batch>>,
@@ -139,7 +140,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                             &mut *extracted_stmt,
                         ),
                         Error::msg(
-                            error_message_from_ptr(&duckdb_prepare_error(*extracted_stmt))
+                            error_message_from_ptr(duckdb_prepare_error(*extracted_stmt))
                                 .into_owned(),
                         )
                     );
@@ -155,7 +156,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                 ensure_rc!(
                     duckdb_execute_prepared_streaming(statement, &mut *result),
                     Error::msg(
-                        error_message_from_ptr(&duckdb_result_error(&mut *result)).into_owned(),
+                        error_message_from_ptr(duckdb_result_error(&mut *result)).into_owned(),
                     )
                 );
                 if duckdb_result_return_type(*result)

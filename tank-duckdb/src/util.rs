@@ -4,6 +4,7 @@ use std::{
     ops::{Deref, DerefMut},
     ptr,
 };
+use tank_core::{Error, error_message_from_ptr};
 
 pub(crate) trait CResource: Sized {
     fn is_null(&self) -> bool;
@@ -103,13 +104,19 @@ unsafe impl<T: CResource> Send for CBox<T> {}
 unsafe impl<T: CResource> Sync for CBox<T> {}
 
 #[macro_export]
-macro_rules! ensure_rc {
-    ($value:expr, $error:expr $(,)?) => {{
+macro_rules! ensure_rc {($value:expr, $error:expr $(, $context:expr)? $(,)?) => {{
         let value = $value;
         if value != ::libduckdb_sys::duckdb_state_DuckDBSuccess {
             ::std::hint::cold_path();
-            return Err($error).inspect_err(::tank_core::log_error);
+            return Err($error)
+                $(.context($context))?
+                .inspect_err(::tank_core::log_error);
         }
         value
     }};
+}
+
+#[inline(always)]
+pub(crate) fn appender_error(appender: duckdb_appender) -> Error {
+    Error::msg(error_message_from_ptr(unsafe { duckdb_appender_error(appender) }).into_owned())
 }

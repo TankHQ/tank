@@ -5,12 +5,11 @@ use rust_decimal::Decimal;
 use std::{
     borrow::Cow,
     cmp::{max, min},
-    ffi::{CStr, c_char},
     hint, slice,
 };
 use tank_core::{
     CollectionType, Error, ErrorContext, Interval, MapType, Result, StructType, TableRef, Value,
-    as_c_string, decimal_from_scaled, log_error,
+    as_c_string, char_ptr_to_string, decimal_from_scaled, log_error,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time, macros::date};
 use uuid::Uuid;
@@ -23,8 +22,8 @@ impl ValueWrap<'_> {
     #[inline(always)]
     pub(crate) fn from_i128(v: i128) -> duckdb_hugeint {
         duckdb_hugeint {
-            lower: v as u64,
-            upper: (v >> 64) as i64,
+            lower: v as _,
+            upper: (v >> 64) as _,
         }
     }
 
@@ -36,8 +35,8 @@ impl ValueWrap<'_> {
     #[inline(always)]
     pub(crate) fn from_u128(v: u128) -> duckdb_uhugeint {
         duckdb_uhugeint {
-            lower: v as u64,
-            upper: (v >> 64) as u64,
+            lower: v as _,
+            upper: (v >> 64) as _,
         }
     }
 
@@ -49,9 +48,9 @@ impl ValueWrap<'_> {
             v.mantissa()
         } else if d_scale < scale {
             v.mantissa()
-                .saturating_mul(10_i128.pow((scale - d_scale) as u32))
+                .saturating_mul(10_i128.pow((scale - d_scale) as _))
         } else {
-            let div = 10_i128.pow((d_scale - scale) as u32);
+            let div = 10_i128.pow((d_scale - scale) as _);
             (v.mantissa() + (div / 2) * v.mantissa().signum()) / div
         };
         let width = if width == 0 || width < scale {
@@ -125,10 +124,10 @@ impl ValueWrap<'_> {
         Some(PrimitiveDateTime::new(
             Self::to_date(days)?,
             Time::from_hms_micro(
-                (secs / 3600) as u8,
-                ((secs / 60) % 60) as u8,
-                (secs % 60) as u8,
-                us,
+                (secs / 3600) as _,
+                ((secs / 60) % 60) as _,
+                (secs % 60) as _,
+                us as _,
             )
             .ok()?,
         ))
@@ -137,7 +136,7 @@ impl ValueWrap<'_> {
     #[inline(always)]
     pub(crate) fn from_timestamptz(v: &OffsetDateTime) -> duckdb_timestamp {
         duckdb_timestamp {
-            micros: (v.unix_timestamp_nanos() / 1_000) as i64,
+            micros: (v.unix_timestamp_nanos() / 1_000) as _,
         }
     }
 
@@ -156,7 +155,7 @@ impl ValueWrap<'_> {
         let (upper, lower) = v.as_u64_pair();
         duckdb_hugeint {
             lower,
-            upper: (upper ^ (1 << 63)) as i64,
+            upper: (upper ^ (1 << 63)) as _,
         }
     }
 
@@ -177,10 +176,9 @@ impl ValueWrap<'_> {
         }
     }
 
-    /// Typed NULL of a DuckDB type. `logical_type` is only called for the types that need its
-    /// details (decimals and nested types), sparing the others a C allocation.
+    /// Typed NULL of a DuckDB type. `logical_type` is only called for the types that need it
     #[inline(always)]
-    pub(crate) unsafe fn empty_value(
+    pub(crate) fn empty_value(
         id: DUCKDB_TYPE,
         logical_type: impl FnOnce() -> CBox<duckdb_logical_type>,
     ) -> Option<Value<'static>> {
@@ -249,7 +247,7 @@ impl ValueWrap<'_> {
                     None,
                     Box::new(CollectionType {
                         element: child(duckdb_array_type_child_type(logical_type))?,
-                        len: duckdb_array_type_array_size(logical_type) as u32,
+                        len: duckdb_array_type_array_size(logical_type) as _,
                     }),
                 ),
                 DUCKDB_TYPE_DUCKDB_TYPE_STRUCT => Value::Struct(
@@ -258,7 +256,7 @@ impl ValueWrap<'_> {
                         fields: (0..duckdb_struct_type_child_count(logical_type))
                             .map(|i| {
                                 Ok((
-                                    Self::take_string(duckdb_struct_type_child_name(
+                                    char_ptr_to_string(duckdb_struct_type_child_name(
                                         logical_type,
                                         i,
                                     )),
@@ -267,7 +265,7 @@ impl ValueWrap<'_> {
                             })
                             .collect::<Result<_>>()?,
                         name: TableRef::new(
-                            Self::take_string(duckdb_logical_type_get_alias(logical_type)).into(),
+                            char_ptr_to_string(duckdb_logical_type_get_alias(logical_type)).into(),
                         ),
                     }),
                 ),
@@ -281,15 +279,6 @@ impl ValueWrap<'_> {
                 id => return Err(anyhow!("Unsupported DuckDB logical type: {id}")),
             }
         })
-    }
-
-    fn take_string(ptr: *mut c_char) -> String {
-        let ptr = CBox(ptr);
-        if ptr.is_null() {
-            String::new()
-        } else {
-            unsafe { CStr::from_ptr(*ptr).to_string_lossy().into_owned() }
-        }
     }
 }
 

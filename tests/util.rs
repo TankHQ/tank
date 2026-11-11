@@ -1110,10 +1110,10 @@ mod tests {
     fn error_ptr_messages() {
         let text = CString::new("boom").unwrap();
         let raw: *const c_char = text.as_ptr();
-        assert_eq!(error_message_from_ptr(&raw), "boom");
+        assert_eq!(error_message_from_ptr(raw), "boom");
 
         let null: *const c_char = ptr::null();
-        assert!(error_message_from_ptr(&null).contains("Unknown error"));
+        assert!(error_message_from_ptr(null).contains("Unknown error"));
     }
 
     #[test]
