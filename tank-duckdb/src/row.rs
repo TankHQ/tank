@@ -1,4 +1,4 @@
-use crate::{column::Column, util::CBox};
+use crate::{column::DuckDBColumn, util::CBox};
 use libduckdb_sys::*;
 use std::{
     borrow::Cow,
@@ -12,10 +12,9 @@ use tank_core::{Row, RowLabels, RowOwned, Value};
 // Caching each column's `data` and `validity` pointers per chunk avoids three C FFI calls per cell in `DuckDBRow::value`.
 #[derive(Debug)]
 pub(crate) struct Batch {
-    // Owns the memory `columns` point into.
     _chunk: CBox<duckdb_data_chunk>,
     labels: RowLabels,
-    columns: Vec<Column>,
+    columns: Vec<DuckDBColumn>,
 }
 
 unsafe impl Send for Batch {}
@@ -23,7 +22,7 @@ unsafe impl Sync for Batch {}
 
 impl Batch {
     /// The first chunk of a result.
-    pub(crate) unsafe fn new(result: &mut duckdb_result, chunk: CBox<duckdb_data_chunk>) -> Self {
+    pub(crate) fn new(result: &mut duckdb_result, chunk: CBox<duckdb_data_chunk>) -> Self {
         unsafe {
             let columns = duckdb_column_count(result) as usize;
             Self {
@@ -38,7 +37,7 @@ impl Batch {
                     })
                     .collect(),
                 columns: (0..columns)
-                    .map(|i| Column::from_vector(duckdb_data_chunk_get_vector(*chunk, i as _)))
+                    .map(|i| DuckDBColumn::new(duckdb_data_chunk_get_vector(*chunk, i as _)))
                     .collect(),
                 _chunk: chunk,
             }
@@ -46,18 +45,18 @@ impl Batch {
     }
 
     /// The next chunk of the same result.
-    pub(crate) unsafe fn next(&self, chunk: CBox<duckdb_data_chunk>) -> Self {
-        unsafe {
-            Self {
-                labels: self.labels.clone(),
-                columns: self
-                    .columns
-                    .iter()
-                    .enumerate()
-                    .map(|(i, column)| column.rebind(duckdb_data_chunk_get_vector(*chunk, i as _)))
-                    .collect(),
-                _chunk: chunk,
-            }
+    pub(crate) fn next(&self, chunk: CBox<duckdb_data_chunk>) -> Self {
+        Self {
+            labels: self.labels.clone(),
+            columns: self
+                .columns
+                .iter()
+                .enumerate()
+                .map(|(i, column)| {
+                    column.rebind(unsafe { duckdb_data_chunk_get_vector(*chunk, i as _) })
+                })
+                .collect(),
+            _chunk: chunk,
         }
     }
 }
@@ -66,14 +65,6 @@ impl Batch {
 pub struct DuckDBRow {
     pub(crate) batch: Arc<Batch>,
     pub(crate) row: usize,
-}
-impl Debug for DuckDBRow {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DuckDBRow")
-            .field("labels", &self.batch.labels)
-            .field("len", &self.len())
-            .finish()
-    }
 }
 
 impl Row for DuckDBRow {
@@ -103,5 +94,14 @@ impl Row for DuckDBRow {
                 })
                 .collect(),
         )
+    }
+}
+
+impl Debug for DuckDBRow {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DuckDBRow")
+            .field("labels", &self.batch.labels)
+            .field("len", &self.len())
+            .finish()
     }
 }

@@ -11,18 +11,18 @@ use time::PrimitiveDateTime;
 
 /// A result vector decoded into values, with its buffers cached for the current chunk.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Column {
+pub(crate) struct DuckDBColumn {
     vector: duckdb_vector,
     data: *const c_void,
     validity: *mut u64,
     id: DUCKDB_TYPE,
-    width: u8,
-    scale: u8,
+    decimal_width: u8,
+    decimal_scale: u8,
 }
 
-impl Column {
+impl DuckDBColumn {
     #[inline(always)]
-    pub(crate) unsafe fn from_vector(vector: duckdb_vector) -> Self {
+    pub(crate) fn new(vector: duckdb_vector) -> Self {
         unsafe {
             let logical_type = CBox(duckdb_vector_get_column_type(vector));
             let id = duckdb_get_type_id(*logical_type);
@@ -39,15 +39,15 @@ impl Column {
                 data: duckdb_vector_get_data(vector) as *const c_void,
                 validity: duckdb_vector_get_validity(vector),
                 id,
-                width,
-                scale,
+                decimal_width: width,
+                decimal_scale: scale,
             }
         }
     }
 
     /// The same column in the vector of another chunk of the result.
     #[inline(always)]
-    pub(crate) unsafe fn rebind(&self, vector: duckdb_vector) -> Self {
+    pub(crate) fn rebind(&self, vector: duckdb_vector) -> Self {
         unsafe {
             Self {
                 vector,
@@ -59,7 +59,7 @@ impl Column {
     }
 
     #[inline(always)]
-    unsafe fn is_valid(&self, row: usize) -> bool {
+    fn is_valid(&self, row: usize) -> bool {
         self.validity.is_null() || unsafe { (*self.validity.add(row >> 6) >> (row & 63)) & 1 != 0 }
     }
 
@@ -72,9 +72,9 @@ impl Column {
     /// Decodes the common scalar types inline, NULLs included, as typed values.
     #[inline(always)]
     pub(crate) unsafe fn value<'a>(&self, row: usize) -> Option<Cow<'a, Value<'a>>> {
+        let data = self.data;
+        let valid = self.is_valid(row);
         unsafe {
-            let data = self.data;
-            let valid = self.is_valid(row);
             // Flat vectors of these types always carry a data buffer. Values that do not fit
             // the Rust type (out of range dates, decimals) decode as NULL.
             Some(Cow::Owned(match self.id {
@@ -99,7 +99,7 @@ impl Column {
                     valid
                         .then(|| {
                             ValueWrap::to_decimal(
-                                match self.width {
+                                match self.decimal_width {
                                     ..=4 => *(data as *const i16).add(row) as i128,
                                     ..=9 => *(data as *const i32).add(row) as i128,
                                     ..=18 => *(data as *const i64).add(row) as i128,
@@ -107,12 +107,12 @@ impl Column {
                                         &*(data as *const duckdb_hugeint).add(row),
                                     ),
                                 },
-                                self.scale,
+                                self.decimal_scale,
                             )
                         })
                         .flatten(),
-                    self.width,
-                    self.scale,
+                    self.decimal_width,
+                    self.decimal_scale,
                 ),
                 DUCKDB_TYPE_DUCKDB_TYPE_DATE => Value::Date(
                     valid
@@ -253,7 +253,7 @@ impl Column {
                                 Value::Array,
                             )
                         };
-                    let col = Self::from_vector(child);
+                    let col = Self::new(child);
                     ctor(
                         Some(
                             (begin..begin + len)
@@ -275,10 +275,7 @@ impl Column {
                                 .enumerate()
                                 .map(|(i, (name, _))| {
                                     let child = duckdb_struct_vector_get_child(self.vector, i as _);
-                                    Some((
-                                        name.clone(),
-                                        Self::from_vector(child).value(row)?.into_owned(),
-                                    ))
+                                    Some((name.clone(), Self::new(child).value(row)?.into_owned()))
                                 })
                                 .collect::<Option<Box<[_]>>>()?,
                         ),
@@ -291,8 +288,8 @@ impl Column {
                     };
                     let e = *(data as *const duckdb_list_entry).add(row);
                     let entries = duckdb_list_vector_get_child(self.vector);
-                    let keys = Self::from_vector(duckdb_struct_vector_get_child(entries, 0));
-                    let values = Self::from_vector(duckdb_struct_vector_get_child(entries, 1));
+                    let keys = Self::new(duckdb_struct_vector_get_child(entries, 0));
+                    let values = Self::new(duckdb_struct_vector_get_child(entries, 1));
                     Value::Map(
                         Some(Box::new(
                             (e.offset as usize..(e.offset + e.length) as usize)
@@ -314,13 +311,13 @@ impl Column {
 }
 
 /// A data chunk column filled by the appender, with its buffers cached for the current chunk.
-pub(crate) struct AppendColumn {
+pub(crate) struct DuckdbAppender {
     vector: duckdb_vector,
     data: *mut c_void,
     validity: *mut u64,
 }
 
-impl AppendColumn {
+impl DuckdbAppender {
     pub(crate) fn new(vector: duckdb_vector) -> Self {
         Self {
             vector,

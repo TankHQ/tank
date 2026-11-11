@@ -1,5 +1,5 @@
 use crate::{
-    DuckDBPrepared, DuckDBTransaction, ValueWrap, column::AppendColumn, driver::DuckDBDriver,
+    DuckDBPrepared, DuckDBTransaction, ValueWrap, column::DuckdbAppender, driver::DuckDBDriver,
     ensure_rc, stream::DuckDBStream, util::CBox,
 };
 use anyhow::anyhow;
@@ -168,25 +168,29 @@ impl Executor for DuckDBConnection {
         type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
         let table = E::<It>::table();
         let columns = E::<It>::columns();
-        let delimiter = self
-            .driver()
-            .sql_writer()
-            .separator()
-            .chars()
-            .next()
-            .unwrap_or('.');
+        let (catalog, schema) = match table.schema.rsplit_once(
+            self.driver()
+                .sql_writer()
+                .separator()
+                .chars()
+                .next()
+                .unwrap_or('.'),
+        ) {
+            Some((catalog, schema)) => (Some(catalog), Some(schema)),
+            None => (None, Some(&*table.schema).filter(|s| !s.is_empty())),
+        };
         future::ready((|| unsafe {
             let mut appender = CBox::null();
-            let (catalog, schema) = match table.schema.rsplit_once(delimiter) {
-                Some((catalog, schema)) => (Some(catalog), Some(schema)),
-                None => (None, Some(&*table.schema).filter(|s| !s.is_empty())),
-            };
-            let (catalog, schema) = (catalog.map(as_c_string), schema.map(as_c_string));
+            let (catalog, schema, table) = (
+                catalog.map(as_c_string),
+                schema.map(as_c_string),
+                as_c_string(&*table.name),
+            );
             let rc = duckdb_appender_create_ext(
                 *self.connection,
                 catalog.as_ref().map_or(ptr::null(), |v| v.as_ptr()),
                 schema.as_ref().map_or(ptr::null(), |v| v.as_ptr()),
-                as_c_string(&*table.name).as_ptr(),
+                table.as_ptr(),
                 &mut *appender,
             );
             Self::check_appender(*appender, rc)
@@ -198,7 +202,7 @@ impl Executor for DuckDBConnection {
                 )?;
             }
             let mut rows_affected = 0;
-            if !columns.is_empty() && columns.iter().all(|c| AppendColumn::supports(&c.value)) {
+            if !columns.is_empty() && columns.iter().all(|c| DuckdbAppender::supports(&c.value)) {
                 let mut types = columns
                     .iter()
                     .map(|c| CBox::from(ValueWrap::from(&c.value)))
@@ -213,7 +217,7 @@ impl Executor for DuckDBConnection {
                 let batch_size = duckdb_vector_size() as usize;
                 let mut rows = rows.into_iter();
                 let mut columns = (0..types.len())
-                    .map(|i| AppendColumn::new(duckdb_data_chunk_get_vector(*chunk, i as _)))
+                    .map(|i| DuckdbAppender::new(duckdb_data_chunk_get_vector(*chunk, i as _)))
                     .collect::<Box<[_]>>();
                 loop {
                     duckdb_data_chunk_reset(*chunk);
