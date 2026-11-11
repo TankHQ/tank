@@ -9,16 +9,12 @@ use std::{
 use tank_core::{Row, RowLabels, RowOwned, Value};
 
 /// A data chunk shared by the rows decoded from it.
-// Caching each column's `data` and `validity` pointers per chunk avoids three C FFI calls per cell in `DuckDBRow::value`.
 #[derive(Debug)]
 pub(crate) struct Batch {
     _chunk: CBox<duckdb_data_chunk>,
     labels: RowLabels,
     columns: Vec<DuckDBColumn>,
 }
-
-unsafe impl Send for Batch {}
-unsafe impl Sync for Batch {}
 
 impl Batch {
     /// The first chunk of a result.
@@ -96,6 +92,9 @@ impl Row for DuckDBRow {
         )
     }
 }
+
+unsafe impl Send for Batch {}
+unsafe impl Sync for Batch {}
 
 impl Debug for DuckDBRow {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
