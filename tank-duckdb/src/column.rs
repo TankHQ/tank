@@ -1,24 +1,15 @@
-use crate::{DuckDBConnection, DuckDBDriver, ValueWrap, ensure_rc, util::CBox};
+use crate::{ValueWrap, util::CBox};
 use libduckdb_sys::*;
 use std::{
     borrow::Cow,
     collections::HashMap,
-    ffi::{CStr, CString, c_void},
-    fmt::{self, Debug, Formatter},
-    hint, mem,
-    ops::DerefMut,
-    pin::Pin,
-    str,
-    sync::Arc,
-    task::{Context, Poll},
+    ffi::{CStr, c_char, c_void},
+    mem, ptr, str,
 };
-use tank_core::{
-    Error, ErrorContext, Interval, Query, QueryResult, Result, Row, RowLabels, RowOwned,
-    RowsAffected, Value, error_message_from_ptr, log_error, stream::Stream,
-};
+use tank_core::{Interval, Value};
 use time::PrimitiveDateTime;
-use uuid::Uuid;
 
+/// A result vector decoded into values, with its buffers cached for the current chunk.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Column {
     vector: duckdb_vector,
@@ -31,7 +22,7 @@ pub(crate) struct Column {
 
 impl Column {
     #[inline(always)]
-    unsafe fn from_vector(vector: duckdb_vector) -> Self {
+    pub(crate) unsafe fn from_vector(vector: duckdb_vector) -> Self {
         unsafe {
             let logical_type = CBox(duckdb_vector_get_column_type(vector));
             let id = duckdb_get_type_id(*logical_type);
@@ -50,6 +41,19 @@ impl Column {
                 id,
                 width,
                 scale,
+            }
+        }
+    }
+
+    /// The same column in the vector of another chunk of the result.
+    #[inline(always)]
+    pub(crate) unsafe fn rebind(&self, vector: duckdb_vector) -> Self {
+        unsafe {
+            Self {
+                vector,
+                data: duckdb_vector_get_data(vector) as *const c_void,
+                validity: duckdb_vector_get_validity(vector),
+                ..*self
             }
         }
     }
@@ -74,7 +78,7 @@ impl Column {
 
     /// Decodes the common scalar types inline, NULLs included, as typed values.
     #[inline(always)]
-    unsafe fn value<'a>(&self, row: usize) -> Option<Cow<'a, Value<'a>>> {
+    pub(crate) unsafe fn value<'a>(&self, row: usize) -> Option<Cow<'a, Value<'a>>> {
         unsafe {
             let data = self.data;
             let valid = self.is_valid(row);
@@ -232,13 +236,9 @@ impl Column {
                 DUCKDB_TYPE_DUCKDB_TYPE_BLOB => Value::Blob(Some(Cow::Borrowed(
                     ValueWrap::bytes_slice(&*(data as *const duckdb_string_t).add(row)),
                 ))),
-                DUCKDB_TYPE_DUCKDB_TYPE_UUID => {
-                    let v = &*(data as *const duckdb_hugeint).add(row);
-                    Value::Uuid(Some(Uuid::from_u64_pair(
-                        v.upper as u64 ^ (1 << 63),
-                        v.lower,
-                    )))
-                }
+                DUCKDB_TYPE_DUCKDB_TYPE_UUID => Value::Uuid(Some(ValueWrap::to_uuid(
+                    &*(data as *const duckdb_hugeint).add(row),
+                ))),
                 DUCKDB_TYPE_DUCKDB_TYPE_LIST | DUCKDB_TYPE_DUCKDB_TYPE_ARRAY => {
                     let (Value::List(_, t) | Value::Array(_, t)) = self.empty_value()? else {
                         return None;
@@ -320,304 +320,139 @@ impl Column {
     }
 }
 
-// Caching each column's `data` and `validity` pointers per chunk avoids three C FFI calls per cell in `DuckDBRow::value`.
-#[derive(Debug)]
-pub(crate) struct Batch {
-    chunk: CBox<duckdb_data_chunk>,
-    labels: RowLabels,
-    columns: Vec<Column>,
+/// A data chunk column filled by the appender, with its buffers cached for the current chunk.
+pub(crate) struct AppendColumn {
+    vector: duckdb_vector,
+    data: *mut c_void,
+    validity: *mut u64,
 }
 
-unsafe impl Send for Batch {}
-unsafe impl Sync for Batch {}
-
-/// A native row view borrowing a DuckDB data chunk shared with its siblings.
-pub struct DuckDBRow {
-    batch: Arc<Batch>,
-    row: usize,
-}
-
-impl Debug for DuckDBRow {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DuckDBRow")
-            .field("labels", &self.batch.labels)
-            .field("len", &self.len())
-            .finish()
-    }
-}
-
-impl Row for DuckDBRow {
-    #[inline(always)]
-    fn labels(&self) -> &[String] {
-        &self.batch.labels
+impl AppendColumn {
+    pub(crate) fn new(vector: duckdb_vector) -> Self {
+        Self {
+            vector,
+            data: ptr::null_mut(),
+            validity: ptr::null_mut(),
+        }
     }
 
-    #[inline(always)]
-    fn len(&self) -> usize {
-        self.batch.columns.len()
-    }
-
-    #[inline(always)]
-    fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>> {
-        unsafe { self.batch.columns.get(index)?.value(self.row) }
-    }
-
-    fn into_owned(self) -> RowOwned {
-        RowOwned::new(
-            self.batch.labels.clone(),
-            (0..self.len())
-                .map(|i| {
-                    unsafe { self.value(i).unwrap_unchecked() }
-                        .into_owned()
-                        .into_owned()
-                })
-                .collect(),
+    /// Whether values like `value` can be written directly into a data chunk.
+    pub(crate) fn supports(value: &Value) -> bool {
+        matches!(
+            value,
+            Value::Boolean(..)
+                | Value::Int8(..)
+                | Value::Int16(..)
+                | Value::Int32(..)
+                | Value::Int64(..)
+                | Value::Int128(..)
+                | Value::UInt8(..)
+                | Value::UInt16(..)
+                | Value::UInt32(..)
+                | Value::UInt64(..)
+                | Value::UInt128(..)
+                | Value::Float32(..)
+                | Value::Float64(..)
+                | Value::Decimal(_, 1.., _)
+                | Value::Char(..)
+                | Value::Varchar(..)
+                | Value::Blob(..)
+                | Value::Date(..)
+                | Value::Time(..)
+                | Value::Timestamp(..)
+                | Value::TimestampWithTimezone(..)
+                | Value::Interval(..)
+                | Value::Uuid(..)
         )
     }
-}
 
-pub struct DuckDBStream<'s, Q: AsMut<Query<DuckDBDriver>>> {
-    // Drop dependent native resources before the query and connection borrow.
-    batch: Option<Arc<Batch>>,
-    row: usize,
-    size: usize,
-    result: Option<CBox<duckdb_result>>,
-    extracted: Option<CBox<duckdb_extracted_statements>>,
-    query: Q,
-    connection: &'s mut DuckDBConnection,
-    count: u64,
-    index: u64,
-}
-
-impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
+    /// Writes a value of a [`supported`](Self::supports) type, anything else becomes NULL.
     #[inline(always)]
-    pub(crate) fn new(connection: &'s mut DuckDBConnection, query: Q) -> Self {
-        Self {
-            batch: connection.batch.take(),
-            row: 0,
-            size: 0,
-            result: None,
-            extracted: None,
-            query,
-            connection,
-            count: 1,
-            index: 0,
-        }
-    }
-
-    fn finish(&mut self) -> Result<()> {
-        self.row = 0;
-        self.size = 0;
-        self.result = None;
-        self.extracted = None;
-        if let Some(mut batch) = self.batch.take()
-            && let Some(inner) = Arc::get_mut(&mut batch)
-        {
-            inner.chunk = CBox::null();
-            self.connection.batch = Some(batch);
-        }
-        if self.count != 0 {
-            self.count = 0;
-            self.index = 0;
-            self.query.as_mut().clear_bindings()?;
-        }
-        Ok(())
-    }
-
-    #[cold]
-    #[inline(never)]
-    fn fail(&mut self, error: Error) -> Error {
-        let context = format!("While running the query:\n{}", self.query.as_mut());
-        let _ = self
-            .finish()
-            .context("While cleaning up DuckDB execution")
-            .inspect_err(log_error);
-        error.context(context)
-    }
-
-    #[cold]
-    #[inline(never)]
-    fn advance(&mut self) -> Result<Option<RowsAffected>> {
+    pub(crate) unsafe fn append(&mut self, row: usize, value: Value<'_>) {
         unsafe {
-            loop {
-                if let Some(result) = &mut self.result {
-                    let chunk = CBox(duckdb_fetch_chunk(**result));
-                    if chunk.is_null() {
-                        let error = duckdb_result_error(result.deref_mut());
-                        if !error.is_null() {
-                            hint::cold_path();
-                            return Err(Error::msg(
-                                CStr::from_ptr(error).to_string_lossy().into_owned(),
-                            ));
-                        }
-                        self.row = 0;
-                        self.size = 0;
-                        self.result = None;
-                        continue;
+            match value {
+                Value::Boolean(Some(v)) => self.write(row, v),
+                Value::Int8(Some(v)) => self.write(row, v),
+                Value::Int16(Some(v)) => self.write(row, v),
+                Value::Int32(Some(v)) => self.write(row, v),
+                Value::Int64(Some(v)) => self.write(row, v),
+                Value::Int128(Some(v)) => self.write(row, ValueWrap::from_i128(*v)),
+                Value::UInt8(Some(v)) => self.write(row, v),
+                Value::UInt16(Some(v)) => self.write(row, v),
+                Value::UInt32(Some(v)) => self.write(row, v),
+                Value::UInt64(Some(v)) => self.write(row, v),
+                Value::UInt128(Some(v)) => self.write(row, ValueWrap::from_u128(*v)),
+                Value::Float32(Some(v)) => self.write(row, v),
+                Value::Float64(Some(v)) => self.write(row, v),
+                Value::Decimal(Some(v), width, scale) => {
+                    let raw = ValueWrap::from_decimal(&v, width, scale).value;
+                    match width {
+                        ..=4 => self.write(row, raw.lower as i16),
+                        ..=9 => self.write(row, raw.lower as i32),
+                        ..=18 => self.write(row, raw.lower as i64),
+                        _ => self.write(row, raw),
                     }
-                    let size = duckdb_data_chunk_get_size(*chunk) as usize;
-                    if size == 0 {
-                        continue;
-                    }
-                    let batch = match self.batch.as_mut().and_then(Arc::get_mut) {
-                        Some(batch) => batch,
-                        None => {
-                            // Rows of the previous chunk are alive: continue with its layout.
-                            let (labels, columns) = self
-                                .batch
-                                .as_ref()
-                                .map(|batch| (batch.labels.clone(), batch.columns.clone()))
-                                .unwrap_or_default();
-                            let batch = Batch {
-                                chunk: CBox::null(),
-                                labels,
-                                columns,
-                            };
-                            Arc::get_mut(self.batch.insert(Arc::new(batch))).unwrap_unchecked()
-                        }
-                    };
-                    if self.size != 0 {
-                        for (i, col) in batch.columns.iter_mut().enumerate() {
-                            let vector = duckdb_data_chunk_get_vector(*chunk, i as _);
-                            col.vector = vector;
-                            col.data = duckdb_vector_get_data(vector) as *const c_void;
-                            col.validity = duckdb_vector_get_validity(vector);
-                        }
-                    } else {
-                        let cols = duckdb_column_count(&mut **result) as usize;
-                        if batch.labels.len() != cols
-                            || !(0..cols).all(|i| {
-                                let ptr = duckdb_column_name(&mut **result, i as _);
-                                !ptr.is_null()
-                                    && batch.labels[i].as_bytes() == CStr::from_ptr(ptr).to_bytes()
-                            })
-                        {
-                            batch.labels = (0..cols)
-                                .map(|i| {
-                                    let ptr = duckdb_column_name(&mut **result, i as _);
-                                    if ptr.is_null() {
-                                        String::new()
-                                    } else {
-                                        CStr::from_ptr(ptr).to_string_lossy().into_owned()
-                                    }
-                                })
-                                .collect();
-                        }
-                        batch.columns.clear();
-                        batch.columns.extend((0..cols).map(|i| {
-                            Column::from_vector(duckdb_data_chunk_get_vector(*chunk, i as _))
-                        }));
-                    }
-                    batch.chunk = chunk;
-                    self.row = 0;
-                    self.size = size;
-                    return Ok(None);
                 }
-                if self.count != 0
-                    && self.extracted.is_none()
-                    && let Query::Raw(raw) = self.query.as_mut()
-                {
-                    let sql = CString::new(raw.0.as_bytes())?;
-                    let mut extracted = CBox::null();
-                    self.count = duckdb_extract_statements(
-                        *self.connection.connection,
-                        sql.as_ptr(),
-                        &mut *extracted,
-                    );
-                    let error = duckdb_extract_statements_error(*extracted);
-                    if !error.is_null() {
-                        hint::cold_path();
-                        return Err(Error::msg(
-                            CStr::from_ptr(error).to_string_lossy().into_owned(),
-                        ));
-                    }
-                    self.extracted = Some(extracted);
+                Value::Char(Some(v)) => {
+                    self.write_bytes(row, v.encode_utf8(&mut [0; 4]).as_bytes())
                 }
-                if self.index == self.count {
-                    self.finish()?;
-                    return Ok(None);
+                Value::Varchar(Some(v)) => self.write_bytes(row, v.as_bytes()),
+                Value::Blob(Some(v)) => self.write_bytes(row, &v),
+                Value::Date(Some(v)) => self.write(row, ValueWrap::from_date(&v)),
+                Value::Time(Some(v)) => self.write(row, ValueWrap::from_time(&v)),
+                Value::Timestamp(Some(v)) => self.write(row, ValueWrap::from_timestamp(&v)),
+                Value::TimestampWithTimezone(Some(v)) => {
+                    self.write(row, ValueWrap::from_timestamptz(&v))
                 }
-                let mut extracted_stmt = CBox::null();
-                let statement = if let Some(extracted) = &self.extracted {
-                    ensure_rc!(
-                        duckdb_prepare_extracted_statement(
-                            *self.connection.connection,
-                            **extracted,
-                            self.index,
-                            &mut *extracted_stmt,
-                        ),
-                        Error::msg(
-                            error_message_from_ptr(&duckdb_prepare_error(*extracted_stmt))
-                                .into_owned(),
-                        )
-                    );
-                    *extracted_stmt
-                } else {
-                    match self.query.as_mut() {
-                        Query::Prepared(query) => *query.statement,
-                        Query::Raw(_) => unreachable!(),
-                    }
-                };
-                self.index += 1;
-                let mut result = CBox(mem::zeroed());
-                ensure_rc!(
-                    duckdb_execute_prepared_streaming(statement, &mut *result),
-                    Error::msg(
-                        error_message_from_ptr(&duckdb_result_error(&mut *result)).into_owned(),
-                    )
-                );
-                if duckdb_result_return_type(*result)
-                    != duckdb_result_type_DUCKDB_RESULT_TYPE_QUERY_RESULT
-                {
-                    return Ok(Some(RowsAffected {
-                        rows_affected: Some(duckdb_rows_changed(&mut *result)),
-                        ..Default::default()
-                    }));
-                }
-                self.result = Some(result);
-            }
-        }
-    }
-}
-
-impl<Q: AsMut<Query<DuckDBDriver>>> Stream for DuckDBStream<'_, Q> {
-    type Item = Result<QueryResult<DuckDBRow>>;
-
-    #[inline]
-    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let this = unsafe { self.get_unchecked_mut() };
-        loop {
-            if this.row < this.size {
-                let row = this.row;
-                this.row = row + 1;
-                return Poll::Ready(Some(Ok(QueryResult::Row(DuckDBRow {
-                    batch: unsafe { this.batch.as_ref().unwrap_unchecked() }.clone(),
-                    row,
-                }))));
-            }
-            match this.advance() {
-                Ok(Some(affected)) => {
-                    return Poll::Ready(Some(Ok(QueryResult::Affected(affected))));
-                }
-                Ok(None) if this.row < this.size => {}
-                Ok(None) => return Poll::Ready(None),
-                Err(error) => return Poll::Ready(Some(Err(this.fail(error)))),
+                Value::Interval(Some(v)) => self.write(row, ValueWrap::from_interval(&v)),
+                Value::Uuid(Some(v)) => self.write(row, ValueWrap::from_uuid(&v)),
+                _ => self.set_null(row),
             }
         }
     }
 
     #[inline(always)]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.size - self.row;
-        (remaining, (remaining > 0).then_some(remaining))
+    pub(crate) unsafe fn reset(&mut self) {
+        self.data = unsafe { duckdb_vector_get_data(self.vector) };
+        self.validity = ptr::null_mut();
     }
-}
 
-impl<Q: AsMut<Query<DuckDBDriver>>> Drop for DuckDBStream<'_, Q> {
-    fn drop(&mut self) {
-        let _ = self
-            .finish()
-            .context("While dropping DuckDB execution")
-            .inspect_err(log_error);
+    #[inline(always)]
+    unsafe fn write<T>(&self, row: usize, value: T) {
+        unsafe { self.data.cast::<T>().add(row).write(value) }
+    }
+
+    #[inline(always)]
+    unsafe fn write_bytes(&self, row: usize, bytes: &[u8]) {
+        unsafe {
+            if bytes.len() <= 12 {
+                let mut raw: duckdb_string_t = mem::zeroed();
+                raw.value.inlined.length = bytes.len() as u32;
+                ptr::copy_nonoverlapping(
+                    bytes.as_ptr(),
+                    raw.value.inlined.inlined.as_mut_ptr() as *mut u8,
+                    bytes.len(),
+                );
+                self.write(row, raw);
+            } else {
+                duckdb_unsafe_vector_assign_string_element_len(
+                    self.vector,
+                    row as _,
+                    bytes.as_ptr() as *const c_char,
+                    bytes.len() as _,
+                );
+            }
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn set_null(&mut self, row: usize) {
+        unsafe {
+            if self.validity.is_null() {
+                duckdb_vector_ensure_validity_writable(self.vector);
+                self.validity = duckdb_vector_get_validity(self.vector);
+            }
+            *self.validity.add(row >> 6) &= !(1 << (row & 63));
+        }
     }
 }

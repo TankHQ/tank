@@ -1,87 +1,29 @@
 use crate::{
-    DuckDBPrepared, DuckDBTransaction, ValueWrap,
-    driver::DuckDBDriver,
-    ensure_rc,
-    streaming::{Batch, DuckDBStream},
-    util::CBox,
+    DuckDBPrepared, DuckDBTransaction, ValueWrap, column::AppendColumn, driver::DuckDBDriver,
+    ensure_rc, stream::DuckDBStream, util::CBox,
 };
 use anyhow::anyhow;
 use libduckdb_sys::*;
 use std::{
     borrow::Cow,
-    ffi::{CStr, CString, c_char, c_void},
+    ffi::{CStr, CString, c_char},
     future::{self, Future},
-    hint, mem, ptr,
+    hint, ptr,
     str::FromStr,
-    sync::{Arc, LazyLock},
+    sync::LazyLock,
 };
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, Result, Row, RowsAffected, SqlWriter, Value, as_c_string, describe_path,
+    QueryResult, Result, Row, RowsAffected, SqlWriter, as_c_string, describe_path,
     error_message_from_ptr, log_error, log_warn, stream::Stream, truncate_long,
 };
 
 /// Wrapper around a DuckDB `duckdb_connection` pointer used by the DuckDB driver.
 #[derive(Debug)]
 pub struct DuckDBConnection {
-    // Drop order: release cached chunks and disconnect before closing the database handle.
-    pub(crate) batch: Option<Arc<Batch>>,
+    // Drop order: disconnect before closing the database handle.
     pub(crate) connection: CBox<duckdb_connection>,
     _database: CBox<duckdb_database>,
-}
-
-/// A data chunk column filled by the appender, with its buffers cached for the current chunk.
-struct AppendColumn {
-    vector: duckdb_vector,
-    data: *mut c_void,
-    validity: *mut u64,
-}
-
-impl AppendColumn {
-    #[inline(always)]
-    unsafe fn reset(&mut self) {
-        self.data = unsafe { duckdb_vector_get_data(self.vector) };
-        self.validity = ptr::null_mut();
-    }
-
-    #[inline(always)]
-    unsafe fn write<T>(&self, row: usize, value: T) {
-        unsafe { self.data.cast::<T>().add(row).write(value) }
-    }
-
-    #[inline(always)]
-    unsafe fn write_bytes(&self, row: usize, bytes: &[u8]) {
-        unsafe {
-            if bytes.len() <= 12 {
-                let mut raw: duckdb_string_t = mem::zeroed();
-                raw.value.inlined.length = bytes.len() as u32;
-                ptr::copy_nonoverlapping(
-                    bytes.as_ptr(),
-                    raw.value.inlined.inlined.as_mut_ptr() as *mut u8,
-                    bytes.len(),
-                );
-                self.write(row, raw);
-            } else {
-                duckdb_unsafe_vector_assign_string_element_len(
-                    self.vector,
-                    row as _,
-                    bytes.as_ptr() as *const c_char,
-                    bytes.len() as _,
-                );
-            }
-        }
-    }
-
-    #[inline(always)]
-    unsafe fn set_null(&mut self, row: usize) {
-        unsafe {
-            if self.validity.is_null() {
-                duckdb_vector_ensure_validity_writable(self.vector);
-                self.validity = duckdb_vector_get_validity(self.vector);
-            }
-            *self.validity.add(row >> 6) &= !(1 << (row & 63));
-        }
-    }
 }
 
 impl DuckDBConnection {
@@ -175,7 +117,6 @@ impl Connection for DuckDBConnection {
             );
         }
         Ok(DuckDBConnection {
-            batch: None,
             connection,
             _database: database,
         })
@@ -236,27 +177,18 @@ impl Executor for DuckDBConnection {
             .unwrap_or('.');
         future::ready((|| unsafe {
             let mut appender = CBox::null();
-            let rc = match table.schema.rsplit_once(delimiter) {
-                Some((catalog, schema)) => duckdb_appender_create_ext(
-                    *self.connection,
-                    as_c_string(catalog).as_ptr(),
-                    as_c_string(schema).as_ptr(),
-                    as_c_string(&*table.name).as_ptr(),
-                    &mut *appender,
-                ),
-                None if table.schema.is_empty() => duckdb_appender_create(
-                    *self.connection,
-                    ptr::null(),
-                    as_c_string(&*table.name).as_ptr(),
-                    &mut *appender,
-                ),
-                None => duckdb_appender_create(
-                    *self.connection,
-                    as_c_string(&*table.schema).as_ptr(),
-                    as_c_string(&*table.name).as_ptr(),
-                    &mut *appender,
-                ),
+            let (catalog, schema) = match table.schema.rsplit_once(delimiter) {
+                Some((catalog, schema)) => (Some(catalog), Some(schema)),
+                None => (None, Some(&*table.schema).filter(|s| !s.is_empty())),
             };
+            let (catalog, schema) = (catalog.map(as_c_string), schema.map(as_c_string));
+            let rc = duckdb_appender_create_ext(
+                *self.connection,
+                catalog.as_ref().map_or(ptr::null(), |v| v.as_ptr()),
+                schema.as_ref().map_or(ptr::null(), |v| v.as_ptr()),
+                as_c_string(&*table.name).as_ptr(),
+                &mut *appender,
+            );
             Self::check_appender(*appender, rc)
                 .context("While creating the `duckdb_appender` object")?;
             for column in columns {
@@ -266,36 +198,7 @@ impl Executor for DuckDBConnection {
                 )?;
             }
             let mut rows_affected = 0;
-            if !columns.is_empty()
-                && columns.iter().all(|c| {
-                    matches!(
-                        c.value,
-                        Value::Boolean(..)
-                            | Value::Int8(..)
-                            | Value::Int16(..)
-                            | Value::Int32(..)
-                            | Value::Int64(..)
-                            | Value::Int128(..)
-                            | Value::UInt8(..)
-                            | Value::UInt16(..)
-                            | Value::UInt32(..)
-                            | Value::UInt64(..)
-                            | Value::UInt128(..)
-                            | Value::Float32(..)
-                            | Value::Float64(..)
-                            | Value::Decimal(_, 1.., _)
-                            | Value::Char(..)
-                            | Value::Varchar(..)
-                            | Value::Blob(..)
-                            | Value::Date(..)
-                            | Value::Time(..)
-                            | Value::Timestamp(..)
-                            | Value::TimestampWithTimezone(..)
-                            | Value::Interval(..)
-                            | Value::Uuid(..)
-                    )
-                })
-            {
+            if !columns.is_empty() && columns.iter().all(|c| AppendColumn::supports(&c.value)) {
                 let mut types = columns
                     .iter()
                     .map(|c| CBox::from(ValueWrap::from(&c.value)))
@@ -310,78 +213,15 @@ impl Executor for DuckDBConnection {
                 let batch_size = duckdb_vector_size() as usize;
                 let mut rows = rows.into_iter();
                 let mut columns = (0..types.len())
-                    .map(|i| AppendColumn {
-                        vector: duckdb_data_chunk_get_vector(*chunk, i as _),
-                        data: ptr::null_mut(),
-                        validity: ptr::null_mut(),
-                    })
+                    .map(|i| AppendColumn::new(duckdb_data_chunk_get_vector(*chunk, i as _)))
                     .collect::<Box<[_]>>();
                 loop {
                     duckdb_data_chunk_reset(*chunk);
-                    for column in &mut columns {
-                        column.reset();
-                    }
+                    columns.iter_mut().for_each(|c| c.reset());
                     let mut len = 0;
-                    while len < batch_size {
-                        let Some(entity) = rows.next() else {
-                            break;
-                        };
+                    for entity in rows.by_ref().take(batch_size) {
                         for (value, column) in entity.as_entity().row_values().zip(&mut columns) {
-                            match value {
-                                Value::Boolean(Some(v)) => column.write(len, v),
-                                Value::Int8(Some(v)) => column.write(len, v),
-                                Value::Int16(Some(v)) => column.write(len, v),
-                                Value::Int32(Some(v)) => column.write(len, v),
-                                Value::Int64(Some(v)) => column.write(len, v),
-                                Value::Int128(Some(v)) => {
-                                    column.write(len, ValueWrap::from_i128(*v))
-                                }
-                                Value::UInt8(Some(v)) => column.write(len, v),
-                                Value::UInt16(Some(v)) => column.write(len, v),
-                                Value::UInt32(Some(v)) => column.write(len, v),
-                                Value::UInt64(Some(v)) => column.write(len, v),
-                                Value::UInt128(Some(v)) => {
-                                    column.write(len, ValueWrap::from_u128(*v))
-                                }
-                                Value::Float32(Some(v)) => column.write(len, v),
-                                Value::Float64(Some(v)) => column.write(len, v),
-                                Value::Decimal(Some(v), width, scale) => {
-                                    let raw = ValueWrap::from_decimal(&v, width, scale).value;
-                                    match width {
-                                        ..=4 => column.write(len, raw.lower as i16),
-                                        ..=9 => column.write(len, raw.lower as i32),
-                                        ..=18 => column.write(len, raw.lower as i64),
-                                        _ => column.write(len, raw),
-                                    }
-                                }
-                                Value::Char(Some(v)) => {
-                                    column.write_bytes(len, v.encode_utf8(&mut [0; 4]).as_bytes())
-                                }
-                                Value::Varchar(Some(v)) => column.write_bytes(len, v.as_bytes()),
-                                Value::Blob(Some(v)) => column.write_bytes(len, &v),
-                                Value::Date(Some(v)) => column.write(len, ValueWrap::from_date(&v)),
-                                Value::Time(Some(v)) => column.write(len, ValueWrap::from_time(&v)),
-                                Value::Timestamp(Some(v)) => {
-                                    column.write(len, ValueWrap::from_timestamp(&v))
-                                }
-                                Value::TimestampWithTimezone(Some(v)) => {
-                                    column.write(len, ValueWrap::from_timestamptz(&v))
-                                }
-                                Value::Interval(Some(v)) => {
-                                    column.write(len, ValueWrap::from_interval(&v))
-                                }
-                                Value::Uuid(Some(v)) => {
-                                    let (upper, lower) = v.as_u64_pair();
-                                    column.write(
-                                        len,
-                                        duckdb_hugeint {
-                                            lower,
-                                            upper: (upper ^ (1 << 63)) as i64,
-                                        },
-                                    )
-                                }
-                                _ => column.set_null(len),
-                            }
+                            column.append(len, value);
                         }
                         len += 1;
                     }

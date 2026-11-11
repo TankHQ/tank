@@ -13,6 +13,7 @@ use tank_core::{
     decimal_from_scaled, log_error,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time, macros::date};
+use uuid::Uuid;
 
 pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, Value<'a>>);
 
@@ -147,6 +148,21 @@ impl ValueWrap<'_> {
             days: v.days,
             micros: v.nanos / 1_000,
         }
+    }
+
+    /// DuckDB stores a UUID as a `HUGEINT` with the sign bit flipped, so they sort as unsigned.
+    #[inline(always)]
+    pub(crate) fn from_uuid(v: &Uuid) -> duckdb_hugeint {
+        let (upper, lower) = v.as_u64_pair();
+        duckdb_hugeint {
+            lower,
+            upper: (upper ^ (1 << 63)) as i64,
+        }
+    }
+
+    #[inline(always)]
+    pub(crate) fn to_uuid(v: &duckdb_hugeint) -> Uuid {
+        Uuid::from_u64_pair(v.upper as u64 ^ (1 << 63), v.lower)
     }
 
     #[inline(always)]
