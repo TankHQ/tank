@@ -30,12 +30,61 @@ pub struct DuckDBConnection {
     _database: CBox<duckdb_database>,
 }
 
-impl DuckDBConnection {
+/// A data chunk column filled by the appender, with its buffers cached for the current chunk.
+struct AppendColumn {
+    vector: duckdb_vector,
+    data: *mut c_void,
+    validity: *mut u64,
+}
+
+impl AppendColumn {
     #[inline(always)]
-    unsafe fn write<T>(data: *mut c_void, row: usize, value: T) {
-        unsafe { data.cast::<T>().add(row).write(value) }
+    unsafe fn reset(&mut self) {
+        self.data = unsafe { duckdb_vector_get_data(self.vector) };
+        self.validity = ptr::null_mut();
     }
 
+    #[inline(always)]
+    unsafe fn write<T>(&self, row: usize, value: T) {
+        unsafe { self.data.cast::<T>().add(row).write(value) }
+    }
+
+    #[inline(always)]
+    unsafe fn write_bytes(&self, row: usize, bytes: &[u8]) {
+        unsafe {
+            if bytes.len() <= 12 {
+                let mut raw: duckdb_string_t = mem::zeroed();
+                raw.value.inlined.length = bytes.len() as u32;
+                ptr::copy_nonoverlapping(
+                    bytes.as_ptr(),
+                    raw.value.inlined.inlined.as_mut_ptr() as *mut u8,
+                    bytes.len(),
+                );
+                self.write(row, raw);
+            } else {
+                duckdb_unsafe_vector_assign_string_element_len(
+                    self.vector,
+                    row as _,
+                    bytes.as_ptr() as *const c_char,
+                    bytes.len() as _,
+                );
+            }
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn set_null(&mut self, row: usize) {
+        unsafe {
+            if self.validity.is_null() {
+                duckdb_vector_ensure_validity_writable(self.vector);
+                self.validity = duckdb_vector_get_validity(self.vector);
+            }
+            *self.validity.add(row >> 6) &= !(1 << (row & 63));
+        }
+    }
+}
+
+impl DuckDBConnection {
     #[inline(always)]
     unsafe fn check_appender(appender: duckdb_appender, rc: duckdb_state) -> Result<()> {
         if rc == duckdb_state_DuckDBSuccess {
@@ -261,101 +310,70 @@ impl Executor for DuckDBConnection {
                 }
                 let batch_size = duckdb_vector_size() as usize;
                 let mut rows = rows.into_iter();
-                let mut cells = (0..types.len())
-                    .map(|i| {
-                        (
-                            duckdb_data_chunk_get_vector(*chunk, i as _),
-                            ptr::null_mut(),
-                        )
+                let mut columns = (0..types.len())
+                    .map(|i| AppendColumn {
+                        vector: duckdb_data_chunk_get_vector(*chunk, i as _),
+                        data: ptr::null_mut(),
+                        validity: ptr::null_mut(),
                     })
                     .collect::<Box<[_]>>();
                 loop {
                     duckdb_data_chunk_reset(*chunk);
-                    for (vector, data) in &mut cells {
-                        *data = duckdb_vector_get_data(*vector);
+                    for column in &mut columns {
+                        column.reset();
                     }
                     let mut len = 0;
                     while len < batch_size {
                         let Some(entity) = rows.next() else {
                             break;
                         };
-                        for (val, &(vector, data)) in
-                            entity.as_entity().row_values().into_iter().zip(&cells)
-                        {
-                            match val {
-                                Value::Boolean(Some(v)) => Self::write(data, len, v),
-                                Value::Int8(Some(v)) => Self::write(data, len, v),
-                                Value::Int16(Some(v)) => Self::write(data, len, v),
-                                Value::Int32(Some(v)) => Self::write(data, len, v),
-                                Value::Int64(Some(v)) => Self::write(data, len, v),
+                        for (value, column) in entity.as_entity().row_values().zip(&mut columns) {
+                            match value {
+                                Value::Boolean(Some(v)) => column.write(len, v),
+                                Value::Int8(Some(v)) => column.write(len, v),
+                                Value::Int16(Some(v)) => column.write(len, v),
+                                Value::Int32(Some(v)) => column.write(len, v),
+                                Value::Int64(Some(v)) => column.write(len, v),
                                 Value::Int128(Some(v)) => {
-                                    Self::write(data, len, ValueWrap::from_i128(*v))
+                                    column.write(len, ValueWrap::from_i128(*v))
                                 }
-                                Value::UInt8(Some(v)) => Self::write(data, len, v),
-                                Value::UInt16(Some(v)) => Self::write(data, len, v),
-                                Value::UInt32(Some(v)) => Self::write(data, len, v),
-                                Value::UInt64(Some(v)) => Self::write(data, len, v),
+                                Value::UInt8(Some(v)) => column.write(len, v),
+                                Value::UInt16(Some(v)) => column.write(len, v),
+                                Value::UInt32(Some(v)) => column.write(len, v),
+                                Value::UInt64(Some(v)) => column.write(len, v),
                                 Value::UInt128(Some(v)) => {
-                                    Self::write(data, len, ValueWrap::from_u128(*v))
+                                    column.write(len, ValueWrap::from_u128(*v))
                                 }
-                                Value::Float32(Some(v)) => Self::write(data, len, v),
-                                Value::Float64(Some(v)) => Self::write(data, len, v),
+                                Value::Float32(Some(v)) => column.write(len, v),
+                                Value::Float64(Some(v)) => column.write(len, v),
                                 Value::Decimal(Some(v), width, scale) => {
                                     let raw = ValueWrap::from_decimal(&v, width, scale).value;
                                     match width {
-                                        ..=4 => Self::write(data, len, raw.lower as i16),
-                                        ..=9 => Self::write(data, len, raw.lower as i32),
-                                        ..=18 => Self::write(data, len, raw.lower as i64),
-                                        _ => Self::write(data, len, raw),
+                                        ..=4 => column.write(len, raw.lower as i16),
+                                        ..=9 => column.write(len, raw.lower as i32),
+                                        ..=18 => column.write(len, raw.lower as i64),
+                                        _ => column.write(len, raw),
                                     }
                                 }
-                                Value::Char(Some(..))
-                                | Value::Varchar(Some(..))
-                                | Value::Blob(Some(..)) => {
-                                    let mut buf = [0u8; 4];
-                                    let src = match &val {
-                                        Value::Char(Some(v)) => v.encode_utf8(&mut buf).as_bytes(),
-                                        Value::Varchar(Some(v)) => v.as_bytes(),
-                                        Value::Blob(Some(v)) => v.as_ref(),
-                                        _ => unreachable!(),
-                                    };
-                                    if src.len() <= 12 {
-                                        let mut raw: duckdb_string_t = mem::zeroed();
-                                        raw.value.inlined.length = src.len() as u32;
-                                        ptr::copy_nonoverlapping(
-                                            src.as_ptr(),
-                                            raw.value.inlined.inlined.as_mut_ptr() as *mut u8,
-                                            src.len(),
-                                        );
-                                        Self::write(data, len, raw);
-                                    } else {
-                                        duckdb_unsafe_vector_assign_string_element_len(
-                                            vector,
-                                            len as _,
-                                            src.as_ptr() as *const c_char,
-                                            src.len() as _,
-                                        );
-                                    }
+                                Value::Char(Some(v)) => {
+                                    column.write_bytes(len, v.encode_utf8(&mut [0; 4]).as_bytes())
                                 }
-                                Value::Date(Some(v)) => {
-                                    Self::write(data, len, ValueWrap::from_date(&v))
-                                }
-                                Value::Time(Some(v)) => {
-                                    Self::write(data, len, ValueWrap::from_time(&v))
-                                }
+                                Value::Varchar(Some(v)) => column.write_bytes(len, v.as_bytes()),
+                                Value::Blob(Some(v)) => column.write_bytes(len, &v),
+                                Value::Date(Some(v)) => column.write(len, ValueWrap::from_date(&v)),
+                                Value::Time(Some(v)) => column.write(len, ValueWrap::from_time(&v)),
                                 Value::Timestamp(Some(v)) => {
-                                    Self::write(data, len, ValueWrap::from_timestamp(&v))
+                                    column.write(len, ValueWrap::from_timestamp(&v))
                                 }
                                 Value::TimestampWithTimezone(Some(v)) => {
-                                    Self::write(data, len, ValueWrap::from_timestamptz(&v))
+                                    column.write(len, ValueWrap::from_timestamptz(&v))
                                 }
                                 Value::Interval(Some(v)) => {
-                                    Self::write(data, len, ValueWrap::from_interval(&v))
+                                    column.write(len, ValueWrap::from_interval(&v))
                                 }
                                 Value::Uuid(Some(v)) => {
                                     let (upper, lower) = v.as_u64_pair();
-                                    Self::write(
-                                        data,
+                                    column.write(
                                         len,
                                         duckdb_hugeint {
                                             lower,
@@ -363,13 +381,7 @@ impl Executor for DuckDBConnection {
                                         },
                                     )
                                 }
-                                _ => {
-                                    duckdb_vector_ensure_validity_writable(vector);
-                                    duckdb_validity_set_row_invalid(
-                                        duckdb_vector_get_validity(vector),
-                                        len as _,
-                                    );
-                                }
+                                _ => column.set_null(len),
                             }
                         }
                         len += 1;

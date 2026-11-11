@@ -1,6 +1,6 @@
 #![allow(unused_variables)]
 use std::{collections::HashMap, sync::LazyLock};
-use tank::{AsValue, Entity, QueryBuilder, Result, Value, ValueOwned, anyhow, expr};
+use tank::{AsValue, Entity, Result, Value, ValueOwned, anyhow, expr};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -287,20 +287,76 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     }
 
     {
-        use tank::{cols, expr};
-        let result = connection
+        EntityExample::insert_many(&mut connection, [&entity2, &entity3]).await?;
+
+        // #region cheat-sheet-streams
+        use std::{future::ready, pin::pin};
+        use tank::{AsValue, Entity, QueryBuilder, QueryResult, Row, cols, stream::TryStreamExt};
+
+        // Entities: decode each row, optionally filter on the Rust side, collect.
+        let wounded: Vec<EntityExample> = connection
             .fetch(
                 QueryBuilder::new()
-                    .select(cols!("a", "b"))
-                    .from("mytable")
-                    .where_expr(expr!(mytable.a > 0 && mytable.b < 0))
-                    .group_by(cols!(mytable.c))
-                    .buil(&connection.driver()),
+                    .select(EntityExample::columns())
+                    .from(EntityExample::table())
+                    .where_expr(true)
+                    .build(&connection.driver()),
             )
-            .map_ok(BookAuthorResult::from_row)
-            .map(Result::flatten)
-            .try_collect::<Vec<_>>()
+            .and_then(|row| ready(EntityExample::from_row(row))) // Same as .map(|row| row.and_then(EntityExample::from_row))
+            .try_filter(|entity| ready(entity.casualties > 0)) // Prefer a WHERE clause: this reads every row
+            .try_collect()
             .await?;
+        let callsigns: Vec<&str> = wounded.iter().map(|e| e.callsign.as_str()).collect();
+
+        // Rows: aggregate values without building entities.
+        let (count, casualties) = EntityExample::find_many(&mut connection, true, None)
+            .try_fold((0, 0), |(count, total), entity| {
+                ready(Ok((count + 1, total + entity.casualties)))
+            })
+            .await?;
+        let total = connection
+            .fetch(
+                QueryBuilder::new()
+                    .select(cols!(EntityExample::casualties))
+                    .from(EntityExample::table())
+                    .where_expr(true)
+                    .build(&connection.driver()),
+            )
+            .try_fold(0, |total, row| {
+                ready(i32::try_from_value(row.value(0).unwrap()).map(|v| total + v))
+            })
+            .await?;
+
+        // Query results: `run` yields rows and affected counts, consumed one at a time.
+        // `try_next` polls in place, which needs an `Unpin` stream: Tank's streams hold async state
+        // and are not, so pin them on the stack. Combinators taking the stream by value do it for you.
+        let mut rows = Vec::new();
+        {
+            let mut stream = pin!(
+                connection.run(
+                    QueryBuilder::new()
+                        .select(cols!(EntityExample::callsign))
+                        .from(EntityExample::table())
+                        .where_expr(true)
+                        .build(&connection.driver()),
+                )
+            );
+            while let Some(result) = stream.try_next().await? {
+                match result {
+                    // Rows borrow the connection until the stream is dropped, `into_owned` detaches them
+                    QueryResult::Row(row) => rows.push(row.into_owned()),
+                    QueryResult::Affected(affected) => println!("{:?}", affected.rows_affected),
+                }
+            }
+        }
+        // #endregion cheat-sheet-streams
+
+        assert_eq!(callsigns.len(), 2);
+        assert!(callsigns.contains(&entity2.callsign.as_str()));
+        assert_eq!((count, casualties), (3, 8));
+        assert_eq!(total, 8);
+        assert_eq!(rows.len(), 3);
+        assert!(rows.iter().all(|row| row.get_column("callsign").is_some()));
     }
 
     Ok(())

@@ -1,6 +1,6 @@
 use crate::{
     ColumnDef, Context, Driver, DynQuery, Executor, Expression, Fragment, Query, QueryBuilder,
-    RawQuery, Result, Row, RowOwned, RowValues, RowsAffected, TableRef, future::Either, log_error,
+    RawQuery, Result, Row, RowOwned, RowsAffected, TableRef, Value, future::Either, log_error,
     stream::Stream, truncate_long, writer::SqlWriter,
 };
 use anyhow::anyhow;
@@ -44,8 +44,8 @@ pub trait Entity: AsEntity + Expression {
     fn unique_defs()
     -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = &'static ColumnDef>>;
 
-    /// Full row representation including all persisted columns.
-    fn row_values(&self) -> RowValues;
+    /// Values of all persisted columns in declaration order, borrowing from `self` where possible.
+    fn row_values(&self) -> impl ExactSizeIterator<Item = Value<'_>>;
 
     /// Full row representation with column labels.
     fn row(&self) -> RowOwned {
@@ -54,7 +54,7 @@ pub trait Entity: AsEntity + Expression {
                 .iter()
                 .map(|v| v.name().to_string())
                 .collect(),
-            self.row_values(),
+            self.row_values().map(Value::into_owned).collect(),
         )
     }
 

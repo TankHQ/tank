@@ -59,6 +59,9 @@ impl Column {
     }
 
     unsafe fn empty_value(&self) -> Option<Value<'static>> {
+        if let Some(value) = ValueWrap::scalar_null(self.id) {
+            return Some(value);
+        }
         unsafe {
             Some(
                 ValueWrap::try_from(*CBox(duckdb_vector_get_column_type(self.vector)))
@@ -68,77 +71,67 @@ impl Column {
         }
     }
 
+    /// Decodes the common scalar types inline, NULLs included, as typed values.
     #[inline(always)]
     unsafe fn value<'a>(&self, row: usize) -> Option<Cow<'a, Value<'a>>> {
         unsafe {
             let data = self.data;
-            if !data.is_null() && self.is_valid(row) {
-                match self.id {
-                    DUCKDB_TYPE_DUCKDB_TYPE_BOOLEAN => {
-                        return Some(Cow::Owned(Value::Boolean(Some(
-                            *(data as *const bool).add(row),
-                        ))));
-                    }
-                    DUCKDB_TYPE_DUCKDB_TYPE_INTEGER => {
-                        return Some(Cow::Owned(Value::Int32(Some(
-                            *(data as *const i32).add(row),
-                        ))));
-                    }
-                    DUCKDB_TYPE_DUCKDB_TYPE_BIGINT => {
-                        return Some(Cow::Owned(Value::Int64(Some(
-                            *(data as *const i64).add(row),
-                        ))));
-                    }
-                    DUCKDB_TYPE_DUCKDB_TYPE_DOUBLE => {
-                        return Some(Cow::Owned(Value::Float64(Some(
-                            *(data as *const f64).add(row),
-                        ))));
-                    }
-                    DUCKDB_TYPE_DUCKDB_TYPE_DECIMAL => {
-                        if let Some(scaled) = ValueWrap::to_decimal(
-                            match self.width {
-                                ..=4 => *(data as *const i16).add(row) as i128,
-                                ..=9 => *(data as *const i32).add(row) as i128,
-                                ..=18 => *(data as *const i64).add(row) as i128,
-                                _ => ValueWrap::to_i128(&*(data as *const duckdb_hugeint).add(row)),
-                            },
-                            self.scale,
-                        ) {
-                            return Some(Cow::Owned(Value::Decimal(
-                                Some(scaled),
-                                self.width,
-                                self.scale,
-                            )));
-                        }
-                    }
-                    DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR => {
-                        return Some(Cow::Owned(Value::Varchar(Some(Cow::Borrowed(
-                            str::from_utf8_unchecked(ValueWrap::bytes_slice(
-                                &*(data as *const duckdb_string_t).add(row),
-                            )),
-                        )))));
-                    }
-                    DUCKDB_TYPE_DUCKDB_TYPE_DATE => {
-                        if let Some(date) =
-                            ValueWrap::to_date((*(data as *const duckdb_date).add(row)).days)
-                        {
-                            return Some(Cow::Owned(Value::Date(Some(date))));
-                        }
-                    }
-                    DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP => {
-                        if let Some(timestamp) = ValueWrap::to_timestamp(
-                            (*(data as *const duckdb_timestamp).add(row)).micros,
-                        ) {
-                            return Some(Cow::Owned(Value::Timestamp(Some(timestamp))));
-                        }
-                    }
-                    _ => {}
+            let valid = self.is_valid(row);
+            // Flat vectors of these types always carry a data buffer. Values that do not fit
+            // the Rust type (out of range dates, decimals) decode as NULL.
+            Some(Cow::Owned(match self.id {
+                DUCKDB_TYPE_DUCKDB_TYPE_BOOLEAN => {
+                    Value::Boolean(valid.then(|| *(data as *const bool).add(row)))
                 }
-            }
-            match self.decode(row) {
-                Some(v) => Some(Cow::Owned(v)),
-                None => Some(Cow::Owned(Value::Null)),
-            }
+                DUCKDB_TYPE_DUCKDB_TYPE_INTEGER => {
+                    Value::Int32(valid.then(|| *(data as *const i32).add(row)))
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_BIGINT => {
+                    Value::Int64(valid.then(|| *(data as *const i64).add(row)))
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_DOUBLE => {
+                    Value::Float64(valid.then(|| *(data as *const f64).add(row)))
+                }
+                DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR => Value::Varchar(valid.then(|| {
+                    Cow::Borrowed(str::from_utf8_unchecked(ValueWrap::bytes_slice(
+                        &*(data as *const duckdb_string_t).add(row),
+                    )))
+                })),
+                DUCKDB_TYPE_DUCKDB_TYPE_DECIMAL => Value::Decimal(
+                    valid
+                        .then(|| {
+                            ValueWrap::to_decimal(
+                                match self.width {
+                                    ..=4 => *(data as *const i16).add(row) as i128,
+                                    ..=9 => *(data as *const i32).add(row) as i128,
+                                    ..=18 => *(data as *const i64).add(row) as i128,
+                                    _ => ValueWrap::to_i128(
+                                        &*(data as *const duckdb_hugeint).add(row),
+                                    ),
+                                },
+                                self.scale,
+                            )
+                        })
+                        .flatten(),
+                    self.width,
+                    self.scale,
+                ),
+                DUCKDB_TYPE_DUCKDB_TYPE_DATE => Value::Date(
+                    valid
+                        .then(|| ValueWrap::to_date((*(data as *const duckdb_date).add(row)).days))
+                        .flatten(),
+                ),
+                DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP => Value::Timestamp(
+                    valid
+                        .then(|| {
+                            ValueWrap::to_timestamp(
+                                (*(data as *const duckdb_timestamp).add(row)).micros,
+                            )
+                        })
+                        .flatten(),
+                ),
+                _ => self.decode(row).unwrap_or(Value::Null),
+            }))
         }
     }
 
@@ -467,12 +460,18 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                     let batch = match self.batch.as_mut().and_then(Arc::get_mut) {
                         Some(batch) => batch,
                         None => {
-                            let batch = self.batch.insert(Arc::new(Batch {
+                            // Rows of the previous chunk are alive: continue with its layout.
+                            let (labels, columns) = self
+                                .batch
+                                .as_ref()
+                                .map(|batch| (batch.labels.clone(), batch.columns.clone()))
+                                .unwrap_or_default();
+                            let batch = Batch {
                                 chunk: CBox::null(),
-                                labels: Arc::from([]),
-                                columns: Vec::new(),
-                            }));
-                            Arc::get_mut(batch).unwrap_unchecked()
+                                labels,
+                                columns,
+                            };
+                            Arc::get_mut(self.batch.insert(Arc::new(batch))).unwrap_unchecked()
                         }
                     };
                     if self.size != 0 {

@@ -33,8 +33,6 @@ impl Extend<RowsAffected> for RowsAffected {
 
 /// Shared column labels.
 pub type RowLabels = Arc<[String]>;
-/// Row values matching `RowLabels`.
-pub type RowValues = Vec<ValueOwned>;
 
 /// A labeled row, either materialized or decoded from a native driver view.
 pub trait Row: Debug + Send + Sync {
@@ -140,15 +138,12 @@ impl<R: Row + ?Sized> Row for &R {
 #[derive(Clone, Default)]
 pub struct RowOwned {
     pub labels: RowLabels,
-    pub values: RowValues,
+    pub values: Vec<ValueOwned>,
 }
 
 impl RowOwned {
-    pub fn new(labels: RowLabels, values: RowValues) -> Self {
-        Self {
-            labels,
-            values: values.into(),
-        }
+    pub fn new(labels: RowLabels, values: Vec<ValueOwned>) -> Self {
+        Self { labels, values }
     }
 }
 

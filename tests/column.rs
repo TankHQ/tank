@@ -209,7 +209,7 @@ mod tests {
             name: "x".into(),
         };
         assert_eq!(entity.row_values().len(), 2);
-        assert_eq!(*entity.row_values().get(0).unwrap(), 7.as_value());
+        assert_eq!(entity.row_values().next(), Some(7.as_value()));
         let row = entity.row();
         assert_eq!(row.labels(), &["id", "name"]);
         assert_eq!(*row.values().nth(1).unwrap(), "x".as_value());

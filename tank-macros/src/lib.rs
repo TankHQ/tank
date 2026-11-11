@@ -6,6 +6,7 @@ mod decode_join;
 mod decode_table;
 mod encode_column_def;
 mod encode_column_ref;
+mod field_value_trait;
 mod frag_evaluated;
 mod from_row_trait;
 
@@ -14,6 +15,7 @@ use crate::{
     decode_column::ColumnMetadata,
     decode_table::{TableMetadata, decode_table},
     encode_column_def::encode_column_def,
+    field_value_trait::field_value_trait,
     from_row_trait::from_row_trait,
 };
 use column_trait::column_trait;
@@ -36,6 +38,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
     let name = &table.name;
     let schema = &table.schema;
     let (from_row_factory, from_row) = from_row_trait(&table);
+    let (field_value_factory, field_value) = field_value_trait(&table);
     let primary_key_cols = table.primary_key.iter().map(|i| &table.columns[*i]);
     let primary_key = primary_key_cols.clone().map(|col| {
         let ident = &col.ident;
@@ -57,39 +60,28 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
     let unique_defs = quote!(vec![#(#unique_defs),*].into_boxed_slice());
     let primary_key_types = primary_key_cols.clone().map(|col| col.ty.clone());
     let (column_trait, column) = column_trait(&table);
-    let row_values = table.columns.iter().map(
-        |ColumnMetadata { ident,  conversion_type,.. }| {
-            if let Some(conversion_type) = conversion_type {
-                quote!(::tank::AsValue::as_value(::std::convert::Into::<#conversion_type>::into(self.#ident.clone())).into_owned())
-            } else {
-                quote!(::tank::AsValue::as_value(self.#ident.clone()).into_owned())
-            }
-        },
-    );
-    let write_fields = table.columns.iter().enumerate().map(
-        |(
-            i,
-            ColumnMetadata {
-                ident,
-                conversion_type,
-                ..
-            },
-        )| {
-            let sep = if i > 0 {
-                quote!(out.push_str(", ");)
-            } else {
-                quote!()
-            };
-            let value_expr = if let Some(conversion_type) = conversion_type {
-                quote!(::tank::AsValue::as_value(
+    let field_values = table
+        .columns
+        .iter()
+        .map(
+            |ColumnMetadata {
+                 ident,
+                 ty,
+                 conversion_type,
+                 ..
+             }| match conversion_type {
+                Some(conversion_type) => quote!(::tank::AsValue::as_value(
                     ::std::convert::Into::<#conversion_type>::into(self.#ident.clone())
-                ))
-            } else {
-                quote!(::tank::AsValue::as_value(self.#ident.clone()))
-            };
-            quote!(#sep writer.write_value(context, out, &#value_expr);)
-        },
-    );
+                )),
+                None => quote!(#field_value_factory::<#ty>::value(&self.#ident)),
+            },
+        )
+        .collect::<Vec<_>>();
+    let columns_len = table.columns.len();
+    let write_fields = field_values.iter().enumerate().map(|(i, value)| {
+        let sep = (i > 0).then(|| quote!(out.push_str(", ");));
+        quote!(#sep writer.write_value(context, out, &#value);)
+    });
     let columns = table.columns.iter().map(|c| {
         let field = &c.ident;
         encode_column_def(&c, quote!(<#ident as #column_trait>::#field))
@@ -113,6 +105,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
         .collect::<Punctuated<_, AndAnd>>();
     quote! {
         #from_row
+        #field_value
         #column
 
         impl ::tank::AsEntity for #ident {
@@ -183,8 +176,10 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 RESULT.iter().map(|v| v.iter().copied())
             }
 
-            fn row_values(&self) -> ::tank::RowValues {
-                vec![#(#row_values),*]
+            #[inline]
+            fn row_values(&self) -> impl ExactSizeIterator<Item = ::tank::Value<'_>> {
+                let values: [::tank::Value<'_>; #columns_len] = [#(#field_values),*];
+                values.into_iter()
             }
 
             #[inline(always)]

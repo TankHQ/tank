@@ -161,6 +161,40 @@ impl ValueWrap<'_> {
         }
     }
 
+    /// Typed NULL of a type that needs no logical type details, `None` for the others.
+    pub(crate) fn scalar_null(id: DUCKDB_TYPE) -> Option<Value<'static>> {
+        Some(match id {
+            DUCKDB_TYPE_DUCKDB_TYPE_SQLNULL => Value::Null,
+            DUCKDB_TYPE_DUCKDB_TYPE_BOOLEAN => Value::Boolean(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_TINYINT => Value::Int8(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_SMALLINT => Value::Int16(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_INTEGER => Value::Int32(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_BIGINT => Value::Int64(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_HUGEINT => Value::Int128(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_UTINYINT => Value::UInt8(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_USMALLINT => Value::UInt16(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_UINTEGER => Value::UInt32(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_UBIGINT => Value::UInt64(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_UHUGEINT => Value::UInt128(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_FLOAT => Value::Float32(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_DOUBLE => Value::Float64(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_DATE => Value::Date(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_TIME
+            | DUCKDB_TYPE_DUCKDB_TYPE_TIME_NS
+            | DUCKDB_TYPE_DUCKDB_TYPE_TIME_TZ => Value::Time(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP
+            | DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_S
+            | DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_MS
+            | DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_NS
+            | DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_TZ => Value::Timestamp(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_INTERVAL => Value::Interval(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR | DUCKDB_TYPE_DUCKDB_TYPE_ENUM => Value::Varchar(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_BLOB => Value::Blob(None),
+            DUCKDB_TYPE_DUCKDB_TYPE_UUID => Value::Uuid(None),
+            _ => return None,
+        })
+    }
+
     fn take_string(ptr: *mut c_char) -> String {
         let ptr = CBox(ptr);
         if ptr.is_null() {
@@ -360,36 +394,11 @@ impl TryFrom<duckdb_logical_type> for ValueWrap<'static> {
 
     fn try_from(logical_type: duckdb_logical_type) -> Result<Self> {
         unsafe {
-            let value = match duckdb_get_type_id(logical_type) {
-                DUCKDB_TYPE_DUCKDB_TYPE_SQLNULL => Value::Null,
-                DUCKDB_TYPE_DUCKDB_TYPE_BOOLEAN => Value::Boolean(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_TINYINT => Value::Int8(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_SMALLINT => Value::Int16(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_INTEGER => Value::Int32(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_BIGINT => Value::Int64(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_HUGEINT => Value::Int128(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_UTINYINT => Value::UInt8(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_USMALLINT => Value::UInt16(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_UINTEGER => Value::UInt32(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_UBIGINT => Value::UInt64(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_UHUGEINT => Value::UInt128(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_FLOAT => Value::Float32(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_DOUBLE => Value::Float64(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_DATE => Value::Date(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_TIME
-                | DUCKDB_TYPE_DUCKDB_TYPE_TIME_NS
-                | DUCKDB_TYPE_DUCKDB_TYPE_TIME_TZ => Value::Time(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP
-                | DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_S
-                | DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_MS
-                | DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_NS
-                | DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP_TZ => Value::Timestamp(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_INTERVAL => Value::Interval(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR | DUCKDB_TYPE_DUCKDB_TYPE_ENUM => {
-                    Value::Varchar(None)
-                }
-                DUCKDB_TYPE_DUCKDB_TYPE_BLOB => Value::Blob(None),
-                DUCKDB_TYPE_DUCKDB_TYPE_UUID => Value::Uuid(None),
+            let id = duckdb_get_type_id(logical_type);
+            if let Some(value) = Self::scalar_null(id) {
+                return Ok(Self(Cow::Owned(value)));
+            }
+            let value = match id {
                 DUCKDB_TYPE_DUCKDB_TYPE_DECIMAL => Value::Decimal(
                     None,
                     duckdb_decimal_width(logical_type),

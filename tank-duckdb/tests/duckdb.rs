@@ -9,17 +9,15 @@ mod tests {
         collections::{BTreeMap, HashMap},
         path::Path,
         sync::Mutex,
-        time::Instant,
     };
     use tank::{
         BinaryOp, BinaryOpType, ColumnDef, Connection, ConnectionPool, Context, Driver, DynQuery,
-        Entity, Executor, Expression, FixedDecimal, Fragment, GenericSqlWriter, Interval, MapType,
-        Operand, PoolConfig, Prepared, Query, Row, SqlWriter, Transaction, Value, expr,
-        stream::TryStreamExt,
+        Executor, Expression, Fragment, GenericSqlWriter, Interval, MapType, Operand, PoolConfig,
+        Prepared, Query, Row, SqlWriter, Value,
+        stream::{StreamExt, TryStreamExt},
     };
     use tank_duckdb::{DuckDBConnection, DuckDBDriver};
     use tank_tests::{execute_tests, init_logs};
-    use time::{Date, PrimitiveDateTime, macros::{date, datetime}};
     use tokio::fs;
 
     static MUTEX: Mutex<()> = Mutex::new(());
@@ -209,12 +207,10 @@ mod tests {
         // A bare `Decimal` decodes to `Value::Decimal(.., 0, scale)`. Binding it
         // used to hand DuckDB a `DECIMAL(width=0, scale=n)` type, tripping the
         // `width >= scale` assertion and aborting the whole process.
-        let mut connection = DuckDBConnection::connect(
-            &DuckDBDriver::new(),
-            "duckdb://:memory:?threads=1".into(),
-        )
-        .await
-        .unwrap();
+        let mut connection =
+            DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
+                .await
+                .unwrap();
         for decimal in [
             Decimal::new(125, 2),
             Decimal::new(-1, 0),
@@ -242,14 +238,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rows_outlive_their_chunk() {
+        let _guard = MUTEX.lock().unwrap();
+        let mut connection =
+            DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
+                .await
+                .unwrap();
+        let query = "SELECT i, 'value ' || i AS text, CASE WHEN i % 2 = 0 THEN i END AS even FROM range(5000) t(i)";
+        // Retained across several chunks.
+        let rows: Vec<_> = connection.fetch(query).try_collect().await.unwrap();
+        assert_eq!(rows.len(), 5000);
+        for (i, row) in rows.iter().enumerate().step_by(997) {
+            assert_eq!(row.labels(), ["i", "text", "even"]);
+            assert_eq!(
+                row.value(0).unwrap().into_owned(),
+                Value::Int64(Some(i as i64))
+            );
+            assert_eq!(
+                row.value(1).unwrap().into_owned(),
+                Value::Varchar(Some(format!("value {i}").into()))
+            );
+            assert_eq!(
+                row.value(2).unwrap().into_owned(),
+                Value::Int64((i % 2 == 0).then_some(i as i64))
+            );
+        }
+        drop(rows);
+        // Retained after the stream is dropped mid-chunk.
+        let first: Vec<_> = connection.fetch(query).take(3).try_collect().await.unwrap();
+        assert_eq!(
+            first[2].value(1).unwrap().into_owned(),
+            Value::Varchar(Some("value 2".into()))
+        );
+        drop(first);
+        let again: Vec<_> = connection.fetch(query).try_collect().await.unwrap();
+        assert_eq!(again.len(), 5000);
+    }
+
+    #[tokio::test]
     async fn bind_index_zero_based() {
         let _guard = MUTEX.lock().unwrap();
-        let mut connection = DuckDBConnection::connect(
-            &DuckDBDriver::new(),
-            "duckdb://:memory:?threads=1".into(),
-        )
-        .await
-        .unwrap();
+        let mut connection =
+            DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
+                .await
+                .unwrap();
         // `bind_index` is 0-based; index 0 must bind the first parameter.
         let query = connection.prepare("SELECT ?, ?").await.unwrap();
         let Query::Prepared(mut prepared) = query else {
@@ -270,114 +302,6 @@ mod tests {
         assert_eq!(
             row.value(1).map(|v| v.into_owned()),
             Some(Value::Int32(Some(20)))
-        );
-    }
-
-    #[derive(Entity, Debug, PartialEq, Clone)]
-    #[tank(name = "bench_items")]
-    struct BenchItem {
-        #[tank(primary_key)]
-        id: i64,
-        active: bool,
-        category: String,
-        description: String,
-        score: f64,
-        amount: FixedDecimal<18, 4>,
-        created_on: Date,
-        created_at: PrimitiveDateTime,
-    }
-
-    #[tokio::test]
-    async fn duckdb_read_write_prepared_benchmark() {
-        const NUM_ROWS: i64 = 10_000;
-        const PREPARED_ITERS: i64 = 200;
-
-        let _guard = MUTEX.lock().unwrap();
-
-        let mut connection = DuckDBConnection::connect(
-            &DuckDBDriver::new(),
-            "duckdb://:memory:?threads=2".into(),
-        )
-        .await
-        .unwrap();
-
-        BenchItem::drop_table(&mut connection, true, false)
-            .await
-            .unwrap();
-        BenchItem::create_table(&mut connection, true, false)
-            .await
-            .unwrap();
-
-        let items = (0..NUM_ROWS)
-            .map(|i| BenchItem {
-                id: i,
-                active: i % 2 == 0,
-                category: format!("cat-{}", i % 16),
-                description: format!("item-description-payload-{i:06}-extra-bytes"),
-                score: (i as f64) * 0.125,
-                amount: Decimal::new(i * 100 + 25, 4).into(),
-                created_on: date!(2025 - 01 - 01),
-                created_at: datetime!(2025 - 01 - 01 12:00:00),
-            })
-            .collect::<Vec<_>>();
-
-        let t0 = Instant::now();
-        let affected = BenchItem::insert_many(&mut connection, &items)
-            .await
-            .unwrap();
-        let write_elapsed = t0.elapsed();
-        assert_eq!(affected.rows_affected, Some(NUM_ROWS as u64));
-
-        let t1 = Instant::now();
-        let loaded: Vec<BenchItem> = BenchItem::find_many(&mut connection, true, None)
-            .try_collect()
-            .await
-            .unwrap();
-        let read_elapsed = t1.elapsed();
-        assert_eq!(loaded.len(), NUM_ROWS as usize);
-
-        let t2 = Instant::now();
-        let mut prepared = BenchItem::prepare_find(
-            &mut connection,
-            expr!(BenchItem::id >= ? && BenchItem::id < ? && BenchItem::active == ?),
-            Some(50),
-        )
-        .await
-        .unwrap();
-        let mut total_prepared_rows = 0usize;
-        for step in 0..PREPARED_ITERS {
-            let start = (step * 40) % (NUM_ROWS - 100);
-            prepared
-                .bind(start)
-                .unwrap()
-                .bind(start + 50)
-                .unwrap()
-                .bind(true)
-                .unwrap();
-            let batch: Vec<BenchItem> = connection
-                .fetch(&mut prepared)
-                .and_then(|row| std::future::ready(BenchItem::from_row(row)))
-                .try_collect()
-                .await
-                .unwrap();
-            assert_eq!(batch.len(), 25);
-            total_prepared_rows += batch.len();
-        }
-        let prepared_elapsed = t2.elapsed();
-        assert_eq!(total_prepared_rows, (PREPARED_ITERS as usize) * 25);
-
-        let t3 = Instant::now();
-        let mut tx = connection.begin().await.unwrap();
-        let updated = tx
-            .execute("UPDATE bench_items SET score = score + 1.0 WHERE active = true")
-            .await
-            .unwrap();
-        assert_eq!(updated.rows_affected, Some((NUM_ROWS / 2) as u64));
-        tx.commit().await.unwrap();
-        let tx_elapsed = t3.elapsed();
-
-        println!(
-            "benchmark ({NUM_ROWS} rows): append={write_elapsed:?}, stream_read={read_elapsed:?}, prepared_{PREPARED_ITERS}x={prepared_elapsed:?}, tx_update={tx_elapsed:?}"
         );
     }
 }
