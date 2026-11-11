@@ -70,8 +70,6 @@ mod tests {
                     Err(error) => break error,
                 }
             };
-            // DuckDB >= 1.2 reports a conversion error before the first chunk, older
-            // versions hand out a few chunks first.
             assert!(count < 1000010, "Consumed {count} rows before error");
             assert!(format!("{error:#}").contains("invalid"));
             assert!(results.next().await.is_none());
