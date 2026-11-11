@@ -149,13 +149,12 @@ impl Executor for DuckDBConnection {
                 let c_sql = CString::new(sql.as_bytes())
                     .context("Could not convert `String` to `CString`")?;
                 let mut prepared = CBox::null();
-                if duckdb_prepare(*self.connection, c_sql.as_ptr(), &mut *prepared)
-                    != duckdb_state_DuckDBSuccess
-                {
-                    return Err(Error::msg(
+                ensure_rc!(
+                    duckdb_prepare(*self.connection, c_sql.as_ptr(), &mut *prepared),
+                    Error::msg(
                         error_message_from_ptr(&duckdb_prepare_error(*prepared)).into_owned(),
-                    ));
-                }
+                    )
+                );
                 Ok(DuckDBPrepared::new(prepared).into())
             })()
             .with_context(|| format!("While preparing the query:\n{}", truncate_long!(sql)))
@@ -177,15 +176,16 @@ impl Executor for DuckDBConnection {
         It::Item: AsEntity,
     {
         type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
+        let table = E::<It>::table();
+        let columns = E::<It>::columns();
+        let delimiter = self
+            .driver()
+            .sql_writer()
+            .separator()
+            .chars()
+            .next()
+            .unwrap_or('.');
         future::ready((|| unsafe {
-            let table = E::<It>::table();
-            let delimiter = self
-                .driver()
-                .sql_writer()
-                .separator()
-                .chars()
-                .next()
-                .unwrap_or('.');
             let mut appender = CBox::null();
             let rc = match table.schema.rsplit_once(delimiter) {
                 Some((catalog, schema)) => duckdb_appender_create_ext(
@@ -210,7 +210,6 @@ impl Executor for DuckDBConnection {
             };
             Self::check_appender(*appender, rc)
                 .context("While creating the `duckdb_appender` object")?;
-            let columns = E::<It>::columns();
             for column in columns {
                 Self::check_appender(
                     *appender,

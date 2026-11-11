@@ -5,7 +5,8 @@ use std::{
     collections::HashMap,
     ffi::{CStr, CString, c_void},
     fmt::{self, Debug, Formatter},
-    mem,
+    hint, mem,
+    ops::DerefMut,
     pin::Pin,
     str,
     sync::Arc,
@@ -449,8 +450,9 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                 if let Some(result) = &mut self.result {
                     let chunk = CBox(duckdb_fetch_chunk(**result));
                     if chunk.is_null() {
-                        let error = duckdb_result_error(&mut **result);
+                        let error = duckdb_result_error(result.deref_mut());
                         if !error.is_null() {
+                            hint::cold_path();
                             return Err(Error::msg(
                                 CStr::from_ptr(error).to_string_lossy().into_owned(),
                             ));
@@ -525,6 +527,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                     );
                     let error = duckdb_extract_statements_error(*extracted);
                     if !error.is_null() {
+                        hint::cold_path();
                         return Err(Error::msg(
                             CStr::from_ptr(error).to_string_lossy().into_owned(),
                         ));

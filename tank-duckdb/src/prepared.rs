@@ -47,15 +47,10 @@ impl Prepared for DuckDBPrepared {
             return Ok(self);
         }
         self.index = 0;
-        unsafe {
-            if duckdb_clear_bindings(*self.statement) != duckdb_state_DuckDBSuccess {
-                hint::cold_path();
-                return Err(anyhow!(
-                    "Could not clear the bindings from DuckDB statement"
-                ))
-                .inspect_err(log_error);
-            }
-        }
+        ensure_rc!(
+            unsafe { duckdb_clear_bindings(*self.statement) },
+            anyhow!("Could not clear the bindings from DuckDB statement")
+        );
         Ok(self)
     }
 
