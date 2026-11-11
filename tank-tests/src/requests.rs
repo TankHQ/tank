@@ -155,7 +155,7 @@ pub async fn requests(executor: &mut impl Executor) -> Result<()> {
     )
     .await?;
     let limits = RequestLimit::find_many(executor, true, None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(limits, 5);

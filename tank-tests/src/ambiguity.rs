@@ -94,28 +94,28 @@ pub async fn ambiguity(executor: &mut impl Executor) -> Result<()> {
     );
     assert_eq!(
         first_schema::FirstTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         1
     );
     assert_eq!(
         first_schema::SecondTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         0
     );
     assert_eq!(
         second_schema::FirstTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         0
     );
     assert_eq!(
         second_schema::SecondTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         0
@@ -150,28 +150,28 @@ pub async fn ambiguity(executor: &mut impl Executor) -> Result<()> {
     );
     assert_eq!(
         first_schema::FirstTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         1
     );
     assert_eq!(
         first_schema::SecondTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         0
     );
     assert_eq!(
         second_schema::FirstTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         0
     );
     assert_eq!(
         second_schema::SecondTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         1
@@ -196,28 +196,28 @@ pub async fn ambiguity(executor: &mut impl Executor) -> Result<()> {
     assert_eq!(fetched2.third_col, Some(Arc::new(20)));
     assert_eq!(
         first_schema::FirstTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         1
     );
     assert_eq!(
         first_schema::SecondTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         0
     );
     assert_eq!(
         second_schema::FirstTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         0
     );
     assert_eq!(
         second_schema::SecondTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         1
@@ -239,28 +239,28 @@ pub async fn ambiguity(executor: &mut impl Executor) -> Result<()> {
     // Ensure both tables now report one row each
     assert_eq!(
         first_schema::FirstTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         1
     );
     assert_eq!(
         first_schema::SecondTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         1
     );
     assert_eq!(
         second_schema::FirstTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         0
     );
     assert_eq!(
         second_schema::SecondTable::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         1
@@ -295,6 +295,7 @@ pub async fn ambiguity(executor: &mut impl Executor) -> Result<()> {
             expr!(first_schema::FirstTable::first_col == "pk_only"),
             None
         )
+        .map(Result::unwrap)
         .count()
         .await,
         1

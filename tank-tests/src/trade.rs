@@ -73,7 +73,7 @@ pub async fn trade_simple(executor: &mut impl Executor) -> Result<()> {
     assert!(result.is_none(), "Expected no trades at this time");
     assert_eq!(
         Trade::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         0
@@ -132,7 +132,13 @@ pub async fn trade_simple(executor: &mut impl Executor) -> Result<()> {
         ])
     );
 
-    assert_eq!(Trade::find_many(executor, true, None).count().await, 1);
+    assert_eq!(
+        Trade::find_many(executor, true, None)
+            .map(Result::unwrap)
+            .count()
+            .await,
+        1
+    );
     Ok(())
 }
 

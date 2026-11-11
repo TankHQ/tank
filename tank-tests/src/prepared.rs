@@ -28,7 +28,7 @@ pub async fn prepared(executor: &mut impl Executor) -> Result<()> {
         PreparedBinding::prepare_find(executor, expr!(PreparedBinding::id == ?), Some(1)).await?;
     query.bind(4_000_000_000_u64)?;
     let loaded = executor
-        .fetch(query)
+        .fetch(&mut query)
         .map_ok(PreparedBinding::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
@@ -43,7 +43,7 @@ pub async fn prepared(executor: &mut impl Executor) -> Result<()> {
     query.clear_bindings()?;
     query.bind(4_000_000_000_u32)?;
     let loaded = executor
-        .fetch(query)
+        .fetch(&mut query)
         .map_ok(PreparedBinding::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
@@ -58,7 +58,7 @@ pub async fn prepared(executor: &mut impl Executor) -> Result<()> {
         PreparedBinding::prepare_find(executor, expr!(PreparedBinding::id == ?), Some(1)).await?;
     query.bind_index(entity.id, 0)?;
     let loaded = executor
-        .fetch(query)
+        .fetch(&mut query)
         .map_ok(PreparedBinding::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()

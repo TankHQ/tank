@@ -155,13 +155,13 @@ pub async fn transaction1(connection: &mut impl Connection) -> Result<()> {
     transaction.commit().await?;
 
     let entity_a_entries = EntityA::find_many(connection, true, None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(entity_a_entries, 2);
 
     let entity_b_entries = EntityB::find_many(connection, true, None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(entity_b_entries, 3);

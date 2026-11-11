@@ -96,7 +96,7 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
     ];
     Product::insert_many(executor, &products).await?;
     let total_products = Product::find_many(executor, true, None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(total_products, 4);
@@ -219,7 +219,7 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
     ];
     Cart::insert_many(executor, &carts).await?;
     let cart_count = Cart::find_many(executor, true, None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(cart_count, 3);
@@ -240,7 +240,7 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
         .expect("Expected a cart for product 2");
     cart_for_2.delete(executor).await?;
     let cart_count_after = Cart::find_many(executor, true, None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(cart_count_after, 2);
