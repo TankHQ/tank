@@ -53,16 +53,14 @@ pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
         let rows = executor
             .run(query)
             .try_collect::<Vec<_>>()
-            .await
-            .unwrap()
+            .await?
             .into_iter()
             .filter_map(|v| match v {
                 QueryResult::Row(v) => Some(v),
                 QueryResult::Affected(..) => None,
             })
             .map(Container::from_row)
-            .collect::<tank::Result<Vec<_>>>()
-            .expect("Coult not execute the query");
+            .collect::<tank::Result<Vec<_>>>()?;
         assert_eq!(
             rows,
             [Container {

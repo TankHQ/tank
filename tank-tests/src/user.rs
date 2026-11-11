@@ -35,24 +35,12 @@ pub struct UserProfile {
 pub async fn users(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
-    // Cleanup
-    let result = UserProfile::drop_table(executor, true, false).await;
-    assert!(
-        result.is_ok(),
-        "Failed to UserProfile::drop_table: {:?}",
-        result.unwrap_err()
-    );
-
     // Setup
-    let result = UserProfile::create_table(executor, false, true).await;
-    assert!(
-        result.is_ok(),
-        "Failed to UserProfile::create_table: {:?}",
-        result.unwrap_err()
-    );
+    UserProfile::drop_table(executor, true, false).await?;
+    UserProfile::create_table(executor, false, true).await?;
 
     // Insert
-    let users_to_create = vec![
+    let users = vec![
         UserProfile {
             id: Uuid::parse_str("a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1")
                 .unwrap()
@@ -123,28 +111,21 @@ pub async fn users(executor: &mut impl Executor) -> Result<()> {
         },
     ];
 
-    let result = UserProfile::insert_many(executor, users_to_create.iter()).await;
-    assert!(
-        result.is_ok(),
-        "Failed to insert users: {:?}",
-        result.unwrap_err()
-    );
-    if let Some(affected) = result.unwrap().rows_affected {
+    let result = UserProfile::insert_many(executor, users.iter()).await?;
+    if let Some(affected) = result.rows_affected {
         assert_eq!(affected, 5);
     }
 
     // Find users with more than 1000 followers (should be 2: charlie, dean)
     let popular_users = UserProfile::find_many(executor, expr!(follower_count > 1000), None)
         .try_collect::<Vec<_>>()
-        .await
-        .unwrap();
+        .await?;
     assert_eq!(popular_users.len(), 2);
 
     // Find active users (should be 3: alice, charlie, dean)
     let active_users = UserProfile::find_many(executor, expr!(is_active == true), None)
         .try_collect::<Vec<_>>()
-        .await
-        .unwrap();
+        .await?;
     assert_eq!(active_users.len(), 3);
     let active_users = active_users
         .into_iter()
@@ -157,21 +138,14 @@ pub async fn users(executor: &mut impl Executor) -> Result<()> {
 
     // 4. Update a Bob
     let mut bob = UserProfile::find_one(executor, expr!(username == "bob"))
-        .await
-        .expect("Expected query to succeed")
+        .await?
         .expect("Could not find bob ");
     bob.is_active = true;
     bob.full_name = Some("Robert Builder".into());
     bob.last_login = Some(datetime!(2025-07-17 20:00:00));
-    let result = bob.save(executor).await;
-    assert!(
-        result.is_ok(),
-        "Failed to save Bob: {:?}",
-        result.unwrap_err()
-    );
+    bob.save(executor).await?;
     let updated_bob = UserProfile::find_one(executor, bob.primary_key_expr())
-        .await
-        .expect("Expected query to succeed")
+        .await?
         .expect("Could not find bob ");
     assert_eq!(updated_bob.is_active, true);
     assert_eq!(updated_bob.full_name, Some("Robert Builder".into()));
@@ -181,24 +155,15 @@ pub async fn users(executor: &mut impl Executor) -> Result<()> {
     let active_users_after_update =
         UserProfile::find_many(executor, expr!(is_active == true), None)
             .try_collect::<Vec<_>>()
-            .await
-            .unwrap();
+            .await?;
     assert_eq!(active_users_after_update.len(), 4);
 
     // Find eve user and delete it.
     let eve = UserProfile::find_one(executor, expr!(username == "eve"))
-        .await
-        .expect("Expected query to succeed")
+        .await?
         .expect("Could not find eve ");
-    let result = eve.delete(executor).await;
-    assert!(
-        result.is_ok(),
-        "Failed to delete Eve: {:?}",
-        result.unwrap_err()
-    );
-    let maybe_eve = UserProfile::find_one(executor, eve.primary_key_expr())
-        .await
-        .expect("Expected query to succeed");
+    eve.delete(executor).await?;
+    let maybe_eve = UserProfile::find_one(executor, eve.primary_key_expr()).await?;
     assert!(maybe_eve.is_none(), "Eve should have been deleted");
 
     // There must be 5 total users
@@ -206,9 +171,7 @@ pub async fn users(executor: &mut impl Executor) -> Result<()> {
     assert_eq!(total_users, 4, "There should be 4 users remaining");
 
     // Delete all users who never logged in (only Dean)
-    let result = UserProfile::delete_many(executor, expr!(last_login == NULL))
-        .await
-        .expect("Expected query to succeed");
+    let result = UserProfile::delete_many(executor, expr!(last_login == NULL)).await?;
     if let Some(affected) = result.rows_affected {
         assert_eq!(affected, 1, "Should have removed 1 rows");
     }
@@ -216,8 +179,7 @@ pub async fn users(executor: &mut impl Executor) -> Result<()> {
     // There must be 3 users left (alice, bob, charlie)
     let final_users = UserProfile::find_many(executor, true, None)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Expected query to succeed");
+        .await?;
     assert_eq!(final_users.len(), 3);
     let final_usernames = final_users
         .into_iter()

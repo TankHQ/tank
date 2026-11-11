@@ -26,24 +26,13 @@ pub async fn transaction1(connection: &mut impl Connection) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    EntityA::drop_table(connection, true, false)
-        .await
-        .expect("Failed to drop EntityA table");
-    EntityA::create_table(connection, true, true)
-        .await
-        .expect("Failed to create EntityA table");
-    EntityB::drop_table(connection, true, false)
-        .await
-        .expect("Failed to drop EntityB table");
-    EntityB::create_table(connection, true, true)
-        .await
-        .expect("Failed to create EntityB table");
+    EntityA::drop_table(connection, true, false).await?;
+    EntityA::create_table(connection, true, true).await?;
+    EntityB::drop_table(connection, true, false).await?;
+    EntityB::create_table(connection, true, true).await?;
 
     // Insert values and rollback
-    let mut transaction = connection
-        .begin()
-        .await
-        .expect("Could not begin a transaction");
+    let mut transaction = connection.begin().await?;
 
     EntityA::insert_many(
         &mut transaction,
@@ -74,8 +63,7 @@ pub async fn transaction1(connection: &mut impl Connection) -> Result<()> {
             },
         ],
     )
-    .await
-    .expect("Failed to insert 6 EntityA");
+    .await?;
 
     EntityB::insert_one(
         &mut transaction,
@@ -84,13 +72,9 @@ pub async fn transaction1(connection: &mut impl Connection) -> Result<()> {
             field: 5883,
         },
     )
-    .await
-    .expect("Failed to save EntityB");
+    .await?;
 
-    transaction
-        .rollback()
-        .await
-        .expect("Failed to rollback the transaction");
+    transaction.rollback().await?;
 
     // Expect empty tables
     {
@@ -103,8 +87,7 @@ pub async fn transaction1(connection: &mut impl Connection) -> Result<()> {
                     .build(&connection.driver()),
             )
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not select EntityA rows");
+            .await?;
         assert!(entities.is_empty());
     }
 
@@ -118,32 +101,26 @@ pub async fn transaction1(connection: &mut impl Connection) -> Result<()> {
                     .build(&connection.driver()),
             )
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not select EntityB rows");
+            .await?;
         assert!(entities.is_empty());
     }
 
     // Insert more values and commit
-    let mut transaction = connection
-        .begin()
-        .await
-        .expect("Could not begin another transaction");
+    let mut transaction = connection.begin().await?;
 
     EntityA {
         name: "myField".into(),
         field: 777,
     }
     .save(&mut transaction)
-    .await
-    .expect("Could not save myField 777");
+    .await?;
 
     EntityA {
         name: "mySecondField".into(),
         field: 999,
     }
     .save(&mut transaction)
-    .await
-    .expect("Could not save mySecondField 999");
+    .await?;
 
     EntityB::insert_many(
         &mut transaction,
@@ -166,21 +143,16 @@ pub async fn transaction1(connection: &mut impl Connection) -> Result<()> {
             },
         ],
     )
-    .await
-    .expect("Could not insert many EntityB values");
+    .await?;
 
     EntityB {
         name: "aa".into(),
         field: 11,
     }
     .delete(&mut transaction)
-    .await
-    .expect("Could not delete the first EntityB");
+    .await?;
 
-    transaction
-        .commit()
-        .await
-        .expect("Could not commit the transaction");
+    transaction.commit().await?;
 
     let entity_a_entries = EntityA::find_many(connection, true, None)
         .map_err(|e| panic!("{e:#}"))

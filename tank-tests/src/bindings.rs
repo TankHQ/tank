@@ -76,19 +76,13 @@ pub async fn bindings(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     crate::silent_logs! {
-        BoundTypes::drop_table(executor, true, false)
-            .await
-            .expect("Failed to drop the BoundTypes table");
+        BoundTypes::drop_table(executor, true, false).await?;
     }
-    BoundTypes::create_table(executor, true, true)
-        .await
-        .expect("Failed to create the BoundTypes table");
+    BoundTypes::create_table(executor, true, true).await?;
 
     let first = sample();
     let second = sample_other();
-    BoundTypes::insert_many(executor, [first.clone(), second.clone()])
-        .await
-        .expect("Failed to insert the BoundTypes rows");
+    BoundTypes::insert_many(executor, [first.clone(), second.clone()]).await?;
 
     let mut query = BoundTypes::prepare_find(
         executor,
@@ -111,8 +105,7 @@ pub async fn bindings(executor: &mut impl Executor) -> Result<()> {
         ),
         Some(1),
     )
-    .await
-    .expect("Failed to prepare the all-columns query");
+    .await?;
     for (name, value) in [
         ("boolean", first.boolean.as_value()),
         ("int8", first.int8.as_value()),
@@ -138,17 +131,14 @@ pub async fn bindings(executor: &mut impl Executor) -> Result<()> {
         .fetch(&mut query)
         .and_then(|row| std::future::ready(BoundTypes::from_row(row)))
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Failed to fetch the bound row");
+        .await?;
     assert_eq!(
         loaded.as_slice(),
         std::slice::from_ref(&first),
         "Bound values did not round-trip"
     );
 
-    query
-        .clear_bindings()
-        .expect("Failed to clear the bindings");
+    query.clear_bindings()?;
     for value in [
         second.boolean.as_value(),
         second.int8.as_value(),
@@ -166,14 +156,13 @@ pub async fn bindings(executor: &mut impl Executor) -> Result<()> {
         second.time.as_value(),
         second.decimal.as_value(),
     ] {
-        query.bind(value).expect("Failed to rebind a value");
+        query.bind(value)?;
     }
     let loaded = executor
         .fetch(&mut query)
         .and_then(|row| std::future::ready(BoundTypes::from_row(row)))
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Failed to fetch the rebound row");
+        .await?;
     assert_eq!(
         loaded.as_slice(),
         std::slice::from_ref(&second),

@@ -31,18 +31,10 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
     let _ = MUTEX.lock().await;
 
     // Setup
-    Arrays1::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop Arrays1 table");
-    Arrays2::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop Arrays2 table");
-    Arrays1::create_table(executor, false, true)
-        .await
-        .expect("Failed to create Arrays1 table");
-    Arrays2::create_table(executor, false, true)
-        .await
-        .expect("Failed to create Arrays2 table");
+    Arrays1::drop_table(executor, true, false).await?;
+    Arrays2::drop_table(executor, true, false).await?;
+    Arrays1::create_table(executor, false, true).await?;
+    Arrays2::create_table(executor, false, true).await?;
 
     Arrays1::insert_many(
         executor,
@@ -71,15 +63,10 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
             },
         ],
     )
-    .await
-    .expect("Could not insert Arrays1 values");
+    .await?;
     {
         let mut stream = pin!(Arrays1::find_many(executor, true, None));
-        while let Some(value) = stream
-            .try_next()
-            .await
-            .expect("Failed to retrieve the value")
-        {
+        while let Some(value) = stream.try_next().await? {
             if value.bb.is_none() {
                 assert_eq!(
                     value,
@@ -174,8 +161,7 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
         let rows = executor
             .run(query)
             .try_collect::<Vec<_>>()
-            .await
-            .unwrap()
+            .await?
             .into_iter()
             .filter_map(|v| match v {
                 QueryResult::Row(v) => Some(v),
@@ -183,7 +169,7 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
             })
             .collect::<Vec<_>>();
 
-        let value = Arrays1::from_row(&rows[0]).expect("First must be Arrays1");
+        let value = Arrays1::from_row(&rows[0])?;
         assert_eq!(
             value,
             Arrays1 {

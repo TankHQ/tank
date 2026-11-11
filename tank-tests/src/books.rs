@@ -39,18 +39,10 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Book::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop Book table");
-    Author::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop Author table");
-    Author::create_table(executor, false, true)
-        .await
-        .expect("Failed to create Author table");
-    Book::create_table(executor, false, true)
-        .await
-        .expect("Failed to create Book table");
+    Book::drop_table(executor, true, false).await?;
+    Author::drop_table(executor, true, false).await?;
+    Author::create_table(executor, false, true).await?;
+    Book::create_table(executor, false, true).await?;
 
     // Author objects
     let authors = vec![
@@ -128,15 +120,11 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
     ];
 
     // Insert
-    let result = Author::insert_many(executor, authors.iter())
-        .await
-        .expect("Failed to insert authors");
+    let result = Author::insert_many(executor, authors.iter()).await?;
     if let Some(affected) = result.rows_affected {
         assert_eq!(affected, 4);
     }
-    let result = Book::insert_many(executor, books.iter())
-        .await
-        .expect("Failed to insert books");
+    let result = Book::insert_many(executor, books.iter()).await?;
     if let Some(affected) = result.rows_affected {
         assert_eq!(affected, 5);
     }
@@ -145,9 +133,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
     let id = Uuid::parse_str("f938f818-0a40-4ce3-8fbc-259ac252a1b5")
         .unwrap()
         .as_value();
-    let author = Author::find_one(executor, expr!(Author::id == #id))
-        .await
-        .expect("Failed to query author by pk");
+    let author = Author::find_one(executor, expr!(Author::id == #id)).await?;
     assert_eq!(
         author,
         Some(Author {
@@ -158,9 +144,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
         })
     );
 
-    let author = Author::find_one(executor, expr!(Author::name == "Linus Torvalds"))
-        .await
-        .expect("Failed to query author by pk");
+    let author = Author::find_one(executor, expr!(Author::name == "Linus Torvalds")).await?;
     assert_eq!(
         author,
         Some(Author {
@@ -193,8 +177,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
             .map_ok(BookAuthorResult::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Failed to query books and authors joined");
+            .await?;
         assert_eq!(
             result,
             [
@@ -223,8 +206,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
                     .build(&executor.driver()),
             )
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Failed to query books and authors joined")
+            .await?
             .into_iter()
             .map(|row| {
                 let mut iter = row.into_values();
@@ -289,8 +271,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
             )
             .and_then(|row| async { Books::from_row(row) })
             .try_collect::<HashSet<_>>()
-            .await
-            .expect("Could not return the books");
+            .await?;
         assert_eq!(
             books,
             HashSet::from_iter([
@@ -352,8 +333,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
             )
             .and_then(|row| async move { AsValue::try_from_value(row.value(0).unwrap()) })
             .try_collect::<Vec<String>>()
-            .await
-            .expect("Could not return the ordered names of the authors");
+            .await?;
         assert_eq!(
             authors,
             vec![
@@ -387,10 +367,10 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
                 .limit(Some(1)),
         );
         let mut stream = pin!(executor.run(query));
-        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
+        let Some(QueryResult::Row(row)) = stream.try_next().await? else {
             panic!("Could not get the first row")
         };
-        let book = Book::from_row(row).expect("Could not get the book from row");
+        let book = Book::from_row(row)?;
         assert_eq!(
             book,
             Book {
@@ -402,10 +382,10 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
                 year: 2002,
             }
         );
-        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
+        let Some(QueryResult::Row(row)) = stream.try_next().await? else {
             panic!("Could not get the second row")
         };
-        let book = Book::from_row(row).expect("Could not get the book from row");
+        let book = Book::from_row(row)?;
         assert_eq!(
             book,
             Book {
@@ -418,7 +398,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
             }
         );
         assert!(
-            stream.next().await.is_none(),
+            stream.try_next().await?.is_none(),
             "The stream should return only two rows"
         )
     }

@@ -18,16 +18,9 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    MathTable::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop MathTable table");
-    MathTable::create_table(executor, false, false)
-        .await
-        .expect("Failed to create MathTable table");
-    MathTable { id: 0, read: 0 }
-        .save(executor)
-        .await
-        .expect("Could not save the dummy entry");
+    MathTable::drop_table(executor, true, false).await?;
+    MathTable::create_table(executor, false, false).await?;
+    MathTable { id: 0, read: 0 }.save(executor).await?;
 
     let result = executor
         .fetch(
@@ -40,8 +33,7 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
         .map_ok(MathTable::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not get the result 1");
+        .await?;
     assert_eq!(result, [MathTable { id: 0, read: 44 }]);
 
     let result = executor
@@ -55,8 +47,7 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
         .map_ok(MathTable::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not get the result 2");
+        .await?;
     assert_eq!(result, [MathTable { id: 0, read: 3 }]);
 
     let result = executor
@@ -70,8 +61,7 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
         .map_ok(MathTable::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not get the result 3");
+        .await?;
     assert_eq!(result, [MathTable { id: 0, read: 8 }]);
 
     let result = executor
@@ -85,8 +75,7 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
         .map_ok(|v| bool::try_from_value(v.value(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not get the result 4");
+        .await?;
     assert_eq!(result, [true]);
 
     let result = executor
@@ -100,8 +89,7 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
         .map_ok(|v| bool::try_from_value(v.value(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not get the result 5");
+        .await?;
     assert_eq!(result, [true]);
 
     // CAST to an integer type: the generated type name must be valid for the
@@ -118,8 +106,7 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
             .map_ok(MathTable::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not get the CAST result");
+            .await?;
         assert_eq!(result, [MathTable { id: 0, read: 0 }]);
     }
 
@@ -137,8 +124,7 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
             .map_ok(MathTable::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not get the LOG10 result");
+            .await?;
         assert_eq!(
             result,
             [MathTable { id: 0, read: 3 }],

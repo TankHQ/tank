@@ -24,12 +24,8 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Intervals::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop Intervals table");
-    Intervals::create_table(executor, true, true)
-        .await
-        .expect("Failed to create Intervals table");
+    Intervals::drop_table(executor, true, false).await?;
+    Intervals::create_table(executor, true, true).await?;
 
     Intervals::insert_one(
         executor,
@@ -40,19 +36,15 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
             third: Default::default(),
         },
     )
-    .await
-    .expect("Insert zero intervals failed");
+    .await?;
     let value = Intervals::find_one(executor, true)
-        .await
-        .expect("Failed to retrieve zero intervals")
+        .await?
         .expect("Missing zero interval row");
     assert_eq!(value.pk, 1);
     assert_eq!(value.first, time::Duration::default());
     assert_eq!(value.second, Interval::default());
     assert_eq!(value.third, Duration::default());
-    Intervals::delete_many(executor, true)
-        .await
-        .expect("Could not delete the intervals");
+    Intervals::delete_many(executor, true).await?;
 
     Intervals::insert_one(
         executor,
@@ -66,11 +58,9 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
             third: Duration::from_micros(1) + Duration::from_hours(6),
         },
     )
-    .await
-    .expect("Could not insert the interval");
+    .await?;
     let value = Intervals::find_one(executor, true)
-        .await
-        .expect("Could not retrieve the intervals row")
+        .await?
         .expect("There was no interval inserted in the table intervals");
     assert_eq!(value.pk, 2);
     assert_eq!(value.first, time::Duration::minutes(1 + 24 * 60));
@@ -82,9 +72,7 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
         Interval::from_mins(5) + Interval::from_secs(24) + Interval::from_millis(33)
     );
     assert_eq!(value.third, Duration::from_micros(1 + 6 * 3600 * 1_000_000));
-    Intervals::delete_many(executor, true)
-        .await
-        .expect("Could not delete the intervals");
+    Intervals::delete_many(executor, true).await?;
 
     Intervals::insert_one(
         executor,
@@ -98,11 +86,9 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
             third: Duration::from_micros(999_999_999),
         },
     )
-    .await
-    .expect("Insert large intervals failed");
+    .await?;
     let mut value = Intervals::find_one(executor, true)
-        .await
-        .expect("Failed to retrieve large intervals")
+        .await?
         .expect("Missing large interval row");
     assert_eq!(value.pk, 3);
     #[cfg(not(feature = "disable-large-intervals"))]
@@ -128,19 +114,15 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
             third: Duration::from_millis(500),
         },
     )
-    .await
-    .expect("Could not insert the sub-hour negative interval");
+    .await?;
     let value = Intervals::find_one(executor, expr!(Intervals::pk == 6))
-        .await
-        .expect("Failed to retrieve the sub-hour negative interval")
+        .await?
         .expect("Missing sub-hour negative interval row");
     assert_eq!(value.pk, 6);
     assert_eq!(value.first, time::Duration::seconds(-1));
     assert_eq!(value.second, -Interval::from_mins(30));
     assert_eq!(value.third, Duration::from_millis(500));
-    Intervals::delete_many(executor, expr!(Intervals::pk == 6))
-        .await
-        .expect("Could not delete the sub-hour negative interval");
+    Intervals::delete_many(executor, expr!(Intervals::pk == 6)).await?;
 
     {
         let writer = executor.driver().sql_writer();
@@ -201,8 +183,8 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
         let mut stream = pin!(executor.run(query));
 
         // DELETE
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
-            stream.next().await
+        let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) =
+            stream.try_next().await?
         else {
             panic!("Could not get the result of deleting the rows")
         };
@@ -211,8 +193,8 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
         }
 
         // INSERT
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
-            stream.next().await
+        let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) =
+            stream.try_next().await?
         else {
             panic!("Could not get the result of inserting the rows")
         };
@@ -222,16 +204,15 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
 
         // SELECT
         let mut intervals = Vec::new();
-        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
+        let Some(QueryResult::Row(row)) = stream.try_next().await? else {
             panic!("Could not get the result of selecting the rows")
         };
-        intervals.push(Intervals::from_row(row).expect("Could not decode the first Intervals row"));
-        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
+        intervals.push(Intervals::from_row(row)?);
+        let Some(QueryResult::Row(row)) = stream.try_next().await? else {
             panic!("Could not get the result of selecting the rows")
         };
-        intervals
-            .push(Intervals::from_row(row).expect("Could not decode the second Intervals row"));
-        assert!(stream.next().await.is_none());
+        intervals.push(Intervals::from_row(row)?);
+        assert!(stream.try_next().await?.is_none());
         intervals.sort_by(|a, b| a.pk.cmp(&b.pk));
 
         // Row 1

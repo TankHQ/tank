@@ -285,12 +285,8 @@ pub async fn advanced_operations(executor: &mut impl Executor) -> Result<()> {
             signal_strength: -54,
         },
     ];
-    Operator::insert_many(executor, &operators)
-        .await
-        .expect("Could not insert operators");
-    RadioLog::insert_many(executor, &radio_logs)
-        .await
-        .expect("Could not insert radio logs");
+    Operator::insert_many(executor, &operators).await?;
+    RadioLog::insert_many(executor, &radio_logs).await?;
 
     #[cfg(not(feature = "disable-joins"))]
     {

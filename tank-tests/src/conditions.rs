@@ -21,12 +21,8 @@ pub async fn conditions(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    ConditionEntry::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop ConditionEntry table");
-    ConditionEntry::create_table(executor, true, true)
-        .await
-        .expect("Failed to create ConditionEntry table");
+    ConditionEntry::drop_table(executor, true, false).await?;
+    ConditionEntry::create_table(executor, true, true).await?;
 
     // Operations
     let entries = vec![
@@ -55,9 +51,7 @@ pub async fn conditions(executor: &mut impl Executor) -> Result<()> {
             verified: Some(true),
         },
     ];
-    ConditionEntry::insert_many(executor, &entries)
-        .await
-        .expect("Failed to insert entries");
+    ConditionEntry::insert_many(executor, &entries).await?;
 
     let count = ConditionEntry::find_many(executor, expr!(name != NULL), None)
         .map_err(|e| panic!("{e:#}"))

@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
 use tank::{AsValue, DynQuery, QueryBuilder, Result, Row, expr};
-use tank::{Driver, Entity, Executor, QueryResult, SqlWriter, stream::TryStreamExt};
+use tank::{
+    Driver, Entity, Executor, QueryResult, SqlWriter,
+    stream::{StreamExt, TryStreamExt},
+};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -131,8 +134,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
             QueryResult::Affected(affected) => QueryResult::Affected(affected),
         })
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not run the composite query");
+        .await?;
     // 14 statements: 8 writes + 2 rows + 1 write + 1 row + 3 rows + 0 rows + 1 write = 16 items
     assert_eq!(result.len(), 16);
     for (index, result) in result.iter().enumerate() {
@@ -160,14 +162,13 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
         .collect::<Vec<_>>();
     let expected = result
         .iter()
-        .map(|row| String::try_from_value(row.get_column("string").unwrap().clone()).unwrap())
-        .collect::<Vec<_>>();
+        .map(|row| String::try_from_value(row.get_column("string").unwrap().clone()))
+        .collect::<Result<Vec<_>>>()?;
     let projected = executor
         .fetch(&mut query)
-        .map_ok(|row| String::try_from_value(row.get_column("string").unwrap().clone()).unwrap())
+        .map(|row| String::try_from_value(row?.get_column("string").unwrap().clone()))
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not fetch the composite query");
+        .await?;
     assert_eq!(
         projected, expected,
         "Fetch flattens all statement rowsets in order"
@@ -190,7 +191,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     let mut result = result.into_iter().peekable();
     assert_eq!(result.peek().unwrap().labels(), ["a2", "string"]);
     assert_eq!(
-        Two::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
+        Two::from_row(result.peek().unwrap())?,
         Two {
             a2: 21,
             string: "aaa".into()
@@ -199,7 +200,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     result.next();
     assert_eq!(result.peek().unwrap().labels(), ["a2", "string"]);
     assert_eq!(
-        Two::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
+        Two::from_row(result.peek().unwrap())?,
         Two {
             a2: 22,
             string: "bbb".into()
@@ -208,7 +209,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     result.next();
     assert_eq!(result.peek().unwrap().labels(), ["string"]);
     assert_eq!(
-        Three::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
+        Three::from_row(result.peek().unwrap())?,
         Three {
             string: "ccc".into(),
         }
@@ -216,7 +217,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     result.next();
     assert_eq!(result.peek().unwrap().labels(), ["string"]);
     assert_eq!(
-        Three::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
+        Three::from_row(result.peek().unwrap())?,
         Three {
             string: "ddd".into(),
         }
@@ -224,7 +225,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     result.next();
     assert_eq!(result.peek().unwrap().labels(), ["a2", "string"]);
     assert_eq!(
-        Two::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
+        Two::from_row(result.peek().unwrap())?,
         Two {
             a2: 23,
             string: "eee".into()
@@ -233,7 +234,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     result.next();
     assert_eq!(result.peek().unwrap().labels(), ["a1", "string", "c1"]);
     assert_eq!(
-        One::from_row(result.peek().unwrap()).expect("The row was not an entity Two"),
+        One::from_row(result.peek().unwrap())?,
         One {
             a1: 11,
             string: "zzz".into(),
@@ -243,10 +244,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     result.next();
     assert!(result.next().is_none());
     drop(result);
-    let affected = executor
-        .execute(&mut query)
-        .await
-        .expect("Could not execute the composite query");
+    let affected = executor.execute(&mut query).await?;
     if let Some(count) = affected.rows_affected {
         assert_eq!(count, 6, "Execute counts writes, not the six selected rows");
     }

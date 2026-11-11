@@ -30,18 +30,10 @@ pub async fn transaction2(connection: &mut impl Connection) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Account::drop_table(connection, true, false)
-        .await
-        .expect("Failed to drop Account table");
-    Account::create_table(connection, true, true)
-        .await
-        .expect("Failed to create Account table");
-    Transfer::drop_table(connection, true, false)
-        .await
-        .expect("Failed to drop Transfer table");
-    Transfer::create_table(connection, true, true)
-        .await
-        .expect("Failed to create Transfer table");
+    Account::drop_table(connection, true, false).await?;
+    Account::create_table(connection, true, true).await?;
+    Transfer::drop_table(connection, true, false).await?;
+    Transfer::create_table(connection, true, true).await?;
 
     // Insert initial accounts
     let accounts = [
@@ -67,31 +59,24 @@ pub async fn transaction2(connection: &mut impl Connection) -> Result<()> {
             payload: None,
         },
     ];
-    Account::insert_many(connection, &accounts)
-        .await
-        .expect("Could not insert initial accounts");
+    Account::insert_many(connection, &accounts).await?;
 
-    let mut tx = connection
-        .begin()
-        .await
-        .expect("Could not begin transaction");
+    let mut tx = connection.begin().await?;
 
     // Transfer 200.00 A -> B
     let mut a = Account::find_one(&mut tx, expr!(Account::id == "A"))
-        .await
-        .expect("Failed to query A")
+        .await?
         .expect("Account A missing");
     let mut b = Account::find_one(&mut tx, expr!(Account::id == "B"))
-        .await
-        .expect("Failed to query B")
+        .await?
         .expect("Account B missing");
 
     let amount = Decimal::new(200_00, 2);
     a.balance.0 -= amount;
     b.balance.0 += amount;
 
-    a.save(&mut tx).await.expect("Could not save A in tx");
-    b.save(&mut tx).await.expect("Could not save B in tx");
+    a.save(&mut tx).await?;
+    b.save(&mut tx).await?;
 
     Transfer::insert_one(
         &mut tx,
@@ -103,18 +88,15 @@ pub async fn transaction2(connection: &mut impl Connection) -> Result<()> {
             note: Some("A->B first transfer".into()),
         },
     )
-    .await
-    .expect("Could not insert transfer log");
+    .await?;
 
-    tx.commit().await.expect("Could not commit tx");
+    tx.commit().await?;
 
     let a_after = Account::find_one(connection, expr!(Account::id == "A"))
-        .await
-        .expect("Failed to read A after commit")
+        .await?
         .expect("Account A missing after commit");
     let b_after = Account::find_one(connection, expr!(Account::id == "B"))
-        .await
-        .expect("Failed to read B after commit")
+        .await?
         .expect("Account B missing after commit");
     let a_after_dec: Decimal = a_after.balance.into();
     let b_after_dec: Decimal = b_after.balance.into();
@@ -122,24 +104,19 @@ pub async fn transaction2(connection: &mut impl Connection) -> Result<()> {
     assert_eq!(b_after_dec, Decimal::new(700_00, 2));
 
     // Transfer 300_00 B -> C and rollback
-    let mut tx2 = connection
-        .begin()
-        .await
-        .expect("Could not begin second transaction");
+    let mut tx2 = connection.begin().await?;
     let mut b2 = Account::find_one(&mut tx2, expr!(Account::id == "B"))
-        .await
-        .expect("Failed to read B in tx2")
+        .await?
         .expect("Account B missing in tx2");
     let mut c2 = Account::find_one(&mut tx2, expr!(Account::id == "C"))
-        .await
-        .expect("Failed to read C in tx2")
+        .await?
         .expect("Account C missing in tx2");
 
     let t2_amount = Decimal::new(300_00, 2);
     b2.balance.0 -= t2_amount;
     c2.balance.0 += t2_amount;
-    b2.save(&mut tx2).await.expect("Could not save B in tx2");
-    c2.save(&mut tx2).await.expect("Could not save C in tx2");
+    b2.save(&mut tx2).await?;
+    c2.save(&mut tx2).await?;
 
     Transfer::insert_one(
         &mut tx2,
@@ -151,18 +128,15 @@ pub async fn transaction2(connection: &mut impl Connection) -> Result<()> {
             note: Some("B->C rolled back".into()),
         },
     )
-    .await
-    .expect("Could not insert transfer log in tx2");
+    .await?;
 
-    tx2.rollback().await.expect("Could not rollback tx2");
+    tx2.rollback().await?;
 
     let b_after_rb = Account::find_one(connection, expr!(Account::id == "B"))
-        .await
-        .expect("Failed to read B after rollback")
+        .await?
         .expect("Account B missing after rollback");
     let c_after_rb = Account::find_one(connection, expr!(Account::id == "C"))
-        .await
-        .expect("Failed to read C after rollback")
+        .await?
         .expect("Account C missing after rollback");
     let b_after_rb_dec: Decimal = b_after_rb.balance.into();
     let c_after_rb_dec: Decimal = c_after_rb.balance.into();
@@ -170,22 +144,13 @@ pub async fn transaction2(connection: &mut impl Connection) -> Result<()> {
     assert_eq!(c_after_rb_dec, Decimal::new(0_00, 2));
 
     // Delete account C and commit
-    let mut tx3 = connection
-        .begin()
-        .await
-        .expect("Could not begin third transaction");
+    let mut tx3 = connection.begin().await?;
     let c_entity = Account::find_one(&mut tx3, expr!(Account::id == "C"))
-        .await
-        .expect("Failed to read C in tx3")
+        .await?
         .expect("Account C missing in tx3");
-    c_entity
-        .delete(&mut tx3)
-        .await
-        .expect("Could not delete C in tx3");
-    tx3.commit().await.expect("Could not commit tx3");
-    let c_final = Account::find_one(connection, expr!(Account::id == "C"))
-        .await
-        .expect("Failed to read C final");
+    c_entity.delete(&mut tx3).await?;
+    tx3.commit().await?;
+    let c_final = Account::find_one(connection, expr!(Account::id == "C")).await?;
     assert!(c_final.is_none(), "Account C should be deleted");
     Ok(())
 }

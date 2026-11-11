@@ -52,13 +52,9 @@ pub async fn kv_storage(executor: &mut impl Executor) -> Result<()> {
     // Setup
     silent_logs! {
         // Silent logs for Valkey/Redis
-        KV::drop_table(executor, true, false)
-            .await
-            .expect("Failed to drop KV table");
+        KV::drop_table(executor, true, false).await?;
     }
-    KV::create_table(executor, false, true)
-        .await
-        .expect("Failed to create KV table");
+    KV::create_table(executor, false, true).await?;
 
     // Insert values
     let first = KV {
@@ -133,24 +129,18 @@ pub async fn kv_storage(executor: &mut impl Executor) -> Result<()> {
         #[cfg(not(feature = "disable-maps"))]
         counters: None,
     };
-    let result = KV::insert_many(executor, [&first, &second])
-        .await
-        .expect("Failed to insert KV entity");
+    let result = KV::insert_many(executor, [&first, &second]).await?;
 
     if let Some(rows) = result.rows_affected {
         assert_eq!(rows, 2);
     }
 
     // Query (first, aa)
-    let value = KV::find_one(executor, expr!(KV::key1 == "first" && KV::key2 == "aa"))
-        .await
-        .expect("Failed to query KV");
+    let value = KV::find_one(executor, expr!(KV::key1 == "first" && KV::key2 == "aa")).await?;
     assert_eq!(value, Some(first));
 
     // Query (second, bb)
-    let value = KV::find_one(executor, expr!(KV::key1 == "second" && KV::key2 == "bb"))
-        .await
-        .expect("Failed to query KV");
+    let value = KV::find_one(executor, expr!(KV::key1 == "second" && KV::key2 == "bb")).await?;
     assert_eq!(value, Some(second));
     Ok(())
 }

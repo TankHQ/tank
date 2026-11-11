@@ -60,31 +60,15 @@ pub async fn ambiguity(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    first_schema::FirstTable::drop_table(executor, true, false)
-        .await
-        .expect("Could not drop the first_schema::FirstTable table");
-    first_schema::FirstTable::create_table(executor, false, true)
-        .await
-        .expect("Could not create the first_schema::FirstTable table");
-    first_schema::SecondTable::drop_table(executor, true, false)
-        .await
-        .expect("Could not drop the first_schema::SecondTable table");
-    first_schema::SecondTable::create_table(executor, false, true)
-        .await
-        .expect("Could not create the first_schema::SecondTable table");
+    first_schema::FirstTable::drop_table(executor, true, false).await?;
+    first_schema::FirstTable::create_table(executor, false, true).await?;
+    first_schema::SecondTable::drop_table(executor, true, false).await?;
+    first_schema::SecondTable::create_table(executor, false, true).await?;
 
-    second_schema::FirstTable::drop_table(executor, true, false)
-        .await
-        .expect("Could not drop the second_schema::FirstTable table");
-    second_schema::FirstTable::create_table(executor, false, true)
-        .await
-        .expect("Could not create the second_schema::FirstTable table");
-    second_schema::SecondTable::drop_table(executor, true, false)
-        .await
-        .expect("Could not drop the second_schema::SecondTable table");
-    second_schema::SecondTable::create_table(executor, false, true)
-        .await
-        .expect("Could not create the second_schema::SecondTable table");
+    second_schema::FirstTable::drop_table(executor, true, false).await?;
+    second_schema::FirstTable::create_table(executor, false, true).await?;
+    second_schema::SecondTable::drop_table(executor, true, false).await?;
+    second_schema::SecondTable::create_table(executor, false, true).await?;
 
     // Insert one value in first_schema::FirstTable
     first_schema::FirstTable {
@@ -93,8 +77,7 @@ pub async fn ambiguity(executor: &mut impl Executor) -> Result<()> {
         second_col: 83721.into(),
     }
     .save(executor)
-    .await
-    .expect("Could not save the first entity");
+    .await?;
     assert_eq!(
         first_schema::FirstTable::find_many(
             executor,
@@ -102,8 +85,7 @@ pub async fn ambiguity(executor: &mut impl Executor) -> Result<()> {
             None
         )
         .try_collect::<Vec<_>>()
-        .await
-        .expect(""),
+        .await?,
         [first_schema::FirstTable {
             first_col: "a value".into(),
             #[cfg(not(feature = "disable-large-integers"))]
@@ -148,8 +130,7 @@ pub async fn ambiguity(executor: &mut impl Executor) -> Result<()> {
             third_col: Some(Arc::new(19)),
         },
     )
-    .await
-    .expect("Could not insert second_schema::SecondTable");
+    .await?;
     if let Some(affected) = insert_result.rows_affected {
         assert_eq!(affected, 1);
     }
@@ -160,8 +141,7 @@ pub async fn ambiguity(executor: &mut impl Executor) -> Result<()> {
             None
         )
         .try_collect::<Vec<_>>()
-        .await
-        .expect(""),
+        .await?,
         [second_schema::SecondTable {
             first_col: "another_value".into(),
             second_col: None,
@@ -202,21 +182,16 @@ pub async fn ambiguity(executor: &mut impl Executor) -> Result<()> {
         executor,
         expr!(second_schema::SecondTable::first_col == "another_value"),
     )
-    .await
-    .expect("Failed to fetch inserted second_schema::SecondTable")
+    .await?
     .expect("Inserted row not found");
     assert_eq!(fetched.third_col, Some(Arc::new(19)));
     fetched.third_col = Some(Arc::new(20));
-    fetched
-        .save(executor)
-        .await
-        .expect("Could not save updated second_schema::SecondTable");
+    fetched.save(executor).await?;
     let fetched2 = second_schema::SecondTable::find_one(
         executor,
         expr!(second_schema::SecondTable::first_col == "another_value"),
     )
-    .await
-    .expect("Failed to refetch second_schema::SecondTable")
+    .await?
     .expect("Refetched row not found");
     assert_eq!(fetched2.third_col, Some(Arc::new(20)));
     assert_eq!(
@@ -257,8 +232,7 @@ pub async fn ambiguity(executor: &mut impl Executor) -> Result<()> {
             third_col: Some(Arc::new(21)),
         },
     )
-    .await
-    .expect("Could not insert first_schema::SecondTable");
+    .await?;
     if let Some(affected) = insert_result2.rows_affected {
         assert_eq!(affected, 1);
     }
@@ -297,30 +271,24 @@ pub async fn ambiguity(executor: &mut impl Executor) -> Result<()> {
         executor,
         expr!(first_schema::SecondTable::first_col == "another_value"),
     )
-    .await
-    .expect("Failed to fetch first_schema::SecondTable")
+    .await?
     .expect("Row in first_schema::SecondTable not found");
     assert_eq!(fs.third_col, Some(Arc::new(21)));
 
     // Verify save works for PK-only entities
-    first_schema::FirstTable::delete_many(executor, true)
-        .await
-        .expect("Failed to clear first_schema::FirstTable");
+    first_schema::FirstTable::delete_many(executor, true).await?;
     #[allow(unused_mut)]
     let mut entity = first_schema::FirstTable {
         first_col: "pk_only".into(),
         #[cfg(not(feature = "disable-large-integers"))]
         second_col: None,
     };
-    entity.save(executor).await.expect("Failed to save entity");
+    entity.save(executor).await?;
     #[cfg(not(feature = "disable-large-integers"))]
     {
         entity.second_col = Some(12345678901234567890u128);
     }
-    entity
-        .save(executor)
-        .await
-        .expect("Failed to update entity");
+    entity.save(executor).await?;
     assert_eq!(
         first_schema::FirstTable::find_many(
             executor,

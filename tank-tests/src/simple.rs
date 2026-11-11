@@ -45,18 +45,12 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
     // Setup
     silent_logs! {
         // Silent logs for Valkey/Redis
-        SimpleFields::drop_table(executor, true, false)
-            .await
-            .expect("Failed to drop SimpleNullFields table");
+        SimpleFields::drop_table(executor, true, false).await?;
     }
-    SimpleFields::create_table(executor, true, true)
-        .await
-        .expect("Failed to create SimpleNullFields table");
+    SimpleFields::create_table(executor, true, true).await?;
 
     // Simple 1
-    SimpleFields::delete_many(executor, expr!(SimpleFields::alpha == 1))
-        .await
-        .expect("Failed to clear the SimpleNullFields table");
+    SimpleFields::delete_many(executor, expr!(SimpleFields::alpha == 1)).await?;
     let entity = SimpleFields {
         alpha: 1,
         bravo: 777.into(),
@@ -76,13 +70,9 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
         oscar: None,
         papa: Some(Decimal::from_f32(45.2).unwrap().into()),
     };
-    entity
-        .save(executor)
-        .await
-        .expect("Failed to save simple 1");
+    entity.save(executor).await?;
     let entity = SimpleFields::find_one(executor, expr!(SimpleFields::alpha == 1))
-        .await
-        .expect("Failed to query simple 1")
+        .await?
         .expect("Failed to find simple 1");
     assert_eq!(entity.alpha, 1);
     assert_eq!(entity.bravo, Some(777));
@@ -120,26 +110,19 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
         );
         {
             let mut stream = pin!(executor.run(query));
-            let result = stream
-                .try_next()
-                .await
-                .expect("Could not process the first query correctly");
+            let result = stream.try_next().await?;
             let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) = result else {
                 panic!("Unexpected result type:\n{result:#?}");
             };
             if let Some(rows_affected) = rows_affected {
                 assert_eq!(rows_affected, 0);
             }
-            let result = stream
-                .try_next()
-                .await
-                .expect("Could not process the second query correctly");
+            let result = stream.try_next().await?;
             let Some(QueryResult::Row(row)) = result else {
                 panic!("Unexpected result type:\n{result:#?}");
             };
-            let value =
-                SimpleFields::from_row(row).expect("Could not decode the row into SimpleFields");
-            assert!(stream.try_next().await.unwrap().is_none());
+            let value = SimpleFields::from_row(row)?;
+            assert!(stream.try_next().await?.is_none());
             assert_eq!(
                 value,
                 SimpleFields {
@@ -166,9 +149,7 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
     }
 
     // Simple 2
-    SimpleFields::delete_many(executor, expr!(SimpleFields::alpha == 1))
-        .await
-        .expect("Failed to clear the SimpleNullFields table");
+    SimpleFields::delete_many(executor, expr!(SimpleFields::alpha == 1)).await?;
     let entity = SimpleFields {
         alpha: 255,
         bravo: None,
@@ -188,13 +169,9 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
         oscar: RefCell::new(Decimal::from_f32(5080.6244).unwrap().into()).into(),
         papa: None,
     };
-    entity
-        .save(executor)
-        .await
-        .expect("Failed to save simple 2");
+    entity.save(executor).await?;
     let entity = SimpleFields::find_one(executor, expr!(SimpleFields::alpha == 255))
-        .await
-        .expect("Failed to query simple 2")
+        .await?
         .expect("Failed to find simple 2");
     assert_eq!(entity.alpha, 255);
     assert_eq!(entity.bravo, None);
@@ -239,28 +216,27 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
         );
         {
             let mut stream = pin!(executor.run(query));
-            let Ok(Some(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
-                stream.try_next().await
+            let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) =
+                stream.try_next().await?
             else {
                 panic!("Could not process the first query correctly")
             };
             if let Some(rows_affected) = rows_affected {
                 assert_eq!(rows_affected, 1);
             }
-            let Ok(Some(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
-                stream.try_next().await
+            let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) =
+                stream.try_next().await?
             else {
                 panic!("Could not process the first query correctly")
             };
             if let Some(rows_affected) = rows_affected {
                 assert_eq!(rows_affected, 1);
             }
-            let Ok(Some(QueryResult::Row(row))) = stream.try_next().await else {
+            let Some(QueryResult::Row(row)) = stream.try_next().await? else {
                 panic!("Could not process the second query correctly")
             };
-            let value =
-                SimpleFields::from_row(row).expect("Could not decode the row into SimpleFields");
-            assert!(stream.try_next().await.unwrap().is_none());
+            let value = SimpleFields::from_row(row)?;
+            assert!(stream.try_next().await?.is_none());
             assert_eq!(
                 value,
                 SimpleFields {
