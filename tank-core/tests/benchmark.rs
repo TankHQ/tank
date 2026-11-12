@@ -201,8 +201,7 @@ mod tests {
             measure("select_find", |out| {
                 WRITER.write_select(
                     out,
-                    Sql()
-                        .select(Trade::columns())
+                    Sql.select(Trade::columns())
                         .from(Trade::table())
                         .where_expr(expr!(Trade::account == #account && Trade::buy == true))
                         .limit(Some(16)),
@@ -211,8 +210,7 @@ mod tests {
             measure("select_prepared", |out| {
                 WRITER.write_select(
                     out,
-                    Sql()
-                        .select(Trade::columns())
+                    Sql.select(Trade::columns())
                         .from(Trade::table())
                         .where_expr(expr!(Trade::id == ? && Trade::symbol == ?))
                         .limit(Some(1)),
@@ -221,26 +219,24 @@ mod tests {
             measure("select_aggregate", |out| {
                 WRITER.write_select(
                     out,
-                    Sql()
-                        .select(cols!(
-                            Trade::symbol,
-                            COUNT(*),
-                            SUM(Trade::quantity) as total,
-                            AVG(Trade::price)
-                        ))
-                        .from(Trade::table())
-                        .where_expr(expr!(Trade::buy == true && Trade::price >= 75.25))
-                        .group_by(cols!(Trade::symbol))
-                        .having(expr!(COUNT(*) > 5))
-                        .order_by(cols!(SUM(Trade::quantity) DESC, Trade::symbol ASC))
-                        .limit(Some(100)),
+                    Sql.select(cols!(
+                        Trade::symbol,
+                        COUNT(*),
+                        SUM(Trade::quantity) as total,
+                        AVG(Trade::price)
+                    ))
+                    .from(Trade::table())
+                    .where_expr(expr!(Trade::buy == true && Trade::price >= 75.25))
+                    .group_by(cols!(Trade::symbol))
+                    .having(expr!(COUNT(*) > 5))
+                    .order_by(cols!(SUM(Trade::quantity) DESC, Trade::symbol ASC))
+                    .limit(Some(100)),
                 )
             }),
             measure("select_join", |out| {
                 WRITER.write_select(
                     out,
-                    Sql()
-                        .select(cols!(Trade::id, Account::name, Trade::price))
+                    Sql.select(cols!(Trade::id, Account::name, Trade::price))
                         .from(join!(Trade LEFT JOIN Account ON Trade::account == Account::id))
                         .where_expr(expr!(
                             Trade::symbol == ("AAPL", "MSFT", "NVDA") as IN
@@ -250,19 +246,19 @@ mod tests {
                 )
             }),
             measure("insert_one", |out| {
-                WRITER.write_insert(out, Sql().insert_into(Trade::table()).values([trade]))
+                WRITER.write_insert(out, Sql.insert_into(Trade::table()).values([trade]))
             }),
             measure("insert_many_100", |out| {
-                WRITER.write_insert(out, Sql().insert_into(Trade::table()).values(&trades))
+                WRITER.write_insert(out, Sql.insert_into(Trade::table()).values(&trades))
             }),
             measure("upsert", |out| {
                 WRITER.write_insert(
                     out,
-                    Sql().insert_into(Trade::table()).values([trade]).update(),
+                    Sql.insert_into(Trade::table()).values([trade]).update(),
                 )
             }),
             measure("insert_wide", |out| {
-                WRITER.write_insert(out, Sql().insert_into(Wide::table()).values([&wide]))
+                WRITER.write_insert(out, Sql.insert_into(Wide::table()).values([&wide]))
             }),
             measure("delete", |out| {
                 WRITER.write_delete(

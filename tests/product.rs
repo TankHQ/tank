@@ -146,8 +146,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,
-            Sql()
-                .insert_into(Product::table())
+            Sql.insert_into(Product::table())
                 .values(&[Product::sample()]),
         );
         assert_eq!(
@@ -161,7 +160,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,
-            Sql().insert_into(Product::table()).values(&[
+            Sql.insert_into(Product::table()).values(&[
                 Product {
                     id: 74,
                     name: "Headphones".into(),

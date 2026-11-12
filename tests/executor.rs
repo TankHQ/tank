@@ -356,34 +356,33 @@ mod tests {
         ));
         assert_eq!(na.expr_iter().count(), 0);
 
-        let create = Sql().create_table::<ExecutorItem>();
+        let create = Sql.create_table::<ExecutorItem>();
         assert!(!create.build(&TestDriver).is_empty());
         create.build_into(&TestDriver, &mut out);
-        let drop = Sql().drop_table::<ExecutorItem>();
+        let drop = Sql.drop_table::<ExecutorItem>();
         assert!(!drop.build(&TestDriver).is_empty());
         drop.build_into(&TestDriver, &mut out);
         let rows = [ExecutorItem::default()];
-        let insert = Sql().insert_into(ExecutorItem::table()).values(&rows);
+        let insert = Sql.insert_into(ExecutorItem::table()).values(&rows);
         let Either::Left(values) = insert.get_values() else {
             panic!("expected rows of values");
         };
         assert_eq!(values.count(), 1);
         assert!(!insert.build(&TestDriver).is_empty());
         insert.build_into(&TestDriver, &mut out);
-        let upsert = Sql()
+        let upsert = Sql
             .insert_into(ExecutorItem::table())
             .values(&rows)
             .update();
         assert!(upsert.build(&TestDriver).as_str().contains("ON CONFLICT"));
         assert_eq!(
-            Sql()
-                .delete_from("logs")
+            Sql.delete_from("logs")
                 .where_expr(expr!(level == "debug"))
                 .build(&TestDriver)
                 .as_str(),
             "DELETE FROM \"logs\"\nWHERE level = 'debug';"
         );
-        let delete = Sql().delete_from(ExecutorItem::table());
+        let delete = Sql.delete_from(ExecutorItem::table());
         assert!(
             delete
                 .build(&TestDriver)
@@ -391,7 +390,7 @@ mod tests {
                 .starts_with("DELETE FROM")
         );
         delete.build_into(&TestDriver, &mut out);
-        let select = Sql()
+        let select = Sql
             .select(ExecutorItem::columns())
             .from(ExecutorItem::table());
         assert!(!select.build(&TestDriver).is_empty());
@@ -402,8 +401,7 @@ mod tests {
     fn insert_without_entities() {
         // Table by name, columns by name, rows of values
         assert_eq!(
-            Sql()
-                .insert_into("mytable")
+            Sql.insert_into("mytable")
                 .columns(["col_a", "col_b"])
                 .values([
                     ["val_a_1".as_value(), 1_i32.as_value()],
@@ -430,8 +428,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert_eq!(
-            Sql()
-                .insert_into(("analytics", "events"))
+            Sql.insert_into(("analytics", "events"))
                 .columns(["id", "name", "score"])
                 .values(&rows)
                 .build(&TestDriver)
@@ -446,8 +443,7 @@ mod tests {
 
         // Values of one type need no conversion
         assert_eq!(
-            Sql()
-                .insert_into("points")
+            Sql.insert_into("points")
                 .columns(["x", "y"])
                 .values([[1, 2], [3, 4]])
                 .build(&TestDriver)
@@ -462,8 +458,7 @@ mod tests {
 
         // No rows, no statement
         assert!(
-            Sql()
-                .insert_into("mytable")
+            Sql.insert_into("mytable")
                 .columns(["col_a"])
                 .values(Vec::<[tank::Value; 1]>::new())
                 .build(&TestDriver)
@@ -473,8 +468,7 @@ mod tests {
         // Rows carrying their column names
         let labels: tank::RowLabels = ["level", "message"].map(String::from).into();
         assert_eq!(
-            Sql()
-                .insert_into("logs")
+            Sql.insert_into("logs")
                 .columns(labels.iter().cloned())
                 .values(
                     [RowOwned::new(
@@ -495,8 +489,7 @@ mod tests {
 
         // The result of a query, tables and columns by name
         assert_eq!(
-            Sql()
-                .insert_into(("analytics", "archive"))
+            Sql.insert_into(("analytics", "archive"))
                 .select(cols!(id, name))
                 .from(("analytics", "events"))
                 .where_expr(expr!(score == NULL))

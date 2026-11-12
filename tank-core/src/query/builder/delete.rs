@@ -40,7 +40,7 @@ impl<F: Dataset, W: Expression> DeleteQueryBuilder<F, W> {
 
 /// DELETE query builder.
 ///
-/// Use `Sql().delete_from(dataset)` to start, deleting every row without `where_expr`.
+/// Use `Sql.delete_from(dataset)` to start, deleting every row without `where_expr`.
 pub trait DeleteQuery<From: Dataset> {
     /// Get the dataset rows are deleted from.
     fn get_from(&self) -> &From;

@@ -32,26 +32,26 @@ let mut query = DynQuery::default();
 writer.write_create_table::<One>(&mut query, true);
 writer.write_create_table::<Two>(&mut query, true);
 writer.write_create_table::<Three>(&mut query, true);
-writer.write_insert(&mut query, Sql().insert_into(Two::table()).values(&[Two { a2: 21, string: "aaa".into() }, Two { a2: 22, string: "bbb".into() }, Two { a2: 23, string: "eee".into() }]));
-writer.write_insert(&mut query, Sql().insert_into(Three::table()).values(&[Three { string: "ddd".into() }, Three { string: "ccc".into() }]));
+writer.write_insert(&mut query, Sql.insert_into(Two::table()).values(&[Two { a2: 21, string: "aaa".into() }, Two { a2: 22, string: "bbb".into() }, Two { a2: 23, string: "eee".into() }]));
+writer.write_insert(&mut query, Sql.insert_into(Three::table()).values(&[Three { string: "ddd".into() }, Three { string: "ccc".into() }]));
 writer.write_select(
     &mut query,
-    Sql()
+    Sql
         .select([Three::string])
         .from(Three::table())
         .where_expr(true),
 );
-writer.write_insert(&mut query, Sql().insert_into(One::table()).values(&[One { a1: 11, string: "zzz".into(), c1: 512 }]));
+writer.write_insert(&mut query, Sql.insert_into(One::table()).values(&[One { a1: 11, string: "zzz".into(), c1: 512 }]));
 writer.write_select(
     &mut query,
-    Sql()
+    Sql
         .select([One::a1, One::string, One::c1])
         .from(One::table())
         .where_expr(true),
 );
 writer.write_select(
     &mut query,
-    Sql()
+    Sql
         .select([Two::a2, Two::string])
         .from(Two::table())
         .where_expr(true),

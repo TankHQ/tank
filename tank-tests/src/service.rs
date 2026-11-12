@@ -146,8 +146,7 @@ pub async fn service(executor: &mut impl Executor) -> Result<()> {
     {
         let rows = executor
             .fetch(
-                Sql()
-                    .select(Service::columns())
+                Sql.select(Service::columns())
                     .from(Service::table())
                     .where_expr(expr!(Service::name == "api"))
                     .order_by(cols!(Service::addr ASC))

@@ -309,21 +309,18 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
         writer.write_delete(&mut query, Limits::table(), true);
         writer.write_insert(
             &mut query,
-            Sql()
-                .insert_into(Limits::table())
+            Sql.insert_into(Limits::table())
                 .values(&[minimals, maximals]),
         );
         writer.write_select(
             &mut query,
-            Sql()
-                .select(Limits::columns())
+            Sql.select(Limits::columns())
                 .from(Limits::table())
                 .where_expr(expr!(!Limits::boolean)),
         );
         writer.write_select(
             &mut query,
-            Sql()
-                .select(Limits::columns())
+            Sql.select(Limits::columns())
                 .from(Limits::table())
                 .where_expr(expr!(Limits::boolean)),
         );

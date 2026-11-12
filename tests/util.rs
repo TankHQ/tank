@@ -511,7 +511,7 @@ mod tests {
         let mut q = DynQuery::default();
 
         let empty_cols: &[&dyn Expression] = &[];
-        writer.write_select(&mut q, Sql().select(empty_cols).from(StarTable::table()));
+        writer.write_select(&mut q, Sql.select(empty_cols).from(StarTable::table()));
         assert!(q.as_str().contains("SELECT *"));
     }
 
@@ -704,7 +704,7 @@ mod tests {
         let entities: Vec<&EmptyInsert> = vec![];
         writer.write_insert(
             &mut q,
-            Sql().insert_into(EmptyInsert::table()).values(entities),
+            Sql.insert_into(EmptyInsert::table()).values(entities),
         );
         assert!(q.is_empty());
     }
@@ -719,15 +719,13 @@ mod tests {
         let mut q = DynQuery::new("-- comment".into());
         writer.write_select(
             &mut q,
-            Sql()
-                .select(AppendTable::columns())
+            Sql.select(AppendTable::columns())
                 .from(AppendTable::table()),
         );
         let mut q = DynQuery::new("-- comment".into());
         writer.write_select(
             &mut q,
-            Sql()
-                .select(AppendTable::columns())
+            Sql.select(AppendTable::columns())
                 .from(AppendTable::table()),
         );
         assert!(q.as_str().starts_with("-- comment\nSELECT"));
@@ -744,8 +742,7 @@ mod tests {
         let mut q = DynQuery::new("-- c".into());
         writer.write_insert(
             &mut q,
-            Sql()
-                .insert_into(AppendTable::table())
+            Sql.insert_into(AppendTable::table())
                 .values(&[AppendTable { id: 1 }]),
         );
         assert!(q.as_str().starts_with("-- c\nINSERT INTO"));
@@ -762,8 +759,7 @@ mod tests {
         let mut q = DynQuery::default();
         writer.write_insert(
             &mut q,
-            Sql()
-                .insert_into(PkOnly::table())
+            Sql.insert_into(PkOnly::table())
                 .values(&[PkOnly { id: 1 }])
                 .update(),
         );
@@ -776,8 +772,7 @@ mod tests {
         let mut q = DynQuery::default();
         writer.write_insert(
             &mut q,
-            Sql()
-                .insert_into(NoPk::table())
+            Sql.insert_into(NoPk::table())
                 .values(&[NoPk { value: 1 }])
                 .update(),
         );

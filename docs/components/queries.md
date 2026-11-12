@@ -618,7 +618,7 @@ struct Reading {
 
 let hottest = connection
     .fetch(
-        Sql()
+        Sql
             .select(cols!(Reading::sensor, Reading::celsius))
             .from(Reading::table())
             .where_expr(expr!(Reading::celsius > 30.0))
@@ -671,7 +671,7 @@ struct Trade {
 
 let by_symbol = connection
     .fetch(
-        Sql()
+        Sql
             .select(cols!(
                 Trade::symbol,
                 COUNT(*) as fills,
@@ -751,7 +751,7 @@ struct Event {
 
 let noisy = connection
     .fetch(
-        Sql()
+        Sql
             .select(cols!(Event::level, SUM(Event::count) as total))
             .from(Event::table())
             .where_expr(expr!(Event::source != "internal"))
@@ -858,7 +858,7 @@ struct Author {
 
 let rows = connection
     .fetch(
-        Sql()
+        Sql
             .select(cols!(Book::title, Author::name))
             .from(join!(
                 Book JOIN Author
@@ -908,7 +908,7 @@ struct Customer {
 
 let rows = connection
     .fetch(
-        Sql()
+        Sql
             .select(cols!(O.total, C.name as customer))
             .from(join!(
                 Order O LEFT JOIN Customer C

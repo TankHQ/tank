@@ -102,8 +102,7 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
     assert_eq!(total_products, 4);
     let ordered_products = executor
         .fetch(
-            Sql()
-                .select([Product::id, Product::name, Product::price])
+            Sql.select([Product::id, Product::name, Product::price])
                 .from(Product::table())
                 .where_expr(expr!(Product::stock > 0))
                 .order_by(cols!(Product::price ASC))
@@ -170,8 +169,7 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
     let count = {
         let row = pin!(
             executor.fetch(
-                Sql()
-                    .select(cols!(COUNT(*)))
+                Sql.select(cols!(COUNT(*)))
                     .from(User::table())
                     .where_expr(true)
                     .limit(Some(1))
@@ -255,19 +253,18 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
         }
         let carts: Vec<Carts> = executor
             .fetch(
-                Sql()
-                    .select(cols!(
-                        Product::name as product,
-                        User::name as user,
-                        Cart::price
-                    ))
-                    .from(join!(
-                        User INNER JOIN Cart ON User::id == Cart::user
-                            JOIN Product ON Cart::product == Product::id
-                    ))
-                    .where_expr(true)
-                    .order_by(cols!(Product::name ASC, User::name ASC))
-                    .build(&executor.driver()),
+                Sql.select(cols!(
+                    Product::name as product,
+                    User::name as user,
+                    Cart::price
+                ))
+                .from(join!(
+                    User INNER JOIN Cart ON User::id == Cart::user
+                        JOIN Product ON Cart::product == Product::id
+                ))
+                .where_expr(true)
+                .order_by(cols!(Product::name ASC, User::name ASC))
+                .build(&executor.driver()),
             )
             .map_ok(Carts::from_row)
             .map(Result::flatten)

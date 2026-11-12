@@ -42,7 +42,7 @@ pub(crate) async fn comments<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         .await
         .expect("Failed to create CommentedEntity table");
 
-    let query = Sql()
+    let query = Sql
         .select(cols!(
             MySQLColumn::table_schema as table_schema,
             MySQLColumn::table_name as table_name,

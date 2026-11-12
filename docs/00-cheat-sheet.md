@@ -157,7 +157,7 @@ expr!(match EntityExample::region { "North" | "South" => 1, _ => 2 });
 
 ## Joins
 
-The `join!` macro builds the `FROM` clause of a `Sql()` query. Define a result struct that matches the selected columns, then pass the join tree to `.from()`.
+The `join!` macro builds the `FROM` clause of a `Sql` query. Define a result struct that matches the selected columns, then pass the join tree to `.from()`.
 
 Supported keywords: `JOIN`, `INNER JOIN`, `LEFT JOIN`, `LEFT OUTER JOIN`, `RIGHT JOIN`, `RIGHT OUTER JOIN`, `FULL OUTER JOIN`, `CROSS JOIN`, `NATURAL JOIN`.
 
@@ -240,13 +240,13 @@ let mut query = DynQuery::default();
 writer.write_create_table::<EntityExample>(&mut query, true);
 writer.write_insert(
     &mut query,
-    Sql()
+    Sql
         .insert_into(EntityExample::table())
         .values([&entity1, &entity2]),
 );
 writer.write_select(
     &mut query,
-    Sql()
+    Sql
         .select(EntityExample::columns())
         .from(EntityExample::table())
         .where_expr(true)

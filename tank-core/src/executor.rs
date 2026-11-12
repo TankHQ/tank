@@ -128,8 +128,7 @@ pub trait Executor: Send {
         let mut query = DynQuery::default();
         self.driver().sql_writer().write_insert(
             &mut query,
-            Sql()
-                .insert_into(<It::Item as AsEntity>::Entity::table())
+            Sql.insert_into(<It::Item as AsEntity>::Entity::table())
                 .values(entities.iter().map(AsEntity::as_entity)),
         );
         self.execute(query)

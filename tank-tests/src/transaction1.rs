@@ -80,8 +80,7 @@ pub async fn transaction1(connection: &mut impl Connection) -> Result<()> {
     {
         let entities = connection
             .fetch(
-                Sql()
-                    .select(cols!(*))
+                Sql.select(cols!(*))
                     .from(EntityA::table())
                     .where_expr(true)
                     .build(&connection.driver()),
@@ -94,8 +93,7 @@ pub async fn transaction1(connection: &mut impl Connection) -> Result<()> {
     {
         let entities = connection
             .fetch(
-                Sql()
-                    .select(cols!(*))
+                Sql.select(cols!(*))
                     .from(EntityB::table())
                     .where_expr(true)
                     .build(&connection.driver()),

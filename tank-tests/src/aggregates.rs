@@ -47,8 +47,7 @@ pub async fn aggregates(executor: &mut impl Executor) -> Result<()> {
     {
         let mut stream = pin!(
             executor.fetch(
-                Sql()
-                    .select(cols!(COUNT(*), SUM(Values::value)))
+                Sql.select(cols!(COUNT(*), SUM(Values::value)))
                     .from(Values::table())
                     .where_expr(true)
                     .build(&executor.driver())
@@ -77,8 +76,7 @@ pub async fn aggregates(executor: &mut impl Executor) -> Result<()> {
     {
         let values = executor
             .fetch(
-                Sql()
-                    .select(cols!(*))
+                Sql.select(cols!(*))
                     .from(Values::table())
                     .where_expr(true)
                     .build(&executor.driver()),

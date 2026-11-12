@@ -156,8 +156,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            Sql()
-                .select(MyEntity::columns())
+            Sql.select(MyEntity::columns())
                 .from(MyEntity::table())
                 .where_expr(expr!(MyEntity::_bravo < 0))
                 .limit(Some(300)),
@@ -175,8 +174,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,
-            Sql()
-                .insert_into(MyEntity::table())
+            Sql.insert_into(MyEntity::table())
                 .values(&[MyEntity::sample()])
                 .update(),
         );

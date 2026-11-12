@@ -218,8 +218,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         let uid = entity.unit_id;
         let results = connection
             .fetch(
-                Sql()
-                    .select(cols!(EntityExample::callsign, EntityExample::casualties))
+                Sql.select(cols!(EntityExample::callsign, EntityExample::casualties))
                     .from(EntityExample::table())
                     .where_expr(expr!(EntityExample::unit_id == #uid))
                     .order_by(cols!(EntityExample::region ASC))
@@ -250,8 +249,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
         let rows: Vec<BookWithAuthor> = connection
             .fetch(
-                Sql()
-                    .select(cols!(Book::title, Author::name as author))
+                Sql.select(cols!(Book::title, Author::name as author))
                     .from(join!(Book JOIN Author ON Book::author == Author::id))
                     .where_expr(expr!(Book::year > 2000))
                     .order_by(cols!(Book::title ASC))
@@ -264,8 +262,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
         let rows: Vec<BookWithAuthor> = connection
             .fetch(
-                Sql()
-                    .select(cols!(B.title, A.name as author))
+                Sql.select(cols!(B.title, A.name as author))
                     .from(join!(Book B LEFT JOIN Author A ON B.author == A.author_id))
                     .where_expr(true)
                     .build(&connection.driver()),
@@ -282,8 +279,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         );
         let _ = connection
             .fetch(
-                Sql()
-                    .select(cols!(B.title, A1.name as author, A2.name as co_author))
+                Sql.select(cols!(B.title, A1.name as author, A2.name as co_author))
                     .from(dataset)
                     .where_expr(true)
                     .build(&connection.driver()),
@@ -303,8 +299,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         // Entities: decode each row, optionally filter on the Rust side, collect.
         let wounded: Vec<EntityExample> = connection
             .fetch(
-                Sql()
-                    .select(EntityExample::columns())
+                Sql.select(EntityExample::columns())
                     .from(EntityExample::table())
                     .where_expr(true)
                     .build(&connection.driver()),
@@ -323,8 +318,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
             .await?;
         let total = connection
             .fetch(
-                Sql()
-                    .select(cols!(EntityExample::casualties))
+                Sql.select(cols!(EntityExample::casualties))
                     .from(EntityExample::table())
                     .where_expr(true)
                     .build(&connection.driver()),
@@ -341,8 +335,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         {
             let mut stream = pin!(
                 connection.run(
-                    Sql()
-                        .select(cols!(EntityExample::callsign))
+                    Sql.select(cols!(EntityExample::callsign))
                         .from(EntityExample::table())
                         .where_expr(true)
                         .build(&connection.driver()),

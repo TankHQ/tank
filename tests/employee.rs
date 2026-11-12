@@ -184,8 +184,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            Sql()
-                .select(Employee::columns())
+            Sql.select(Employee::columns())
                 .from(Employee::table())
                 .where_expr(expr!(Employee::salary > 50000))
                 .limit(Some(10)),
@@ -206,7 +205,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,
-            Sql().insert_into(Employee::table()).values(&[employee]),
+            Sql.insert_into(Employee::table()).values(&[employee]),
         );
         assert_eq!(
             query.as_str(),
@@ -223,8 +222,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,
-            Sql()
-                .insert_into(Employee::table())
+            Sql.insert_into(Employee::table())
                 .values([&employee].into_iter()),
         );
         assert_eq!(

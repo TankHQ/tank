@@ -127,14 +127,11 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
         };
         writer.write_insert(
             &mut query,
-            Sql().insert_into(Arrays1::table()).values([value].iter()),
+            Sql.insert_into(Arrays1::table()).values([value].iter()),
         );
         writer.write_select(
             &mut query,
-            Sql()
-                .select(cols!(*))
-                .from(Arrays1::table())
-                .where_expr(true),
+            Sql.select(cols!(*)).from(Arrays1::table()).where_expr(true),
         );
         let value = Arrays2 {
             alpha: [1, 2, 3, 4, 5],
@@ -148,19 +145,17 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
         };
         writer.write_insert(
             &mut query,
-            Sql().insert_into(Arrays2::table()).values([value].iter()),
+            Sql.insert_into(Arrays2::table()).values([value].iter()),
         );
         writer.write_select(
             &mut query,
-            Sql()
-                .select([Arrays2::alpha, Arrays2::bravo, Arrays2::charlie])
+            Sql.select([Arrays2::alpha, Arrays2::bravo, Arrays2::charlie])
                 .from(Arrays2::table())
                 .where_expr(true),
         );
         writer.write_select(
             &mut query,
-            Sql()
-                .select([Arrays2::delta, Arrays2::echo])
+            Sql.select([Arrays2::delta, Arrays2::echo])
                 .from(Arrays2::table())
                 .where_expr(true),
         );

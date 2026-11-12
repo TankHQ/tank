@@ -54,8 +54,7 @@ pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
     {
         let mut stream = pin!(
             executor.fetch(
-                Sql()
-                    .select(cols!(ReservedWords::group_field, COUNT(*)))
+                Sql.select(cols!(ReservedWords::group_field, COUNT(*)))
                     .from(ReservedWords::table())
                     .group_by(cols!(ReservedWords::group_field))
                     .build(&executor.driver())
@@ -74,8 +73,7 @@ pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
     {
         let mut stream_ordered = pin!(
             executor.fetch(
-                Sql()
-                    .select(ReservedWords::columns())
+                Sql.select(ReservedWords::columns())
                     .from(ReservedWords::table())
                     .order_by(cols!(ReservedWords::order_field ASC))
                     .limit(Some(1))
@@ -100,8 +98,7 @@ pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
     {
         let mut stream_group = pin!(
             executor.fetch(
-                Sql()
-                    .select(cols!(ReservedWords::group_field, COUNT(*)))
+                Sql.select(cols!(ReservedWords::group_field, COUNT(*)))
                     .from(ReservedWords::table())
                     .group_by(cols!(ReservedWords::group_field))
                     .order_by(cols!(ReservedWords::group_field ASC))

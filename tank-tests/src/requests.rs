@@ -164,32 +164,31 @@ pub async fn requests(executor: &mut impl Executor) -> Result<()> {
     {
         let mut violated_limits = executor
             .prepare(
-                Sql()
-                    .select([
-                        RequestLimit::target_pattern,
-                        RequestLimit::requests,
-                        RequestLimit::method,
-                        RequestLimit::interval_ms,
-                    ])
-                    .from(join!(RequestLimit CROSS JOIN Request))
-                    .where_expr(expr!(
-                        ? == RequestLimit::target_pattern as LIKE
-                            && Request::target == RequestLimit::target_pattern as LIKE
-                            && (RequestLimit::method == NULL
-                                || RequestLimit::method == Request::method)
-                            && (RequestLimit::interval_ms == NULL && Request::end_timestamp_ms == NULL
-                                || RequestLimit::interval_ms != NULL
-                                    && Request::end_timestamp_ms
-                                        >= current_timestamp_ms!() - RequestLimit::interval_ms)
-                    ))
-                    .group_by([
-                        RequestLimit::target_pattern,
-                        RequestLimit::requests,
-                        RequestLimit::method,
-                        RequestLimit::interval_ms,
-                    ])
-                    .having(expr!(COUNT(Request::id) >= RequestLimit::requests))
-                    .build(&executor.driver()),
+                Sql.select([
+                    RequestLimit::target_pattern,
+                    RequestLimit::requests,
+                    RequestLimit::method,
+                    RequestLimit::interval_ms,
+                ])
+                .from(join!(RequestLimit CROSS JOIN Request))
+                .where_expr(expr!(
+                    ? == RequestLimit::target_pattern as LIKE
+                        && Request::target == RequestLimit::target_pattern as LIKE
+                        && (RequestLimit::method == NULL
+                            || RequestLimit::method == Request::method)
+                        && (RequestLimit::interval_ms == NULL && Request::end_timestamp_ms == NULL
+                            || RequestLimit::interval_ms != NULL
+                                && Request::end_timestamp_ms
+                                    >= current_timestamp_ms!() - RequestLimit::interval_ms)
+                ))
+                .group_by([
+                    RequestLimit::target_pattern,
+                    RequestLimit::requests,
+                    RequestLimit::method,
+                    RequestLimit::interval_ms,
+                ])
+                .having(expr!(COUNT(Request::id) >= RequestLimit::requests))
+                .build(&executor.driver()),
             )
             .await?;
 

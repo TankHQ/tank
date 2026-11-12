@@ -185,8 +185,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     // Query timestamp 1
     let mut query_timestamp_1 = executor
         .prepare(
-            Sql()
-                .select([Times::timestamp_1])
+            Sql.select([Times::timestamp_1])
                 .from(Times::table())
                 .where_expr(expr!(Times::timestamp_2 > ?))
                 .order_by(cols!(Times::timestamp_1 DESC))
@@ -246,8 +245,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     // Query timestamp 2
     let mut query_timestamp_2 = executor
         .prepare(
-            Sql()
-                .select([Times::timestamp_2])
+            Sql.select([Times::timestamp_2])
                 .from(Times::table())
                 .where_expr(expr!(Times::timestamp_1 <= ?))
                 .order_by(cols!(Times::timestamp_2 ASC))
@@ -280,8 +278,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     // Query time 1
     let mut query_time_1 = executor
         .prepare(
-            Sql()
-                .select([Times::time_1])
+            Sql.select([Times::time_1])
                 .from(Times::table())
                 .where_expr(true)
                 .order_by(cols!(Times::time_1 DESC))
@@ -312,8 +309,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
         - 2;
     let timestamp_ms = executor
         .fetch(
-            Sql()
-                .select([&Operand::CurrentTimestampMs])
+            Sql.select([&Operand::CurrentTimestampMs])
                 .from(Times::table())
                 .where_expr(true)
                 .limit(Some(1))

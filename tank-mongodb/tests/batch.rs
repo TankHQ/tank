@@ -23,7 +23,7 @@ mod tests {
         writer.write_delete(&mut query, Item::table(), expr!(Item::id == 1));
         writer.write_insert(
             &mut query,
-            Sql().insert_into(Item::table()).values(&[Item {
+            Sql.insert_into(Item::table()).values(&[Item {
                 id: 2,
                 name: "test".into(),
             }]),
@@ -49,14 +49,14 @@ mod tests {
 
         writer.write_insert(
             &mut query,
-            Sql().insert_into(Item::table()).values(&[Item {
+            Sql.insert_into(Item::table()).values(&[Item {
                 id: 1,
                 name: "first".into(),
             }]),
         );
         writer.write_insert(
             &mut query,
-            Sql().insert_into(Item::table()).values(&[Item {
+            Sql.insert_into(Item::table()).values(&[Item {
                 id: 2,
                 name: "second".into(),
             }]),
@@ -84,8 +84,7 @@ mod tests {
 
         writer.write_insert(
             &mut query,
-            Sql()
-                .insert_into(Item::table())
+            Sql.insert_into(Item::table())
                 .values(&[Item {
                     id: 1,
                     name: "upserted".into(),
@@ -114,7 +113,7 @@ mod tests {
 
         writer.write_insert(
             &mut query,
-            Sql().insert_into(Item::table()).values(&[Item {
+            Sql.insert_into(Item::table()).values(&[Item {
                 id: 1,
                 name: "will be dropped".into(),
             }]),

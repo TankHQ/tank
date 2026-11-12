@@ -92,24 +92,23 @@ pub async fn orders(executor: &mut impl Executor) -> Result<()> {
     // Prepare
     let mut query = executor
         .prepare(
-            Sql()
-                .select([
-                    Order::id,
-                    Order::customer_id,
-                    Order::country,
-                    Order::total,
-                    Order::status,
-                    Order::created_at,
-                ])
-                .from(Order::table())
-                .where_expr(expr!(
-                    Order::status == (?, ?) as IN
-                        && Order::created_at >= ?
-                        && Order::total >= ?
-                        && Order::country == (?, ?) as IN
-                ))
-                .order_by(cols!(Order::total DESC))
-                .build(&executor.driver()),
+            Sql.select([
+                Order::id,
+                Order::customer_id,
+                Order::country,
+                Order::total,
+                Order::status,
+                Order::created_at,
+            ])
+            .from(Order::table())
+            .where_expr(expr!(
+                Order::status == (?, ?) as IN
+                    && Order::created_at >= ?
+                    && Order::total >= ?
+                    && Order::country == (?, ?) as IN
+            ))
+            .order_by(cols!(Order::total DESC))
+            .build(&executor.driver()),
         )
         .await?;
     assert!(query.is_prepared(), "Query should be marked as prepared");
@@ -168,20 +167,19 @@ pub async fn orders(executor: &mut impl Executor) -> Result<()> {
     // ORDER BY + LIMIT 1: should return the single most expensive order
     let top_order: Vec<String> = executor
         .fetch(
-            Sql()
-                .select([
-                    Order::id,
-                    Order::customer_id,
-                    Order::country,
-                    Order::total,
-                    Order::status,
-                    Order::created_at,
-                ])
-                .from(Order::table())
-                .where_expr(true)
-                .order_by(cols!(Order::total DESC))
-                .limit(Some(1))
-                .build(&executor.driver()),
+            Sql.select([
+                Order::id,
+                Order::customer_id,
+                Order::country,
+                Order::total,
+                Order::status,
+                Order::created_at,
+            ])
+            .from(Order::table())
+            .where_expr(true)
+            .order_by(cols!(Order::total DESC))
+            .limit(Some(1))
+            .build(&executor.driver()),
         )
         .and_then(|v| async { Order::from_row(v) })
         .map_ok(|v| format!("{}, {}, {:.2}€", v.country, v.status, v.total.0))

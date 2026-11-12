@@ -154,7 +154,7 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
         writer.write_delete(&mut query, Intervals::table(), true);
         writer.write_insert(
             &mut query,
-            Sql().insert_into(Intervals::table()).values(&[
+            Sql.insert_into(Intervals::table()).values(&[
                 Intervals {
                     pk: 4,
                     first: time::Duration::weeks(4) + time::Duration::hours(5),
@@ -174,8 +174,7 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
         );
         writer.write_select(
             &mut query,
-            Sql()
-                .select(Intervals::columns())
+            Sql.select(Intervals::columns())
                 .from(Intervals::table())
                 .where_expr(true),
         );
