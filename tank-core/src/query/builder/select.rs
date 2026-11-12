@@ -63,7 +63,7 @@ impl<S, F, W, I> SelectQueryBuilder<S, F, W, NA, NA, NA, NA, I> {
         group_by: GroupBy,
     ) -> SelectQueryBuilder<S, F, W, GroupBy, NA, NA, NA, I>
     where
-        GroupBy: Clone,
+        GroupBy: ExpressionCollection,
     {
         SelectQueryBuilder {
             select: self.select,
@@ -102,7 +102,10 @@ impl<S, F, W, G, H, I> SelectQueryBuilder<S, F, W, G, H, NA, NA, I> {
     pub fn order_by<OrderBy>(
         self,
         order_by: OrderBy,
-    ) -> SelectQueryBuilder<S, F, W, G, H, OrderBy, NA, I> {
+    ) -> SelectQueryBuilder<S, F, W, G, H, OrderBy, NA, I>
+    where
+        OrderBy: ExpressionCollection,
+    {
         SelectQueryBuilder {
             select: self.select,
             from: self.from,

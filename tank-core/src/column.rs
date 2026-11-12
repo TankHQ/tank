@@ -145,6 +145,20 @@ impl ColumnDef {
     }
 }
 
+/// The column name.
+impl AsRef<str> for ColumnRef {
+    fn as_ref(&self) -> &str {
+        &self.name
+    }
+}
+
+/// The column name.
+impl AsRef<str> for ColumnDef {
+    fn as_ref(&self) -> &str {
+        self.name()
+    }
+}
+
 impl<'a> From<&'a ColumnDef> for &'a ColumnRef {
     fn from(value: &'a ColumnDef) -> Self {
         &value.column_ref

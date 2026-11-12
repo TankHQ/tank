@@ -1,6 +1,6 @@
 #![allow(unused_variables)]
-use std::{collections::HashMap, future, sync::LazyLock};
-use tank::{AsValue, Entity, Result, Value, ValueOwned, anyhow, expr, stream::StreamExt};
+use std::{collections::HashMap, sync::LazyLock};
+use tank::{AsValue, Entity, Result, Value, ValueOwned, anyhow, expr};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -298,7 +298,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
         // #region cheat-sheet-streams
         use std::{future::ready, pin::pin};
-        use tank::{AsValue, Entity, QueryResult, Row, Sql, cols, stream::TryStreamExt};
+        use tank::{Entity, QueryResult, Row, Sql, cols, stream::TryStreamExt};
 
         // You can filter inside rust instead of the database
         let casualties: Vec<EntityExample> = connection
@@ -314,24 +314,26 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
             .await?;
         let callsigns: Vec<&str> = casualties.iter().map(|v| v.callsign.as_str()).collect();
 
-        // You can fold on a single column
-        let total = connection
-            .fetch(
-                Sql()
-                    .select(cols!(
-                        SUM(EntityExample::casualties) as total,
-                        EntityExample::region
-                    ))
-                    .from(EntityExample::table())
-                    .group_by(EntityExample::region)
-                    .order_by("total")
-                    .limit(Some(1))
-                    .build(&connection.driver()),
-            )
-            .map_ok(|row| i32::try_from_value(row.get_column(EntityExample::region)))
-            .map(Result::flatten)
-            .try_fold(0, |acc, cur| future::ready(Ok(acc + cur)))
-            .await?;
+        // You can fold on a single column, read by name
+        #[cfg(not(feature = "disable-groups"))]
+        let total = {
+            use tank::{AsValue, stream::StreamExt};
+            connection
+                .fetch(
+                    Sql()
+                        .select(cols!(
+                            SUM(EntityExample::casualties) as total,
+                            EntityExample::region
+                        ))
+                        .from(EntityExample::table())
+                        .group_by(EntityExample::region)
+                        .build(&connection.driver()),
+                )
+                .map_ok(|row| i32::try_from_value(row.get_column("total")))
+                .map(Result::flatten)
+                .try_fold(0, |total, casualties| ready(Ok(total + casualties)))
+                .await?
+        };
 
         // You can process one value at a time, just remember to pin the stream
         let mut rows = Vec::new();
@@ -357,6 +359,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
         assert_eq!(callsigns.len(), 2);
         assert!(callsigns.contains(&entity2.callsign.as_str()));
+        #[cfg(not(feature = "disable-groups"))]
         assert_eq!(total, 8);
         assert_eq!(rows.len(), 3);
         assert!(rows.iter().all(|row| row.get_column("callsign").is_some()));

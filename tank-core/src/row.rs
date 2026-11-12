@@ -1,4 +1,4 @@
-use crate::{AsValue, ColumnRef, QueryResult, Value, ValueOwned};
+use crate::{AsValue, QueryResult, Value, ValueOwned};
 use std::{
     borrow::Cow,
     fmt::{self, Debug, Formatter},
@@ -50,9 +50,9 @@ pub trait Row: Debug + Send + Sync {
         self.len() == 0
     }
 
-    fn get_column(&self, column: impl Into<ColumnRef>) -> Option<Cow<'_, Value<'_>>> {
-        let column = column.into();
-        let name = &column.name;
+    /// Value of the column with the given name, a string or a column such as `Entity::field`.
+    fn get_column(&self, column: impl AsRef<str>) -> Option<Cow<'_, Value<'_>>> {
+        let name = column.as_ref();
         self.labels()
             .iter()
             .position(|label| label == name)
@@ -121,7 +121,7 @@ impl<R: Row + ?Sized> Row for &R {
     }
 
     #[inline(always)]
-    fn get_column(&self, column: impl Into<ColumnRef>) -> Option<Cow<'_, Value<'_>>> {
+    fn get_column(&self, column: impl AsRef<str>) -> Option<Cow<'_, Value<'_>>> {
         (**self).get_column(column)
     }
 

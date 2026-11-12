@@ -5,7 +5,8 @@ mod insert_into;
 mod select;
 
 use crate::{
-    Context, Dataset, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, TableRef,
+    ColumnDef, ColumnRef, Context, Dataset, DynQuery, Expression, ExpressionVisitor, OpPrecedence,
+    SqlWriter, TableRef,
 };
 pub use create_table::*;
 pub use delete::*;
@@ -124,5 +125,19 @@ where
 impl ExpressionCollection for NA {
     fn expr_iter(&self) -> impl Iterator<Item = impl Expression> + Clone {
         iter::empty::<&dyn Expression>()
+    }
+}
+
+/// A single column, as in `.group_by(Entity::field)`.
+impl ExpressionCollection for ColumnRef {
+    fn expr_iter(&self) -> impl Iterator<Item = impl Expression> + Clone {
+        iter::once(self)
+    }
+}
+
+/// A single column, as in `.order_by(Entity::field)`.
+impl ExpressionCollection for ColumnDef {
+    fn expr_iter(&self) -> impl Iterator<Item = impl Expression> + Clone {
+        iter::once(self)
     }
 }
