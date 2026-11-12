@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, QueryBuilder, QueryResult, Result, RowsAffected, SqlWriter,
+    Driver, DynQuery, Entity, Executor, Sql, QueryResult, Result, RowsAffected, SqlWriter,
     anyhow, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
@@ -147,13 +147,13 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
         );
         writer.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Operator::table())
                 .values([&operator]),
         );
         writer.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(RadioLog::table())
                 .values(&[RadioLog {
                     id: Uuid::new_v4(),
@@ -166,7 +166,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
         );
         writer.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select(RadioLog::columns())
                 .from(RadioLog::table())
                 .where_expr(true)
@@ -303,7 +303,7 @@ pub async fn advanced_operations(executor: &mut impl Executor) -> Result<()> {
         // #region operations-select-order
         let messages = executor
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(
                         RadioLog::signal_strength as strength,
                         Operator::callsign,

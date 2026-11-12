@@ -2,7 +2,7 @@
 use rust_decimal::Decimal;
 use std::{collections::BTreeMap, pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
-    AsValue, Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult,
+    AsValue, Driver, DynQuery, Entity, Executor, FixedDecimal, Query, Sql, QueryResult,
     RawQuery, Result, RowsAffected, SqlWriter, Value,
     stream::{StreamExt, TryStreamExt},
 };
@@ -327,7 +327,7 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
         writer.write_delete(&mut query, Trade::table(), true);
         writer.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Trade::table())
                 .values(&[Trade {
                     trade: 10002,
@@ -358,7 +358,7 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
         );
         writer.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select(Trade::columns())
                 .from(Trade::table())
                 .where_expr(true),

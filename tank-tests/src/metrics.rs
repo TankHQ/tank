@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::{future, sync::LazyLock};
 use tank::{
-    Entity, Executor, QueryBuilder, Result, cols, expr,
+    Entity, Executor, Sql, Result, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, macros::date};
@@ -324,7 +324,7 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
     let height = 170;
     let heights = executor
         .fetch(
-            QueryBuilder::new()
+            Sql()
                 .select([Metric::value, Metric::date])
                 .from(Metric::table())
                 .where_expr(expr!(
@@ -343,7 +343,7 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
     // Incomes in Italy
     let italy_incomes = executor
         .fetch(
-            QueryBuilder::new()
+            Sql()
                 .select([Metric::value])
                 .from(Metric::table())
                 .where_expr(expr!(
@@ -360,7 +360,7 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
     // Highest income in the UK
     let latest_income = executor
         .fetch(
-            QueryBuilder::new()
+            Sql()
                 .select(cols!(MAX(Metric::value) as value))
                 .from(Metric::table())
                 .where_expr(expr!(
@@ -376,7 +376,7 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
     // Prepared queries
     let mut prepared = executor
         .prepare(
-            QueryBuilder::new()
+            Sql()
                 .select([Metric::value, Metric::date])
                 .from(Metric::table())
                 .where_expr(expr!(Metric::country == ? && Metric::name == ?))
@@ -419,7 +419,7 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
         }
         let averages = executor
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(
                         Metric::name,
                         Metric::country,
@@ -530,7 +530,7 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
 
         let max_incomes = executor
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(Metric::country, MAX(value) as max_income,))
                     .from(Metric::table())
                     .where_expr(expr!(name == "income_eur"))
@@ -585,7 +585,7 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
 
         let global_stats = executor
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(
                         Metric::name,
                         MIN(Metric::value) as min_val,
@@ -627,7 +627,7 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
 
         let heavy_stats = executor
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(
                         Metric::name,
                         MIN(Metric::value) as min_val,

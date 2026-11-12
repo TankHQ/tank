@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::sync::{Arc, LazyLock};
 use tank::{
-    AsValue, Entity, Executor, QueryBuilder, Result, Row, RowOwned, expr, stream::TryStreamExt,
+    AsValue, Entity, Executor, Sql, Result, Row, RowOwned, expr, stream::TryStreamExt,
 };
 use tokio::sync::Mutex;
 
@@ -64,7 +64,7 @@ pub async fn insert_builder(executor: &mut impl Executor) -> Result<()> {
     // Entities into a table with the same shape
     executor
         .execute(
-            QueryBuilder::new()
+            Sql()
                 .insert_into(InsertTarget::table())
                 .values(&sources[..2])
                 .build(&executor.driver()),
@@ -76,7 +76,7 @@ pub async fn insert_builder(executor: &mut impl Executor) -> Result<()> {
     );
     executor
         .execute(
-            QueryBuilder::new()
+            Sql()
                 .insert_into(InsertTarget::table())
                 .values(&[InsertSource {
                     id: 2,
@@ -103,7 +103,7 @@ pub async fn insert_builder(executor: &mut impl Executor) -> Result<()> {
         };
         executor
             .execute(
-                QueryBuilder::new()
+                Sql()
                     .insert_into(InsertTarget::table())
                     .columns(labels.iter().cloned())
                     .values(
@@ -116,7 +116,7 @@ pub async fn insert_builder(executor: &mut impl Executor) -> Result<()> {
             .await?;
         executor
             .execute(
-                QueryBuilder::new()
+                Sql()
                     .insert_into(InsertTarget::table())
                     .columns(labels.iter().cloned())
                     .values([row(1, "ONE", 6)].iter().map(Row::values))
@@ -142,7 +142,7 @@ pub async fn insert_builder(executor: &mut impl Executor) -> Result<()> {
         InsertTarget::create_table(executor, true, false).await?;
         executor
             .execute(
-                QueryBuilder::new()
+                Sql()
                     .insert_into(InsertTarget::table())
                     .select(InsertSource::columns())
                     .from(InsertSource::table())

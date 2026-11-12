@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, sync::LazyLock};
 use tank::{
-    AsValue, Entity, Executor, QueryBuilder, Result, Row, cols, expr, stream::TryStreamExt,
+    AsValue, Entity, Executor, Sql, Result, Row, cols, expr, stream::TryStreamExt,
 };
 use tokio::sync::Mutex;
 
@@ -131,7 +131,7 @@ pub async fn case(executor: &mut impl Executor) -> Result<()> {
     // CASE in the projection
     let mut labels = executor
         .fetch(
-            QueryBuilder::new()
+            Sql()
                 .select(cols!(
                     CaseOrder::id,
                     if CaseOrder::amount >= 100.0 {

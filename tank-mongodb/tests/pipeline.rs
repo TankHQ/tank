@@ -2,7 +2,7 @@
 mod tests {
     use mongodb::bson::{Bson, Regex, doc};
     use std::borrow::Cow;
-    use tank::{Entity, QueryBuilder, cols, expr};
+    use tank::{Entity, Sql, cols, expr};
     use tank_mongodb::{AggregatePayload, FindManyPayload, MongoDBDriver, Payload};
     use tank_tests::init_logs;
 
@@ -19,7 +19,7 @@ mod tests {
             pub third_column: String,
         }
         init_logs();
-        let mut query = QueryBuilder::new()
+        let mut query = Sql()
             .select(cols!(
                 MyType::first_column,
                 MAX(MyType::second_column),
@@ -106,7 +106,7 @@ mod tests {
             pub discounts: Vec<f64>,
             pub country: Cow<'static, str>,
         }
-        let mut query = QueryBuilder::new()
+        let mut query = Sql()
             .select(cols!(
                 Cart::user_id,
                 COUNT(Cart::id),
@@ -252,7 +252,7 @@ mod tests {
             pub id: i64,
             pub amount: f64,
         }
-        let mut query = QueryBuilder::new()
+        let mut query = Sql()
             .select(cols!(Transaction::id, ABS(Transaction::amount),))
             .from(Transaction::table())
             .build(&DRIVER);

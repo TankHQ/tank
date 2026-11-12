@@ -3,7 +3,7 @@
 #![allow(unused_variables)]
 use std::{pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, Interval, Query, QueryBuilder, QueryResult, RawQuery,
+    Driver, DynQuery, Entity, Executor, Interval, Query, Sql, QueryResult, RawQuery,
     Result, SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
@@ -43,13 +43,13 @@ pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
         };
         writer.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Container::table())
                 .values([value].iter()),
         );
         writer.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select(Container::columns())
                 .from(Container::table())
                 .where_expr(true)

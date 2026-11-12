@@ -604,7 +604,7 @@ WHERE `name` LIKE 'income%' AND `country` IN ('NL','UK') AND `value` > 0.0;
 :::
 
 ```rust [query_builder.rs]
-use tank::{Entity, QueryBuilder, cols, expr, stream::TryStreamExt};
+use tank::{Entity, Sql, cols, expr, stream::TryStreamExt};
 
 #[derive(Entity)]
 #[tank(schema = "army", name = "readings")]
@@ -618,7 +618,7 @@ struct Reading {
 
 let hottest = connection
     .fetch(
-        QueryBuilder::new()
+        Sql()
             .select(cols!(Reading::sensor, Reading::celsius))
             .from(Reading::table())
             .where_expr(expr!(Reading::celsius > 30.0))
@@ -655,7 +655,7 @@ LIMIT 10;
 :::
 
 ```rust [group_by.rs]
-use tank::{Entity, QueryBuilder, cols, stream::TryStreamExt};
+use tank::{Entity, Sql, cols, stream::TryStreamExt};
 use rust_decimal::Decimal;
 
 #[derive(Entity)]
@@ -671,7 +671,7 @@ struct Trade {
 
 let by_symbol = connection
     .fetch(
-        QueryBuilder::new()
+        Sql()
             .select(cols!(
                 Trade::symbol,
                 COUNT(*) as fills,
@@ -737,7 +737,7 @@ ORDER BY `symbol` ASC;
 :::
 
 ```rust [having.rs]
-use tank::{Entity, QueryBuilder, cols, expr, stream::TryStreamExt};
+use tank::{Entity, Sql, cols, expr, stream::TryStreamExt};
 
 #[derive(Entity)]
 #[tank(schema = "ops", name = "events")]
@@ -751,7 +751,7 @@ struct Event {
 
 let noisy = connection
     .fetch(
-        QueryBuilder::new()
+        Sql()
             .select(cols!(Event::level, SUM(Event::count) as total))
             .from(Event::table())
             .where_expr(expr!(Event::source != "internal"))
@@ -838,7 +838,7 @@ LIMIT 5;
 :::
 
 ```rust [join.rs]
-use tank::{Entity, QueryBuilder, cols, join, stream::TryStreamExt};
+use tank::{Entity, Sql, cols, join, stream::TryStreamExt};
 
 #[derive(Entity)]
 #[tank(schema = "library", name = "books")]
@@ -858,7 +858,7 @@ struct Author {
 
 let rows = connection
     .fetch(
-        QueryBuilder::new()
+        Sql()
             .select(cols!(Book::title, Author::name))
             .from(join!(
                 Book JOIN Author
@@ -886,7 +886,7 @@ FROM `library`.`books` JOIN `library`.`authors` ON `library`.`books`.`author_id`
 :::
 
 ```rust [left_join.rs]
-use tank::{Entity, QueryBuilder, cols, expr, join, stream::TryStreamExt};
+use tank::{Entity, Sql, cols, expr, join, stream::TryStreamExt};
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
@@ -908,7 +908,7 @@ struct Customer {
 
 let rows = connection
     .fetch(
-        QueryBuilder::new()
+        Sql()
             .select(cols!(O.total, C.name as customer))
             .from(join!(
                 Order O LEFT JOIN Customer C

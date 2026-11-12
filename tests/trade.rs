@@ -9,7 +9,7 @@ mod tests {
     };
     use tank::{
         Action, ColumnRef, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType,
-        QueryBuilder, SqlWriter, TableRef, Value, expr,
+        Sql, SqlWriter, TableRef, Value, expr,
     };
     use time::macros::datetime;
     use uuid::Uuid;
@@ -273,7 +273,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select(Trade::columns())
                 .from(Trade::table())
                 .where_expr(expr!(Trade::quantity >= 100 && Trade::price > 1000)),
@@ -293,7 +293,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Trade::table())
                 .values(&[employee]),
         );

@@ -157,7 +157,7 @@ expr!(match EntityExample::region { "North" | "South" => 1, _ => 2 });
 
 ## Joins
 
-The `join!` macro builds the `FROM` clause for `QueryBuilder`. Define a result struct that matches the selected columns, then pass the join tree to `.from()`.
+The `join!` macro builds the `FROM` clause for `Sql`. Define a result struct that matches the selected columns, then pass the join tree to `.from()`.
 
 Supported keywords: `JOIN`, `INNER JOIN`, `LEFT JOIN`, `LEFT OUTER JOIN`, `RIGHT JOIN`, `RIGHT OUTER JOIN`, `FULL OUTER JOIN`, `CROSS JOIN`, `NATURAL JOIN`.
 
@@ -232,7 +232,7 @@ query.bind(10)?;
 ### SqlWriter
 
 ```rust
-use tank::{DynQuery, Entity, QueryBuilder, SqlWriter, stream::TryStreamExt};
+use tank::{DynQuery, Entity, Sql, SqlWriter, stream::TryStreamExt};
 
 let writer = connection.driver().sql_writer();
 let mut query = DynQuery::default();
@@ -240,13 +240,13 @@ let mut query = DynQuery::default();
 writer.write_create_table::<EntityExample>(&mut query, true);
 writer.write_insert(
     &mut query,
-    QueryBuilder::new()
+    Sql()
         .insert_into(EntityExample::table())
         .values([&entity1, &entity2]),
 );
 writer.write_select(
     &mut query,
-    QueryBuilder::new()
+    Sql()
         .select(EntityExample::columns())
         .from(EntityExample::table())
         .where_expr(true)

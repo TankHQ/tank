@@ -3,7 +3,7 @@ mod tests {
     use indoc::indoc;
     use std::{borrow::Cow, collections::HashMap};
     use tank::{
-        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
+        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, Sql,
         SqlWriter, TableRef, Value, expr,
     };
     use time::{Date, Month, Time};
@@ -184,7 +184,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select(Employee::columns())
                 .from(Employee::table())
                 .where_expr(expr!(Employee::salary > 50000))
@@ -206,7 +206,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Employee::table())
                 .values(&[employee]),
         );
@@ -225,7 +225,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Employee::table())
                 .values([&employee].into_iter()),
         );

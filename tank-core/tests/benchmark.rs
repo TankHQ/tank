@@ -12,7 +12,7 @@ mod tests {
         time::Instant,
     };
     use tank::{
-        DynQuery, Entity, GenericSqlWriter, Interval, QueryBuilder, SqlWriter, cols, expr, join,
+        DynQuery, Entity, GenericSqlWriter, Interval, Sql, SqlWriter, cols, expr, join,
     };
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
@@ -203,7 +203,7 @@ mod tests {
             measure("select_find", |out| {
                 WRITER.write_select(
                     out,
-                    QueryBuilder::new()
+                    Sql()
                         .select(Trade::columns())
                         .from(Trade::table())
                         .where_expr(expr!(Trade::account == #account && Trade::buy == true))
@@ -213,7 +213,7 @@ mod tests {
             measure("select_prepared", |out| {
                 WRITER.write_select(
                     out,
-                    QueryBuilder::new()
+                    Sql()
                         .select(Trade::columns())
                         .from(Trade::table())
                         .where_expr(expr!(Trade::id == ? && Trade::symbol == ?))
@@ -223,7 +223,7 @@ mod tests {
             measure("select_aggregate", |out| {
                 WRITER.write_select(
                     out,
-                    QueryBuilder::new()
+                    Sql()
                         .select(cols!(
                             Trade::symbol,
                             COUNT(*),
@@ -241,7 +241,7 @@ mod tests {
             measure("select_join", |out| {
                 WRITER.write_select(
                     out,
-                    QueryBuilder::new()
+                    Sql()
                         .select(cols!(Trade::id, Account::name, Trade::price))
                         .from(join!(Trade LEFT JOIN Account ON Trade::account == Account::id))
                         .where_expr(expr!(
@@ -254,7 +254,7 @@ mod tests {
             measure("insert_one", |out| {
                 WRITER.write_insert(
                     out,
-                    QueryBuilder::new()
+                    Sql()
                         .insert_into(Trade::table())
                         .values([trade]),
                 )
@@ -262,7 +262,7 @@ mod tests {
             measure("insert_many_100", |out| {
                 WRITER.write_insert(
                     out,
-                    QueryBuilder::new()
+                    Sql()
                         .insert_into(Trade::table())
                         .values(&trades),
                 )
@@ -270,7 +270,7 @@ mod tests {
             measure("upsert", |out| {
                 WRITER.write_insert(
                     out,
-                    QueryBuilder::new()
+                    Sql()
                         .insert_into(Trade::table())
                         .values([trade])
                         .update(),
@@ -279,7 +279,7 @@ mod tests {
             measure("insert_wide", |out| {
                 WRITER.write_insert(
                     out,
-                    QueryBuilder::new()
+                    Sql()
                         .insert_into(Wide::table())
                         .values([&wide]),
                 )

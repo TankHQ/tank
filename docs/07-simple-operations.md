@@ -24,7 +24,7 @@ The SQL below uses PostgreSQL syntax. Other drivers choose their own column type
 ```rust [Rust]
 use std::pin::pin;
 use tank::{
-    Driver, DynQuery, Entity, QueryBuilder, QueryResult, RowsAffected, SqlWriter, anyhow, expr,
+    Driver, DynQuery, Entity, Sql, QueryResult, RowsAffected, SqlWriter, anyhow, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, OffsetDateTime, macros::date};

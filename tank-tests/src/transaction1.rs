@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 use tank::{
-    Connection, Entity, QueryBuilder, Result, Transaction, cols,
+    Connection, Entity, Sql, Result, Transaction, cols,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -80,7 +80,7 @@ pub async fn transaction1(connection: &mut impl Connection) -> Result<()> {
     {
         let entities = connection
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(*))
                     .from(EntityA::table())
                     .where_expr(true)
@@ -94,7 +94,7 @@ pub async fn transaction1(connection: &mut impl Connection) -> Result<()> {
     {
         let entities = connection
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(*))
                     .from(EntityB::table())
                     .where_expr(true)

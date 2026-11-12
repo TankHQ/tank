@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use tank::{Driver, DynQuery, Entity, QueryBuilder, SqlWriter, expr};
+    use tank::{Driver, DynQuery, Entity, Sql, SqlWriter, expr};
     use tank_mongodb::{BatchPayload, MongoDBDriver, Payload};
     use tank_tests::init_logs;
 
@@ -23,7 +23,7 @@ mod tests {
         writer.write_delete(&mut query, Item::table(), expr!(Item::id == 1));
         writer.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Item::table())
                 .values(&[Item {
                     id: 2,
@@ -51,7 +51,7 @@ mod tests {
 
         writer.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Item::table())
                 .values(&[Item {
                     id: 1,
@@ -60,7 +60,7 @@ mod tests {
         );
         writer.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Item::table())
                 .values(&[Item {
                     id: 2,
@@ -90,7 +90,7 @@ mod tests {
 
         writer.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Item::table())
                 .values(&[Item {
                     id: 1,
@@ -120,7 +120,7 @@ mod tests {
 
         writer.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Item::table())
                 .values(&[Item {
                     id: 1,

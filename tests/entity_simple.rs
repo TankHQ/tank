@@ -3,7 +3,7 @@ mod tests {
     use indoc::indoc;
     use std::{borrow::Cow, sync::Mutex};
     use tank::{
-        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
+        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, Sql,
         SqlWriter, TableRef, Value, expr,
     };
 
@@ -104,7 +104,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select(SomeSimpleEntity::columns())
                 .from(SomeSimpleEntity::table())
                 .where_expr(expr!(SomeSimpleEntity::a > 100))
@@ -123,7 +123,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(SomeSimpleEntity::table())
                 .values(&[SomeSimpleEntity::make_some()])
                 .update(),

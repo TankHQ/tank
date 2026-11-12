@@ -1,6 +1,6 @@
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    AsValue, DynQuery, Entity, Executor, QueryBuilder, Result, Row, cols, expr,
+    AsValue, DynQuery, Entity, Executor, Sql, Result, Row, cols, expr,
     stream::TryStreamExt,
 };
 use tokio::sync::Mutex;
@@ -37,7 +37,7 @@ pub async fn other(executor: &mut impl Executor) -> Result<()> {
     // SELECT NULL
     let stream = executor
         .fetch(
-            QueryBuilder::new()
+            Sql()
                 .select(cols!(NULL))
                 .from(ATable::table())
                 .where_expr(true)
@@ -54,7 +54,7 @@ pub async fn other(executor: &mut impl Executor) -> Result<()> {
     let rows = vec![ATable {
         a_column: "test".into(),
     }];
-    let query = QueryBuilder::new()
+    let query = Sql()
         .insert_into(ATable::table())
         .values(&rows);
     let from_build = query.build(&executor.driver());

@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
 use tank::{
-    AsValue, Dataset, Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, Result,
+    AsValue, Dataset, Driver, DynQuery, Entity, Executor, Query, Sql, QueryResult, Result,
     Row, SqlWriter, Value, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
@@ -167,7 +167,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
         }
         let result = executor
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(B.title, A.name))
                     .from(join!(Book B JOIN Author A ON B.author == A.author_id))
                     .where_expr(expr!(B.year < 2000))
@@ -199,7 +199,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
         );
         let result = executor
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(B.title, A1.name as author, A2.name as co_author))
                     .from(dataset)
                     .where_expr(true)
@@ -263,7 +263,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
         }
         let books = executor
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(Book::title, Author::name as author, Book::year))
                     .from(join!(Book JOIN Author ON Book::author == Author::id))
                     .where_expr(true)
@@ -324,7 +324,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
         // Authors names alphabetical order
         let authors = executor
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select([Author::name])
                     .from(Author::table())
                     .where_expr(true)
@@ -352,7 +352,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
         let writer = executor.driver().sql_writer();
         writer.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select(Book::columns())
                 .from(Book::table())
                 .where_expr(expr!(Book::title == "Metro 2033"))
@@ -360,7 +360,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
         );
         writer.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select(Book::columns())
                 .from(Book::table())
                 .where_expr(expr!(Book::title == "Harry Potter and the Deathly Hallows"))

@@ -37,7 +37,7 @@ impl<T: Entity, E> CreateTableQueryBuilder<T, E> {
 
 /// CREATE TABLE query builder.
 ///
-/// Use `QueryBuilder::new().create_table::<Entity>()` to start.
+/// Use `Sql().create_table::<Entity>()` to start.
 pub trait CreateTableQuery<Table: Entity> {
     fn get_not_exists(&self) -> bool;
     /// Build query.

@@ -4,7 +4,7 @@ mod tests {
     use rust_decimal::{Decimal, prelude::FromPrimitive};
     use std::{borrow::Cow, sync::Arc, time::Duration};
     use tank::{
-        Action, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
+        Action, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, Sql,
         SqlWriter, TableRef, Value, expr,
     };
 
@@ -156,7 +156,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select(MyEntity::columns())
                 .from(MyEntity::table())
                 .where_expr(expr!(MyEntity::_bravo < 0))
@@ -175,7 +175,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(MyEntity::table())
                 .values(&[MyEntity::sample()])
                 .update(),

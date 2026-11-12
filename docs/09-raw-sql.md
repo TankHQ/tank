@@ -18,7 +18,7 @@ SQL drivers expose a `SqlWriter` for dialect-correct SQL fragments. Use the writ
 
 Example building 9 statements (3 *CREATE TABLE*, 3 *INSERT INTO* and 3 *SELECT*):
 ```rust
-use tank::{Driver, DynQuery, Entity, QueryBuilder, SqlWriter, stream::TryStreamExt};
+use tank::{Driver, DynQuery, Entity, Sql, SqlWriter, stream::TryStreamExt};
 
 #[derive(Entity)]
 struct One { a1: u32, string: String, c1: u64 }
@@ -32,26 +32,26 @@ let mut query = DynQuery::default();
 writer.write_create_table::<One>(&mut query, true);
 writer.write_create_table::<Two>(&mut query, true);
 writer.write_create_table::<Three>(&mut query, true);
-writer.write_insert(&mut query, QueryBuilder::new().insert_into(Two::table()).values(&[Two { a2: 21, string: "aaa".into() }, Two { a2: 22, string: "bbb".into() }, Two { a2: 23, string: "eee".into() }]));
-writer.write_insert(&mut query, QueryBuilder::new().insert_into(Three::table()).values(&[Three { string: "ddd".into() }, Three { string: "ccc".into() }]));
+writer.write_insert(&mut query, Sql().insert_into(Two::table()).values(&[Two { a2: 21, string: "aaa".into() }, Two { a2: 22, string: "bbb".into() }, Two { a2: 23, string: "eee".into() }]));
+writer.write_insert(&mut query, Sql().insert_into(Three::table()).values(&[Three { string: "ddd".into() }, Three { string: "ccc".into() }]));
 writer.write_select(
     &mut query,
-    QueryBuilder::new()
+    Sql()
         .select([Three::string])
         .from(Three::table())
         .where_expr(true),
 );
-writer.write_insert(&mut query, QueryBuilder::new().insert_into(One::table()).values(&[One { a1: 11, string: "zzz".into(), c1: 512 }]));
+writer.write_insert(&mut query, Sql().insert_into(One::table()).values(&[One { a1: 11, string: "zzz".into(), c1: 512 }]));
 writer.write_select(
     &mut query,
-    QueryBuilder::new()
+    Sql()
         .select([One::a1, One::string, One::c1])
         .from(One::table())
         .where_expr(true),
 );
 writer.write_select(
     &mut query,
-    QueryBuilder::new()
+    Sql()
         .select([Two::a2, Two::string])
         .from(Two::table())
         .where_expr(true),

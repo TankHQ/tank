@@ -205,7 +205,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     {
         // #region cheat-sheet-query-builder
         use tank::{
-            QueryBuilder, cols, expr,
+            Sql, cols, expr,
             stream::{StreamExt, TryStreamExt},
         };
 
@@ -218,7 +218,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         let uid = entity.unit_id;
         let results = connection
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(EntityExample::callsign, EntityExample::casualties))
                     .from(EntityExample::table())
                     .where_expr(expr!(EntityExample::unit_id == #uid))
@@ -240,9 +240,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     {
         use crate::{Author, AuthorColumnTrait, Book, BookColumnTrait};
         // #region cheat-sheet-joins
-        use tank::{
-            Entity, QueryBuilder, cols, expr, join, stream::StreamExt, stream::TryStreamExt,
-        };
+        use tank::{Entity, Sql, cols, expr, join, stream::StreamExt, stream::TryStreamExt};
 
         #[derive(Entity)]
         struct BookWithAuthor {
@@ -252,7 +250,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
         let rows: Vec<BookWithAuthor> = connection
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(Book::title, Author::name as author))
                     .from(join!(Book JOIN Author ON Book::author == Author::id))
                     .where_expr(expr!(Book::year > 2000))
@@ -266,7 +264,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
         let rows: Vec<BookWithAuthor> = connection
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(B.title, A.name as author))
                     .from(join!(Book B LEFT JOIN Author A ON B.author == A.author_id))
                     .where_expr(true)
@@ -284,7 +282,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         );
         let _ = connection
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(B.title, A1.name as author, A2.name as co_author))
                     .from(dataset)
                     .where_expr(true)
@@ -300,12 +298,12 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
         // #region cheat-sheet-streams
         use std::{future::ready, pin::pin};
-        use tank::{AsValue, Entity, QueryBuilder, QueryResult, Row, cols, stream::TryStreamExt};
+        use tank::{AsValue, Entity, QueryResult, Row, Sql, cols, stream::TryStreamExt};
 
         // Entities: decode each row, optionally filter on the Rust side, collect.
         let wounded: Vec<EntityExample> = connection
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(EntityExample::columns())
                     .from(EntityExample::table())
                     .where_expr(true)
@@ -325,7 +323,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
             .await?;
         let total = connection
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(EntityExample::casualties))
                     .from(EntityExample::table())
                     .where_expr(true)
@@ -343,7 +341,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         {
             let mut stream = pin!(
                 connection.run(
-                    QueryBuilder::new()
+                    Sql()
                         .select(cols!(EntityExample::callsign))
                         .from(EntityExample::table())
                         .where_expr(true)

@@ -5,7 +5,7 @@ mod tests {
     use std::{collections::BTreeMap, str::FromStr};
     use tank::{
         BinaryOp, BinaryOpType, ColumnDef, Context, DynQuery, Entity, Expression, Fragment,
-        GenericSqlWriter, Operand, QueryBuilder, SqlWriter, Value, expr,
+        GenericSqlWriter, Operand, Sql, SqlWriter, Value, expr,
     };
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
@@ -49,7 +49,7 @@ mod tests {
             let mut query = DynQuery::default();
             WRITER.write_select(
                 &mut query,
-                QueryBuilder::new()
+                Sql()
                     .select(Table::columns())
                     .from(Table::table())
                     .where_expr(expr!(
@@ -72,7 +72,7 @@ mod tests {
             let table = Table::default();
             WRITER.write_insert(
                 &mut query,
-                QueryBuilder::new()
+                Sql()
                     .insert_into(Table::table())
                     .values(&[table]),
             );
@@ -94,7 +94,7 @@ mod tests {
             };
             WRITER.write_insert(
                 &mut query,
-                QueryBuilder::new()
+                Sql()
                     .insert_into(Table::table())
                     .values(&[table])
                     .update(),
@@ -154,7 +154,7 @@ mod tests {
             let mut query = DynQuery::default();
             WRITER.write_select(
                 &mut query,
-                QueryBuilder::new()
+                Sql()
                     .select(Cart::columns())
                     .from(Cart::table())
                     .where_expr(expr!(Cart::is_active == true && Cart::total_price > 100))
@@ -187,7 +187,7 @@ mod tests {
             };
             WRITER.write_insert(
                 &mut query,
-                QueryBuilder::new()
+                Sql()
                     .insert_into(Cart::table())
                     .values(&[cart]),
             );
@@ -219,7 +219,7 @@ mod tests {
             };
             WRITER.write_insert(
                 &mut query,
-                QueryBuilder::new()
+                Sql()
                     .insert_into(Cart::table())
                     .values(&[cart])
                     .update(),

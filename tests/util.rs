@@ -13,7 +13,7 @@ mod tests {
     use syn::{Path, parse_str};
     use tank::{
         CollectionType, Context, Dataset, DynQuery, EitherIterator, Entity, Expression,
-        FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType, QueryBuilder,
+        FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType, Sql,
         QueryResult, References, Row, RowLabels, RowOwned, RowsAffected, SqlWriter, StructType,
         TRUNCATE_LONG_LIMIT, TableRef, Value, as_c_string, column_def, consume_while,
         decimal_from_scaled, error_message_from_ptr, extract_number, matches_path, month_to_number,
@@ -513,7 +513,7 @@ mod tests {
         let empty_cols: &[&dyn Expression] = &[];
         writer.write_select(
             &mut q,
-            QueryBuilder::new()
+            Sql()
                 .select(empty_cols)
                 .from(StarTable::table()),
         );
@@ -709,7 +709,7 @@ mod tests {
         let entities: Vec<&EmptyInsert> = vec![];
         writer.write_insert(
             &mut q,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(EmptyInsert::table())
                 .values(entities),
         );
@@ -726,14 +726,14 @@ mod tests {
         let mut q = DynQuery::new("-- comment".into());
         writer.write_select(
             &mut q,
-            QueryBuilder::new()
+            Sql()
                 .select(AppendTable::columns())
                 .from(AppendTable::table()),
         );
         let mut q = DynQuery::new("-- comment".into());
         writer.write_select(
             &mut q,
-            QueryBuilder::new()
+            Sql()
                 .select(AppendTable::columns())
                 .from(AppendTable::table()),
         );
@@ -751,7 +751,7 @@ mod tests {
         let mut q = DynQuery::new("-- c".into());
         writer.write_insert(
             &mut q,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(AppendTable::table())
                 .values(&[AppendTable { id: 1 }]),
         );
@@ -769,7 +769,7 @@ mod tests {
         let mut q = DynQuery::default();
         writer.write_insert(
             &mut q,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(PkOnly::table())
                 .values(&[PkOnly { id: 1 }])
                 .update(),
@@ -783,7 +783,7 @@ mod tests {
         let mut q = DynQuery::default();
         writer.write_insert(
             &mut q,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(NoPk::table())
                 .values(&[NoPk { value: 1 }])
                 .update(),

@@ -1,7 +1,7 @@
 use std::pin::pin;
 use std::sync::LazyLock;
 use tank::stream::TryStreamExt;
-use tank::{AsValue, Entity, Executor, QueryBuilder, Result, Row, cols, expr};
+use tank::{AsValue, Entity, Executor, Sql, Result, Row, cols, expr};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -54,7 +54,7 @@ pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
     {
         let mut stream = pin!(
             executor.fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(ReservedWords::group_field, COUNT(*)))
                     .from(ReservedWords::table())
                     .group_by(cols!(ReservedWords::group_field))
@@ -74,7 +74,7 @@ pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
     {
         let mut stream_ordered = pin!(
             executor.fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(ReservedWords::columns())
                     .from(ReservedWords::table())
                     .order_by(cols!(ReservedWords::order_field ASC))
@@ -100,7 +100,7 @@ pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
     {
         let mut stream_group = pin!(
             executor.fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(ReservedWords::group_field, COUNT(*)))
                     .from(ReservedWords::table())
                     .group_by(cols!(ReservedWords::group_field))

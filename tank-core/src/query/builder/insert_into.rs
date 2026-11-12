@@ -212,7 +212,7 @@ where
 
 /// INSERT query builder.
 ///
-/// Use `QueryBuilder::new().insert_into(table)` to start, then `values(&entities)`, `columns(names).values(rows)`
+/// Use `Sql().insert_into(table)` to start, then `values(&entities)`, `columns(names).values(rows)`
 /// or `select(columns).from(dataset)...`, failing on primary key conflicts without `update`.
 pub trait InsertIntoQuery {
     /// Dataset of the SELECT producing the rows, unused for rows of values.

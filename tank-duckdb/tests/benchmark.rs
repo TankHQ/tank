@@ -11,7 +11,7 @@ mod tests {
         time::{Duration, Instant},
     };
     use tank::{
-        AsValue, Connection, Entity, Executor, QueryBuilder, Row, Transaction, cols, expr,
+        AsValue, Connection, Entity, Executor, Row, Sql, Transaction, cols, expr,
         stream::TryStreamExt,
     };
     use tank_duckdb::{DuckDBConnection, DuckDBDriver};
@@ -187,7 +187,7 @@ mod tests {
         report.record("range_prepared", RANGES, start.elapsed());
 
         // Aggregation decoded through the raw row interface.
-        let query = QueryBuilder::new()
+        let query = Sql()
             .select(cols!(
                 Trade::symbol,
                 COUNT(*),

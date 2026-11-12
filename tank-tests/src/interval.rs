@@ -3,7 +3,7 @@
 use crate::silent_logs;
 use std::{pin::pin, sync::LazyLock, time::Duration};
 use tank::{
-    Context, Driver, DynQuery, Entity, Executor, Fragment, Interval, QueryBuilder, QueryResult,
+    Context, Driver, DynQuery, Entity, Executor, Fragment, Interval, Sql, QueryResult,
     RawQuery, Result, RowsAffected, SqlWriter, Value, expr,
     stream::{StreamExt, TryStreamExt},
 };
@@ -154,7 +154,7 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
         writer.write_delete(&mut query, Intervals::table(), true);
         writer.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Intervals::table())
                 .values(&[
                     Intervals {
@@ -176,7 +176,7 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
         );
         writer.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select(Intervals::columns())
                 .from(Intervals::table())
                 .where_expr(true),

@@ -3,7 +3,7 @@ use crate::silent_logs;
 use rust_decimal::Decimal;
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, FixedDecimal, Interval, QueryBuilder, QueryResult,
+    Driver, DynQuery, Entity, Executor, FixedDecimal, Interval, Sql, QueryResult,
     RawQuery, Result, RowsAffected, SqlWriter, expr,
     stream::{StreamExt, TryStreamExt},
 };
@@ -309,20 +309,20 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
         writer.write_delete(&mut query, Limits::table(), true);
         writer.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Limits::table())
                 .values(&[minimals, maximals]),
         );
         writer.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select(Limits::columns())
                 .from(Limits::table())
                 .where_expr(expr!(!Limits::boolean)),
         );
         writer.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select(Limits::columns())
                 .from(Limits::table())
                 .where_expr(expr!(Limits::boolean)),

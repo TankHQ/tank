@@ -3,7 +3,7 @@ use scylla::statement::batch::Batch;
 use std::future;
 use tank_core::{
     AsEntity, AsQuery, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
-    QueryBuilder, QueryResult, RawQuery, Result, Row, RowsAffected, SqlWriter, Transaction,
+    Sql, QueryResult, RawQuery, Result, Row, RowsAffected, SqlWriter, Transaction,
     future::Either,
     stream::{self, Stream},
     truncate_long,
@@ -97,7 +97,7 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
                 Some(entity) => {
                     writer.write_insert(
                         &mut query,
-                        QueryBuilder::new()
+                        Sql()
                             .insert_into(<It::Item as AsEntity>::Entity::table())
                             .values([entity.as_entity()]),
                     );

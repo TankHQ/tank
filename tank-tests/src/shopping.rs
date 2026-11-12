@@ -3,7 +3,7 @@ use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::pin::pin;
 use std::{str::FromStr, sync::Arc, sync::LazyLock};
-use tank::QueryBuilder;
+use tank::Sql;
 use tank::{
     AsValue, Dataset, Entity, Executor, FixedDecimal, Result, Row, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
@@ -102,7 +102,7 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
     assert_eq!(total_products, 4);
     let ordered_products = executor
         .fetch(
-            QueryBuilder::new()
+            Sql()
                 .select([Product::id, Product::name, Product::price])
                 .from(Product::table())
                 .where_expr(expr!(Product::stock > 0))
@@ -170,7 +170,7 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
     let count = {
         let row = pin!(
             executor.fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(COUNT(*)))
                     .from(User::table())
                     .where_expr(true)
@@ -255,7 +255,7 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
         }
         let carts: Vec<Carts> = executor
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(cols!(
                         Product::name as product,
                         User::name as user,

@@ -37,7 +37,7 @@ impl<T: Entity, E> DropTableQueryBuilder<T, E> {
 
 /// DROP TABLE query builder.
 ///
-/// Use `QueryBuilder::new().drop_table::<Entity>()` to start.
+/// Use `Sql().drop_table::<Entity>()` to start.
 pub trait DropTableQuery<Table: Entity> {
     fn get_exists(&self) -> bool;
     /// Build query.

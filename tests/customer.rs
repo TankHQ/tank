@@ -4,7 +4,7 @@ mod tests {
     use std::borrow::Cow;
     use tank::{
         AsValue, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType,
-        QueryBuilder, SqlWriter, TableRef, Value, expr,
+        Sql, SqlWriter, TableRef, Value, expr,
     };
 
     #[derive(Entity)]
@@ -160,7 +160,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select(Customer::columns())
                 .from(Customer::table())
                 .where_expr(expr!(len(Customer::_values) > 10))

@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::sync::LazyLock;
 use tank::{
-    AsValue, Entity, Error, Executor, QueryBuilder, Result, Value, ValueOwned, anyhow, cols, expr,
+    AsValue, Entity, Error, Executor, Sql, Result, Value, ValueOwned, anyhow, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -146,7 +146,7 @@ pub async fn service(executor: &mut impl Executor) -> Result<()> {
     {
         let rows = executor
             .fetch(
-                QueryBuilder::new()
+                Sql()
                     .select(Service::columns())
                     .from(Service::table())
                     .where_expr(expr!(Service::name == "api"))

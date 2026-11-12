@@ -2,7 +2,7 @@
 mod tests {
     use indoc::indoc;
     use std::borrow::Cow;
-    use tank::{DynQuery, Entity, GenericSqlWriter, QueryBuilder, SqlWriter, TableRef};
+    use tank::{DynQuery, Entity, GenericSqlWriter, Sql, SqlWriter, TableRef};
 
     #[derive(Entity, Default)]
     #[tank(schema = "the_schema", name = "empty_entity")]
@@ -42,7 +42,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select(SomeEmptyEntity::columns())
                 .from(SomeEmptyEntity::table()),
         );
@@ -58,7 +58,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(SomeEmptyEntity::table())
                 .values(&[SomeEmptyEntity::default()])
                 .update(),

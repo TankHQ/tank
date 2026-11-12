@@ -17,12 +17,9 @@ use crate::{
 use std::{borrow::Cow, iter};
 
 #[derive(Default, Debug)]
-pub struct QueryBuilder;
+pub struct Sql();
 
-impl QueryBuilder {
-    pub fn new() -> Self {
-        Self {}
-    }
+impl Sql {
     pub fn select<Select: ExpressionCollection>(
         self,
         select: Select,

@@ -17,7 +17,7 @@ mod tests {
         AsQuery, AsValue, Connection, ConnectionPool, Context, Dataset, Driver, DynQuery, Entity,
         Error, Executor, Expression, ExpressionCollection, ExpressionVisitor, Fragment,
         GenericSqlWriter, InsertIntoQuery, NA, OpPrecedence, PoolConfig, PooledConnection,
-        Prepared, Query, QueryBuilder, QueryResult, RawQuery, Result, Row, RowOwned, RowsAffected,
+        Prepared, Query, Sql, QueryResult, RawQuery, Result, Row, RowOwned, RowsAffected,
         Transaction, anyhow, cols, describe_path, describe_url, expr,
         future::Either,
         stream::{self, Stream, StreamExt, TryStreamExt},
@@ -356,14 +356,14 @@ mod tests {
         ));
         assert_eq!(na.expr_iter().count(), 0);
 
-        let create = QueryBuilder::new().create_table::<ExecutorItem>();
+        let create = Sql().create_table::<ExecutorItem>();
         assert!(!create.build(&TestDriver).is_empty());
         create.build_into(&TestDriver, &mut out);
-        let drop = QueryBuilder::new().drop_table::<ExecutorItem>();
+        let drop = Sql().drop_table::<ExecutorItem>();
         assert!(!drop.build(&TestDriver).is_empty());
         drop.build_into(&TestDriver, &mut out);
         let rows = [ExecutorItem::default()];
-        let insert = QueryBuilder::new()
+        let insert = Sql()
             .insert_into(ExecutorItem::table())
             .values(&rows);
         let Either::Left(values) = insert.get_values() else {
@@ -372,20 +372,20 @@ mod tests {
         assert_eq!(values.count(), 1);
         assert!(!insert.build(&TestDriver).is_empty());
         insert.build_into(&TestDriver, &mut out);
-        let upsert = QueryBuilder::new()
+        let upsert = Sql()
             .insert_into(ExecutorItem::table())
             .values(&rows)
             .update();
         assert!(upsert.build(&TestDriver).as_str().contains("ON CONFLICT"));
         assert_eq!(
-            QueryBuilder::new()
+            Sql()
                 .delete_from("logs")
                 .where_expr(expr!(level == "debug"))
                 .build(&TestDriver)
                 .as_str(),
             "DELETE FROM \"logs\"\nWHERE level = 'debug';"
         );
-        let delete = QueryBuilder::new().delete_from(ExecutorItem::table());
+        let delete = Sql().delete_from(ExecutorItem::table());
         assert!(
             delete
                 .build(&TestDriver)
@@ -393,7 +393,7 @@ mod tests {
                 .starts_with("DELETE FROM")
         );
         delete.build_into(&TestDriver, &mut out);
-        let select = QueryBuilder::new()
+        let select = Sql()
             .select(ExecutorItem::columns())
             .from(ExecutorItem::table());
         assert!(!select.build(&TestDriver).is_empty());
@@ -404,7 +404,7 @@ mod tests {
     fn insert_without_entities() {
         // Table by name, columns by name, rows of values
         assert_eq!(
-            QueryBuilder::new()
+            Sql()
                 .insert_into("mytable")
                 .columns(["col_a", "col_b"])
                 .values([
@@ -432,7 +432,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert_eq!(
-            QueryBuilder::new()
+            Sql()
                 .insert_into(("analytics", "events"))
                 .columns(["id", "name", "score"])
                 .values(&rows)
@@ -448,7 +448,7 @@ mod tests {
 
         // Values of one type need no conversion
         assert_eq!(
-            QueryBuilder::new()
+            Sql()
                 .insert_into("points")
                 .columns(["x", "y"])
                 .values([[1, 2], [3, 4]])
@@ -464,7 +464,7 @@ mod tests {
 
         // No rows, no statement
         assert!(
-            QueryBuilder::new()
+            Sql()
                 .insert_into("mytable")
                 .columns(["col_a"])
                 .values(Vec::<[tank::Value; 1]>::new())
@@ -475,7 +475,7 @@ mod tests {
         // Rows carrying their column names
         let labels: tank::RowLabels = ["level", "message"].map(String::from).into();
         assert_eq!(
-            QueryBuilder::new()
+            Sql()
                 .insert_into("logs")
                 .columns(labels.iter().cloned())
                 .values(
@@ -497,7 +497,7 @@ mod tests {
 
         // The result of a query, tables and columns by name
         assert_eq!(
-            QueryBuilder::new()
+            Sql()
                 .insert_into(("analytics", "archive"))
                 .select(cols!(id, name))
                 .from(("analytics", "events"))

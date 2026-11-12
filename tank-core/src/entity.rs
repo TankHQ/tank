@@ -1,7 +1,7 @@
 use crate::{
-    ColumnDef, Context, Driver, DynQuery, Executor, Expression, Fragment, Query, QueryBuilder,
-    RawQuery, Result, Row, RowOwned, RowsAffected, TableRef, Value, future::Either, log_error,
-    stream::Stream, truncate_long, writer::SqlWriter,
+    ColumnDef, Context, Driver, DynQuery, Executor, Expression, Fragment, Query, RawQuery, Result,
+    Row, RowOwned, RowsAffected, Sql, TableRef, Value, future::Either, log_error, stream::Stream,
+    truncate_long, writer::SqlWriter,
 };
 use anyhow::anyhow;
 use futures::{FutureExt, StreamExt};
@@ -148,7 +148,7 @@ pub trait Entity: AsEntity + Expression {
         let mut query = DynQuery::default();
         executor.driver().sql_writer().write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(E::Entity::table())
                 .values([entity.as_entity()]),
         );
@@ -177,7 +177,7 @@ pub trait Entity: AsEntity + Expression {
         condition: impl Expression,
         limit: Option<u32>,
     ) -> impl Future<Output = Result<Query<Exec::Driver>>> + Send {
-        let builder = QueryBuilder::new()
+        let builder = Sql()
             .select(Self::columns())
             .from(Self::table())
             .where_expr(condition)
@@ -220,7 +220,7 @@ pub trait Entity: AsEntity + Expression {
     where
         Self: Sized,
     {
-        let builder = QueryBuilder::new()
+        let builder = Sql()
             .select(Self::columns())
             .from(Self::table())
             .where_expr(condition)
@@ -269,10 +269,7 @@ pub trait Entity: AsEntity + Expression {
         let mut query = DynQuery::default();
         executor.driver().sql_writer().write_insert(
             &mut query,
-            QueryBuilder::new()
-                .insert_into(Self::table())
-                .values([self])
-                .update(),
+            Sql().insert_into(Self::table()).values([self]).update(),
         );
         let sql = query.as_str();
         let context = format!("While saving using the query {}", truncate_long!(sql));

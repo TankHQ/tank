@@ -4,7 +4,7 @@ mod tests {
     use std::fmt::Write;
     use tank::{
         AsValue, Context, DynQuery, Entity, Expression, Fragment, GenericSqlWriter,
-        InsertIntoQuery, QueryBuilder, QueryResult, QueryResultOwned, RawQuery, RowOwned,
+        InsertIntoQuery, Sql, QueryResult, QueryResultOwned, RawQuery, RowOwned,
         RowsAffected, SqlWriter, TableRef, cols, expr,
     };
 
@@ -21,7 +21,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .select(MyTable::columns())
                 .from(MyTable::table()),
         );
@@ -96,7 +96,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .select(cols!(range))
                 .from(expr!(range(3)))
                 .where_expr(expr!(range > 0)),
@@ -124,7 +124,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .select([TheTable::second_column, TheTable::some_col])
                 .from(TheTable::table())
                 .where_expr(expr!(
@@ -154,7 +154,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .select(cols!(Orders::customer_id, SUM(Orders::amount)))
                 .from(Orders::table())
                 .where_expr(expr!(Orders::status == "completed"))
@@ -174,7 +174,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .select(cols!(Orders::customer_id as cid, SUM(Orders::amount)))
                 .from(Orders::table())
                 .group_by(cols!(Orders::customer_id as cid)),
@@ -201,7 +201,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .select(cols!(Sales::region, SUM(Sales::revenue)))
                 .from(Sales::table())
                 .where_expr(expr!(Sales::revenue > 0))
@@ -232,7 +232,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .select(Products::columns())
                 .from(Products::table())
                 .where_expr(expr!(Products::category == "electronics"))
@@ -261,7 +261,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .select(Events::columns())
                 .from(Events::table())
                 .order_by(cols!(Events::timestamp DESC))
@@ -290,7 +290,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .select(Employees::columns())
                 .from(Employees::table())
                 .order_by(cols!(Employees::department ASC, Employees::salary DESC)),
@@ -318,7 +318,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .select(cols!(
                     Transactions::account_id,
                     Transactions::category,
@@ -358,7 +358,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .select(cols!(
                     Metrics::region,
                     Metrics::service,
@@ -429,7 +429,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_insert(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Item::table())
                 .values(items.iter()),
         );
@@ -439,7 +439,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_insert(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Item::table())
                 .values(&items)
                 .update(),
@@ -467,7 +467,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_insert(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(archive)
                 .values(&items)
                 .update(),
@@ -488,7 +488,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_insert(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Item::table())
                 .columns(["id", "label"])
                 .values(&rows)
@@ -508,7 +508,7 @@ mod tests {
         // Without a primary key there is nothing to upsert on
         WRITER.write_insert(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .insert_into("logs")
                 .columns(["id", "label"])
                 .values(&rows)
@@ -527,7 +527,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_insert(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .insert_into("archive")
                 .select(Item::columns())
                 .from(Item::table())
@@ -548,7 +548,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_insert(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(("backup", "archive"))
                 .columns(["id", "label"])
                 .select(Item::columns())
@@ -574,7 +574,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .select(Limitable::columns())
                 .from(Limitable::table())
                 .order_by(cols!(Limitable::x ASC))
@@ -584,7 +584,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
-            QueryBuilder::new()
+            Sql()
                 .select(Limitable::columns())
                 .from(Limitable::table())
                 .order_by(cols!(Limitable::x ASC))
@@ -602,7 +602,7 @@ mod tests {
         }
         let gb = cols!(Tbl::col_a);
         let ob = cols!(Tbl::col_a ASC);
-        let q = QueryBuilder::new()
+        let q = Sql()
             .select(Tbl::columns())
             .from(Tbl::table())
             .where_expr(expr!(Tbl::col_a > 0))
@@ -627,42 +627,42 @@ mod tests {
         struct Foo {
             id: u32,
         }
-        assert!(!QueryBuilder::new().create_table::<Foo>().get_not_exists());
+        assert!(!Sql().create_table::<Foo>().get_not_exists());
         assert!(
-            QueryBuilder::new()
+            Sql()
                 .create_table::<Foo>()
                 .if_not_exists()
                 .get_not_exists()
         );
-        assert!(!QueryBuilder::new().drop_table::<Foo>().get_exists());
+        assert!(!Sql().drop_table::<Foo>().get_exists());
         assert!(
-            QueryBuilder::new()
+            Sql()
                 .drop_table::<Foo>()
                 .if_exists()
                 .get_exists()
         );
         let rows = vec![Foo { id: 1 }];
         assert!(
-            !QueryBuilder::new()
+            !Sql()
                 .insert_into(Foo::table())
                 .values(&rows)
                 .get_update()
         );
         assert!(
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Foo::table())
                 .values(&rows)
                 .update()
                 .get_update()
         );
         assert!(
-            QueryBuilder::new()
+            Sql()
                 .delete_from(Foo::table())
                 .get_where()
                 .is_none()
         );
         assert!(
-            QueryBuilder::new()
+            Sql()
                 .delete_from(Foo::table())
                 .where_expr(expr!(Foo::id == 1))
                 .get_where()

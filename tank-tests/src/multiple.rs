@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
-use tank::{AsValue, DynQuery, QueryBuilder, Result, Row, expr};
+use tank::{AsValue, DynQuery, Sql, Result, Row, expr};
 use tank::{
     Driver, Entity, Executor, QueryResult, SqlWriter,
     stream::{StreamExt, TryStreamExt},
@@ -51,7 +51,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     // 7
     writer.write_insert(
         &mut query,
-        QueryBuilder::new().insert_into(Two::table()).values(&[
+        Sql().insert_into(Two::table()).values(&[
             Two {
                 a2: 21,
                 string: "aaa".into(),
@@ -70,7 +70,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     // 8
     writer.write_insert(
         &mut query,
-        QueryBuilder::new().insert_into(Three::table()).values(&[
+        Sql().insert_into(Three::table()).values(&[
             Three {
                 string: "ddd".into(),
             },
@@ -82,7 +82,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     // 9
     writer.write_select(
         &mut query,
-        QueryBuilder::new()
+        Sql()
             .select([Three::string])
             .from(Three::table())
             .where_expr(true),
@@ -90,7 +90,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     // 10
     writer.write_insert(
         &mut query,
-        QueryBuilder::new().insert_into(One::table()).values(&[One {
+        Sql().insert_into(One::table()).values(&[One {
             a1: 11,
             string: "zzz".into(),
             c1: 512,
@@ -99,7 +99,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     // 11
     writer.write_select(
         &mut query,
-        QueryBuilder::new()
+        Sql()
             .select([One::a1, One::string, One::c1])
             .from(One::table())
             .where_expr(true),
@@ -107,7 +107,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     // 12
     writer.write_select(
         &mut query,
-        QueryBuilder::new()
+        Sql()
             .select([Two::a2, Two::string])
             .from(Two::table())
             .where_expr(true),
@@ -115,7 +115,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     // 13: An empty SELECT still contributes a statement result.
     writer.write_select(
         &mut query,
-        QueryBuilder::new()
+        Sql()
             .select([Two::a2, Two::string])
             .from(Two::table())
             .where_expr(false),

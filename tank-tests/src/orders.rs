@@ -1,7 +1,7 @@
 use rust_decimal::Decimal;
 use std::sync::LazyLock;
 use tank::{
-    Entity, Executor, FixedDecimal, QueryBuilder, Result, cols, expr, stream::TryStreamExt,
+    Entity, Executor, FixedDecimal, Sql, Result, cols, expr, stream::TryStreamExt,
 };
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -94,7 +94,7 @@ pub async fn orders(executor: &mut impl Executor) -> Result<()> {
     // Prepare
     let mut query = executor
         .prepare(
-            QueryBuilder::new()
+            Sql()
                 .select([
                     Order::id,
                     Order::customer_id,
@@ -170,7 +170,7 @@ pub async fn orders(executor: &mut impl Executor) -> Result<()> {
     // ORDER BY + LIMIT 1: should return the single most expensive order
     let top_order: Vec<String> = executor
         .fetch(
-            QueryBuilder::new()
+            Sql()
                 .select([
                     Order::id,
                     Order::customer_id,

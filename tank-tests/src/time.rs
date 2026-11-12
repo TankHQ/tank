@@ -4,7 +4,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tank::{
-    AsValue, Entity, Executor, Operand, QueryBuilder, Result, Row, cols, expr,
+    AsValue, Entity, Executor, Operand, Sql, Result, Row, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
@@ -185,7 +185,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     // Query timestamp 1
     let mut query_timestamp_1 = executor
         .prepare(
-            QueryBuilder::new()
+            Sql()
                 .select([Times::timestamp_1])
                 .from(Times::table())
                 .where_expr(expr!(Times::timestamp_2 > ?))
@@ -246,7 +246,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     // Query timestamp 2
     let mut query_timestamp_2 = executor
         .prepare(
-            QueryBuilder::new()
+            Sql()
                 .select([Times::timestamp_2])
                 .from(Times::table())
                 .where_expr(expr!(Times::timestamp_1 <= ?))
@@ -280,7 +280,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     // Query time 1
     let mut query_time_1 = executor
         .prepare(
-            QueryBuilder::new()
+            Sql()
                 .select([Times::time_1])
                 .from(Times::table())
                 .where_expr(true)
@@ -312,7 +312,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
         - 2;
     let timestamp_ms = executor
         .fetch(
-            QueryBuilder::new()
+            Sql()
                 .select([&Operand::CurrentTimestampMs])
                 .from(Times::table())
                 .where_expr(true)

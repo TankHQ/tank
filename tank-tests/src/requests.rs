@@ -8,7 +8,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tank::{
-    AsValue, Entity, Executor, QueryBuilder, Result, Value, ValueOwned, anyhow,
+    AsValue, Entity, Executor, Sql, Result, Value, ValueOwned, anyhow,
     current_timestamp_ms, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
@@ -164,7 +164,7 @@ pub async fn requests(executor: &mut impl Executor) -> Result<()> {
     {
         let mut violated_limits = executor
             .prepare(
-                QueryBuilder::new()
+                Sql()
                     .select([
                         RequestLimit::target_pattern,
                         RequestLimit::requests,

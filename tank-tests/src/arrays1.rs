@@ -2,7 +2,7 @@
 #![allow(unused_imports)]
 use std::{borrow::Cow, pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, RawQuery, Result,
+    Driver, DynQuery, Entity, Executor, Query, Sql, QueryResult, RawQuery, Result,
     SqlWriter, cols, stream::TryStreamExt,
 };
 use tokio::sync::Mutex;
@@ -127,13 +127,13 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
         };
         writer.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Arrays1::table())
                 .values([value].iter()),
         );
         writer.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select(cols!(*))
                 .from(Arrays1::table())
                 .where_expr(true),
@@ -150,20 +150,20 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
         };
         writer.write_insert(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .insert_into(Arrays2::table())
                 .values([value].iter()),
         );
         writer.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select([Arrays2::alpha, Arrays2::bravo, Arrays2::charlie])
                 .from(Arrays2::table())
                 .where_expr(true),
         );
         writer.write_select(
             &mut query,
-            QueryBuilder::new()
+            Sql()
                 .select([Arrays2::delta, Arrays2::echo])
                 .from(Arrays2::table())
                 .where_expr(true),
