@@ -1,44 +1,49 @@
-use crate::{Driver, DynQuery, Entity, NA, SqlWriter};
+use crate::{Driver, DynQuery, NA, SqlWriter, TableRef};
 use std::marker::PhantomData;
 
-pub struct DropTableQueryBuilder<Table: Entity, Exists> {
+pub struct DropTableQueryBuilder<Exists> {
+    pub(crate) table: TableRef,
     pub(crate) if_exists: bool,
-    pub(crate) _table: PhantomData<Table>,
     pub(crate) _e: PhantomData<Exists>,
 }
 
-impl<T: Entity> DropTableQueryBuilder<T, NA> {
-    pub fn if_exists(self) -> DropTableQueryBuilder<T, bool> {
+impl DropTableQueryBuilder<NA> {
+    pub fn if_exists(self) -> DropTableQueryBuilder<bool> {
         DropTableQueryBuilder {
+            table: self.table,
             if_exists: true,
-            _table: self._table,
             _e: Default::default(),
         }
     }
 }
 
-impl<T: Entity, E> DropTableQueryBuilder<T, E> {
+impl<E> DropTableQueryBuilder<E> {
+    pub fn get_table(&self) -> &TableRef {
+        &self.table
+    }
+
     pub fn get_exists(&self) -> bool {
         self.if_exists
     }
 
     pub fn build<D: Driver>(&self, driver: &D) -> DynQuery {
-        let writer = driver.sql_writer();
         let mut query = DynQuery::default();
-        writer.write_drop_table::<T>(&mut query, self.if_exists);
+        self.build_into(driver, &mut query);
         query
     }
 
     pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
         let writer = driver.sql_writer();
-        writer.write_drop_table::<T>(out, self.if_exists);
+        writer.write_drop_table(out, &self.table, self.if_exists);
     }
 }
 
 /// DROP TABLE query builder.
 ///
-/// Use `Sql.drop_table::<Entity>()` to start.
-pub trait DropTableQuery<Table: Entity> {
+/// Use `Sql.drop_table(table)` to start.
+pub trait DropTableQuery {
+    /// Get the table metadata.
+    fn get_table(&self) -> &TableRef;
     fn get_exists(&self) -> bool;
     /// Build query.
     fn build<D: Driver>(&self, driver: &D) -> DynQuery;
@@ -46,7 +51,11 @@ pub trait DropTableQuery<Table: Entity> {
     fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery);
 }
 
-impl<T: Entity, E> DropTableQuery<T> for DropTableQueryBuilder<T, E> {
+impl<E> DropTableQuery for DropTableQueryBuilder<E> {
+    fn get_table(&self) -> &TableRef {
+        self.get_table()
+    }
+
     fn get_exists(&self) -> bool {
         self.get_exists()
     }

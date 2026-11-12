@@ -1,44 +1,49 @@
-use crate::{Driver, DynQuery, Entity, NA, SqlWriter};
+use crate::{Driver, DynQuery, NA, SqlWriter, TableRef};
 use std::marker::PhantomData;
 
-pub struct CreateTableQueryBuilder<Table: Entity, Exists> {
+pub struct CreateTableQueryBuilder<Exists> {
+    pub(crate) table: TableRef,
     pub(crate) if_not_exists: bool,
-    pub(crate) _table: PhantomData<Table>,
     pub(crate) _e: PhantomData<Exists>,
 }
 
-impl<T: Entity> CreateTableQueryBuilder<T, NA> {
-    pub fn if_not_exists(self) -> CreateTableQueryBuilder<T, bool> {
+impl CreateTableQueryBuilder<NA> {
+    pub fn if_not_exists(self) -> CreateTableQueryBuilder<bool> {
         CreateTableQueryBuilder {
+            table: self.table,
             if_not_exists: true,
-            _table: self._table,
             _e: Default::default(),
         }
     }
 }
 
-impl<T: Entity, E> CreateTableQueryBuilder<T, E> {
+impl<E> CreateTableQueryBuilder<E> {
+    pub fn get_table(&self) -> &TableRef {
+        &self.table
+    }
+
     pub fn get_not_exists(&self) -> bool {
         self.if_not_exists
     }
 
     pub fn build<D: Driver>(&self, driver: &D) -> DynQuery {
-        let writer = driver.sql_writer();
         let mut query = DynQuery::default();
-        writer.write_create_table::<T>(&mut query, self.if_not_exists);
+        self.build_into(driver, &mut query);
         query
     }
 
     pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
         let writer = driver.sql_writer();
-        writer.write_create_table::<T>(out, self.if_not_exists);
+        writer.write_create_table(out, &self.table, self.if_not_exists);
     }
 }
 
 /// CREATE TABLE query builder.
 ///
-/// Use `Sql.create_table::<Entity>()` to start.
-pub trait CreateTableQuery<Table: Entity> {
+/// Use `Sql.create_table(table)` to start, the table carries the columns and constraints (as `Entity::table()` does).
+pub trait CreateTableQuery {
+    /// Get the table metadata.
+    fn get_table(&self) -> &TableRef;
     fn get_not_exists(&self) -> bool;
     /// Build query.
     fn build<D: Driver>(&self, driver: &D) -> DynQuery;
@@ -46,7 +51,11 @@ pub trait CreateTableQuery<Table: Entity> {
     fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery);
 }
 
-impl<T: Entity, E> CreateTableQuery<T> for CreateTableQueryBuilder<T, E> {
+impl<E> CreateTableQuery for CreateTableQueryBuilder<E> {
+    fn get_table(&self) -> &TableRef {
+        self.get_table()
+    }
+
     fn get_not_exists(&self) -> bool {
         self.get_not_exists()
     }

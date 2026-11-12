@@ -11,8 +11,7 @@ pub use insert_into::*;
 pub use select::*;
 
 use crate::{
-    Context, Dataset, DynQuery, Entity, Expression, ExpressionVisitor, OpPrecedence, SqlWriter,
-    TableRef,
+    Context, Dataset, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, TableRef,
 };
 use std::{borrow::Cow, iter};
 
@@ -52,17 +51,17 @@ impl Sql {
             where_expr: Default::default(),
         }
     }
-    pub fn create_table<E: Entity>(self) -> CreateTableQueryBuilder<E, NA> {
+    pub fn create_table(self, table: impl Into<TableRef>) -> CreateTableQueryBuilder<NA> {
         CreateTableQueryBuilder {
+            table: table.into(),
             if_not_exists: Default::default(),
-            _table: Default::default(),
             _e: Default::default(),
         }
     }
-    pub fn drop_table<E: Entity>(self) -> DropTableQueryBuilder<E, NA> {
+    pub fn drop_table(self, table: impl Into<TableRef>) -> DropTableQueryBuilder<NA> {
         DropTableQueryBuilder {
+            table: table.into(),
             if_exists: Default::default(),
-            _table: Default::default(),
             _e: Default::default(),
         }
     }

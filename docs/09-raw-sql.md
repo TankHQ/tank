@@ -29,9 +29,9 @@ struct Three { string: String }
 
 let writer = executor.driver().sql_writer();
 let mut query = DynQuery::default();
-writer.write_create_table::<One>(&mut query, true);
-writer.write_create_table::<Two>(&mut query, true);
-writer.write_create_table::<Three>(&mut query, true);
+writer.write_create_table(&mut query, One::table(), true);
+writer.write_create_table(&mut query, Two::table(), true);
+writer.write_create_table(&mut query, Three::table(), true);
 writer.write_insert(&mut query, Sql.insert_into(Two::table()).values(&[Two { a2: 21, string: "aaa".into() }, Two { a2: 22, string: "bbb".into() }, Two { a2: 23, string: "eee".into() }]));
 writer.write_insert(&mut query, Sql.insert_into(Three::table()).values(&[Three { string: "ddd".into() }, Three { string: "ccc".into() }]));
 writer.write_select(
@@ -135,7 +135,7 @@ let messages: Vec<_> = executor
 Prepared statements reuse backend preparation state when available. Parameter conversion failures may surface during binding or execution, depending on the driver.
 
 ### Notes & Driver Support
-- `SqlWriter::write_create_table::<T>(&mut sql, if_not_exists)` emits only table DDL. Use `write_create_schema` separately, or `Entity::create_table` to coordinate schema and table creation.
+- `SqlWriter::write_create_table(&mut sql, T::table(), if_not_exists)` emits only table DDL. Use `write_create_schema` separately, or `Entity::create_table` to coordinate schema and table creation.
 - Streams returned by `executor.run(...)` are ordered by statement execution; interleave `Affected` and `Row` accordingly.
 - `executor.fetch(...)` is convenient for row-only workloads, but it discards `Affected` results from mixed batches. Use `run(...)` when you need both result types.
 - When selecting a subset of columns, ensure the labels match the entity fields present. Missing labels require `Default` on the entity, not just on the omitted field types.

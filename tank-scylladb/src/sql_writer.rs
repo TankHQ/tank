@@ -4,8 +4,8 @@ use indoc::indoc;
 use std::fmt::Write;
 use std::{collections::BTreeMap, iter};
 use tank_core::{
-    ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment, GenericSqlWriter,
-    InsertIntoQuery, Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, future::Either,
+    ColumnDef, Context, Dataset, DynQuery, Expression, Fragment, GenericSqlWriter, InsertIntoQuery,
+    Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, TableRef, Value, future::Either,
     separated_by,
 };
 use uuid::Uuid;
@@ -238,18 +238,16 @@ impl SqlWriter for ScyllaDBSqlWriter {
 
     fn write_transaction_rollback(&self, _out: &mut DynQuery) {}
 
-    fn write_create_schema<E>(&self, out: &mut DynQuery, if_not_exists: bool)
+    fn write_create_schema(&self, out: &mut DynQuery, table: &TableRef, if_not_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table();
         out.buffer().reserve(128 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("CREATE KEYSPACE ");
-        let mut context = Context::new(Fragment::SqlCreateSchema, E::table().qualified_columns());
+        let mut context = Context::new(Fragment::SqlCreateSchema, table.qualified_columns());
         if if_not_exists {
             out.push_str("IF NOT EXISTS ");
         }
@@ -263,13 +261,11 @@ impl SqlWriter for ScyllaDBSqlWriter {
         "#});
     }
 
-    fn write_drop_schema<E>(&self, out: &mut DynQuery, if_exists: bool)
+    fn write_drop_schema(&self, out: &mut DynQuery, table: &TableRef, if_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
-        let mut context = Context::new(Fragment::SqlDropSchema, E::table().qualified_columns());
-        let table = E::table();
+        let mut context = Context::new(Fragment::SqlDropSchema, table.qualified_columns());
         out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');

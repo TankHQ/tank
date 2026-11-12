@@ -374,12 +374,12 @@ mod tests {
             name: String,
         }
         let mut sql = DynQuery::default();
-        WRITER.write_create_table::<Widget>(&mut sql, false);
+        WRITER.write_create_table(&mut sql, Widget::table(), false);
         let result = sql.as_str();
         assert!(result.contains("CREATE TABLE"));
         assert!(result.contains("\"widget\""));
         let mut sql = DynQuery::default();
-        WRITER.write_create_table::<Widget>(&mut sql, true);
+        WRITER.write_create_table(&mut sql, Widget::table(), true);
         assert!(sql.as_str().contains("IF NOT EXISTS"));
     }
 
@@ -390,10 +390,10 @@ mod tests {
             id: u32,
         }
         let mut sql = DynQuery::default();
-        WRITER.write_drop_table::<Widget>(&mut sql, false);
+        WRITER.write_drop_table(&mut sql, Widget::table(), false);
         assert!(sql.as_str().contains("DROP TABLE"));
         let mut sql = DynQuery::default();
-        WRITER.write_drop_table::<Widget>(&mut sql, true);
+        WRITER.write_drop_table(&mut sql, Widget::table(), true);
         assert!(sql.as_str().contains("IF EXISTS"));
     }
 
@@ -598,10 +598,14 @@ mod tests {
         struct Foo {
             id: u32,
         }
-        assert!(!Sql.create_table::<Foo>().get_not_exists());
-        assert!(Sql.create_table::<Foo>().if_not_exists().get_not_exists());
-        assert!(!Sql.drop_table::<Foo>().get_exists());
-        assert!(Sql.drop_table::<Foo>().if_exists().get_exists());
+        assert!(!Sql.create_table(Foo::table()).get_not_exists());
+        assert!(
+            Sql.create_table(Foo::table())
+                .if_not_exists()
+                .get_not_exists()
+        );
+        assert!(!Sql.drop_table(Foo::table()).get_exists());
+        assert!(Sql.drop_table(Foo::table()).if_exists().get_exists());
         let rows = vec![Foo { id: 1 }];
         assert!(!Sql.insert_into(Foo::table()).values(&rows).get_update());
         assert!(

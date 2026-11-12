@@ -16,9 +16,9 @@ use mongodb::{
 use std::{borrow::Cow, collections::HashMap, f64, mem, ops::Deref, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, Case, ColumnDef, ColumnRef, Context, Dataset, DynQuery,
-    Entity, Expression, FindOrder, Fragment, InsertIntoQuery, Interval, IsAggregateFunction,
-    IsAsterisk, IsConstant, Operand, Order, Result, Row, RowLabels, RowOwned, SelectQuery,
-    SqlWriter, TableRef, UnaryOp, UnaryOpType, Value, anyhow, future::Either, truncate_long,
+    Expression, FindOrder, Fragment, InsertIntoQuery, Interval, IsAggregateFunction, IsAsterisk,
+    IsConstant, Operand, Order, Result, Row, RowLabels, RowOwned, SelectQuery, SqlWriter, TableRef,
+    UnaryOp, UnaryOpType, Value, anyhow, future::Either, truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -836,48 +836,45 @@ impl SqlWriter for MongoDBSqlWriter {
         document.insert(function, arg);
     }
 
-    fn write_create_schema<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
+    fn write_create_schema(&self, out: &mut DynQuery, table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         Self::prepare_query(
             out,
             &mut Context::empty(),
             CreateDatabasePayload {
-                table: E::table().clone(),
+                table: table.clone(),
             }
             .into(),
         );
     }
 
-    fn write_drop_schema<E>(&self, out: &mut DynQuery, _if_exists: bool)
+    fn write_drop_schema(&self, out: &mut DynQuery, table: &TableRef, _if_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         Self::prepare_query(
             out,
             &mut Context::empty(),
             DropDatabasePayload {
-                table: E::table().clone(),
+                table: table.clone(),
             }
             .into(),
         );
     }
 
-    fn write_create_table<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
+    fn write_create_table(&self, out: &mut DynQuery, table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table().clone();
+        let table = table.clone();
         let name = table.full_name(self.separator());
         Self::prepare_query(
             out,
             &mut Context::empty(),
             CreateCollectionPayload {
-                table: E::table().clone(),
+                table: table.clone(),
                 options: CreateCollectionOptions::builder()
                     .comment(Bson::String(format!("Tank: create collection {name}")))
                     .build(),
@@ -894,16 +891,15 @@ impl SqlWriter for MongoDBSqlWriter {
     ) {
     }
 
-    fn write_drop_table<E>(&self, out: &mut DynQuery, _if_exists: bool)
+    fn write_drop_table(&self, out: &mut DynQuery, table: &TableRef, _if_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         Self::prepare_query(
             out,
             &mut Context::empty(),
             DropCollectionPayload {
-                table: E::table().clone(),
+                table: table.clone(),
             }
             .into(),
         );

@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn product_sql() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<Product>(&mut query, false);
+        WRITER.write_create_table(&mut query, Product::table(), false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"

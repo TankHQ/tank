@@ -84,7 +84,7 @@ mod tests {
     #[test]
     fn simple_entity_sql() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<SomeSimpleEntity>(&mut query, false);
+        WRITER.write_create_table(&mut query, SomeSimpleEntity::table(), false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -99,7 +99,7 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_drop_table::<SomeSimpleEntity>(&mut query, true);
+        WRITER.write_drop_table(&mut query, SomeSimpleEntity::table(), true);
         assert_eq!(query.as_str(), r#"DROP TABLE IF EXISTS "simple_entity";"#);
         let mut query = DynQuery::default();
         WRITER.write_select(

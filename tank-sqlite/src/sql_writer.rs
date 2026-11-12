@@ -4,8 +4,8 @@ use std::{
     mem,
 };
 use tank_core::{
-    ColumnDef, ColumnRef, Context, DynQuery, Entity, Expression, GenericSqlWriter, SqlWriter,
-    TableRef, Value, write_escaped,
+    ColumnDef, ColumnRef, Context, DynQuery, Expression, GenericSqlWriter, SqlWriter, TableRef,
+    Value, write_escaped,
 };
 
 /// SQL writer for SQLite dialect.
@@ -172,18 +172,16 @@ impl SqlWriter for SQLiteSqlWriter {
         log::error!("SQLite does not support maps");
     }
 
-    fn write_create_schema<E>(&self, _out: &mut DynQuery, _if_not_exists: bool)
+    fn write_create_schema(&self, _out: &mut DynQuery, _table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         // SQLite does not support schema
     }
 
-    fn write_drop_schema<E>(&self, _out: &mut DynQuery, _if_exists: bool)
+    fn write_drop_schema(&self, _out: &mut DynQuery, _table: &TableRef, _if_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         // SQLite does not support schema
     }

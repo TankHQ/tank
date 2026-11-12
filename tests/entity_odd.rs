@@ -135,7 +135,7 @@ mod tests {
     #[test]
     fn odd_entity_sql() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<MyEntity>(&mut query, true);
+        WRITER.write_create_table(&mut query, MyEntity::table(), true);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -151,7 +151,7 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_drop_table::<MyEntity>(&mut query, false);
+        WRITER.write_drop_table(&mut query, MyEntity::table(), false);
         assert_eq!(query.as_str(), r#"DROP TABLE "a_table";"#);
         let mut query = DynQuery::default();
         WRITER.write_select(
@@ -262,7 +262,7 @@ mod tests {
     #[test]
     fn references_ddl() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<Animal>(&mut query, true);
+        WRITER.write_create_table(&mut query, Animal::table(), true);
         let sql = query.as_str().into_owned();
         assert!(sql.contains("FOREIGN KEY (\"farm_id\") REFERENCES \"farms\"(\"id\")"));
         assert!(

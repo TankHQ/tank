@@ -195,7 +195,7 @@ impl Executor for PostgresConnection {
             )
         };
         let mut query = DynQuery::default();
-        writer.write_copy::<E<It>>(&mut query);
+        writer.write_copy(&mut query, E::<It>::table());
         let sink = match self
             .client
             .copy_in(&query.as_str() as &str)

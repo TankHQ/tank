@@ -28,8 +28,8 @@ pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
     {
         let mut query = DynQuery::default();
         let writer = executor.driver().sql_writer();
-        writer.write_drop_table::<Container>(&mut query, true);
-        writer.write_create_table::<Container>(&mut query, true);
+        writer.write_drop_table(&mut query, Container::table(), true);
+        writer.write_create_table(&mut query, Container::table(), true);
         let value = Container {
             first: [[
                 Interval::from_years(500),

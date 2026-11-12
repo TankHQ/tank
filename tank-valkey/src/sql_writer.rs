@@ -2,9 +2,8 @@ use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
 use std::{fmt::Write, mem};
 use tank_core::{
-    AsValue, Case, ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment,
-    InsertIntoQuery, IsAsterisk, SelectQuery, SqlWriter, TableRef, Value, column_def,
-    future::Either,
+    AsValue, Case, ColumnDef, Context, Dataset, DynQuery, Expression, Fragment, InsertIntoQuery,
+    IsAsterisk, SelectQuery, SqlWriter, TableRef, Value, column_def, future::Either,
 };
 
 pub struct ValkeySqlWriter {
@@ -77,26 +76,23 @@ impl SqlWriter for ValkeySqlWriter {
         log::error!("Valkey does not support CASE expressions");
     }
 
-    fn write_create_schema<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
+    fn write_create_schema(&self, out: &mut DynQuery, _table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         Self::prepare_query(out, &mut Default::default());
     }
 
-    fn write_drop_schema<E>(&self, out: &mut DynQuery, _if_exists: bool)
+    fn write_drop_schema(&self, out: &mut DynQuery, _table: &TableRef, _if_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         Self::prepare_query(out, &mut Default::default());
     }
 
-    fn write_create_table<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
+    fn write_create_table(&self, out: &mut DynQuery, _table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         Self::prepare_query(out, &mut Default::default());
     }
@@ -109,10 +105,9 @@ impl SqlWriter for ValkeySqlWriter {
     ) {
     }
 
-    fn write_drop_table<E>(&self, out: &mut DynQuery, _if_exists: bool)
+    fn write_drop_table(&self, out: &mut DynQuery, _table: &TableRef, _if_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         log::error!("Valkey/Redis does not implement drop table, it must be done separately");
         Self::prepare_query(out, &mut Default::default());

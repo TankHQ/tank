@@ -356,10 +356,10 @@ mod tests {
         ));
         assert_eq!(na.expr_iter().count(), 0);
 
-        let create = Sql.create_table::<ExecutorItem>();
+        let create = Sql.create_table(ExecutorItem::table());
         assert!(!create.build(&TestDriver).is_empty());
         create.build_into(&TestDriver, &mut out);
-        let drop = Sql.drop_table::<ExecutorItem>();
+        let drop = Sql.drop_table(ExecutorItem::table());
         assert!(!drop.build(&TestDriver).is_empty());
         drop.build_into(&TestDriver, &mut out);
         let rows = [ExecutorItem::default()];

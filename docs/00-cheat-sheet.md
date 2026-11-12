@@ -237,7 +237,7 @@ use tank::{DynQuery, Entity, Sql, SqlWriter, stream::TryStreamExt};
 let writer = connection.driver().sql_writer();
 let mut query = DynQuery::default();
 
-writer.write_create_table::<EntityExample>(&mut query, true);
+writer.write_create_table(&mut query, EntityExample::table(), true);
 writer.write_insert(
     &mut query,
     Sql

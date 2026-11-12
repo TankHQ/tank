@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fmt::Write};
 use tank_core::{
-    ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment, SqlWriter, Value,
+    ColumnDef, Context, Dataset, DynQuery, Expression, Fragment, SqlWriter, TableRef, Value,
     separated_by,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
@@ -10,19 +10,15 @@ pub struct PostgresSqlWriter {}
 
 impl PostgresSqlWriter {
     /// Write COPY FROM STDIN BINARY.
-    pub fn write_copy<E>(&self, out: &mut DynQuery)
-    where
-        Self: Sized,
-        E: Entity,
-    {
+    pub fn write_copy(&self, out: &mut DynQuery, table: &TableRef) {
         out.buffer().reserve(128);
         out.push_str("COPY ");
-        let mut context = Context::new(Default::default(), E::table().qualified_columns());
-        self.write_table_ref(&mut context, out, E::table());
+        let mut context = Context::new(Default::default(), table.qualified_columns());
+        self.write_table_ref(&mut context, out, table);
         out.push_str(" (");
         separated_by(
             out,
-            E::columns().iter(),
+            table.columns.iter(),
             |out, col| {
                 self.write_identifier(&mut context, out, col.name(), true);
             },

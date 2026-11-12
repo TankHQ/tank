@@ -1,5 +1,5 @@
 use crate::{
-    Action, BinaryOp, BinaryOpType, Case, ColumnDef, ColumnRef, Dataset, DynQuery, Entity, Error,
+    Action, BinaryOp, BinaryOpType, Case, ColumnDef, ColumnRef, Dataset, DynQuery, Error,
     Expression, Fragment, InsertIntoQuery, Interval, IsTrue, Join, JoinType, Operand, Order,
     Ordered, PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, WriteInList,
     future::Either, possibly_parenthesized, separated_by, write_escaped, write_zero_padded,
@@ -935,18 +935,16 @@ pub trait SqlWriter: Send {
     }
 
     /// Emit CREATE SCHEMA.
-    fn write_create_schema<E>(&self, out: &mut DynQuery, if_not_exists: bool)
+    fn write_create_schema(&self, out: &mut DynQuery, table: &TableRef, if_not_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table();
         out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("CREATE SCHEMA ");
-        let mut context = Context::new(Fragment::SqlCreateSchema, E::table().qualified_columns());
+        let mut context = Context::new(Fragment::SqlCreateSchema, table.qualified_columns());
         if if_not_exists {
             out.push_str("IF NOT EXISTS ");
         }
@@ -955,13 +953,11 @@ pub trait SqlWriter: Send {
     }
 
     /// Emit DROP SCHEMA.
-    fn write_drop_schema<E>(&self, out: &mut DynQuery, if_exists: bool)
+    fn write_drop_schema(&self, out: &mut DynQuery, table: &TableRef, if_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
-        let mut context = Context::new(Fragment::SqlDropSchema, E::table().qualified_columns());
-        let table = E::table();
+        let mut context = Context::new(Fragment::SqlDropSchema, table.qualified_columns());
         out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
@@ -975,14 +971,12 @@ pub trait SqlWriter: Send {
     }
 
     /// Emit CREATE TABLE with columns and constraints.
-    fn write_create_table<E>(&self, out: &mut DynQuery, if_not_exists: bool)
+    fn write_create_table(&self, out: &mut DynQuery, table: &TableRef, if_not_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
-        let mut context = Context::new(Fragment::SqlCreateTable, E::table().qualified_columns());
-        let table = E::table();
-        let estimated = 128 + E::columns().len() * 64 + E::primary_key_def().len() * 24;
+        let mut context = Context::new(Fragment::SqlCreateTable, table.qualified_columns());
+        let estimated = 128 + table.columns.len() * 64 + table.primary_key.len() * 24;
         out.buffer().reserve(estimated);
         if !out.is_empty() {
             out.push('\n');
@@ -995,22 +989,22 @@ pub trait SqlWriter: Send {
         out.push_str(" (\n");
         separated_by(
             out,
-            E::columns(),
+            table.columns,
             |out, col| {
                 self.write_create_table_column_fragment(&mut context, out, col);
             },
             ",\n",
         );
-        let pk = E::primary_key_def();
+        let pk = table.primary_key;
         if pk.len() > 1 {
             self.write_create_table_primary_key_fragment(&mut context, out, pk.iter().map(|v| *v));
         }
-        for unique in E::unique_defs() {
+        for unique in table.unique {
             if unique.len() > 0 {
                 out.push_str(",\nUNIQUE (");
                 separated_by(
                     out,
-                    unique,
+                    unique.iter(),
                     |out, col| {
                         self.write_identifier(
                             &mut context
@@ -1026,7 +1020,7 @@ pub trait SqlWriter: Send {
                 out.push(')');
             }
         }
-        let foreign_keys = E::columns().iter().filter(|c| c.references.is_some());
+        let foreign_keys = table.columns.iter().filter(|c| c.references.is_some());
         separated_by(
             out,
             foreign_keys,
@@ -1160,19 +1154,17 @@ pub trait SqlWriter: Send {
     }
 
     /// Write DROP TABLE statement.
-    fn write_drop_table<E>(&self, out: &mut DynQuery, if_exists: bool)
+    fn write_drop_table(&self, out: &mut DynQuery, table: &TableRef, if_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table();
         out.buffer()
             .reserve(32 + table.schema.len() + table.name.len());
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("DROP TABLE ");
-        let mut context = Context::new(Fragment::SqlDropTable, E::table().qualified_columns());
+        let mut context = Context::new(Fragment::SqlDropTable, table.qualified_columns());
         if if_exists {
             out.push_str("IF EXISTS ");
         }

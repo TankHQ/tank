@@ -158,7 +158,7 @@ mod tests {
     #[test]
     fn employee_sql() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<Employee>(&mut query, false);
+        WRITER.write_create_table(&mut query, Employee::table(), false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -176,7 +176,7 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_drop_table::<Employee>(&mut query, true);
+        WRITER.write_drop_table(&mut query, Employee::table(), true);
         assert_eq!(
             query.as_str(),
             r#"DROP TABLE IF EXISTS "company"."employee";"#

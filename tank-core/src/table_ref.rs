@@ -16,6 +16,8 @@ pub struct TableRef {
     pub columns: &'static [ColumnDef],
     /// List of columns forming the primary key.
     pub primary_key: &'static [&'static ColumnDef],
+    /// Unique constraints, each a list of columns.
+    pub unique: &'static [&'static [&'static ColumnDef]],
 }
 
 impl TableRef {
@@ -27,6 +29,7 @@ impl TableRef {
             alias: Cow::Borrowed(""),
             columns: &[],
             primary_key: &[],
+            unique: &[],
         }
     }
     /// Returns the fully qualified name (schema.table) or the alias if one is present.

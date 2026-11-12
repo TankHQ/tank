@@ -118,7 +118,7 @@ mod tests {
                 name: "will be dropped".into(),
             }]),
         );
-        writer.write_drop_table::<Item>(&mut query, true);
+        writer.write_drop_table(&mut query, Item::table(), true);
 
         let payload = query
             .as_prepared::<MongoDBDriver>()

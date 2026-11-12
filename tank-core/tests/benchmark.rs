@@ -268,10 +268,10 @@ mod tests {
                 )
             }),
             measure("create_table", |out| {
-                WRITER.write_create_table::<Wide>(out, true)
+                WRITER.write_create_table(out, Wide::table(), true)
             }),
             measure("drop_table", |out| {
-                WRITER.write_drop_table::<Wide>(out, true)
+                WRITER.write_drop_table(out, Wide::table(), true)
             }),
         ];
         println!(

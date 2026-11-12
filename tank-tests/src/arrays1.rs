@@ -106,10 +106,10 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
     {
         let mut query = DynQuery::default();
         let writer = executor.driver().sql_writer();
-        writer.write_drop_table::<Arrays1>(&mut query, true);
-        writer.write_create_table::<Arrays1>(&mut query, true);
-        writer.write_drop_table::<Arrays2>(&mut query, true);
-        writer.write_create_table::<Arrays2>(&mut query, true);
+        writer.write_drop_table(&mut query, Arrays1::table(), true);
+        writer.write_create_table(&mut query, Arrays1::table(), true);
+        writer.write_drop_table(&mut query, Arrays2::table(), true);
+        writer.write_create_table(&mut query, Arrays2::table(), true);
         let value = Arrays1 {
             #[cfg(not(feature = "disable-intervals"))]
             aa: [

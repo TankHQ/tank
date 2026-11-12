@@ -26,7 +26,7 @@ mod tests {
         // CREATE TABLE
         {
             let mut query = DynQuery::default();
-            WRITER.write_create_table::<Table>(&mut query, false);
+            WRITER.write_create_table(&mut query, Table::table(), false);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -41,7 +41,7 @@ mod tests {
         // DROP TABLE IF EXISTS
         {
             let mut query = DynQuery::default();
-            WRITER.write_drop_table::<Table>(&mut query, true);
+            WRITER.write_drop_table(&mut query, Table::table(), true);
             assert_eq!(query.as_str(), r#"DROP TABLE IF EXISTS "my_table";"#);
         }
         // SELECT
@@ -119,7 +119,7 @@ mod tests {
         // CREATE TABLE IF NOT EXISTS
         {
             let mut query = DynQuery::default();
-            WRITER.write_create_table::<Cart>(&mut query, true);
+            WRITER.write_create_table(&mut query, Cart::table(), true);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -137,7 +137,7 @@ mod tests {
         // DROP TABLE
         {
             let mut query = DynQuery::default();
-            WRITER.write_drop_table::<Cart>(&mut query, false);
+            WRITER.write_drop_table(&mut query, Cart::table(), false);
             assert_eq!(query.as_str(), r#"DROP TABLE "cart";"#);
         }
         // SELECT with LIMIT

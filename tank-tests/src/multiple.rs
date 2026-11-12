@@ -34,19 +34,19 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     let writer = executor.driver().sql_writer();
     query.push_str("    \n\n  \n \n\t\t\n   \n    ");
     // 1
-    writer.write_drop_table::<One>(&mut query, true);
+    writer.write_drop_table(&mut query, One::table(), true);
     query.push_str("\t\t");
     // 2
-    writer.write_drop_table::<Two>(&mut query, true);
+    writer.write_drop_table(&mut query, Two::table(), true);
     // 3
-    writer.write_drop_table::<Three>(&mut query, true);
+    writer.write_drop_table(&mut query, Three::table(), true);
     // 4
-    writer.write_create_table::<One>(&mut query, true);
+    writer.write_create_table(&mut query, One::table(), true);
     query.push('\n');
     // 5
-    writer.write_create_table::<Two>(&mut query, true);
+    writer.write_create_table(&mut query, Two::table(), true);
     // 6
-    writer.write_create_table::<Three>(&mut query, true);
+    writer.write_create_table(&mut query, Three::table(), true);
     query.push_str(" ");
     // 7
     writer.write_insert(

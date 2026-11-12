@@ -127,7 +127,7 @@ mod tests {
     #[test]
     fn customer_sql() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<Customer>(&mut query, false);
+        WRITER.write_create_table(&mut query, Customer::table(), false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -155,7 +155,7 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_drop_table::<Customer>(&mut query, false);
+        WRITER.write_drop_table(&mut query, Customer::table(), false);
         assert_eq!(query.as_str(), r#"DROP TABLE "customers";"#);
         let mut query = DynQuery::default();
         WRITER.write_select(

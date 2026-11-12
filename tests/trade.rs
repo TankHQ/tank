@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn trade_sql() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<Trade>(&mut query, false);
+        WRITER.write_create_table(&mut query, Trade::table(), false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -265,7 +265,7 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_drop_table::<Trade>(&mut query, true);
+        WRITER.write_drop_table(&mut query, Trade::table(), true);
         assert_eq!(
             query.as_str(),
             r#"DROP TABLE IF EXISTS "trading.company"."trade_execution";"#
@@ -349,7 +349,7 @@ mod tests {
         assert_eq!(columns[2].on_update, None);
 
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<Deployment>(&mut query, false);
+        WRITER.write_create_table(&mut query, Deployment::table(), false);
         let sql = query.as_str();
         assert!(
             sql.contains(

@@ -94,7 +94,7 @@ mod tests {
             } as i64)))
                 .from(expr!(range(1000010)))
                 .build_into(&DRIVER, &mut query);
-            Sql.create_table::<MustNotRun>()
+            Sql.create_table(MustNotRun::table())
                 .build_into(&DRIVER, &mut query);
             let mut results = pin!(connection.run(query));
             let mut count = 0;
@@ -120,7 +120,7 @@ mod tests {
                 .is_err()
         );
         connection
-            .execute(Sql.create_table::<Reusable>().build(&DRIVER))
+            .execute(Sql.create_table(Reusable::table()).build(&DRIVER))
             .await
             .unwrap();
     }
@@ -133,7 +133,7 @@ mod tests {
                 .unwrap();
         {
             let mut query = DynQuery::default();
-            Sql.create_table::<Ordered>()
+            Sql.create_table(Ordered::table())
                 .build_into(&DRIVER, &mut query);
             Sql.insert_into(Ordered::table())
                 .values(&[Ordered { id: 1, value: 7 }, Ordered { id: 2, value: 7 }])
@@ -429,7 +429,7 @@ mod tests {
         .await
         .expect("Could not open a second connection to the same database");
         let mut query = DynQuery::default();
-        Sql.create_table::<SharedDb>()
+        Sql.create_table(SharedDb::table())
             .build_into(&DRIVER, &mut query);
         Sql.insert_into(SharedDb::table())
             .values(&[SharedDb { v: 7 }])

@@ -434,25 +434,25 @@ mod tests {
         }
         let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
-        writer.write_create_schema::<SchemaEntity>(&mut q, true);
+        writer.write_create_schema(&mut q, SchemaEntity::table(), true);
         assert_eq!(
             q.as_str().as_ref(),
             "CREATE SCHEMA IF NOT EXISTS \"analytics\";"
         );
 
         let mut q2 = DynQuery::default();
-        writer.write_create_schema::<SchemaEntity>(&mut q2, false);
+        writer.write_create_schema(&mut q2, SchemaEntity::table(), false);
         assert_eq!(q2.as_str().as_ref(), "CREATE SCHEMA \"analytics\";");
 
         let mut q3 = DynQuery::default();
-        writer.write_drop_schema::<SchemaEntity>(&mut q3, true);
+        writer.write_drop_schema(&mut q3, SchemaEntity::table(), true);
         assert_eq!(q3.as_str().as_ref(), "DROP SCHEMA IF EXISTS \"analytics\";");
         let mut q4 = DynQuery::default();
-        writer.write_drop_schema::<SchemaEntity>(&mut q4, false);
+        writer.write_drop_schema(&mut q4, SchemaEntity::table(), false);
         assert_eq!(q4.as_str().as_ref(), "DROP SCHEMA \"analytics\";");
 
         let mut q5 = DynQuery::new("-- c".into());
-        writer.write_create_schema::<SchemaEntity>(&mut q5, false);
+        writer.write_create_schema(&mut q5, SchemaEntity::table(), false);
         assert!(q5.as_str().starts_with("-- c\nCREATE SCHEMA"));
 
         let mut out = DynQuery::default();
@@ -731,10 +731,10 @@ mod tests {
         assert!(q.as_str().starts_with("-- comment\nSELECT"));
 
         let mut q = DynQuery::new("-- c".into());
-        writer.write_create_table::<AppendTable>(&mut q, false);
+        writer.write_create_table(&mut q, AppendTable::table(), false);
         assert!(q.as_str().starts_with("-- c\nCREATE TABLE"));
         let mut q = DynQuery::new("-- c".into());
-        writer.write_drop_table::<AppendTable>(&mut q, false);
+        writer.write_drop_table(&mut q, AppendTable::table(), false);
         assert!(q.as_str().starts_with("-- c\nDROP TABLE"));
         let mut q = DynQuery::new("-- c".into());
         writer.write_delete(&mut q, AppendTable::table(), true);
