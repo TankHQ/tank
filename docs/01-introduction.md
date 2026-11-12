@@ -12,7 +12,7 @@ In plain terms, Tank is a thin layer over your database workflow for Rust teams 
 Tank aims to provide a clean ORM design focused on ergonomics, flexibility and broad database support.
 
 - **Async operations** - Streaming database operations exposed through an async Rust API.
-- **Designed to be extensible** - Add or swap database drivers without changing Tank's core.
+- **Designed to be extensible** - Swap database drivers without changing Tank's core.
 - **SQL and NoSQL support** - One Tank, all terrains.
 - **Transaction abstraction** - Commit on success or rollback and retreat.
 - **Rich type arsenal** - Automatic conversions between Rust and database types.

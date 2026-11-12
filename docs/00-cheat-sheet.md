@@ -260,7 +260,7 @@ let results: Vec<_> = connection.run(query).try_collect().await?;
 
 ### Streams
 
-`fetch` and `find_many` return a [`Stream`](https://docs.rs/futures/latest/futures/stream/trait.Stream.html) of `Result`s, so the `TryStreamExt` combinators apply: `and_then` / `map_ok` to decode rows, `try_filter` to drop items, `try_fold` to aggregate, `try_collect` to gather a `Vec`. `run` also yields `QueryResult::Affected` items for statements that modify rows.
+`fetch` and `find_many` return a [`Stream`](https://docs.rs/futures/latest/futures/stream/trait.Stream.html) of `Result`s, so the `TryStreamExt` combinators apply: `and_then` / `map_ok` to decode rows, `try_filter` to drop items, `try_fold` to aggregate, `try_collect` to gather a `Vec`, `run` also yields `QueryResult::Affected` items for statements that modify rows.
 
 <<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-streams [Rust]
 
