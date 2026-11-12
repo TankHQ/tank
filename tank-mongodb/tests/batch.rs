@@ -23,12 +23,10 @@ mod tests {
         writer.write_delete(&mut query, Item::table(), expr!(Item::id == 1));
         writer.write_insert(
             &mut query,
-            Sql()
-                .insert_into(Item::table())
-                .values(&[Item {
-                    id: 2,
-                    name: "test".into(),
-                }]),
+            Sql().insert_into(Item::table()).values(&[Item {
+                id: 2,
+                name: "test".into(),
+            }]),
         );
 
         let Some(Payload::Batch(BatchPayload { batch, .. })) = query
@@ -51,21 +49,17 @@ mod tests {
 
         writer.write_insert(
             &mut query,
-            Sql()
-                .insert_into(Item::table())
-                .values(&[Item {
-                    id: 1,
-                    name: "first".into(),
-                }]),
+            Sql().insert_into(Item::table()).values(&[Item {
+                id: 1,
+                name: "first".into(),
+            }]),
         );
         writer.write_insert(
             &mut query,
-            Sql()
-                .insert_into(Item::table())
-                .values(&[Item {
-                    id: 2,
-                    name: "second".into(),
-                }]),
+            Sql().insert_into(Item::table()).values(&[Item {
+                id: 2,
+                name: "second".into(),
+            }]),
         );
         writer.write_delete(&mut query, Item::table(), expr!(Item::id == 1));
 
@@ -120,12 +114,10 @@ mod tests {
 
         writer.write_insert(
             &mut query,
-            Sql()
-                .insert_into(Item::table())
-                .values(&[Item {
-                    id: 1,
-                    name: "will be dropped".into(),
-                }]),
+            Sql().insert_into(Item::table()).values(&[Item {
+                id: 1,
+                name: "will be dropped".into(),
+            }]),
         );
         writer.write_drop_table::<Item>(&mut query, true);
 

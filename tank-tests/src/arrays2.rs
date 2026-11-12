@@ -3,8 +3,8 @@
 #![allow(unused_variables)]
 use std::{pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, Interval, Query, Sql, QueryResult, RawQuery,
-    Result, SqlWriter,
+    Driver, DynQuery, Entity, Executor, Interval, Query, QueryResult, RawQuery, Result, Sql,
+    SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -43,9 +43,7 @@ pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
         };
         writer.write_insert(
             &mut query,
-            Sql()
-                .insert_into(Container::table())
-                .values([value].iter()),
+            Sql().insert_into(Container::table()).values([value].iter()),
         );
         writer.write_select(
             &mut query,

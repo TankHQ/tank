@@ -4,8 +4,8 @@ mod tests {
     use rust_decimal::Decimal;
     use std::borrow::Cow;
     use tank::{
-        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, Sql,
-        SqlWriter, TableRef, Value,
+        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, Sql, SqlWriter,
+        TableRef, Value,
     };
     use time::{Date, Month, PrimitiveDateTime, Time};
 

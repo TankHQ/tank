@@ -119,7 +119,12 @@ pub async fn init_mysql(ssl: bool) -> (String, Option<ContainerAsync<Mysql>>) {
 }
 
 pub async fn init_mariadb(ssl: bool) -> (String, Option<ContainerAsync<Mariadb>>) {
-    let sql = init_sql("mariadb_database", "tank-mariadb-user", "Th3M0$tS3cu4e", ssl);
+    let sql = init_sql(
+        "mariadb_database",
+        "tank-mariadb-user",
+        "Th3M0$tS3cu4e",
+        ssl,
+    );
     start_db(
         Mariadb::default().with_init_sql(sql),
         "TANK_MARIADB_TEST",

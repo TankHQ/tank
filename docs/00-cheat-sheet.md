@@ -157,7 +157,7 @@ expr!(match EntityExample::region { "North" | "South" => 1, _ => 2 });
 
 ## Joins
 
-The `join!` macro builds the `FROM` clause for `Sql`. Define a result struct that matches the selected columns, then pass the join tree to `.from()`.
+The `join!` macro builds the `FROM` clause of a `Sql()` query. Define a result struct that matches the selected columns, then pass the join tree to `.from()`.
 
 Supported keywords: `JOIN`, `INNER JOIN`, `LEFT JOIN`, `LEFT OUTER JOIN`, `RIGHT JOIN`, `RIGHT OUTER JOIN`, `FULL OUTER JOIN`, `CROSS JOIN`, `NATURAL JOIN`.
 

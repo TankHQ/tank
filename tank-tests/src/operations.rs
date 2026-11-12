@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, Sql, QueryResult, Result, RowsAffected, SqlWriter,
-    anyhow, cols, expr, join,
+    Driver, DynQuery, Entity, Executor, QueryResult, Result, RowsAffected, Sql, SqlWriter, anyhow,
+    cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, OffsetDateTime, Time, UtcOffset, macros::date};
@@ -147,22 +147,18 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
         );
         writer.write_insert(
             &mut query,
-            Sql()
-                .insert_into(Operator::table())
-                .values([&operator]),
+            Sql().insert_into(Operator::table()).values([&operator]),
         );
         writer.write_insert(
             &mut query,
-            Sql()
-                .insert_into(RadioLog::table())
-                .values(&[RadioLog {
-                    id: Uuid::new_v4(),
-                    operator: operator.id,
-                    message: "Status report".into(),
-                    unit_callsign: "Alpha-1".into(),
-                    transmission_time: OffsetDateTime::now_utc(),
-                    signal_strength: 55,
-                }]),
+            Sql().insert_into(RadioLog::table()).values(&[RadioLog {
+                id: Uuid::new_v4(),
+                operator: operator.id,
+                message: "Status report".into(),
+                unit_callsign: "Alpha-1".into(),
+                transmission_time: OffsetDateTime::now_utc(),
+                signal_strength: 55,
+            }]),
         );
         writer.write_select(
             &mut query,

@@ -8,8 +8,8 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use tank::{
-    AsValue, Driver, DynQuery, Entity, Error, Executor, FixedDecimal, Query, Sql,
-    QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Value, ValueOwned, anyhow, cols, expr,
+    AsValue, Driver, DynQuery, Entity, Error, Executor, FixedDecimal, Query, QueryResult, RawQuery,
+    Result, RowsAffected, Sql, SqlWriter, Value, ValueOwned, anyhow, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Time, macros::date};

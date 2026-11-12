@@ -293,9 +293,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,
-            Sql()
-                .insert_into(Trade::table())
-                .values(&[employee]),
+            Sql().insert_into(Trade::table()).values(&[employee]),
         );
         assert!(
             // Last part of the query (the map) is removed becaus order of keys is not defined. Value stores a HashMap

@@ -11,9 +11,7 @@ mod tests {
         sync::atomic::{AtomicUsize, Ordering},
         time::Instant,
     };
-    use tank::{
-        DynQuery, Entity, GenericSqlWriter, Interval, Sql, SqlWriter, cols, expr, join,
-    };
+    use tank::{DynQuery, Entity, GenericSqlWriter, Interval, Sql, SqlWriter, cols, expr, join};
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
 
@@ -252,37 +250,19 @@ mod tests {
                 )
             }),
             measure("insert_one", |out| {
-                WRITER.write_insert(
-                    out,
-                    Sql()
-                        .insert_into(Trade::table())
-                        .values([trade]),
-                )
+                WRITER.write_insert(out, Sql().insert_into(Trade::table()).values([trade]))
             }),
             measure("insert_many_100", |out| {
-                WRITER.write_insert(
-                    out,
-                    Sql()
-                        .insert_into(Trade::table())
-                        .values(&trades),
-                )
+                WRITER.write_insert(out, Sql().insert_into(Trade::table()).values(&trades))
             }),
             measure("upsert", |out| {
                 WRITER.write_insert(
                     out,
-                    Sql()
-                        .insert_into(Trade::table())
-                        .values([trade])
-                        .update(),
+                    Sql().insert_into(Trade::table()).values([trade]).update(),
                 )
             }),
             measure("insert_wide", |out| {
-                WRITER.write_insert(
-                    out,
-                    Sql()
-                        .insert_into(Wide::table())
-                        .values([&wide]),
-                )
+                WRITER.write_insert(out, Sql().insert_into(Wide::table()).values([&wide]))
             }),
             measure("delete", |out| {
                 WRITER.write_delete(

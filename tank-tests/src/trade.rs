@@ -2,8 +2,8 @@
 use rust_decimal::Decimal;
 use std::{collections::BTreeMap, pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
-    AsValue, Driver, DynQuery, Entity, Executor, FixedDecimal, Query, Sql, QueryResult,
-    RawQuery, Result, RowsAffected, SqlWriter, Value,
+    AsValue, Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery,
+    Result, RowsAffected, Sql, SqlWriter, Value,
     stream::{StreamExt, TryStreamExt},
 };
 use time::macros::datetime;
@@ -327,34 +327,32 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
         writer.write_delete(&mut query, Trade::table(), true);
         writer.write_insert(
             &mut query,
-            Sql()
-                .insert_into(Trade::table())
-                .values(&[Trade {
-                    trade: 10002,
-                    order: Uuid::parse_str("895dc048-be92-4a55-afbf-38a60936e844").unwrap(),
-                    symbol: "RIVN".to_string(),
-                    #[cfg(not(feature = "disable-arrays"))]
-                    isin: std::array::from_fn(|i| "US76954A1034".chars().nth(i).unwrap()),
-                    price: Decimal::new(1345, 2).into(),
-                    quantity: 3200,
-                    execution_time: datetime!(2025-06-01 10:15:30).into(),
-                    currency: Some("USD".into()),
-                    is_internalized: true,
-                    venue: Some("NASDAQ".into()),
-                    #[cfg(not(feature = "disable-lists"))]
-                    child_trade_ids: Some(vec![201]),
-                    metadata: Some(
-                        b"desc: \"Crossed with internal liquidity\", id:'\\X696E7465726E616C'"
-                            .to_vec()
-                            .into_boxed_slice(),
-                    ),
-                    #[cfg(not(feature = "disable-maps"))]
-                    tags: Some(BTreeMap::from_iter([
-                        ("source".into(), "internal".into()),
-                        ("strategy".into(), "arbitrage".into()),
-                        ("risk_limit".into(), "high".into()),
-                    ])),
-                }]),
+            Sql().insert_into(Trade::table()).values(&[Trade {
+                trade: 10002,
+                order: Uuid::parse_str("895dc048-be92-4a55-afbf-38a60936e844").unwrap(),
+                symbol: "RIVN".to_string(),
+                #[cfg(not(feature = "disable-arrays"))]
+                isin: std::array::from_fn(|i| "US76954A1034".chars().nth(i).unwrap()),
+                price: Decimal::new(1345, 2).into(),
+                quantity: 3200,
+                execution_time: datetime!(2025-06-01 10:15:30).into(),
+                currency: Some("USD".into()),
+                is_internalized: true,
+                venue: Some("NASDAQ".into()),
+                #[cfg(not(feature = "disable-lists"))]
+                child_trade_ids: Some(vec![201]),
+                metadata: Some(
+                    b"desc: \"Crossed with internal liquidity\", id:'\\X696E7465726E616C'"
+                        .to_vec()
+                        .into_boxed_slice(),
+                ),
+                #[cfg(not(feature = "disable-maps"))]
+                tags: Some(BTreeMap::from_iter([
+                    ("source".into(), "internal".into()),
+                    ("strategy".into(), "arbitrage".into()),
+                    ("risk_limit".into(), "high".into()),
+                ])),
+            }]),
         );
         writer.write_select(
             &mut query,

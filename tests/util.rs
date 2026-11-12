@@ -13,8 +13,8 @@ mod tests {
     use syn::{Path, parse_str};
     use tank::{
         CollectionType, Context, Dataset, DynQuery, EitherIterator, Entity, Expression,
-        FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType, Sql,
-        QueryResult, References, Row, RowLabels, RowOwned, RowsAffected, SqlWriter, StructType,
+        FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType, QueryResult,
+        References, Row, RowLabels, RowOwned, RowsAffected, Sql, SqlWriter, StructType,
         TRUNCATE_LONG_LIMIT, TableRef, Value, as_c_string, column_def, consume_while,
         decimal_from_scaled, error_message_from_ptr, extract_number, matches_path, month_to_number,
         number_to_month, quote_btree_map, quote_cow, quote_option, separated_by, truncate_bound,
@@ -511,12 +511,7 @@ mod tests {
         let mut q = DynQuery::default();
 
         let empty_cols: &[&dyn Expression] = &[];
-        writer.write_select(
-            &mut q,
-            Sql()
-                .select(empty_cols)
-                .from(StarTable::table()),
-        );
+        writer.write_select(&mut q, Sql().select(empty_cols).from(StarTable::table()));
         assert!(q.as_str().contains("SELECT *"));
     }
 
@@ -709,9 +704,7 @@ mod tests {
         let entities: Vec<&EmptyInsert> = vec![];
         writer.write_insert(
             &mut q,
-            Sql()
-                .insert_into(EmptyInsert::table())
-                .values(entities),
+            Sql().insert_into(EmptyInsert::table()).values(entities),
         );
         assert!(q.is_empty());
     }

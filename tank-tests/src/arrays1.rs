@@ -2,8 +2,8 @@
 #![allow(unused_imports)]
 use std::{borrow::Cow, pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, Query, Sql, QueryResult, RawQuery, Result,
-    SqlWriter, cols, stream::TryStreamExt,
+    Driver, DynQuery, Entity, Executor, Query, QueryResult, RawQuery, Result, Sql, SqlWriter, cols,
+    stream::TryStreamExt,
 };
 use tokio::sync::Mutex;
 
@@ -127,9 +127,7 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
         };
         writer.write_insert(
             &mut query,
-            Sql()
-                .insert_into(Arrays1::table())
-                .values([value].iter()),
+            Sql().insert_into(Arrays1::table()).values([value].iter()),
         );
         writer.write_select(
             &mut query,
@@ -150,9 +148,7 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
         };
         writer.write_insert(
             &mut query,
-            Sql()
-                .insert_into(Arrays2::table())
-                .values([value].iter()),
+            Sql().insert_into(Arrays2::table()).values([value].iter()),
         );
         writer.write_select(
             &mut query,

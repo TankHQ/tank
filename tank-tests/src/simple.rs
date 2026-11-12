@@ -8,8 +8,8 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use tank::{
-    Driver, DynQuery, Entity, Executor, FixedDecimal, Query, Sql, QueryResult, RawQuery,
-    Result, RowsAffected, SqlWriter, expr, stream::TryStreamExt,
+    Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery, Result,
+    RowsAffected, Sql, SqlWriter, expr, stream::TryStreamExt,
 };
 use time::{Date, Time, macros::date};
 use tokio::sync::Mutex;
@@ -208,9 +208,7 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
         writer.write_delete(&mut query, SimpleFields::table(), true);
         writer.write_insert(
             &mut query,
-            Sql()
-                .insert_into(SimpleFields::table())
-                .values(&[entity]),
+            Sql().insert_into(SimpleFields::table()).values(&[entity]),
         );
         writer.write_select(
             &mut query,

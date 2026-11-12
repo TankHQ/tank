@@ -72,9 +72,7 @@ mod tests {
             let table = Table::default();
             WRITER.write_insert(
                 &mut query,
-                Sql()
-                    .insert_into(Table::table())
-                    .values(&[table]),
+                Sql().insert_into(Table::table()).values(&[table]),
             );
             assert_eq!(
                 query.as_str(),
@@ -94,10 +92,7 @@ mod tests {
             };
             WRITER.write_insert(
                 &mut query,
-                Sql()
-                    .insert_into(Table::table())
-                    .values(&[table])
-                    .update(),
+                Sql().insert_into(Table::table()).values(&[table]).update(),
             );
             assert_eq!(
                 query.as_str(),
@@ -185,12 +180,7 @@ mod tests {
                 is_active: Default::default(),
                 total_price: Default::default(),
             };
-            WRITER.write_insert(
-                &mut query,
-                Sql()
-                    .insert_into(Cart::table())
-                    .values(&[cart]),
-            );
+            WRITER.write_insert(&mut query, Sql().insert_into(Cart::table()).values(&[cart]));
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -219,10 +209,7 @@ mod tests {
             };
             WRITER.write_insert(
                 &mut query,
-                Sql()
-                    .insert_into(Cart::table())
-                    .values(&[cart])
-                    .update(),
+                Sql().insert_into(Cart::table()).values(&[cart]).update(),
             );
             assert_eq!(
                 query.as_str(),

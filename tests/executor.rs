@@ -17,7 +17,7 @@ mod tests {
         AsQuery, AsValue, Connection, ConnectionPool, Context, Dataset, Driver, DynQuery, Entity,
         Error, Executor, Expression, ExpressionCollection, ExpressionVisitor, Fragment,
         GenericSqlWriter, InsertIntoQuery, NA, OpPrecedence, PoolConfig, PooledConnection,
-        Prepared, Query, Sql, QueryResult, RawQuery, Result, Row, RowOwned, RowsAffected,
+        Prepared, Query, QueryResult, RawQuery, Result, Row, RowOwned, RowsAffected, Sql,
         Transaction, anyhow, cols, describe_path, describe_url, expr,
         future::Either,
         stream::{self, Stream, StreamExt, TryStreamExt},
@@ -363,9 +363,7 @@ mod tests {
         assert!(!drop.build(&TestDriver).is_empty());
         drop.build_into(&TestDriver, &mut out);
         let rows = [ExecutorItem::default()];
-        let insert = Sql()
-            .insert_into(ExecutorItem::table())
-            .values(&rows);
+        let insert = Sql().insert_into(ExecutorItem::table()).values(&rows);
         let Either::Left(values) = insert.get_values() else {
             panic!("expected rows of values");
         };

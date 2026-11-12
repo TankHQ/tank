@@ -4,8 +4,8 @@ mod tests {
     use std::fmt::Write;
     use tank::{
         AsValue, Context, DynQuery, Entity, Expression, Fragment, GenericSqlWriter,
-        InsertIntoQuery, Sql, QueryResult, QueryResultOwned, RawQuery, RowOwned,
-        RowsAffected, SqlWriter, TableRef, cols, expr,
+        InsertIntoQuery, QueryResult, QueryResultOwned, RawQuery, RowOwned, RowsAffected, Sql,
+        SqlWriter, TableRef, cols, expr,
     };
 
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
@@ -21,9 +21,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_select(
             &mut sql,
-            Sql()
-                .select(MyTable::columns())
-                .from(MyTable::table()),
+            Sql().select(MyTable::columns()).from(MyTable::table()),
         );
         assert_eq!(
             sql.as_str(),
@@ -429,9 +427,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_insert(
             &mut sql,
-            Sql()
-                .insert_into(Item::table())
-                .values(items.iter()),
+            Sql().insert_into(Item::table()).values(items.iter()),
         );
         let result = sql.as_str();
         assert!(result.contains("INSERT INTO"));
@@ -439,10 +435,7 @@ mod tests {
         let mut sql = DynQuery::default();
         WRITER.write_insert(
             &mut sql,
-            Sql()
-                .insert_into(Item::table())
-                .values(&items)
-                .update(),
+            Sql().insert_into(Item::table()).values(&items).update(),
         );
         assert!(sql.as_str().contains("INSERT INTO"));
     }
@@ -465,13 +458,7 @@ mod tests {
             ..Item::table().clone()
         };
         let mut sql = DynQuery::default();
-        WRITER.write_insert(
-            &mut sql,
-            Sql()
-                .insert_into(archive)
-                .values(&items)
-                .update(),
-        );
+        WRITER.write_insert(&mut sql, Sql().insert_into(archive).values(&items).update());
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -628,26 +615,11 @@ mod tests {
             id: u32,
         }
         assert!(!Sql().create_table::<Foo>().get_not_exists());
-        assert!(
-            Sql()
-                .create_table::<Foo>()
-                .if_not_exists()
-                .get_not_exists()
-        );
+        assert!(Sql().create_table::<Foo>().if_not_exists().get_not_exists());
         assert!(!Sql().drop_table::<Foo>().get_exists());
-        assert!(
-            Sql()
-                .drop_table::<Foo>()
-                .if_exists()
-                .get_exists()
-        );
+        assert!(Sql().drop_table::<Foo>().if_exists().get_exists());
         let rows = vec![Foo { id: 1 }];
-        assert!(
-            !Sql()
-                .insert_into(Foo::table())
-                .values(&rows)
-                .get_update()
-        );
+        assert!(!Sql().insert_into(Foo::table()).values(&rows).get_update());
         assert!(
             Sql()
                 .insert_into(Foo::table())
@@ -655,12 +627,7 @@ mod tests {
                 .update()
                 .get_update()
         );
-        assert!(
-            Sql()
-                .delete_from(Foo::table())
-                .get_where()
-                .is_none()
-        );
+        assert!(Sql().delete_from(Foo::table()).get_where().is_none());
         assert!(
             Sql()
                 .delete_from(Foo::table())

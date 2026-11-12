@@ -1,7 +1,7 @@
 use std::pin::pin;
 use std::sync::LazyLock;
 use tank::stream::TryStreamExt;
-use tank::{AsValue, Entity, Executor, Sql, Result, Row, cols, expr};
+use tank::{AsValue, Entity, Executor, Result, Row, Sql, cols, expr};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));

@@ -3,8 +3,8 @@
 use crate::silent_logs;
 use std::{pin::pin, sync::LazyLock, time::Duration};
 use tank::{
-    Context, Driver, DynQuery, Entity, Executor, Fragment, Interval, Sql, QueryResult,
-    RawQuery, Result, RowsAffected, SqlWriter, Value, expr,
+    Context, Driver, DynQuery, Entity, Executor, Fragment, Interval, QueryResult, RawQuery, Result,
+    RowsAffected, Sql, SqlWriter, Value, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -154,25 +154,23 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
         writer.write_delete(&mut query, Intervals::table(), true);
         writer.write_insert(
             &mut query,
-            Sql()
-                .insert_into(Intervals::table())
-                .values(&[
-                    Intervals {
-                        pk: 4,
-                        first: time::Duration::weeks(4) + time::Duration::hours(5),
-                        #[cfg(not(feature = "disable-large-intervals"))]
-                        second: Interval::from_years(20_000) + Interval::from_millis(300),
-                        #[cfg(feature = "disable-large-intervals")]
-                        second: Interval::from_hours(3) + Interval::from_millis(300),
-                        third: Duration::from_secs(0),
-                    },
-                    Intervals {
-                        pk: 5,
-                        first: time::Duration::minutes(20) + time::Duration::milliseconds(1),
-                        second: Interval::from_months(4) + Interval::from_days(2),
-                        third: Duration::from_nanos(5000),
-                    },
-                ]),
+            Sql().insert_into(Intervals::table()).values(&[
+                Intervals {
+                    pk: 4,
+                    first: time::Duration::weeks(4) + time::Duration::hours(5),
+                    #[cfg(not(feature = "disable-large-intervals"))]
+                    second: Interval::from_years(20_000) + Interval::from_millis(300),
+                    #[cfg(feature = "disable-large-intervals")]
+                    second: Interval::from_hours(3) + Interval::from_millis(300),
+                    third: Duration::from_secs(0),
+                },
+                Intervals {
+                    pk: 5,
+                    first: time::Duration::minutes(20) + time::Duration::milliseconds(1),
+                    second: Interval::from_months(4) + Interval::from_days(2),
+                    third: Duration::from_nanos(5000),
+                },
+            ]),
         );
         writer.write_select(
             &mut query,
