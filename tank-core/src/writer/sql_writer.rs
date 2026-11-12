@@ -1178,10 +1178,6 @@ pub trait SqlWriter: Send {
         Self: Sized,
         Data: Dataset + 'a,
     {
-        let Some(from) = query.get_from() else {
-            log::error!("The query does not have the FROM clause");
-            return;
-        };
         let columns = query.get_select();
         let columns_count = columns.clone().into_iter().count();
         out.buffer().reserve(256 + columns_count * 32);
@@ -1206,12 +1202,14 @@ pub trait SqlWriter: Send {
         } else {
             out.push('*');
         }
-        out.push_str("\nFROM ");
-        from.write_table_name(
-            self,
-            &mut context.switch_fragment(Fragment::SqlSelectFrom).current,
-            out,
-        );
+        if let Some(from) = query.get_from() {
+            out.push_str("\nFROM ");
+            from.write_table_name(
+                self,
+                &mut context.switch_fragment(Fragment::SqlSelectFrom).current,
+                out,
+            );
+        }
         if let Some(condition) = query.get_where()
             && !condition.accept_visitor(&mut IsTrue, self, &mut context, out)
         {

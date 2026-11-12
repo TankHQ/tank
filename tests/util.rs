@@ -466,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_select_without_from_is_ignored() {
+    fn sql_writer_select_without_from() {
         use tank::SelectQuery;
         struct NoFrom;
         impl SelectQuery<TableRef> for NoFrom {
@@ -498,7 +498,7 @@ mod tests {
         }
         let mut out = DynQuery::default();
         GenericSqlWriter::new().write_select(&mut out, &NoFrom);
-        assert!(out.is_empty());
+        assert_eq!(out.as_str(), "SELECT *;");
     }
 
     #[test]

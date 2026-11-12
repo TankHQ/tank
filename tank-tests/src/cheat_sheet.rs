@@ -298,45 +298,44 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
         // #region cheat-sheet-streams
         use std::{future::ready, pin::pin};
-        use tank::{AsValue, Entity, QueryResult, Row, Sql, cols, stream::TryStreamExt};
+        use tank::{Entity, QueryResult, Row, Sql, cols, stream::TryStreamExt};
 
-        // Entities: decode each row, optionally filter on the Rust side, collect.
-        let wounded: Vec<EntityExample> = connection
+        // You can filter inside rust instead of the database
+        let casualties: Vec<EntityExample> = connection
             .fetch(
                 Sql()
                     .select(EntityExample::columns())
                     .from(EntityExample::table())
-                    .where_expr(true)
                     .build(&connection.driver()),
             )
-            .and_then(|row| ready(EntityExample::from_row(row))) // Same as .map(|row| row.and_then(EntityExample::from_row))
-            .try_filter(|entity| ready(entity.casualties > 0)) // Prefer a WHERE clause: this reads every row
+            .and_then(|row| ready(EntityExample::from_row(row)))
+            .try_filter(|entity| ready(entity.casualties > 0))
             .try_collect()
             .await?;
-        let callsigns: Vec<&str> = wounded.iter().map(|e| e.callsign.as_str()).collect();
+        let callsigns: Vec<&str> = casualties.iter().map(|v| v.callsign.as_str()).collect();
 
-        // Rows: aggregate values without building entities.
-        let (count, casualties) = EntityExample::find_many(&mut connection, true, None)
-            .try_fold((0, 0), |(count, total), entity| {
-                ready(Ok((count + 1, total + entity.casualties)))
-            })
-            .await?;
-        let total = connection
-            .fetch(
-                Sql()
-                    .select(cols!(EntityExample::casualties))
-                    .from(EntityExample::table())
-                    .where_expr(true)
-                    .build(&connection.driver()),
-            )
-            .try_fold(0, |total, row| {
-                ready(i32::try_from_value(row.value(0).unwrap()).map(|v| total + v))
-            })
-            .await?;
+        // You can fold on a single column, read by name
+        #[cfg(not(feature = "disable-groups"))]
+        let total = {
+            use tank::{AsValue, stream::StreamExt};
+            connection
+                .fetch(
+                    Sql()
+                        .select(cols!(
+                            SUM(EntityExample::casualties) as total,
+                            EntityExample::region
+                        ))
+                        .from(EntityExample::table())
+                        .group_by(EntityExample::region)
+                        .build(&connection.driver()),
+                )
+                .map_ok(|row| i32::try_from_value(row.get_column("total")))
+                .map(Result::flatten)
+                .try_fold(0, |total, casualties| ready(Ok(total + casualties)))
+                .await?
+        };
 
-        // Query results: `run` yields rows and affected counts, consumed one at a time.
-        // `try_next` polls in place, which needs an `Unpin` stream: Tank's streams hold async state
-        // and are not, so pin them on the stack. Combinators taking the stream by value do it for you.
+        // You can process one value at a time, just remember to pin the stream
         let mut rows = Vec::new();
         {
             let mut stream = pin!(
@@ -360,7 +359,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
         assert_eq!(callsigns.len(), 2);
         assert!(callsigns.contains(&entity2.callsign.as_str()));
-        assert_eq!((count, casualties), (3, 8));
+        #[cfg(not(feature = "disable-groups"))]
         assert_eq!(total, 8);
         assert_eq!(rows.len(), 3);
         assert!(rows.iter().all(|row| row.get_column("callsign").is_some()));

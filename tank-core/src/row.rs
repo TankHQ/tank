@@ -50,7 +50,9 @@ pub trait Row: Debug + Send + Sync {
         self.len() == 0
     }
 
-    fn get_column(&self, name: &str) -> Option<Cow<'_, Value<'_>>> {
+    /// Value of the column with the given name, a string or a column such as `Entity::field`.
+    fn get_column(&self, column: impl AsRef<str>) -> Option<Cow<'_, Value<'_>>> {
+        let name = column.as_ref();
         self.labels()
             .iter()
             .position(|label| label == name)
@@ -119,8 +121,8 @@ impl<R: Row + ?Sized> Row for &R {
     }
 
     #[inline(always)]
-    fn get_column(&self, name: &str) -> Option<Cow<'_, Value<'_>>> {
-        (**self).get_column(name)
+    fn get_column(&self, column: impl AsRef<str>) -> Option<Cow<'_, Value<'_>>> {
+        (**self).get_column(column)
     }
 
     #[inline(always)]
