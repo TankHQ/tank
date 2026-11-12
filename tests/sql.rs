@@ -49,7 +49,7 @@ mod tests {
             let mut query = DynQuery::default();
             WRITER.write_select(
                 &mut query,
-                &QueryBuilder::new()
+                QueryBuilder::new()
                     .select(Table::columns())
                     .from(Table::table())
                     .where_expr(expr!(
@@ -70,7 +70,12 @@ mod tests {
         {
             let mut query = DynQuery::default();
             let table = Table::default();
-            WRITER.write_insert(&mut query, [&table], false);
+            WRITER.write_insert(
+                &mut query,
+                QueryBuilder::new()
+                    .insert_into(Table::table())
+                    .values(&[table]),
+            );
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -87,7 +92,13 @@ mod tests {
                 _second_column: 512.5.into(),
                 _third_column: 478,
             };
-            WRITER.write_insert(&mut query, [&table], true);
+            WRITER.write_insert(
+                &mut query,
+                QueryBuilder::new()
+                    .insert_into(Table::table())
+                    .values(&[table])
+                    .update(),
+            );
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -143,7 +154,7 @@ mod tests {
             let mut query = DynQuery::default();
             WRITER.write_select(
                 &mut query,
-                &QueryBuilder::new()
+                QueryBuilder::new()
                     .select(Cart::columns())
                     .from(Cart::table())
                     .where_expr(expr!(Cart::is_active == true && Cart::total_price > 100))
@@ -174,7 +185,12 @@ mod tests {
                 is_active: Default::default(),
                 total_price: Default::default(),
             };
-            WRITER.write_insert(&mut query, [&cart], false);
+            WRITER.write_insert(
+                &mut query,
+                QueryBuilder::new()
+                    .insert_into(Cart::table())
+                    .values(&[cart]),
+            );
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -201,7 +217,13 @@ mod tests {
                 is_active: true,
                 total_price: Decimal::new(2599, 2), // 25.99
             };
-            WRITER.write_insert(&mut query, [&cart], true);
+            WRITER.write_insert(
+                &mut query,
+                QueryBuilder::new()
+                    .insert_into(Cart::table())
+                    .values(&[cart])
+                    .update(),
+            );
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"

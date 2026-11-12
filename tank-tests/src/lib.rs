@@ -14,6 +14,7 @@ mod decimals;
 mod enums;
 mod identifiers;
 mod insane;
+mod insert_builder;
 mod interval;
 mod keywords;
 mod kv_storage;
@@ -52,6 +53,7 @@ pub use decimals::*;
 pub use enums::*;
 pub use identifiers::*;
 pub use insane::*;
+pub use insert_builder::*;
 pub use interval::*;
 pub use keywords::*;
 pub use kv_storage::*;
@@ -232,6 +234,7 @@ pub async fn execute_tests<D: Driver + 'static>(pool: &mut impl ConnectionPool<D
         boxed(operations),
         boxed(advanced_operations),
         boxed(cheat_sheet),
+        boxed(insert_builder),
     ];
     for test in tests {
         test(&mut connection)

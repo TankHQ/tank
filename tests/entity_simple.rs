@@ -104,7 +104,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select(SomeSimpleEntity::columns())
                 .from(SomeSimpleEntity::table())
                 .where_expr(expr!(SomeSimpleEntity::a > 100))
@@ -121,7 +121,13 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&SomeSimpleEntity::make_some()], true);
+        WRITER.write_insert(
+            &mut query,
+            QueryBuilder::new()
+                .insert_into(SomeSimpleEntity::table())
+                .values(&[SomeSimpleEntity::make_some()])
+                .update(),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"

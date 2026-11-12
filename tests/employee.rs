@@ -184,7 +184,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select(Employee::columns())
                 .from(Employee::table())
                 .where_expr(expr!(Employee::salary > 50000))
@@ -204,7 +204,12 @@ mod tests {
         docs.insert("contract.pdf".to_string(), vec![1, 2, 3, 4]);
         let employee = Employee::sample();
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&employee], false);
+        WRITER.write_insert(
+            &mut query,
+            QueryBuilder::new()
+                .insert_into(Employee::table())
+                .values(&[employee]),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -218,7 +223,12 @@ mod tests {
             ..Employee::sample()
         };
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&employee], false);
+        WRITER.write_insert(
+            &mut query,
+            QueryBuilder::new()
+                .insert_into(Employee::table())
+                .values([&employee].into_iter()),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"

@@ -1,11 +1,10 @@
 use crate::{
-    Action, AsEntity, BinaryOp, BinaryOpType, Case, ColumnDef, ColumnRef, Dataset, DynQuery,
-    Entity, Error, Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
-    PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, WriteInList,
-    possibly_parenthesized, separated_by, write_escaped, writer::Context,
+    Action, BinaryOp, BinaryOpType, Case, ColumnDef, ColumnRef, Dataset, DynQuery, Entity, Error,
+    Expression, Fragment, InsertIntoQuery, Interval, IsTrue, Join, JoinType, Operand, Order,
+    Ordered, PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, WriteInList,
+    future::Either, possibly_parenthesized, separated_by, write_escaped, writer::Context,
 };
 use std::{
-    cmp::max,
     collections::{BTreeMap, HashMap},
     fmt::Write,
     mem,
@@ -1154,7 +1153,7 @@ pub trait SqlWriter: Send {
     }
 
     /// Write SELECT statement.
-    fn write_select<'a, Data>(&self, out: &mut DynQuery, query: &impl SelectQuery<Data>)
+    fn write_select<'a, Data>(&self, out: &mut DynQuery, query: impl SelectQuery<Data>)
     where
         Self: Sized,
         Data: Dataset + 'a,
@@ -1243,76 +1242,86 @@ pub trait SqlWriter: Send {
         out.push(';');
     }
 
-    /// Write INSERT statement.
-    fn write_insert<It>(&self, out: &mut DynQuery, entities: It, update: bool)
+    /// Write INSERT statement printing rows of values or a SELECT.
+    fn write_insert(&self, out: &mut DynQuery, query: impl InsertIntoQuery)
     where
         Self: Sized,
-        It: IntoIterator,
-        It::Item: AsEntity,
     {
-        type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
-        let table = E::<It>::table();
-        let mut entities = entities.into_iter().peekable();
-        if entities.peek().is_none() {
-            return;
+        let table = query.get_table();
+        let columns = query.get_columns();
+        // A SELECT without named columns fills all the table columns, rows always name theirs.
+        let write_head = |out: &mut DynQuery, context: &mut Context, all: bool| {
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            out.push_str("INSERT INTO ");
+            self.write_table_ref(context, out, table);
+            if !all || !columns.is_empty() {
+                out.push_str(" (");
+                separated_by(
+                    out,
+                    columns,
+                    |out, column| self.write_identifier(context, out, column.name(), true),
+                    ", ",
+                );
+                out.push(')');
+            }
         };
-        let cols = E::<It>::columns().len();
-        let rows = max(entities.size_hint().0, 1);
-        out.buffer().reserve(128 + (cols + rows * cols) * 16);
-        if !out.is_empty() {
-            out.push('\n');
+        let mut context = Context::new(Fragment::SqlInsertInto, table.qualified_columns());
+        let rows = match query.get_values() {
+            Either::Left(rows) => rows,
+            Either::Right(select) => {
+                write_head(out, &mut context, true);
+                return self.write_select(out, select);
+            }
+        };
+        let mut rows = rows.peekable();
+        if rows.peek().is_none() {
+            return;
         }
-        out.push_str("INSERT INTO ");
-        let mut context = Context::new(
-            Fragment::SqlInsertInto,
-            E::<It>::table().qualified_columns(),
-        );
-        self.write_table_ref(&mut context, out, table);
-        out.push_str(" (");
-        separated_by(
-            out,
-            E::<It>::columns().iter(),
-            |out, col| {
-                self.write_identifier(&mut context, out, col.name(), true);
-            },
-            ", ",
-        );
-        out.push_str(") VALUES");
+        out.buffer()
+            .reserve(128 + columns.len() * (32 + rows.size_hint().0 * 16));
+        write_head(out, &mut context, false);
+        out.push_str(" VALUES");
         let mut context = context.switch_fragment(Fragment::SqlInsertIntoValues);
         separated_by(
             out,
-            entities,
-            |out, entity| {
+            rows,
+            |out, row| {
                 out.push_str("\n(");
-                entity
-                    .as_entity()
-                    .write_query(self.as_dyn(), &mut context.current, out);
+                separated_by(
+                    out,
+                    row,
+                    |out, value| self.write_value(&mut context.current, out, &value),
+                    ", ",
+                );
                 out.push(')');
             },
             ",",
         );
-        if update {
-            self.write_insert_update_fragment::<E<It>>(
+        if query.get_update() {
+            self.write_insert_update_fragment(
                 &mut context.current,
                 out,
-                E::<It>::columns().iter(),
+                table.primary_key.iter().copied(),
+                columns.iter(),
             );
         }
         out.push(';');
     }
 
-    /// Write ON CONFLICT DO UPDATE fragment for upsert.
-    fn write_insert_update_fragment<'a, E>(
+    /// Write ON CONFLICT DO UPDATE fragment for upsert, updating the `columns` not in the `primary_key`.
+    fn write_insert_update_fragment<'a>(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
+        primary_key: impl Iterator<Item = &'a ColumnDef> + Clone,
         columns: impl Iterator<Item = &'a ColumnDef> + Clone,
     ) where
         Self: Sized,
-        E: Entity,
     {
-        let pk = E::primary_key_def();
-        if pk.is_empty() {
+        let mut pk = primary_key.clone().peekable();
+        if pk.peek().is_none() {
             return;
         }
         out.push_str("\nON CONFLICT");
@@ -1328,7 +1337,7 @@ pub trait SqlWriter: Send {
         );
         out.push(')');
         let mut update_cols = columns
-            .filter(|c| c.primary_key == PrimaryKeyType::None)
+            .filter(|c| !primary_key.clone().any(|pk| pk.name() == c.name()))
             .peekable();
         if update_cols.peek().is_some() {
             out.push_str(" DO UPDATE SET\n");

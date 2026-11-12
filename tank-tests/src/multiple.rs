@@ -51,40 +51,38 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     // 7
     writer.write_insert(
         &mut query,
-        [
-            &Two {
+        QueryBuilder::new().insert_into(Two::table()).values(&[
+            Two {
                 a2: 21,
                 string: "aaa".into(),
             },
-            &Two {
+            Two {
                 a2: 22,
                 string: "bbb".into(),
             },
-            &Two {
+            Two {
                 a2: 23,
                 string: "eee".into(),
             },
-        ],
-        false,
+        ]),
     );
     query.push_str("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
     // 8
     writer.write_insert(
         &mut query,
-        [
-            &Three {
+        QueryBuilder::new().insert_into(Three::table()).values(&[
+            Three {
                 string: "ddd".into(),
             },
-            &Three {
+            Three {
                 string: "ccc".into(),
             },
-        ],
-        false,
+        ]),
     );
     // 9
     writer.write_select(
         &mut query,
-        &QueryBuilder::new()
+        QueryBuilder::new()
             .select([Three::string])
             .from(Three::table())
             .where_expr(true),
@@ -92,17 +90,16 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     // 10
     writer.write_insert(
         &mut query,
-        [&One {
+        QueryBuilder::new().insert_into(One::table()).values(&[One {
             a1: 11,
             string: "zzz".into(),
             c1: 512,
-        }],
-        false,
+        }]),
     );
     // 11
     writer.write_select(
         &mut query,
-        &QueryBuilder::new()
+        QueryBuilder::new()
             .select([One::a1, One::string, One::c1])
             .from(One::table())
             .where_expr(true),
@@ -110,7 +107,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     // 12
     writer.write_select(
         &mut query,
-        &QueryBuilder::new()
+        QueryBuilder::new()
             .select([Two::a2, Two::string])
             .from(Two::table())
             .where_expr(true),
@@ -118,7 +115,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     // 13: An empty SELECT still contributes a statement result.
     writer.write_select(
         &mut query,
-        &QueryBuilder::new()
+        QueryBuilder::new()
             .select([Two::a2, Two::string])
             .from(Two::table())
             .where_expr(false),

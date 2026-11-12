@@ -141,15 +141,17 @@ pub trait Entity: AsEntity + Expression {
     }
 
     /// Insert a single entity.
-    fn insert_one(
+    fn insert_one<E: AsEntity>(
         executor: &mut impl Executor,
-        entity: impl AsEntity,
+        entity: E,
     ) -> impl Future<Output = Result<RowsAffected>> + Send {
         let mut query = DynQuery::with_capacity(128);
-        executor
-            .driver()
-            .sql_writer()
-            .write_insert(&mut query, [entity], false);
+        executor.driver().sql_writer().write_insert(
+            &mut query,
+            QueryBuilder::new()
+                .insert_into(E::Entity::table())
+                .values([entity.as_entity()]),
+        );
         executor.execute(query)
     }
 
@@ -265,10 +267,13 @@ pub trait Entity: AsEntity + Expression {
             ));
         }
         let mut query = DynQuery::with_capacity(512);
-        executor
-            .driver()
-            .sql_writer()
-            .write_insert(&mut query, [self], true);
+        executor.driver().sql_writer().write_insert(
+            &mut query,
+            QueryBuilder::new()
+                .insert_into(Self::table())
+                .values([self])
+                .update(),
+        );
         let sql = query.as_str();
         let context = format!("While saving using the query {}", truncate_long!(sql));
         Either::Right(executor.execute(query).map(|mut v| {

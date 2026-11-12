@@ -154,28 +154,29 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
         writer.write_delete(&mut query, Intervals::table(), true);
         writer.write_insert(
             &mut query,
-            &[
-                Intervals {
-                    pk: 4,
-                    first: time::Duration::weeks(4) + time::Duration::hours(5),
-                    #[cfg(not(feature = "disable-large-intervals"))]
-                    second: Interval::from_years(20_000) + Interval::from_millis(300),
-                    #[cfg(feature = "disable-large-intervals")]
-                    second: Interval::from_hours(3) + Interval::from_millis(300),
-                    third: Duration::from_secs(0),
-                },
-                Intervals {
-                    pk: 5,
-                    first: time::Duration::minutes(20) + time::Duration::milliseconds(1),
-                    second: Interval::from_months(4) + Interval::from_days(2),
-                    third: Duration::from_nanos(5000),
-                },
-            ],
-            false,
+            QueryBuilder::new()
+                .insert_into(Intervals::table())
+                .values(&[
+                    Intervals {
+                        pk: 4,
+                        first: time::Duration::weeks(4) + time::Duration::hours(5),
+                        #[cfg(not(feature = "disable-large-intervals"))]
+                        second: Interval::from_years(20_000) + Interval::from_millis(300),
+                        #[cfg(feature = "disable-large-intervals")]
+                        second: Interval::from_hours(3) + Interval::from_millis(300),
+                        third: Duration::from_secs(0),
+                    },
+                    Intervals {
+                        pk: 5,
+                        first: time::Duration::minutes(20) + time::Duration::milliseconds(1),
+                        second: Interval::from_months(4) + Interval::from_days(2),
+                        third: Duration::from_nanos(5000),
+                    },
+                ]),
         );
         writer.write_select(
             &mut query,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select(Intervals::columns())
                 .from(Intervals::table())
                 .where_expr(true),

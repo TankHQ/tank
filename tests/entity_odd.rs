@@ -156,7 +156,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select(MyEntity::columns())
                 .from(MyEntity::table())
                 .where_expr(expr!(MyEntity::_bravo < 0))
@@ -173,7 +173,13 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&MyEntity::sample()], true);
+        WRITER.write_insert(
+            &mut query,
+            QueryBuilder::new()
+                .insert_into(MyEntity::table())
+                .values(&[MyEntity::sample()])
+                .update(),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"

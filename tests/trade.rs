@@ -273,7 +273,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select(Trade::columns())
                 .from(Trade::table())
                 .where_expr(expr!(Trade::quantity >= 100 && Trade::price > 1000)),
@@ -291,7 +291,12 @@ mod tests {
         docs.insert("contract.pdf".to_string(), vec![1, 2, 3, 4]);
         let employee = Trade::sample();
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&employee], false);
+        WRITER.write_insert(
+            &mut query,
+            QueryBuilder::new()
+                .insert_into(Trade::table())
+                .values(&[employee]),
+        );
         assert!(
             // Last part of the query (the map) is removed becaus order of keys is not defined. Value stores a HashMap
             query.as_str().starts_with(indoc! {r#"

@@ -42,7 +42,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select(SomeEmptyEntity::columns())
                 .from(SomeEmptyEntity::table()),
         );
@@ -56,7 +56,13 @@ mod tests {
         );
 
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&SomeEmptyEntity::default()], true);
+        WRITER.write_insert(
+            &mut query,
+            QueryBuilder::new()
+                .insert_into(SomeEmptyEntity::table())
+                .values(&[SomeEmptyEntity::default()])
+                .update(),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"

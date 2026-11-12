@@ -125,10 +125,15 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
             cc: [[[[1]], [[2]], [[3]]]],
             dd: [[[[[10, 20, 30]]], [[[40, 50, 60]]]]],
         };
-        writer.write_insert(&mut query, &[value], false);
+        writer.write_insert(
+            &mut query,
+            QueryBuilder::new()
+                .insert_into(Arrays1::table())
+                .values([value].iter()),
+        );
         writer.write_select(
             &mut query,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select(cols!(*))
                 .from(Arrays1::table())
                 .where_expr(true),
@@ -143,17 +148,22 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
                 [Cow::Owned("foo".to_string()), Cow::Borrowed("bar")],
             ]],
         };
-        writer.write_insert(&mut query, &[value], false);
+        writer.write_insert(
+            &mut query,
+            QueryBuilder::new()
+                .insert_into(Arrays2::table())
+                .values([value].iter()),
+        );
         writer.write_select(
             &mut query,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select([Arrays2::alpha, Arrays2::bravo, Arrays2::charlie])
                 .from(Arrays2::table())
                 .where_expr(true),
         );
         writer.write_select(
             &mut query,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select([Arrays2::delta, Arrays2::echo])
                 .from(Arrays2::table())
                 .where_expr(true),

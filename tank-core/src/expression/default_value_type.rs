@@ -1,14 +1,14 @@
 use crate::{
     Context, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, Value, ValueOwned,
 };
-use std::fmt;
+use std::{fmt, sync::Arc};
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub enum DefaultValueType {
     #[default]
     None,
     Value(ValueOwned),
-    Expression(Box<dyn Expression + Send + Sync>),
+    Expression(Arc<dyn Expression + Send + Sync>),
 }
 
 impl DefaultValueType {

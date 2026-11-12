@@ -932,7 +932,7 @@ mod tests {
         let c: DefaultValueType = 'x'.into();
         assert!(c.is_set());
 
-        let expr_variant = DefaultValueType::Expression(Box::new(Value::Int64(Some(3))));
+        let expr_variant = DefaultValueType::Expression(Arc::new(Value::Int64(Some(3))));
         assert!(expr_variant.accept_visitor(
             &mut Count,
             &WRITER,

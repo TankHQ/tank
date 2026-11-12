@@ -352,7 +352,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
         let writer = executor.driver().sql_writer();
         writer.write_select(
             &mut query,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select(Book::columns())
                 .from(Book::table())
                 .where_expr(expr!(Book::title == "Metro 2033"))
@@ -360,7 +360,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
         );
         writer.write_select(
             &mut query,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select(Book::columns())
                 .from(Book::table())
                 .where_expr(expr!(Book::title == "Harry Potter and the Deathly Hallows"))

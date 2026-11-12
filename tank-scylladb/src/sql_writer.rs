@@ -4,8 +4,9 @@ use indoc::indoc;
 use std::fmt::Write;
 use std::{collections::BTreeMap, iter};
 use tank_core::{
-    AsEntity, ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment,
-    GenericSqlWriter, Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, separated_by,
+    ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment, GenericSqlWriter,
+    InsertIntoQuery, Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, future::Either,
+    separated_by,
 };
 use uuid::Uuid;
 
@@ -352,48 +353,46 @@ impl SqlWriter for ScyllaDBSqlWriter {
     ) {
     }
 
-    fn write_insert<It>(&self, out: &mut DynQuery, entities: It, _update: bool)
+    fn write_insert(&self, out: &mut DynQuery, query: impl InsertIntoQuery)
     where
         Self: Sized,
-        It: IntoIterator,
-        It::Item: AsEntity,
     {
-        type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
-        let table = E::<It>::table();
-        let mut entities = entities.into_iter().peekable();
-        let Some(entity) = entities.next() else {
+        let (table, columns) = (query.get_table(), query.get_columns());
+        let Either::Left(rows) = query.get_values() else {
+            log::error!("ScyllaDB/Cassandra does not support INSERT ... SELECT");
             return;
         };
-        let multiple = entities.peek().is_some();
-        let entities = iter::once(entity).chain(entities);
-        out.buffer().reserve(128 + E::<It>::columns().len() * 32);
+        let mut rows = rows.into_iter().peekable();
+        let Some(row) = rows.next() else {
+            return;
+        };
+        let multiple = rows.peek().is_some();
         if multiple {
             self.write_transaction_begin(out);
         }
-        for entity in entities {
+        // CQL inserts one row per statement, INSERT is already an upsert.
+        for row in iter::once(row).chain(rows) {
             if !out.is_empty() {
                 out.push('\n');
             }
             out.push_str("INSERT INTO ");
-            let mut context = Context::new(
-                Fragment::SqlInsertInto,
-                E::<It>::table().qualified_columns(),
-            );
+            let mut context = Context::new(Fragment::SqlInsertInto, table.qualified_columns());
             self.write_table_ref(&mut context, out, table);
             out.push_str(" (");
             separated_by(
                 out,
-                E::<It>::columns().iter(),
-                |out, col| {
-                    self.write_identifier(&mut context, out, col.name(), true);
-                },
+                columns,
+                |out, column| self.write_identifier(&mut context, out, column.name(), true),
                 ", ",
             );
             let mut context = context.switch_fragment(Fragment::SqlInsertIntoValues);
             out.push_str(") VALUES\n(");
-            entity
-                .as_entity()
-                .write_query(self.as_dyn(), &mut context.current, out);
+            separated_by(
+                out,
+                row,
+                |out, value| self.write_value(&mut context.current, out, &value),
+                ", ",
+            );
             out.push_str(");");
         }
         if multiple {

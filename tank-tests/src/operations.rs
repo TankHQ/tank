@@ -145,22 +145,28 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
             RadioLog::table(),
             expr!(RadioLog::signal_strength < 10),
         );
-        writer.write_insert(&mut query, [&operator], false);
         writer.write_insert(
             &mut query,
-            [&RadioLog {
-                id: Uuid::new_v4(),
-                operator: operator.id,
-                message: "Status report".into(),
-                unit_callsign: "Alpha-1".into(),
-                transmission_time: OffsetDateTime::now_utc(),
-                signal_strength: 55,
-            }],
-            false,
+            QueryBuilder::new()
+                .insert_into(Operator::table())
+                .values([&operator]),
+        );
+        writer.write_insert(
+            &mut query,
+            QueryBuilder::new()
+                .insert_into(RadioLog::table())
+                .values(&[RadioLog {
+                    id: Uuid::new_v4(),
+                    operator: operator.id,
+                    message: "Status report".into(),
+                    unit_callsign: "Alpha-1".into(),
+                    transmission_time: OffsetDateTime::now_utc(),
+                    signal_strength: 55,
+                }]),
         );
         writer.write_select(
             &mut query,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select(RadioLog::columns())
                 .from(RadioLog::table())
                 .where_expr(true)

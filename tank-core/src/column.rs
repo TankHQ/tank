@@ -67,7 +67,7 @@ impl ToTokens for PrimaryKeyType {
 }
 
 /// Referential action for foreign key updates or deletes.
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     /// No action.
     #[default]
@@ -95,7 +95,7 @@ impl ToTokens for Action {
 }
 
 /// Column specification.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct ColumnDef {
     /// Column identity.
     pub column_ref: ColumnRef,
@@ -124,6 +124,13 @@ pub struct ColumnDef {
 }
 
 impl ColumnDef {
+    /// Column known only by its name.
+    pub fn new(name: impl Into<Cow<'static, str>>) -> Self {
+        Self {
+            column_ref: ColumnRef::new(name.into()),
+            ..Default::default()
+        }
+    }
     /// Column name.
     pub fn name(&self) -> &str {
         &self.column_ref.name

@@ -27,6 +27,9 @@ impl MongoDBPrepared {
     pub fn get_payload(&self) -> &Payload {
         &self.payload
     }
+    pub(crate) fn take_payload(&mut self) -> Payload {
+        mem::take(&mut self.payload)
+    }
     pub fn add_payload(&mut self, payload: Payload) -> Result<()> {
         self.payload.add_payload(payload)
     }

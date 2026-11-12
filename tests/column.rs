@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use quote::ToTokens;
-    use std::{borrow::Cow, collections::HashSet};
+    use std::{borrow::Cow, collections::HashSet, sync::Arc};
     use tank::{
         Action, AsValue, ColumnDef, ColumnRef, Context, DefaultValueType, DynQuery, Entity,
         Expression, Fragment, GenericSqlWriter, IsAsterisk, OpPrecedence, PrimaryKeyType, Row,
@@ -102,7 +102,7 @@ mod tests {
         value.write_query(&writer, &mut Context::empty(), &mut out);
         assert_eq!(out.as_str(), "7");
 
-        let expression = DefaultValueType::Expression(Box::new(Value::Boolean(Some(true))));
+        let expression = DefaultValueType::Expression(Arc::new(Value::Boolean(Some(true))));
         assert!(expression.is_set());
         assert_eq!(format!("{expression:?}"), "Expression(\"..\")");
         assert_eq!(expression.precedence(&writer), 0);

@@ -41,10 +41,15 @@ pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
                 [Uuid::from_str("9d7f0f5b-19d6-4298-a332-214fc85e2652").unwrap()],
             ]],
         };
-        writer.write_insert(&mut query, &[value], false);
+        writer.write_insert(
+            &mut query,
+            QueryBuilder::new()
+                .insert_into(Container::table())
+                .values([value].iter()),
+        );
         writer.write_select(
             &mut query,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select(Container::columns())
                 .from(Container::table())
                 .where_expr(true)

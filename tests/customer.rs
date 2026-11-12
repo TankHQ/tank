@@ -160,7 +160,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select(Customer::columns())
                 .from(Customer::table())
                 .where_expr(expr!(len(Customer::_values) > 10))

@@ -513,7 +513,7 @@ mod tests {
         let empty_cols: &[&dyn Expression] = &[];
         writer.write_select(
             &mut q,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select(empty_cols)
                 .from(StarTable::table()),
         );
@@ -707,7 +707,12 @@ mod tests {
         let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
         let entities: Vec<&EmptyInsert> = vec![];
-        writer.write_insert(&mut q, entities, false);
+        writer.write_insert(
+            &mut q,
+            QueryBuilder::new()
+                .insert_into(EmptyInsert::table())
+                .values(entities),
+        );
         assert!(q.is_empty());
     }
 
@@ -721,14 +726,14 @@ mod tests {
         let mut q = DynQuery::new("-- comment".into());
         writer.write_select(
             &mut q,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select(AppendTable::columns())
                 .from(AppendTable::table()),
         );
         let mut q = DynQuery::new("-- comment".into());
         writer.write_select(
             &mut q,
-            &QueryBuilder::new()
+            QueryBuilder::new()
                 .select(AppendTable::columns())
                 .from(AppendTable::table()),
         );
@@ -744,7 +749,12 @@ mod tests {
         writer.write_delete(&mut q, AppendTable::table(), true);
         assert!(q.as_str().starts_with("-- c\nDELETE FROM"));
         let mut q = DynQuery::new("-- c".into());
-        writer.write_insert(&mut q, [&AppendTable { id: 1 }], false);
+        writer.write_insert(
+            &mut q,
+            QueryBuilder::new()
+                .insert_into(AppendTable::table())
+                .values(&[AppendTable { id: 1 }]),
+        );
         assert!(q.as_str().starts_with("-- c\nINSERT INTO"));
     }
 
@@ -757,7 +767,13 @@ mod tests {
         }
         let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
-        writer.write_insert(&mut q, [&PkOnly { id: 1 }], true);
+        writer.write_insert(
+            &mut q,
+            QueryBuilder::new()
+                .insert_into(PkOnly::table())
+                .values(&[PkOnly { id: 1 }])
+                .update(),
+        );
         assert!(q.as_str().contains("DO NOTHING"));
 
         #[derive(Entity)]
@@ -765,7 +781,13 @@ mod tests {
             value: i32,
         }
         let mut q = DynQuery::default();
-        writer.write_insert(&mut q, [&NoPk { value: 1 }], true);
+        writer.write_insert(
+            &mut q,
+            QueryBuilder::new()
+                .insert_into(NoPk::table())
+                .values(&[NoPk { value: 1 }])
+                .update(),
+        );
         assert!(!q.as_str().contains("ON CONFLICT"));
     }
 

@@ -232,16 +232,21 @@ query.bind(10)?;
 ### SqlWriter
 
 ```rust
-use tank::{DynQuery, QueryBuilder, SqlWriter, stream::TryStreamExt};
+use tank::{DynQuery, Entity, QueryBuilder, SqlWriter, stream::TryStreamExt};
 
 let writer = connection.driver().sql_writer();
 let mut query = DynQuery::default();
 
 writer.write_create_table::<EntityExample>(&mut query, true);
-writer.write_insert(&mut query, &[entity1, entity2], false);
+writer.write_insert(
+    &mut query,
+    QueryBuilder::new()
+        .insert_into(EntityExample::table())
+        .values([&entity1, &entity2]),
+);
 writer.write_select(
     &mut query,
-    &QueryBuilder::new()
+    QueryBuilder::new()
         .select(EntityExample::columns())
         .from(EntityExample::table())
         .where_expr(true)

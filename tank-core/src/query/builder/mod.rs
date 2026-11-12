@@ -12,8 +12,9 @@ pub use select::*;
 
 use crate::{
     Context, Dataset, DynQuery, Entity, Expression, ExpressionVisitor, OpPrecedence, SqlWriter,
+    TableRef,
 };
-use std::iter;
+use std::{borrow::Cow, iter};
 
 #[derive(Default, Debug)]
 pub struct QueryBuilder;
@@ -35,12 +36,15 @@ impl QueryBuilder {
             order_by: Default::default(),
             limit: Default::default(),
             _l: Default::default(),
+            insert: NA,
         }
     }
-    pub fn insert_into(self) -> InsertIntoQueryBuilder<NA, NA> {
+    pub fn insert_into(self, table: impl Into<TableRef>) -> InsertIntoQueryBuilder<NA, NA> {
         InsertIntoQueryBuilder {
-            values: Default::default(),
-            update: Default::default(),
+            table: table.into(),
+            columns: Cow::Borrowed(&[]),
+            values: NA,
+            update: false,
             _update: Default::default(),
         }
     }
@@ -68,6 +72,22 @@ impl QueryBuilder {
 
 #[derive(Default, Debug)]
 pub struct NA;
+
+impl Dataset for NA {
+    fn qualified_columns(&self) -> bool {
+        false
+    }
+    fn write_table_name(
+        &self,
+        _writer: &dyn SqlWriter,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+    ) {
+    }
+    fn table_ref(&self) -> TableRef {
+        TableRef::default()
+    }
+}
 
 impl OpPrecedence for NA {
     fn precedence(&self, _writer: &dyn SqlWriter) -> i32 {

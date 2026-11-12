@@ -54,7 +54,9 @@ pub async fn other(executor: &mut impl Executor) -> Result<()> {
     let rows = vec![ATable {
         a_column: "test".into(),
     }];
-    let query = QueryBuilder::new().insert_into().values(&rows);
+    let query = QueryBuilder::new()
+        .insert_into(ATable::table())
+        .values(&rows);
     let from_build = query.build(&executor.driver());
     let mut out = DynQuery::default();
     query.build_into(&executor.driver(), &mut out);

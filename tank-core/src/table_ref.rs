@@ -81,6 +81,22 @@ macro_rules! impl_from_for_table_ref {
 
 impl_from_for_table_ref!(&'static str, String, Cow<'static, str>);
 
+/// `(schema, name)` pair, as in `("analytics", "events")`.
+impl From<(&'static str, &'static str)> for TableRef {
+    fn from((schema, name): (&'static str, &'static str)) -> Self {
+        TableRef {
+            schema: Cow::Borrowed(schema),
+            ..TableRef::new(Cow::Borrowed(name))
+        }
+    }
+}
+
+impl From<&(&'static str, &'static str)> for TableRef {
+    fn from(value: &(&'static str, &'static str)) -> Self {
+        (*value).into()
+    }
+}
+
 impl<E: Entity> From<&E> for TableRef {
     fn from(_value: &E) -> Self {
         E::table().clone()

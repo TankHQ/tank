@@ -1,9 +1,10 @@
 use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
-use std::fmt::Write;
+use std::{fmt::Write, mem};
 use tank_core::{
-    AsEntity, AsValue, Case, ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment,
-    IsAsterisk, Row, SelectQuery, SqlWriter, TableRef, Value, column_def,
+    AsValue, Case, ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment,
+    InsertIntoQuery, IsAsterisk, SelectQuery, SqlWriter, TableRef, Value, column_def,
+    future::Either,
 };
 
 pub struct ValkeySqlWriter {
@@ -117,7 +118,7 @@ impl SqlWriter for ValkeySqlWriter {
         Self::prepare_query(out, &mut Default::default());
     }
 
-    fn write_select<'a, Data>(&self, out: &mut DynQuery, query: &impl SelectQuery<Data>)
+    fn write_select<'a, Data>(&self, out: &mut DynQuery, query: impl SelectQuery<Data>)
     where
         Self: Sized,
         Data: Dataset + 'a,
@@ -213,32 +214,52 @@ impl SqlWriter for ValkeySqlWriter {
         }
     }
 
-    fn write_insert<It>(&self, out: &mut DynQuery, entities: It, _update: bool)
+    fn write_insert(&self, out: &mut DynQuery, query: impl InsertIntoQuery)
     where
         Self: Sized,
-        It: IntoIterator,
-        It::Item: AsEntity,
     {
-        let table = <It::Item as AsEntity>::Entity::table();
+        let table = query.get_table();
+        let columns = query.get_columns();
+        let Either::Left(rows) = query.get_values() else {
+            log::error!("Valkey/Redis does not support INSERT ... SELECT");
+            return;
+        };
+        if table.primary_key.is_empty() {
+            log::error!(
+                "Valkey/Redis needs the primary key of {} to build the keys, use the `Entity::table()` as target",
+                table.full_name(self.separator())
+            );
+            return;
+        }
         let mut context = Self::make_context(Fragment::SqlInsertInto);
         let prepared = Self::prepare_query(out, &mut context);
-        for entity in entities.into_iter() {
-            let row = entity.as_entity().row();
-            let mut is_pk_condition = IsPKCondition::new(
-                self.keys_with_names,
-                table.full_name(self.separator()).into_owned(),
-                table.primary_key,
-            );
-            entity.as_entity().primary_key_expr().accept_visitor(
-                &mut is_pk_condition,
-                self,
-                &mut context,
-                &mut Default::default(),
-            );
-            let key = is_pk_condition.key;
+        for row in rows {
+            let values = row.collect::<Vec<_>>();
+            let fields = || columns.iter().map(ColumnDef::name).zip(&values);
+            // Same key as `IsPKCondition` builds from a primary key condition.
+            let mut key = table.full_name(self.separator()).into_owned();
+            for column in table.primary_key {
+                let Some((_, value)) = fields().find(|(name, _)| *name == column.name()) else {
+                    log::error!(
+                        "The row has no value for the primary key column `{}`",
+                        column.name()
+                    );
+                    return;
+                };
+                if !key.is_empty() {
+                    key.push_str(self.separator());
+                }
+                if self.keys_with_names {
+                    key.push_str(column.name());
+                    key.push_str(self.separator());
+                }
+                let mut rendered = DynQuery::new(key);
+                self.write_value(&mut context, &mut rendered, value);
+                key = mem::take(rendered.buffer());
+            }
             prepared.commands.push(Cmd::hset_multiple(
                 &key,
-                Row::iter(&row)
+                fields()
                     .filter_map(|(k, v)| {
                         if v.is_scalar() && !v.is_null() {
                             (k, ValueWrap(v.as_value())).into()
@@ -249,7 +270,7 @@ impl SqlWriter for ValkeySqlWriter {
                     .collect::<Vec<_>>()
                     .as_slice(),
             ));
-            for (k, v) in Row::iter(&row).filter_map(|(k, v)| {
+            for (k, v) in fields().filter_map(|(k, v)| {
                 if !v.is_scalar() || v.same_type(&Value::Json(None)) {
                     (k, ValueWrap(v.as_value())).into()
                 } else {

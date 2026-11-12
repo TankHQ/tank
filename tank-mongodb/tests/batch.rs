@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use tank::{Driver, DynQuery, Entity, SqlWriter, expr};
+    use tank::{Driver, DynQuery, Entity, QueryBuilder, SqlWriter, expr};
     use tank_mongodb::{BatchPayload, MongoDBDriver, Payload};
     use tank_tests::init_logs;
 
@@ -23,11 +23,12 @@ mod tests {
         writer.write_delete(&mut query, Item::table(), expr!(Item::id == 1));
         writer.write_insert(
             &mut query,
-            [&Item {
-                id: 2,
-                name: "test".into(),
-            }],
-            false,
+            QueryBuilder::new()
+                .insert_into(Item::table())
+                .values(&[Item {
+                    id: 2,
+                    name: "test".into(),
+                }]),
         );
 
         let Some(Payload::Batch(BatchPayload { batch, .. })) = query
@@ -50,19 +51,21 @@ mod tests {
 
         writer.write_insert(
             &mut query,
-            [&Item {
-                id: 1,
-                name: "first".into(),
-            }],
-            false,
+            QueryBuilder::new()
+                .insert_into(Item::table())
+                .values(&[Item {
+                    id: 1,
+                    name: "first".into(),
+                }]),
         );
         writer.write_insert(
             &mut query,
-            [&Item {
-                id: 2,
-                name: "second".into(),
-            }],
-            false,
+            QueryBuilder::new()
+                .insert_into(Item::table())
+                .values(&[Item {
+                    id: 2,
+                    name: "second".into(),
+                }]),
         );
         writer.write_delete(&mut query, Item::table(), expr!(Item::id == 1));
 
@@ -87,11 +90,13 @@ mod tests {
 
         writer.write_insert(
             &mut query,
-            [&Item {
-                id: 1,
-                name: "upserted".into(),
-            }],
-            true, // update = true -> upsert
+            QueryBuilder::new()
+                .insert_into(Item::table())
+                .values(&[Item {
+                    id: 1,
+                    name: "upserted".into(),
+                }])
+                .update(),
         );
         writer.write_delete(&mut query, Item::table(), expr!(Item::id == 99));
 
@@ -115,11 +120,12 @@ mod tests {
 
         writer.write_insert(
             &mut query,
-            [&Item {
-                id: 1,
-                name: "will be dropped".into(),
-            }],
-            false,
+            QueryBuilder::new()
+                .insert_into(Item::table())
+                .values(&[Item {
+                    id: 1,
+                    name: "will be dropped".into(),
+                }]),
         );
         writer.write_drop_table::<Item>(&mut query, true);
 
