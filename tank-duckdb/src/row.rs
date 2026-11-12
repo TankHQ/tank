@@ -76,7 +76,7 @@ impl Row for DuckDBRow {
 
     #[inline(always)]
     fn value(&self, index: usize) -> Option<Cow<'_, Value<'_>>> {
-        unsafe { self.batch.columns.get(index)?.value(self.row) }
+        self.batch.columns.get(index)?.extract(self.row)
     }
 
     fn into_owned(self) -> RowOwned {

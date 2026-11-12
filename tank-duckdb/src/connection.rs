@@ -93,12 +93,8 @@ impl Connection for DuckDBConnection {
                     *config,
                     &mut *error,
                 ),
-                Error::msg(
-                    CStr::from_ptr(*error)
-                        .to_str()
-                        .context("While reading the error from `duckdb_get_or_create_from_cache`")
-                        .inspect_err(log_error)?
-                ),
+                Error::msg(CStr::from_ptr(*error).to_string_lossy()),
+                "While reading the error from `duckdb_get_or_create_from_cache`"
             );
             ensure_rc!(
                 duckdb_connect(*database, &mut *connection),
@@ -189,7 +185,8 @@ impl Executor for DuckDBConnection {
             for column in columns {
                 ensure_rc!(
                     duckdb_appender_add_column(*appender, as_c_string(column.name()).as_ptr()),
-                    appender_error(*appender)
+                    appender_error(*appender),
+                    format!("While adding column ${} to the appender", column.name()),
                 );
             }
             let mut rows_affected = 0;
