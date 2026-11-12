@@ -240,13 +240,13 @@ let mut query = DynQuery::default();
 writer.write_create_table(&mut query, EntityExample::table(), true);
 writer.write_insert(
     &mut query,
-    Sql
+    Sql()
         .insert_into(EntityExample::table())
         .values([&entity1, &entity2]),
 );
 writer.write_select(
     &mut query,
-    Sql
+    Sql()
         .select(EntityExample::columns())
         .from(EntityExample::table())
         .where_expr(true)

@@ -24,7 +24,8 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
 
     let result = executor
         .fetch(
-            Sql.select(cols!(MathTable::id, ((42 * 6 + 56) / 7) as read))
+            Sql()
+                .select(cols!(MathTable::id, ((42 * 6 + 56) / 7) as read))
                 .from(MathTable::table())
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
@@ -37,7 +38,8 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
 
     let result = executor
         .fetch(
-            Sql.select(cols!(MathTable::id, ((5 - (1 << 2)) * 9 % 6) as read))
+            Sql()
+                .select(cols!(MathTable::id, ((5 - (1 << 2)) * 9 % 6) as read))
                 .from(MathTable::table())
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
@@ -50,7 +52,8 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
 
     let result = executor
         .fetch(
-            Sql.select(cols!(MathTable::id, ((1 | 2 | 4) + 1) as read))
+            Sql()
+                .select(cols!(MathTable::id, ((1 | 2 | 4) + 1) as read))
                 .from(MathTable::table())
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
@@ -63,7 +66,8 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
 
     let result = executor
         .fetch(
-            Sql.select(cols!(MathTable::id, (90 > 89 && (10 & 6) == 2) as read))
+            Sql()
+                .select(cols!(MathTable::id, (90 > 89 && (10 & 6) == 2) as read))
                 .from(MathTable::table())
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
@@ -76,7 +80,8 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
 
     let result = executor
         .fetch(
-            Sql.select(cols!(MathTable::id, (4 == (2, 3, 4, 5) as IN) as read))
+            Sql()
+                .select(cols!(MathTable::id, (4 == (2, 3, 4, 5) as IN) as read))
                 .from(MathTable::table())
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
@@ -92,7 +97,8 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
     {
         let result = executor
             .fetch(
-                Sql.select(cols!(MathTable::id, (CAST(MathTable::read as i64)) as read))
+                Sql()
+                    .select(cols!(MathTable::id, (CAST(MathTable::read as i64)) as read))
                     .from(MathTable::table())
                     .where_expr(expr!(MathTable::id == 0))
                     .build(&executor.driver()),
@@ -109,7 +115,8 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
     {
         let result = executor
             .fetch(
-                Sql.select(cols!(MathTable::id, FLOOR(LOG10(1000)) as read))
+                Sql()
+                    .select(cols!(MathTable::id, FLOOR(LOG10(1000)) as read))
                     .from(MathTable::table())
                     .where_expr(expr!(MathTable::id == 0))
                     .build(&executor.driver()),

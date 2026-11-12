@@ -40,7 +40,7 @@ impl<E> DropTableQueryBuilder<E> {
 
 /// DROP TABLE query builder.
 ///
-/// Use `Sql.drop_table(table)` to start.
+/// Use `Sql().drop_table(table)` to start.
 pub trait DropTableQuery {
     /// Get the table metadata.
     fn get_table(&self) -> &TableRef;

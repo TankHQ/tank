@@ -40,7 +40,7 @@ impl<E> CreateTableQueryBuilder<E> {
 
 /// CREATE TABLE query builder.
 ///
-/// Use `Sql.create_table(Entity::table())` to start, the table metadata carries the columns and constraints.
+/// Use `Sql().create_table(Entity::table())` to start, the table metadata carries the columns and constraints.
 pub trait CreateTableQuery {
     /// Get the table metadata.
     fn get_table(&self) -> &TableRef;

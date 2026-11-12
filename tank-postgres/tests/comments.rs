@@ -42,7 +42,7 @@ pub(crate) async fn comments<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         .await
         .expect("Failed to create CommentedEntity table");
 
-    let query = Sql
+    let query = Sql()
         .select(cols!(
             PgColumn::table_schema,
             PgColumn::table_name,

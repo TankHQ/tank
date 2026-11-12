@@ -103,7 +103,8 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
         writer.write_delete(&mut query, SimpleFields::table(), false); // Does not delete anything
         writer.write_select(
             &mut query,
-            Sql.select(SimpleFields::columns())
+            Sql()
+                .select(SimpleFields::columns())
                 .from(SimpleFields::table())
                 .where_expr(true),
         );
@@ -207,11 +208,12 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
         writer.write_delete(&mut query, SimpleFields::table(), true);
         writer.write_insert(
             &mut query,
-            Sql.insert_into(SimpleFields::table()).values(&[entity]),
+            Sql().insert_into(SimpleFields::table()).values(&[entity]),
         );
         writer.write_select(
             &mut query,
-            Sql.select(SimpleFields::columns())
+            Sql()
+                .select(SimpleFields::columns())
                 .from(SimpleFields::table())
                 .where_expr(true),
         );
