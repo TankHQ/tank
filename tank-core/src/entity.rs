@@ -145,7 +145,7 @@ pub trait Entity: AsEntity + Expression {
         executor: &mut impl Executor,
         entity: E,
     ) -> impl Future<Output = Result<RowsAffected>> + Send {
-        let mut query = DynQuery::with_capacity(128);
+        let mut query = DynQuery::default();
         executor.driver().sql_writer().write_insert(
             &mut query,
             QueryBuilder::new()
@@ -266,7 +266,7 @@ pub trait Entity: AsEntity + Expression {
                 .inspect_err(log_error),
             ));
         }
-        let mut query = DynQuery::with_capacity(512);
+        let mut query = DynQuery::default();
         executor.driver().sql_writer().write_insert(
             &mut query,
             QueryBuilder::new()

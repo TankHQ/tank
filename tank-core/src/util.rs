@@ -184,6 +184,16 @@ pub fn write_escaped(out: &mut DynQuery, value: &str, search: char, replace: &st
     out.push_str(rest);
 }
 
+/// Write `value` left padded with zeros to at least `width` digits, without going through `fmt`.
+#[inline]
+pub fn write_zero_padded(out: &mut DynQuery, value: u32, width: usize) {
+    let mut buffer = itoa::Buffer::new();
+    let digits = buffer.format(value);
+    let zeros = min(width.saturating_sub(digits.len()), 9);
+    out.push_str(&"000000000"[..zeros]);
+    out.push_str(digits);
+}
+
 /// Convenience wrapper converting into a `CString`.
 pub fn as_c_string(str: impl AsRef<[u8]>) -> CString {
     unsafe {

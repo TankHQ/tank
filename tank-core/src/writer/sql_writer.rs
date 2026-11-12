@@ -2,8 +2,10 @@ use crate::{
     Action, BinaryOp, BinaryOpType, Case, ColumnDef, ColumnRef, Dataset, DynQuery, Entity, Error,
     Expression, Fragment, InsertIntoQuery, Interval, IsTrue, Join, JoinType, Operand, Order,
     Ordered, PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, WriteInList,
-    future::Either, possibly_parenthesized, separated_by, write_escaped, writer::Context,
+    future::Either, possibly_parenthesized, separated_by, write_escaped, write_zero_padded,
+    writer::Context,
 };
+use rust_decimal::Decimal;
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
@@ -115,10 +117,9 @@ pub trait SqlWriter: Send {
         }
         if !value.alias.is_empty() {
             if alias_declaration {
-                let _ = write!(out, " {}", value.alias);
-            } else {
-                out.push_str(&value.alias);
+                out.push(' ');
             }
+            out.push_str(&value.alias);
         }
     }
 
@@ -185,7 +186,11 @@ pub trait SqlWriter: Send {
             Value::Decimal(_, precision, scale, ..) => {
                 out.push_str("DECIMAL");
                 if (*precision, *scale) != (0, 0) {
-                    let _ = write!(out, "({precision},{scale})");
+                    out.push('(');
+                    out.push_str(itoa::Buffer::new().format(*precision));
+                    out.push(',');
+                    out.push_str(itoa::Buffer::new().format(*scale));
+                    out.push(')');
                 }
             }
             Value::Char(..) => out.push_str("CHAR(1)"),
@@ -199,7 +204,9 @@ pub trait SqlWriter: Send {
             Value::Uuid(..) => out.push_str("UUID"),
             Value::Array(_, t, ..) => {
                 self.write_column_type(context, out, &t.element);
-                let _ = write!(out, "[{}]", t.len);
+                out.push('[');
+                out.push_str(itoa::Buffer::new().format(t.len));
+                out.push(']');
             }
             Value::List(_, t, ..) => {
                 self.write_column_type(context, out, &t.element);
@@ -219,13 +226,7 @@ pub trait SqlWriter: Send {
 
     /// Write value.
     fn write_value(&self, context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
-        let delimiter = if context.fragment == Fragment::JsonKey {
-            "\""
-        } else {
-            ""
-        };
         match value {
-            v if v.is_null() => self.write_null(context, out),
             Value::Boolean(Some(v), ..) => self.write_bool(context, out, *v),
             Value::Int8(Some(v), ..) => self.write_value_i8(context, out, *v),
             Value::Int16(Some(v), ..) => self.write_value_i16(context, out, *v),
@@ -239,7 +240,7 @@ pub trait SqlWriter: Send {
             Value::UInt128(Some(v), ..) => self.write_value_u128(context, out, **v),
             Value::Float32(Some(v), ..) => self.write_value_f32(context, out, *v),
             Value::Float64(Some(v), ..) => self.write_value_f64(context, out, *v),
-            Value::Decimal(Some(v), ..) => drop(write!(out, "{delimiter}{v}{delimiter}")),
+            Value::Decimal(Some(v), ..) => self.write_decimal(context, out, v),
             Value::Char(Some(v), ..) => {
                 let mut buf = [0u8; 4];
                 self.write_string(context, out, v.encode_utf8(&mut buf));
@@ -260,8 +261,9 @@ pub trait SqlWriter: Send {
                 matches!(value, Value::Array(..)),
             ),
             Value::Map(Some(v), ..) => self.write_map(context, out, v),
-            Value::Json(Some(v), ..) => self.write_json(context, out, v),
+            Value::Json(Some(v), ..) if !v.is_null() => self.write_json(context, out, v),
             Value::Struct(Some(v), ..) => self.write_struct(context, out, v),
+            _ if value.is_null() => self.write_null(context, out),
             _ => {
                 log::error!("Cannot write {value:?}");
             }
@@ -300,74 +302,96 @@ pub trait SqlWriter: Send {
     write_float_fn!(write_value_f32, f32, Value::Float32(None));
     write_float_fn!(write_value_f64, f64, Value::Float64(None));
 
+    fn write_decimal(&self, context: &mut Context, out: &mut DynQuery, value: &Decimal) {
+        let b = if context.fragment == Fragment::JsonKey {
+            "\""
+        } else {
+            ""
+        };
+        out.push_str(b);
+        let _ = write!(out, "{value}");
+        out.push_str(b);
+    }
+
     fn write_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
         if matches!(context.fragment, Fragment::Json | Fragment::JsonKey) {
-            match serde_json::to_string(value) {
-                Ok(s) => out.push_str(&s),
-                Err(e) => {
-                    let error = Error::new(e).context("Failed to serialize string as JSON");
-                    log::error!("{error:#}");
-                }
+            let buffer = unsafe { out.buffer().as_mut_vec() };
+            if let Err(e) = serde_json::to_writer(buffer, value) {
+                let error = Error::new(e).context("Failed to serialize string as JSON");
+                log::error!("{error:#}");
             }
             return;
         }
-        let (delimiter, escaped) = match context.fragment {
+        let (b, escaped) = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => (None, ""),
             _ => (Some('\''), "''"),
         };
-        if let Some(delimiter) = delimiter {
-            out.push(delimiter);
-            write_escaped(out, value, delimiter, escaped);
-            out.push(delimiter);
+        if let Some(b) = b {
+            out.push(b);
+            write_escaped(out, value, b, escaped);
+            out.push(b);
         } else {
             out.push_str(value);
         }
     }
 
     fn write_blob(&self, context: &mut Context, out: &mut DynQuery, value: &[u8]) {
-        let delimiter = match context.fragment {
+        let b = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => "",
             Fragment::Json | Fragment::JsonKey => "\"",
             _ => "'",
         };
-        out.push_str(delimiter);
-        for v in value {
-            let _ = write!(out, "\\x{:02X}", v);
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+        out.buffer().reserve(4 * value.len() + 2 * b.len());
+        out.push_str(b);
+        for &v in value {
+            out.push_str("\\x");
+            out.push(HEX[(v >> 4) as usize] as char); // Upper 2 HEX
+            out.push(HEX[(v & 0xF) as usize] as char); // Lower 2 HEX
         }
-        out.push_str(delimiter);
+        out.push_str(b);
     }
 
     fn write_date(&self, context: &mut Context, out: &mut DynQuery, value: &Date) {
-        let d = match context.fragment {
+        let b = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => "",
             Fragment::Json | Fragment::JsonKey => "\"",
             _ => "'",
         };
-        let year = value.year();
-        let month = value.month() as u8;
-        let day = value.day();
-        let _ = write!(
-            out,
-            "{d}{}{:04}-{month:02}-{day:02}{d}",
-            if year < 0 { "-" } else { "" },
-            year.unsigned_abs()
-        );
+        let (year, month, day) = value.to_calendar_date();
+        out.push_str(b);
+        if year < 0 {
+            out.push('-');
+        }
+        write_zero_padded(out, year.unsigned_abs(), 4);
+        out.push('-');
+        write_zero_padded(out, month as u32, 2);
+        out.push('-');
+        write_zero_padded(out, day as u32, 2);
+        out.push_str(b);
     }
 
     fn write_time(&self, context: &mut Context, out: &mut DynQuery, value: &Time) {
-        let d = match context.fragment {
+        let b = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => "",
             Fragment::Json | Fragment::JsonKey => "\"",
             _ => "'",
         };
-        let (h, m, s, ns) = value.as_hms_nano();
-        let mut subsecond = ns;
+        let (hour, min, sec, mut subsecond) = value.as_hms_nano();
         let mut width = 9;
         while width > 1 && subsecond % 10 == 0 {
             subsecond /= 10;
             width -= 1;
         }
-        let _ = write!(out, "{d}{h:02}:{m:02}:{s:02}.{subsecond:0width$}{d}");
+        out.push_str(b);
+        write_zero_padded(out, hour as u32, 2);
+        out.push(':');
+        write_zero_padded(out, min as u32, 2);
+        out.push(':');
+        write_zero_padded(out, sec as u32, 2);
+        out.push('.');
+        write_zero_padded(out, subsecond, width);
+        out.push_str(b);
     }
 
     fn write_timestamp(
@@ -376,27 +400,27 @@ pub trait SqlWriter: Send {
         out: &mut DynQuery,
         value: &PrimitiveDateTime,
     ) {
-        let d = match context.fragment {
+        let b = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => "",
             Fragment::Json | Fragment::JsonKey => "\"",
             _ => "'",
         };
         let mut context = context.switch_fragment(Fragment::Timestamp);
-        out.push_str(d);
+        out.push_str(b);
         self.write_date(&mut context.current, out, &value.date());
         out.push(' ');
         self.write_time(&mut context.current, out, &value.time());
-        out.push_str(d);
+        out.push_str(b);
     }
 
     fn write_timestamptz(&self, context: &mut Context, out: &mut DynQuery, value: &OffsetDateTime) {
-        let d = match context.fragment {
+        let b = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => "",
             Fragment::Json | Fragment::JsonKey => "\"",
             _ => "'",
         };
         let mut context = context.switch_fragment(Fragment::Timestamp);
-        out.push_str(d);
+        out.push_str(b);
         self.write_timestamp(
             &mut context.current,
             out,
@@ -406,15 +430,17 @@ pub trait SqlWriter: Send {
         if h != 0 || m != 0 || s != 0 {
             let is_negative = h < 0 || (h == 0 && (m < 0 || (m == 0 && s < 0)));
             out.push(if is_negative { '-' } else { '+' });
-            let _ = write!(out, "{:02}", h.unsigned_abs());
+            write_zero_padded(out, h.unsigned_abs() as u32, 2);
             if m != 0 || s != 0 {
-                let _ = write!(out, ":{:02}", m.unsigned_abs());
+                out.push(':');
+                write_zero_padded(out, m.unsigned_abs() as u32, 2);
                 if s != 0 {
-                    let _ = write!(out, ":{:02}", s.unsigned_abs());
+                    out.push(':');
+                    write_zero_padded(out, s.unsigned_abs() as u32, 2);
                 }
             }
         }
-        out.push_str(d);
+        out.push_str(b);
     }
 
     /// Units used to decompose intervals (notice the decreasing order).
@@ -432,12 +458,12 @@ pub trait SqlWriter: Send {
 
     fn write_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {
         out.push_str("INTERVAL ");
-        let d = match context.fragment {
+        let b = match context.fragment {
             Fragment::None => "",
             Fragment::Json | Fragment::JsonKey => "\"",
             _ => "'",
         };
-        out.push_str(d);
+        out.push_str(b);
         if value.is_zero() {
             out.push_str("0 SECONDS");
         }
@@ -447,13 +473,12 @@ pub trait SqlWriter: Send {
                     $out.push(' ');
                     $len = $out.len();
                 }
-                let _ = write!(
-                    $out,
-                    "{} {}{}",
-                    $val,
-                    $unit,
-                    if $val != 1 && $val != -1 { "S" } else { "" }
-                );
+                $out.push_str(itoa::Buffer::new().format($val));
+                $out.push(' ');
+                $out.push_str($unit);
+                if $val != 1 && $val != -1 {
+                    $out.push('S');
+                }
             };
         }
         let mut months = value.months;
@@ -481,16 +506,18 @@ pub trait SqlWriter: Send {
                 }
             }
         }
-        out.push_str(d);
+        out.push_str(b);
     }
 
     fn write_uuid(&self, context: &mut Context, out: &mut DynQuery, value: &Uuid) {
-        let d = match context.fragment {
+        let b = match context.fragment {
             Fragment::None => "",
             Fragment::Json | Fragment::JsonKey => "\"",
             _ => "'",
         };
-        let _ = write!(out, "{d}{value}{d}");
+        out.push_str(b);
+        out.push_str(value.hyphenated().encode_lower(&mut Uuid::encode_buffer()));
+        out.push_str(b);
     }
 
     fn write_list(
@@ -769,24 +796,29 @@ pub trait SqlWriter: Send {
             value.lhs.write_query(self.as_dyn(), context, out)
         );
         out.push_str(infix);
-        let mut context = context.switch_fragment(match value.op {
-            BinaryOpType::Cast => Fragment::Casting,
-            BinaryOpType::Alias => Fragment::Aliasing,
-            _ => context.fragment,
-        });
+        let mut switched;
+        let context = match value.op {
+            BinaryOpType::Cast | BinaryOpType::Alias => {
+                switched = context.switch_fragment(if value.op == BinaryOpType::Cast {
+                    Fragment::Casting
+                } else {
+                    Fragment::Aliasing
+                });
+                &mut switched.current
+            }
+            _ => context,
+        };
         if matches!(value.op, BinaryOpType::In | BinaryOpType::NotIn)
             && value
                 .rhs
-                .accept_visitor(&mut WriteInList, self.as_dyn(), &mut context.current, out)
+                .accept_visitor(&mut WriteInList, self.as_dyn(), context, out)
         {
             out.push_str(suffix);
         } else {
             possibly_parenthesized!(
                 out,
                 !rhs_parenthesized && value.rhs.precedence(self.as_dyn()) <= precedence,
-                value
-                    .rhs
-                    .write_query(self.as_dyn(), &mut context.current, out)
+                value.rhs.write_query(self.as_dyn(), context, out)
             );
             out.push_str(suffix);
         }
@@ -836,14 +868,10 @@ pub trait SqlWriter: Send {
     ) {
         value.expression.write_query(self.as_dyn(), context, out);
         if context.fragment == Fragment::SqlSelectOrderBy {
-            let _ = write!(
-                out,
-                " {}",
-                match value.order {
-                    Order::ASC => "ASC",
-                    Order::DESC => "DESC",
-                }
-            );
+            out.push_str(match value.order {
+                Order::ASC => " ASC",
+                Order::DESC => " DESC",
+            });
         }
     }
 
@@ -1139,7 +1167,7 @@ pub trait SqlWriter: Send {
     {
         let table = E::table();
         out.buffer()
-            .reserve(24 + table.schema.len() + table.name.len());
+            .reserve(32 + table.schema.len() + table.name.len());
         if !out.is_empty() {
             out.push('\n');
         }
@@ -1164,7 +1192,7 @@ pub trait SqlWriter: Send {
         };
         let columns = query.get_select();
         let columns_count = columns.clone().into_iter().count();
-        out.buffer().reserve(128 + columns_count * 32);
+        out.buffer().reserve(256 + columns_count * 32);
         if !out.is_empty() {
             out.push('\n');
         }
@@ -1237,7 +1265,8 @@ pub trait SqlWriter: Send {
             );
         }
         if let Some(limit) = query.get_limit() {
-            let _ = write!(out, "\nLIMIT {limit}");
+            out.push_str("\nLIMIT ");
+            out.push_str(itoa::Buffer::new().format(limit));
         }
         out.push(';');
     }

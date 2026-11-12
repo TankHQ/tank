@@ -367,6 +367,8 @@ impl SqlWriter for ScyllaDBSqlWriter {
             return;
         };
         let multiple = rows.peek().is_some();
+        out.buffer()
+            .reserve((rows.size_hint().0 + 1) * (64 + columns.len() * 32));
         if multiple {
             self.write_transaction_begin(out);
         }

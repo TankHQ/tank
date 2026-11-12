@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    fmt::Write,
-};
+use std::collections::{BTreeMap, HashMap};
 use tank_core::{
     BinaryOpType, ColumnDef, Context, DynQuery, GenericSqlWriter, Interval, SqlWriter, Value,
     separated_by,
@@ -28,14 +25,6 @@ impl SqlWriter for DuckDBSqlWriter {
         if let Some(t) = types.get("duckdb") {
             out.push_str(t);
         }
-    }
-
-    fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
-        out.push('\'');
-        for b in value {
-            let _ = write!(out, "\\x{b:02X}");
-        }
-        out.push('\'');
     }
 
     fn value_interval_units(&self) -> &[(&str, i128)] {

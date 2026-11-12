@@ -16,49 +16,70 @@ impl DynQuery {
     pub fn new(value: String) -> Self {
         Self::Raw(RawQuery(value))
     }
+
     pub fn with_capacity(capacity: usize) -> Self {
         Self::new(String::with_capacity(capacity))
     }
+
     pub fn clear(&mut self) {
         match self {
             Self::Raw(RawQuery(value)) => value.clear(),
             Self::Prepared(..) => *self = Self::Raw(Default::default()),
         }
     }
+
+    #[inline]
     pub fn buffer(&mut self) -> &mut String {
-        if !matches!(self, Self::Raw(..)) {
-            log::error!("DynQuery::buffer changed the query to raw, deleting the previous content");
-            *self = Self::Raw(Default::default())
+        match self {
+            Self::Raw(RawQuery(value)) => value,
+            Self::Prepared(..) => self.reset_to_raw(),
         }
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn reset_to_raw(&mut self) -> &mut String {
+        log::error!("DynQuery::buffer changed the query to raw, deleting the previous content");
+        *self = Self::Raw(Default::default());
         let Self::Raw(RawQuery(value)) = self else {
             unreachable!();
         };
         value
     }
+
     pub fn as_prepared<D: Driver>(&mut self) -> Option<&mut D::Prepared> {
         if let Self::Prepared(prepared) = self {
             return (&mut **prepared as &mut dyn Any).downcast_mut::<D::Prepared>();
         }
         None
     }
+
     pub fn as_str<'s>(&'s self) -> Cow<'s, str> {
         match self {
             Self::Raw(RawQuery(sql)) => Cow::Borrowed(sql),
             Self::Prepared(v) => Cow::Owned(format!("{:?}", *v)),
         }
     }
+
+    #[inline(always)]
     pub fn push_str(&mut self, s: &str) {
         self.buffer().push_str(s);
     }
+
+    #[inline(always)]
     pub fn push(&mut self, c: char) {
         self.buffer().push(c);
     }
+
+    #[inline(always)]
     pub fn len(&self) -> usize {
         match self {
             Self::Raw(RawQuery(sql)) => sql.len(),
             Self::Prepared(..) => 0,
         }
     }
+
+    #[inline(always)]
     pub fn is_empty(&self) -> bool {
         match self {
             Self::Raw(RawQuery(v)) => v.is_empty(),
@@ -66,6 +87,7 @@ impl DynQuery {
         }
     }
 
+    #[inline(always)]
     pub fn into_query<D: Driver>(self, _driver: D) -> Query<D> {
         self.into()
     }
@@ -78,10 +100,12 @@ impl Default for DynQuery {
 }
 
 impl Write for DynQuery {
+    #[inline]
     fn write_char(&mut self, c: char) -> fmt::Result {
         self.push(c);
         Ok(())
     }
+    #[inline]
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.push_str(s);
         Ok(())
