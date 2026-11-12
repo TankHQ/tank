@@ -62,7 +62,8 @@ pub async fn insert_builder(executor: &mut impl Executor) -> Result<()> {
     // Entities into a table with the same shape
     executor
         .execute(
-            Sql.insert_into(InsertTarget::table())
+            Sql()
+                .insert_into(InsertTarget::table())
                 .values(&sources[..2])
                 .build(&executor.driver()),
         )
@@ -73,7 +74,8 @@ pub async fn insert_builder(executor: &mut impl Executor) -> Result<()> {
     );
     executor
         .execute(
-            Sql.insert_into(InsertTarget::table())
+            Sql()
+                .insert_into(InsertTarget::table())
                 .values(&[InsertSource {
                     id: 2,
                     name: "TWO".into(),
@@ -99,7 +101,8 @@ pub async fn insert_builder(executor: &mut impl Executor) -> Result<()> {
         };
         executor
             .execute(
-                Sql.insert_into(InsertTarget::table())
+                Sql()
+                    .insert_into(InsertTarget::table())
                     .columns(labels.iter().cloned())
                     .values(
                         [row(3, "three", 25), row(4, "four", 35)]
@@ -111,7 +114,8 @@ pub async fn insert_builder(executor: &mut impl Executor) -> Result<()> {
             .await?;
         executor
             .execute(
-                Sql.insert_into(InsertTarget::table())
+                Sql()
+                    .insert_into(InsertTarget::table())
                     .columns(labels.iter().cloned())
                     .values([row(1, "ONE", 6)].iter().map(Row::values))
                     .update()
@@ -136,7 +140,8 @@ pub async fn insert_builder(executor: &mut impl Executor) -> Result<()> {
         InsertTarget::create_table(executor, true, false).await?;
         executor
             .execute(
-                Sql.insert_into(InsertTarget::table())
+                Sql()
+                    .insert_into(InsertTarget::table())
                     .select(InsertSource::columns())
                     .from(InsertSource::table())
                     .where_expr(expr!(InsertSource::score > 10))

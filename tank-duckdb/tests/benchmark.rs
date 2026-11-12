@@ -187,7 +187,7 @@ mod tests {
         report.record("range_prepared", RANGES, start.elapsed());
 
         // Aggregation decoded through the raw row interface.
-        let query = Sql
+        let query = Sql()
             .select(cols!(
                 Trade::symbol,
                 COUNT(*),

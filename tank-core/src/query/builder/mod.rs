@@ -14,9 +14,9 @@ pub use insert_into::*;
 pub use select::*;
 use std::{borrow::Cow, iter};
 
-/// Entry point of the query builders, as in `Sql.select(columns).from(table)`.
+/// Entry point of the query builders, as in `Sql().select(columns).from(table)`.
 #[derive(Default, Debug)]
-pub struct Sql;
+pub struct Sql();
 
 impl Sql {
     pub fn select<Select: ExpressionCollection>(

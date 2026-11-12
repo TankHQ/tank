@@ -36,7 +36,8 @@ pub async fn other(executor: &mut impl Executor) -> Result<()> {
     // SELECT NULL
     let stream = executor
         .fetch(
-            Sql.select(cols!(NULL))
+            Sql()
+                .select(cols!(NULL))
                 .from(ATable::table())
                 .where_expr(true)
                 .build(&executor.driver()),
@@ -52,7 +53,7 @@ pub async fn other(executor: &mut impl Executor) -> Result<()> {
     let rows = vec![ATable {
         a_column: "test".into(),
     }];
-    let query = Sql.insert_into(ATable::table()).values(&rows);
+    let query = Sql().insert_into(ATable::table()).values(&rows);
     let from_build = query.build(&executor.driver());
     let mut out = DynQuery::default();
     query.build_into(&executor.driver(), &mut out);

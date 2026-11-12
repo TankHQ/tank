@@ -197,7 +197,7 @@ where
 
 /// SELECT query builder.
 ///
-/// Use `Sql.select(columns)` to start.
+/// Use `Sql().select(columns)` to start.
 pub trait SelectQuery<From>
 where
     From: Dataset,

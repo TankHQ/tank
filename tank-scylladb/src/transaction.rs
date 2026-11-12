@@ -97,7 +97,8 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
                 Some(entity) => {
                     writer.write_insert(
                         &mut query,
-                        Sql.insert_into(<It::Item as AsEntity>::Entity::table())
+                        Sql()
+                            .insert_into(<It::Item as AsEntity>::Entity::table())
                             .values([entity.as_entity()]),
                     );
                     // entity dropped here at end of Some arm.

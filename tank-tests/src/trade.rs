@@ -327,7 +327,7 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
         writer.write_delete(&mut query, Trade::table(), true);
         writer.write_insert(
             &mut query,
-            Sql.insert_into(Trade::table()).values(&[Trade {
+            Sql().insert_into(Trade::table()).values(&[Trade {
                 trade: 10002,
                 order: Uuid::parse_str("895dc048-be92-4a55-afbf-38a60936e844").unwrap(),
                 symbol: "RIVN".to_string(),
@@ -356,7 +356,8 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
         );
         writer.write_select(
             &mut query,
-            Sql.select(Trade::columns())
+            Sql()
+                .select(Trade::columns())
                 .from(Trade::table())
                 .where_expr(true),
         );

@@ -87,14 +87,16 @@ mod tests {
                 .unwrap();
         {
             let mut query = DynQuery::default();
-            Sql.select(cols!(CAST(if range == 1000000 {
-                "invalid"
-            } else {
-                range as String
-            } as i64)))
+            Sql()
+                .select(cols!(CAST(if range == 1000000 {
+                    "invalid"
+                } else {
+                    range as String
+                } as i64)))
                 .from(expr!(range(1000010)))
                 .build_into(&DRIVER, &mut query);
-            Sql.create_table(MustNotRun::table())
+            Sql()
+                .create_table(MustNotRun::table())
                 .build_into(&DRIVER, &mut query);
             let mut results = pin!(connection.run(query));
             let mut count = 0;
@@ -112,7 +114,8 @@ mod tests {
         assert!(
             connection
                 .execute(
-                    Sql.insert_into(MustNotRun::table())
+                    Sql()
+                        .insert_into(MustNotRun::table())
                         .values(&[MustNotRun { i: 1 }])
                         .build(&DRIVER)
                 )
@@ -120,7 +123,7 @@ mod tests {
                 .is_err()
         );
         connection
-            .execute(Sql.create_table(Reusable::table()).build(&DRIVER))
+            .execute(Sql().create_table(Reusable::table()).build(&DRIVER))
             .await
             .unwrap();
     }
@@ -133,23 +136,29 @@ mod tests {
                 .unwrap();
         {
             let mut query = DynQuery::default();
-            Sql.create_table(Ordered::table())
+            Sql()
+                .create_table(Ordered::table())
                 .build_into(&DRIVER, &mut query);
-            Sql.insert_into(Ordered::table())
+            Sql()
+                .insert_into(Ordered::table())
                 .values(&[Ordered { id: 1, value: 7 }, Ordered { id: 2, value: 7 }])
                 .build_into(&DRIVER, &mut query);
-            Sql.select(cols!(Ordered::value))
+            Sql()
+                .select(cols!(Ordered::value))
                 .from(Ordered::table())
                 .build_into(&DRIVER, &mut query);
-            Sql.insert_into(Ordered::table())
+            Sql()
+                .insert_into(Ordered::table())
                 .values(&[Ordered { id: 1, value: 8 }])
                 .update()
                 .build_into(&DRIVER, &mut query);
-            Sql.select(cols!(Ordered::value))
+            Sql()
+                .select(cols!(Ordered::value))
                 .from(Ordered::table())
                 .where_expr(expr!(Ordered::id == 1))
                 .build_into(&DRIVER, &mut query);
-            Sql.select(cols!(Ordered::value))
+            Sql()
+                .select(cols!(Ordered::value))
                 .from(Ordered::table())
                 .where_expr(false)
                 .build_into(&DRIVER, &mut query);
@@ -180,10 +189,12 @@ mod tests {
         // Dropping an unfinished batch does not eagerly execute subsequent statements.
         {
             let mut query = DynQuery::default();
-            Sql.select(cols!(Ordered::value))
+            Sql()
+                .select(cols!(Ordered::value))
                 .from(Ordered::table())
                 .build_into(&DRIVER, &mut query);
-            Sql.insert_into(Ordered::table())
+            Sql()
+                .insert_into(Ordered::table())
                 .values(&[Ordered { id: 3, value: 99 }])
                 .build_into(&DRIVER, &mut query);
             let mut results = pin!(connection.run(query));
@@ -195,7 +206,8 @@ mod tests {
         assert_eq!(
             connection
                 .fetch(
-                    Sql.select(cols!(Ordered::value))
+                    Sql()
+                        .select(cols!(Ordered::value))
                         .from(Ordered::table())
                         .build(&DRIVER)
                 )
@@ -214,14 +226,16 @@ mod tests {
                 .await
                 .unwrap();
         let mut query = DynQuery::default();
-        Sql.select(cols!(CAST(if range == 1000000 {
-            "invalid"
-        } else {
-            CAST(range as String)
-        } as i64)))
+        Sql()
+            .select(cols!(CAST(if range == 1000000 {
+                "invalid"
+            } else {
+                CAST(range as String)
+            } as i64)))
             .from(expr!(range(1000010)))
             .build_into(&DRIVER, &mut query);
-        Sql.select(cols!(42))
+        Sql()
+            .select(cols!(42))
             .from(expr!(range(1)))
             .build_into(&DRIVER, &mut query);
         assert!(connection.execute(query).await.is_err());
@@ -429,16 +443,19 @@ mod tests {
         .await
         .expect("Could not open a second connection to the same database");
         let mut query = DynQuery::default();
-        Sql.create_table(SharedDb::table())
+        Sql()
+            .create_table(SharedDb::table())
             .build_into(&DRIVER, &mut query);
-        Sql.insert_into(SharedDb::table())
+        Sql()
+            .insert_into(SharedDb::table())
             .values(&[SharedDb { v: 7 }])
             .build_into(&DRIVER, &mut query);
         c1.execute(query).await.unwrap();
         drop(c1);
         assert_eq!(
             c2.fetch(
-                Sql.select(cols!(SharedDb::v))
+                Sql()
+                    .select(cols!(SharedDb::v))
                     .from(SharedDb::table())
                     .build(&DRIVER)
             )

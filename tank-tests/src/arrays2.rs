@@ -43,11 +43,12 @@ pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
         };
         writer.write_insert(
             &mut query,
-            Sql.insert_into(Container::table()).values([value].iter()),
+            Sql().insert_into(Container::table()).values([value].iter()),
         );
         writer.write_select(
             &mut query,
-            Sql.select(Container::columns())
+            Sql()
+                .select(Container::columns())
                 .from(Container::table())
                 .where_expr(true)
                 .limit(Some(1)),

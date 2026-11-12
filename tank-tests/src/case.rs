@@ -129,16 +129,17 @@ pub async fn case(executor: &mut impl Executor) -> Result<()> {
     // CASE in the projection
     let mut labels = executor
         .fetch(
-            Sql.select(cols!(
-                CaseOrder::id,
-                if CaseOrder::amount >= 100.0 {
-                    "large"
-                } else {
-                    "small"
-                } as size
-            ))
-            .from(CaseOrder::table())
-            .build(&executor.driver()),
+            Sql()
+                .select(cols!(
+                    CaseOrder::id,
+                    if CaseOrder::amount >= 100.0 {
+                        "large"
+                    } else {
+                        "small"
+                    } as size
+                ))
+                .from(CaseOrder::table())
+                .build(&executor.driver()),
         )
         .and_then(|row| async move {
             Ok((

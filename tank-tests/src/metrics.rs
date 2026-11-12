@@ -324,7 +324,8 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
     let height = 170;
     let heights = executor
         .fetch(
-            Sql.select([Metric::value, Metric::date])
+            Sql()
+                .select([Metric::value, Metric::date])
                 .from(Metric::table())
                 .where_expr(expr!(
                     Metric::name == "height_cm"
@@ -342,7 +343,8 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
     // Incomes in Italy
     let italy_incomes = executor
         .fetch(
-            Sql.select([Metric::value])
+            Sql()
+                .select([Metric::value])
                 .from(Metric::table())
                 .where_expr(expr!(
                     Metric::name == "income_eur" && Metric::country == "IT"
@@ -358,7 +360,8 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
     // Highest income in the UK
     let latest_income = executor
         .fetch(
-            Sql.select(cols!(MAX(Metric::value) as value))
+            Sql()
+                .select(cols!(MAX(Metric::value) as value))
                 .from(Metric::table())
                 .where_expr(expr!(
                     Metric::name == "income_eur" && Metric::country == "UK"
@@ -373,7 +376,8 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
     // Prepared queries
     let mut prepared = executor
         .prepare(
-            Sql.select([Metric::value, Metric::date])
+            Sql()
+                .select([Metric::value, Metric::date])
                 .from(Metric::table())
                 .where_expr(expr!(Metric::country == ? && Metric::name == ?))
                 .order_by(cols!(Metric::value DESC, Metric::date DESC))
@@ -415,15 +419,16 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
         }
         let averages = executor
             .fetch(
-                Sql.select(cols!(
-                    Metric::name,
-                    Metric::country,
-                    AVG(Metric::value) as avg,
-                ))
-                .from(Metric::table())
-                .group_by([Metric::name, Metric::country])
-                .order_by(cols!(Metric::name ASC, avg DESC))
-                .build(&executor.driver()),
+                Sql()
+                    .select(cols!(
+                        Metric::name,
+                        Metric::country,
+                        AVG(Metric::value) as avg,
+                    ))
+                    .from(Metric::table())
+                    .group_by([Metric::name, Metric::country])
+                    .order_by(cols!(Metric::name ASC, avg DESC))
+                    .build(&executor.driver()),
             )
             .map(|row| AverageMetrics::from_row(row?))
             .try_collect::<Vec<_>>()
@@ -525,7 +530,8 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
 
         let max_incomes = executor
             .fetch(
-                Sql.select(cols!(Metric::country, MAX(value) as max_income,))
+                Sql()
+                    .select(cols!(Metric::country, MAX(value) as max_income,))
                     .from(Metric::table())
                     .where_expr(expr!(name == "income_eur"))
                     .group_by([Metric::country])
@@ -579,16 +585,17 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
 
         let global_stats = executor
             .fetch(
-                Sql.select(cols!(
-                    Metric::name,
-                    MIN(Metric::value) as min_val,
-                    MAX(Metric::value) as max_val,
-                    SUM(Metric::value) as total_val,
-                ))
-                .from(Metric::table())
-                .group_by([Metric::name])
-                .order_by(cols!(name ASC))
-                .build(&executor.driver()),
+                Sql()
+                    .select(cols!(
+                        Metric::name,
+                        MIN(Metric::value) as min_val,
+                        MAX(Metric::value) as max_val,
+                        SUM(Metric::value) as total_val,
+                    ))
+                    .from(Metric::table())
+                    .group_by([Metric::name])
+                    .order_by(cols!(name ASC))
+                    .build(&executor.driver()),
             )
             .map(|row| MetricGlobalStats::from_row(row?))
             .try_collect::<Vec<_>>()
@@ -620,17 +627,18 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
 
         let heavy_stats = executor
             .fetch(
-                Sql.select(cols!(
-                    Metric::name,
-                    MIN(Metric::value) as min_val,
-                    MAX(Metric::value) as max_val,
-                    SUM(Metric::value) as total_val,
-                ))
-                .from(Metric::table())
-                .group_by([Metric::name])
-                .having(expr!(SUM(Metric::value) > 1000.0))
-                .order_by(cols!(name ASC))
-                .build(&executor.driver()),
+                Sql()
+                    .select(cols!(
+                        Metric::name,
+                        MIN(Metric::value) as min_val,
+                        MAX(Metric::value) as max_val,
+                        SUM(Metric::value) as total_val,
+                    ))
+                    .from(Metric::table())
+                    .group_by([Metric::name])
+                    .having(expr!(SUM(Metric::value) > 1000.0))
+                    .order_by(cols!(name ASC))
+                    .build(&executor.driver()),
             )
             .map(|row| MetricGlobalStats::from_row(row?))
             .try_collect::<Vec<_>>()

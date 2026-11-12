@@ -167,7 +167,8 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
         }
         let result = executor
             .fetch(
-                Sql.select(cols!(B.title, A.name))
+                Sql()
+                    .select(cols!(B.title, A.name))
                     .from(join!(Book B JOIN Author A ON B.author == A.author_id))
                     .where_expr(expr!(B.year < 2000))
                     .order_by(cols!(B.title DESC))
@@ -198,7 +199,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
         );
         let result = executor
             .fetch(
-                Sql
+                Sql()
                     .select(cols!(B.title, A1.name as author, A2.name as co_author))
                     .from(dataset)
                     .where_expr(true)
@@ -262,7 +263,8 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
         }
         let books = executor
             .fetch(
-                Sql.select(cols!(Book::title, Author::name as author, Book::year))
+                Sql()
+                    .select(cols!(Book::title, Author::name as author, Book::year))
                     .from(join!(Book JOIN Author ON Book::author == Author::id))
                     .where_expr(true)
                     .build(&executor.driver()),
@@ -322,7 +324,8 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
         // Authors names alphabetical order
         let authors = executor
             .fetch(
-                Sql.select([Author::name])
+                Sql()
+                    .select([Author::name])
                     .from(Author::table())
                     .where_expr(true)
                     .order_by(cols!(Author::name ASC))
@@ -349,14 +352,16 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
         let writer = executor.driver().sql_writer();
         writer.write_select(
             &mut query,
-            Sql.select(Book::columns())
+            Sql()
+                .select(Book::columns())
                 .from(Book::table())
                 .where_expr(expr!(Book::title == "Metro 2033"))
                 .limit(Some(1)),
         );
         writer.write_select(
             &mut query,
-            Sql.select(Book::columns())
+            Sql()
+                .select(Book::columns())
                 .from(Book::table())
                 .where_expr(expr!(Book::title == "Harry Potter and the Deathly Hallows"))
                 .limit(Some(1)),

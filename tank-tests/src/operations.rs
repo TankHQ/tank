@@ -147,11 +147,11 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
         );
         writer.write_insert(
             &mut query,
-            Sql.insert_into(Operator::table()).values([&operator]),
+            Sql().insert_into(Operator::table()).values([&operator]),
         );
         writer.write_insert(
             &mut query,
-            Sql.insert_into(RadioLog::table()).values(&[RadioLog {
+            Sql().insert_into(RadioLog::table()).values(&[RadioLog {
                 id: Uuid::new_v4(),
                 operator: operator.id,
                 message: "Status report".into(),
@@ -162,7 +162,8 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
         );
         writer.write_select(
             &mut query,
-            Sql.select(RadioLog::columns())
+            Sql()
+                .select(RadioLog::columns())
                 .from(RadioLog::table())
                 .where_expr(true)
                 .limit(Some(50)),
@@ -298,19 +299,20 @@ pub async fn advanced_operations(executor: &mut impl Executor) -> Result<()> {
         // #region operations-select-order
         let messages = executor
             .fetch(
-                Sql.select(cols!(
-                    RadioLog::signal_strength as strength,
-                    Operator::callsign,
-                    RadioLog::message,
-                ))
-                .from(join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operator))
-                .where_expr(expr!(
-                    // X != Y as LIKE => X NOT LIKE Y
-                    Operator::is_certified && RadioLog::message != "Radio check%" as LIKE
-                ))
-                .order_by(cols!(RadioLog::signal_strength DESC, Operator::callsign ASC))
-                .limit(Some(100))
-                .build(&executor.driver()),
+                Sql()
+                    .select(cols!(
+                        RadioLog::signal_strength as strength,
+                        Operator::callsign,
+                        RadioLog::message,
+                    ))
+                    .from(join!(Operator JOIN RadioLog ON Operator::id == RadioLog::operator))
+                    .where_expr(expr!(
+                        // X != Y as LIKE => X NOT LIKE Y
+                        Operator::is_certified && RadioLog::message != "Radio check%" as LIKE
+                    ))
+                    .order_by(cols!(RadioLog::signal_strength DESC, Operator::callsign ASC))
+                    .limit(Some(100))
+                    .build(&executor.driver()),
             )
             .map(|row| {
                 row.and_then(|row| {

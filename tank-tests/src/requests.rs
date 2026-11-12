@@ -164,7 +164,7 @@ pub async fn requests(executor: &mut impl Executor) -> Result<()> {
     {
         let mut violated_limits = executor
             .prepare(
-                Sql.select([
+                Sql().select([
                     RequestLimit::target_pattern,
                     RequestLimit::requests,
                     RequestLimit::method,

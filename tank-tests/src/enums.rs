@@ -143,7 +143,8 @@ pub async fn enums(executor: &mut impl Executor) -> Result<()> {
     .await?;
     let entries = executor
         .fetch(
-            Sql.select(cols!(*))
+            Sql()
+                .select(cols!(*))
                 .from(Entry::table())
                 .where_expr(expr!(id == 1))
                 .order_by(cols!(Entry::another_enum ASC))
