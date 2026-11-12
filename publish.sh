@@ -1,4 +1,5 @@
 # Remember to increase the version first
+./test.sh &&
 cd tank-core/ &&
 cargo publish &&
 cd ../ &&
