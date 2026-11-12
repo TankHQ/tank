@@ -177,7 +177,7 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_delete::<Customer>(&mut query, true);
+        WRITER.write_delete(&mut query, Customer::table(), true);
         assert_eq!(
             query.as_str(),
             indoc! {r#"

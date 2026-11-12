@@ -306,7 +306,7 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
     {
         let mut query = DynQuery::default();
         let writer = executor.driver().sql_writer();
-        writer.write_delete::<Limits>(&mut query, true);
+        writer.write_delete(&mut query, Limits::table(), true);
         writer.write_insert(&mut query, &[minimals, maximals], false);
         writer.write_select(
             &mut query,

@@ -1,6 +1,6 @@
 use crate::{
-    Action, AsEntity, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Dataset, DynQuery, Entity,
-    Error, Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
+    Action, AsEntity, BinaryOp, BinaryOpType, Case, ColumnDef, ColumnRef, Dataset, DynQuery,
+    Entity, Error, Expression, Fragment, Interval, IsTrue, Join, JoinType, Operand, Order, Ordered,
     PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, WriteInList,
     possibly_parenthesized, separated_by, write_escaped, writer::Context,
 };
@@ -808,6 +808,26 @@ pub trait SqlWriter: Send {
         out.push(')');
     }
 
+    /// Render a `CASE` expression.
+    fn write_case(&self, context: &mut Context, out: &mut DynQuery, value: &Case) {
+        out.push_str("CASE");
+        if let Some(v) = value.value {
+            out.push(' ');
+            v.write_query(self.as_dyn(), context, out);
+        }
+        for (when, then) in value.when {
+            out.push_str(" WHEN ");
+            when.write_query(self.as_dyn(), context, out);
+            out.push_str(" THEN ");
+            then.write_query(self.as_dyn(), context, out);
+        }
+        if let Some(otherwise) = value.otherwise {
+            out.push_str(" ELSE ");
+            otherwise.write_query(self.as_dyn(), context, out);
+        }
+        out.push_str(" END");
+    }
+
     /// Render ordered expression inside ORDER BY.
     fn write_ordered(
         &self,
@@ -899,7 +919,7 @@ pub trait SqlWriter: Send {
             out.push('\n');
         }
         out.push_str("CREATE SCHEMA ");
-        let mut context = Context::new(Fragment::SqlCreateSchema, E::qualified_columns());
+        let mut context = Context::new(Fragment::SqlCreateSchema, E::table().qualified_columns());
         if if_not_exists {
             out.push_str("IF NOT EXISTS ");
         }
@@ -913,7 +933,7 @@ pub trait SqlWriter: Send {
         Self: Sized,
         E: Entity,
     {
-        let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
+        let mut context = Context::new(Fragment::SqlDropSchema, E::table().qualified_columns());
         let table = E::table();
         out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
@@ -933,7 +953,7 @@ pub trait SqlWriter: Send {
         Self: Sized,
         E: Entity,
     {
-        let mut context = Context::new(Fragment::SqlCreateTable, E::qualified_columns());
+        let mut context = Context::new(Fragment::SqlCreateTable, E::table().qualified_columns());
         let table = E::table();
         let estimated = 128 + E::columns().len() * 64 + E::primary_key_def().len() * 24;
         out.buffer().reserve(estimated);
@@ -1125,7 +1145,7 @@ pub trait SqlWriter: Send {
             out.push('\n');
         }
         out.push_str("DROP TABLE ");
-        let mut context = Context::new(Fragment::SqlDropTable, E::qualified_columns());
+        let mut context = Context::new(Fragment::SqlDropTable, E::table().qualified_columns());
         if if_exists {
             out.push_str("IF EXISTS ");
         }
@@ -1150,7 +1170,11 @@ pub trait SqlWriter: Send {
             out.push('\n');
         }
         out.push_str("SELECT ");
-        let mut context = Context::new(Fragment::SqlSelect, Data::qualified_columns());
+        let qualified = query
+            .get_from()
+            .as_ref()
+            .is_some_and(Dataset::qualified_columns);
+        let mut context = Context::new(Fragment::SqlSelect, qualified);
         if columns_count != 0 {
             separated_by(
                 out,
@@ -1239,7 +1263,10 @@ pub trait SqlWriter: Send {
             out.push('\n');
         }
         out.push_str("INSERT INTO ");
-        let mut context = Context::new(Fragment::SqlInsertInto, E::<It>::qualified_columns());
+        let mut context = Context::new(
+            Fragment::SqlInsertInto,
+            E::<It>::table().qualified_columns(),
+        );
         self.write_table_ref(&mut context, out, table);
         out.push_str(" (");
         separated_by(
@@ -1321,19 +1348,17 @@ pub trait SqlWriter: Send {
     }
 
     /// Write DELETE statement.
-    fn write_delete<E>(&self, out: &mut DynQuery, condition: impl Expression)
+    fn write_delete(&self, out: &mut DynQuery, from: &dyn Dataset, condition: impl Expression)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table();
         out.buffer().reserve(128);
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("DELETE FROM ");
-        let mut context = Context::new(Fragment::SqlDeleteFrom, E::qualified_columns());
-        self.write_table_ref(&mut context, out, table);
+        let mut context = Context::new(Fragment::SqlDeleteFrom, from.qualified_columns());
+        from.write_table_name(self, &mut context, out);
         out.push_str("\nWHERE ");
         condition.write_query(
             self,

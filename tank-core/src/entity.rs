@@ -242,7 +242,7 @@ pub trait Entity: AsEntity + Expression {
         executor
             .driver()
             .sql_writer()
-            .write_delete::<Self>(&mut query, condition);
+            .write_delete(&mut query, Self::table(), condition);
         executor.execute(query)
     }
 

@@ -151,7 +151,7 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
     {
         let mut query = DynQuery::default();
         let writer = executor.driver().sql_writer();
-        writer.write_delete::<Intervals>(&mut query, true);
+        writer.write_delete(&mut query, Intervals::table(), true);
         writer.write_insert(
             &mut query,
             &[

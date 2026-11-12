@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, Expression, ExpressionVisitor, OpPrecedence, Value,
+    Dataset, DynQuery, Expression, ExpressionVisitor, OpPrecedence, TableRef, Value,
     writer::{Context, SqlWriter},
 };
 use std::fmt;
@@ -65,6 +65,20 @@ impl Expression for Operand<'_> {
         out: &mut DynQuery,
     ) -> bool {
         matcher.visit_operand(writer, context, out, self)
+    }
+}
+
+impl Dataset for Operand<'_> {
+    fn qualified_columns(&self) -> bool {
+        false
+    }
+
+    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+        self.write_query(writer, context, out);
+    }
+
+    fn table_ref(&self) -> TableRef {
+        TableRef::default()
     }
 }
 

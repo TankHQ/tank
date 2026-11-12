@@ -131,7 +131,11 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_delete::<SomeSimpleEntity>(&mut query, expr!(SomeSimpleEntity::b != "hello"));
+        WRITER.write_delete(
+            &mut query,
+            SomeSimpleEntity::table(),
+            expr!(SomeSimpleEntity::b != "hello"),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"

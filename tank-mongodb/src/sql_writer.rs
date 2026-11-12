@@ -15,8 +15,8 @@ use mongodb::{
 };
 use std::{borrow::Cow, collections::HashMap, f64, iter, mem, ops::Deref, sync::Arc};
 use tank_core::{
-    AsEntity, AsValue, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Context, Dataset, DynQuery,
-    Entity, ErrorContext, Expression, FindOrder, Fragment, Interval, IsAggregateFunction,
+    AsEntity, AsValue, BinaryOp, BinaryOpType, Case, ColumnDef, ColumnRef, Context, Dataset,
+    DynQuery, Entity, ErrorContext, Expression, FindOrder, Fragment, Interval, IsAggregateFunction,
     IsAsterisk, IsConstant, Operand, Order, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType,
     Value, truncate_long,
 };
@@ -636,6 +636,48 @@ impl SqlWriter for MongoDBSqlWriter {
         );
     }
 
+    fn write_case(&self, context: &mut Context, out: &mut DynQuery, value: &Case) {
+        let mut render = |expression: &dyn Expression| {
+            let mut query = Self::make_prepared();
+            expression.write_query(self, context, &mut query);
+            query
+                .as_prepared::<MongoDBDriver>()
+                .and_then(MongoDBPrepared::current_bson)
+                .map(mem::take)
+                .unwrap_or_else(|| {
+                    log::error!("Failed to render a CASE operand in MongoDBSqlWriter::write_case");
+                    Bson::Null
+                })
+        };
+        let compared = value.value.map(&mut render);
+        let branches = value
+            .when
+            .iter()
+            .map(|(when, then)| {
+                let when = render(*when);
+                doc! {
+                    "case": match &compared {
+                        Some(compared) => doc! { "$eq": [compared.clone(), when] }.into(),
+                        None => when,
+                    },
+                    "then": render(*then),
+                }
+            })
+            .collect::<Vec<_>>();
+        // Unlike SQL, `$switch` fails when no branch matches and there is no default.
+        let default = value.otherwise.map(&mut render).unwrap_or(Bson::Null);
+        let Some(document) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::switch_to_document)
+        else {
+            log::error!(
+                "The query provided to write_case (out) does not have a document to write the content into"
+            );
+            return;
+        };
+        document.insert("$switch", doc! { "branches": branches, "default": default });
+    }
+
     fn write_function(
         &self,
         context: &mut Context,
@@ -1179,12 +1221,11 @@ impl SqlWriter for MongoDBSqlWriter {
         Self::prepare_query(out, &mut context, payload);
     }
 
-    fn write_delete<E>(&self, out: &mut DynQuery, condition: impl Expression)
+    fn write_delete(&self, out: &mut DynQuery, from: &dyn Dataset, condition: impl Expression)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table().clone();
+        let table = from.table_ref();
         let name = table.full_name(self.separator());
         let mut context = Context::fragment(Fragment::SqlDeleteFromWhere);
         context.quote_identifiers = false;

@@ -300,7 +300,7 @@ mod tests {
             "#}.trim())
     );
         let mut query = DynQuery::default();
-        WRITER.write_delete::<Trade>(&mut query, expr!(Trade::trade == 68391));
+        WRITER.write_delete(&mut query, Trade::table(), expr!(Trade::trade == 68391));
         assert_eq!(
             query.as_str(),
             indoc! {r#"

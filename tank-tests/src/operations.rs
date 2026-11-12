@@ -140,7 +140,11 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
         // #region operations-batch
         let writer = executor.driver().sql_writer();
         let mut query = DynQuery::default();
-        writer.write_delete::<RadioLog>(&mut query, expr!(RadioLog::signal_strength < 10));
+        writer.write_delete(
+            &mut query,
+            RadioLog::table(),
+            expr!(RadioLog::signal_strength < 10),
+        );
         writer.write_insert(&mut query, [&operator], false);
         writer.write_insert(
             &mut query,

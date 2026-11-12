@@ -143,6 +143,8 @@ let uid = Uuid::new_v4();
 expr!(EntityExample::unit_id == #uid);
 let regions = ["North", "South"];
 expr!(EntityExample::region == #regions as IN);
+expr!(if EntityExample::casualties > 10 { "heavy" } else { "light" });
+expr!(match EntityExample::region { "North" | "South" => 1, _ => 2 });
 ```
 
 ## Prepared statement

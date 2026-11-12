@@ -67,7 +67,7 @@ mod tests {
         );
 
         let mut query = DynQuery::default();
-        WRITER.write_delete::<SomeEmptyEntity>(&mut query, false);
+        WRITER.write_delete(&mut query, SomeEmptyEntity::table(), false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"

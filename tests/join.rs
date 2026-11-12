@@ -56,7 +56,8 @@ mod tests {
             query.as_str(),
             r#""my_data"."alpha" AA JOIN "bravo" BB ON AA.a = BB.first"#
         );
-        assert!(Join::<TableRef, TableRef, ()>::qualified_columns());
+        assert!(join.qualified_columns());
+        assert!((&join as &dyn Dataset).qualified_columns());
 
         let join = join!(Alpha INNER JOIN Bravo ON Alpha::_a == Bravo::_first);
         assert!(matches!(

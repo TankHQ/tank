@@ -17,7 +17,7 @@ mod tests {
         Error, Executor, Expression, ExpressionCollection, ExpressionVisitor, Fragment,
         GenericSqlWriter, NA, OpPrecedence, PoolConfig, PooledConnection, Prepared, Query,
         QueryBuilder, QueryResult, RawQuery, Result, Row, RowOwned, RowsAffected, Transaction,
-        anyhow, describe_path, describe_url,
+        anyhow, describe_path, describe_url, expr,
         stream::{self, Stream, StreamExt, TryStreamExt},
     };
 
@@ -365,6 +365,24 @@ mod tests {
         assert_eq!(insert.get_values().len(), 1);
         assert!(!insert.build(&TestDriver).is_empty());
         insert.build_into(&TestDriver, &mut out);
+        let upsert = QueryBuilder::new().insert_into().values(&rows).update();
+        assert!(upsert.build(&TestDriver).as_str().contains("ON CONFLICT"));
+        assert_eq!(
+            QueryBuilder::new()
+                .delete_from("logs")
+                .where_expr(expr!(level == "debug"))
+                .build(&TestDriver)
+                .as_str(),
+            "DELETE FROM \"logs\"\nWHERE level = 'debug';"
+        );
+        let delete = QueryBuilder::new().delete_from(ExecutorItem::table());
+        assert!(
+            delete
+                .build(&TestDriver)
+                .as_str()
+                .starts_with("DELETE FROM")
+        );
+        delete.build_into(&TestDriver, &mut out);
         let select = QueryBuilder::new()
             .select(ExecutorItem::columns())
             .from(ExecutorItem::table());

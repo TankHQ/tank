@@ -3,8 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::fmt::Write;
     use tank::{
-        DynQuery, Entity, GenericSqlWriter, QueryBuilder, QueryResult, QueryResultOwned, RawQuery,
-        RowOwned, RowsAffected, SqlWriter, cols, expr,
+        Context, DynQuery, Entity, Expression, Fragment, GenericSqlWriter, QueryBuilder,
+        QueryResult, QueryResultOwned, RawQuery, RowOwned, RowsAffected, SqlWriter, cols, expr,
     };
 
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
@@ -29,6 +29,83 @@ mod tests {
             indoc! {r#"
                 SELECT "a", "b", "c"
                 FROM "my_table";
+            "#}
+            .trim()
+        );
+    }
+
+    #[test]
+    fn query_case() {
+        #[derive(Entity)]
+        struct Order {
+            status: i32,
+            amount: f64,
+            note: Option<String>,
+        }
+        let render = |expression: &dyn Expression| {
+            let mut sql = DynQuery::default();
+            expression.write_query(
+                &WRITER,
+                &mut Context::new(Fragment::SqlSelect, false),
+                &mut sql,
+            );
+            sql.as_str().into_owned()
+        };
+        assert_eq!(
+            render(&expr!(if Order::amount > 100.0 {
+                "large"
+            } else if Order::note == NULL {
+                "unknown"
+            } else {
+                "small"
+            })),
+            r#"CASE WHEN "amount" > 100.0 THEN 'large' WHEN "note" IS NULL THEN 'unknown' ELSE 'small' END"#,
+        );
+        assert_eq!(
+            render(&expr!(if Order::status == 1 {
+                "open"
+            })),
+            r#"CASE WHEN "status" = 1 THEN 'open' END"#,
+        );
+        let closed = 3;
+        assert_eq!(
+            render(&expr!(match Order::status {
+                1 => "open",
+                2 | #closed => "closed",
+                -1 => "invalid",
+                _ => "unknown",
+            })),
+            r#"CASE "status" WHEN 1 THEN 'open' WHEN 2 THEN 'closed' WHEN 3 THEN 'closed' WHEN -1 THEN 'invalid' ELSE 'unknown' END"#,
+        );
+        assert_eq!(
+            render(&expr!(
+                CAST(if Order::status == 0 {
+                    "invalid"
+                } else {
+                    CAST(Order::status as String)
+                } as i64)
+                    + 1
+            )),
+            r#"CAST(CASE WHEN "status" = 0 THEN 'invalid' ELSE CAST("status" AS TEXT) END AS BIGINT) + 1"#,
+        );
+    }
+
+    #[test]
+    fn query_table_function() {
+        let mut sql = DynQuery::default();
+        WRITER.write_select(
+            &mut sql,
+            &QueryBuilder::new()
+                .select(cols!(range))
+                .from(expr!(range(3)))
+                .where_expr(expr!(range > 0)),
+        );
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                SELECT range
+                FROM range(3)
+                WHERE range > 0;
             "#}
             .trim()
         );
@@ -436,6 +513,26 @@ mod tests {
         );
         let rows = vec![Foo { id: 1 }];
         assert!(!QueryBuilder::new().insert_into().values(&rows).get_update());
+        assert!(
+            QueryBuilder::new()
+                .insert_into()
+                .values(&rows)
+                .update()
+                .get_update()
+        );
+        assert!(
+            QueryBuilder::new()
+                .delete_from(Foo::table())
+                .get_where()
+                .is_none()
+        );
+        assert!(
+            QueryBuilder::new()
+                .delete_from(Foo::table())
+                .where_expr(expr!(Foo::id == 1))
+                .get_where()
+                .is_some()
+        );
     }
 
     #[test]

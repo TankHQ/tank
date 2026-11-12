@@ -324,7 +324,7 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
     {
         let writer = executor.driver().sql_writer();
         let mut query = DynQuery::default();
-        writer.write_delete::<Trade>(&mut query, true);
+        writer.write_delete(&mut query, Trade::table(), true);
         writer.write_insert(
             &mut query,
             &[Trade {

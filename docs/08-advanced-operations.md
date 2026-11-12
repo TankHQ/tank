@@ -69,11 +69,13 @@ It accepts a subset of Rust syntax with additional sentinel tokens for SQL seman
 - `COUNT(*)`, `SUM(RadioLog::signal_strength)` function calls and aggregates
 - `Operator::id as op_id` aliasing (column renaming)
 - `PI` identifiers
-- `col == NULL`, `col != NULL` null check, it becomes `IS NULL`/`IS NOT NULL`
+- `col == NULL`, `col != NULL` null check, becomes `IS NULL`/`IS NOT NULL`
 - `value != "ab%" as LIKE` pattern matching: becomes `value NOT LIKE 'ab%'` in SQL. Also supports `IN`, `REGEXP`, and `GLOB` (actual support depends on the driver)
 - `Operator::callsign == #signs as IN`, becomes: `callsign IN ('Alpha', 'Bravo-2')`
 - `-(-PI) + 2 * (5 % (2 + 1)) == 7 && !(4 < 2)` combination of the previous
 - `CAST((2 > 1) as i32)` casting expression (mind the parentheses), the type names are automatically converted by the driver
+- `if RadioLog::signal_strength > -20 { "strong" } else { "weak" }` conditional: becomes `CASE WHEN signal_strength > -20 THEN 'strong' ELSE 'weak' END`, `else if`
+- `match Operator::service_rank { 1 => "recruit", 2 | 3 => "veteran", _ => "officer" }` conditional: becomes `CASE service_rank WHEN 1 THEN 'recruit' WHEN 2 THEN 'veteran' WHEN 3 THEN 'veteran' ELSE 'officer' END`.
 - `current_timestamp_ms!()` milliseconds since epoch. Each driver renders it in its own dialect: `CAST(EXTRACT(EPOCH FROM NOW()) * 1000 AS BIGINT)`, `(unixepoch('subsec') * 1000)`, `epoch_ms(current_timestamp)`, ...
 
 Parentheses obey standard Rust precedence. Empty invocation (`expr!()`) yields `false`. Ultimately, the drivers decide if and how these expressions are translated into the specific query language.
@@ -85,6 +87,11 @@ Parentheses obey standard Rust precedence. Empty invocation (`expr!()`) yields `
 > 1. Declares that `4 == (2, 3, 4, 5)` is actually `4 IN (2, 3, 4, 5)`.
 > 2. Separates the cast target type from the expression being cast.
 > 3. Gives a name to the resulting column (when used in a `SELECT`).
+
+> [!WARNING]
+> **Conditionals** (`if` and `match`) are not supported by:
+> - ScyllaDB / Cassandra: CQL has no conditional expressions, the database rejects the query.
+> - Valkey / Redis: the driver logs an error and does not render the expression.
 
 ## Cols
 [`tank::cols!()`](https://docs.rs/tank/latest/tank/macro.cols.html) builds a slice of projection expressions (optionally ordered). Each item is an expression (parsed via [`expr!`](#expr)) or an ordered expression when followed by `ASC` or `DESC`.

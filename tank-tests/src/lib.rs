@@ -5,6 +5,7 @@ mod arrays2;
 mod binary;
 mod bindings;
 mod books;
+mod case;
 mod cheat_sheet;
 mod complex;
 mod conditions;
@@ -42,6 +43,7 @@ pub use arrays2::*;
 pub use binary::*;
 pub use bindings::*;
 pub use books::*;
+pub use case::*;
 pub use cheat_sheet::*;
 pub use complex::*;
 pub use conditions::*;
@@ -62,11 +64,11 @@ pub use operations::*;
 pub use orders::*;
 pub use other::*;
 pub use prepared::*;
-pub use readme::*;
 use rcgen::{
     BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair,
     KeyUsagePurpose, SanType,
 };
+pub use readme::*;
 pub use requests::*;
 pub use service::*;
 pub use shopping::*;
@@ -211,6 +213,8 @@ pub async fn execute_tests<D: Driver + 'static>(pool: &mut impl ConnectionPool<D
         boxed(orders),
         boxed(times),
         boxed(conditions),
+        #[cfg(not(feature = "disable-case"))]
+        boxed(case),
         boxed(metrics),
         boxed(math),
         boxed(ambiguity),

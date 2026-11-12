@@ -248,7 +248,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
             out.push('\n');
         }
         out.push_str("CREATE KEYSPACE ");
-        let mut context = Context::new(Fragment::SqlCreateSchema, E::qualified_columns());
+        let mut context = Context::new(Fragment::SqlCreateSchema, E::table().qualified_columns());
         if if_not_exists {
             out.push_str("IF NOT EXISTS ");
         }
@@ -267,7 +267,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         Self: Sized,
         E: Entity,
     {
-        let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
+        let mut context = Context::new(Fragment::SqlDropSchema, E::table().qualified_columns());
         let table = E::table();
         out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
@@ -375,7 +375,10 @@ impl SqlWriter for ScyllaDBSqlWriter {
                 out.push('\n');
             }
             out.push_str("INSERT INTO ");
-            let mut context = Context::new(Fragment::SqlInsertInto, E::<It>::qualified_columns());
+            let mut context = Context::new(
+                Fragment::SqlInsertInto,
+                E::<It>::table().qualified_columns(),
+            );
             self.write_table_ref(&mut context, out, table);
             out.push_str(" (");
             separated_by(
@@ -398,12 +401,11 @@ impl SqlWriter for ScyllaDBSqlWriter {
         }
     }
 
-    fn write_delete<E>(&self, out: &mut DynQuery, condition: impl Expression)
+    fn write_delete(&self, out: &mut DynQuery, from: &dyn Dataset, condition: impl Expression)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table();
+        let table = &from.table_ref();
         out.buffer().reserve(128);
         let mut context = Context::new(Fragment::SqlDeleteFrom, false);
         let is_true = condition.accept_visitor(&mut IsTrue, self, &mut context, out);

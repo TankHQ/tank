@@ -88,7 +88,7 @@ mod tests {
         table.write_table_name(&writer, &mut from_context, &mut rendered);
         assert_eq!(rendered.as_str().as_ref(), r#""analytics"."events" e"#);
         assert_eq!(table.table_ref(), table);
-        assert!(!<TableRef as Dataset>::qualified_columns());
+        assert!(!table.qualified_columns());
 
         let mut join_context = Context::fragment(Fragment::SqlJoin);
         let mut rendered_borrowed = DynQuery::default();
@@ -98,9 +98,10 @@ mod tests {
             r#""analytics"."events" e"#
         );
         assert_eq!((&&table).table_ref(), table);
-        assert!(!<&TableRef as Dataset>::qualified_columns());
+        assert!(!table.qualified_columns());
 
         let dynamic: &dyn Dataset = &table;
+        assert!(!dynamic.qualified_columns());
         let mut query = DynQuery::default();
         (&dynamic).write_table_name(
             &writer,
@@ -740,7 +741,7 @@ mod tests {
         writer.write_drop_table::<AppendTable>(&mut q, false);
         assert!(q.as_str().starts_with("-- c\nDROP TABLE"));
         let mut q = DynQuery::new("-- c".into());
-        writer.write_delete::<AppendTable>(&mut q, true);
+        writer.write_delete(&mut q, AppendTable::table(), true);
         assert!(q.as_str().starts_with("-- c\nDELETE FROM"));
         let mut q = DynQuery::new("-- c".into());
         writer.write_insert(&mut q, [&AppendTable { id: 1 }], false);

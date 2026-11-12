@@ -20,7 +20,7 @@ mod tests {
         let writer = DRIVER.sql_writer();
         let mut query = DynQuery::default();
 
-        writer.write_delete::<Item>(&mut query, expr!(Item::id == 1));
+        writer.write_delete(&mut query, Item::table(), expr!(Item::id == 1));
         writer.write_insert(
             &mut query,
             [&Item {
@@ -64,7 +64,7 @@ mod tests {
             }],
             false,
         );
-        writer.write_delete::<Item>(&mut query, expr!(Item::id == 1));
+        writer.write_delete(&mut query, Item::table(), expr!(Item::id == 1));
 
         let Some(Payload::Batch(BatchPayload { batch, .. })) = query
             .as_prepared::<MongoDBDriver>()
@@ -93,7 +93,7 @@ mod tests {
             }],
             true, // update = true -> upsert
         );
-        writer.write_delete::<Item>(&mut query, expr!(Item::id == 99));
+        writer.write_delete(&mut query, Item::table(), expr!(Item::id == 99));
 
         let Some(Payload::Batch(BatchPayload { batch, .. })) = query
             .as_prepared::<MongoDBDriver>()

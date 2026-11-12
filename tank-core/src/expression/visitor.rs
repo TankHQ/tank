@@ -1,6 +1,6 @@
 use crate::{
-    BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, Operand, Order, Ordered,
-    SqlWriter, UnaryOp, Value,
+    BinaryOp, BinaryOpType, Case, ColumnRef, Context, DynQuery, Expression, Operand, Order,
+    Ordered, SqlWriter, UnaryOp, Value,
 };
 
 pub trait ExpressionVisitor {
@@ -46,6 +46,15 @@ pub trait ExpressionVisitor {
         _context: &mut Context,
         _out: &mut DynQuery,
         _value: &Ordered<&dyn Expression>,
+    ) -> bool {
+        false
+    }
+    fn visit_case(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        _value: &Case,
     ) -> bool {
         false
     }

@@ -188,7 +188,7 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_delete::<MyEntity>(&mut query, expr!(MyEntity::_echo == 5));
+        WRITER.write_delete(&mut query, MyEntity::table(), expr!(MyEntity::_echo == 5));
         assert_eq!(
             query.as_str(),
             indoc! {r#"

@@ -39,10 +39,7 @@ pub enum JoinType {
 }
 
 impl<L: Dataset, R: Dataset, E: Expression> Dataset for Join<L, R, E> {
-    fn qualified_columns() -> bool
-    where
-        Self: Sized,
-    {
+    fn qualified_columns(&self) -> bool {
         true
     }
     fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {

@@ -100,7 +100,7 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
     {
         let writer = executor.driver().sql_writer();
         let mut query = DynQuery::default();
-        writer.write_delete::<SimpleFields>(&mut query, false); // Does not delete anything
+        writer.write_delete(&mut query, SimpleFields::table(), false); // Does not delete anything
         writer.write_select(
             &mut query,
             &QueryBuilder::new()
@@ -205,7 +205,7 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
     {
         let writer = executor.driver().sql_writer();
         let mut query = DynQuery::default();
-        writer.write_delete::<SimpleFields>(&mut query, true);
+        writer.write_delete(&mut query, SimpleFields::table(), true);
         writer.write_insert(&mut query, [&entity], false);
         writer.write_select(
             &mut query,

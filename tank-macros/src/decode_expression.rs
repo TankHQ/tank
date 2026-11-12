@@ -1,8 +1,8 @@
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::{
-    BinOp, Expr, ExprGroup, ExprLit, ExprMacro, ExprPath, LitStr, Macro, Member, Path, Type,
-    TypePath, punctuated::Punctuated, spanned::Spanned, token::Comma,
+    BinOp, Block, Expr, ExprGroup, ExprLit, ExprMacro, ExprPath, LitStr, Macro, Member, Pat, Path,
+    Stmt, Type, TypePath, punctuated::Punctuated, spanned::Spanned, token::Comma,
 };
 use tank_core::{decode_type, matches_path};
 
@@ -10,6 +10,60 @@ fn unwrap_group(expr: &Expr) -> &Expr {
     match expr {
         Expr::Group(v) => &*v.expr,
         _ => expr,
+    }
+}
+
+/// The single expression of a `CASE` branch body: `{ expr }`.
+fn decode_branch(block: &Block) -> TokenStream {
+    match block.stmts.as_slice() {
+        [Stmt::Expr(expr, None)] => decode_expression(expr),
+        _ => panic!(
+            "A CASE branch must contain exactly one expression, found `{}`",
+            block.to_token_stream()
+        ),
+    }
+}
+
+/// The values a `match` arm pattern compares against: literals, paths, `#variables` and `a | b`.
+fn decode_patterns(pat: &Pat, out: &mut Vec<TokenStream>) {
+    match pat {
+        Pat::Or(v) => v.cases.iter().for_each(|case| decode_patterns(case, out)),
+        Pat::Paren(v) => decode_patterns(&v.pat, out),
+        Pat::Path(v) if v.path.is_ident("NULL") => {
+            panic!("`NULL` never compares equal in a CASE, use `if value == NULL {{ .. }}` instead")
+        }
+        Pat::Lit(v) => out.push(decode_expression(&Expr::Lit(v.clone()))),
+        Pat::Path(v) => out.push(decode_expression(&Expr::Path(v.clone()))),
+        Pat::Macro(v) => out.push(decode_expression(&Expr::Macro(v.clone()))),
+        _ => panic!(
+            "Unsupported CASE pattern `{}`, expected literals, paths, `#variables` or `a | b`",
+            pat.to_token_stream()
+        ),
+    }
+}
+
+fn case_tokens(
+    value: Option<TokenStream>,
+    when: Vec<(TokenStream, TokenStream)>,
+    otherwise: Option<TokenStream>,
+) -> TokenStream {
+    let value = match value {
+        Some(v) => quote!(Some(&#v as &dyn ::tank::Expression)),
+        None => quote!(None),
+    };
+    let when = when.iter().map(|(when, then)| {
+        quote!((&#when as &dyn ::tank::Expression, &#then as &dyn ::tank::Expression))
+    });
+    let otherwise = match otherwise {
+        Some(v) => quote!(Some(&#v as &dyn ::tank::Expression)),
+        None => quote!(None),
+    };
+    quote! {
+        ::tank::Case {
+            value: #value,
+            when: &[#(#when),*],
+            otherwise: #otherwise,
+        }
     }
 }
 
@@ -232,6 +286,48 @@ pub fn decode_expression(expr: &Expr) -> TokenStream {
                 quote! { #path!(#tokens) }
             }
         }
+        // `if a { x } else if b { y } else { z }` is `CASE WHEN a THEN x WHEN b THEN y ELSE z END`.
+        Expr::If(_) => {
+            let mut when = Vec::new();
+            let mut current = expr;
+            let otherwise = loop {
+                match current {
+                    Expr::If(v) => {
+                        when.push((decode_expression(&v.cond), decode_branch(&v.then_branch)));
+                        match &v.else_branch {
+                            Some((_, branch)) => current = branch,
+                            None => break None,
+                        }
+                    }
+                    Expr::Block(v) => break Some(decode_branch(&v.block)),
+                    _ => break Some(decode_expression(current)),
+                }
+            };
+            case_tokens(None, when, otherwise)
+        }
+        // `match v { 1 => x, 2 | 3 => y, _ => z }` is `CASE v WHEN 1 THEN x WHEN 2 THEN y WHEN 3 THEN y ELSE z END`.
+        Expr::Match(v) => {
+            let mut when = Vec::new();
+            let mut otherwise = None;
+            for (i, arm) in v.arms.iter().enumerate() {
+                if arm.guard.is_some() {
+                    panic!("CASE arms cannot have guards, use `if .. else` for conditions");
+                }
+                let then = decode_expression(&arm.body);
+                if let Pat::Wild(..) = arm.pat {
+                    if i + 1 != v.arms.len() {
+                        panic!("The `_` arm of a CASE must be the last one");
+                    }
+                    otherwise = Some(then);
+                    continue;
+                }
+                let mut values = Vec::new();
+                decode_patterns(&arm.pat, &mut values);
+                when.extend(values.into_iter().map(|value| (value, then.clone())));
+            }
+            case_tokens(Some(decode_expression(&v.expr)), when, otherwise)
+        }
+        Expr::Block(v) => decode_branch(&v.block),
         Expr::MethodCall(_) => todo!("Expr::MethodCall"),
         Expr::Paren(v) => decode_expression(&v.expr),
         Expr::Path(ExprPath { path, .. }) => {

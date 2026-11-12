@@ -228,7 +228,11 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_delete::<Employee>(&mut query, expr!(Employee::name == "Bob"));
+        WRITER.write_delete(
+            &mut query,
+            Employee::table(),
+            expr!(Employee::name == "Bob"),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"

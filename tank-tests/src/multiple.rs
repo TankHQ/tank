@@ -124,7 +124,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
             .where_expr(false),
     );
     // 14: A write that affects no rows must not disappear either.
-    writer.write_delete::<Two>(&mut query, expr!(Two::a2 == 0));
+    writer.write_delete(&mut query, Two::table(), expr!(Two::a2 == 0));
     query.push_str("            \t    \t\t  \n \n \n \t    \n\n\n ");
     let mut query = <DynQuery as tank::AsQuery<_>>::as_query(query);
     let result = executor

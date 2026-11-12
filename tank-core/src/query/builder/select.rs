@@ -183,7 +183,7 @@ where
 
 /// SELECT query builder.
 ///
-/// Use `QueryBuilder::new().select(..)` to start.
+/// Use `QueryBuilder::new().select(columns)` to start.
 pub trait SelectQuery<From>
 where
     From: Dataset,

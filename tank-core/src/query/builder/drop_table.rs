@@ -22,11 +22,11 @@ impl<T: Entity, E> DropTableQueryBuilder<T, E> {
         self.if_exists
     }
 
-    pub fn build<D: Driver>(&self, driver: &D) -> String {
+    pub fn build<D: Driver>(&self, driver: &D) -> DynQuery {
         let writer = driver.sql_writer();
         let mut query = DynQuery::default();
         writer.write_drop_table::<T>(&mut query, self.if_exists);
-        query.into()
+        query
     }
 
     pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
@@ -35,12 +35,27 @@ impl<T: Entity, E> DropTableQueryBuilder<T, E> {
     }
 }
 
+/// DROP TABLE query builder.
+///
+/// Use `QueryBuilder::new().drop_table::<Entity>()` to start.
 pub trait DropTableQuery<Table: Entity> {
     fn get_exists(&self) -> bool;
+    /// Build query.
+    fn build<D: Driver>(&self, driver: &D) -> DynQuery;
+    /// Build query into existing buffer.
+    fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery);
 }
 
 impl<T: Entity, E> DropTableQuery<T> for DropTableQueryBuilder<T, E> {
     fn get_exists(&self) -> bool {
         self.get_exists()
+    }
+
+    fn build<D: Driver>(&self, driver: &D) -> DynQuery {
+        self.build(driver)
+    }
+
+    fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
+        self.build_into(driver, out);
     }
 }

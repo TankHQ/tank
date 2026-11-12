@@ -17,7 +17,7 @@ impl PostgresSqlWriter {
     {
         out.buffer().reserve(128);
         out.push_str("COPY ");
-        let mut context = Context::new(Default::default(), E::qualified_columns());
+        let mut context = Context::new(Default::default(), E::table().qualified_columns());
         self.write_table_ref(&mut context, out, E::table());
         out.push_str(" (");
         separated_by(

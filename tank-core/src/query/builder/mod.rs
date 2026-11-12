@@ -1,14 +1,18 @@
 mod create_table;
+mod delete;
 mod drop_table;
 mod insert_into;
 mod select;
 
 pub use create_table::*;
+pub use delete::*;
 pub use drop_table::*;
 pub use insert_into::*;
 pub use select::*;
 
-use crate::{Context, DynQuery, Entity, Expression, ExpressionVisitor, OpPrecedence, SqlWriter};
+use crate::{
+    Context, Dataset, DynQuery, Entity, Expression, ExpressionVisitor, OpPrecedence, SqlWriter,
+};
 use std::iter;
 
 #[derive(Default, Debug)]
@@ -38,6 +42,12 @@ impl QueryBuilder {
             values: Default::default(),
             update: Default::default(),
             _update: Default::default(),
+        }
+    }
+    pub fn delete_from<From: Dataset>(self, from: From) -> DeleteQueryBuilder<From, NA> {
+        DeleteQueryBuilder {
+            from,
+            where_expr: Default::default(),
         }
     }
     pub fn create_table<E: Entity>(self) -> CreateTableQueryBuilder<E, NA> {

@@ -2,7 +2,7 @@ use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
 use std::fmt::Write;
 use tank_core::{
-    AsEntity, AsValue, ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment,
+    AsEntity, AsValue, Case, ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment,
     IsAsterisk, Row, SelectQuery, SqlWriter, TableRef, Value, column_def,
 };
 
@@ -70,6 +70,10 @@ impl SqlWriter for ValkeySqlWriter {
     }
     fn write_string(&self, _context: &mut Context, out: &mut DynQuery, value: &str) {
         out.push_str(value);
+    }
+
+    fn write_case(&self, _context: &mut Context, _out: &mut DynQuery, _value: &Case) {
+        log::error!("Valkey does not support CASE expressions");
     }
 
     fn write_create_schema<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
@@ -285,12 +289,11 @@ impl SqlWriter for ValkeySqlWriter {
         }
     }
 
-    fn write_delete<E>(&self, out: &mut DynQuery, condition: impl Expression)
+    fn write_delete(&self, out: &mut DynQuery, from: &dyn Dataset, condition: impl Expression)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table();
+        let table = from.table_ref();
         let mut context = Self::make_context(Fragment::SqlDeleteFrom);
         let mut is_pk_condition = IsPKCondition::new(
             self.keys_with_names,
@@ -314,7 +317,7 @@ impl SqlWriter for ValkeySqlWriter {
         let prepared = Self::prepare_query(out, &mut context);
         let key = is_pk_condition.key;
         prepared.commands.push(Cmd::del(&key));
-        for column in E::columns().iter().filter(|c| !c.value.is_scalar()) {
+        for column in table.columns.iter().filter(|c| !c.value.is_scalar()) {
             let child_key = format!("{key}{}{}", self.separator(), column.name());
             prepared.commands.push(Cmd::del(child_key));
         }

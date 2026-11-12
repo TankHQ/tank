@@ -58,9 +58,9 @@ pub async fn other(executor: &mut impl Executor) -> Result<()> {
     let from_build = query.build(&executor.driver());
     let mut out = DynQuery::default();
     query.build_into(&executor.driver(), &mut out);
-    let from_build_into: String = out.into();
     assert_eq!(
-        from_build, from_build_into,
+        from_build.as_str(),
+        out.as_str(),
         "build() and build_into() should produce the same SQL"
     );
 
