@@ -4,15 +4,14 @@ mod drop_table;
 mod insert_into;
 mod select;
 
+use crate::{
+    Context, Dataset, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, TableRef,
+};
 pub use create_table::*;
 pub use delete::*;
 pub use drop_table::*;
 pub use insert_into::*;
 pub use select::*;
-
-use crate::{
-    Context, Dataset, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, TableRef,
-};
 use std::{borrow::Cow, iter};
 
 /// Entry point of the query builders, as in `Sql.select(columns).from(table)`.

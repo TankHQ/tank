@@ -44,6 +44,7 @@ impl<E> DropTableQueryBuilder<E> {
 pub trait DropTableQuery {
     /// Get the table metadata.
     fn get_table(&self) -> &TableRef;
+    /// SQL Fragment `IF EXISTS` is present.
     fn get_exists(&self) -> bool;
     /// Build query.
     fn build<D: Driver>(&self, driver: &D) -> DynQuery;

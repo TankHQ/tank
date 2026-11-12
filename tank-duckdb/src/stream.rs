@@ -19,7 +19,6 @@ use tank_core::{
 
 /// Lazily runs each statement of a query, yielding its rows or affected-row count.
 pub struct DuckDBStream<'s, Q: AsMut<Query<DuckDBDriver>>> {
-    // Drop dependent native resources before the query and connection borrow.
     batch: Option<Arc<Batch>>,
     row: usize,
     size: usize,
