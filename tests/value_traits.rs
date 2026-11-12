@@ -6,7 +6,9 @@ mod tests {
         collections::{HashMap, HashSet, hash_map::DefaultHasher},
         hash::{Hash, Hasher},
     };
-    use tank::{AsValue, CollectionType, Interval, MapType, StructType, TableRef, Value};
+    use tank::{
+        AsValue, CollectionType, Interval, MapType, StructType, TableRef, Value, ValueOwned,
+    };
     use time::Month;
     use uuid::Uuid;
 
@@ -422,7 +424,7 @@ mod tests {
             ))
         );
 
-        let struct_type = |name: &'static str, fields: Vec<(String, Value<'static>)>| {
+        let struct_type = |name: &'static str, fields: Vec<(String, ValueOwned)>| {
             Value::Struct(
                 None,
                 Box::new(StructType {

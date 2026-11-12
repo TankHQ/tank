@@ -4,7 +4,7 @@ mod tests {
     use tank::{
         CollectionType, Context, DynQuery, Entity, Expression, ExpressionVisitor, FindOrder,
         Fragment, GenericSqlWriter, IsAggregateFunction, IsAlias, IsAsterisk, IsConstant, IsFalse,
-        IsQuestionMark, IsTrue, Operand, Order, Value, WriteInList, cols, expr,
+        IsQuestionMark, IsTrue, Operand, Order, Value, ValueOwned, WriteInList, cols, expr,
     };
 
     #[derive(Entity)]
@@ -179,8 +179,7 @@ mod tests {
         let mut visitor = WriteInList;
         let mut out = DynQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelect, false);
-        let values: Box<[Value<'static>]> =
-            vec![Value::Int32(Some(3)), Value::Int32(Some(4))].into();
+        let values: Box<[ValueOwned]> = vec![Value::Int32(Some(3)), Value::Int32(Some(4))].into();
         assert!(visitor.visit_operand(
             &WRITER,
             &mut ctx,

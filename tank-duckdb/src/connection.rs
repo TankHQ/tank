@@ -93,12 +93,8 @@ impl Connection for DuckDBConnection {
                     *config,
                     &mut *error,
                 ),
-                Error::msg(
-                    CStr::from_ptr(*error)
-                        .to_str()
-                        .context("While reading the error from `duckdb_get_or_create_from_cache`")
-                        .inspect_err(log_error)?
-                ),
+                Error::msg(CStr::from_ptr(*error).to_string_lossy()),
+                "While reading the error from `duckdb_get_or_create_from_cache`"
             );
             ensure_rc!(
                 duckdb_connect(*database, &mut *connection),

@@ -6,7 +6,7 @@ use std::{
     ffi::{CStr, c_char, c_void},
     mem, ptr, str,
 };
-use tank_core::{Interval, Value};
+use tank_core::{Interval, Value, ValueOwned};
 use time::PrimitiveDateTime;
 
 /// A result vector decoded into values, with its buffers cached for the current chunk.
@@ -63,7 +63,7 @@ impl DuckDBColumn {
         self.validity.is_null() || unsafe { (*self.validity.add(row >> 6) >> (row & 63)) & 1 != 0 }
     }
 
-    unsafe fn empty_value(&self) -> Option<Value<'static>> {
+    unsafe fn empty_value(&self) -> Option<ValueOwned> {
         unsafe {
             ValueWrap::empty_value(self.id, || CBox(duckdb_vector_get_column_type(self.vector)))
         }
@@ -75,9 +75,8 @@ impl DuckDBColumn {
         let data = self.data;
         let valid = self.is_valid(row);
         unsafe {
-            // Flat vectors of these types always carry a data buffer. Values that do not fit
-            // the Rust type (out of range dates, decimals) decode as NULL.
             Some(Cow::Owned(match self.id {
+                DUCKDB_TYPE_DUCKDB_TYPE_SQLNULL => Value::Null,
                 DUCKDB_TYPE_DUCKDB_TYPE_BOOLEAN => {
                     Value::Boolean(valid.then(|| *(data as *const bool).add(row)))
                 }
@@ -137,17 +136,16 @@ impl DuckDBColumn {
     unsafe fn decode<'a>(&self, row: usize) -> Option<Value<'a>> {
         unsafe {
             let data = self.data;
-            let id = self.id;
             if !self.is_valid(row)
                 || data.is_null()
                     && !matches!(
-                        id,
+                        self.id,
                         DUCKDB_TYPE_DUCKDB_TYPE_ARRAY | DUCKDB_TYPE_DUCKDB_TYPE_STRUCT
                     )
             {
                 return self.empty_value();
             }
-            Some(match id {
+            Some(match self.id {
                 DUCKDB_TYPE_DUCKDB_TYPE_SQLNULL => Value::Null,
                 DUCKDB_TYPE_DUCKDB_TYPE_TINYINT => Value::Int8(Some(*(data as *const i8).add(row))),
                 DUCKDB_TYPE_DUCKDB_TYPE_SMALLINT => {
@@ -178,7 +176,7 @@ impl DuckDBColumn {
                 DUCKDB_TYPE_DUCKDB_TYPE_TIME
                 | DUCKDB_TYPE_DUCKDB_TYPE_TIME_NS
                 | DUCKDB_TYPE_DUCKDB_TYPE_TIME_TZ => {
-                    Value::Time(Some(ValueWrap::to_time_ns(match id {
+                    Value::Time(Some(ValueWrap::to_time_ns(match self.id {
                         DUCKDB_TYPE_DUCKDB_TYPE_TIME_NS => *(data as *const i64).add(row),
                         DUCKDB_TYPE_DUCKDB_TYPE_TIME_TZ => {
                             ((*(data as *const u64).add(row) >> 24) as i64).saturating_mul(1_000)
@@ -237,7 +235,7 @@ impl DuckDBColumn {
                         return None;
                     };
                     let (child, begin, len, ctor): (_, _, _, fn(_, _) -> _) =
-                        if id == DUCKDB_TYPE_DUCKDB_TYPE_LIST {
+                        if self.id == DUCKDB_TYPE_DUCKDB_TYPE_LIST {
                             let e = *(data as *const duckdb_list_entry).add(row);
                             (
                                 duckdb_list_vector_get_child(self.vector),
