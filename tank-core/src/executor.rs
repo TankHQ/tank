@@ -1,5 +1,6 @@
 use crate::{
-    AsEntity, AsQuery, Driver, DynQuery, Query, QueryResult, RawQuery, Result, Row, RowsAffected,
+    AsEntity, AsQuery, Driver, DynQuery, Entity, Query, QueryResult, RawQuery, Result, Row,
+    RowsAffected, Sql,
     stream::{Stream, StreamExt},
     writer::SqlWriter,
 };
@@ -123,10 +124,13 @@ pub trait Executor: Send {
         It::IntoIter: Send,
         It::Item: AsEntity,
     {
+        let entities = entities.into_iter().collect::<Vec<_>>();
         let mut query = DynQuery::default();
-        self.driver()
-            .sql_writer()
-            .write_insert(&mut query, entities, false);
+        self.driver().sql_writer().write_insert(
+            &mut query,
+            Sql.insert_into(<It::Item as AsEntity>::Entity::table())
+                .values(entities.iter().map(AsEntity::as_entity)),
+        );
         self.execute(query)
     }
 }

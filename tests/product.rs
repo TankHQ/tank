@@ -4,8 +4,8 @@ mod tests {
     use rust_decimal::Decimal;
     use std::borrow::Cow;
     use tank::{
-        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, SqlWriter, TableRef,
-        Value,
+        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, Sql, SqlWriter,
+        TableRef, Value,
     };
     use time::{Date, Month, PrimitiveDateTime, Time};
 
@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn product_sql() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<Product>(&mut query, false);
+        WRITER.write_create_table(&mut query, Product::table(), false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -144,7 +144,11 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&Product::sample()], false);
+        WRITER.write_insert(
+            &mut query,
+            Sql.insert_into(Product::table())
+                .values(&[Product::sample()]),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -156,7 +160,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_insert(
             &mut query,
-            [
+            Sql.insert_into(Product::table()).values(&[
                 Product {
                     id: 74,
                     name: "Headphones".into(),
@@ -180,9 +184,7 @@ mod tests {
                         Time::from_hms(9, 45, 30).unwrap(),
                     ),
                 },
-            ]
-            .iter(),
-            false,
+            ]),
         );
         assert_eq!(
             query.as_str(),

@@ -30,7 +30,7 @@ impl SQLiteConnection {
             let errcode = sqlite3_errcode(*self.connection);
             format!(
                 "Error ({errcode}): {}",
-                error_message_from_ptr(&sqlite3_errmsg(*self.connection)),
+                error_message_from_ptr(sqlite3_errmsg(*self.connection)),
             )
         }
     }
@@ -216,19 +216,14 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Drop for SQLiteCursor<'_, Q> {
 impl Connection for SQLiteConnection {
     async fn connect(driver: &SQLiteDriver, url: Cow<'static, str>) -> Result<Self> {
         let url = Self::sanitize_url(driver, url)?;
-        let make_context = || {
-            format!(
-                "While trying to connect to SQLite {}",
-                describe_path::<SQLiteDriver>(&url)
-            )
-        };
+        let make_context = || format!("While trying to connect to SQLite {}", describe_path(&url));
         let connection_string = CString::from_str(&url.as_str().replacen("sqlite://", "file:", 1))
             .with_context(make_context)?;
         let mut connection;
         unsafe {
             connection = CBox::new(ptr::null_mut(), |p| {
                 if sqlite3_close(p) != SQLITE_OK {
-                    let error = Error::msg(error_message_from_ptr(&sqlite3_errmsg(p)).to_string())
+                    let error = Error::msg(error_message_from_ptr(sqlite3_errmsg(p)).to_string())
                         .context("While closing the sqlite connection");
                     log::error!("{error:#}");
                 }
@@ -244,7 +239,7 @@ impl Connection for SQLiteConnection {
             );
             if rc != SQLITE_OK {
                 let error =
-                    Error::msg(error_message_from_ptr(&sqlite3_errmsg(*connection)).to_string())
+                    Error::msg(error_message_from_ptr(sqlite3_errmsg(*connection)).to_string())
                         .context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
@@ -258,7 +253,7 @@ impl Connection for SQLiteConnection {
             );
             if rc != SQLITE_OK {
                 let error =
-                    Error::msg(error_message_from_ptr(&sqlite3_errmsg(*connection)).to_string())
+                    Error::msg(error_message_from_ptr(sqlite3_errmsg(*connection)).to_string())
                         .context("While enabling foreign key enforcement");
                 log::error!("{error:#}");
             }
@@ -287,7 +282,7 @@ impl Executor for SQLiteConnection {
                 let db = sqlite3_db_handle(p);
                 let rc = sqlite3_finalize(p);
                 if rc != SQLITE_OK {
-                    let error = Error::msg(error_message_from_ptr(&sqlite3_errmsg(db)).to_string())
+                    let error = Error::msg(error_message_from_ptr(sqlite3_errmsg(db)).to_string())
                         .context("While finalizing a prepared statement");
                     log::error!("{error:#}");
                 }
@@ -296,7 +291,7 @@ impl Executor for SQLiteConnection {
             let rc = sqlite3_prepare_v2(connection, sql.as_ptr(), len, &mut *statement, &mut tail);
             if rc != SQLITE_OK {
                 let error =
-                    Error::msg(error_message_from_ptr(&sqlite3_errmsg(connection)).to_string())
+                    Error::msg(error_message_from_ptr(sqlite3_errmsg(connection)).to_string())
                         .context(make_context());
                 log::error!("{error:#}");
                 return Err(error);

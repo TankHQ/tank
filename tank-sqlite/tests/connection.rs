@@ -70,15 +70,15 @@ mod tests {
     #[test]
     fn describe_paths() {
         let memory = Url::parse("sqlite://localhost?mode=memory").unwrap();
-        assert_eq!(describe_path::<SQLiteDriver>(&memory), ":memory:");
+        assert_eq!(describe_path(&memory), ":memory:");
 
         let explicit = Url::parse("sqlite://localhost?path=/tmp/x.db").unwrap();
-        assert_eq!(describe_path::<SQLiteDriver>(&explicit), "/tmp/x.db");
+        assert_eq!(describe_path(&explicit), "/tmp/x.db");
 
         let path = Url::parse("sqlite:///tmp/y.db").unwrap();
-        assert!(describe_path::<SQLiteDriver>(&path).ends_with("/tmp/y.db"));
+        assert!(describe_path(&path).ends_with("/tmp/y.db"));
 
         let bare = Url::parse("sqlite://").unwrap();
-        assert_eq!(describe_path::<SQLiteDriver>(&bare), ":memory:");
+        assert_eq!(describe_path(&bare), "N/A");
     }
 }

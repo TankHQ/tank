@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::sync::LazyLock;
 use tank::{
-    AsValue, Entity, Error, Executor, QueryBuilder, Result, Value, ValueOwned, anyhow, cols, expr,
+    AsValue, Entity, Error, Executor, Result, Sql, Value, ValueOwned, anyhow, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -75,12 +75,8 @@ pub async fn service(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Service::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop Service");
-    Service::create_table(executor, false, true)
-        .await
-        .expect("Failed to create Service");
+    Service::drop_table(executor, true, false).await?;
+    Service::create_table(executor, false, true).await?;
 
     // Query
     let mut api = Service {
@@ -88,10 +84,9 @@ pub async fn service(executor: &mut impl Executor) -> Result<()> {
         name: "api".into(),
         backup_addr: None,
     };
-    api.save(executor).await.expect("Failed to save api");
+    api.save(executor).await?;
     let loaded = Service::find_one(executor, api.primary_key_expr())
-        .await
-        .expect("Failed to load api")
+        .await?
         .expect("Missing api");
     assert_eq!(
         loaded,
@@ -103,12 +98,9 @@ pub async fn service(executor: &mut impl Executor) -> Result<()> {
     );
 
     api.backup_addr = Some(HostPort::new("api.internal", 8443));
-    api.save(executor)
-        .await
-        .expect("Failed to update api backup");
+    api.save(executor).await?;
     let loaded = Service::find_one(executor, api.primary_key_expr())
-        .await
-        .expect("Failed to reload api")
+        .await?
         .expect("Missing api after update");
     assert_eq!(
         loaded,
@@ -119,18 +111,15 @@ pub async fn service(executor: &mut impl Executor) -> Result<()> {
         }
     );
 
-    let mut query = Service::prepare_find(executor, expr!(Service::name == ?), None)
-        .await
-        .expect("Failed to prepare query by name");
-    query.bind("api").expect("Failed to bind name parameter");
+    let mut query = Service::prepare_find(executor, expr!(Service::name == ?), None).await?;
+    query.bind("api")?;
 
     let api_by_addr = executor
         .fetch(query)
         .map_ok(Service::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Failed to query by addr");
+        .await?;
     assert_eq!(
         api_by_addr,
         [Service {
@@ -145,24 +134,19 @@ pub async fn service(executor: &mut impl Executor) -> Result<()> {
         name: "api".into(),
         backup_addr: None,
     };
-    Service::insert_one(executor, &api_canary)
-        .await
-        .expect("Failed to insert api canary");
+    Service::insert_one(executor, &api_canary).await?;
 
     let web = Service {
         addr: HostPort::new("web.internal", 80),
         name: "web".into(),
         backup_addr: Some(HostPort::new("web.internal", 8080)),
     };
-    Service::insert_one(executor, &web)
-        .await
-        .expect("Failed to insert web");
+    Service::insert_one(executor, &web).await?;
     #[cfg(not(feature = "disable-ordering"))]
     {
         let rows = executor
             .fetch(
-                QueryBuilder::new()
-                    .select(Service::columns())
+                Sql.select(Service::columns())
                     .from(Service::table())
                     .where_expr(expr!(Service::name == "api"))
                     .order_by(cols!(Service::addr ASC))
@@ -171,8 +155,7 @@ pub async fn service(executor: &mut impl Executor) -> Result<()> {
             .map_ok(Service::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Failed to select ordered services");
+            .await?;
 
         assert_eq!(
             rows,

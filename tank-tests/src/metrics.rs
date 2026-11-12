@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::{future, sync::LazyLock};
 use tank::{
-    Entity, Executor, QueryBuilder, Result, cols, expr,
+    Entity, Executor, Result, Sql, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, macros::date};
@@ -30,12 +30,8 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Metric::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop Metric table");
-    Metric::create_table(executor, true, true)
-        .await
-        .expect("Failed to create Metric table");
+    Metric::drop_table(executor, true, false).await?;
+    Metric::create_table(executor, true, true).await?;
 
     // Insert
     let values = vec![
@@ -323,15 +319,12 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
     sophie,UK,2024-12-02,weight_kg,67.5
     */
 
-    Metric::insert_many(executor, &values)
-        .await
-        .expect("Could not insert the entities");
+    Metric::insert_many(executor, &values).await?;
 
     let height = 170;
     let heights = executor
         .fetch(
-            QueryBuilder::new()
-                .select([Metric::value, Metric::date])
+            Sql.select([Metric::value, Metric::date])
                 .from(Metric::table())
                 .where_expr(expr!(
                     Metric::name == "height_cm"
@@ -343,15 +336,13 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
         )
         .map(|v| MetricValue::from_row(v?).map(|v| v.value))
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Coult not get the Italy height values");
+        .await?;
     assert_eq!(heights, [178.0]);
 
     // Incomes in Italy
     let italy_incomes = executor
         .fetch(
-            QueryBuilder::new()
-                .select([Metric::value])
+            Sql.select([Metric::value])
                 .from(Metric::table())
                 .where_expr(expr!(
                     Metric::name == "income_eur" && Metric::country == "IT"
@@ -361,15 +352,13 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
         )
         .map(|v| MetricValue::from_row(v?).map(|v| v.value))
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not get IT incomes");
+        .await?;
     assert_eq!(italy_incomes, [56000.0, 61000.0, 68000.0, 72000.0]);
 
     // Highest income in the UK
     let latest_income = executor
         .fetch(
-            QueryBuilder::new()
-                .select(cols!(MAX(Metric::value) as value))
+            Sql.select(cols!(MAX(Metric::value) as value))
                 .from(Metric::table())
                 .where_expr(expr!(
                     Metric::name == "income_eur" && Metric::country == "UK"
@@ -378,48 +367,42 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
         )
         .map(|v| MetricValue::from_row(v?).map(|v| v.value))
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not get latest UK income");
+        .await?;
     assert_eq!(latest_income, [102000.0]);
 
     // Prepared queries
     let mut prepared = executor
         .prepare(
-            QueryBuilder::new()
-                .select([Metric::value, Metric::date])
+            Sql.select([Metric::value, Metric::date])
                 .from(Metric::table())
                 .where_expr(expr!(Metric::country == ? && Metric::name == ?))
                 .order_by(cols!(Metric::value DESC, Metric::date DESC))
                 .build(&executor.driver()),
         )
-        .await
-        .expect("Failed to prepare metric query");
+        .await?;
 
-    prepared.bind("ES").unwrap().bind("height_cm").unwrap();
+    prepared.bind("ES")?.bind("height_cm")?;
     let spain_heights = executor
         .fetch(&mut prepared)
         .map(|v| MetricValue::from_row(v?).map(|v| v.value))
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not fetch sophie heights");
+        .await?;
     assert_eq!(spain_heights, [162.0]);
 
-    prepared.bind("NL").unwrap().bind("weight_kg").unwrap();
+    prepared.bind("NL")?.bind("weight_kg")?;
     let netherlands_weights = executor
         .fetch(&mut prepared)
         .map(|v| MetricValue::from_row(v?).map(|v| v.value))
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not fetch sophie heights");
+        .await?;
     assert_eq!(netherlands_weights, [82.5, 81.0]);
 
-    prepared.bind("IT").unwrap().bind("weight_kg").unwrap();
+    prepared.bind("IT")?.bind("weight_kg")?;
     let italy_weights = executor
         .fetch(&mut prepared)
         .map(|v| MetricValue::from_row(v?).map(|v| v.value))
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not fetch sophie heights");
+        .await?;
     assert_eq!(italy_weights, [80.5, 78.0, 64.2, 62.5]);
 
     #[cfg(not(feature = "disable-groups"))]
@@ -432,21 +415,19 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
         }
         let averages = executor
             .fetch(
-                QueryBuilder::new()
-                    .select(cols!(
-                        Metric::name,
-                        Metric::country,
-                        AVG(Metric::value) as avg,
-                    ))
-                    .from(Metric::table())
-                    .group_by([Metric::name, Metric::country])
-                    .order_by(cols!(Metric::name ASC, avg DESC))
-                    .build(&executor.driver()),
+                Sql.select(cols!(
+                    Metric::name,
+                    Metric::country,
+                    AVG(Metric::value) as avg,
+                ))
+                .from(Metric::table())
+                .group_by([Metric::name, Metric::country])
+                .order_by(cols!(Metric::name ASC, avg DESC))
+                .build(&executor.driver()),
             )
             .map(|row| AverageMetrics::from_row(row?))
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not get the products ordered by increasing price");
+            .await?;
         assert_eq!(
             averages,
             [
@@ -544,8 +525,7 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
 
         let max_incomes = executor
             .fetch(
-                QueryBuilder::new()
-                    .select(cols!(Metric::country, MAX(value) as max_income,))
+                Sql.select(cols!(Metric::country, MAX(value) as max_income,))
                     .from(Metric::table())
                     .where_expr(expr!(name == "income_eur"))
                     .group_by([Metric::country])
@@ -554,8 +534,7 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
             )
             .map(|row| CountryMaxIncome::from_row(row?))
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not get max incomes per country");
+            .await?;
 
         assert_eq!(
             max_incomes,
@@ -600,22 +579,20 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
 
         let global_stats = executor
             .fetch(
-                QueryBuilder::new()
-                    .select(cols!(
-                        Metric::name,
-                        MIN(Metric::value) as min_val,
-                        MAX(Metric::value) as max_val,
-                        SUM(Metric::value) as total_val,
-                    ))
-                    .from(Metric::table())
-                    .group_by([Metric::name])
-                    .order_by(cols!(name ASC))
-                    .build(&executor.driver()),
+                Sql.select(cols!(
+                    Metric::name,
+                    MIN(Metric::value) as min_val,
+                    MAX(Metric::value) as max_val,
+                    SUM(Metric::value) as total_val,
+                ))
+                .from(Metric::table())
+                .group_by([Metric::name])
+                .order_by(cols!(name ASC))
+                .build(&executor.driver()),
             )
             .map(|row| MetricGlobalStats::from_row(row?))
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not get global metric stats");
+            .await?;
 
         assert_eq!(
             global_stats,
@@ -643,23 +620,21 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
 
         let heavy_stats = executor
             .fetch(
-                QueryBuilder::new()
-                    .select(cols!(
-                        Metric::name,
-                        MIN(Metric::value) as min_val,
-                        MAX(Metric::value) as max_val,
-                        SUM(Metric::value) as total_val,
-                    ))
-                    .from(Metric::table())
-                    .group_by([Metric::name])
-                    .having(expr!(SUM(Metric::value) > 1000.0))
-                    .order_by(cols!(name ASC))
-                    .build(&executor.driver()),
+                Sql.select(cols!(
+                    Metric::name,
+                    MIN(Metric::value) as min_val,
+                    MAX(Metric::value) as max_val,
+                    SUM(Metric::value) as total_val,
+                ))
+                .from(Metric::table())
+                .group_by([Metric::name])
+                .having(expr!(SUM(Metric::value) > 1000.0))
+                .order_by(cols!(name ASC))
+                .build(&executor.driver()),
             )
             .map(|row| MetricGlobalStats::from_row(row?))
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not get heavy metric stats");
+            .await?;
 
         assert_eq!(
             heavy_stats,

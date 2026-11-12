@@ -13,12 +13,12 @@ use mongodb::{
         InsertManyOptions, InsertOneOptions, UpdateModifications, UpdateOptions,
     },
 };
-use std::{borrow::Cow, collections::HashMap, f64, iter, mem, ops::Deref, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, f64, mem, ops::Deref, sync::Arc};
 use tank_core::{
-    AsEntity, AsValue, BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Context, Dataset, DynQuery,
-    Entity, ErrorContext, Expression, FindOrder, Fragment, Interval, IsAggregateFunction,
-    IsAsterisk, IsConstant, Operand, Order, SelectQuery, SqlWriter, TableRef, UnaryOp, UnaryOpType,
-    Value, truncate_long,
+    AsValue, BinaryOp, BinaryOpType, Case, ColumnDef, ColumnRef, Context, Dataset, DynQuery,
+    Expression, FindOrder, Fragment, InsertIntoQuery, Interval, IsAggregateFunction, IsAsterisk,
+    IsConstant, Operand, Order, Result, Row, RowLabels, RowOwned, SelectQuery, SqlWriter, TableRef,
+    UnaryOp, UnaryOpType, Value, anyhow, future::Either, truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -47,6 +47,95 @@ pub struct MongoDBSqlWriter {}
 impl MongoDBSqlWriter {
     pub fn make_prepared() -> DynQuery {
         DynQuery::Prepared(Box::new(MongoDBPrepared::default()))
+    }
+
+    /// INSERT ... SELECT as an aggregation, whose final `$merge` stage inserts the documents.
+    fn write_insert_select<'a, Data: Dataset + 'a>(
+        &self,
+        out: &mut DynQuery,
+        table: &TableRef,
+        query: &impl SelectQuery<Data>,
+    ) {
+        let mut select = DynQuery::default();
+        self.write_select(&mut select, query);
+        let Some(select) = select.as_prepared::<MongoDBDriver>() else {
+            log::error!("Failed to render the SELECT of MongoDBSqlWriter::write_insert_select");
+            return;
+        };
+        let mut context = Context::fragment(Fragment::SqlInsertInto);
+        context.counter = select.count;
+        let (source, mut pipeline) = match select.take_payload() {
+            Payload::Aggregate(v) => (v.table, v.pipeline),
+            Payload::FindMany(v) => (
+                v.table,
+                Self::find_pipeline(
+                    v.filter,
+                    v.options.sort,
+                    v.options.limit,
+                    v.options.projection,
+                ),
+            ),
+            Payload::FindOne(v) => (
+                v.table,
+                Self::find_pipeline(v.filter, v.options.sort, Some(1), v.options.projection),
+            ),
+            payload => {
+                log::error!(
+                    "Unexpected SELECT payload in MongoDBSqlWriter::write_insert_select: {payload:?}"
+                );
+                return;
+            }
+        };
+        let into: Bson = if table.schema.is_empty() {
+            table.name.to_string().into()
+        } else {
+            doc! { "db": table.schema.as_ref(), "coll": table.name.as_ref() }.into()
+        };
+        pipeline.push(doc! {
+            "$merge": { "into": into, "whenMatched": "fail", "whenNotMatched": "insert" }
+        });
+        let name = table.full_name(self.separator());
+        Self::prepare_query(
+            out,
+            &mut context,
+            AggregatePayload {
+                table: source,
+                pipeline,
+                options: AggregateOptions::builder()
+                    .comment(Bson::String(format!(
+                        "Tank: insert the selected rows in {name}"
+                    )))
+                    .build(),
+            }
+            .into(),
+        );
+    }
+
+    /// Aggregation stages equivalent to a find with these options.
+    fn find_pipeline(
+        filter: Bson,
+        sort: Option<Document>,
+        limit: Option<i64>,
+        projection: Option<Document>,
+    ) -> Vec<Document> {
+        let mut pipeline = Vec::new();
+        if let Bson::Document(filter) = filter
+            && !filter.is_empty()
+        {
+            pipeline.push(doc! { "$match": filter });
+        }
+        if let Some(sort) = sort {
+            pipeline.push(doc! { "$sort": sort });
+        }
+        if let Some(limit) = limit {
+            pipeline.push(doc! { "$limit": limit });
+        }
+        if let Some(projection) = projection
+            && !projection.is_empty()
+        {
+            pipeline.push(doc! { "$project": projection });
+        }
+        pipeline
     }
 
     pub fn make_unmatchable() -> Document {
@@ -636,6 +725,48 @@ impl SqlWriter for MongoDBSqlWriter {
         );
     }
 
+    fn write_case(&self, context: &mut Context, out: &mut DynQuery, value: &Case) {
+        let mut render = |expression: &dyn Expression| {
+            let mut query = Self::make_prepared();
+            expression.write_query(self, context, &mut query);
+            query
+                .as_prepared::<MongoDBDriver>()
+                .and_then(MongoDBPrepared::current_bson)
+                .map(mem::take)
+                .unwrap_or_else(|| {
+                    log::error!("Failed to render a CASE operand in MongoDBSqlWriter::write_case");
+                    Bson::Null
+                })
+        };
+        let compared = value.value.map(&mut render);
+        let branches = value
+            .when
+            .iter()
+            .map(|(when, then)| {
+                let when = render(*when);
+                doc! {
+                    "case": match &compared {
+                        Some(compared) => doc! { "$eq": [compared.clone(), when] }.into(),
+                        None => when,
+                    },
+                    "then": render(*then),
+                }
+            })
+            .collect::<Vec<_>>();
+        // Unlike SQL, `$switch` fails when no branch matches and there is no default.
+        let default = value.otherwise.map(&mut render).unwrap_or(Bson::Null);
+        let Some(document) = out
+            .as_prepared::<MongoDBDriver>()
+            .and_then(MongoDBPrepared::switch_to_document)
+        else {
+            log::error!(
+                "The query provided to write_case (out) does not have a document to write the content into"
+            );
+            return;
+        };
+        document.insert("$switch", doc! { "branches": branches, "default": default });
+    }
+
     fn write_function(
         &self,
         context: &mut Context,
@@ -705,48 +836,45 @@ impl SqlWriter for MongoDBSqlWriter {
         document.insert(function, arg);
     }
 
-    fn write_create_schema<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
+    fn write_create_schema(&self, out: &mut DynQuery, table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         Self::prepare_query(
             out,
             &mut Context::empty(),
             CreateDatabasePayload {
-                table: E::table().clone(),
+                table: table.clone(),
             }
             .into(),
         );
     }
 
-    fn write_drop_schema<E>(&self, out: &mut DynQuery, _if_exists: bool)
+    fn write_drop_schema(&self, out: &mut DynQuery, table: &TableRef, _if_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         Self::prepare_query(
             out,
             &mut Context::empty(),
             DropDatabasePayload {
-                table: E::table().clone(),
+                table: table.clone(),
             }
             .into(),
         );
     }
 
-    fn write_create_table<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
+    fn write_create_table(&self, out: &mut DynQuery, table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table().clone();
+        let table = table.clone();
         let name = table.full_name(self.separator());
         Self::prepare_query(
             out,
             &mut Context::empty(),
             CreateCollectionPayload {
-                table: E::table().clone(),
+                table: table.clone(),
                 options: CreateCollectionOptions::builder()
                     .comment(Bson::String(format!("Tank: create collection {name}")))
                     .build(),
@@ -763,22 +891,21 @@ impl SqlWriter for MongoDBSqlWriter {
     ) {
     }
 
-    fn write_drop_table<E>(&self, out: &mut DynQuery, _if_exists: bool)
+    fn write_drop_table(&self, out: &mut DynQuery, table: &TableRef, _if_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         Self::prepare_query(
             out,
             &mut Context::empty(),
             DropCollectionPayload {
-                table: E::table().clone(),
+                table: table.clone(),
             }
             .into(),
         );
     }
 
-    fn write_select<'a, Data>(&self, out: &mut DynQuery, query: &impl SelectQuery<Data>)
+    fn write_select<'a, Data>(&self, out: &mut DynQuery, query: impl SelectQuery<Data>)
     where
         Self: Sized,
         Data: Dataset + 'a,
@@ -1061,130 +1188,105 @@ impl SqlWriter for MongoDBSqlWriter {
         Self::prepare_query(out, &mut context, payload);
     }
 
-    fn write_insert<It>(&self, out: &mut DynQuery, entities: It, update: bool)
+    fn write_insert(&self, out: &mut DynQuery, query: impl InsertIntoQuery)
     where
         Self: Sized,
-        It: IntoIterator,
-        It::Item: AsEntity,
     {
-        let table = <It::Item as AsEntity>::Entity::table().clone();
-        let name = table.full_name(self.separator());
-        let mut entities = entities.into_iter().peekable();
-        let Some(entity) = entities.next() else {
-            return;
+        let table = query.get_table();
+        let columns = query.get_columns();
+        let update = query.get_update();
+        let rows = match query.get_values() {
+            Either::Left(rows) => rows,
+            Either::Right(select) => return self.write_insert_select(out, table, select),
         };
-        let single = entities.peek().is_none();
+        let name = table.full_name(self.separator()).into_owned();
+        let labels: RowLabels = columns.iter().map(|c| c.name().to_string()).collect();
+        let mut rows = rows
+            .into_iter()
+            .map(|row| RowOwned::new(labels.clone(), row.map(Value::into_owned).collect()))
+            .collect::<Vec<_>>();
+        if rows.is_empty() {
+            return;
+        }
         let mut context = Context::fragment(Fragment::SqlInsertInto);
         context.quote_identifiers = false;
-        let payload: Payload = match (update, single) {
-            (false, true) => InsertOnePayload {
-                table,
-                row: entity.as_entity().row(),
-                options: InsertOneOptions::builder()
-                    .comment(Bson::String(format!("Tank: insert one entity in {name}")))
-                    .build(),
+        let payload: Payload = if update {
+            if table.primary_key.is_empty() {
+                log::error!(
+                    "Upserting rows in {name} needs the table primary key, use the `Entity::table()` as target"
+                );
+                return;
             }
-            .into(),
-            (false, false) => {
-                let rows = iter::chain(
-                    iter::once(entity.as_entity().row()),
-                    entities.map(|e| e.as_entity().row()),
-                )
-                .collect::<Vec<_>>();
-                InsertManyPayload {
-                    table,
-                    rows,
-                    options: InsertManyOptions::builder()
-                        .comment(Bson::String(format!("Tank: insert entities in {name}")))
-                        .build(),
+            let upserts = rows.drain(..).filter_map(|row| {
+                let filter = table
+                    .primary_key
+                    .iter()
+                    .map(|column| {
+                        let value = row.get_column(column.name()).ok_or_else(|| {
+                            anyhow!(
+                                "The row has no value for the primary key column `{}`",
+                                column.name()
+                            )
+                        })?;
+                        Ok((column.name().to_string(), value_to_bson(&value)?))
+                    })
+                    .collect::<Result<Document>>();
+                let modifications = RowWrap(Cow::Borrowed(&row)).try_into();
+                match (filter, modifications) {
+                    (Ok(filter), Ok(modifications)) => Some(UpsertPayload {
+                        table: table.clone(),
+                        filter: filter.into(),
+                        modifications: UpdateModifications::Document(
+                            doc! { "$set": Document::from(modifications) },
+                        ),
+                        options: UpdateOptions::builder()
+                            .upsert(true)
+                            .comment(Bson::String(format!("Tank: upsert rows in {name}")))
+                            .build(),
+                    }),
+                    (Err(e), _) | (_, Err(e)) => {
+                        log::error!("{:#}", e.context("While rendering the row to upsert"));
+                        None
+                    }
+                }
+            });
+            let mut upserts = upserts.map(Payload::from).collect::<Vec<_>>();
+            if upserts.len() == 1 {
+                upserts.remove(0)
+            } else {
+                BatchPayload {
+                    batch: upserts,
+                    options: Default::default(),
                 }
                 .into()
             }
-            (true, _) => {
-                let mut values = iter::chain(iter::once(entity), entities).filter_map(|entity| {
-                    let mut query = Self::make_prepared();
-                    entity.as_entity().primary_key_expr().accept_visitor(
-                        &mut WriteMatchExpression::new(),
-                        self,
-                        &mut context,
-                        &mut query,
-                    );
-                    let Some(Bson::Document(filter)) = query
-                        .as_prepared::<MongoDBDriver>()
-                        .and_then(MongoDBPrepared::current_bson)
-                        .map(mem::take)
-                    else {
-                        log::error!(
-                            "Failed to get the bson in MongoDBSqlWriter::write_insert while rendering the primary key condition"
-                        );
-                        return None;
-                    };
-                    let modifications: Document = match RowWrap(Cow::Owned(entity.as_entity().row()))
-                        .try_into()
-                        .with_context(|| "While rendering the entity to create a upsert query")
-                    {
-                        Ok(v) => v,
-                        Err(e) => {
-                            log::error!("{e:?}");
-                            return None;
-                        }
-                    };
-                    Some((
-                        entity,
-                        filter,
-                        UpdateModifications::Document(doc! { "$set": modifications }),
-                    ))
-                });
-                if single {
-                    let Some((_, filter, modifications)) = values.next() else {
-                        return;
-                    };
-                    UpsertPayload {
-                        table,
-                        filter: Bson::Document(filter),
-                        modifications,
-                        options: UpdateOptions::builder()
-                            .upsert(true)
-                            .comment(Bson::String(format!("Tank: update one entity in {name}")))
-                            .build(),
-                    }
-                    .into()
-                } else {
-                    let values = values
-                        .into_iter()
-                        .map(|(entity, filter, modifications)| {
-                            let table = entity.as_entity().table_ref();
-                            UpsertPayload {
-                                table,
-                                filter: filter.into(),
-                                modifications,
-                                options: UpdateOptions::builder()
-                                    .comment(Bson::String(format!(
-                                        "Tank: update entities in {name}"
-                                    )))
-                                    .upsert(true)
-                                    .build(),
-                            }
-                            .into()
-                        })
-                        .collect::<Vec<_>>();
-                    BatchPayload {
-                        batch: values,
-                        options: Default::default(),
-                    }
-                    .into()
-                }
+        } else if rows.len() == 1 {
+            InsertOnePayload {
+                table: table.clone(),
+                row: rows.remove(0),
+                options: InsertOneOptions::builder()
+                    .comment(Bson::String(format!("Tank: insert one row in {name}")))
+                    .build(),
             }
+            .into()
+        } else {
+            InsertManyPayload {
+                table: table.clone(),
+                rows,
+                options: InsertManyOptions::builder()
+                    .comment(Bson::String(format!("Tank: insert rows in {name}")))
+                    .build(),
+            }
+            .into()
         };
         Self::prepare_query(out, &mut context, payload);
     }
 
-    fn write_delete<E>(&self, out: &mut DynQuery, condition: impl Expression)
+    fn write_delete(&self, out: &mut DynQuery, from: &dyn Dataset, condition: impl Expression)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table().clone();
+        let table = from.table_ref();
         let name = table.full_name(self.separator());
         let mut context = Context::fragment(Fragment::SqlDeleteFromWhere);
         context.quote_identifiers = false;

@@ -5,6 +5,7 @@ mod arrays2;
 mod binary;
 mod bindings;
 mod books;
+mod case;
 mod cheat_sheet;
 mod complex;
 mod conditions;
@@ -13,6 +14,7 @@ mod decimals;
 mod enums;
 mod identifiers;
 mod insane;
+mod insert_builder;
 mod interval;
 mod keywords;
 mod kv_storage;
@@ -42,6 +44,7 @@ pub use arrays2::*;
 pub use binary::*;
 pub use bindings::*;
 pub use books::*;
+pub use case::*;
 pub use cheat_sheet::*;
 pub use complex::*;
 pub use conditions::*;
@@ -50,6 +53,7 @@ pub use decimals::*;
 pub use enums::*;
 pub use identifiers::*;
 pub use insane::*;
+pub use insert_builder::*;
 pub use interval::*;
 pub use keywords::*;
 pub use kv_storage::*;
@@ -62,11 +66,11 @@ pub use operations::*;
 pub use orders::*;
 pub use other::*;
 pub use prepared::*;
-pub use readme::*;
 use rcgen::{
     BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair,
     KeyUsagePurpose, SanType,
 };
+pub use readme::*;
 pub use requests::*;
 pub use service::*;
 pub use shopping::*;
@@ -211,6 +215,8 @@ pub async fn execute_tests<D: Driver + 'static>(pool: &mut impl ConnectionPool<D
         boxed(orders),
         boxed(times),
         boxed(conditions),
+        #[cfg(not(feature = "disable-case"))]
+        boxed(case),
         boxed(metrics),
         boxed(math),
         boxed(ambiguity),
@@ -228,6 +234,7 @@ pub async fn execute_tests<D: Driver + 'static>(pool: &mut impl ConnectionPool<D
         boxed(operations),
         boxed(advanced_operations),
         boxed(cheat_sheet),
+        boxed(insert_builder),
     ];
     for test in tests {
         test(&mut connection)

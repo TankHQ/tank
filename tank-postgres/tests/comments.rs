@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use indoc::indoc;
 use tank::{
-    ConnectionPool, Driver, Entity, Executor, QueryBuilder, cols, expr,
+    ConnectionPool, Driver, Entity, Executor, Sql, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 
@@ -42,7 +42,7 @@ pub(crate) async fn comments<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         .await
         .expect("Failed to create CommentedEntity table");
 
-    let query = QueryBuilder::new()
+    let query = Sql
         .select(cols!(
             PgColumn::table_schema,
             PgColumn::table_name,

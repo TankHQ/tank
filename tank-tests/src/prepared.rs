@@ -13,36 +13,26 @@ pub struct PreparedBinding {
 }
 
 pub async fn prepared(executor: &mut impl Executor) -> Result<()> {
-    PreparedBinding::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop the PreparedBinding table");
-    PreparedBinding::create_table(executor, true, false)
-        .await
-        .expect("Failed to create the PreparedBinding table");
+    // Setup
+    PreparedBinding::drop_table(executor, true, false).await?;
+    PreparedBinding::create_table(executor, true, false).await?;
 
+    // Insert PreparedBinding then fire a prepared query
     let entity = PreparedBinding {
         id: 4_000_000_000,
         value: -7,
     };
-    entity
-        .save(executor)
-        .await
-        .expect("Failed to save the PreparedBinding entity");
+    entity.save(executor).await?;
 
     let mut query =
-        PreparedBinding::prepare_find(executor, expr!(PreparedBinding::id == ?), Some(1))
-            .await
-            .expect("Failed to prepare the bound-key query");
-    query
-        .bind(entity.id)
-        .expect("Failed to bind the key parameter");
+        PreparedBinding::prepare_find(executor, expr!(PreparedBinding::id == ?), Some(1)).await?;
+    query.bind(4_000_000_000_u64)?;
     let loaded = executor
-        .fetch(query)
+        .fetch(&mut query)
         .map_ok(PreparedBinding::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Failed to query by the bound key");
+        .await?;
     assert_eq!(
         loaded,
         [entity.clone()],
@@ -50,20 +40,14 @@ pub async fn prepared(executor: &mut impl Executor) -> Result<()> {
     );
 
     // A value above i32::MAX must be widened by the driver, not truncated to i32.
-    let mut query =
-        PreparedBinding::prepare_find(executor, expr!(PreparedBinding::id == ?), Some(1))
-            .await
-            .expect("Failed to prepare the bound-key query");
-    query
-        .bind(4_000_000_000_u32)
-        .expect("Failed to bind the u32 parameter");
+    query.clear_bindings()?;
+    query.bind(4_000_000_000_u32)?;
     let loaded = executor
-        .fetch(query)
+        .fetch(&mut query)
         .map_ok(PreparedBinding::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Failed to query by the bound u32 key");
+        .await?;
     assert_eq!(
         loaded,
         [entity.clone()],
@@ -71,19 +55,14 @@ pub async fn prepared(executor: &mut impl Executor) -> Result<()> {
     );
 
     let mut query =
-        PreparedBinding::prepare_find(executor, expr!(PreparedBinding::id == ?), Some(1))
-            .await
-            .expect("Failed to prepare the indexed query");
-    query
-        .bind_index(entity.id, 0)
-        .expect("bind_index(0) must bind the first parameter");
+        PreparedBinding::prepare_find(executor, expr!(PreparedBinding::id == ?), Some(1)).await?;
+    query.bind_index(entity.id, 0)?;
     let loaded = executor
-        .fetch(query)
+        .fetch(&mut query)
         .map_ok(PreparedBinding::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Failed to query by the zero-based bound key");
+        .await?;
     assert_eq!(
         loaded,
         [entity.clone()],
@@ -92,27 +71,19 @@ pub async fn prepared(executor: &mut impl Executor) -> Result<()> {
 
     // The same prepared statement must be reusable with a different binding.
     let mut query =
-        PreparedBinding::prepare_find(executor, expr!(PreparedBinding::id == ?), Some(1))
-            .await
-            .expect("Failed to prepare the reusable query");
+        PreparedBinding::prepare_find(executor, expr!(PreparedBinding::id == ?), Some(1)).await?;
     let mut found: Vec<PreparedBinding> = Vec::new();
     for expected in [entity.clone(), PreparedBinding { id: 1, value: 2 }] {
         if expected.id == 1 {
-            expected
-                .save(executor)
-                .await
-                .expect("Failed to save the second entity");
+            expected.save(executor).await?;
         }
-        query
-            .bind(expected.id)
-            .expect("Failed to rebind the key parameter");
+        query.bind(expected.id)?;
         let loaded = executor
             .fetch(&mut query)
             .map_ok(PreparedBinding::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Failed to rerun the prepared query");
+            .await?;
         found.extend(loaded);
     }
     found.sort_by_key(|v| v.id);

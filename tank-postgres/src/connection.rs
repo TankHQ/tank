@@ -195,7 +195,7 @@ impl Executor for PostgresConnection {
             )
         };
         let mut query = DynQuery::default();
-        writer.write_copy::<E<It>>(&mut query);
+        writer.write_copy(&mut query, E::<It>::table());
         let sink = match self
             .client
             .copy_in(&query.as_str() as &str)
@@ -221,12 +221,12 @@ impl Executor for PostgresConnection {
             match iter.next() {
                 None => break,
                 Some(entity) => {
+                    // Owned, the values outlive `entity` across the write `.await`.
                     values.extend(
                         entity
                             .as_entity()
                             .row_values()
-                            .into_iter()
-                            .map(|v| ValueWrap(Cow::Owned(v))),
+                            .map(|v| ValueWrap(Cow::Owned(v.into_owned()))),
                     );
                 }
             }

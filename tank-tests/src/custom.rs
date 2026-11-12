@@ -64,13 +64,9 @@ pub async fn custom(executor: &mut impl Executor) -> Result<()> {
     // Setup
     silent_logs! {
         // Silent logs for Valkey/Redis
-        CustomValues::drop_table(executor, true, false)
-            .await
-            .expect("Failed to drop SimpleNullFields table");
+        CustomValues::drop_table(executor, true, false).await?;
     }
-    CustomValues::create_table(executor, true, true)
-        .await
-        .expect("Failed to create SimpleNullFields table");
+    CustomValues::create_table(executor, true, true).await?;
 
     // Query
     CustomValues::insert_many(
@@ -86,18 +82,14 @@ pub async fn custom(executor: &mut impl Executor) -> Result<()> {
             },
         ],
     )
-    .await
-    .expect("Failed to insert values");
+    .await?;
     CustomValues {
         pk: 52.try_into().unwrap(),
         category: FpCategory::Nan,
     }
     .save(executor)
-    .await
-    .expect("Failed to save");
-    let value = CustomValues::find_one(executor, expr!(CustomValues::pk == 52))
-        .await
-        .expect("Failed to find");
+    .await?;
+    let value = CustomValues::find_one(executor, expr!(CustomValues::pk == 52)).await?;
     assert_eq!(
         value,
         Some(CustomValues {

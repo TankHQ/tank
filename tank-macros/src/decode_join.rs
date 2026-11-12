@@ -101,7 +101,7 @@ impl Parse for JoinMemberParsed {
         if input.peek(Ident) {
             let alias = input.parse::<Ident>()?;
             Ok(Self(
-                quote! { ::tank::DeclareTableRef(<#table as ::tank::Entity>::table().with_alias(stringify!(#alias).into())) },
+                quote! { <#table as ::tank::Entity>::table().with_alias(stringify!(#alias).into()) },
             ))
         } else {
             Ok(Self(quote! { <#table as ::tank::Entity>::table() }))

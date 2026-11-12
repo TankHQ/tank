@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use futures::executor::block_on;
+    use indoc::indoc;
     use std::{
         any::Any,
         borrow::Cow,
@@ -15,9 +16,10 @@ mod tests {
     use tank::{
         AsQuery, AsValue, Connection, ConnectionPool, Context, Dataset, Driver, DynQuery, Entity,
         Error, Executor, Expression, ExpressionCollection, ExpressionVisitor, Fragment,
-        GenericSqlWriter, NA, OpPrecedence, PoolConfig, PooledConnection, Prepared, Query,
-        QueryBuilder, QueryResult, RawQuery, Result, Row, RowOwned, RowsAffected, Transaction,
-        anyhow, describe_path, describe_url,
+        GenericSqlWriter, InsertIntoQuery, NA, OpPrecedence, PoolConfig, PooledConnection,
+        Prepared, Query, QueryResult, RawQuery, Result, Row, RowOwned, RowsAffected, Sql,
+        Transaction, anyhow, cols, describe_path, describe_url, expr,
+        future::Either,
         stream::{self, Stream, StreamExt, TryStreamExt},
     };
 
@@ -354,22 +356,153 @@ mod tests {
         ));
         assert_eq!(na.expr_iter().count(), 0);
 
-        let create = QueryBuilder::new().create_table::<ExecutorItem>();
+        let create = Sql.create_table(ExecutorItem::table());
         assert!(!create.build(&TestDriver).is_empty());
         create.build_into(&TestDriver, &mut out);
-        let drop = QueryBuilder::new().drop_table::<ExecutorItem>();
+        let drop = Sql.drop_table(ExecutorItem::table());
         assert!(!drop.build(&TestDriver).is_empty());
         drop.build_into(&TestDriver, &mut out);
         let rows = [ExecutorItem::default()];
-        let insert = QueryBuilder::new().insert_into().values(&rows);
-        assert_eq!(insert.get_values().len(), 1);
+        let insert = Sql.insert_into(ExecutorItem::table()).values(&rows);
+        let Either::Left(values) = insert.get_values() else {
+            panic!("expected rows of values");
+        };
+        assert_eq!(values.count(), 1);
         assert!(!insert.build(&TestDriver).is_empty());
         insert.build_into(&TestDriver, &mut out);
-        let select = QueryBuilder::new()
+        let upsert = Sql
+            .insert_into(ExecutorItem::table())
+            .values(&rows)
+            .update();
+        assert!(upsert.build(&TestDriver).as_str().contains("ON CONFLICT"));
+        assert_eq!(
+            Sql.delete_from("logs")
+                .where_expr(expr!(level == "debug"))
+                .build(&TestDriver)
+                .as_str(),
+            "DELETE FROM \"logs\"\nWHERE level = 'debug';"
+        );
+        let delete = Sql.delete_from(ExecutorItem::table());
+        assert!(
+            delete
+                .build(&TestDriver)
+                .as_str()
+                .starts_with("DELETE FROM")
+        );
+        delete.build_into(&TestDriver, &mut out);
+        let select = Sql
             .select(ExecutorItem::columns())
             .from(ExecutorItem::table());
         assert!(!select.build(&TestDriver).is_empty());
         select.build_into(&TestDriver, &mut out);
+    }
+
+    #[test]
+    fn insert_without_entities() {
+        // Table by name, columns by name, rows of values
+        assert_eq!(
+            Sql.insert_into("mytable")
+                .columns(["col_a", "col_b"])
+                .values([
+                    ["val_a_1".as_value(), 1_i32.as_value()],
+                    ["val_a_2".as_value(), 2_i32.as_value()],
+                ])
+                .build(&TestDriver)
+                .as_str(),
+            indoc! {r#"
+                INSERT INTO "mytable" ("col_a", "col_b") VALUES
+                ('val_a_1', 1),
+                ('val_a_2', 2);
+            "#}
+            .trim()
+        );
+
+        // Schema and name, rows built at runtime with a NULL
+        let rows = (1..=2)
+            .map(|i| {
+                vec![
+                    i.as_value(),
+                    format!("event {i}").as_value(),
+                    None::<f64>.as_value(),
+                ]
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            Sql.insert_into(("analytics", "events"))
+                .columns(["id", "name", "score"])
+                .values(&rows)
+                .build(&TestDriver)
+                .as_str(),
+            indoc! {r#"
+                INSERT INTO "analytics"."events" ("id", "name", "score") VALUES
+                (1, 'event 1', NULL),
+                (2, 'event 2', NULL);
+            "#}
+            .trim()
+        );
+
+        // Values of one type need no conversion
+        assert_eq!(
+            Sql.insert_into("points")
+                .columns(["x", "y"])
+                .values([[1, 2], [3, 4]])
+                .build(&TestDriver)
+                .as_str(),
+            indoc! {r#"
+                INSERT INTO "points" ("x", "y") VALUES
+                (1, 2),
+                (3, 4);
+            "#}
+            .trim()
+        );
+
+        // No rows, no statement
+        assert!(
+            Sql.insert_into("mytable")
+                .columns(["col_a"])
+                .values(Vec::<[tank::Value; 1]>::new())
+                .build(&TestDriver)
+                .is_empty()
+        );
+
+        // Rows carrying their column names
+        let labels: tank::RowLabels = ["level", "message"].map(String::from).into();
+        assert_eq!(
+            Sql.insert_into("logs")
+                .columns(labels.iter().cloned())
+                .values(
+                    [RowOwned::new(
+                        labels.clone(),
+                        vec!["debug".as_value(), "started".as_value()]
+                    )]
+                    .iter()
+                    .map(Row::values)
+                )
+                .build(&TestDriver)
+                .as_str(),
+            indoc! {r#"
+                INSERT INTO "logs" ("level", "message") VALUES
+                ('debug', 'started');
+            "#}
+            .trim()
+        );
+
+        // The result of a query, tables and columns by name
+        assert_eq!(
+            Sql.insert_into(("analytics", "archive"))
+                .select(cols!(id, name))
+                .from(("analytics", "events"))
+                .where_expr(expr!(score == NULL))
+                .build(&TestDriver)
+                .as_str(),
+            indoc! {r#"
+                INSERT INTO "analytics"."archive"
+                SELECT id, name
+                FROM "analytics"."events"
+                WHERE score IS NULL;
+            "#}
+            .trim()
+        );
     }
 
     #[test]
@@ -492,11 +625,11 @@ mod tests {
             for (raw, expected_path) in [
                 ("test://:memory:", ":memory:"),
                 ("test://host?path=/tmp/a.db", "/tmp/a.db"),
-                ("test:///", ":memory:"),
+                ("test:///", "N/A"),
                 ("test:///tmp/a.db", "/tmp/a.db"),
             ] {
                 let url = TestExecutor::sanitize_url(&TestDriver, raw.into()).unwrap();
-                assert_eq!(describe_path::<TestDriver>(&url), expected_path);
+                assert_eq!(describe_path(&url), expected_path);
             }
             let url = TestExecutor::sanitize_url(
                 &TestDriver,

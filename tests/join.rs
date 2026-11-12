@@ -4,8 +4,8 @@ mod tests {
     use std::borrow::Cow;
     use syn::parse_str;
     use tank::{
-        BinaryOp, BinaryOpType, ColumnRef, Dataset, DeclareTableRef, DynQuery, Entity,
-        GenericSqlWriter, Join, JoinType, Operand, TableRef, join,
+        BinaryOp, BinaryOpType, ColumnRef, Dataset, DynQuery, Entity, GenericSqlWriter, Join,
+        JoinType, Operand, TableRef, join,
     };
 
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
@@ -29,18 +29,18 @@ mod tests {
             join,
             Join {
                 join: JoinType::Default,
-                lhs: DeclareTableRef(TableRef {
+                lhs: TableRef {
                     name: Cow::Borrowed("alpha"),
                     schema: Cow::Borrowed("my_data"),
                     alias: Cow::Borrowed("AA"),
                     ..
-                }),
-                rhs: DeclareTableRef(TableRef {
+                },
+                rhs: TableRef {
                     name: Cow::Borrowed("bravo"),
                     schema: Cow::Borrowed(""),
                     alias: Cow::Borrowed("BB"),
                     ..
-                }),
+                },
                 on: Some(BinaryOp {
                     op: BinaryOpType::Equal,
                     lhs: Operand::LitField(["AA", "a"]),
@@ -56,7 +56,8 @@ mod tests {
             query.as_str(),
             r#""my_data"."alpha" AA JOIN "bravo" BB ON AA.a = BB.first"#
         );
-        assert!(Join::<DeclareTableRef, DeclareTableRef, ()>::qualified_columns());
+        assert!(join.qualified_columns());
+        assert!((&join as &dyn Dataset).qualified_columns());
 
         let join = join!(Alpha INNER JOIN Bravo ON Alpha::_a == Bravo::_first);
         assert!(matches!(
@@ -348,12 +349,12 @@ mod tests {
                 join: JoinType::Right,
                 lhs: Join {
                     join: JoinType::Outer,
-                    lhs: DeclareTableRef(TableRef {
+                    lhs: TableRef {
                         name: Cow::Borrowed("alpha"),
                         schema: Cow::Borrowed("my_data"),
                         alias: Cow::Borrowed("A"),
                         ..
-                    }),
+                    },
                     rhs: TableRef {
                         name: Cow::Borrowed("bravo"),
                         // alias: Cow::Borrowed(""),

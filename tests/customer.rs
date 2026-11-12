@@ -3,8 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::borrow::Cow;
     use tank::{
-        AsValue, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType,
-        QueryBuilder, SqlWriter, TableRef, Value, expr,
+        AsValue, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, Sql,
+        SqlWriter, TableRef, Value, expr,
     };
 
     #[derive(Entity)]
@@ -127,7 +127,7 @@ mod tests {
     #[test]
     fn customer_sql() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<Customer>(&mut query, false);
+        WRITER.write_create_table(&mut query, Customer::table(), false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -155,13 +155,12 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_drop_table::<Customer>(&mut query, false);
+        WRITER.write_drop_table(&mut query, Customer::table(), false);
         assert_eq!(query.as_str(), r#"DROP TABLE "customers";"#);
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            &QueryBuilder::new()
-                .select(Customer::columns())
+            Sql.select(Customer::columns())
                 .from(Customer::table())
                 .where_expr(expr!(len(Customer::_values) > 10))
                 .limit(Some(10)),
@@ -177,7 +176,7 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_delete::<Customer>(&mut query, true);
+        WRITER.write_delete(&mut query, Customer::table(), true);
         assert_eq!(
             query.as_str(),
             indoc! {r#"

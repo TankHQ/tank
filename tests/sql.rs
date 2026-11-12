@@ -5,7 +5,7 @@ mod tests {
     use std::{collections::BTreeMap, str::FromStr};
     use tank::{
         BinaryOp, BinaryOpType, ColumnDef, Context, DynQuery, Entity, Expression, Fragment,
-        GenericSqlWriter, Operand, QueryBuilder, SqlWriter, Value, expr,
+        GenericSqlWriter, Operand, Sql, SqlWriter, Value, expr,
     };
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
@@ -26,7 +26,7 @@ mod tests {
         // CREATE TABLE
         {
             let mut query = DynQuery::default();
-            WRITER.write_create_table::<Table>(&mut query, false);
+            WRITER.write_create_table(&mut query, Table::table(), false);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -41,7 +41,7 @@ mod tests {
         // DROP TABLE IF EXISTS
         {
             let mut query = DynQuery::default();
-            WRITER.write_drop_table::<Table>(&mut query, true);
+            WRITER.write_drop_table(&mut query, Table::table(), true);
             assert_eq!(query.as_str(), r#"DROP TABLE IF EXISTS "my_table";"#);
         }
         // SELECT
@@ -49,8 +49,7 @@ mod tests {
             let mut query = DynQuery::default();
             WRITER.write_select(
                 &mut query,
-                &QueryBuilder::new()
-                    .select(Table::columns())
+                Sql.select(Table::columns())
                     .from(Table::table())
                     .where_expr(expr!(
                         Table::_second_column < 100 && Table::_first_column == "OK"
@@ -70,7 +69,7 @@ mod tests {
         {
             let mut query = DynQuery::default();
             let table = Table::default();
-            WRITER.write_insert(&mut query, [&table], false);
+            WRITER.write_insert(&mut query, Sql.insert_into(Table::table()).values(&[table]));
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -87,7 +86,10 @@ mod tests {
                 _second_column: 512.5.into(),
                 _third_column: 478,
             };
-            WRITER.write_insert(&mut query, [&table], true);
+            WRITER.write_insert(
+                &mut query,
+                Sql.insert_into(Table::table()).values(&[table]).update(),
+            );
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -117,7 +119,7 @@ mod tests {
         // CREATE TABLE IF NOT EXISTS
         {
             let mut query = DynQuery::default();
-            WRITER.write_create_table::<Cart>(&mut query, true);
+            WRITER.write_create_table(&mut query, Cart::table(), true);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -135,7 +137,7 @@ mod tests {
         // DROP TABLE
         {
             let mut query = DynQuery::default();
-            WRITER.write_drop_table::<Cart>(&mut query, false);
+            WRITER.write_drop_table(&mut query, Cart::table(), false);
             assert_eq!(query.as_str(), r#"DROP TABLE "cart";"#);
         }
         // SELECT with LIMIT
@@ -143,8 +145,7 @@ mod tests {
             let mut query = DynQuery::default();
             WRITER.write_select(
                 &mut query,
-                &QueryBuilder::new()
-                    .select(Cart::columns())
+                Sql.select(Cart::columns())
                     .from(Cart::table())
                     .where_expr(expr!(Cart::is_active == true && Cart::total_price > 100))
                     .limit(Some(1000)),
@@ -174,7 +175,7 @@ mod tests {
                 is_active: Default::default(),
                 total_price: Default::default(),
             };
-            WRITER.write_insert(&mut query, [&cart], false);
+            WRITER.write_insert(&mut query, Sql.insert_into(Cart::table()).values(&[cart]));
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -201,7 +202,10 @@ mod tests {
                 is_active: true,
                 total_price: Decimal::new(2599, 2), // 25.99
             };
-            WRITER.write_insert(&mut query, [&cart], true);
+            WRITER.write_insert(
+                &mut query,
+                Sql.insert_into(Cart::table()).values(&[cart]).update(),
+            );
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"

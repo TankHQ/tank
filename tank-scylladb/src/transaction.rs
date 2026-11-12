@@ -2,8 +2,8 @@ use crate::{ScyllaDBConnection, ScyllaDBDriver, ScyllaDBPrepared, ValueWrap};
 use scylla::statement::batch::Batch;
 use std::future;
 use tank_core::{
-    AsEntity, AsQuery, Driver, DynQuery, Error, ErrorContext, Executor, Query, QueryResult,
-    RawQuery, Result, Row, RowsAffected, SqlWriter, Transaction,
+    AsEntity, AsQuery, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query, QueryResult,
+    RawQuery, Result, Row, RowsAffected, Sql, SqlWriter, Transaction,
     future::Either,
     stream::{self, Stream},
     truncate_long,
@@ -95,7 +95,11 @@ impl<'c> Executor for ScyllaDBTransaction<'c> {
             match iter.next() {
                 None => break,
                 Some(entity) => {
-                    writer.write_insert(&mut query, [entity], false);
+                    writer.write_insert(
+                        &mut query,
+                        Sql.insert_into(<It::Item as AsEntity>::Entity::table())
+                            .values([entity.as_entity()]),
+                    );
                     // entity dropped here at end of Some arm.
                 }
             }

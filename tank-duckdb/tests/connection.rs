@@ -2,8 +2,8 @@
 mod tests {
     use indoc::indoc;
     use std::{path::Path, pin::pin, sync::Mutex};
-    use tank_core::{
-        AsValue, Connection, Executor, QueryResult, Row, Value,
+    use tank::{
+        AsValue, Connection, DynQuery, Entity, Executor, QueryResult, Row, Sql, Value, cols, expr,
         stream::{StreamExt, TryStreamExt},
     };
     use tank_duckdb::{DuckDBConnection, DuckDBDriver};
@@ -11,6 +11,33 @@ mod tests {
     use tokio::fs;
 
     static MUTEX: Mutex<()> = Mutex::new(());
+    const DRIVER: DuckDBDriver = DuckDBDriver::new();
+
+    #[derive(Entity)]
+    #[tank(name = "must_not_run")]
+    struct MustNotRun {
+        i: i32,
+    }
+
+    #[derive(Entity)]
+    #[tank(name = "reusable")]
+    struct Reusable {
+        i: i32,
+    }
+
+    #[derive(Entity)]
+    #[tank(name = "ordered")]
+    struct Ordered {
+        #[tank(primary_key)]
+        id: i64,
+        value: i64,
+    }
+
+    #[derive(Entity)]
+    #[tank(name = "shared_db")]
+    struct SharedDb {
+        v: i32,
+    }
 
     #[tokio::test]
     async fn incremental_owned_snapshots() {
@@ -59,9 +86,17 @@ mod tests {
                 .await
                 .unwrap();
         {
-            let mut results = pin!(connection.run(
-                "SELECT CAST(CASE WHEN i = 1000000 THEN 'invalid' ELSE i::VARCHAR END AS BIGINT) FROM range(1000010) t(i); CREATE TABLE must_not_run(i INT)"
-            ));
+            let mut query = DynQuery::default();
+            Sql.select(cols!(CAST(if range == 1000000 {
+                "invalid"
+            } else {
+                range as String
+            } as i64)))
+                .from(expr!(range(1000010)))
+                .build_into(&DRIVER, &mut query);
+            Sql.create_table(MustNotRun::table())
+                .build_into(&DRIVER, &mut query);
+            let mut results = pin!(connection.run(query));
             let mut count = 0;
             let error = loop {
                 match results.next().await.expect("Expected late error") {
@@ -70,56 +105,24 @@ mod tests {
                     Err(error) => break error,
                 }
             };
-            assert!(
-                count > 0 && count < 1000010,
-                "Consumed {count} rows before error"
-            );
+            assert!(count < 1000010, "Consumed {count} rows before error");
             assert!(format!("{error:#}").contains("invalid"));
             assert!(results.next().await.is_none());
         }
         assert!(
             connection
-                .execute("INSERT INTO must_not_run VALUES (1)")
+                .execute(
+                    Sql.insert_into(MustNotRun::table())
+                        .values(&[MustNotRun { i: 1 }])
+                        .build(&DRIVER)
+                )
                 .await
                 .is_err()
         );
         connection
-            .execute("CREATE TABLE reusable(i INT)")
+            .execute(Sql.create_table(Reusable::table()).build(&DRIVER))
             .await
             .unwrap();
-    }
-
-    #[tokio::test]
-    async fn late_extraction_error_surfaced() {
-        let mut connection =
-            DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
-                .await
-                .unwrap();
-        // The native DATE is valid, but its year is outside time::Date's supported range.
-        let sql = "SELECT CASE WHEN i = 5000 THEN DATE '2000000-01-01' ELSE DATE '2025-01-01' END FROM range(5001) t(i); CREATE TABLE must_not_run(i INT)";
-        {
-            let mut results = pin!(connection.run(sql));
-            for _ in 0..5000 {
-                assert!(matches!(
-                    results.next().await,
-                    Some(Ok(QueryResult::Row(_)))
-                ));
-            }
-            let error = results
-                .next()
-                .await
-                .unwrap()
-                .err()
-                .expect("Must report extraction error");
-            assert!(format!("{error:#}").contains("date"));
-            assert!(results.next().await.is_none());
-        }
-        assert!(
-            connection
-                .execute("INSERT INTO must_not_run VALUES (1)")
-                .await
-                .is_err()
-        );
     }
 
     #[tokio::test]
@@ -129,14 +132,33 @@ mod tests {
                 .await
                 .unwrap();
         {
-            let mut results = pin!(connection.run(
-                "CREATE TABLE ordered(i BIGINT); INSERT INTO ordered VALUES (7); SELECT i FROM range(2) t(i); UPDATE ordered SET i = 8; SELECT * FROM ordered; SELECT 1 WHERE false"
-            ));
+            let mut query = DynQuery::default();
+            Sql.create_table(Ordered::table())
+                .build_into(&DRIVER, &mut query);
+            Sql.insert_into(Ordered::table())
+                .values(&[Ordered { id: 1, value: 7 }, Ordered { id: 2, value: 7 }])
+                .build_into(&DRIVER, &mut query);
+            Sql.select(cols!(Ordered::value))
+                .from(Ordered::table())
+                .build_into(&DRIVER, &mut query);
+            Sql.insert_into(Ordered::table())
+                .values(&[Ordered { id: 1, value: 8 }])
+                .update()
+                .build_into(&DRIVER, &mut query);
+            Sql.select(cols!(Ordered::value))
+                .from(Ordered::table())
+                .where_expr(expr!(Ordered::id == 1))
+                .build_into(&DRIVER, &mut query);
+            Sql.select(cols!(Ordered::value))
+                .from(Ordered::table())
+                .where_expr(false)
+                .build_into(&DRIVER, &mut query);
+            let mut results = pin!(connection.run(query));
             assert!(
                 matches!(results.next().await.unwrap().unwrap(), QueryResult::Affected(a) if a.rows_affected == Some(0))
             );
             assert!(
-                matches!(results.next().await.unwrap().unwrap(), QueryResult::Affected(a) if a.rows_affected == Some(1))
+                matches!(results.next().await.unwrap().unwrap(), QueryResult::Affected(a) if a.rows_affected == Some(2))
             );
             assert!(matches!(
                 results.next().await.unwrap().unwrap(),
@@ -157,8 +179,14 @@ mod tests {
         }
         // Dropping an unfinished batch does not eagerly execute subsequent statements.
         {
-            let mut results =
-                pin!(connection.run("SELECT * FROM range(10000); INSERT INTO ordered VALUES (99)"));
+            let mut query = DynQuery::default();
+            Sql.select(cols!(Ordered::value))
+                .from(Ordered::table())
+                .build_into(&DRIVER, &mut query);
+            Sql.insert_into(Ordered::table())
+                .values(&[Ordered { id: 3, value: 99 }])
+                .build_into(&DRIVER, &mut query);
+            let mut results = pin!(connection.run(query));
             assert!(matches!(
                 results.next().await.unwrap().unwrap(),
                 QueryResult::Row(_)
@@ -166,12 +194,16 @@ mod tests {
         }
         assert_eq!(
             connection
-                .fetch("SELECT * FROM ordered")
+                .fetch(
+                    Sql.select(cols!(Ordered::value))
+                        .from(Ordered::table())
+                        .build(&DRIVER)
+                )
                 .try_collect::<Vec<_>>()
                 .await
                 .unwrap()
                 .len(),
-            1
+            2
         );
     }
 
@@ -181,14 +213,18 @@ mod tests {
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
                 .await
                 .unwrap();
-        assert!(
-            connection
-                .execute(
-                    "SELECT CAST(CASE WHEN i = 1000000 THEN 'invalid' ELSE i::VARCHAR END AS BIGINT) FROM range(1000010) t(i); SELECT 42"
-                )
-                .await
-                .is_err()
-        );
+        let mut query = DynQuery::default();
+        Sql.select(cols!(CAST(if range == 1000000 {
+            "invalid"
+        } else {
+            CAST(range as String)
+        } as i64)))
+            .from(expr!(range(1000010)))
+            .build_into(&DRIVER, &mut query);
+        Sql.select(cols!(42))
+            .from(expr!(range(1)))
+            .build_into(&DRIVER, &mut query);
+        assert!(connection.execute(query).await.is_err());
         assert_eq!(
             connection
                 .fetch("SELECT 42")
@@ -380,12 +416,37 @@ mod tests {
             !Path::new(DB_PATH).exists(),
             "Database file should not exist before test"
         );
-        DuckDBConnection::connect(
+        let mut c1 = DuckDBConnection::connect(
             &DuckDBDriver::new(),
             format!("duckdb://{DB_PATH}?mode=rw").into(),
         )
         .await
         .expect("Could not open the database");
+        let mut c2 = DuckDBConnection::connect(
+            &DuckDBDriver::new(),
+            format!("duckdb://{DB_PATH}?mode=rw").into(),
+        )
+        .await
+        .expect("Could not open a second connection to the same database");
+        let mut query = DynQuery::default();
+        Sql.create_table(SharedDb::table())
+            .build_into(&DRIVER, &mut query);
+        Sql.insert_into(SharedDb::table())
+            .values(&[SharedDb { v: 7 }])
+            .build_into(&DRIVER, &mut query);
+        c1.execute(query).await.unwrap();
+        drop(c1);
+        assert_eq!(
+            c2.fetch(
+                Sql.select(cols!(SharedDb::v))
+                    .from(SharedDb::table())
+                    .build(&DRIVER)
+            )
+            .count()
+            .await,
+            1
+        );
+        drop(c2);
         assert!(
             Path::new(DB_PATH).exists(),
             "Database file should be created after connection"

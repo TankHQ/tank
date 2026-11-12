@@ -169,8 +169,8 @@ impl Executor for ScyllaDBConnection {
 
 impl Connection for ScyllaDBConnection {
     async fn connect(driver: &ScyllaDBDriver, url: Cow<'static, str>) -> Result<Self> {
+        let url = Self::sanitize_url(driver, url)?;
         let context = "While trying to connect to ScyllaDB";
-        let url = Self::sanitize_url(driver, url).context(context)?;
         let hostname = url.host_str().context(context)?;
         let port = url.port();
         let username = url.username();
@@ -361,16 +361,14 @@ impl Connection for ScyllaDBConnection {
                     .context(context)?,
                 (true, None) => builder.with_no_client_auth(),
                 (false, None) => {
-                    let error =
-                        anyhow!("SSL KEY file must be provided when SSL CERT is specified")
-                            .context(context);
+                    let error = anyhow!("SSL KEY file must be provided when SSL CERT is specified")
+                        .context(context);
                     log::error!("{error:#}");
                     return Err(error);
                 }
                 (true, Some(_)) => {
-                    let error =
-                        anyhow!("SSL CERT file must be provided when SSL KEY is specified")
-                            .context(context);
+                    let error = anyhow!("SSL CERT file must be provided when SSL KEY is specified")
+                        .context(context);
                     log::error!("{error:#}");
                     return Err(error);
                 }

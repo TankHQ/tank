@@ -4,8 +4,9 @@ use indoc::indoc;
 use std::fmt::Write;
 use std::{collections::BTreeMap, iter};
 use tank_core::{
-    AsEntity, ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment,
-    GenericSqlWriter, Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, Value, separated_by,
+    ColumnDef, Context, Dataset, DynQuery, Expression, Fragment, GenericSqlWriter, InsertIntoQuery,
+    Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, TableRef, Value, future::Either,
+    separated_by,
 };
 use uuid::Uuid;
 
@@ -237,18 +238,16 @@ impl SqlWriter for ScyllaDBSqlWriter {
 
     fn write_transaction_rollback(&self, _out: &mut DynQuery) {}
 
-    fn write_create_schema<E>(&self, out: &mut DynQuery, if_not_exists: bool)
+    fn write_create_schema(&self, out: &mut DynQuery, table: &TableRef, if_not_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table();
         out.buffer().reserve(128 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("CREATE KEYSPACE ");
-        let mut context = Context::new(Fragment::SqlCreateSchema, E::qualified_columns());
+        let mut context = Context::new(Fragment::SqlCreateSchema, table.qualified_columns());
         if if_not_exists {
             out.push_str("IF NOT EXISTS ");
         }
@@ -262,13 +261,11 @@ impl SqlWriter for ScyllaDBSqlWriter {
         "#});
     }
 
-    fn write_drop_schema<E>(&self, out: &mut DynQuery, if_exists: bool)
+    fn write_drop_schema(&self, out: &mut DynQuery, table: &TableRef, if_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
-        let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
-        let table = E::table();
+        let mut context = Context::new(Fragment::SqlDropSchema, table.qualified_columns());
         out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
@@ -352,45 +349,48 @@ impl SqlWriter for ScyllaDBSqlWriter {
     ) {
     }
 
-    fn write_insert<It>(&self, out: &mut DynQuery, entities: It, _update: bool)
+    fn write_insert(&self, out: &mut DynQuery, query: impl InsertIntoQuery)
     where
         Self: Sized,
-        It: IntoIterator,
-        It::Item: AsEntity,
     {
-        type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
-        let table = E::<It>::table();
-        let mut entities = entities.into_iter().peekable();
-        let Some(entity) = entities.next() else {
+        let (table, columns) = (query.get_table(), query.get_columns());
+        let Either::Left(rows) = query.get_values() else {
+            log::error!("ScyllaDB/Cassandra does not support INSERT ... SELECT");
             return;
         };
-        let multiple = entities.peek().is_some();
-        let entities = iter::once(entity).chain(entities);
-        out.buffer().reserve(128 + E::<It>::columns().len() * 32);
+        let mut rows = rows.into_iter().peekable();
+        let Some(row) = rows.next() else {
+            return;
+        };
+        let multiple = rows.peek().is_some();
+        out.buffer()
+            .reserve((rows.size_hint().0 + 1) * (64 + columns.len() * 32));
         if multiple {
             self.write_transaction_begin(out);
         }
-        for entity in entities {
+        // CQL inserts one row per statement, INSERT is already an upsert.
+        for row in iter::once(row).chain(rows) {
             if !out.is_empty() {
                 out.push('\n');
             }
             out.push_str("INSERT INTO ");
-            let mut context = Context::new(Fragment::SqlInsertInto, E::<It>::qualified_columns());
+            let mut context = Context::new(Fragment::SqlInsertInto, table.qualified_columns());
             self.write_table_ref(&mut context, out, table);
             out.push_str(" (");
             separated_by(
                 out,
-                E::<It>::columns().iter(),
-                |out, col| {
-                    self.write_identifier(&mut context, out, col.name(), true);
-                },
+                columns,
+                |out, column| self.write_identifier(&mut context, out, column.name(), true),
                 ", ",
             );
             let mut context = context.switch_fragment(Fragment::SqlInsertIntoValues);
             out.push_str(") VALUES\n(");
-            entity
-                .as_entity()
-                .write_query(self.as_dyn(), &mut context.current, out);
+            separated_by(
+                out,
+                row,
+                |out, value| self.write_value(&mut context.current, out, &value),
+                ", ",
+            );
             out.push_str(");");
         }
         if multiple {
@@ -398,12 +398,11 @@ impl SqlWriter for ScyllaDBSqlWriter {
         }
     }
 
-    fn write_delete<E>(&self, out: &mut DynQuery, condition: impl Expression)
+    fn write_delete(&self, out: &mut DynQuery, from: &dyn Dataset, condition: impl Expression)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table();
+        let table = &from.table_ref();
         out.buffer().reserve(128);
         let mut context = Context::new(Fragment::SqlDeleteFrom, false);
         let is_true = condition.accept_visitor(&mut IsTrue, self, &mut context, out);

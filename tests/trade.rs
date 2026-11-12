@@ -9,7 +9,7 @@ mod tests {
     };
     use tank::{
         Action, ColumnRef, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType,
-        QueryBuilder, SqlWriter, TableRef, Value, expr,
+        Sql, SqlWriter, TableRef, Value, expr,
     };
     use time::macros::datetime;
     use uuid::Uuid;
@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn trade_sql() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<Trade>(&mut query, false);
+        WRITER.write_create_table(&mut query, Trade::table(), false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -265,7 +265,7 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_drop_table::<Trade>(&mut query, true);
+        WRITER.write_drop_table(&mut query, Trade::table(), true);
         assert_eq!(
             query.as_str(),
             r#"DROP TABLE IF EXISTS "trading.company"."trade_execution";"#
@@ -273,8 +273,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            &QueryBuilder::new()
-                .select(Trade::columns())
+            Sql.select(Trade::columns())
                 .from(Trade::table())
                 .where_expr(expr!(Trade::quantity >= 100 && Trade::price > 1000)),
         );
@@ -291,7 +290,10 @@ mod tests {
         docs.insert("contract.pdf".to_string(), vec![1, 2, 3, 4]);
         let employee = Trade::sample();
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&employee], false);
+        WRITER.write_insert(
+            &mut query,
+            Sql.insert_into(Trade::table()).values(&[employee]),
+        );
         assert!(
             // Last part of the query (the map) is removed becaus order of keys is not defined. Value stores a HashMap
             query.as_str().starts_with(indoc! {r#"
@@ -300,7 +302,7 @@ mod tests {
             "#}.trim())
     );
         let mut query = DynQuery::default();
-        WRITER.write_delete::<Trade>(&mut query, expr!(Trade::trade == 68391));
+        WRITER.write_delete(&mut query, Trade::table(), expr!(Trade::trade == 68391));
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -347,7 +349,7 @@ mod tests {
         assert_eq!(columns[2].on_update, None);
 
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<Deployment>(&mut query, false);
+        WRITER.write_create_table(&mut query, Deployment::table(), false);
         let sql = query.as_str();
         assert!(
             sql.contains(

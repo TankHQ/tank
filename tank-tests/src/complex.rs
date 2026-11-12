@@ -76,17 +76,11 @@ pub async fn complex(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    ComplexNullFields::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop ComplexNullFields table");
-    ComplexNullFields::create_table(executor, true, true)
-        .await
-        .expect("Failed to create ComplexNullFields table");
+    ComplexNullFields::drop_table(executor, true, false).await?;
+    ComplexNullFields::create_table(executor, true, true).await?;
 
     // Complex 1
-    ComplexNullFields::delete_many(executor, true)
-        .await
-        .expect("Failed to clear the ComplexNullFields table");
+    ComplexNullFields::delete_many(executor, true).await?;
     let entity = ComplexNullFields {
         #[cfg(not(feature = "disable-arrays"))]
         first: None,
@@ -133,12 +127,9 @@ pub async fn complex(executor: &mut impl Executor) -> Result<()> {
         fifth: LinkedList::from_iter([]),
         sixth: Default::default(),
     };
-    ComplexNullFields::insert_one(executor, &entity)
-        .await
-        .expect("Failed to save complex 1");
+    ComplexNullFields::insert_one(executor, &entity).await?;
     let entity = ComplexNullFields::find_one(executor, true)
-        .await
-        .expect("Failed to query complex 1")
+        .await?
         .expect("Failed to find complex 1");
     #[cfg(not(feature = "disable-arrays"))]
     assert_eq!(entity.first, None);
@@ -191,9 +182,7 @@ pub async fn complex(executor: &mut impl Executor) -> Result<()> {
     assert_eq!(entity.fifth.len(), 0);
 
     // Complex 2
-    ComplexNullFields::delete_many(executor, true)
-        .await
-        .expect("Failed to clear the ComplexNullFields table");
+    ComplexNullFields::delete_many(executor, true).await?;
     let entity = ComplexNullFields {
         #[cfg(not(feature = "disable-arrays"))]
         first: Some([
@@ -251,12 +240,9 @@ pub async fn complex(executor: &mut impl Executor) -> Result<()> {
         ]),
         sixth: Default::default(),
     };
-    ComplexNullFields::insert_one(executor, &entity)
-        .await
-        .expect("Failed to save complex 2");
+    ComplexNullFields::insert_one(executor, &entity).await?;
     let loaded = ComplexNullFields::find_one(executor, true)
-        .await
-        .expect("Failed to query complex 2")
+        .await?
         .expect("Failed to find complex 2");
     #[cfg(not(feature = "disable-arrays"))]
     assert_eq!(loaded.first, entity.first);

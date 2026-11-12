@@ -54,6 +54,7 @@ impl Context {
             quote_identifiers: true,
         }
     }
+
     /// Creates an empty context with no special configuration.
     pub const fn empty() -> Self {
         Self {
@@ -64,6 +65,7 @@ impl Context {
             quote_identifiers: false,
         }
     }
+
     /// Creates a context for a specific SQL fragment.
     pub const fn fragment(fragment: Fragment) -> Self {
         Self {
@@ -74,6 +76,7 @@ impl Context {
             quote_identifiers: true,
         }
     }
+
     /// Creates a context that enforces identifying columns with their table name.
     pub const fn qualify(qualify_columns: bool) -> Self {
         Self {
@@ -84,6 +87,7 @@ impl Context {
             quote_identifiers: true,
         }
     }
+
     /// Creates a context qualified with a specific table name.
     pub const fn qualify_with(table: Cow<'static, str>) -> Self {
         Self {
@@ -94,9 +98,12 @@ impl Context {
             quote_identifiers: true,
         }
     }
+
     pub const fn update_from(&mut self, context: &Context) {
         self.counter = context.counter;
     }
+
+    #[inline]
     pub fn switch_fragment<'s>(&'s mut self, fragment: Fragment) -> ContextUpdater<'s> {
         ContextUpdater {
             current: Context {
@@ -107,6 +114,7 @@ impl Context {
             previous: self,
         }
     }
+
     pub fn switch_table<'s>(&'s mut self, table_ref: TableRef) -> ContextUpdater<'s> {
         let is_empty = table_ref.is_empty();
         ContextUpdater {
@@ -132,6 +140,7 @@ pub struct ContextUpdater<'a> {
 }
 
 impl<'a> Drop for ContextUpdater<'a> {
+    #[inline]
     fn drop(&mut self) {
         self.previous.counter = self.current.counter;
     }

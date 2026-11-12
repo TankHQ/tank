@@ -4,7 +4,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tank::{
-    AsValue, Entity, Executor, Operand, QueryBuilder, Result, Row, cols, expr,
+    AsValue, Entity, Executor, Operand, Result, Row, Sql, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
@@ -26,12 +26,8 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Times::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop Times table");
-    Times::create_table(executor, false, true)
-        .await
-        .expect("Failed to create Times table");
+    Times::drop_table(executor, true, false).await?;
+    Times::create_table(executor, false, true).await?;
 
     // Insert times
     let timestamps = [
@@ -172,9 +168,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
         },
     ];
 
-    Times::insert_many(executor, &timestamps)
-        .await
-        .expect("Failed to insert timestamps");
+    Times::insert_many(executor, &timestamps).await?;
 
     /*
      * 1987-10-05 14:09:00
@@ -191,21 +185,17 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     // Query timestamp 1
     let mut query_timestamp_1 = executor
         .prepare(
-            QueryBuilder::new()
-                .select([Times::timestamp_1])
+            Sql.select([Times::timestamp_1])
                 .from(Times::table())
                 .where_expr(expr!(Times::timestamp_2 > ?))
                 .order_by(cols!(Times::timestamp_1 DESC))
                 .build(&executor.driver()),
         )
-        .await
-        .expect("Could not prepare the query timestamp 1");
-    query_timestamp_1
-        .bind(PrimitiveDateTime::new(
-            Date::from_calendar_date(1999, Month::December, 31).unwrap(),
-            Time::from_hms(23, 59, 59).unwrap(),
-        ))
-        .expect("Could not bind the timestamp 1");
+        .await?;
+    query_timestamp_1.bind(PrimitiveDateTime::new(
+        Date::from_calendar_date(1999, Month::December, 31).unwrap(),
+        Time::from_hms(23, 59, 59).unwrap(),
+    ))?;
     let values = executor
         .fetch(&mut query_timestamp_1)
         .and_then(|v| async move {
@@ -213,8 +203,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
                 .map(|v| v.to_string())
         })
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not collect the values from the stream");
+        .await?;
     assert_eq!(
         values,
         [
@@ -225,15 +214,11 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
             "2025-01-01 0:00:00.0",
         ]
     );
-    query_timestamp_1
-        .clear_bindings()
-        .expect("Could not clear the bindings for query timestamp 1");
-    query_timestamp_1
-        .bind(PrimitiveDateTime::new(
-            Date::from_calendar_date(1800, Month::January, 1).unwrap(),
-            Time::from_hms(0, 0, 0).unwrap(),
-        ))
-        .expect("Could not bind the timestamp 1");
+    query_timestamp_1.clear_bindings()?;
+    query_timestamp_1.bind(PrimitiveDateTime::new(
+        Date::from_calendar_date(1800, Month::January, 1).unwrap(),
+        Time::from_hms(0, 0, 0).unwrap(),
+    ))?;
     let values = executor
         .fetch(&mut query_timestamp_1)
         .and_then(|v| async move {
@@ -241,8 +226,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
                 .map(|v| v.to_string())
         })
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not collect the values from the stream");
+        .await?;
     assert_eq!(
         values,
         [
@@ -261,21 +245,17 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     // Query timestamp 2
     let mut query_timestamp_2 = executor
         .prepare(
-            QueryBuilder::new()
-                .select([Times::timestamp_2])
+            Sql.select([Times::timestamp_2])
                 .from(Times::table())
                 .where_expr(expr!(Times::timestamp_1 <= ?))
                 .order_by(cols!(Times::timestamp_2 ASC))
                 .build(&executor.driver()),
         )
-        .await
-        .expect("Could not prepare the query timestamp 1");
-    query_timestamp_2
-        .bind(NaiveDateTime::new(
-            NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
-            NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
-        ))
-        .expect("Could not bind the timestamp 1");
+        .await?;
+    query_timestamp_2.bind(NaiveDateTime::new(
+        NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
+        NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
+    ))?;
     let values = executor
         .fetch(&mut query_timestamp_2)
         .and_then(|v| async move {
@@ -283,8 +263,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
                 .map(|v| v.to_string())
         })
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not collect the values from the stream");
+        .await?;
     assert_eq!(
         values,
         [
@@ -299,15 +278,13 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     // Query time 1
     let mut query_time_1 = executor
         .prepare(
-            QueryBuilder::new()
-                .select([Times::time_1])
+            Sql.select([Times::time_1])
                 .from(Times::table())
                 .where_expr(true)
                 .order_by(cols!(Times::time_1 DESC))
                 .build(&executor.driver()),
         )
-        .await
-        .expect("Could not prepare the query timestamp 1");
+        .await?;
     let values = executor
         .fetch(&mut query_time_1)
         .and_then(|v| async move {
@@ -315,8 +292,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
                 .map(|v| v.to_string())
         })
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not collect the values from the stream");
+        .await?;
     assert_eq!(
         values,
         [
@@ -333,8 +309,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
         - 2;
     let timestamp_ms = executor
         .fetch(
-            QueryBuilder::new()
-                .select([&Operand::CurrentTimestampMs])
+            Sql.select([&Operand::CurrentTimestampMs])
                 .from(Times::table())
                 .where_expr(true)
                 .limit(Some(1))
@@ -343,8 +318,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
         .map_ok(|v| u128::try_from_value(v.value(0).expect("There is no column")))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not get the current timestamp");
+        .await?;
     let after = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -364,12 +338,8 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
             ts: OffsetDateTime,
         }
 
-        TzOffsets::drop_table(executor, true, false)
-            .await
-            .expect("Failed to drop TzOffsets table");
-        TzOffsets::create_table(executor, true, true)
-            .await
-            .expect("Failed to create TzOffsets table");
+        TzOffsets::drop_table(executor, true, false).await?;
+        TzOffsets::create_table(executor, true, true).await?;
 
         // UTC-05:30
         let neg_offset = TzOffsets {
@@ -380,14 +350,10 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
                 UtcOffset::from_hms(-5, -30, 0).unwrap(),
             ),
         };
-        neg_offset
-            .save(executor)
-            .await
-            .expect("Failed to save entity with negative UTC offset");
+        neg_offset.save(executor).await?;
 
         let found = TzOffsets::find_one(executor, expr!(TzOffsets::id == 1))
-            .await
-            .expect("Failed to query")
+            .await?
             .expect("Entity with negative offset not found");
         assert_eq!(
             found.ts.unix_timestamp(),
@@ -404,14 +370,10 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
                 UtcOffset::from_hms(5, 45, 0).unwrap(),
             ),
         };
-        nepal
-            .save(executor)
-            .await
-            .expect("Failed to save entity with Nepal offset");
+        nepal.save(executor).await?;
 
         let found = TzOffsets::find_one(executor, expr!(TzOffsets::id == 2))
-            .await
-            .expect("Failed to query")
+            .await?
             .expect("Entity with Nepal offset not found");
         assert_eq!(
             found.ts.unix_timestamp(),
@@ -429,14 +391,10 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
                     UtcOffset::from_hms(2, 0, 0).unwrap(),
                 ),
             };
-            bc_offset
-                .save(executor)
-                .await
-                .expect("Failed to save entity with BC date and offset");
+            bc_offset.save(executor).await?;
 
             let found = TzOffsets::find_one(executor, expr!(TzOffsets::id == 3))
-                .await
-                .expect("Failed to query")
+                .await?
                 .expect("Entity with BC date not found");
             assert_eq!(
                 found.ts.unix_timestamp(),
@@ -452,14 +410,10 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
                     UtcOffset::from_hms(-3, 0, 0).unwrap(),
                 ),
             };
-            bc_negative
-                .save(executor)
-                .await
-                .expect("Failed to save entity with BC date and negative offset");
+            bc_negative.save(executor).await?;
 
             let found = TzOffsets::find_one(executor, expr!(TzOffsets::id == 4))
-                .await
-                .expect("Failed to query")
+                .await?
                 .expect("Entity with BC date and negative offset not found");
             assert_eq!(
                 found.ts.unix_timestamp(),

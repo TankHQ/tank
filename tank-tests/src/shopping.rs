@@ -3,7 +3,7 @@ use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::pin::pin;
 use std::{str::FromStr, sync::Arc, sync::LazyLock};
-use tank::QueryBuilder;
+use tank::Sql;
 use tank::{
     AsValue, Dataset, Entity, Executor, FixedDecimal, Result, Row, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
@@ -54,12 +54,8 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Product
-    Product::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop product table");
-    Product::create_table(executor, false, true)
-        .await
-        .expect("Failed to create the product table");
+    Product::drop_table(executor, true, false).await?;
+    Product::create_table(executor, false, true).await?;
     let products = [
         Product {
             id: 1,
@@ -98,18 +94,15 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
             tags: vec!["kitchen".into(), "humor".into()].into(),
         },
     ];
-    Product::insert_many(executor, &products)
-        .await
-        .expect("Could not insert the products");
+    Product::insert_many(executor, &products).await?;
     let total_products = Product::find_many(executor, true, None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(total_products, 4);
     let ordered_products = executor
         .fetch(
-            QueryBuilder::new()
-                .select([Product::id, Product::name, Product::price])
+            Sql.select([Product::id, Product::name, Product::price])
                 .from(Product::table())
                 .where_expr(expr!(Product::stock > 0))
                 .order_by(cols!(Product::price ASC))
@@ -117,8 +110,7 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
         )
         .map(|r| r.and_then(Product::from_row))
         .try_collect::<Vec<Product>>()
-        .await
-        .expect("Could not get the products ordered by increasing price");
+        .await?;
     assert!(
         ordered_products.iter().map(|v| &v.name).eq([
             "Rust-Proof Coffee Mug",
@@ -128,35 +120,25 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
         .into_iter())
     );
     let zero_stock = Product::find_one(executor, expr!(Product::stock == 0))
-        .await
-        .expect("Failed to query product with zero stock")
+        .await?
         .expect("Expected a product with zero stock");
     assert_eq!(zero_stock.id, 3);
 
     // Decrease stock for product id 4 by 1 and verify save works
     let mut prod4 = Product::find_one(executor, expr!(Product::id == 4))
-        .await
-        .expect("Failed to query product 4")
+        .await?
         .expect("Product 4 expected");
     let old_stock = prod4.stock.unwrap_or(0);
     prod4.stock = Some(old_stock - 1);
-    prod4
-        .save(executor)
-        .await
-        .expect("Failed to save updated product 4");
+    prod4.save(executor).await?;
     let prod4_after = Product::find_one(executor, expr!(Product::id == 4))
-        .await
-        .expect("Failed to query product 4 after update")
+        .await?
         .expect("Product 4 expected after update");
     assert_eq!(prod4_after.stock, Some(old_stock - 1));
 
     // User
-    User::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop user table");
-    User::create_table(executor, false, false)
-        .await
-        .expect("Failed to create the user table");
+    User::drop_table(executor, true, false).await?;
+    User::create_table(executor, false, false).await?;
     let users = vec![
         User {
             id: Uuid::new_v4(),
@@ -183,14 +165,11 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
             ),
         },
     ];
-    User::insert_many(executor, &users)
-        .await
-        .expect("Could not insert the users");
+    User::insert_many(executor, &users).await?;
     let count = {
         let row = pin!(
             executor.fetch(
-                QueryBuilder::new()
-                    .select(cols!(COUNT(*)))
+                Sql.select(cols!(COUNT(*)))
                     .from(User::table())
                     .where_expr(true)
                     .limit(Some(1))
@@ -198,20 +177,15 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
             )
         )
         .try_next()
-        .await
-        .expect("Failed to query for count")
+        .await?
         .expect("Did not return some value");
-        i64::try_from_value(row.value(0).unwrap()).unwrap()
+        i64::try_from_value(row.value(0).unwrap())?
     };
     assert_eq!(count, 2);
 
     // Cart
-    Cart::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop cart table");
-    Cart::create_table(executor, false, false)
-        .await
-        .expect("Failed to create the cart table");
+    Cart::drop_table(executor, true, false).await?;
+    Cart::create_table(executor, false, false).await?;
     let carts = vec![
         Cart {
             user: users[0].id,
@@ -241,38 +215,30 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
             ),
         },
     ];
-    Cart::insert_many(executor, &carts)
-        .await
-        .expect("Could not insert the carts");
+    Cart::insert_many(executor, &carts).await?;
     let cart_count = Cart::find_many(executor, true, None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(cart_count, 3);
 
     // Product 4 in cart has different price than current product price
     let cart_for_4 = Cart::find_one(executor, expr!(Cart::product == 4))
-        .await
-        .expect("Failed to query cart for product 4");
-    let cart_for_4 = cart_for_4.expect("Expected a cart for product 4");
+        .await?
+        .expect("Expected a cart for product 4");
     let product4 = Product::find_one(executor, expr!(Product::id == 4))
-        .await
-        .expect("Failed to query product 4 for price check")
+        .await?
         .expect("Expected product 4");
     assert_eq!(cart_for_4.price.0, Decimal::new(23_50, 2));
     assert_eq!(product4.price.0, Decimal::new(25_00, 2));
 
     // Delete the cart containing product 2
     let cart_for_2 = Cart::find_one(executor, expr!(Cart::product == 2))
-        .await
-        .expect("Failed to query cart for product 2")
+        .await?
         .expect("Expected a cart for product 2");
-    cart_for_2
-        .delete(executor)
-        .await
-        .expect("Failed to delete cart for product 2");
+    cart_for_2.delete(executor).await?;
     let cart_count_after = Cart::find_many(executor, true, None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(cart_count_after, 2);
@@ -287,25 +253,23 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
         }
         let carts: Vec<Carts> = executor
             .fetch(
-                QueryBuilder::new()
-                    .select(cols!(
-                        Product::name as product,
-                        User::name as user,
-                        Cart::price
-                    ))
-                    .from(join!(
-                        User INNER JOIN Cart ON User::id == Cart::user
-                            JOIN Product ON Cart::product == Product::id
-                    ))
-                    .where_expr(true)
-                    .order_by(cols!(Product::name ASC, User::name ASC))
-                    .build(&executor.driver()),
+                Sql.select(cols!(
+                    Product::name as product,
+                    User::name as user,
+                    Cart::price
+                ))
+                .from(join!(
+                    User INNER JOIN Cart ON User::id == Cart::user
+                        JOIN Product ON Cart::product == Product::id
+                ))
+                .where_expr(true)
+                .order_by(cols!(Product::name ASC, User::name ASC))
+                .build(&executor.driver()),
             )
             .map_ok(Carts::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not get the products ordered by increasing price");
+            .await?;
         assert_eq!(
             carts,
             &[

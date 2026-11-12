@@ -3,8 +3,8 @@ use std::{
     fmt::Write,
 };
 use tank_core::{
-    ColumnDef, Context, DynQuery, EitherIterator, Entity, Error, Expression, Fragment,
-    GenericSqlWriter, Interval, PrimaryKeyType, SqlWriter, Value, separated_by, write_escaped,
+    ColumnDef, Context, DynQuery, EitherIterator, Error, Expression, Fragment, GenericSqlWriter,
+    Interval, PrimaryKeyType, SqlWriter, Value, separated_by, write_escaped,
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
 
@@ -337,28 +337,30 @@ impl SqlWriter for MySQLSqlWriter {
     ) {
     }
 
-    fn write_insert_update_fragment<'a, E>(
+    fn write_insert_update_fragment<'a>(
         &self,
         context: &mut Context,
         out: &mut DynQuery,
+        primary_key: impl Iterator<Item = &'a ColumnDef> + Clone,
         columns: impl Iterator<Item = &'a ColumnDef> + Clone,
     ) where
         Self: Sized,
-        E: Entity,
     {
-        let pk = E::primary_key_def();
-        if pk.is_empty() {
+        if primary_key.clone().next().is_none() {
             return;
         }
         out.push_str("\nON DUPLICATE KEY UPDATE");
         let mut update_cols = columns
             .clone()
-            .filter(|c| c.primary_key == PrimaryKeyType::None)
+            .filter(|c| !primary_key.clone().any(|pk| pk.name() == c.name()))
             .peekable();
+        // Without other columns, assigning the key to itself makes the conflict a no-op.
         let update_cols = if update_cols.peek().is_some() {
             EitherIterator::Left(update_cols)
         } else {
-            EitherIterator::Right(columns.filter(|c| c.primary_key != PrimaryKeyType::None))
+            EitherIterator::Right(
+                columns.filter(|c| primary_key.clone().any(|pk| pk.name() == c.name())),
+            )
         };
         separated_by(
             out,

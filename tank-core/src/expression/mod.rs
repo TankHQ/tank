@@ -1,4 +1,5 @@
 mod binary_op;
+mod case;
 mod default_value_type;
 mod expression;
 mod op_precedence;
@@ -8,6 +9,7 @@ mod unary_op;
 mod visitor;
 
 pub use binary_op::*;
+pub use case::*;
 pub use default_value_type::*;
 pub use expression::*;
 pub use op_precedence::*;

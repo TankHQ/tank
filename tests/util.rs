@@ -12,10 +12,10 @@ mod tests {
     };
     use syn::{Path, parse_str};
     use tank::{
-        CollectionType, Context, Dataset, DeclareTableRef, DynQuery, EitherIterator, Entity,
-        Expression, FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType,
-        QueryBuilder, QueryResult, References, Row, RowLabels, RowOwned, RowsAffected, SqlWriter,
-        StructType, TRUNCATE_LONG_LIMIT, TableRef, Value, as_c_string, column_def, consume_while,
+        CollectionType, Context, Dataset, DynQuery, EitherIterator, Entity, Expression,
+        FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType, QueryResult,
+        References, Row, RowLabels, RowOwned, RowsAffected, Sql, SqlWriter, StructType,
+        TRUNCATE_LONG_LIMIT, TableRef, Value, as_c_string, column_def, consume_while,
         decimal_from_scaled, error_message_from_ptr, extract_number, matches_path, month_to_number,
         number_to_month, quote_btree_map, quote_cow, quote_option, separated_by, truncate_bound,
         truncate_long, value_to_json, write_escaped,
@@ -88,7 +88,7 @@ mod tests {
         table.write_table_name(&writer, &mut from_context, &mut rendered);
         assert_eq!(rendered.as_str().as_ref(), r#""analytics"."events" e"#);
         assert_eq!(table.table_ref(), table);
-        assert!(!<TableRef as Dataset>::qualified_columns());
+        assert!(!table.qualified_columns());
 
         let mut join_context = Context::fragment(Fragment::SqlJoin);
         let mut rendered_borrowed = DynQuery::default();
@@ -98,20 +98,10 @@ mod tests {
             r#""analytics"."events" e"#
         );
         assert_eq!((&&table).table_ref(), table);
-        assert!(!<&TableRef as Dataset>::qualified_columns());
-
-        let declared = DeclareTableRef(table.clone());
-        let mut declared_context = Context::fragment(Fragment::SqlSelectFrom);
-        let mut rendered_declared = DynQuery::default();
-        declared.write_table_name(&writer, &mut declared_context, &mut rendered_declared);
-        assert_eq!(
-            rendered_declared.as_str().as_ref(),
-            r#""analytics"."events" e"#
-        );
-        assert_eq!(declared.table_ref(), table);
-        assert!(!<DeclareTableRef as Dataset>::qualified_columns());
+        assert!(!table.qualified_columns());
 
         let dynamic: &dyn Dataset = &table;
+        assert!(!dynamic.qualified_columns());
         let mut query = DynQuery::default();
         (&dynamic).write_table_name(
             &writer,
@@ -151,10 +141,6 @@ mod tests {
         assert!(tokens.contains("events"));
         assert!(tokens.contains("analytics"));
         assert!(tokens.contains("Borrowed"));
-
-        let declare_tokens = DeclareTableRef(table).to_token_stream().to_string();
-        assert!(declare_tokens.contains(":: tank :: DeclareTableRef"));
-        assert!(declare_tokens.contains(":: tank :: TableRef"));
     }
 
     #[test]
@@ -448,25 +434,25 @@ mod tests {
         }
         let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
-        writer.write_create_schema::<SchemaEntity>(&mut q, true);
+        writer.write_create_schema(&mut q, SchemaEntity::table(), true);
         assert_eq!(
             q.as_str().as_ref(),
             "CREATE SCHEMA IF NOT EXISTS \"analytics\";"
         );
 
         let mut q2 = DynQuery::default();
-        writer.write_create_schema::<SchemaEntity>(&mut q2, false);
+        writer.write_create_schema(&mut q2, SchemaEntity::table(), false);
         assert_eq!(q2.as_str().as_ref(), "CREATE SCHEMA \"analytics\";");
 
         let mut q3 = DynQuery::default();
-        writer.write_drop_schema::<SchemaEntity>(&mut q3, true);
+        writer.write_drop_schema(&mut q3, SchemaEntity::table(), true);
         assert_eq!(q3.as_str().as_ref(), "DROP SCHEMA IF EXISTS \"analytics\";");
         let mut q4 = DynQuery::default();
-        writer.write_drop_schema::<SchemaEntity>(&mut q4, false);
+        writer.write_drop_schema(&mut q4, SchemaEntity::table(), false);
         assert_eq!(q4.as_str().as_ref(), "DROP SCHEMA \"analytics\";");
 
         let mut q5 = DynQuery::new("-- c".into());
-        writer.write_create_schema::<SchemaEntity>(&mut q5, false);
+        writer.write_create_schema(&mut q5, SchemaEntity::table(), false);
         assert!(q5.as_str().starts_with("-- c\nCREATE SCHEMA"));
 
         let mut out = DynQuery::default();
@@ -525,12 +511,7 @@ mod tests {
         let mut q = DynQuery::default();
 
         let empty_cols: &[&dyn Expression] = &[];
-        writer.write_select(
-            &mut q,
-            &QueryBuilder::new()
-                .select(empty_cols)
-                .from(StarTable::table()),
-        );
+        writer.write_select(&mut q, Sql.select(empty_cols).from(StarTable::table()));
         assert!(q.as_str().contains("SELECT *"));
     }
 
@@ -721,7 +702,10 @@ mod tests {
         let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
         let entities: Vec<&EmptyInsert> = vec![];
-        writer.write_insert(&mut q, entities, false);
+        writer.write_insert(
+            &mut q,
+            Sql.insert_into(EmptyInsert::table()).values(entities),
+        );
         assert!(q.is_empty());
     }
 
@@ -735,30 +719,32 @@ mod tests {
         let mut q = DynQuery::new("-- comment".into());
         writer.write_select(
             &mut q,
-            &QueryBuilder::new()
-                .select(AppendTable::columns())
+            Sql.select(AppendTable::columns())
                 .from(AppendTable::table()),
         );
         let mut q = DynQuery::new("-- comment".into());
         writer.write_select(
             &mut q,
-            &QueryBuilder::new()
-                .select(AppendTable::columns())
+            Sql.select(AppendTable::columns())
                 .from(AppendTable::table()),
         );
         assert!(q.as_str().starts_with("-- comment\nSELECT"));
 
         let mut q = DynQuery::new("-- c".into());
-        writer.write_create_table::<AppendTable>(&mut q, false);
+        writer.write_create_table(&mut q, AppendTable::table(), false);
         assert!(q.as_str().starts_with("-- c\nCREATE TABLE"));
         let mut q = DynQuery::new("-- c".into());
-        writer.write_drop_table::<AppendTable>(&mut q, false);
+        writer.write_drop_table(&mut q, AppendTable::table(), false);
         assert!(q.as_str().starts_with("-- c\nDROP TABLE"));
         let mut q = DynQuery::new("-- c".into());
-        writer.write_delete::<AppendTable>(&mut q, true);
+        writer.write_delete(&mut q, AppendTable::table(), true);
         assert!(q.as_str().starts_with("-- c\nDELETE FROM"));
         let mut q = DynQuery::new("-- c".into());
-        writer.write_insert(&mut q, [&AppendTable { id: 1 }], false);
+        writer.write_insert(
+            &mut q,
+            Sql.insert_into(AppendTable::table())
+                .values(&[AppendTable { id: 1 }]),
+        );
         assert!(q.as_str().starts_with("-- c\nINSERT INTO"));
     }
 
@@ -771,7 +757,12 @@ mod tests {
         }
         let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
-        writer.write_insert(&mut q, [&PkOnly { id: 1 }], true);
+        writer.write_insert(
+            &mut q,
+            Sql.insert_into(PkOnly::table())
+                .values(&[PkOnly { id: 1 }])
+                .update(),
+        );
         assert!(q.as_str().contains("DO NOTHING"));
 
         #[derive(Entity)]
@@ -779,7 +770,12 @@ mod tests {
             value: i32,
         }
         let mut q = DynQuery::default();
-        writer.write_insert(&mut q, [&NoPk { value: 1 }], true);
+        writer.write_insert(
+            &mut q,
+            Sql.insert_into(NoPk::table())
+                .values(&[NoPk { value: 1 }])
+                .update(),
+        );
         assert!(!q.as_str().contains("ON CONFLICT"));
     }
 
@@ -1125,10 +1121,10 @@ mod tests {
     fn error_ptr_messages() {
         let text = CString::new("boom").unwrap();
         let raw: *const c_char = text.as_ptr();
-        assert_eq!(error_message_from_ptr(&raw), "boom");
+        assert_eq!(error_message_from_ptr(raw), "boom");
 
         let null: *const c_char = ptr::null();
-        assert!(error_message_from_ptr(&null).contains("Unknown error"));
+        assert!(error_message_from_ptr(null).contains("Unknown error"));
     }
 
     #[test]

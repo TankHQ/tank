@@ -125,9 +125,9 @@ mod tests {
             begin_timestamp_ms: 100,
             end_timestamp_ms: Some(200),
         };
-        let values = required.row_values();
+        let values = required.row_values().collect::<Vec<_>>();
         assert_eq!(values[2], "GET".as_value());
-        assert_eq!(Request::from_row(required.row())?.row_values(), values);
+        assert!(Request::from_row(required.row())?.row_values().eq(values));
 
         for method in [Some(Method::POST), None] {
             let expected = method.as_ref().map(Method::as_str).as_value();
@@ -138,9 +138,13 @@ mod tests {
                 method: method.clone(),
                 interval_ms: Some(1000),
             };
-            let values = optional.row_values();
+            let values = optional.row_values().collect::<Vec<_>>();
             assert_eq!(values[3], expected);
-            assert_eq!(RequestLimit::from_row(optional.row())?.row_values(), values);
+            assert!(
+                RequestLimit::from_row(optional.row())?
+                    .row_values()
+                    .eq(values)
+            );
         }
         assert_eq!(Request::columns()[2].value, Value::Varchar(None));
         assert!(!Request::columns()[2].nullable);

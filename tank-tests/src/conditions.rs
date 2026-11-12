@@ -1,8 +1,5 @@
 use std::sync::LazyLock;
-use tank::{
-    Entity, Executor, Result, expr,
-    stream::{StreamExt, TryStreamExt},
-};
+use tank::{Entity, Executor, Result, expr, stream::StreamExt};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -21,12 +18,8 @@ pub async fn conditions(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    ConditionEntry::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop ConditionEntry table");
-    ConditionEntry::create_table(executor, true, true)
-        .await
-        .expect("Failed to create ConditionEntry table");
+    ConditionEntry::drop_table(executor, true, false).await?;
+    ConditionEntry::create_table(executor, true, true).await?;
 
     // Operations
     let entries = vec![
@@ -55,31 +48,29 @@ pub async fn conditions(executor: &mut impl Executor) -> Result<()> {
             verified: Some(true),
         },
     ];
-    ConditionEntry::insert_many(executor, &entries)
-        .await
-        .expect("Failed to insert entries");
+    ConditionEntry::insert_many(executor, &entries).await?;
 
     let count = ConditionEntry::find_many(executor, expr!(name != NULL), None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(count, 3, "Should find 3 entries where `name IS NOT NULL`");
 
     let count = ConditionEntry::find_many(executor, expr!(name == NULL), None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(count, 1, "Should find 1 entry where `name IS NULL`");
 
     let count = ConditionEntry::find_many(executor, expr!(id == (1, 3, 5) as IN), None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(count, 2, "Should find 2 entries with `id IN (1, 3, 5)`");
 
     let ids = [1, 3, 5];
     let count = ConditionEntry::find_many(executor, expr!(id == #ids as IN), None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(
@@ -93,7 +84,7 @@ pub async fn conditions(executor: &mut impl Executor) -> Result<()> {
         expr!(ConditionEntry::name == #names as IN && ConditionEntry::name != NULL),
         None,
     )
-    .map_err(|e| panic!("{e:#}"))
+    .map(Result::unwrap)
     .count()
     .await;
     assert_eq!(
@@ -102,27 +93,27 @@ pub async fn conditions(executor: &mut impl Executor) -> Result<()> {
     );
 
     let count = ConditionEntry::find_many(executor, expr!(!active), None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(count, 1, "Should find 1 inactive entry");
 
     let count = ConditionEntry::find_many(executor, expr!(id > 3 && active == true), None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(count, 1, "Should find 1 entry with `id > 3` and active");
 
     let count =
         ConditionEntry::find_many(executor, expr!(ConditionEntry::name == "%e" as LIKE), None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await;
     assert_eq!(count, 2, "Should find 2 entry with `name LIKE '%e'`");
 
     let count =
         ConditionEntry::find_many(executor, expr!(ConditionEntry::name != "%e" as LIKE), None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await;
     assert_eq!(count, 1, "Should find 1 entry with `name NOT LIKE '%e'`");
@@ -132,7 +123,7 @@ pub async fn conditions(executor: &mut impl Executor) -> Result<()> {
         expr!(ConditionEntry::name != "Alice" && ConditionEntry::name != NULL),
         None,
     )
-    .map_err(|e| panic!("{e:#}"))
+    .map(Result::unwrap)
     .count()
     .await;
     assert_eq!(count, 2, "Should find 2 entries with `name != 'Alice'`");
@@ -142,7 +133,7 @@ pub async fn conditions(executor: &mut impl Executor) -> Result<()> {
         expr!(ConditionEntry::name != ("Alice", "Bob") as IN && ConditionEntry::name != NULL),
         None,
     )
-    .map_err(|e| panic!("{e:#}"))
+    .map(Result::unwrap)
     .count()
     .await;
     assert_eq!(
@@ -154,7 +145,7 @@ pub async fn conditions(executor: &mut impl Executor) -> Result<()> {
     {
         let count =
             ConditionEntry::find_many(executor, expr!(ConditionEntry::name == "A*" as GLOB), None)
-                .map_err(|e| panic!("{e:#}"))
+                .map(Result::unwrap)
                 .count()
                 .await;
         assert_eq!(count, 1, "Should find 1 entry with `name GLOB 'A*'`");
@@ -164,7 +155,7 @@ pub async fn conditions(executor: &mut impl Executor) -> Result<()> {
             expr!(ConditionEntry::name != "?li*" as GLOB),
             None,
         )
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
         assert_eq!(
@@ -174,13 +165,13 @@ pub async fn conditions(executor: &mut impl Executor) -> Result<()> {
     }
 
     let count = ConditionEntry::find_many(executor, expr!(!(ConditionEntry::name > "Bob")), None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(count, 2, "Should find 2 entries with `NOT (name > 'Bob')`");
 
     let count = ConditionEntry::find_many(executor, expr!(!ConditionEntry::verified), None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(count, 1, "Should find 1 entry with `NOT verified`");

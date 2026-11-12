@@ -36,6 +36,8 @@ url.workspace = true
 [dev-dependencies]
 tank = { path = ".." }
 tank-tests = { path = "../tank-tests", features = [
+    "disable-case",
+    "disable-insert-select",
     "disable-glob",
     "disable-groups",
     "disable-intervals",

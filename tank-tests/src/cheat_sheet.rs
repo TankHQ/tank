@@ -78,16 +78,6 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         transient_cache: HashMap::new(),
     };
 
-    #[cfg(not(feature = "disable-transactions"))]
-    {
-        use tank::{Entity, Transaction};
-
-        let mut tx = connection.begin().await?;
-        EntityExample::insert_one(&mut tx, &entity).await?;
-        entity.delete(&mut tx).await?;
-        tx.commit().await?;
-    }
-
     let entity2 = EntityExample {
         unit_id: Uuid::new_v4(),
         region: "South".into(),
@@ -151,6 +141,16 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         EntityExample::delete_many(&mut connection, expr!(EntityExample::unit_id == #uid)).await?;
     }
 
+    #[cfg(not(feature = "disable-transactions"))]
+    {
+        use tank::{Entity, Transaction};
+
+        let mut tx = connection.begin().await?;
+        EntityExample::insert_one(&mut tx, &entity).await?;
+        entity.delete(&mut tx).await?;
+        tx.commit().await?;
+    }
+
     {
         expr!(EntityExample::casualties == 0);
         expr!(EntityExample::casualties >= 10);
@@ -162,6 +162,15 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         expr!(EntityExample::unit_id == #uid);
         let regions = ["North", "South"];
         expr!(EntityExample::region == #regions as IN);
+        expr!(if EntityExample::casualties > 10 {
+            "heavy"
+        } else {
+            "light"
+        });
+        expr!(match EntityExample::region {
+            "North" | "South" => 1,
+            _ => 2,
+        });
     }
 
     {
@@ -196,7 +205,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     {
         // #region cheat-sheet-query-builder
         use tank::{
-            QueryBuilder, cols, expr,
+            Sql, cols, expr,
             stream::{StreamExt, TryStreamExt},
         };
 
@@ -209,8 +218,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         let uid = entity.unit_id;
         let results = connection
             .fetch(
-                QueryBuilder::new()
-                    .select(cols!(EntityExample::callsign, EntityExample::casualties))
+                Sql.select(cols!(EntityExample::callsign, EntityExample::casualties))
                     .from(EntityExample::table())
                     .where_expr(expr!(EntityExample::unit_id == #uid))
                     .order_by(cols!(EntityExample::region ASC))
@@ -231,9 +239,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     {
         use crate::{Author, AuthorColumnTrait, Book, BookColumnTrait};
         // #region cheat-sheet-joins
-        use tank::{
-            Entity, QueryBuilder, cols, expr, join, stream::StreamExt, stream::TryStreamExt,
-        };
+        use tank::{Entity, Sql, cols, expr, join, stream::StreamExt, stream::TryStreamExt};
 
         #[derive(Entity)]
         struct BookWithAuthor {
@@ -243,8 +249,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
         let rows: Vec<BookWithAuthor> = connection
             .fetch(
-                QueryBuilder::new()
-                    .select(cols!(Book::title, Author::name as author))
+                Sql.select(cols!(Book::title, Author::name as author))
                     .from(join!(Book JOIN Author ON Book::author == Author::id))
                     .where_expr(expr!(Book::year > 2000))
                     .order_by(cols!(Book::title ASC))
@@ -257,8 +262,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
         let rows: Vec<BookWithAuthor> = connection
             .fetch(
-                QueryBuilder::new()
-                    .select(cols!(B.title, A.name as author))
+                Sql.select(cols!(B.title, A.name as author))
                     .from(join!(Book B LEFT JOIN Author A ON B.author == A.author_id))
                     .where_expr(true)
                     .build(&connection.driver()),
@@ -275,8 +279,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         );
         let _ = connection
             .fetch(
-                QueryBuilder::new()
-                    .select(cols!(B.title, A1.name as author, A2.name as co_author))
+                Sql.select(cols!(B.title, A1.name as author, A2.name as co_author))
                     .from(dataset)
                     .where_expr(true)
                     .build(&connection.driver()),
@@ -284,6 +287,76 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
             .try_collect::<Vec<_>>()
             .await?;
         // #endregion cheat-sheet-joins
+    }
+
+    {
+        EntityExample::insert_many(&mut connection, [&entity2, &entity3]).await?;
+
+        // #region cheat-sheet-streams
+        use std::{future::ready, pin::pin};
+        use tank::{AsValue, Entity, QueryResult, Row, Sql, cols, stream::TryStreamExt};
+
+        // Entities: decode each row, optionally filter on the Rust side, collect.
+        let wounded: Vec<EntityExample> = connection
+            .fetch(
+                Sql.select(EntityExample::columns())
+                    .from(EntityExample::table())
+                    .where_expr(true)
+                    .build(&connection.driver()),
+            )
+            .and_then(|row| ready(EntityExample::from_row(row))) // Same as .map(|row| row.and_then(EntityExample::from_row))
+            .try_filter(|entity| ready(entity.casualties > 0)) // Prefer a WHERE clause: this reads every row
+            .try_collect()
+            .await?;
+        let callsigns: Vec<&str> = wounded.iter().map(|e| e.callsign.as_str()).collect();
+
+        // Rows: aggregate values without building entities.
+        let (count, casualties) = EntityExample::find_many(&mut connection, true, None)
+            .try_fold((0, 0), |(count, total), entity| {
+                ready(Ok((count + 1, total + entity.casualties)))
+            })
+            .await?;
+        let total = connection
+            .fetch(
+                Sql.select(cols!(EntityExample::casualties))
+                    .from(EntityExample::table())
+                    .where_expr(true)
+                    .build(&connection.driver()),
+            )
+            .try_fold(0, |total, row| {
+                ready(i32::try_from_value(row.value(0).unwrap()).map(|v| total + v))
+            })
+            .await?;
+
+        // Query results: `run` yields rows and affected counts, consumed one at a time.
+        // `try_next` polls in place, which needs an `Unpin` stream: Tank's streams hold async state
+        // and are not, so pin them on the stack. Combinators taking the stream by value do it for you.
+        let mut rows = Vec::new();
+        {
+            let mut stream = pin!(
+                connection.run(
+                    Sql.select(cols!(EntityExample::callsign))
+                        .from(EntityExample::table())
+                        .where_expr(true)
+                        .build(&connection.driver()),
+                )
+            );
+            while let Some(result) = stream.try_next().await? {
+                match result {
+                    // Rows borrow the connection until the stream is dropped, `into_owned` detaches them
+                    QueryResult::Row(row) => rows.push(row.into_owned()),
+                    QueryResult::Affected(affected) => println!("{:?}", affected.rows_affected),
+                }
+            }
+        }
+        // #endregion cheat-sheet-streams
+
+        assert_eq!(callsigns.len(), 2);
+        assert!(callsigns.contains(&entity2.callsign.as_str()));
+        assert_eq!((count, casualties), (3, 8));
+        assert_eq!(total, 8);
+        assert_eq!(rows.len(), 3);
+        assert!(rows.iter().all(|row| row.get_column("callsign").is_some()));
     }
 
     Ok(())

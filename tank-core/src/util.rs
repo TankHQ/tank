@@ -8,8 +8,8 @@ use std::{
     cmp::min,
     collections::BTreeMap,
     ffi::{CStr, CString, c_char},
-    fmt::Write,
-    ptr,
+    fmt::{self, Write},
+    hint, iter, ptr,
 };
 use syn::Path;
 use url::Url;
@@ -184,21 +184,54 @@ pub fn write_escaped(out: &mut DynQuery, value: &str, search: char, replace: &st
     out.push_str(rest);
 }
 
-/// Convenience wrapper converting into a `CString`.
-pub fn as_c_string(str: impl Into<Vec<u8>>) -> CString {
-    CString::new(
-        str.into()
-            .into_iter()
-            .map(|b| if b == 0 { b'?' } else { b })
-            .collect::<Vec<u8>>(),
-    )
-    .unwrap_or_default()
+/// Write `value` left padded with zeros to at least `width` digits, without going through `fmt`.
+#[inline]
+pub fn write_zero_padded(out: &mut DynQuery, value: u32, width: usize) {
+    let mut buffer = itoa::Buffer::new();
+    let digits = buffer.format(value);
+    let zeros = min(width.saturating_sub(digits.len()), 9);
+    out.push_str(&"000000000"[..zeros]);
+    out.push_str(digits);
 }
 
-pub fn error_message_from_ptr<'a>(ptr: &'a *const c_char) -> Cow<'a, str> {
+/// Convenience wrapper converting into a `CString`.
+pub fn as_c_string(str: impl AsRef<[u8]>) -> CString {
     unsafe {
-        if *ptr != ptr::null() {
-            CStr::from_ptr(*ptr).to_string_lossy()
+        CString::from_vec_with_nul_unchecked(
+            str.as_ref()
+                .iter()
+                .copied()
+                .map(|b| if b == 0 { b'?' } else { b })
+                .chain(iter::once(0))
+                .collect(),
+        )
+    }
+}
+
+#[cold]
+pub fn log_error<E: fmt::Display>(error: &E) {
+    log::error!("{error:#}");
+}
+
+#[cold]
+pub fn log_warn<E: fmt::Display>(error: &E) {
+    log::warn!("{error:#}");
+}
+
+#[inline(always)]
+pub fn char_ptr_to_string(ptr: *mut c_char) -> String {
+    if ptr.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(ptr).to_string_lossy().into_owned() }
+    }
+}
+
+#[inline(always)]
+pub fn error_message_from_ptr<'a>(ptr: *const c_char) -> Cow<'a, str> {
+    unsafe {
+        if ptr != ptr::null() {
+            CStr::from_ptr(ptr).to_string_lossy()
         } else {
             Cow::Borrowed("Unknown error: could not extract the error message")
         }
@@ -307,9 +340,14 @@ pub const TRUNCATE_LONG_LIMIT: usize = {
 };
 
 /// Build a `Decimal` from a scaled integer.
-pub fn decimal_from_scaled(mantissa: i128, scale: u32) -> Result<Decimal> {
-    let mut mantissa = mantissa;
-    let mut scale = scale;
+#[inline]
+pub fn decimal_from_scaled(mut mantissa: i128, mut scale: u32) -> Result<Decimal> {
+    if scale <= Decimal::MAX_SCALE
+        && let Ok(d) = Decimal::try_from_i128_with_scale(mantissa, scale)
+    {
+        return Ok(d);
+    }
+    hint::cold_path();
     while scale > Decimal::MAX_SCALE && mantissa % 10 == 0 {
         mantissa /= 10;
         scale -= 1;
@@ -399,36 +437,23 @@ pub fn describe_url<D: Driver>(url: &Url) -> String {
     target
 }
 
-/// Builds a short, log friendly description of an embedded connection target:
+/// Builds a short, log-safe description of an embedded connection target:
 /// the database path or `:memory:`.
 #[inline]
-pub fn describe_path<D: Driver>(url: &Url) -> String {
-    let mut target = String::with_capacity(32);
-    if url
-        .query_pairs()
+pub fn describe_path(url: &Url) -> String {
+    url.query_pairs()
         .any(|(k, v)| k.eq_ignore_ascii_case("mode") && v.eq_ignore_ascii_case("memory"))
-    {
-        let _ = write!(&mut target, ":memory:");
-        return target;
-    }
-    if let Some(path) = url
-        .query_pairs()
-        .find_map(|(k, v)| k.eq_ignore_ascii_case("path").then_some(v))
-    {
-        let _ = write!(&mut target, "{}", truncate_long!(path));
-        return target;
-    }
-    let host = url.host_str().unwrap_or_default();
-    let path = url.path();
-    if host.is_empty() && (path.is_empty() || path == "/") {
-        let _ = write!(&mut target, ":memory:");
-        return target;
-    }
-    let _ = write!(&mut target, "{host}");
-    if !path.is_empty() {
-        let _ = write!(&mut target, "{}", truncate_long!(path));
-    }
-    target
+        .then(|| ":memory:".into())
+        .or_else(|| {
+            url.query_pairs()
+                .find(|(k, _)| k.eq_ignore_ascii_case("path"))
+                .map(|(_, v)| format!("{}", truncate_long!(v)))
+        })
+        .unwrap_or_else(|| match (url.host_str().unwrap_or_default(), url.path()) {
+            ("", "" | "/") => "N/A".into(),
+            (host, "") => host.into(),
+            (host, path) => format!("{host}{}", truncate_long!(path)),
+        })
 }
 
 /// Sends the value through the channel and logs in case of error.
@@ -445,9 +470,7 @@ pub fn describe_path<D: Driver>(url: &Url) -> String {
 #[macro_export]
 macro_rules! send_value {
     ($tx:ident, $value:expr) => {{
-        if let Err(e) = $tx.send($value) {
-            log::error!("{e:#}");
-        }
+        let _ = $tx.send($value).inspect_err($crate::log_error);
     }};
 }
 

@@ -2,8 +2,8 @@
 #![allow(unused_imports)]
 use std::{borrow::Cow, pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, Query, QueryBuilder, QueryResult, RawQuery, Result,
-    SqlWriter, cols, stream::TryStreamExt,
+    Driver, DynQuery, Entity, Executor, Query, QueryResult, RawQuery, Result, Sql, SqlWriter, cols,
+    stream::TryStreamExt,
 };
 use tokio::sync::Mutex;
 
@@ -31,18 +31,10 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
     let _ = MUTEX.lock().await;
 
     // Setup
-    Arrays1::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop Arrays1 table");
-    Arrays2::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop Arrays2 table");
-    Arrays1::create_table(executor, false, true)
-        .await
-        .expect("Failed to create Arrays1 table");
-    Arrays2::create_table(executor, false, true)
-        .await
-        .expect("Failed to create Arrays2 table");
+    Arrays1::drop_table(executor, true, false).await?;
+    Arrays2::drop_table(executor, true, false).await?;
+    Arrays1::create_table(executor, false, true).await?;
+    Arrays2::create_table(executor, false, true).await?;
 
     Arrays1::insert_many(
         executor,
@@ -71,15 +63,10 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
             },
         ],
     )
-    .await
-    .expect("Could not insert Arrays1 values");
+    .await?;
     {
         let mut stream = pin!(Arrays1::find_many(executor, true, None));
-        while let Some(value) = stream
-            .try_next()
-            .await
-            .expect("Failed to retrieve the value")
-        {
+        while let Some(value) = stream.try_next().await? {
             if value.bb.is_none() {
                 assert_eq!(
                     value,
@@ -119,10 +106,10 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
     {
         let mut query = DynQuery::default();
         let writer = executor.driver().sql_writer();
-        writer.write_drop_table::<Arrays1>(&mut query, true);
-        writer.write_create_table::<Arrays1>(&mut query, true);
-        writer.write_drop_table::<Arrays2>(&mut query, true);
-        writer.write_create_table::<Arrays2>(&mut query, true);
+        writer.write_drop_table(&mut query, Arrays1::table(), true);
+        writer.write_create_table(&mut query, Arrays1::table(), true);
+        writer.write_drop_table(&mut query, Arrays2::table(), true);
+        writer.write_create_table(&mut query, Arrays2::table(), true);
         let value = Arrays1 {
             #[cfg(not(feature = "disable-intervals"))]
             aa: [
@@ -138,13 +125,13 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
             cc: [[[[1]], [[2]], [[3]]]],
             dd: [[[[[10, 20, 30]]], [[[40, 50, 60]]]]],
         };
-        writer.write_insert(&mut query, &[value], false);
+        writer.write_insert(
+            &mut query,
+            Sql.insert_into(Arrays1::table()).values([value].iter()),
+        );
         writer.write_select(
             &mut query,
-            &QueryBuilder::new()
-                .select(cols!(*))
-                .from(Arrays1::table())
-                .where_expr(true),
+            Sql.select(cols!(*)).from(Arrays1::table()).where_expr(true),
         );
         let value = Arrays2 {
             alpha: [1, 2, 3, 4, 5],
@@ -156,26 +143,26 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
                 [Cow::Owned("foo".to_string()), Cow::Borrowed("bar")],
             ]],
         };
-        writer.write_insert(&mut query, &[value], false);
+        writer.write_insert(
+            &mut query,
+            Sql.insert_into(Arrays2::table()).values([value].iter()),
+        );
         writer.write_select(
             &mut query,
-            &QueryBuilder::new()
-                .select([Arrays2::alpha, Arrays2::bravo, Arrays2::charlie])
+            Sql.select([Arrays2::alpha, Arrays2::bravo, Arrays2::charlie])
                 .from(Arrays2::table())
                 .where_expr(true),
         );
         writer.write_select(
             &mut query,
-            &QueryBuilder::new()
-                .select([Arrays2::delta, Arrays2::echo])
+            Sql.select([Arrays2::delta, Arrays2::echo])
                 .from(Arrays2::table())
                 .where_expr(true),
         );
         let rows = executor
             .run(query)
             .try_collect::<Vec<_>>()
-            .await
-            .unwrap()
+            .await?
             .into_iter()
             .filter_map(|v| match v {
                 QueryResult::Row(v) => Some(v),
@@ -183,7 +170,7 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
             })
             .collect::<Vec<_>>();
 
-        let value = Arrays1::from_row(&rows[0]).expect("First must be Arrays1");
+        let value = Arrays1::from_row(&rows[0])?;
         assert_eq!(
             value,
             Arrays1 {

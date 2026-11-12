@@ -3,8 +3,9 @@ use crate::silent_logs;
 use rust_decimal::Decimal;
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, FixedDecimal, Interval, QueryBuilder, QueryResult,
-    RawQuery, Result, RowsAffected, SqlWriter, expr, stream::StreamExt,
+    Driver, DynQuery, Entity, Executor, FixedDecimal, Interval, QueryResult, RawQuery, Result,
+    RowsAffected, Sql, SqlWriter, expr,
+    stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, Time};
 use tokio::sync::Mutex;
@@ -53,18 +54,12 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
     // Setup
     silent_logs! {
         // Silent logs for Valkey/Redis
-        Limits::drop_table(executor, true, false)
-            .await
-            .expect("Failed to drop SimpleNullFields table");
+        Limits::drop_table(executor, true, false).await?;
     }
-    Limits::create_table(executor, true, true)
-        .await
-        .expect("Failed to create SimpleNullFields table");
+    Limits::create_table(executor, true, true).await?;
 
     // Minimals
-    Limits::delete_many(executor, expr!(id == 1))
-        .await
-        .expect("Failed to clear the Limits table");
+    Limits::delete_many(executor, expr!(id == 1)).await?;
     let minimals = Limits {
         id: 1,
         boolean: false,
@@ -100,12 +95,9 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
         #[cfg(not(feature = "disable-intervals"))]
         interval: Interval::from_micros(1),
     };
-    Limits::insert_one(executor, &minimals)
-        .await
-        .expect("Failed to save minimals entity");
+    Limits::insert_one(executor, &minimals).await?;
     let loaded = Limits::find_one(executor, expr!(id == 1))
-        .await
-        .expect("Failed to query simple 2")
+        .await?
         .expect("Failed to find simple 2");
     assert_eq!(loaded.id, 1);
     assert_eq!(loaded.boolean, false);
@@ -149,9 +141,7 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
     assert_eq!(loaded.interval, Interval::from_micros(1));
 
     // Maximals
-    Limits::delete_many(executor, expr!(Limits::id == 1))
-        .await
-        .expect("Failed to clear the Limits table");
+    Limits::delete_many(executor, expr!(Limits::id == 1)).await?;
     let maximals = Limits {
         id: 2,
         boolean: true,
@@ -196,12 +186,9 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
         ))]
         interval: Interval::from_days(31) + Interval::from_mins(5),
     };
-    Limits::insert_one(executor, &maximals)
-        .await
-        .expect("Failed to save maximals entity");
+    Limits::insert_one(executor, &maximals).await?;
     let loaded = Limits::find_one(executor, expr!(Limits::id == 2))
-        .await
-        .expect("Failed to query simple 2")
+        .await?
         .expect("Failed to find simple 2");
     assert_eq!(loaded.id, 2);
     assert_eq!(loaded.boolean, true);
@@ -266,9 +253,7 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
     {
         macro_rules! test_small_negative {
             ($executor:expr, $id:literal, $val:expr) => {{
-                Limits::delete_many($executor, expr!(id == $id))
-                    .await
-                    .expect("Failed to clear for small negatives test");
+                Limits::delete_many($executor, expr!(id == $id)).await?;
                 let entry = Limits {
                     id: $id,
                     boolean: false,
@@ -290,16 +275,9 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
                     #[cfg(not(feature = "disable-intervals"))]
                     interval: Interval::ZERO,
                 };
-                Limits::insert_one($executor, &entry).await.expect(concat!(
-                    "Failed to insert small negative i128 = ",
-                    stringify!($val)
-                ));
+                Limits::insert_one($executor, &entry).await?;
                 let loaded = Limits::find_one($executor, expr!(id == $id))
-                    .await
-                    .expect(concat!(
-                        "Failed to query small negative i128 = ",
-                        stringify!($val)
-                    ))
+                    .await?
                     .expect(concat!(
                         "Failed to find small negative i128 = ",
                         stringify!($val)
@@ -317,10 +295,10 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
         test_small_negative!(executor, 11, -128_i128);
         test_small_negative!(executor, 12, -1000_i128);
         test_small_negative!(executor, 13, -100_000_i128);
-        Limits::delete_many(executor, expr!(id == 10)).await.ok();
-        Limits::delete_many(executor, expr!(id == 11)).await.ok();
-        Limits::delete_many(executor, expr!(id == 12)).await.ok();
-        Limits::delete_many(executor, expr!(id == 13)).await.ok();
+        Limits::delete_many(executor, expr!(id == 10)).await?;
+        Limits::delete_many(executor, expr!(id == 11)).await?;
+        Limits::delete_many(executor, expr!(id == 12)).await?;
+        Limits::delete_many(executor, expr!(id == 13)).await?;
     }
 
     // Multiple statements
@@ -328,43 +306,45 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
     {
         let mut query = DynQuery::default();
         let writer = executor.driver().sql_writer();
-        writer.write_delete::<Limits>(&mut query, true);
-        writer.write_insert(&mut query, &[minimals, maximals], false);
+        writer.write_delete(&mut query, Limits::table(), true);
+        writer.write_insert(
+            &mut query,
+            Sql.insert_into(Limits::table())
+                .values(&[minimals, maximals]),
+        );
         writer.write_select(
             &mut query,
-            &QueryBuilder::new()
-                .select(Limits::columns())
+            Sql.select(Limits::columns())
                 .from(Limits::table())
                 .where_expr(expr!(!Limits::boolean)),
         );
         writer.write_select(
             &mut query,
-            &QueryBuilder::new()
-                .select(Limits::columns())
+            Sql.select(Limits::columns())
                 .from(Limits::table())
                 .where_expr(expr!(Limits::boolean)),
         );
         let mut stream = pin!(executor.run(query));
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
-            stream.next().await
+        let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) =
+            stream.try_next().await?
         else {
             panic!("Could not get the result of the first statement");
         };
         if let Some(rows_affected) = rows_affected {
             assert_eq!(rows_affected, 1, "Should have deleted one row");
         }
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
-            stream.next().await
+        let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) =
+            stream.try_next().await?
         else {
             panic!("Could not get the result of the second statement");
         };
         if let Some(rows_affected) = rows_affected {
             assert_eq!(rows_affected, 2, "Should have inserted two rows");
         }
-        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
+        let Some(QueryResult::Row(row)) = stream.try_next().await? else {
             panic!("Could not get the row of the third statement");
         };
-        let loaded = Limits::from_row(row).expect("Could not decode the Limits from minimals row");
+        let loaded = Limits::from_row(row)?;
         assert_eq!(loaded.boolean, false);
         assert_eq!(loaded.int8, -127);
         assert_eq!(loaded.uint8, 0);
@@ -392,10 +372,10 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
             loaded.date,
             Date::from_calendar_date(-2000, Month::January, 01).unwrap()
         );
-        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
+        let Some(QueryResult::Row(row)) = stream.try_next().await? else {
             panic!("Could not get the row of the third statement");
         };
-        let loaded = Limits::from_row(row).expect("Could not decode the Limits from maximals row");
+        let loaded = Limits::from_row(row)?;
         assert_eq!(loaded.boolean, true);
         assert_eq!(loaded.int8, 127);
         assert_eq!(loaded.uint8, 255);

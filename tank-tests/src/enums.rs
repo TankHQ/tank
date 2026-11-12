@@ -8,8 +8,8 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use tank::{
-    AsValue, Driver, DynQuery, Entity, Error, Executor, FixedDecimal, Query, QueryBuilder,
-    QueryResult, RawQuery, Result, RowsAffected, SqlWriter, Value, ValueOwned, anyhow, cols, expr,
+    AsValue, Driver, DynQuery, Entity, Error, Executor, FixedDecimal, Query, QueryResult, RawQuery,
+    Result, RowsAffected, Sql, SqlWriter, Value, ValueOwned, anyhow, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Time, macros::date};
@@ -103,12 +103,8 @@ pub async fn enums(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Entry::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop Table table");
-    Entry::create_table(executor, true, true)
-        .await
-        .expect("Failed to create Table table");
+    Entry::drop_table(executor, true, false).await?;
+    Entry::create_table(executor, true, true).await?;
 
     // Operations
     let mut entry = Entry {
@@ -116,10 +112,8 @@ pub async fn enums(executor: &mut impl Executor) -> Result<()> {
         some_enum: Some(SomeEnum::FirstValue),
         another_enum: AnotherEnum::Delta,
     };
-    entry.save(executor).await.expect("Failed to save entry");
-    let value = Entry::find_one(executor, true)
-        .await
-        .expect("Failed to read entry");
+    entry.save(executor).await?;
+    let value = Entry::find_one(executor, true).await?;
     assert_eq!(
         value,
         Some(Entry {
@@ -130,10 +124,7 @@ pub async fn enums(executor: &mut impl Executor) -> Result<()> {
     );
 
     entry.some_enum = None;
-    entry
-        .save(executor)
-        .await
-        .expect("Failed to save again entry");
+    entry.save(executor).await?;
     Entry::insert_many(
         executor,
         &[
@@ -149,12 +140,10 @@ pub async fn enums(executor: &mut impl Executor) -> Result<()> {
             },
         ],
     )
-    .await
-    .expect("Could not insert multiple entities");
+    .await?;
     let entries = executor
         .fetch(
-            QueryBuilder::new()
-                .select(cols!(*))
+            Sql.select(cols!(*))
                 .from(Entry::table())
                 .where_expr(expr!(id == 1))
                 .order_by(cols!(Entry::another_enum ASC))
@@ -163,8 +152,7 @@ pub async fn enums(executor: &mut impl Executor) -> Result<()> {
         .map_ok(Entry::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not query multiple entities");
+        .await?;
     assert_eq!(
         entries,
         [

@@ -1,7 +1,7 @@
 use std::pin::pin;
 use std::sync::LazyLock;
-use tank::stream::StreamExt;
-use tank::{AsValue, Entity, Executor, QueryBuilder, Result, Row, cols, expr};
+use tank::stream::TryStreamExt;
+use tank::{AsValue, Entity, Executor, Result, Row, Sql, cols, expr};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -27,12 +27,8 @@ pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    ReservedWords::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop ReservedWords table");
-    ReservedWords::create_table(executor, true, true)
-        .await
-        .expect("Failed to create ReservedWords table");
+    ReservedWords::drop_table(executor, true, false).await?;
+    ReservedWords::create_table(executor, true, true).await?;
 
     // Query
     let entity = ReservedWords {
@@ -43,55 +39,41 @@ pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
         order_field: Some("asc".to_string()),
         limit_field: 10.5,
     };
-    entity
-        .save(executor)
-        .await
-        .expect("Failed to save entity with reserved keywords");
+    entity.save(executor).await?;
 
     let found = ReservedWords::find_one(executor, expr!(ReservedWords::id == 1))
-        .await
-        .expect("Failed to query")
+        .await?
         .expect("Entity not found");
     assert_eq!(found, entity);
 
-    let found_by_where = ReservedWords::find_one(executor, expr!(ReservedWords::where_field == 42))
-        .await
-        .expect("Failed to query by reserved keyword field");
+    let found_by_where =
+        ReservedWords::find_one(executor, expr!(ReservedWords::where_field == 42)).await?;
     assert!(found_by_where.is_some());
     assert_eq!(found_by_where.unwrap(), entity);
 
     {
         let mut stream = pin!(
             executor.fetch(
-                QueryBuilder::new()
-                    .select(cols!(ReservedWords::group_field, COUNT(*)))
+                Sql.select(cols!(ReservedWords::group_field, COUNT(*)))
                     .from(ReservedWords::table())
                     .group_by(cols!(ReservedWords::group_field))
                     .build(&executor.driver())
             )
         );
-        let row = stream
-            .next()
-            .await
-            .expect("Expected a row")
-            .expect("Query failed");
-        let group_val =
-            bool::try_from_value(row.value(0).unwrap()).expect("Failed to decode group bool");
-        let count_val = i64::try_from_value(row.value(1).unwrap()).expect("Failed to decode count");
+        let row = stream.try_next().await?.expect("Expected a row");
+        let group_val = bool::try_from_value(row.value(0).unwrap())?;
+        let count_val = i64::try_from_value(row.value(1).unwrap())?;
         assert_eq!(group_val, true);
         assert_eq!(count_val, 1);
     }
     {
         let mut ordered_stream = pin!(ReservedWords::find_many(executor, true, None));
-        while let Some(res) = ordered_stream.next().await {
-            res.expect("Failed while fetching ordered");
-        }
+        while ordered_stream.try_next().await?.is_some() {}
     }
     {
         let mut stream_ordered = pin!(
             executor.fetch(
-                QueryBuilder::new()
-                    .select(ReservedWords::columns())
+                Sql.select(ReservedWords::columns())
                     .from(ReservedWords::table())
                     .order_by(cols!(ReservedWords::order_field ASC))
                     .limit(Some(1))
@@ -99,12 +81,8 @@ pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
             )
         );
 
-        let row_ordered = stream_ordered
-            .next()
-            .await
-            .expect("Expected row")
-            .expect("Query failed");
-        let entity_ordered = ReservedWords::from_row(row_ordered).expect("Failed to parse entity");
+        let row_ordered = stream_ordered.try_next().await?.expect("Expected row");
+        let entity_ordered = ReservedWords::from_row(row_ordered)?;
         assert_eq!(entity_ordered.order_field.as_deref(), Some("asc"));
     }
 
@@ -116,12 +94,11 @@ pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
         order_field: Some("desc".to_string()),
         limit_field: 20.5,
     };
-    entity2.save(executor).await.expect("Saved 2");
+    entity2.save(executor).await?;
     {
         let mut stream_group = pin!(
             executor.fetch(
-                QueryBuilder::new()
-                    .select(cols!(ReservedWords::group_field, COUNT(*)))
+                Sql.select(cols!(ReservedWords::group_field, COUNT(*)))
                     .from(ReservedWords::table())
                     .group_by(cols!(ReservedWords::group_field))
                     .order_by(cols!(ReservedWords::group_field ASC))
@@ -129,18 +106,17 @@ pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
             )
         );
 
-        let row1 = stream_group.next().await.unwrap().unwrap();
-        let g = bool::try_from_value(row1.value(0).unwrap()).unwrap();
+        let row1 = stream_group.try_next().await?.unwrap();
+        let g = bool::try_from_value(row1.value(0).unwrap())?;
         assert_eq!(g, false);
 
-        let row2 = stream_group.next().await.unwrap().unwrap();
-        let g = bool::try_from_value(row2.value(0).unwrap()).unwrap();
+        let row2 = stream_group.try_next().await?.unwrap();
+        let g = bool::try_from_value(row2.value(0).unwrap())?;
         assert_eq!(g, true);
     }
 
     let found_limit = ReservedWords::find_one(executor, expr!(ReservedWords::limit_field > 15.0))
-        .await
-        .expect("Query limit failed")
+        .await?
         .expect("Limit entity not found");
     assert_eq!(found_limit.id, 2);
     Ok(())

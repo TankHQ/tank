@@ -1,23 +1,24 @@
 mod create_table;
+mod delete;
 mod drop_table;
 mod insert_into;
 mod select;
 
+use crate::{
+    Context, Dataset, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, TableRef,
+};
 pub use create_table::*;
+pub use delete::*;
 pub use drop_table::*;
 pub use insert_into::*;
 pub use select::*;
+use std::{borrow::Cow, iter};
 
-use crate::{Context, DynQuery, Entity, Expression, ExpressionVisitor, OpPrecedence, SqlWriter};
-use std::iter;
-
+/// Entry point of the query builders, as in `Sql.select(columns).from(table)`.
 #[derive(Default, Debug)]
-pub struct QueryBuilder;
+pub struct Sql;
 
-impl QueryBuilder {
-    pub fn new() -> Self {
-        Self {}
-    }
+impl Sql {
     pub fn select<Select: ExpressionCollection>(
         self,
         select: Select,
@@ -31,26 +32,35 @@ impl QueryBuilder {
             order_by: Default::default(),
             limit: Default::default(),
             _l: Default::default(),
+            insert: NA,
         }
     }
-    pub fn insert_into(self) -> InsertIntoQueryBuilder<NA, NA> {
+    pub fn insert_into(self, table: impl Into<TableRef>) -> InsertIntoQueryBuilder<NA, NA> {
         InsertIntoQueryBuilder {
-            values: Default::default(),
-            update: Default::default(),
+            table: table.into(),
+            columns: Cow::Borrowed(&[]),
+            values: NA,
+            update: false,
             _update: Default::default(),
         }
     }
-    pub fn create_table<E: Entity>(self) -> CreateTableQueryBuilder<E, NA> {
+    pub fn delete_from<From: Dataset>(self, from: From) -> DeleteQueryBuilder<From, NA> {
+        DeleteQueryBuilder {
+            from,
+            where_expr: Default::default(),
+        }
+    }
+    pub fn create_table(self, table: impl Into<TableRef>) -> CreateTableQueryBuilder<NA> {
         CreateTableQueryBuilder {
+            table: table.into(),
             if_not_exists: Default::default(),
-            _table: Default::default(),
             _e: Default::default(),
         }
     }
-    pub fn drop_table<E: Entity>(self) -> DropTableQueryBuilder<E, NA> {
+    pub fn drop_table(self, table: impl Into<TableRef>) -> DropTableQueryBuilder<NA> {
         DropTableQueryBuilder {
+            table: table.into(),
             if_exists: Default::default(),
-            _table: Default::default(),
             _e: Default::default(),
         }
     }
@@ -58,6 +68,22 @@ impl QueryBuilder {
 
 #[derive(Default, Debug)]
 pub struct NA;
+
+impl Dataset for NA {
+    fn qualified_columns(&self) -> bool {
+        false
+    }
+    fn write_table_name(
+        &self,
+        _writer: &dyn SqlWriter,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+    ) {
+    }
+    fn table_ref(&self) -> TableRef {
+        TableRef::default()
+    }
+}
 
 impl OpPrecedence for NA {
     fn precedence(&self, _writer: &dyn SqlWriter) -> i32 {

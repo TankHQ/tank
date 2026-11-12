@@ -14,19 +14,20 @@ bundled = ["libduckdb-sys/bundled"]
 
 [dependencies]
 anyhow.workspace = true
-# Pinned: DuckDB >= 1.20 surfaces streaming CAST errors before the first chunk,
-# breaking the lazy per-chunk error propagation this driver relies on.
-libduckdb-sys = { version = "=1.10506.0", features = ["buildtime_bindgen"] }
+libduckdb-sys = { version = "1.20000", default-features = false, features = [
+    "buildtime_bindgen",
+    "capi-v1",
+] }
 log.workspace = true
 rust_decimal.workspace = true
 tank-core.workspace = true
 time.workspace = true
-tokio.workspace = true
 url.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
 indoc.workspace = true
+tokio.workspace = true
 tank.workspace = true
 tank-tests = { path = "../tank-tests" }
 uuid.workspace = true

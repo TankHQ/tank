@@ -4,7 +4,7 @@ mod tests {
     use rust_decimal::{Decimal, prelude::FromPrimitive};
     use std::{borrow::Cow, sync::Arc, time::Duration};
     use tank::{
-        Action, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
+        Action, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, Sql,
         SqlWriter, TableRef, Value, expr,
     };
 
@@ -135,7 +135,7 @@ mod tests {
     #[test]
     fn odd_entity_sql() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<MyEntity>(&mut query, true);
+        WRITER.write_create_table(&mut query, MyEntity::table(), true);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -151,13 +151,12 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_drop_table::<MyEntity>(&mut query, false);
+        WRITER.write_drop_table(&mut query, MyEntity::table(), false);
         assert_eq!(query.as_str(), r#"DROP TABLE "a_table";"#);
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            &QueryBuilder::new()
-                .select(MyEntity::columns())
+            Sql.select(MyEntity::columns())
                 .from(MyEntity::table())
                 .where_expr(expr!(MyEntity::_bravo < 0))
                 .limit(Some(300)),
@@ -173,7 +172,12 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&MyEntity::sample()], true);
+        WRITER.write_insert(
+            &mut query,
+            Sql.insert_into(MyEntity::table())
+                .values(&[MyEntity::sample()])
+                .update(),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -188,7 +192,7 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_delete::<MyEntity>(&mut query, expr!(MyEntity::_echo == 5));
+        WRITER.write_delete(&mut query, MyEntity::table(), expr!(MyEntity::_echo == 5));
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -258,7 +262,7 @@ mod tests {
     #[test]
     fn references_ddl() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<Animal>(&mut query, true);
+        WRITER.write_create_table(&mut query, Animal::table(), true);
         let sql = query.as_str().into_owned();
         assert!(sql.contains("FOREIGN KEY (\"farm_id\") REFERENCES \"farms\"(\"id\")"));
         assert!(

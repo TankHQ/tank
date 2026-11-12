@@ -12,9 +12,10 @@ use std::{
     any,
     borrow::Cow,
     cell::{Cell, RefCell},
+    cmp::min,
     collections::{BTreeMap, HashMap, LinkedList, VecDeque},
     hash::Hash,
-    mem,
+    hint, mem,
     num::{
         NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI128, NonZeroIsize, NonZeroU8,
         NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128, NonZeroUsize,
@@ -770,7 +771,7 @@ impl_as_value!(Interval, Value::Interval, |mut input: &str| {
         false
     };
     let mut time_interval = Interval::ZERO;
-    let clamp64 = |n: u64| n.min(i64::MAX as u64) as i64;
+    let clamp64 = |n: u64| min(n, i64::MAX as u64) as i64;
     let num = extract_number::<true>(&mut input);
     if !num.is_empty() {
         let num = num.parse::<u64>().with_context(make_context)?;
@@ -1221,10 +1222,14 @@ impl_as_value! { @copy Decimal {
     {
         Value::Decimal(Some(self), 0, self.scale() as _)
     }
+    #[inline]
     fn try_from_value(value: impl AsValue) -> Result<Self> {
         let value = value.as_value();
+        if let Value::Decimal(Some(v), ..) = value {
+            return Ok(v);
+        }
+        hint::cold_path();
         match value {
-            Value::Decimal(Some(v), ..) => Ok(v),
             Value::Int8(Some(v), ..) => Ok(Decimal::new(v as i64, 0)),
             Value::Int16(Some(v), ..) => Ok(Decimal::new(v as i64, 0)),
             Value::Int32(Some(v), ..) => Ok(Decimal::new(v as i64, 0)),
@@ -1276,8 +1281,9 @@ impl<const W: u8, const S: u8> AsValue for FixedDecimal<W, S> {
     where
         Self: 'a,
     {
-        Value::Decimal(Some(self.0), W, self.0.scale() as _)
+        Value::Decimal(Some(self.0), W, S)
     }
+    #[inline(always)]
     fn try_from_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
@@ -1297,7 +1303,7 @@ impl<const W: u8, const S: u8> AsValue for &FixedDecimal<W, S> {
     where
         Self: 'a,
     {
-        Value::Decimal(Some(self.0), W, self.0.scale() as _)
+        Value::Decimal(Some(self.0), W, S)
     }
 }
 

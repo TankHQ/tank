@@ -4,9 +4,9 @@ mod tests {
     use rust_decimal::Decimal;
     use std::{borrow::Cow, sync::Arc, time::Duration};
     use tank::{
-        BinaryOp, BinaryOpType, ColumnRef, Context, DefaultValueType, DynQuery, Entity, Expression,
-        ExpressionVisitor, FixedDecimal, Fragment, Interval, OpPrecedence, Operand, Order, Ordered,
-        SqlWriter, UnaryOp, UnaryOpType, Value, expr,
+        BinaryOp, BinaryOpType, Case, ColumnRef, Context, DefaultValueType, DynQuery, Entity,
+        Expression, ExpressionVisitor, FixedDecimal, Fragment, Interval, OpPrecedence, Operand,
+        Order, Ordered, SqlWriter, UnaryOp, UnaryOpType, Value, expr,
     };
     use time::{Date, Month, PrimitiveDateTime, Time, UtcDateTime};
     use uuid::Uuid;
@@ -932,7 +932,7 @@ mod tests {
         let c: DefaultValueType = 'x'.into();
         assert!(c.is_set());
 
-        let expr_variant = DefaultValueType::Expression(Box::new(Value::Int64(Some(3))));
+        let expr_variant = DefaultValueType::Expression(Arc::new(Value::Int64(Some(3))));
         assert!(expr_variant.accept_visitor(
             &mut Count,
             &WRITER,
@@ -1083,6 +1083,7 @@ mod tests {
         struct Recorder {
             saw_unary: bool,
             saw_ordered: bool,
+            saw_case: bool,
         }
         impl ExpressionVisitor for Recorder {
             fn visit_unary_op(
@@ -1105,6 +1106,16 @@ mod tests {
                 self.saw_ordered = true;
                 true
             }
+            fn visit_case(
+                &mut self,
+                _w: &dyn SqlWriter,
+                _c: &mut Context,
+                _o: &mut DynQuery,
+                _v: &Case,
+            ) -> bool {
+                self.saw_case = true;
+                true
+            }
         }
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         let unary = expr!(!true);
@@ -1116,6 +1127,7 @@ mod tests {
         let mut rec = Recorder {
             saw_unary: false,
             saw_ordered: false,
+            saw_case: false,
         };
         assert!(unary.accept_visitor(&mut rec, &WRITER, &mut ctx, &mut DynQuery::default()));
         assert!(rec.saw_unary);
@@ -1123,9 +1135,14 @@ mod tests {
         let mut rec = Recorder {
             saw_unary: false,
             saw_ordered: false,
+            saw_case: false,
         };
         assert!(ordered.accept_visitor(&mut rec, &WRITER, &mut ctx, &mut DynQuery::default()));
         assert!(rec.saw_ordered);
+
+        let case = expr!(if true { 1 } else { 2 });
+        assert!(case.accept_visitor(&mut rec, &WRITER, &mut ctx, &mut DynQuery::default()));
+        assert!(rec.saw_case && !rec.saw_unary);
     }
 
     #[test]

@@ -8,8 +8,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tank::{
-    AsValue, Entity, Executor, QueryBuilder, Result, Value, ValueOwned, anyhow,
-    current_timestamp_ms, expr, join,
+    AsValue, Entity, Executor, Result, Sql, Value, ValueOwned, anyhow, current_timestamp_ms, expr,
+    join,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -131,19 +131,11 @@ pub async fn requests(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock();
 
     // Setup
-    RequestLimit::drop_table(executor, true, false)
-        .await
-        .expect("Could not drop the RequestLimit table");
-    Request::drop_table(executor, true, false)
-        .await
-        .expect("Could not drop the Request table");
+    RequestLimit::drop_table(executor, true, false).await?;
+    Request::drop_table(executor, true, false).await?;
 
-    RequestLimit::create_table(executor, false, true)
-        .await
-        .expect("Could not create the RequestLimit table");
-    Request::create_table(executor, false, true)
-        .await
-        .expect("Could not create the Request table");
+    RequestLimit::create_table(executor, false, true).await?;
+    Request::create_table(executor, false, true).await?;
 
     // Request limits
     RequestLimit::insert_many(
@@ -161,10 +153,9 @@ pub async fn requests(executor: &mut impl Executor) -> Result<()> {
             RequestLimit::new("v2/%", 5, None, 60_000.into()),
         ],
     )
-    .await
-    .expect("Could not insert the limits");
+    .await?;
     let limits = RequestLimit::find_many(executor, true, None)
-        .map_err(|e| panic!("{e:#}"))
+        .map(Result::unwrap)
         .count()
         .await;
     assert_eq!(limits, 5);
@@ -172,9 +163,8 @@ pub async fn requests(executor: &mut impl Executor) -> Result<()> {
     #[cfg(not(feature = "disable-joins"))]
     {
         let mut violated_limits = executor
-        .prepare(
-            QueryBuilder::new()
-                .select([
+            .prepare(
+                Sql.select([
                     RequestLimit::target_pattern,
                     RequestLimit::requests,
                     RequestLimit::method,
@@ -199,9 +189,8 @@ pub async fn requests(executor: &mut impl Executor) -> Result<()> {
                 ])
                 .having(expr!(COUNT(Request::id) >= RequestLimit::requests))
                 .build(&executor.driver()),
-        )
-        .await
-        .expect("Failed to prepare the limit query");
+            )
+            .await?;
 
         let mut r1 = Request::new("v1/server/user/new/1".into(), Method::PUT.into());
         let mut r2 = Request::new("v1/server/user/new/2".into(), Method::PUT.into());
@@ -209,111 +198,97 @@ pub async fn requests(executor: &mut impl Executor) -> Result<()> {
         let mut r4 = Request::new("v1/server/articles/new/4".into(), Method::PUT.into());
         let r5 = Request::new("v1/server/user/new/5".into(), Method::PUT.into());
 
-        violated_limits.bind(r1.target.clone()).unwrap();
+        violated_limits.bind(r1.target.clone())?;
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
-        r1.save(executor).await.expect("Failed to save r1");
+        r1.save(executor).await?;
 
-        violated_limits.bind(r2.target.clone()).unwrap();
+        violated_limits.bind(r2.target.clone())?;
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
-        r2.save(executor).await.expect("Failed to save r2");
+        r2.save(executor).await?;
 
-        violated_limits.bind(r3.target.clone()).unwrap();
+        violated_limits.bind(r3.target.clone())?;
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 1); // Violates [3]
 
         // Request 4 fits because it doesn't refer to /user
-        violated_limits.bind(r4.target.clone()).unwrap();
+        violated_limits.bind(r4.target.clone())?;
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
-        r4.save(executor).await.expect("Failed to save r4");
+        r4.save(executor).await?;
 
-        violated_limits.bind(r5.target.clone()).unwrap();
+        violated_limits.bind(r5.target.clone())?;
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 2); // Violates [1], [3]
 
         r1.end();
-        r1.save(executor).await.expect("Could not terminate r1");
+        r1.save(executor).await?;
 
-        violated_limits.bind(r3.target.clone()).unwrap();
+        violated_limits.bind(r3.target.clone())?;
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
-        r3.save(executor).await.expect("Failed to save r3");
+        r3.save(executor).await?;
 
         // 3 Running requests
 
         let mut data_reqs = vec![];
         for i in 0..5 {
             let req = Request::new(format!("v1/server/data/item/{}", i), None);
-            req.save(executor)
-                .await
-                .expect("Failed to save data request");
+            req.save(executor).await?;
             data_reqs.push(req);
         }
 
         // 8 Running requests
 
-        violated_limits
-            .bind("v1/server/data/item/999".to_string())
-            .unwrap();
+        violated_limits.bind("v1/server/data/item/999".to_string())?;
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 2); // Violates [1], [2]
 
         for i in 0..4 {
             data_reqs[i].end();
-            data_reqs[i]
-                .save(executor)
-                .await
-                .expect(&format!("Failed to save data_reqs[{i}]"));
+            data_reqs[i].save(executor).await?;
         }
 
         // 4 Running requests
 
-        violated_limits
-            .bind("v1/server/data/item/999".to_string())
-            .unwrap();
+        violated_limits.bind("v1/server/data/item/999".to_string())?;
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 1); // Violates [1] still
 
         r2.end();
-        r2.save(executor).await.expect("Could not terminate r2");
+        r2.save(executor).await?;
         data_reqs[4].end();
-        data_reqs[4]
-            .save(executor)
-            .await
-            .expect("Could not terminate data_reqs[4]");
+        data_reqs[4].save(executor).await?;
 
-        violated_limits
-            .bind("v1/server/data/item/999".to_string())
-            .unwrap();
+        violated_limits.bind("v1/server/data/item/999".to_string())?;
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
 
         r3.end();
-        r3.save(executor).await.expect("Could not terminate r3");
+        r3.save(executor).await?;
         r4.end();
-        r4.save(executor).await.expect("Could not terminate r4");
+        r4.save(executor).await?;
 
         // Check [4]
 
         let mut d1 = Request::new("v1/server/user/del/1".into(), Method::DELETE.into());
         let d2 = Request::new("v1/server/user/del/2".into(), Method::DELETE.into());
 
-        violated_limits.bind(d1.target.clone()).unwrap();
+        violated_limits.bind(d1.target.clone())?;
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
-        d1.save(executor).await.expect("Failed to save d1");
+        d1.save(executor).await?;
 
-        violated_limits.bind(d2.target.clone()).unwrap();
+        violated_limits.bind(d2.target.clone())?;
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 1); // Violates [4] // Problem here
 
         d1.end();
-        d1.save(executor).await.expect("Failed to end d1");
+        d1.save(executor).await?;
 
-        violated_limits.bind(d2.target.clone()).unwrap();
+        violated_limits.bind(d2.target.clone())?;
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 0);
 
         let mut v2_reqs = vec![];
         for i in 0..5 {
             let mut req = Request::new(format!("v2/resource/{}", i), Method::GET.into());
-            req.save(executor).await.expect("Failed to save v2 req");
+            req.save(executor).await?;
             req.end(); // Must end them to be counted by the interval logic
-            req.save(executor).await.expect("Failed to end v2 req");
+            req.save(executor).await?;
             v2_reqs.push(req);
         }
 
-        violated_limits.bind("v2/resource/new".to_string()).unwrap();
+        violated_limits.bind("v2/resource/new".to_string())?;
         assert_eq!(executor.fetch(&mut violated_limits).count().await, 1); // Violates [5]
     }
     Ok(())

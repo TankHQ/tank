@@ -1,18 +1,17 @@
 use std::collections::BTreeSet;
 use std::{pin::pin, sync::LazyLock};
 use tank::{AsValue, Entity, Result, Row, expr, stream::StreamExt, stream::TryStreamExt};
-use tank::{Executor, QueryBuilder, cols};
+use tank::{Executor, Sql, cols};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-const EXPECTED_SUM: u32 = 68978385;
-const EXPECTED_AVG: u32 = 5873;
+const EXPECTED_SUM: u32 = 68978385; // 1 + .. + 11745 = 68978385
+const EXPECTED_AVG: u32 = 5873; // avg(1, .., 11745) = 5873
 const COUNT: u32 = 11745;
 
 #[derive(Default, Entity)]
 struct Values {
     id: u64,
-    /// This column contains the actual value
     value: u32,
 }
 
@@ -20,16 +19,10 @@ pub async fn aggregates(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock();
 
     // Setup
-    Values::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop Values table");
-    Values::create_table(executor, false, false)
-        .await
-        .expect("Failed to create Values table");
+    Values::drop_table(executor, true, false).await?;
+    Values::create_table(executor, false, false).await?;
 
-    // Insert
-    // 1 + .. + 11745 = 68978385
-    // avg(1, .., 11745) = 5873
+    // Insert 1..11746
     let mut values = (1..11746).map(|value| Values {
         id: value,
         value: value as u32,
@@ -39,13 +32,7 @@ pub async fn aggregates(executor: &mut impl Executor) -> Result<()> {
         if rows.is_empty() {
             break;
         }
-        let result = Values::insert_many(executor, rows.iter()).await;
-        assert!(
-            result.is_ok(),
-            "Failed to Values::insert_many: {:?}",
-            result.unwrap_err()
-        );
-        let result = result.unwrap();
+        let result = Values::insert_many(executor, &rows).await?;
         if let Some(affected) = result.rows_affected {
             assert_eq!(
                 affected,
@@ -60,98 +47,69 @@ pub async fn aggregates(executor: &mut impl Executor) -> Result<()> {
     {
         let mut stream = pin!(
             executor.fetch(
-                QueryBuilder::new()
-                    .select(cols!(COUNT(*), SUM(Values::value)))
+                Sql.select(cols!(COUNT(*), SUM(Values::value)))
                     .from(Values::table())
                     .where_expr(true)
                     .build(&executor.driver())
             )
         );
-        let count = stream.next().await;
+        let row = stream
+            .try_next()
+            .await?
+            .expect("The query is expected to return a row");
         assert!(
-            stream.next().await.is_none(),
+            stream.try_next().await?.is_none(),
             "The query is expected to return a single row"
         );
         let expected = (COUNT as i128, EXPECTED_SUM as i128);
-        let actual = match count {
-            Some(Ok(row)) => {
-                let a = i128::try_from_value(row.value(0).unwrap());
-                let b = i128::try_from_value(row.value(1).unwrap());
-                match (a, b) {
-                    (Ok(a), Ok(b)) => Some((a, b)),
-                    (Err(e), _) => panic!("{e}"),
-                    (_, Err(e)) => panic!("{e}"),
-                }
-            }
-            _ => None,
-        };
+        let actual = (
+            i128::try_from_value(row.value(0).unwrap())?,
+            i128::try_from_value(row.value(1).unwrap())?,
+        );
         assert_eq!(
-            actual,
-            Some(expected),
-            "SELECT COUNT(*), SUM(value) is expected to return {:?}",
-            expected
+            actual, expected,
+            "SELECT COUNT(*), SUM(value) is expected to return {expected:?} but it produced {actual:?}",
         );
     }
 
     // SELECT *
     {
-        {
-            let stream = pin!(
-                executor.fetch(
-                    QueryBuilder::new()
-                        .select(cols!(*))
-                        .from(Values::table())
-                        .where_expr(true)
-                        .build(&executor.driver())
+        let values = executor
+            .fetch(
+                Sql.select(cols!(*))
+                    .from(Values::table())
+                    .where_expr(true)
+                    .build(&executor.driver()),
+            )
+            .map(|row| {
+                u32::try_from_value(
+                    row?.get_column("value")
+                        .expect("Column `value` is not present"),
                 )
-            );
-            let values = stream
-                .map(|row| {
-                    let row = row.expect("Error while fetching the row");
-                    let i = row
-                        .labels()
-                        .iter()
-                        .enumerate()
-                        .find_map(|(i, v)| if v == "value" { Some(i) } else { None })
-                        .expect("Column `value` is not present");
-                    u32::try_from_value(row.value(i).unwrap())
-                        .expect("The result could not be convert back to u32")
-                })
-                .collect::<BTreeSet<_>>()
-                .await;
-            assert!(
-                values.into_iter().eq((1..(COUNT + 1)).into_iter()),
-                "The result didn't received from the db contains all the values that were inserted"
-            );
-        }
+            })
+            .try_collect::<BTreeSet<_>>()
+            .await?;
+        assert!(
+            values.into_iter().eq(1..=COUNT),
+            "The result didn't received from the db contains all the values that were inserted"
+        );
     }
 
     // SELECT value WHERE value > ?
     {
-        let mut query = Values::prepare_find(executor, expr!(Values::value > ?), None)
-            .await
-            .expect("Failed to prepare the query");
+        let mut query = Values::prepare_find(executor, expr!(Values::value > ?), None).await?;
         assert!(query.is_prepared());
-        query
-            .bind(EXPECTED_AVG)
-            .expect("Could not bind the parameter");
+        query.bind(EXPECTED_AVG)?;
         let len = executor
             .fetch(&mut query)
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not fetch rows above average from the prepared statement")
+            .await?
             .len();
         assert!(query.is_prepared());
         assert_eq!(len, COUNT as usize / 2);
-        query
-            .clear_bindings()
-            .expect("Could not clear the bindings");
-        query.bind(0).expect("Could not bind a second time");
-        let values = executor
-            .fetch(&mut query)
-            .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not fetch positive rows from the prepared statement");
+        query.clear_bindings()?;
+        query.bind(0)?;
+        let values = executor.fetch(&mut query).try_collect::<Vec<_>>().await?;
         assert_eq!(values.len(), COUNT as usize);
     }
     Ok(())

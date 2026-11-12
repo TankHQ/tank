@@ -1,7 +1,4 @@
-use crate::{
-    ColumnDef, Dataset, DynQuery, quote_cow,
-    writer::{Context, SqlWriter},
-};
+use crate::{ColumnDef, Entity, quote_cow};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
 use std::borrow::Cow;
@@ -19,6 +16,8 @@ pub struct TableRef {
     pub columns: &'static [ColumnDef],
     /// List of columns forming the primary key.
     pub primary_key: &'static [&'static ColumnDef],
+    /// Unique constraints, each a list of columns.
+    pub unique: &'static [&'static [&'static ColumnDef]],
 }
 
 impl TableRef {
@@ -30,6 +29,7 @@ impl TableRef {
             alias: Cow::Borrowed(""),
             columns: &[],
             primary_key: &[],
+            unique: &[],
         }
     }
     /// Returns the fully qualified name (schema.table) or the alias if one is present.
@@ -54,39 +54,55 @@ impl TableRef {
     }
 }
 
-impl Dataset for TableRef {
-    fn qualified_columns() -> bool
-    where
-        Self: Sized,
-    {
-        false
-    }
-    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        writer.write_table_ref(context, out, self)
-    }
-    fn table_ref(&self) -> TableRef {
-        self.clone()
+macro_rules! impl_from_for_table_ref {
+    (ref $($ty:ty),* $(,)?) => {
+        $(
+            impl From<&$ty> for TableRef {
+                fn from(value: &$ty) -> Self {
+                    value.clone().into()
+                }
+            }
+
+            impl From<&&$ty> for TableRef {
+                fn from(value: &&$ty) -> Self {
+                    (*value).clone().into()
+                }
+            }
+        )*
+    };
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl From<$ty> for TableRef {
+                fn from(value: $ty) -> Self {
+                    TableRef::new(value.into())
+                }
+            }
+        )*
+        impl_from_for_table_ref!(ref TableRef, $($ty),*);
+    };
+}
+
+impl_from_for_table_ref!(&'static str, String, Cow<'static, str>);
+
+/// `(schema, name)` pair, as in `("analytics", "events")`.
+impl From<(&'static str, &'static str)> for TableRef {
+    fn from((schema, name): (&'static str, &'static str)) -> Self {
+        TableRef {
+            schema: Cow::Borrowed(schema),
+            ..TableRef::new(Cow::Borrowed(name))
+        }
     }
 }
 
-impl Dataset for &TableRef {
-    fn qualified_columns() -> bool
-    where
-        Self: Sized,
-    {
-        false
-    }
-    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        (*writer).write_table_ref(context, out, self)
-    }
-    fn table_ref(&self) -> TableRef {
-        (*self).clone()
+impl From<&(&'static str, &'static str)> for TableRef {
+    fn from(value: &(&'static str, &'static str)) -> Self {
+        (*value).into()
     }
 }
 
-impl From<&'static str> for TableRef {
-    fn from(value: &'static str) -> Self {
-        TableRef::new(value.into())
+impl<E: Entity> From<&E> for TableRef {
+    fn from(_value: &E) -> Self {
+        E::table().clone()
     }
 }
 
@@ -102,31 +118,5 @@ impl ToTokens for TableRef {
                 alias: #alias,
             }
         });
-    }
-}
-
-/// Wrapper used when declaring table references in generated macros.
-#[derive(Default, Clone, PartialEq, Eq, Debug)]
-pub struct DeclareTableRef(pub TableRef);
-
-impl Dataset for DeclareTableRef {
-    fn qualified_columns() -> bool
-    where
-        Self: Sized,
-    {
-        false
-    }
-    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        writer.write_table_ref(context, out, &self.0)
-    }
-    fn table_ref(&self) -> TableRef {
-        self.0.clone()
-    }
-}
-
-impl ToTokens for DeclareTableRef {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let table_ref = &self.0;
-        tokens.append_all(quote!(::tank::DeclareTableRef(#table_ref)));
     }
 }

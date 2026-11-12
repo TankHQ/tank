@@ -56,17 +56,11 @@ pub async fn insane(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    InsaneNullFields::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop ComplexNullFields table");
-    InsaneNullFields::create_table(executor, true, true)
-        .await
-        .expect("Failed to create ComplexNullFields table");
+    InsaneNullFields::drop_table(executor, true, false).await?;
+    InsaneNullFields::create_table(executor, true, true).await?;
 
     // Insane 1
-    InsaneNullFields::delete_many(executor, true)
-        .await
-        .expect("Failed to clear the ComplexNullFields table");
+    InsaneNullFields::delete_many(executor, true).await?;
     let entity = InsaneNullFields {
         #[cfg(all(
             not(feature = "disable-arrays"),
@@ -120,13 +114,10 @@ pub async fn insane(executor: &mut impl Executor) -> Result<()> {
             )),
         )))))),
     };
-    InsaneNullFields::insert_one(executor, &entity)
-        .await
-        .expect("Failed to save insane 1");
+    InsaneNullFields::insert_one(executor, &entity).await?;
     #[allow(unused_variables)]
     let loaded = InsaneNullFields::find_one(executor, true)
-        .await
-        .expect("Failed to query insane 1")
+        .await?
         .expect("Failed to find insane 1");
     #[cfg(all(
         not(feature = "disable-arrays"),
@@ -145,9 +136,7 @@ pub async fn insane(executor: &mut impl Executor) -> Result<()> {
     assert_eq!(loaded.green, entity.green);
 
     // Insane 2
-    InsaneNullFields::delete_many(executor, true)
-        .await
-        .expect("Failed to clear the ComplexNullFields table");
+    InsaneNullFields::delete_many(executor, true).await?;
     let entity = InsaneNullFields {
         #[cfg(all(
             not(feature = "disable-arrays"),
@@ -198,12 +187,9 @@ pub async fn insane(executor: &mut impl Executor) -> Result<()> {
             )),
         )))))),
     };
-    InsaneNullFields::insert_one(executor, &entity)
-        .await
-        .expect("Failed to save insane 2");
+    InsaneNullFields::insert_one(executor, &entity).await?;
     let loaded = InsaneNullFields::find_one(executor, true)
-        .await
-        .expect("Failed to query insane 2")
+        .await?
         .expect("Failed to find insane 2");
     #[cfg(all(
         not(feature = "disable-arrays"),

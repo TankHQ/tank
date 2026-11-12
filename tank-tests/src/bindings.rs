@@ -1,7 +1,11 @@
 #![allow(unused_imports)]
+use anyhow::Context;
 use rust_decimal::Decimal;
-use std::sync::LazyLock;
-use tank::{AsValue, Entity, Executor, FixedDecimal, Result, expr, stream::TryStreamExt};
+use std::{slice, sync::LazyLock};
+use tank::{
+    AsValue, Entity, Executor, FixedDecimal, Result, expr,
+    stream::{StreamExt, TryStreamExt},
+};
 use time::{Date, Month, Time};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -75,20 +79,15 @@ fn sample_other() -> BoundTypes {
 pub async fn bindings(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
+    // Setup
     crate::silent_logs! {
-        BoundTypes::drop_table(executor, true, false)
-            .await
-            .expect("Failed to drop the BoundTypes table");
+        BoundTypes::drop_table(executor, true, false).await?;
     }
-    BoundTypes::create_table(executor, true, true)
-        .await
-        .expect("Failed to create the BoundTypes table");
+    BoundTypes::create_table(executor, true, true).await?;
 
     let first = sample();
     let second = sample_other();
-    BoundTypes::insert_many(executor, [first.clone(), second.clone()])
-        .await
-        .expect("Failed to insert the BoundTypes rows");
+    BoundTypes::insert_many(executor, [first.clone(), second.clone()]).await?;
 
     let mut query = BoundTypes::prepare_find(
         executor,
@@ -111,73 +110,71 @@ pub async fn bindings(executor: &mut impl Executor) -> Result<()> {
         ),
         Some(1),
     )
-    .await
-    .expect("Failed to prepare the all-columns query");
+    .await?;
     for (name, value) in [
-        ("boolean", first.boolean.as_value()),
-        ("int8", first.int8.as_value()),
-        ("uint8", first.uint8.as_value()),
-        ("int16", first.int16.as_value()),
-        ("uint16", first.uint16.as_value()),
-        ("int32", first.int32.as_value()),
-        ("uint32", first.uint32.as_value()),
-        ("int64", first.int64.as_value()),
-        ("float32", first.float32.as_value()),
-        ("float64", first.float64.as_value()),
-        ("text", first.text.clone().as_value()),
-        ("uuid", first.uuid.as_value()),
-        ("date", first.date.as_value()),
-        ("time", first.time.as_value()),
-        ("decimal", first.decimal.as_value()),
+        ("first.boolean", first.boolean.as_value()),
+        ("first.int8", first.int8.as_value()),
+        ("first.uint8", first.uint8.as_value()),
+        ("first.int16", first.int16.as_value()),
+        ("first.uint16", first.uint16.as_value()),
+        ("first.int32", first.int32.as_value()),
+        ("first.uint32", first.uint32.as_value()),
+        ("first.int64", first.int64.as_value()),
+        ("first.float32", first.float32.as_value()),
+        ("first.float64", first.float64.as_value()),
+        ("first.text", first.text.clone().as_value()),
+        ("first.uuid", first.uuid.as_value()),
+        ("first.date", first.date.as_value()),
+        ("first.time", first.time.as_value()),
+        ("first.decimal", first.decimal.as_value()),
     ] {
         query
-            .bind(value)
-            .unwrap_or_else(|e| panic!("Failed to bind `{name}`: {e:#}"));
+            .bind(value.clone())
+            .context(format!("While binding to bind column {name}: {value:?}"))?;
     }
     let loaded = executor
         .fetch(&mut query)
-        .and_then(|row| std::future::ready(BoundTypes::from_row(row)))
+        .map(|row| row.and_then(BoundTypes::from_row))
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Failed to fetch the bound row");
+        .await?;
     assert_eq!(
         loaded.as_slice(),
-        std::slice::from_ref(&first),
+        slice::from_ref(&first),
         "Bound values did not round-trip"
     );
 
-    query
-        .clear_bindings()
-        .expect("Failed to clear the bindings");
-    for value in [
-        second.boolean.as_value(),
-        second.int8.as_value(),
-        second.uint8.as_value(),
-        second.int16.as_value(),
-        second.uint16.as_value(),
-        second.int32.as_value(),
-        second.uint32.as_value(),
-        second.int64.as_value(),
-        second.float32.as_value(),
-        second.float64.as_value(),
-        second.text.clone().as_value(),
-        second.uuid.as_value(),
-        second.date.as_value(),
-        second.time.as_value(),
-        second.decimal.as_value(),
+    query.clear_bindings()?;
+    for (name, value) in [
+        ("second.boolean", second.boolean.as_value()),
+        ("second.int8", second.int8.as_value()),
+        ("second.uint8", second.uint8.as_value()),
+        ("second.int16", second.int16.as_value()),
+        ("second.uint16", second.uint16.as_value()),
+        ("second.int32", second.int32.as_value()),
+        ("second.uint32", second.uint32.as_value()),
+        ("second.int64", second.int64.as_value()),
+        ("second.float32", second.float32.as_value()),
+        ("second.float64", second.float64.as_value()),
+        ("second.text", second.text.clone().as_value()),
+        ("second.uuid", second.uuid.as_value()),
+        ("second.date", second.date.as_value()),
+        ("second.time", second.time.as_value()),
+        ("second.decimal", second.decimal.as_value()),
     ] {
-        query.bind(value).expect("Failed to rebind a value");
+        query
+            .bind(value.clone())
+            .context(format!("While binding to bind column {name}: {value:?}"))?;
     }
     let loaded = executor
         .fetch(&mut query)
-        .and_then(|row| std::future::ready(BoundTypes::from_row(row)))
+        .map(|row| row.and_then(BoundTypes::from_row))
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Failed to fetch the rebound row");
+        .await?;
     assert_eq!(
         loaded.as_slice(),
-        std::slice::from_ref(&second),
+        slice::from_ref(&second),
         "Reused statement did not re-read the bindings"
     );
+
     Ok(())
 }

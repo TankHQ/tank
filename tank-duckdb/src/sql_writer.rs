@@ -1,9 +1,7 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    fmt::Write,
-};
+use std::collections::{BTreeMap, HashMap};
 use tank_core::{
-    BinaryOpType, ColumnDef, Context, DynQuery, Interval, SqlWriter, Value, separated_by,
+    BinaryOpType, ColumnDef, Context, DynQuery, GenericSqlWriter, Interval, SqlWriter, Value,
+    separated_by,
 };
 
 /// SQL writer for the DuckDB dialect.
@@ -24,20 +22,9 @@ impl SqlWriter for DuckDBSqlWriter {
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
-        if let Some(t) = types
-            .iter()
-            .find_map(|(k, v)| if *k == "duckdb" { Some(v) } else { None })
-        {
+        if let Some(t) = types.get("duckdb") {
             out.push_str(t);
         }
-    }
-
-    fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
-        out.push('\'');
-        for b in value {
-            let _ = write!(out, "\\x{:02X}", b);
-        }
-        out.push('\'');
     }
 
     fn value_interval_units(&self) -> &[(&str, i128)] {
@@ -78,15 +65,7 @@ impl SqlWriter for DuckDBSqlWriter {
     ) -> (&str, &str, &str, bool, bool) {
         match op_type {
             BinaryOpType::NotGlob => ("NOT (", " GLOB ", ")", false, false),
-            _ => {
-                struct GenericWriter;
-                impl SqlWriter for GenericWriter {
-                    fn as_dyn(&self) -> &dyn SqlWriter {
-                        self
-                    }
-                }
-                GenericWriter.expression_binary_op_fragments(context, op_type)
-            }
+            _ => GenericSqlWriter.expression_binary_op_fragments(context, op_type),
         }
     }
 

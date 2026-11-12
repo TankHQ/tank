@@ -2,7 +2,7 @@
 mod tests {
     use indoc::indoc;
     use std::borrow::Cow;
-    use tank::{DynQuery, Entity, GenericSqlWriter, QueryBuilder, SqlWriter, TableRef};
+    use tank::{DynQuery, Entity, GenericSqlWriter, Sql, SqlWriter, TableRef};
 
     #[derive(Entity, Default)]
     #[tank(schema = "the_schema", name = "empty_entity")]
@@ -25,7 +25,7 @@ mod tests {
         assert_eq!(SomeEmptyEntity::columns().len(), 0);
 
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<SomeEmptyEntity>(&mut query, true);
+        WRITER.write_create_table(&mut query, SomeEmptyEntity::table(), true);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -36,14 +36,13 @@ mod tests {
         );
 
         let mut query = DynQuery::default();
-        WRITER.write_drop_table::<SomeEmptyEntity>(&mut query, false);
+        WRITER.write_drop_table(&mut query, SomeEmptyEntity::table(), false);
         assert_eq!(query.as_str(), r#"DROP TABLE "the_schema"."empty_entity";"#);
 
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            &QueryBuilder::new()
-                .select(SomeEmptyEntity::columns())
+            Sql.select(SomeEmptyEntity::columns())
                 .from(SomeEmptyEntity::table()),
         );
         assert_eq!(
@@ -56,7 +55,12 @@ mod tests {
         );
 
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&SomeEmptyEntity::default()], true);
+        WRITER.write_insert(
+            &mut query,
+            Sql.insert_into(SomeEmptyEntity::table())
+                .values(&[SomeEmptyEntity::default()])
+                .update(),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -67,7 +71,7 @@ mod tests {
         );
 
         let mut query = DynQuery::default();
-        WRITER.write_delete::<SomeEmptyEntity>(&mut query, false);
+        WRITER.write_delete(&mut query, SomeEmptyEntity::table(), false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"

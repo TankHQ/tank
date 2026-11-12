@@ -2,9 +2,9 @@ use crate::{MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter, glob_to_regex, lik
 use mongodb::bson::{Bson, Document, Regex, doc};
 use std::{borrow::Cow, iter, mem, sync::Arc};
 use tank_core::{
-    AsValue, BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
-    IsConstant, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp, UnaryOpType, Value,
-    ValueOwned,
+    AsValue, BinaryOp, BinaryOpType, Case, ColumnRef, Context, DynQuery, Expression,
+    ExpressionVisitor, IsConstant, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp,
+    UnaryOpType, Value, ValueOwned,
 };
 
 pub type AggregateAliases = Arc<Vec<(Bson, String)>>;
@@ -499,6 +499,30 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
         value: &Ordered<&dyn Expression>,
     ) -> bool {
         value.write_query(writer, context, out);
+        true
+    }
+
+    fn visit_case(
+        &mut self,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+        value: &Case,
+    ) -> bool {
+        // `$switch` only exists as an aggregation expression, it is never a field filter.
+        let top = !self.started;
+        self.started = true;
+        value.write_query(writer, context, out);
+        if top {
+            let Some(target) = out
+                .as_prepared::<MongoDBDriver>()
+                .and_then(MongoDBPrepared::current_bson)
+            else {
+                log::error!("Failed to get the bson in WriteMatchExpression::visit_case");
+                return false;
+            };
+            *target = doc! { "$expr": &*target }.into();
+        }
         true
     }
 }

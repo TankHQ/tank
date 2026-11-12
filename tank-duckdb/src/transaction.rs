@@ -1,13 +1,11 @@
 use crate::{DuckDBConnection, DuckDBDriver};
+use std::future::Future;
 use tank_core::{
     Driver, DynQuery, Executor, Result, SqlWriter, Transaction, future::TryFutureExt,
     impl_executor_transaction,
 };
 
 /// Wrapper for DuckDB transactions.
-///
-/// Begins a transaction via the driver `SqlWriter` and executes commit/rollback
-/// SQL through the connection. Implements `Transaction` for `tank_core`.
 pub struct DuckDBTransaction<'c> {
     connection: &'c mut DuckDBConnection,
 }

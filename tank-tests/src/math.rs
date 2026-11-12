@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 use tank::{
-    AsValue, Entity, Executor, QueryBuilder, Result, Row, cols, expr,
+    AsValue, Entity, Executor, Result, Row, Sql, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -18,21 +18,13 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    MathTable::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop MathTable table");
-    MathTable::create_table(executor, false, false)
-        .await
-        .expect("Failed to create MathTable table");
-    MathTable { id: 0, read: 0 }
-        .save(executor)
-        .await
-        .expect("Could not save the dummy entry");
+    MathTable::drop_table(executor, true, false).await?;
+    MathTable::create_table(executor, false, false).await?;
+    MathTable { id: 0, read: 0 }.save(executor).await?;
 
     let result = executor
         .fetch(
-            QueryBuilder::new()
-                .select(cols!(MathTable::id, ((42 * 6 + 56) / 7) as read))
+            Sql.select(cols!(MathTable::id, ((42 * 6 + 56) / 7) as read))
                 .from(MathTable::table())
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
@@ -40,14 +32,12 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
         .map_ok(MathTable::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not get the result 1");
+        .await?;
     assert_eq!(result, [MathTable { id: 0, read: 44 }]);
 
     let result = executor
         .fetch(
-            QueryBuilder::new()
-                .select(cols!(MathTable::id, ((5 - (1 << 2)) * 9 % 6) as read))
+            Sql.select(cols!(MathTable::id, ((5 - (1 << 2)) * 9 % 6) as read))
                 .from(MathTable::table())
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
@@ -55,14 +45,12 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
         .map_ok(MathTable::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not get the result 2");
+        .await?;
     assert_eq!(result, [MathTable { id: 0, read: 3 }]);
 
     let result = executor
         .fetch(
-            QueryBuilder::new()
-                .select(cols!(MathTable::id, ((1 | 2 | 4) + 1) as read))
+            Sql.select(cols!(MathTable::id, ((1 | 2 | 4) + 1) as read))
                 .from(MathTable::table())
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
@@ -70,14 +58,12 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
         .map_ok(MathTable::from_row)
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not get the result 3");
+        .await?;
     assert_eq!(result, [MathTable { id: 0, read: 8 }]);
 
     let result = executor
         .fetch(
-            QueryBuilder::new()
-                .select(cols!(MathTable::id, (90 > 89 && (10 & 6) == 2) as read))
+            Sql.select(cols!(MathTable::id, (90 > 89 && (10 & 6) == 2) as read))
                 .from(MathTable::table())
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
@@ -85,14 +71,12 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
         .map_ok(|v| bool::try_from_value(v.value(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not get the result 4");
+        .await?;
     assert_eq!(result, [true]);
 
     let result = executor
         .fetch(
-            QueryBuilder::new()
-                .select(cols!(MathTable::id, (4 == (2, 3, 4, 5) as IN) as read))
+            Sql.select(cols!(MathTable::id, (4 == (2, 3, 4, 5) as IN) as read))
                 .from(MathTable::table())
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
@@ -100,8 +84,7 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
         .map_ok(|v| bool::try_from_value(v.value(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not get the result 5");
+        .await?;
     assert_eq!(result, [true]);
 
     // CAST to an integer type: the generated type name must be valid for the
@@ -109,8 +92,7 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
     {
         let result = executor
             .fetch(
-                QueryBuilder::new()
-                    .select(cols!(MathTable::id, (CAST(MathTable::read as i64)) as read))
+                Sql.select(cols!(MathTable::id, (CAST(MathTable::read as i64)) as read))
                     .from(MathTable::table())
                     .where_expr(expr!(MathTable::id == 0))
                     .build(&executor.driver()),
@@ -118,8 +100,7 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
             .map_ok(MathTable::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not get the CAST result");
+            .await?;
         assert_eq!(result, [MathTable { id: 0, read: 0 }]);
     }
 
@@ -128,8 +109,7 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
     {
         let result = executor
             .fetch(
-                QueryBuilder::new()
-                    .select(cols!(MathTable::id, FLOOR(LOG10(1000)) as read))
+                Sql.select(cols!(MathTable::id, FLOOR(LOG10(1000)) as read))
                     .from(MathTable::table())
                     .where_expr(expr!(MathTable::id == 0))
                     .build(&executor.driver()),
@@ -137,8 +117,7 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
             .map_ok(MathTable::from_row)
             .map(Result::flatten)
             .try_collect::<Vec<_>>()
-            .await
-            .expect("Could not get the LOG10 result");
+            .await?;
         assert_eq!(
             result,
             [MathTable { id: 0, read: 3 }],

@@ -3,8 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::{borrow::Cow, collections::HashMap};
     use tank::{
-        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
-        SqlWriter, TableRef, Value, expr,
+        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, Sql, SqlWriter,
+        TableRef, Value, expr,
     };
     use time::{Date, Month, Time};
     use uuid::Uuid;
@@ -158,7 +158,7 @@ mod tests {
     #[test]
     fn employee_sql() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<Employee>(&mut query, false);
+        WRITER.write_create_table(&mut query, Employee::table(), false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -176,7 +176,7 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_drop_table::<Employee>(&mut query, true);
+        WRITER.write_drop_table(&mut query, Employee::table(), true);
         assert_eq!(
             query.as_str(),
             r#"DROP TABLE IF EXISTS "company"."employee";"#
@@ -184,8 +184,7 @@ mod tests {
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            &QueryBuilder::new()
-                .select(Employee::columns())
+            Sql.select(Employee::columns())
                 .from(Employee::table())
                 .where_expr(expr!(Employee::salary > 50000))
                 .limit(Some(10)),
@@ -204,7 +203,10 @@ mod tests {
         docs.insert("contract.pdf".to_string(), vec![1, 2, 3, 4]);
         let employee = Employee::sample();
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&employee], false);
+        WRITER.write_insert(
+            &mut query,
+            Sql.insert_into(Employee::table()).values(&[employee]),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -218,7 +220,11 @@ mod tests {
             ..Employee::sample()
         };
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&employee], false);
+        WRITER.write_insert(
+            &mut query,
+            Sql.insert_into(Employee::table())
+                .values([&employee].into_iter()),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -228,7 +234,11 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_delete::<Employee>(&mut query, expr!(Employee::name == "Bob"));
+        WRITER.write_delete(
+            &mut query,
+            Employee::table(),
+            expr!(Employee::name == "Bob"),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"

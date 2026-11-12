@@ -72,19 +72,6 @@ EntityExample::create_table(&mut connection, true, true).await?;
 EntityExample::drop_table(&mut connection, true, false).await?;
 ```
 
-## Transaction
-
-```rust
-use tank::{Entity, Transaction};
-
-let mut tx = connection.begin().await?;
-EntityExample::insert_one(&mut tx, &entity).await?;
-entity.delete(&mut tx).await?;
-tx.commit().await?;
-```
-
-Both transactions and connections can serve as executors in methods such as `EntityExample::create_table(&mut tx, ...)`.
-
 ## Insert
 
 ```rust
@@ -127,6 +114,19 @@ EntityExample::delete_many(
 ).await?;
 ```
 
+## Transaction
+
+```rust
+use tank::{Entity, Transaction};
+
+let mut tx = connection.begin().await?;
+EntityExample::insert_one(&mut tx, &entity).await?;
+entity.delete(&mut tx).await?;
+tx.commit().await?; // Or tx.rollback().await?
+```
+
+Both transactions and connections can serve as executors in methods such as `EntityExample::create_table(&mut tx, ...)`.
+
 ## Expressions
 
 ```rust
@@ -143,6 +143,8 @@ let uid = Uuid::new_v4();
 expr!(EntityExample::unit_id == #uid);
 let regions = ["North", "South"];
 expr!(EntityExample::region == #regions as IN);
+expr!(if EntityExample::casualties > 10 { "heavy" } else { "light" });
+expr!(match EntityExample::region { "North" | "South" => 1, _ => 2 });
 ```
 
 ## Prepared statement
@@ -155,7 +157,7 @@ expr!(EntityExample::region == #regions as IN);
 
 ## Joins
 
-The `join!` macro builds the `FROM` clause for `QueryBuilder`. Define a result struct that matches the selected columns, then pass the join tree to `.from()`.
+The `join!` macro builds the `FROM` clause of a `Sql` query. Define a result struct that matches the selected columns, then pass the join tree to `.from()`.
 
 Supported keywords: `JOIN`, `INNER JOIN`, `LEFT JOIN`, `LEFT OUTER JOIN`, `RIGHT JOIN`, `RIGHT OUTER JOIN`, `FULL OUTER JOIN`, `CROSS JOIN`, `NATURAL JOIN`.
 
@@ -230,16 +232,21 @@ query.bind(10)?;
 ### SqlWriter
 
 ```rust
-use tank::{DynQuery, QueryBuilder, SqlWriter, stream::TryStreamExt};
+use tank::{DynQuery, Entity, Sql, SqlWriter, stream::TryStreamExt};
 
 let writer = connection.driver().sql_writer();
 let mut query = DynQuery::default();
 
-writer.write_create_table::<EntityExample>(&mut query, true);
-writer.write_insert(&mut query, &[entity1, entity2], false);
+writer.write_create_table(&mut query, EntityExample::table(), true);
+writer.write_insert(
+    &mut query,
+    Sql
+        .insert_into(EntityExample::table())
+        .values([&entity1, &entity2]),
+);
 writer.write_select(
     &mut query,
-    &QueryBuilder::new()
+    Sql
         .select(EntityExample::columns())
         .from(EntityExample::table())
         .where_expr(true)
@@ -248,3 +255,14 @@ writer.write_select(
 
 let results: Vec<_> = connection.run(query).try_collect().await?;
 ```
+
+## Common workflows
+
+### Streams
+
+`fetch` and `find_many` return a [`Stream`](https://docs.rs/futures/latest/futures/stream/trait.Stream.html) of `Result`s, so the `TryStreamExt` combinators apply: `and_then` / `map_ok` to decode rows, `try_filter` to drop items, `try_fold` to aggregate, `try_collect` to gather a `Vec`. `run` also yields `QueryResult::Affected` items for statements that modify rows.
+
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-streams [Rust]
+
+> [!TIP]
+> Filtering on the Rust side transfers and decodes every row: express the condition in `expr!` whenever the database can evaluate it.

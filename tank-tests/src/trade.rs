@@ -2,8 +2,8 @@
 use rust_decimal::Decimal;
 use std::{collections::BTreeMap, pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
-    AsValue, Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult,
-    RawQuery, Result, RowsAffected, SqlWriter, Value,
+    AsValue, Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery,
+    Result, RowsAffected, Sql, SqlWriter, Value,
     stream::{StreamExt, TryStreamExt},
 };
 use time::macros::datetime;
@@ -41,12 +41,8 @@ pub async fn trade_simple(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Trade::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop Trade table");
-    Trade::create_table(executor, false, true)
-        .await
-        .expect("Failed to create Trade table");
+    Trade::drop_table(executor, true, false).await?;
+    Trade::create_table(executor, false, true).await?;
 
     // Trade object
     let trade = Trade {
@@ -73,25 +69,21 @@ pub async fn trade_simple(executor: &mut impl Executor) -> Result<()> {
     };
 
     // Expect to find no trades
-    let result = Trade::find_one(executor, trade.primary_key_expr())
-        .await
-        .expect("Failed to find trade by primary key");
+    let result = Trade::find_one(executor, trade.primary_key_expr()).await?;
     assert!(result.is_none(), "Expected no trades at this time");
     assert_eq!(
         Trade::find_many(executor, true, None)
-            .map_err(|e| panic!("{e:#}"))
+            .map(Result::unwrap)
             .count()
             .await,
         0
     );
 
     // Save a trade
-    trade.save(executor).await.expect("Failed to save trade");
+    trade.save(executor).await?;
 
     // Expect to find the only trade
-    let result = Trade::find_one(executor, trade.primary_key_expr())
-        .await
-        .expect("Failed to find trade");
+    let result = Trade::find_one(executor, trade.primary_key_expr()).await?;
     assert!(
         result.is_some(),
         "Expected Trade::find_one to return some result",
@@ -140,7 +132,13 @@ pub async fn trade_simple(executor: &mut impl Executor) -> Result<()> {
         ])
     );
 
-    assert_eq!(Trade::find_many(executor, true, None).count().await, 1);
+    assert_eq!(
+        Trade::find_many(executor, true, None)
+            .map(Result::unwrap)
+            .count()
+            .await,
+        1
+    );
     Ok(())
 }
 
@@ -148,12 +146,8 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Trade::drop_table(executor, false, false)
-        .await
-        .expect("Failed to drop Trade table");
-    Trade::create_table(executor, false, true)
-        .await
-        .expect("Failed to create Trade table");
+    Trade::drop_table(executor, false, false).await?;
+    Trade::create_table(executor, false, true).await?;
 
     // Trade objects
     let trades = vec![
@@ -265,9 +259,7 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
     ];
 
     // Insert 5 trades
-    let affected = Trade::insert_many(executor, &trades)
-        .await
-        .expect("Coult not insert 5 trade");
+    let affected = Trade::insert_many(executor, &trades).await?;
     if let Some(affected) = affected.rows_affected {
         assert_eq!(affected, 5);
     }
@@ -275,16 +267,13 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
     // Find 5 trades
     let data = Trade::find_many(executor, true, None)
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Failed to query threads");
+        .await?;
     assert_eq!(data.len(), 5, "Expect to find 5 trades");
 
     // Verify data integrity
     for (i, expected) in trades.iter().enumerate() {
         let actual_a = &trades[i];
-        let actual_b = Trade::find_one(executor, expected.primary_key_expr())
-            .await
-            .expect(&format!("Failed to find trade {} by pk", data[i].symbol));
+        let actual_b = Trade::find_one(executor, expected.primary_key_expr()).await?;
         let Some(actual_b) = actual_b else {
             panic!("Trade {} not found", expected.trade);
         };
@@ -335,10 +324,10 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
     {
         let writer = executor.driver().sql_writer();
         let mut query = DynQuery::default();
-        writer.write_delete::<Trade>(&mut query, true);
+        writer.write_delete(&mut query, Trade::table(), true);
         writer.write_insert(
             &mut query,
-            &[Trade {
+            Sql.insert_into(Trade::table()).values(&[Trade {
                 trade: 10002,
                 order: Uuid::parse_str("895dc048-be92-4a55-afbf-38a60936e844").unwrap(),
                 symbol: "RIVN".to_string(),
@@ -363,38 +352,36 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
                     ("strategy".into(), "arbitrage".into()),
                     ("risk_limit".into(), "high".into()),
                 ])),
-            }],
-            false,
+            }]),
         );
         writer.write_select(
             &mut query,
-            &QueryBuilder::new()
-                .select(Trade::columns())
+            Sql.select(Trade::columns())
                 .from(Trade::table())
                 .where_expr(true),
         );
         let mut stream = pin!(executor.run(query));
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
-            stream.next().await
+        let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) =
+            stream.try_next().await?
         else {
             panic!("Could not get the result of the first query");
         };
         if let Some(rows_affected) = rows_affected {
             assert_eq!(rows_affected, 5);
         }
-        let Some(Ok(QueryResult::Affected(RowsAffected { rows_affected, .. }))) =
-            stream.next().await
+        let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) =
+            stream.try_next().await?
         else {
             panic!("Could not get the result of the first statement");
         };
         if let Some(rows_affected) = rows_affected {
             assert_eq!(rows_affected, 1);
         }
-        let Some(Ok(QueryResult::Row(row))) = stream.next().await else {
+        let Some(QueryResult::Row(row)) = stream.try_next().await? else {
             panic!("Could not get the result of the second statement");
         };
-        let trade = Trade::from_row(row).expect("Could not decode the Trade from row");
-        assert!(stream.next().await.is_none());
+        let trade = Trade::from_row(row)?;
+        assert!(stream.try_next().await?.is_none());
         assert_eq!(
             trade,
             Trade {

@@ -1,8 +1,6 @@
 use rust_decimal::Decimal;
 use std::sync::LazyLock;
-use tank::{
-    Entity, Executor, FixedDecimal, QueryBuilder, Result, cols, expr, stream::TryStreamExt,
-};
+use tank::{Entity, Executor, FixedDecimal, Result, Sql, cols, expr, stream::TryStreamExt};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -24,12 +22,8 @@ pub async fn orders(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Order::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop Order table");
-    Order::create_table(executor, false, true)
-        .await
-        .expect("Failed to create Order table");
+    Order::drop_table(executor, true, false).await?;
+    Order::create_table(executor, false, true).await?;
 
     // Data
     let orders = vec![
@@ -90,9 +84,7 @@ pub async fn orders(executor: &mut impl Executor) -> Result<()> {
             created_at: chrono::Utc::now() - chrono::Duration::hours(2),
         },
     ];
-    let result = Order::insert_many(executor, orders.iter())
-        .await
-        .expect("Failed to insert orders");
+    let result = Order::insert_many(executor, orders.iter()).await?;
     if let Some(affected) = result.rows_affected {
         assert_eq!(affected, 7);
     }
@@ -100,50 +92,41 @@ pub async fn orders(executor: &mut impl Executor) -> Result<()> {
     // Prepare
     let mut query = executor
         .prepare(
-            QueryBuilder::new()
-                .select([
-                    Order::id,
-                    Order::customer_id,
-                    Order::country,
-                    Order::total,
-                    Order::status,
-                    Order::created_at,
-                ])
-                .from(Order::table())
-                .where_expr(expr!(
-                    Order::status == (?, ?) as IN
-                        && Order::created_at >= ?
-                        && Order::total >= ?
-                        && Order::country == (?, ?) as IN
-                ))
-                .order_by(cols!(Order::total DESC))
-                .build(&executor.driver()),
+            Sql.select([
+                Order::id,
+                Order::customer_id,
+                Order::country,
+                Order::total,
+                Order::status,
+                Order::created_at,
+            ])
+            .from(Order::table())
+            .where_expr(expr!(
+                Order::status == (?, ?) as IN
+                    && Order::created_at >= ?
+                    && Order::total >= ?
+                    && Order::country == (?, ?) as IN
+            ))
+            .order_by(cols!(Order::total DESC))
+            .build(&executor.driver()),
         )
-        .await
-        .expect("Failed to prepare the query");
+        .await?;
     assert!(query.is_prepared(), "Query should be marked as prepared");
 
     // 100+€ orders from last 10 days from Germany or Spain
     query
-        .bind("paid")
-        .unwrap()
-        .bind("shipped")
-        .unwrap()
-        .bind(chrono::Utc::now() - chrono::Duration::days(10))
-        .unwrap()
-        .bind(99.99)
-        .unwrap()
-        .bind("Germany")
-        .unwrap()
-        .bind("Spain")
-        .unwrap();
+        .bind("paid")?
+        .bind("shipped")?
+        .bind(chrono::Utc::now() - chrono::Duration::days(10))?
+        .bind(99.99)?
+        .bind("Germany")?
+        .bind("Spain")?;
     let orders = executor
         .fetch(&mut query)
         .and_then(|v| async { Order::from_row(v) })
         .map_ok(|v| format!("{}, {}, {:.2}€", v.country, v.status, v.total.0))
         .try_collect::<Vec<_>>()
-        .await
-        .expect("Could not run query 1");
+        .await?;
     assert_eq!(
         orders,
         [
@@ -155,27 +138,20 @@ pub async fn orders(executor: &mut impl Executor) -> Result<()> {
     assert!(query.is_prepared());
 
     // All orders above 1€ from Germany or Italy
-    query.clear_bindings().expect("Failed to clear bindings");
+    query.clear_bindings()?;
     query
-        .bind("paid")
-        .unwrap()
-        .bind("shipped")
-        .unwrap()
-        .bind(chrono::Utc::now() - chrono::Duration::days(365))
-        .unwrap()
-        .bind(1)
-        .unwrap()
-        .bind("Germany")
-        .unwrap()
-        .bind("Italy")
-        .unwrap();
+        .bind("paid")?
+        .bind("shipped")?
+        .bind(chrono::Utc::now() - chrono::Duration::days(365))?
+        .bind(1)?
+        .bind("Germany")?
+        .bind("Italy")?;
     let orders: Vec<String> = executor
         .fetch(&mut query)
         .and_then(|v| async { Order::from_row(v) })
         .map_ok(|v| format!("{}, {}, {:.2}€", v.country, v.status, v.total.0))
         .try_collect()
-        .await
-        .expect("Could not run query 2");
+        .await?;
     assert_eq!(
         orders,
         [
@@ -191,26 +167,24 @@ pub async fn orders(executor: &mut impl Executor) -> Result<()> {
     // ORDER BY + LIMIT 1: should return the single most expensive order
     let top_order: Vec<String> = executor
         .fetch(
-            QueryBuilder::new()
-                .select([
-                    Order::id,
-                    Order::customer_id,
-                    Order::country,
-                    Order::total,
-                    Order::status,
-                    Order::created_at,
-                ])
-                .from(Order::table())
-                .where_expr(true)
-                .order_by(cols!(Order::total DESC))
-                .limit(Some(1))
-                .build(&executor.driver()),
+            Sql.select([
+                Order::id,
+                Order::customer_id,
+                Order::country,
+                Order::total,
+                Order::status,
+                Order::created_at,
+            ])
+            .from(Order::table())
+            .where_expr(true)
+            .order_by(cols!(Order::total DESC))
+            .limit(Some(1))
+            .build(&executor.driver()),
         )
         .and_then(|v| async { Order::from_row(v) })
         .map_ok(|v| format!("{}, {}, {:.2}€", v.country, v.status, v.total.0))
         .try_collect()
-        .await
-        .expect("Could not run top order query");
+        .await?;
     assert_eq!(
         top_order,
         ["Germany, shipped, 1118.99€".to_string()],

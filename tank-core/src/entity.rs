@@ -1,7 +1,7 @@
 use crate::{
-    ColumnDef, Context, Dataset, Driver, DynQuery, Executor, Expression, Fragment, Query,
-    QueryBuilder, RawQuery, Result, Row, RowOwned, RowValues, RowsAffected, TableRef,
-    future::Either, stream::Stream, truncate_long, writer::SqlWriter,
+    ColumnDef, Context, Driver, DynQuery, Executor, Expression, Fragment, Query, RawQuery, Result,
+    Row, RowOwned, RowsAffected, Sql, TableRef, Value, future::Either, log_error, stream::Stream,
+    truncate_long, writer::SqlWriter,
 };
 use anyhow::anyhow;
 use futures::{FutureExt, StreamExt};
@@ -40,12 +40,11 @@ pub trait Entity: AsEntity + Expression {
     /// Build an expression matching the PK of `self`.
     fn primary_key_expr(&self) -> impl Expression;
 
-    /// Unique constraint definitions.
-    fn unique_defs()
-    -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = &'static ColumnDef>>;
+    /// Unique constraint definitions, each a list of columns.
+    fn unique_defs() -> &'static [&'static [&'static ColumnDef]];
 
-    /// Full row representation including all persisted columns.
-    fn row_values(&self) -> RowValues;
+    /// Values of all persisted columns in declaration order, borrowing from `self` where possible.
+    fn row_values(&self) -> impl ExactSizeIterator<Item = Value<'_>>;
 
     /// Full row representation with column labels.
     fn row(&self) -> RowOwned {
@@ -54,7 +53,7 @@ pub trait Entity: AsEntity + Expression {
                 .iter()
                 .map(|v| v.name().to_string())
                 .collect(),
-            self.row_values(),
+            self.row_values().map(Value::into_owned).collect(),
         )
     }
 
@@ -81,7 +80,7 @@ pub trait Entity: AsEntity + Expression {
             let mut query = DynQuery::with_capacity(2048);
             let writer = executor.driver().sql_writer();
             if create_schema && !Self::table().schema.is_empty() {
-                writer.write_create_schema::<Self>(&mut query, true);
+                writer.write_create_schema(&mut query, Self::table(), true);
             }
             if !executor.accepts_multiple_statements() && !query.is_empty() {
                 let mut q = query.into_query(executor.driver());
@@ -89,7 +88,7 @@ pub trait Entity: AsEntity + Expression {
                 query = q.into();
                 query.clear(); // Reuse the buffer
             }
-            writer.write_create_table::<Self>(&mut query, if_not_exists);
+            writer.write_create_table(&mut query, Self::table(), if_not_exists);
             for column in Self::columns().iter().filter(|c| !c.comment.is_empty()) {
                 if !executor.accepts_multiple_statements() && !query.is_empty() {
                     let mut q = query.into_query(executor.driver());
@@ -125,7 +124,7 @@ pub trait Entity: AsEntity + Expression {
         async move {
             let mut query = DynQuery::with_capacity(256);
             let writer = executor.driver().sql_writer();
-            writer.write_drop_table::<Self>(&mut query, if_exists);
+            writer.write_drop_table(&mut query, Self::table(), if_exists);
             if drop_schema && !Self::table().schema.is_empty() {
                 if !executor.accepts_multiple_statements() {
                     let mut q = query.into_query(executor.driver());
@@ -134,22 +133,23 @@ pub trait Entity: AsEntity + Expression {
                     query = q.into();
                     query.clear();
                 }
-                writer.write_drop_schema::<Self>(&mut query, true);
+                writer.write_drop_schema(&mut query, Self::table(), true);
             }
             executor.execute(query).await.map(|_| ())
         }
     }
 
     /// Insert a single entity.
-    fn insert_one(
+    fn insert_one<E: AsEntity>(
         executor: &mut impl Executor,
-        entity: impl AsEntity,
+        entity: E,
     ) -> impl Future<Output = Result<RowsAffected>> + Send {
-        let mut query = DynQuery::with_capacity(128);
-        executor
-            .driver()
-            .sql_writer()
-            .write_insert(&mut query, [entity], false);
+        let mut query = DynQuery::default();
+        executor.driver().sql_writer().write_insert(
+            &mut query,
+            Sql.insert_into(E::Entity::table())
+                .values([entity.as_entity()]),
+        );
         executor.execute(query)
     }
 
@@ -175,7 +175,7 @@ pub trait Entity: AsEntity + Expression {
         condition: impl Expression,
         limit: Option<u32>,
     ) -> impl Future<Output = Result<Query<Exec::Driver>>> + Send {
-        let builder = QueryBuilder::new()
+        let builder = Sql
             .select(Self::columns())
             .from(Self::table())
             .where_expr(condition)
@@ -218,7 +218,7 @@ pub trait Entity: AsEntity + Expression {
     where
         Self: Sized,
     {
-        let builder = QueryBuilder::new()
+        let builder = Sql
             .select(Self::columns())
             .from(Self::table())
             .where_expr(condition)
@@ -242,7 +242,7 @@ pub trait Entity: AsEntity + Expression {
         executor
             .driver()
             .sql_writer()
-            .write_delete::<Self>(&mut query, condition);
+            .write_delete(&mut query, Self::table(), condition);
         executor.execute(query)
     }
 
@@ -257,17 +257,18 @@ pub trait Entity: AsEntity + Expression {
         for<'s> &'s Self: AsEntity,
     {
         if Self::primary_key_def().is_empty() {
-            let error = anyhow!(
-                "Cannot save an entity without a primary key, it would always result in an insert",
-            );
-            log::error!("{error:#}");
-            return Either::Left(future::ready(Err(error)));
+            return Either::Left(future::ready(
+                Err(anyhow!(
+                    "Cannot save an entity without a primary key, it would always result in an insert",
+                ))
+                .inspect_err(log_error),
+            ));
         }
-        let mut query = DynQuery::with_capacity(512);
-        executor
-            .driver()
-            .sql_writer()
-            .write_insert(&mut query, [self], true);
+        let mut query = DynQuery::default();
+        executor.driver().sql_writer().write_insert(
+            &mut query,
+            Sql.insert_into(Self::table()).values([self]).update(),
+        );
         let sql = query.as_str();
         let context = format!("While saving using the query {}", truncate_long!(sql));
         Either::Right(executor.execute(query).map(|mut v| {
@@ -297,10 +298,12 @@ pub trait Entity: AsEntity + Expression {
         Self: Sized,
     {
         if Self::primary_key_def().is_empty() {
-            let error =
-                anyhow!("Cannot delete an entity without a primary key, it would delete nothing",);
-            log::error!("{error:#}");
-            return Either::Left(future::ready(Err(error)));
+            return Either::Left(future::ready(
+                Err(anyhow!(
+                    "Cannot delete an entity without a primary key, it would delete nothing",
+                ))
+                .inspect_err(log_error),
+            ));
         }
         Either::Right(
             Self::delete_many(executor, self.primary_key_expr()).map(|v| {
@@ -325,26 +328,5 @@ pub trait Entity: AsEntity + Expression {
                 })
             }),
         )
-    }
-}
-
-impl<E: Entity> Dataset for E {
-    /// Indicates whether column names should be fully qualified with schema and table name.
-    ///
-    /// For entities this returns `false` to keep queries concise, for joins it returns `true`.
-    fn qualified_columns() -> bool
-    where
-        Self: Sized,
-    {
-        false
-    }
-
-    /// Writes the table reference into the out string.
-    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        Self::table().write_table_name(writer, context, out);
-    }
-
-    fn table_ref(&self) -> TableRef {
-        Self::table().clone()
     }
 }

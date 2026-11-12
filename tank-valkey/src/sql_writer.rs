@@ -1,9 +1,9 @@
 use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
-use std::fmt::Write;
+use std::{fmt::Write, mem};
 use tank_core::{
-    AsEntity, AsValue, ColumnDef, Context, Dataset, DynQuery, Entity, Expression, Fragment,
-    IsAsterisk, Row, SelectQuery, SqlWriter, TableRef, Value, column_def,
+    AsValue, Case, ColumnDef, Context, Dataset, DynQuery, Expression, Fragment, InsertIntoQuery,
+    IsAsterisk, SelectQuery, SqlWriter, TableRef, Value, column_def, future::Either,
 };
 
 pub struct ValkeySqlWriter {
@@ -72,26 +72,27 @@ impl SqlWriter for ValkeySqlWriter {
         out.push_str(value);
     }
 
-    fn write_create_schema<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
+    fn write_case(&self, _context: &mut Context, _out: &mut DynQuery, _value: &Case) {
+        log::error!("Valkey does not support CASE expressions");
+    }
+
+    fn write_create_schema(&self, out: &mut DynQuery, _table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         Self::prepare_query(out, &mut Default::default());
     }
 
-    fn write_drop_schema<E>(&self, out: &mut DynQuery, _if_exists: bool)
+    fn write_drop_schema(&self, out: &mut DynQuery, _table: &TableRef, _if_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         Self::prepare_query(out, &mut Default::default());
     }
 
-    fn write_create_table<E>(&self, out: &mut DynQuery, _if_not_exists: bool)
+    fn write_create_table(&self, out: &mut DynQuery, _table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         Self::prepare_query(out, &mut Default::default());
     }
@@ -104,16 +105,15 @@ impl SqlWriter for ValkeySqlWriter {
     ) {
     }
 
-    fn write_drop_table<E>(&self, out: &mut DynQuery, _if_exists: bool)
+    fn write_drop_table(&self, out: &mut DynQuery, _table: &TableRef, _if_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
         log::error!("Valkey/Redis does not implement drop table, it must be done separately");
         Self::prepare_query(out, &mut Default::default());
     }
 
-    fn write_select<'a, Data>(&self, out: &mut DynQuery, query: &impl SelectQuery<Data>)
+    fn write_select<'a, Data>(&self, out: &mut DynQuery, query: impl SelectQuery<Data>)
     where
         Self: Sized,
         Data: Dataset + 'a,
@@ -209,32 +209,52 @@ impl SqlWriter for ValkeySqlWriter {
         }
     }
 
-    fn write_insert<It>(&self, out: &mut DynQuery, entities: It, _update: bool)
+    fn write_insert(&self, out: &mut DynQuery, query: impl InsertIntoQuery)
     where
         Self: Sized,
-        It: IntoIterator,
-        It::Item: AsEntity,
     {
-        let table = <It::Item as AsEntity>::Entity::table();
+        let table = query.get_table();
+        let columns = query.get_columns();
+        let Either::Left(rows) = query.get_values() else {
+            log::error!("Valkey/Redis does not support INSERT ... SELECT");
+            return;
+        };
+        if table.primary_key.is_empty() {
+            log::error!(
+                "Valkey/Redis needs the primary key of {} to build the keys, use the `Entity::table()` as target",
+                table.full_name(self.separator())
+            );
+            return;
+        }
         let mut context = Self::make_context(Fragment::SqlInsertInto);
         let prepared = Self::prepare_query(out, &mut context);
-        for entity in entities.into_iter() {
-            let row = entity.as_entity().row();
-            let mut is_pk_condition = IsPKCondition::new(
-                self.keys_with_names,
-                table.full_name(self.separator()).into_owned(),
-                table.primary_key,
-            );
-            entity.as_entity().primary_key_expr().accept_visitor(
-                &mut is_pk_condition,
-                self,
-                &mut context,
-                &mut Default::default(),
-            );
-            let key = is_pk_condition.key;
+        for row in rows {
+            let values = row.collect::<Vec<_>>();
+            let fields = || columns.iter().map(ColumnDef::name).zip(&values);
+            // Same key as `IsPKCondition` builds from a primary key condition.
+            let mut key = table.full_name(self.separator()).into_owned();
+            for column in table.primary_key {
+                let Some((_, value)) = fields().find(|(name, _)| *name == column.name()) else {
+                    log::error!(
+                        "The row has no value for the primary key column `{}`",
+                        column.name()
+                    );
+                    return;
+                };
+                if !key.is_empty() {
+                    key.push_str(self.separator());
+                }
+                if self.keys_with_names {
+                    key.push_str(column.name());
+                    key.push_str(self.separator());
+                }
+                let mut rendered = DynQuery::new(key);
+                self.write_value(&mut context, &mut rendered, value);
+                key = mem::take(rendered.buffer());
+            }
             prepared.commands.push(Cmd::hset_multiple(
                 &key,
-                Row::iter(&row)
+                fields()
                     .filter_map(|(k, v)| {
                         if v.is_scalar() && !v.is_null() {
                             (k, ValueWrap(v.as_value())).into()
@@ -245,7 +265,7 @@ impl SqlWriter for ValkeySqlWriter {
                     .collect::<Vec<_>>()
                     .as_slice(),
             ));
-            for (k, v) in Row::iter(&row).filter_map(|(k, v)| {
+            for (k, v) in fields().filter_map(|(k, v)| {
                 if !v.is_scalar() || v.same_type(&Value::Json(None)) {
                     (k, ValueWrap(v.as_value())).into()
                 } else {
@@ -285,12 +305,11 @@ impl SqlWriter for ValkeySqlWriter {
         }
     }
 
-    fn write_delete<E>(&self, out: &mut DynQuery, condition: impl Expression)
+    fn write_delete(&self, out: &mut DynQuery, from: &dyn Dataset, condition: impl Expression)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table();
+        let table = from.table_ref();
         let mut context = Self::make_context(Fragment::SqlDeleteFrom);
         let mut is_pk_condition = IsPKCondition::new(
             self.keys_with_names,
@@ -314,7 +333,7 @@ impl SqlWriter for ValkeySqlWriter {
         let prepared = Self::prepare_query(out, &mut context);
         let key = is_pk_condition.key;
         prepared.commands.push(Cmd::del(&key));
-        for column in E::columns().iter().filter(|c| !c.value.is_scalar()) {
+        for column in table.columns.iter().filter(|c| !c.value.is_scalar()) {
             let child_key = format!("{key}{}{}", self.separator(), column.name());
             prepared.commands.push(Cmd::del(child_key));
         }

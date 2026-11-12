@@ -10,25 +10,17 @@ pub struct HighScaleDecimal {
 }
 
 pub async fn decimals(executor: &mut impl Executor) -> Result<()> {
-    HighScaleDecimal::drop_table(executor, true, false)
-        .await
-        .expect("Failed to drop the HighScaleDecimal table");
-    HighScaleDecimal::create_table(executor, true, false)
-        .await
-        .expect("Failed to create the HighScaleDecimal table");
+    HighScaleDecimal::drop_table(executor, true, false).await?;
+    HighScaleDecimal::create_table(executor, true, false).await?;
 
     let entity = HighScaleDecimal {
         id: 1,
         value: FixedDecimal::from("1.23".parse::<rust_decimal::Decimal>().unwrap()),
     };
-    entity
-        .save(executor)
-        .await
-        .expect("Failed to save the high-scale decimal");
+    entity.save(executor).await?;
 
     let loaded = HighScaleDecimal::find_one(executor, entity.primary_key_expr())
-        .await
-        .expect("Failed to query the high-scale decimal")
+        .await?
         .expect("The inserted high-scale decimal should be found");
     assert_eq!(
         loaded, entity,

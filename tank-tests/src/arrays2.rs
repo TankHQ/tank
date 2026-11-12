@@ -3,8 +3,8 @@
 #![allow(unused_variables)]
 use std::{pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, Interval, Query, QueryBuilder, QueryResult, RawQuery,
-    Result, SqlWriter,
+    Driver, DynQuery, Entity, Executor, Interval, Query, QueryResult, RawQuery, Result, Sql,
+    SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -28,8 +28,8 @@ pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
     {
         let mut query = DynQuery::default();
         let writer = executor.driver().sql_writer();
-        writer.write_drop_table::<Container>(&mut query, true);
-        writer.write_create_table::<Container>(&mut query, true);
+        writer.write_drop_table(&mut query, Container::table(), true);
+        writer.write_create_table(&mut query, Container::table(), true);
         let value = Container {
             first: [[
                 Interval::from_years(500),
@@ -41,11 +41,13 @@ pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
                 [Uuid::from_str("9d7f0f5b-19d6-4298-a332-214fc85e2652").unwrap()],
             ]],
         };
-        writer.write_insert(&mut query, &[value], false);
+        writer.write_insert(
+            &mut query,
+            Sql.insert_into(Container::table()).values([value].iter()),
+        );
         writer.write_select(
             &mut query,
-            &QueryBuilder::new()
-                .select(Container::columns())
+            Sql.select(Container::columns())
                 .from(Container::table())
                 .where_expr(true)
                 .limit(Some(1)),
@@ -53,16 +55,14 @@ pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
         let rows = executor
             .run(query)
             .try_collect::<Vec<_>>()
-            .await
-            .unwrap()
+            .await?
             .into_iter()
             .filter_map(|v| match v {
                 QueryResult::Row(v) => Some(v),
                 QueryResult::Affected(..) => None,
             })
             .map(Container::from_row)
-            .collect::<tank::Result<Vec<_>>>()
-            .expect("Coult not execute the query");
+            .collect::<tank::Result<Vec<_>>>()?;
         assert_eq!(
             rows,
             [Container {

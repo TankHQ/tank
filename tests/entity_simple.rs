@@ -3,8 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::{borrow::Cow, sync::Mutex};
     use tank::{
-        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, QueryBuilder,
-        SqlWriter, TableRef, Value, expr,
+        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, Sql, SqlWriter,
+        TableRef, Value, expr,
     };
 
     #[derive(Entity)]
@@ -84,7 +84,7 @@ mod tests {
     #[test]
     fn simple_entity_sql() {
         let mut query = DynQuery::default();
-        WRITER.write_create_table::<SomeSimpleEntity>(&mut query, false);
+        WRITER.write_create_table(&mut query, SomeSimpleEntity::table(), false);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -99,13 +99,12 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_drop_table::<SomeSimpleEntity>(&mut query, true);
+        WRITER.write_drop_table(&mut query, SomeSimpleEntity::table(), true);
         assert_eq!(query.as_str(), r#"DROP TABLE IF EXISTS "simple_entity";"#);
         let mut query = DynQuery::default();
         WRITER.write_select(
             &mut query,
-            &QueryBuilder::new()
-                .select(SomeSimpleEntity::columns())
+            Sql.select(SomeSimpleEntity::columns())
                 .from(SomeSimpleEntity::table())
                 .where_expr(expr!(SomeSimpleEntity::a > 100))
                 .limit(Some(1000)),
@@ -121,7 +120,12 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_insert(&mut query, [&SomeSimpleEntity::make_some()], true);
+        WRITER.write_insert(
+            &mut query,
+            Sql.insert_into(SomeSimpleEntity::table())
+                .values(&[SomeSimpleEntity::make_some()])
+                .update(),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -131,7 +135,11 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
-        WRITER.write_delete::<SomeSimpleEntity>(&mut query, expr!(SomeSimpleEntity::b != "hello"));
+        WRITER.write_delete(
+            &mut query,
+            SomeSimpleEntity::table(),
+            expr!(SomeSimpleEntity::b != "hello"),
+        );
         assert_eq!(
             query.as_str(),
             indoc! {r#"

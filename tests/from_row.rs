@@ -202,18 +202,45 @@ mod tests {
     }
 
     #[test]
+    fn row_values_borrow_when_possible() {
+        #[derive(Entity)]
+        struct Mixed {
+            name: String,
+            memo: Option<String>,
+            direct: Text,
+        }
+
+        let entity = Mixed {
+            name: "name".into(),
+            memo: Some("memo".into()),
+            direct: Text("direct".into()),
+        };
+        let values = entity.row_values().collect::<Vec<_>>();
+        assert!(matches!(
+            &values[0],
+            Value::Varchar(Some(Cow::Borrowed("name")))
+        ));
+        assert!(matches!(
+            &values[1],
+            Value::Varchar(Some(Cow::Borrowed("memo")))
+        ));
+        // `&Text` does not implement `AsValue`: the field is cloned.
+        assert!(matches!(&values[2], Value::Varchar(Some(Cow::Owned(v))) if v == "direct"));
+    }
+
+    #[test]
     fn retained_row_owns_payloads() {
         #[derive(Debug, Entity)]
         struct Retained {
             text: ValueOwned,
         }
 
-        let values = Retained {
+        let row = Retained {
             text: Value::Varchar(Some(Cow::Borrowed("borrowed payload"))),
         }
-        .row_values();
+        .row();
         assert!(matches!(
-            values.get(0),
+            row.values.get(0),
             Some(Value::Varchar(Some(Cow::Owned(text)))) if text == "borrowed payload"
         ));
     }
