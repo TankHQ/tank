@@ -71,12 +71,11 @@ impl DuckDBColumn {
 
     /// Decodes the common scalar types inline, NULLs included, as typed values.
     #[inline(always)]
-    pub(crate) unsafe fn value<'a>(&self, row: usize) -> Option<Cow<'a, Value<'a>>> {
+    pub(crate) fn extract<'a>(&self, row: usize) -> Option<Cow<'a, Value<'a>>> {
         let data = self.data;
         let valid = self.is_valid(row);
         unsafe {
             Some(Cow::Owned(match self.id {
-                DUCKDB_TYPE_DUCKDB_TYPE_SQLNULL => Value::Null,
                 DUCKDB_TYPE_DUCKDB_TYPE_BOOLEAN => {
                     Value::Boolean(valid.then(|| *(data as *const bool).add(row)))
                 }
@@ -127,13 +126,13 @@ impl DuckDBColumn {
                         })
                         .flatten(),
                 ),
-                _ => self.decode(row).unwrap_or(Value::Null),
+                _ => self.extract_complex(row).unwrap_or(Value::Null),
             }))
         }
     }
 
     #[inline(never)]
-    unsafe fn decode<'a>(&self, row: usize) -> Option<Value<'a>> {
+    fn extract_complex<'a>(&self, row: usize) -> Option<Value<'a>> {
         unsafe {
             let data = self.data;
             if !self.is_valid(row)
@@ -255,7 +254,7 @@ impl DuckDBColumn {
                     ctor(
                         Some(
                             (begin..begin + len)
-                                .map(|i| col.value(i).map(Cow::into_owned))
+                                .map(|i| col.extract(i).map(Cow::into_owned))
                                 .collect::<Option<Box<[_]>>>()?,
                         ),
                         t,
@@ -273,7 +272,10 @@ impl DuckDBColumn {
                                 .enumerate()
                                 .map(|(i, (name, _))| {
                                     let child = duckdb_struct_vector_get_child(self.vector, i as _);
-                                    Some((name.clone(), Self::new(child).value(row)?.into_owned()))
+                                    Some((
+                                        name.clone(),
+                                        Self::new(child).extract(row)?.into_owned(),
+                                    ))
                                 })
                                 .collect::<Option<Box<[_]>>>()?,
                         ),
@@ -293,8 +295,8 @@ impl DuckDBColumn {
                             (e.offset as usize..(e.offset + e.length) as usize)
                                 .map(|i| {
                                     Some((
-                                        keys.value(i)?.into_owned(),
-                                        values.value(i)?.into_owned(),
+                                        keys.extract(i)?.into_owned(),
+                                        values.extract(i)?.into_owned(),
                                     ))
                                 })
                                 .collect::<Option<HashMap<_, _>>>()?,

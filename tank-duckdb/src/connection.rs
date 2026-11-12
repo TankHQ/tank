@@ -185,7 +185,8 @@ impl Executor for DuckDBConnection {
             for column in columns {
                 ensure_rc!(
                     duckdb_appender_add_column(*appender, as_c_string(column.name()).as_ptr()),
-                    appender_error(*appender)
+                    appender_error(*appender),
+                    format!("While adding column ${} to the appender", column.name()),
                 );
             }
             let mut rows_affected = 0;
