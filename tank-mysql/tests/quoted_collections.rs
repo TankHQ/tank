@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use tank_core::{
-        CollectionType, Context, Driver, DynQuery, Fragment, MapType, SqlWriter, Value,
+    use tank::{
+        CollectionType, Context, Driver, DynQuery, Fragment, MapType, SqlValueWriter, Value,
     };
     use tank_mysql::MySQLDriver;
 

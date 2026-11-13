@@ -11,7 +11,7 @@ use std::{
     sync::Arc,
 };
 use tank_core::{
-    AsValue, Context, DynQuery, Error, Fragment, Prepared, Result, SqlWriter, Value,
+    AsValue, Context, DynQuery, Error, Fragment, Prepared, Result, SqlValueWriter, Value,
     error_message_from_ptr, log_error, truncate_long,
 };
 
@@ -345,7 +345,8 @@ impl Prepared for SQLitePrepared {
         let index = index as c_int + 1;
         let value = v.as_value();
         let mut scratch = DynQuery::default();
-        unsafe { self.bind_value(index, &value, &mut scratch) }.inspect_err(log_error)?;
+        self.bind_value(index, &value, &mut scratch)
+            .inspect_err(log_error)?;
         self.index = index as u64;
         Ok(self)
     }

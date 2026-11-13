@@ -18,7 +18,7 @@ use std::{
 };
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, Result, Row, RowsAffected, SqlWriter, as_c_string, describe_path,
+    QueryResult, Result, Row, RowsAffected, SqlCoreWriter, as_c_string, describe_path,
     error_message_from_ptr, log_error, log_warn, stream::Stream, truncate_long,
 };
 

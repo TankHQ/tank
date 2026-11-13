@@ -1,3 +1,4 @@
+use self::Value::*;
 use crate::{
     AsValue, DynQuery, Expression, GenericSqlWriter, Result, TableRef, interval::Interval,
 };
@@ -473,7 +474,6 @@ fn hash_map_value<'a, H: std::hash::Hasher>(
 
 impl<'a> Hash for Value<'a> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        use Value::*;
         discriminant(self).hash(state);
         match self {
             Null => {}

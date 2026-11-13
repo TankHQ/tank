@@ -4,7 +4,8 @@ use std::{
 };
 use tank_core::{
     ColumnDef, Context, DynQuery, EitherIterator, Error, Expression, Fragment, GenericSqlWriter,
-    Interval, PrimaryKeyType, SqlWriter, Value, separated_by, write_escaped,
+    Interval, PrimaryKeyType, SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter,
+    SqlValueWriter, SqlWriter, Value, separated_by, write_escaped,
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
 
@@ -46,7 +47,7 @@ impl MySQLSqlWriter {
     }
 }
 
-impl SqlWriter for MySQLSqlWriter {
+impl SqlCoreWriter for MySQLSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -151,7 +152,9 @@ impl SqlWriter for MySQLSqlWriter {
             _ => log::error!("Unexpected tank::Value, MySQL does not support {value:?}"),
         };
     }
+}
 
+impl SqlValueWriter for MySQLSqlWriter {
     fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
         if value.is_infinite() || value.is_nan() {
             if value.is_infinite() {
@@ -312,11 +315,15 @@ impl SqlWriter for MySQLSqlWriter {
             Self::quote_json_literal(out, start);
         }
     }
+}
 
+impl SqlExpressionWriter for MySQLSqlWriter {
     fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
         out.push_str("CAST(UNIX_TIMESTAMP(NOW(3)) * 1000 AS UNSIGNED)");
     }
+}
 
+impl SqlFragmentWriter for MySQLSqlWriter {
     fn write_column_comment_inline(
         &self,
         mut context: &mut Context,
@@ -327,14 +334,6 @@ impl SqlWriter for MySQLSqlWriter {
     {
         out.push_str(" COMMENT ");
         self.write_string(&mut context, out, column.comment);
-    }
-
-    fn write_column_comment(
-        &self,
-        _context: &mut Context,
-        _out: &mut DynQuery,
-        _column: &ColumnDef,
-    ) {
     }
 
     fn write_insert_update_fragment<'a>(
@@ -373,5 +372,15 @@ impl SqlWriter for MySQLSqlWriter {
             },
             ",\n",
         );
+    }
+}
+
+impl SqlWriter for MySQLSqlWriter {
+    fn write_column_comment(
+        &self,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        _column: &ColumnDef,
+    ) {
     }
 }

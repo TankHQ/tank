@@ -1,8 +1,17 @@
 #[cfg(test)]
 mod tests {
-    use std::{path::Path, pin::pin, sync::Mutex};
-    use tank_core::{
-        Connection, ConnectionPool, Driver, Entity, Executor, QueryResult, Row, Value,
+    use rust_decimal::Decimal;
+    use std::{
+        borrow::Cow,
+        collections::{BTreeMap, HashMap},
+        path::Path,
+        pin::pin,
+        sync::Mutex,
+    };
+    use tank::{
+        CollectionType, ColumnDef, ColumnRef, Connection, ConnectionPool, Context, Driver,
+        DynQuery, Entity, Executor, Fragment, GenericSqlWriter, MapType, QueryResult, Row,
+        SqlCoreWriter, SqlValueWriter, SqlWriter, TableRef, Value,
         stream::{StreamExt, TryStreamExt},
     };
     use tank_sqlite::{SQLiteConnection, SQLiteDriver};
@@ -136,7 +145,7 @@ mod tests {
         );
         assert_eq!(rows[0].labels(), &["value"]);
         assert!(
-            matches!(rows[0].value(0), Some(std::borrow::Cow::Borrowed(Value::Varchar(Some(text)))) if text == "owned; text")
+            matches!(rows[0].value(0), Some(Cow::Borrowed(Value::Varchar(Some(text)))) if text == "owned; text")
         );
         let affected = connection
             .execute(
@@ -258,13 +267,11 @@ mod tests {
         );
     }
 
-    fn sqlite_writer() -> impl tank_core::SqlWriter {
-        use tank_core::Driver;
-        tank_sqlite::SQLiteDriver::new().sql_writer()
+    fn sqlite_writer() -> impl SqlWriter {
+        SQLiteDriver::new().sql_writer()
     }
 
-    fn sqlite_render(value: tank_core::Value<'_>) -> String {
-        use tank_core::{Context, DynQuery, Fragment, SqlWriter};
+    fn sqlite_render(value: Value<'_>) -> String {
         let mut out = DynQuery::default();
         sqlite_writer().write_value(
             &mut Context::new(Fragment::SqlSelect, false),
@@ -276,7 +283,6 @@ mod tests {
 
     #[test]
     fn sqlite_special_floats() {
-        use tank_core::Value;
         assert_eq!(
             sqlite_render(Value::Float32(Some(f32::INFINITY))),
             "1.0e+10000"
@@ -300,8 +306,6 @@ mod tests {
 
     #[test]
     fn sqlite_unsupported_values() {
-        use std::collections::HashMap;
-        use tank_core::{CollectionType, Context, DynQuery, Fragment, MapType, SqlWriter, Value};
         let writer = sqlite_writer();
         for value in [
             Value::Unknown(Some("x".into())),
@@ -332,16 +336,12 @@ mod tests {
 
     #[test]
     fn sqlite_column_affinities() {
-        use tank_core::{Context, DynQuery, Fragment, SqlWriter, Value};
         let writer = sqlite_writer();
         let cases = [
             (Value::Boolean(None), "INTEGER"),
             (Value::Int64(None), "INTEGER"),
             (Value::Float32(None), "REAL"),
-            (
-                Value::Decimal(Some(rust_decimal::Decimal::new(1, 0)), 10, 2),
-                "REAL(10,2)",
-            ),
+            (Value::Decimal(Some(Decimal::new(1, 0)), 10, 2), "REAL(10,2)"),
             (Value::Char(None), "TEXT"),
             (Value::Varchar(None), "TEXT"),
             (Value::Blob(None), "BLOB"),
@@ -371,8 +371,6 @@ mod tests {
 
     #[test]
     fn sqlite_column_type_override() {
-        use std::collections::BTreeMap;
-        use tank_core::{ColumnDef, Context, DynQuery, Fragment, SqlWriter};
         let writer = sqlite_writer();
         let column = ColumnDef::default();
         let mut types = BTreeMap::new();
@@ -400,7 +398,6 @@ mod tests {
 
     #[test]
     fn sqlite_blob_literals() {
-        use tank_core::Value;
         assert_eq!(
             sqlite_render(Value::Blob(Some(vec![0xDE, 0xAD].into()))),
             "X'DEAD'"
@@ -410,7 +407,6 @@ mod tests {
 
     #[test]
     fn sqlite_identifier_escaping() {
-        use tank_core::{ColumnRef, Context, DynQuery, Fragment, SqlWriter, TableRef};
         let writer = sqlite_writer();
         let table = TableRef {
             name: "the\"table".into(),
@@ -450,7 +446,6 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_prepared_rejection() {
-        use tank_core::Executor;
         let mut first = SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
             .unwrap();
@@ -468,7 +463,6 @@ mod tests {
 
     #[test]
     fn sqlite_generic_values() {
-        use tank_core::{Context, DynQuery, Fragment, GenericSqlWriter, SqlWriter, Value};
         let writer = sqlite_writer();
         let generic = GenericSqlWriter::new();
         for value in [Value::Int32(Some(7)), Value::Varchar(Some("a".into()))] {

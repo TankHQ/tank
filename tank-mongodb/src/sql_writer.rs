@@ -17,8 +17,9 @@ use std::{borrow::Cow, collections::HashMap, f64, mem, ops::Deref, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, Case, ColumnDef, ColumnRef, Context, Dataset, DynQuery,
     Expression, FindOrder, Fragment, InsertIntoQuery, Interval, IsAggregateFunction, IsAsterisk,
-    IsConstant, Operand, Order, Result, Row, RowLabels, RowOwned, SelectQuery, SqlWriter, TableRef,
-    UnaryOp, UnaryOpType, Value, anyhow, future::Either, truncate_long,
+    IsConstant, Operand, Order, Result, Row, RowLabels, RowOwned, SelectQuery, SqlCoreWriter,
+    SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, UnaryOp,
+    UnaryOpType, Value, anyhow, future::Either, truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -208,7 +209,7 @@ impl MongoDBSqlWriter {
     }
 }
 
-impl SqlWriter for MongoDBSqlWriter {
+impl SqlCoreWriter for MongoDBSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -239,7 +240,9 @@ impl SqlWriter for MongoDBSqlWriter {
     fn write_column_ref(&self, context: &mut Context, out: &mut DynQuery, value: &ColumnRef) {
         self.write_identifier(context, out, &value.name, false);
     }
+}
 
+impl SqlValueWriter for MongoDBSqlWriter {
     fn write_value(&self, _context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
@@ -541,7 +544,9 @@ impl SqlWriter for MongoDBSqlWriter {
         }
         *target = Bson::Document(doc);
     }
+}
 
+impl SqlExpressionWriter for MongoDBSqlWriter {
     fn write_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
@@ -835,7 +840,11 @@ impl SqlWriter for MongoDBSqlWriter {
         };
         document.insert(function, arg);
     }
+}
 
+impl SqlFragmentWriter for MongoDBSqlWriter {}
+
+impl SqlWriter for MongoDBSqlWriter {
     fn write_create_schema(&self, out: &mut DynQuery, table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,

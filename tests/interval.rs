@@ -1,15 +1,12 @@
 #[cfg(test)]
 mod tests {
     use std::{collections::HashSet, time::Duration};
-    use tank::{AsValue, Context, DynQuery, Fragment, Interval, IntervalUnit, SqlWriter, Value};
+    use tank::{
+        AsValue, Context, DynQuery, Fragment, GenericSqlWriter, Interval, IntervalUnit,
+        SqlValueWriter, Value,
+    };
 
-    struct Writer;
-    impl SqlWriter for Writer {
-        fn as_dyn(&self) -> &dyn SqlWriter {
-            self
-        }
-    }
-    const WRITER: Writer = Writer {};
+    const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     macro_rules! test_interval {
         ($interval:expr, $expected:literal) => {{

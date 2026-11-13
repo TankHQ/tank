@@ -5,8 +5,8 @@ use std::fmt::Write;
 use std::{collections::BTreeMap, iter};
 use tank_core::{
     ColumnDef, Context, Dataset, DynQuery, Expression, Fragment, GenericSqlWriter, InsertIntoQuery,
-    Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, TableRef, Value, future::Either,
-    separated_by,
+    Interval, IsTrue, PrimaryKeyType, Result, SqlCoreWriter, SqlExpressionWriter,
+    SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value, future::Either, separated_by,
 };
 use uuid::Uuid;
 
@@ -16,7 +16,7 @@ use uuid::Uuid;
 #[derive(Default)]
 pub struct ScyllaDBSqlWriter {}
 
-impl SqlWriter for ScyllaDBSqlWriter {
+impl SqlCoreWriter for ScyllaDBSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -28,10 +28,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
-        if let Some(t) = types
-            .iter()
-            .find_map(|(k, v)| if *k == "scylladb" { Some(v) } else { None })
-        {
+        if let Some(t) = types.get("scylladb") {
             out.push_str(t);
         }
     }
@@ -89,7 +86,9 @@ impl SqlWriter for ScyllaDBSqlWriter {
             ),
         };
     }
+}
 
+impl SqlValueWriter for ScyllaDBSqlWriter {
     fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
         if value.is_infinite() {
             if value.is_sign_negative() {
@@ -217,11 +216,80 @@ impl SqlWriter for ScyllaDBSqlWriter {
         );
         out.push(']');
     }
+}
 
+impl SqlExpressionWriter for ScyllaDBSqlWriter {
     fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
         out.push_str("toUnixTimestamp(currentTimestamp())");
     }
+}
 
+impl SqlFragmentWriter for ScyllaDBSqlWriter {
+    fn write_create_table_column_fragment(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        column: &ColumnDef,
+    ) where
+        Self: Sized,
+    {
+        self.write_identifier(context, out, &column.name(), true);
+        out.push(' ');
+        let len = out.len();
+        self.write_column_overridden_type(context, out, column, &column.column_type);
+        let didnt_write_type = out.len() == len;
+        if didnt_write_type {
+            SqlCoreWriter::write_column_type(self, context, out, &column.value);
+        }
+        if column.primary_key == PrimaryKeyType::PrimaryKey {
+            // Composite primary key will be printed elsewhere
+            out.push_str(" PRIMARY KEY");
+        }
+    }
+
+    fn write_create_table_primary_key_fragment<'a, It>(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        primary_key: It,
+    ) where
+        Self: Sized,
+        It: IntoIterator<Item = &'a ColumnDef>,
+        It::IntoIter: Clone,
+    {
+        let primary_key = primary_key.into_iter();
+        let mut parentheses_closed = false;
+        out.push_str(",\nPRIMARY KEY (");
+        let has_clustering = primary_key
+            .clone()
+            .find(|v: &&'a ColumnDef| v.clustering_key)
+            .is_some();
+        if has_clustering {
+            out.push('(');
+        }
+        let mut primary_key = primary_key.into_iter().peekable();
+        while let Some(col) = primary_key.next() {
+            self.write_identifier(
+                &mut context
+                    .switch_fragment(Fragment::SqlCreateTablePrimaryKey)
+                    .current,
+                out,
+                col.name(),
+                true,
+            );
+            if let Some(next) = primary_key.peek() {
+                if next.clustering_key && !parentheses_closed {
+                    out.push(')');
+                    parentheses_closed = true;
+                }
+                out.push(',');
+            }
+        }
+        out.push(')');
+    }
+}
+
+impl SqlWriter for ScyllaDBSqlWriter {
     fn write_transaction_begin(&self, out: &mut DynQuery) {
         if !out.is_empty() {
             out.push('\n');
@@ -276,69 +344,6 @@ impl SqlWriter for ScyllaDBSqlWriter {
         }
         self.write_identifier(&mut context, out, &table.schema, true);
         out.push(';');
-    }
-
-    fn write_create_table_column_fragment(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        column: &ColumnDef,
-    ) where
-        Self: Sized,
-    {
-        self.write_identifier(context, out, &column.name(), true);
-        out.push(' ');
-        let len = out.len();
-        self.write_column_overridden_type(context, out, column, &column.column_type);
-        let didnt_write_type = out.len() == len;
-        if didnt_write_type {
-            SqlWriter::write_column_type(self, context, out, &column.value);
-        }
-        if column.primary_key == PrimaryKeyType::PrimaryKey {
-            // Composite primary key will be printed elsewhere
-            out.push_str(" PRIMARY KEY");
-        }
-    }
-
-    fn write_create_table_primary_key_fragment<'a, It>(
-        &self,
-        context: &mut Context,
-        out: &mut DynQuery,
-        primary_key: It,
-    ) where
-        Self: Sized,
-        It: IntoIterator<Item = &'a ColumnDef>,
-        It::IntoIter: Clone,
-    {
-        let primary_key = primary_key.into_iter();
-        let mut parentheses_closed = false;
-        out.push_str(",\nPRIMARY KEY (");
-        let has_clustering = primary_key
-            .clone()
-            .find(|v: &&'a ColumnDef| v.clustering_key)
-            .is_some();
-        if has_clustering {
-            out.push('(');
-        }
-        let mut primary_key = primary_key.into_iter().peekable();
-        while let Some(col) = primary_key.next() {
-            self.write_identifier(
-                &mut context
-                    .switch_fragment(Fragment::SqlCreateTablePrimaryKey)
-                    .current,
-                out,
-                col.name(),
-                true,
-            );
-            if let Some(next) = primary_key.peek() {
-                if next.clustering_key && !parentheses_closed {
-                    out.push(')');
-                    parentheses_closed = true;
-                }
-                out.push(',');
-            }
-        }
-        out.push(')');
     }
 
     fn write_column_comment(

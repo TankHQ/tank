@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use tank_core::{
-    BinaryOpType, ColumnDef, Context, DynQuery, GenericSqlWriter, Interval, SqlWriter, Value,
-    separated_by,
+    BinaryOpType, ColumnDef, Context, DynQuery, GenericSqlWriter, Interval, SqlCoreWriter,
+    SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, Value, separated_by,
 };
 
 /// SQL writer for the DuckDB dialect.
@@ -10,7 +10,7 @@ use tank_core::{
 #[derive(Default)]
 pub struct DuckDBSqlWriter {}
 
-impl SqlWriter for DuckDBSqlWriter {
+impl SqlCoreWriter for DuckDBSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -26,7 +26,9 @@ impl SqlWriter for DuckDBSqlWriter {
             out.push_str(t);
         }
     }
+}
 
+impl SqlValueWriter for DuckDBSqlWriter {
     fn value_interval_units(&self) -> &[(&str, i128)] {
         static UNITS: &[(&str, i128)] = &[
             ("DAY", Interval::NANOS_IN_DAY),
@@ -57,7 +59,9 @@ impl SqlWriter for DuckDBSqlWriter {
         );
         out.push('}');
     }
+}
 
+impl SqlExpressionWriter for DuckDBSqlWriter {
     fn expression_binary_op_fragments(
         &self,
         context: &Context,
@@ -73,3 +77,6 @@ impl SqlWriter for DuckDBSqlWriter {
         out.push_str("epoch_ms(current_timestamp)");
     }
 }
+
+impl SqlFragmentWriter for DuckDBSqlWriter {}
+impl SqlWriter for DuckDBSqlWriter {}

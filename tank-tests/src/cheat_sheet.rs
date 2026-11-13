@@ -132,8 +132,6 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     }
 
     {
-        use tank::{Entity, expr};
-
         let uid = entity2.unit_id;
         EntityExample::delete_many(&mut connection, expr!(EntityExample::unit_id == #uid)).await?;
 

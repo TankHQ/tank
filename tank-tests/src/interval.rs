@@ -4,7 +4,7 @@ use crate::silent_logs;
 use std::{pin::pin, sync::LazyLock, time::Duration};
 use tank::{
     Context, Driver, DynQuery, Entity, Executor, Fragment, Interval, QueryResult, RawQuery, Result,
-    RowsAffected, Sql, SqlWriter, Value, expr,
+    RowsAffected, Sql, SqlValueWriter, SqlWriter, Value, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;

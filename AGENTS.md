@@ -22,7 +22,9 @@ Read before modifying `tank-core`, `tank-macros`, or database drivers.
 - Avoid panics in production code. Return errors for recoverable failures, including invalid input, decoding, I/O, and startup. Use `unwrap` or `expect` only when the call site guarantees success.
 - Keep public traits (`Driver`, `Executor`, `Row`, `Entity`, `AsValue`) free of driver-specific, macro-internal, or optimization helpers.
 - Put type-specific helpers and constants in the relevant `impl`, not at module scope, even when private. Only shared, type-independent functions belong in utility modules such as `util.rs`.
-- Import types, traits, functions, and macros with top-level `use`, qualifying inline only to disambiguate collisions (e.g. `wtx::Error`). Test imports belong at file or enclosing `mod tests` scope, never inside tests. Import re-exports from `tank`, not `tank_core`, and do not mix both.
+- Place `use` declarations at the top of the file or enclosing mod (like `mod tests`), not inside functions or blocks, unless it appears in a doc example or is only used within a #[cfg(...)]-gated scope.
+- Import from `tank` re-exports rather than `tank_core` (never mixing both), and qualify paths inline only to resolve name collisions (e.g. `wtx::Error` or `tokio_postgres::Row`).
+
 - Never call `.min(...)` or `.max(...)` methods. Use the symmetric functions `std::cmp::{min, max}` (`min(a, b)`, `max(a, b)`).
 - Prefer iterator/stream combinators and direct data flow over verbose state machines or extra helper types.
 - Comments explain non-obvious invariants, ABI/LLVM constraints, or protocol subtleties, not obvious behavior. Keep them to 1-3 lines.

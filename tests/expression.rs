@@ -5,20 +5,13 @@ mod tests {
     use std::{borrow::Cow, sync::Arc, time::Duration};
     use tank::{
         BinaryOp, BinaryOpType, Case, ColumnRef, Context, DefaultValueType, DynQuery, Entity,
-        Expression, ExpressionVisitor, FixedDecimal, Fragment, Interval, OpPrecedence, Operand,
-        Order, Ordered, SqlWriter, UnaryOp, UnaryOpType, Value, expr,
+        Expression, ExpressionVisitor, FixedDecimal, Fragment, GenericSqlWriter, Interval,
+        OpPrecedence, Operand, Order, Ordered, SqlWriter, UnaryOp, UnaryOpType, Value, expr,
     };
     use time::{Date, Month, PrimitiveDateTime, Time, UtcDateTime};
     use uuid::Uuid;
 
-    struct Writer;
-    impl SqlWriter for Writer {
-        fn as_dyn(&self) -> &dyn SqlWriter {
-            self
-        }
-    }
-
-    const WRITER: Writer = Writer {};
+    const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
     fn simple_expressions() {

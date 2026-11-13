@@ -12,7 +12,7 @@ use std::{
 use tank_core::{
     AsEntity, AsQuery, Connection, Context, Driver, DynQuery, Entity, Error, ErrorContext,
     Executor, Fragment, Prepared, Query, QueryResult, Result, RowOwned, RowsAffected, Sql,
-    SqlWriter, describe_path, error_message_from_ptr, future::Either, truncate_long,
+    SqlCoreWriter, SqlWriter, describe_path, error_message_from_ptr, future::Either, truncate_long,
 };
 
 /// Wrapper for a SQLite `sqlite3` connection pointer used by the SQLite driver.

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use tank_core::{AsValue, Context, DynQuery, Fragment, Interval, SqlWriter, describe_url};
+    use tank::{AsValue, Context, DynQuery, Fragment, Interval, SqlValueWriter, describe_url};
     use tank_mysql::{MySQLDriver, MySQLSqlWriter};
     use url::Url;
 

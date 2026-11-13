@@ -14,11 +14,11 @@ mod tests {
     use tank::{
         CollectionType, Context, Dataset, DynQuery, EitherIterator, Entity, Expression,
         FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType, QueryResult,
-        References, Row, RowLabels, RowOwned, RowsAffected, Sql, SqlWriter, StructType,
-        TRUNCATE_LONG_LIMIT, TableRef, Value, as_c_string, column_def, consume_while,
-        decimal_from_scaled, error_message_from_ptr, extract_number, matches_path, month_to_number,
-        number_to_month, quote_btree_map, quote_cow, quote_option, separated_by, truncate_bound,
-        truncate_long, value_to_json, write_escaped,
+        References, Row, RowLabels, RowOwned, RowsAffected, SelectQuery, Sql, SqlExpressionWriter,
+        SqlValueWriter, SqlWriter, StructType, TRUNCATE_LONG_LIMIT, TableRef, Value, as_c_string,
+        column_def, consume_while, decimal_from_scaled, error_message_from_ptr, extract_number,
+        matches_path, month_to_number, number_to_month, quote_btree_map, quote_cow, quote_option,
+        separated_by, truncate_bound, truncate_long, value_to_json, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
@@ -467,7 +467,6 @@ mod tests {
 
     #[test]
     fn sql_writer_select_without_from() {
-        use tank::SelectQuery;
         struct NoFrom;
         impl SelectQuery<TableRef> for NoFrom {
             fn get_select(&self) -> impl Iterator<Item = impl Expression> + Clone {

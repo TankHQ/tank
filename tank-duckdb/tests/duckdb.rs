@@ -13,7 +13,7 @@ mod tests {
     use tank::{
         BinaryOp, BinaryOpType, ColumnDef, Connection, ConnectionPool, Context, Driver, DynQuery,
         Executor, Expression, Fragment, GenericSqlWriter, Interval, MapType, Operand, PoolConfig,
-        Prepared, Query, Row, SqlWriter, Value,
+        Prepared, Query, Row, SqlCoreWriter, SqlExpressionWriter, SqlValueWriter, SqlWriter, Value,
         stream::{StreamExt, TryStreamExt},
     };
     use tank_duckdb::{DuckDBConnection, DuckDBDriver};

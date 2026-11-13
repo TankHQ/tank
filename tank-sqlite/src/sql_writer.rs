@@ -4,8 +4,9 @@ use std::{
     mem,
 };
 use tank_core::{
-    ColumnDef, ColumnRef, Context, DynQuery, Expression, GenericSqlWriter, SqlWriter, TableRef,
-    Value, write_escaped,
+    ColumnDef, ColumnRef, Context, DynQuery, Expression, GenericSqlWriter, SqlCoreWriter,
+    SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value,
+    write_escaped,
 };
 
 /// SQL writer for SQLite dialect.
@@ -13,7 +14,7 @@ use tank_core::{
 /// Emits SQLite specific SQL syntax to mantain compatibility with tank operations.
 pub struct SQLiteSqlWriter {}
 
-impl SqlWriter for SQLiteSqlWriter {
+impl SqlCoreWriter for SQLiteSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -25,10 +26,7 @@ impl SqlWriter for SQLiteSqlWriter {
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
-        if let Some(t) = types
-            .iter()
-            .find_map(|(k, v)| if *k == "sqlite" { Some(v) } else { None })
-        {
+        if let Some(t) = types.get("sqlite") {
             out.push_str(t);
         }
     }
@@ -107,7 +105,9 @@ impl SqlWriter for SQLiteSqlWriter {
             _ => log::error!("Unexpected tank::Value, SQLite does not support {value:?}"),
         };
     }
+}
 
+impl SqlValueWriter for SQLiteSqlWriter {
     fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
         if value.is_infinite() {
             if value.is_sign_negative() {
@@ -151,10 +151,6 @@ impl SqlWriter for SQLiteSqlWriter {
         out.push('\'');
     }
 
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
-        out.push_str("(unixepoch('subsec') * 1000)");
-    }
-
     fn write_list(
         &self,
         _context: &mut Context,
@@ -174,7 +170,17 @@ impl SqlWriter for SQLiteSqlWriter {
     ) {
         log::error!("SQLite does not support maps");
     }
+}
 
+impl SqlExpressionWriter for SQLiteSqlWriter {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+        out.push_str("(unixepoch('subsec') * 1000)");
+    }
+}
+
+impl SqlFragmentWriter for SQLiteSqlWriter {}
+
+impl SqlWriter for SQLiteSqlWriter {
     fn write_create_schema(&self, _out: &mut DynQuery, _table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,

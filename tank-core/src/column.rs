@@ -57,11 +57,10 @@ pub enum PrimaryKeyType {
 
 impl ToTokens for PrimaryKeyType {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        use PrimaryKeyType::*;
         tokens.append_all(match self {
-            PrimaryKey => quote!(::tank::PrimaryKeyType::PrimaryKey),
-            PartOfPrimaryKey => quote!(::tank::PrimaryKeyType::PartOfPrimaryKey),
-            None => quote!(::tank::PrimaryKeyType::None),
+            PrimaryKeyType::PrimaryKey => quote!(::tank::PrimaryKeyType::PrimaryKey),
+            PrimaryKeyType::PartOfPrimaryKey => quote!(::tank::PrimaryKeyType::PartOfPrimaryKey),
+            PrimaryKeyType::None => quote!(::tank::PrimaryKeyType::None),
         });
     }
 }

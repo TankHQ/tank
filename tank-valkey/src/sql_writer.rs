@@ -3,7 +3,8 @@ use redis::Cmd;
 use std::{fmt::Write, mem};
 use tank_core::{
     AsValue, Case, ColumnDef, Context, Dataset, DynQuery, Expression, Fragment, InsertIntoQuery,
-    IsAsterisk, SelectQuery, SqlWriter, TableRef, Value, column_def, future::Either,
+    IsAsterisk, SelectQuery, SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter,
+    SqlWriter, TableRef, Value, column_def, future::Either,
 };
 
 pub struct ValkeySqlWriter {
@@ -47,7 +48,7 @@ impl ValkeySqlWriter {
     }
 }
 
-impl SqlWriter for ValkeySqlWriter {
+impl SqlCoreWriter for ValkeySqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -68,14 +69,23 @@ impl SqlWriter for ValkeySqlWriter {
             let _ = write!(out, " {}", value.alias);
         }
     }
+}
+
+impl SqlValueWriter for ValkeySqlWriter {
     fn write_string(&self, _context: &mut Context, out: &mut DynQuery, value: &str) {
         out.push_str(value);
     }
+}
 
+impl SqlExpressionWriter for ValkeySqlWriter {
     fn write_case(&self, _context: &mut Context, _out: &mut DynQuery, _value: &Case) {
         log::error!("Valkey does not support CASE expressions");
     }
+}
 
+impl SqlFragmentWriter for ValkeySqlWriter {}
+
+impl SqlWriter for ValkeySqlWriter {
     fn write_create_schema(&self, out: &mut DynQuery, _table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
