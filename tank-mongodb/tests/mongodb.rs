@@ -39,6 +39,7 @@ mod tests {
 
     #[test]
     fn regex_transform() {
+        init_logs();
         assert_eq!(like_to_regex("_"), r"^.$");
         assert_eq!(like_to_regex("%"), r"^.*$");
         assert_eq!(like_to_regex("AB%"), "^AB.*$");

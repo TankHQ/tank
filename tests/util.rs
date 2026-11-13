@@ -1,5 +1,9 @@
 #[cfg(test)]
+mod fixtures;
+
+#[cfg(test)]
 mod tests {
+    use crate::fixtures::DRIVER;
     use quote::ToTokens;
     use rust_decimal::Decimal;
     use std::{
@@ -220,38 +224,38 @@ mod tests {
 
     #[test]
     fn dyn_query_operations() {
-        let mut q = DynQuery::default();
-        assert!(q.is_empty());
-        assert_eq!(q.len(), 0);
-        q.push_str("SELECT ");
-        assert!(!q.is_empty());
-        assert_eq!(q.len(), 7);
-        q.push('*');
-        assert_eq!(q.len(), 8);
-        assert_eq!(q.as_str().as_ref(), "SELECT *");
+        let mut query = DynQuery::default();
+        assert!(query.is_empty());
+        assert_eq!(query.len(), 0);
+        query.push_str("SELECT ");
+        assert!(!query.is_empty());
+        assert_eq!(query.len(), 7);
+        query.push('*');
+        assert_eq!(query.len(), 8);
+        assert_eq!(query.as_str().as_ref(), "SELECT *");
 
-        let mut q = DynQuery::with_capacity(1024);
-        assert!(q.is_empty());
-        q.push_str("hello");
-        assert_eq!(q.as_str().as_ref(), "hello");
+        let mut query = DynQuery::with_capacity(1024);
+        assert!(query.is_empty());
+        query.push_str("hello");
+        assert_eq!(query.as_str().as_ref(), "hello");
 
-        let q = DynQuery::new("SELECT 1".into());
-        assert_eq!(q.as_str().as_ref(), "SELECT 1");
-        assert_eq!(q.len(), 8);
-        assert!(!q.is_empty());
+        let query = DynQuery::new("SELECT 1".into());
+        assert_eq!(query.as_str().as_ref(), "SELECT 1");
+        assert_eq!(query.len(), 8);
+        assert!(!query.is_empty());
 
-        let mut q = DynQuery::default();
-        write!(q, "INSERT INTO {} VALUES ({})", "t", 42).unwrap();
-        assert_eq!(q.as_str().as_ref(), "INSERT INTO t VALUES (42)");
+        let mut query = DynQuery::default();
+        write!(query, "INSERT INTO {} VALUES ({})", "t", 42).unwrap();
+        assert_eq!(query.as_str().as_ref(), "INSERT INTO t VALUES (42)");
 
-        let s: String = DynQuery::new("hello world".into()).into();
-        assert_eq!(s, "hello world");
+        let string: String = DynQuery::new("hello world".into()).into();
+        assert_eq!(string, "hello world");
 
-        let mut q = DynQuery::new("initial".into());
-        q.buffer().clear();
-        assert!(q.is_empty());
-        q.buffer().push_str("new content");
-        assert_eq!(q.as_str().as_ref(), "new content");
+        let mut query = DynQuery::new("initial".into());
+        query.buffer().clear();
+        assert!(query.is_empty());
+        query.buffer().push_str("new content");
+        assert_eq!(query.as_str().as_ref(), "new content");
     }
 
     #[test]
@@ -408,21 +412,21 @@ mod tests {
 
     #[test]
     fn util_write_escaped() {
-        let mut q = DynQuery::default();
-        write_escaped(&mut q, "hello", '\'', "''");
-        assert_eq!(q.as_str().as_ref(), "hello");
+        let mut v = DynQuery::default();
+        write_escaped(&mut v, "hello", '\'', "''");
+        assert_eq!(v.as_str().as_ref(), "hello");
 
-        let mut q2 = DynQuery::default();
-        write_escaped(&mut q2, "it's a test", '\'', "''");
-        assert_eq!(q2.as_str().as_ref(), "it''s a test");
+        let mut v = DynQuery::default();
+        write_escaped(&mut v, "it's a test", '\'', "''");
+        assert_eq!(v.as_str().as_ref(), "it''s a test");
 
-        let mut q3 = DynQuery::default();
-        write_escaped(&mut q3, "a\"b\"c", '"', "\"\"");
-        assert_eq!(q3.as_str().as_ref(), "a\"\"b\"\"c");
+        let mut v = DynQuery::default();
+        write_escaped(&mut v, "a\"b\"c", '"', "\"\"");
+        assert_eq!(v.as_str().as_ref(), "a\"\"b\"\"c");
 
-        let mut q4 = DynQuery::default();
-        write_escaped(&mut q4, "a😀b😀c", '😀', "[]");
-        assert_eq!(q4.as_str().as_ref(), "a[]b[]c");
+        let mut v = DynQuery::default();
+        write_escaped(&mut v, "a😀b😀c", '😀', "[]");
+        assert_eq!(v.as_str().as_ref(), "a[]b[]c");
     }
 
     #[test]
@@ -512,23 +516,23 @@ mod tests {
         struct StarTable {
             id: i32,
         }
-        let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
-
         let empty_cols: &[&dyn Expression] = &[];
-        writer.write_select(&mut q, Sql().select(empty_cols).from(StarTable::table()));
-        assert!(q.as_str().contains("SELECT *"));
+        let query = Sql()
+            .select(empty_cols)
+            .from(StarTable::table())
+            .build(&DRIVER);
+        assert!(query.as_str().contains("SELECT *"));
     }
 
     #[test]
     fn sql_writer_composite_values() {
         let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
+        let mut value = DynQuery::default();
         let mut map = HashMap::new();
         map.insert(Value::Varchar(Some("key1".into())), Value::Int32(Some(100)));
         writer.write_value(
             &mut Default::default(),
-            &mut q,
+            &mut value,
             &Value::Map(
                 Some(Box::new(map)),
                 Box::new(MapType {
@@ -537,13 +541,13 @@ mod tests {
                 }),
             ),
         );
-        assert!(q.as_str().contains("key1"));
-        assert!(q.as_str().contains("100"));
+        assert!(value.as_str().contains("key1"));
+        assert!(value.as_str().contains("100"));
 
-        let mut q = DynQuery::default();
+        let mut value = DynQuery::default();
         writer.write_value(
             &mut Default::default(),
-            &mut q,
+            &mut value,
             &Value::Struct(
                 Some(
                     vec![
@@ -558,31 +562,31 @@ mod tests {
                 }),
             ),
         );
-        assert!(q.as_str().contains("Alice"));
-        assert!(q.as_str().contains("30"));
+        assert!(value.as_str().contains("Alice"));
+        assert!(value.as_str().contains("30"));
 
-        let mut q = DynQuery::default();
+        let mut value = DynQuery::default();
         writer.write_value(
             &mut Default::default(),
-            &mut q,
+            &mut value,
             &Value::Json(Some(serde_json::json!({"active": true}))),
         );
-        assert!(q.as_str().contains("active"));
+        assert!(value.as_str().contains("active"));
     }
 
     #[test]
     fn sql_writer_write_json_string() {
         let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
+        let mut value = DynQuery::default();
         let mut context = Context::fragment(Fragment::Json);
         writer.write_value(
             &mut context,
-            &mut q,
+            &mut value,
             &Value::Varchar(Some(r#"folder\queue"#.into())),
         );
-        assert_eq!(q.as_str().as_ref(), r#""folder\\queue""#);
+        assert_eq!(value.as_str().as_ref(), r#""folder\\queue""#);
         assert_eq!(
-            serde_json::from_str::<String>(q.as_str().as_ref()).unwrap(),
+            serde_json::from_str::<String>(value.as_str().as_ref()).unwrap(),
             r#"folder\queue"#
         );
 
@@ -632,20 +636,20 @@ mod tests {
     #[test]
     fn sql_writer_blob() {
         let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
+        let mut value = DynQuery::default();
         writer.write_value(
             &mut Default::default(),
-            &mut q,
+            &mut value,
             &Value::Blob(Some(vec![0xCA, 0xFE].into())),
         );
-        assert!(q.as_str().contains("CA"));
-        assert!(q.as_str().contains("FE"));
+        assert!(value.as_str().contains("CA"));
+        assert!(value.as_str().contains("FE"));
     }
 
     #[test]
     fn sql_writer_write_timestamptz() {
         let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
+        let mut value = DynQuery::default();
         let dt = OffsetDateTime::new_in_offset(
             Date::from_calendar_date(2025, Month::June, 15).unwrap(),
             Time::from_hms(10, 30, 0).unwrap(),
@@ -653,20 +657,24 @@ mod tests {
         );
         writer.write_value(
             &mut Default::default(),
-            &mut q,
+            &mut value,
             &Value::TimestampWithTimezone(Some(dt)),
         );
-        assert!(q.as_str().contains("2025"));
-        assert!(q.as_str().contains("+05:30:15"));
+        assert!(value.as_str().contains("2025"));
+        assert!(value.as_str().contains("+05:30:15"));
     }
 
     #[test]
     fn sql_writer_special_floats() {
         let writer = GenericSqlWriter::new();
         for f in [f64::INFINITY, f64::NEG_INFINITY] {
-            let mut q = DynQuery::default();
-            writer.write_value(&mut Default::default(), &mut q, &Value::Float64(Some(f)));
-            let s = q.as_str();
+            let mut value = DynQuery::default();
+            writer.write_value(
+                &mut Default::default(),
+                &mut value,
+                &Value::Float64(Some(f)),
+            );
+            let s = value.as_str();
             assert!(s.contains("CAST"));
             assert!(s.contains("inf"));
         }
@@ -674,9 +682,9 @@ mod tests {
             Value::Float32(Some(f32::INFINITY)),
             Value::Float32(Some(f32::NAN)),
         ] {
-            let mut q = DynQuery::default();
-            writer.write_value(&mut Default::default(), &mut q, &value);
-            let s = q.as_str();
+            let mut query = DynQuery::default();
+            writer.write_value(&mut Default::default(), &mut query, &value);
+            let s = query.as_str();
             assert!(s.contains("CAST"));
             assert!(s.contains("FLOAT"));
             assert!(!s.contains("DOUBLE"));
@@ -704,13 +712,12 @@ mod tests {
         struct EmptyInsert {
             id: i32,
         }
-        let writer = GenericSqlWriter::new();
         let mut q = DynQuery::default();
         let entities: Vec<&EmptyInsert> = vec![];
-        writer.write_insert(
-            &mut q,
-            Sql().insert_into(EmptyInsert::table()).values(entities),
-        );
+        Sql()
+            .insert_into(EmptyInsert::table())
+            .values(entities)
+            .build_into(&DRIVER, &mut q);
         assert!(q.is_empty());
     }
 
@@ -720,39 +727,38 @@ mod tests {
         struct AppendTable {
             id: i32,
         }
-        let writer = GenericSqlWriter::new();
         let mut q = DynQuery::new("-- comment".into());
-        writer.write_select(
-            &mut q,
-            Sql()
-                .select(AppendTable::columns())
-                .from(AppendTable::table()),
-        );
+        Sql()
+            .select(AppendTable::columns())
+            .from(AppendTable::table())
+            .build_into(&DRIVER, &mut q);
         let mut q = DynQuery::new("-- comment".into());
-        writer.write_select(
-            &mut q,
-            Sql()
-                .select(AppendTable::columns())
-                .from(AppendTable::table()),
-        );
+        Sql()
+            .select(AppendTable::columns())
+            .from(AppendTable::table())
+            .build_into(&DRIVER, &mut q);
         assert!(q.as_str().starts_with("-- comment\nSELECT"));
 
         let mut q = DynQuery::new("-- c".into());
-        writer.write_create_table(&mut q, AppendTable::table(), false);
+        Sql()
+            .create_table(AppendTable::table())
+            .build_into(&DRIVER, &mut q);
         assert!(q.as_str().starts_with("-- c\nCREATE TABLE"));
         let mut q = DynQuery::new("-- c".into());
-        writer.write_drop_table(&mut q, AppendTable::table(), false);
+        Sql()
+            .drop_table(AppendTable::table())
+            .build_into(&DRIVER, &mut q);
         assert!(q.as_str().starts_with("-- c\nDROP TABLE"));
         let mut q = DynQuery::new("-- c".into());
-        writer.write_delete(&mut q, AppendTable::table(), true);
+        Sql()
+            .delete_from(AppendTable::table())
+            .build_into(&DRIVER, &mut q);
         assert!(q.as_str().starts_with("-- c\nDELETE FROM"));
         let mut q = DynQuery::new("-- c".into());
-        writer.write_insert(
-            &mut q,
-            Sql()
-                .insert_into(AppendTable::table())
-                .values(&[AppendTable { id: 1 }]),
-        );
+        Sql()
+            .insert_into(AppendTable::table())
+            .values(&[AppendTable { id: 1 }])
+            .build_into(&DRIVER, &mut q);
         assert!(q.as_str().starts_with("-- c\nINSERT INTO"));
     }
 
@@ -763,30 +769,25 @@ mod tests {
             #[tank(primary_key)]
             id: i32,
         }
-        let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
-        writer.write_insert(
-            &mut q,
-            Sql()
-                .insert_into(PkOnly::table())
-                .values(&[PkOnly { id: 1 }])
-                .update(),
-        );
-        assert!(q.as_str().contains("DO NOTHING"));
+        let mut query = DynQuery::default();
+        Sql()
+            .insert_into(PkOnly::table())
+            .values(&[PkOnly { id: 1 }])
+            .update()
+            .build_into(&DRIVER, &mut query);
+        assert!(query.as_str().contains("DO NOTHING"));
 
         #[derive(Entity)]
         struct NoPk {
             value: i32,
         }
-        let mut q = DynQuery::default();
-        writer.write_insert(
-            &mut q,
-            Sql()
-                .insert_into(NoPk::table())
-                .values(&[NoPk { value: 1 }])
-                .update(),
-        );
-        assert!(!q.as_str().contains("ON CONFLICT"));
+        let mut query = DynQuery::default();
+        Sql()
+            .insert_into(NoPk::table())
+            .values(&[NoPk { value: 1 }])
+            .update()
+            .build_into(&DRIVER, &mut query);
+        assert!(!query.as_str().contains("ON CONFLICT"));
     }
 
     #[test]

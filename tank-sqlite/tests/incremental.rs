@@ -1,12 +1,14 @@
 use std::pin::pin;
-use tank_core::{
-    Connection, Executor, QueryResult, Row, Value,
+use tank::{
+    AsValue, Connection, DynQuery, Executor, QueryResult, Row, Sql, Value, cols,
     stream::{StreamExt, TryStreamExt},
 };
 use tank_sqlite::{SQLiteConnection, SQLiteDriver};
+use tank_tests::init_logs;
 
 #[tokio::test]
 async fn late_step_errors_reusable() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -30,15 +32,17 @@ async fn late_step_errors_reusable() {
         assert!(rows.next().await.is_none());
     }
     let rows = connection
-        .fetch("SELECT 42")
+        .fetch(Sql().select(cols!(42)).build(&connection.driver()))
+        .map_ok(|v| v.into_values().collect::<Vec<_>>())
         .try_collect::<Vec<_>>()
         .await
         .unwrap();
-    assert_eq!(rows[0].value(0).unwrap().as_ref(), &Value::Int64(Some(42)));
+    assert_eq!(rows, [[Value::Int64(Some(42))]]);
 }
 
 #[tokio::test]
 async fn outer_advance_reports_drain_errors() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -72,7 +76,13 @@ async fn outer_advance_reports_drain_errors() {
     }
     assert!(
         connection
-            .execute("INSERT INTO not_run VALUES (1)")
+            .execute(
+                Sql()
+                    .insert_into("not_run")
+                    .columns(["id"])
+                    .values([[1_i64.as_value()]])
+                    .build(&connection.driver()),
+            )
             .await
             .is_err()
     );
@@ -84,6 +94,7 @@ async fn outer_advance_reports_drain_errors() {
 
 #[tokio::test]
 async fn partial_rows_survive_drop() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -137,6 +148,7 @@ async fn partial_rows_survive_drop() {
 
 #[tokio::test]
 async fn abandoned_returning_finishes_write() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -168,7 +180,13 @@ async fn abandoned_returning_finishes_write() {
         ));
     }
     let ids = connection
-        .fetch("SELECT id FROM items ORDER BY id")
+        .fetch(
+            Sql()
+                .select(cols!(id))
+                .from("items")
+                .order_by(cols!(id ASC))
+                .build(&connection.driver()),
+        )
         .map(|row| row.unwrap().value(0).unwrap().into_owned().into_owned())
         .collect::<Vec<_>>()
         .await;
@@ -194,12 +212,21 @@ async fn abandoned_returning_finishes_write() {
 
 #[tokio::test]
 async fn fetch_late_prepare_errors() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
             .unwrap();
     {
-        let mut rows = pin!(connection.fetch("SELECT 1; SELECT * FROM missing_table"));
+        let mut query = DynQuery::default();
+        Sql()
+            .select(cols!(1))
+            .build_into(&connection.driver(), &mut query);
+        Sql()
+            .select(cols!(*))
+            .from("missing_table")
+            .build_into(&connection.driver(), &mut query);
+        let mut rows = pin!(connection.fetch(query));
         assert!(rows.next().await.unwrap().is_ok());
         assert!(rows.next().await.unwrap().is_err());
         assert!(rows.next().await.is_none());
@@ -213,15 +240,24 @@ async fn fetch_late_prepare_errors() {
     );
     assert!(
         connection
-            .execute("SELECT * FROM missing_table")
+            .execute(
+                Sql()
+                    .select(cols!(*))
+                    .from("missing_table")
+                    .build(&connection.driver()),
+            )
             .await
             .is_err()
     );
-    connection.execute("SELECT 1").await.unwrap();
+    connection
+        .execute(Sql().select(cols!(1)).build(&connection.driver()))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
 async fn skipping_rows_reports_write_errors() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -238,7 +274,12 @@ async fn skipping_rows_reports_write_errors() {
         assert!(results.next().await.is_none());
     }
     let rows = connection
-        .fetch("SELECT id FROM items")
+        .fetch(
+            Sql()
+                .select(cols!(id))
+                .from("items")
+                .build(&connection.driver()),
+        )
         .try_collect::<Vec<_>>()
         .await
         .unwrap();
@@ -248,6 +289,7 @@ async fn skipping_rows_reports_write_errors() {
 
 #[tokio::test]
 async fn huge_select_cancels_on_drop() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::default(), "sqlite://:memory:".into())
             .await
@@ -300,7 +342,12 @@ async fn huge_select_cancels_on_drop() {
         .await
         .unwrap();
     let rows = connection
-        .fetch("SELECT id FROM reused")
+        .fetch(
+            Sql()
+                .select(cols!(id))
+                .from("reused")
+                .build(&connection.driver()),
+        )
         .try_collect::<Vec<_>>()
         .await
         .unwrap();

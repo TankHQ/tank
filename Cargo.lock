@@ -4009,6 +4009,7 @@ name = "tank-sqlite"
 version = "0.48.0"
 dependencies = [
  "anyhow",
+ "indoc",
  "libsqlite3-sys",
  "log",
  "rust_decimal",

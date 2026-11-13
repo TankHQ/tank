@@ -2,9 +2,11 @@
 mod tests {
     use tank::{Context, DynQuery, Fragment, SqlFragmentWriter, SqlValueWriter};
     use tank_mysql::MySQLSqlWriter;
+    use tank_tests::init_logs;
 
     #[test]
     fn backslash_is_escaped_in_strings() {
+        init_logs();
         let writer = MySQLSqlWriter::default();
         let mut out = DynQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelectWhere, false);
@@ -24,6 +26,7 @@ mod tests {
 
     #[test]
     fn binary_is_written_as_hex_literal() {
+        init_logs();
         let writer = MySQLSqlWriter::default();
         let mut out = DynQuery::default();
         let mut ctx = Context::new(Fragment::SqlInsertIntoValues, false);
@@ -35,6 +38,7 @@ mod tests {
 
     #[test]
     fn mysql_limit_offset_clauses() {
+        init_logs();
         let writer = MySQLSqlWriter::default();
         let mut ctx = Context::new(Fragment::SqlSelect, false);
 

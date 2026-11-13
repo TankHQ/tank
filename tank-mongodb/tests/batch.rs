@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use tank::{Driver, DynQuery, Entity, Sql, SqlWriter, expr};
+    use tank::{DynQuery, Entity, Sql, expr};
     use tank_mongodb::{BatchPayload, MongoDBDriver, Payload};
     use tank_tests::init_logs;
 
@@ -17,17 +17,18 @@ mod tests {
     #[test]
     fn batch_preserves_all_payloads() {
         init_logs();
-        let writer = DRIVER.sql_writer();
         let mut query = DynQuery::default();
-
-        writer.write_delete(&mut query, Item::table(), expr!(Item::id == 1));
-        writer.write_insert(
-            &mut query,
-            Sql().insert_into(Item::table()).values(&[Item {
+        Sql()
+            .delete_from(Item::table())
+            .where_expr(expr!(Item::id == 1))
+            .build_into(&DRIVER, &mut query);
+        Sql()
+            .insert_into(Item::table())
+            .values(&[Item {
                 id: 2,
                 name: "test".into(),
-            }]),
-        );
+            }])
+            .build_into(&DRIVER, &mut query);
 
         let Some(Payload::Batch(BatchPayload { batch, .. })) = query
             .as_prepared::<MongoDBDriver>()
@@ -35,7 +36,6 @@ mod tests {
         else {
             panic!("Expected batch payload");
         };
-
         assert_eq!(batch.len(), 2, "Batch should contain both payloads");
         assert!(matches!(batch[0], Payload::Delete(..)));
         assert!(matches!(batch[1], Payload::InsertOne(..)));
@@ -44,24 +44,25 @@ mod tests {
     #[test]
     fn batch_three_operations() {
         init_logs();
-        let writer = DRIVER.sql_writer();
         let mut query = DynQuery::default();
-
-        writer.write_insert(
-            &mut query,
-            Sql().insert_into(Item::table()).values(&[Item {
+        Sql()
+            .insert_into(Item::table())
+            .values(&[Item {
                 id: 1,
                 name: "first".into(),
-            }]),
-        );
-        writer.write_insert(
-            &mut query,
-            Sql().insert_into(Item::table()).values(&[Item {
+            }])
+            .build_into(&DRIVER, &mut query);
+        Sql()
+            .insert_into(Item::table())
+            .values(&[Item {
                 id: 2,
                 name: "second".into(),
-            }]),
-        );
-        writer.write_delete(&mut query, Item::table(), expr!(Item::id == 1));
+            }])
+            .build_into(&DRIVER, &mut query);
+        Sql()
+            .delete_from(Item::table())
+            .where_expr(expr!(Item::id == 1))
+            .build_into(&DRIVER, &mut query);
 
         let Some(Payload::Batch(BatchPayload { batch, .. })) = query
             .as_prepared::<MongoDBDriver>()
@@ -69,7 +70,6 @@ mod tests {
         else {
             panic!("Expected batch payload");
         };
-
         assert_eq!(batch.len(), 3, "Batch should contain all three payloads");
         assert!(matches!(batch[0], Payload::InsertOne(..)));
         assert!(matches!(batch[1], Payload::InsertOne(..)));
@@ -79,20 +79,19 @@ mod tests {
     #[test]
     fn batch_upsert_and_delete() {
         init_logs();
-        let writer = DRIVER.sql_writer();
         let mut query = DynQuery::default();
-
-        writer.write_insert(
-            &mut query,
-            Sql()
-                .insert_into(Item::table())
-                .values(&[Item {
-                    id: 1,
-                    name: "upserted".into(),
-                }])
-                .update(),
-        );
-        writer.write_delete(&mut query, Item::table(), expr!(Item::id == 99));
+        Sql()
+            .insert_into(Item::table())
+            .values(&[Item {
+                id: 1,
+                name: "upserted".into(),
+            }])
+            .update()
+            .build_into(&DRIVER, &mut query);
+        Sql()
+            .delete_from(Item::table())
+            .where_expr(expr!(Item::id == 99))
+            .build_into(&DRIVER, &mut query);
 
         let Some(Payload::Batch(BatchPayload { batch, .. })) = query
             .as_prepared::<MongoDBDriver>()
@@ -100,7 +99,6 @@ mod tests {
         else {
             panic!("Expected batch payload");
         };
-
         assert_eq!(batch.len(), 2, "Batch should contain upsert + delete");
         assert!(matches!(batch[0], Payload::Upsert(..)));
         assert!(matches!(batch[1], Payload::Delete(..)));
@@ -109,18 +107,18 @@ mod tests {
     #[test]
     fn drop_collection_replaces_previous() {
         init_logs();
-        let writer = DRIVER.sql_writer();
         let mut query = DynQuery::default();
-
-        writer.write_insert(
-            &mut query,
-            Sql().insert_into(Item::table()).values(&[Item {
+        Sql()
+            .insert_into(Item::table())
+            .values(&[Item {
                 id: 1,
                 name: "will be dropped".into(),
-            }]),
-        );
-        writer.write_drop_table(&mut query, Item::table(), true);
-
+            }])
+            .build_into(&DRIVER, &mut query);
+        Sql()
+            .drop_table(Item::table())
+            .if_exists()
+            .build_into(&DRIVER, &mut query);
         let payload = query
             .as_prepared::<MongoDBDriver>()
             .map(|v| v.get_payload())

@@ -5,6 +5,7 @@ mod tests {
         CollectionType, Context, Driver, DynQuery, Fragment, MapType, SqlValueWriter, Value,
     };
     use tank_mysql::MySQLDriver;
+    use tank_tests::init_logs;
 
     fn render(v: &Value) -> String {
         let writer = MySQLDriver::default().sql_writer();
@@ -19,6 +20,7 @@ mod tests {
 
     #[test]
     fn list_with_quote_is_escaped() {
+        init_logs();
         let v = Value::List(
             Some(
                 vec![
@@ -37,6 +39,7 @@ mod tests {
 
     #[test]
     fn map_with_quote_is_escaped() {
+        init_logs();
         let mut m = HashMap::new();
         m.insert(
             Value::Varchar(Some("a'b".into())),

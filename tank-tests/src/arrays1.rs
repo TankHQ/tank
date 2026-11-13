@@ -2,7 +2,7 @@
 #![allow(unused_imports)]
 use std::{borrow::Cow, pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, Query, QueryResult, RawQuery, Result, Sql, SqlWriter, cols,
+    Driver, DynQuery, Entity, Executor, Query, QueryResult, RawQuery, Result, Sql, cols,
     stream::TryStreamExt,
 };
 use tokio::sync::Mutex;
@@ -125,17 +125,15 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
             cc: [[[[1]], [[2]], [[3]]]],
             dd: [[[[[10, 20, 30]]], [[[40, 50, 60]]]]],
         };
-        writer.write_insert(
-            &mut query,
-            Sql().insert_into(Arrays1::table()).values([value].iter()),
-        );
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select(cols!(*))
-                .from(Arrays1::table())
-                .where_expr(true),
-        );
+        Sql()
+            .insert_into(Arrays1::table())
+            .values([value].iter())
+            .build_into(&driver, &mut query);
+        Sql()
+            .select(cols!(*))
+            .from(Arrays1::table())
+            .where_expr(true)
+            .build_into(&driver, &mut query);
         let value = Arrays2 {
             alpha: [1, 2, 3, 4, 5],
             bravo: [[10, 11], [12, 13], [14, 15]],
@@ -146,24 +144,20 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
                 [Cow::Owned("foo".to_string()), Cow::Borrowed("bar")],
             ]],
         };
-        writer.write_insert(
-            &mut query,
-            Sql().insert_into(Arrays2::table()).values([value].iter()),
-        );
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select([Arrays2::alpha, Arrays2::bravo, Arrays2::charlie])
-                .from(Arrays2::table())
-                .where_expr(true),
-        );
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select([Arrays2::delta, Arrays2::echo])
-                .from(Arrays2::table())
-                .where_expr(true),
-        );
+        Sql()
+            .insert_into(Arrays2::table())
+            .values([value].iter())
+            .build_into(&driver, &mut query);
+        Sql()
+            .select([Arrays2::alpha, Arrays2::bravo, Arrays2::charlie])
+            .from(Arrays2::table())
+            .where_expr(true)
+            .build_into(&driver, &mut query);
+        Sql()
+            .select([Arrays2::delta, Arrays2::echo])
+            .from(Arrays2::table())
+            .where_expr(true)
+            .build_into(&driver, &mut query);
         let rows = executor
             .run(query)
             .try_collect::<Vec<_>>()

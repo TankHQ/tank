@@ -4,7 +4,6 @@
 use std::{pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
     Driver, DynQuery, Entity, Executor, Interval, Query, QueryResult, RawQuery, Result, Sql,
-    SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -41,18 +40,16 @@ pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
                 [Uuid::from_str("9d7f0f5b-19d6-4298-a332-214fc85e2652").unwrap()],
             ]],
         };
-        writer.write_insert(
-            &mut query,
-            Sql().insert_into(Container::table()).values([value].iter()),
-        );
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select(Container::columns())
-                .from(Container::table())
-                .where_expr(true)
-                .limit(Some(1)),
-        );
+        Sql()
+            .insert_into(Container::table())
+            .values([value].iter())
+            .build_into(&driver, &mut query);
+        Sql()
+            .select(Container::columns())
+            .from(Container::table())
+            .where_expr(true)
+            .limit(Some(1))
+            .build_into(&driver, &mut query);
         let rows = executor
             .run(query)
             .try_collect::<Vec<_>>()

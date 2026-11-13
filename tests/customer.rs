@@ -1,10 +1,14 @@
 #[cfg(test)]
+mod fixtures;
+
+#[cfg(test)]
 mod tests {
+    use crate::fixtures::DRIVER;
     use indoc::indoc;
     use std::borrow::Cow;
     use tank::{
-        AsValue, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, Sql,
-        SqlWriter, TableRef, Value, expr,
+        AsValue, DefaultValueType, Driver, DynQuery, Entity, PrimaryKeyType, Sql, SqlWriter,
+        TableRef, Value, expr,
     };
 
     #[derive(Entity)]
@@ -21,7 +25,6 @@ mod tests {
         /// Can also be empty
         _recent_purchases: Option<Vec<Option<Box<Vec<i64>>>>>,
     }
-    const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
     fn customer_metadata() {
@@ -126,8 +129,7 @@ mod tests {
 
     #[test]
     fn customer_sql() {
-        let mut query = DynQuery::default();
-        WRITER.write_create_table(&mut query, Customer::table(), false);
+        let query = Sql().create_table(Customer::table()).build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -141,31 +143,28 @@ mod tests {
             .trim()
         );
         let mut query = DynQuery::default();
+        let writer = DRIVER.sql_writer();
         for column in Customer::columns().iter().filter(|c| !c.comment.is_empty()) {
-            WRITER.write_column_comment(&mut Default::default(), &mut query, column);
+            writer.write_column_comment(&mut Default::default(), &mut query, column);
         }
         assert_eq!(
             query.as_str(),
             indoc! {r#"
                 COMMENT ON COLUMN "customers"."recent_purchases" IS 'List of all the full cart products
                 It''s a list of lists of ids
-                
+
                 Can also be empty';
             "#}
             .trim()
         );
-        let mut query = DynQuery::default();
-        WRITER.write_drop_table(&mut query, Customer::table(), false);
+        let query = Sql().drop_table(Customer::table()).build(&DRIVER);
         assert_eq!(query.as_str(), r#"DROP TABLE "customers";"#);
-        let mut query = DynQuery::default();
-        WRITER.write_select(
-            &mut query,
-            Sql()
-                .select(Customer::columns())
-                .from(Customer::table())
-                .where_expr(expr!(len(Customer::_values) > 10))
-                .limit(Some(10)),
-        );
+        let query = Sql()
+            .select(Customer::columns())
+            .from(Customer::table())
+            .where_expr(expr!(len(Customer::_values) > 10))
+            .limit(Some(10))
+            .build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -176,8 +175,7 @@ mod tests {
             "#}
             .trim()
         );
-        let mut query = DynQuery::default();
-        WRITER.write_delete(&mut query, Customer::table(), true);
+        let query = Sql().delete_from(Customer::table()).build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"

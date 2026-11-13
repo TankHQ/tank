@@ -1,12 +1,13 @@
 #[cfg(test)]
+mod fixtures;
+
+#[cfg(test)]
 mod tests {
+    use crate::fixtures::DRIVER;
     use indoc::indoc;
     use rust_decimal::{Decimal, prelude::FromPrimitive};
     use std::{borrow::Cow, sync::Arc, time::Duration};
-    use tank::{
-        Action, DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, Sql,
-        SqlWriter, TableRef, Value, expr,
-    };
+    use tank::{Action, DefaultValueType, Entity, PrimaryKeyType, Sql, TableRef, Value, expr};
 
     #[derive(Entity)]
     #[tank(name = "a_table", primary_key = ("bravo", "delta"))]
@@ -35,8 +36,6 @@ mod tests {
             }
         }
     }
-    const WRITER: GenericSqlWriter = GenericSqlWriter {};
-
     #[test]
     fn odd_entity_metadata() {
         assert!(matches!(
@@ -134,8 +133,10 @@ mod tests {
 
     #[test]
     fn odd_entity_sql() {
-        let mut query = DynQuery::default();
-        WRITER.write_create_table(&mut query, MyEntity::table(), true);
+        let query = Sql()
+            .create_table(MyEntity::table())
+            .if_not_exists()
+            .build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -150,18 +151,14 @@ mod tests {
             "#}
             .trim()
         );
-        let mut query = DynQuery::default();
-        WRITER.write_drop_table(&mut query, MyEntity::table(), false);
+        let query = Sql().drop_table(MyEntity::table()).build(&DRIVER);
         assert_eq!(query.as_str(), r#"DROP TABLE "a_table";"#);
-        let mut query = DynQuery::default();
-        WRITER.write_select(
-            &mut query,
-            Sql()
-                .select(MyEntity::columns())
-                .from(MyEntity::table())
-                .where_expr(expr!(MyEntity::_bravo < 0))
-                .limit(Some(300)),
-        );
+        let query = Sql()
+            .select(MyEntity::columns())
+            .from(MyEntity::table())
+            .where_expr(expr!(MyEntity::_bravo < 0))
+            .limit(Some(300))
+            .build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -172,14 +169,11 @@ mod tests {
             "#}
             .trim()
         );
-        let mut query = DynQuery::default();
-        WRITER.write_insert(
-            &mut query,
-            Sql()
-                .insert_into(MyEntity::table())
-                .values(&[MyEntity::sample()])
-                .update(),
-        );
+        let query = Sql()
+            .insert_into(MyEntity::table())
+            .values(&[MyEntity::sample()])
+            .update()
+            .build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -193,8 +187,10 @@ mod tests {
             "#}
             .trim()
         );
-        let mut query = DynQuery::default();
-        WRITER.write_delete(&mut query, MyEntity::table(), expr!(MyEntity::_echo == 5));
+        let query = Sql()
+            .delete_from(MyEntity::table())
+            .where_expr(expr!(MyEntity::_echo == 5))
+            .build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -263,8 +259,10 @@ mod tests {
 
     #[test]
     fn references_ddl() {
-        let mut query = DynQuery::default();
-        WRITER.write_create_table(&mut query, Animal::table(), true);
+        let query = Sql()
+            .create_table(Animal::table())
+            .if_not_exists()
+            .build(&DRIVER);
         let sql = query.as_str().into_owned();
         assert!(sql.contains("FOREIGN KEY (\"farm_id\") REFERENCES \"farms\"(\"id\")"));
         assert!(

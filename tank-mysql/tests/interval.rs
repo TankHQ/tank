@@ -2,6 +2,7 @@
 mod tests {
     use tank::{AsValue, Context, DynQuery, Fragment, Interval, SqlValueWriter, describe_url};
     use tank_mysql::{MySQLDriver, MySQLSqlWriter};
+    use tank_tests::init_logs;
     use url::Url;
 
     fn render(interval: Interval) -> String {
@@ -17,6 +18,7 @@ mod tests {
 
     #[test]
     fn negative_subhour_interval_keeps_its_sign() {
+        init_logs();
         assert_eq!(render(-Interval::from_mins(30)), "'-00:30:00.0'");
         assert_eq!(render(-Interval::from_secs(1)), "'-00:00:01.0'");
         assert_eq!(render(-Interval::from_millis(500)), "'-00:00:00.5'");
@@ -26,6 +28,7 @@ mod tests {
 
     #[test]
     fn mixed_sign_interval_renders_consistently() {
+        init_logs();
         // -1 day + 30 minutes is -23:30, not -24:30.
         assert_eq!(
             render(Interval::from_days(-1) + Interval::from_mins(30)),
@@ -40,6 +43,7 @@ mod tests {
 
     #[test]
     fn describe_url_includes_host_port_and_database() {
+        init_logs();
         let url = Url::parse("mysql://user@db.example.com:3307/shop").unwrap();
         let target = describe_url::<MySQLDriver>(&url);
         assert_eq!(target, "db.example.com:3307/shop");

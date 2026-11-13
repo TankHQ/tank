@@ -4,7 +4,7 @@ use rust_decimal::Decimal;
 use std::{pin::pin, sync::LazyLock};
 use tank::{
     Driver, DynQuery, Entity, Executor, FixedDecimal, Interval, QueryResult, RawQuery, Result,
-    RowsAffected, Sql, SqlWriter, expr,
+    RowsAffected, Sql, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, Time};
@@ -304,29 +304,25 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
+        let driver = executor.driver();
         let mut query = DynQuery::default();
-        let writer = executor.driver().sql_writer();
-        writer.write_delete(&mut query, Limits::table(), true);
-        writer.write_insert(
-            &mut query,
-            Sql()
-                .insert_into(Limits::table())
-                .values(&[minimals, maximals]),
-        );
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select(Limits::columns())
-                .from(Limits::table())
-                .where_expr(expr!(!Limits::boolean)),
-        );
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select(Limits::columns())
-                .from(Limits::table())
-                .where_expr(expr!(Limits::boolean)),
-        );
+        Sql()
+            .delete_from(Limits::table())
+            .build_into(&driver, &mut query);
+        Sql()
+            .insert_into(Limits::table())
+            .values(&[minimals, maximals])
+            .build_into(&driver, &mut query);
+        Sql()
+            .select(Limits::columns())
+            .from(Limits::table())
+            .where_expr(expr!(!Limits::boolean))
+            .build_into(&driver, &mut query);
+        Sql()
+            .select(Limits::columns())
+            .from(Limits::table())
+            .where_expr(expr!(Limits::boolean))
+            .build_into(&driver, &mut query);
         let mut stream = pin!(executor.run(query));
         let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) =
             stream.try_next().await?

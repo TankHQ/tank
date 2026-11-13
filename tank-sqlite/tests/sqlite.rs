@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use indoc::indoc;
     use rust_decimal::Decimal;
     use std::{
         borrow::Cow,
@@ -22,11 +23,12 @@ mod tests {
 
     #[tokio::test]
     async fn statement_boundaries_effects() {
+        init_logs();
         let mut connection =
             SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
                 .await
                 .unwrap();
-        let sql = "
+        let sql = indoc! {r#"
             -- A comment containing ; SELECT 'not a statement';
             CREATE TABLE items (id INTEGER);
             INSERT INTO items VALUES (1), (2);
@@ -36,7 +38,7 @@ mod tests {
             SELECT id FROM items WHERE false;
             DELETE FROM items WHERE false;
             CREATE TABLE after_write (id INTEGER);
-        ";
+        "#};
         let results = connection
             .run(sql)
             .map(|result| match result.unwrap() {
@@ -60,31 +62,27 @@ mod tests {
             ]
         );
         let rows = connection
-            .fetch(
-                "
-            INSERT INTO items VALUES (3);
-            SELECT id FROM items ORDER BY id;
-            SELECT id FROM items WHERE false;
-            DELETE FROM items WHERE false;
-            SELECT 99;
-        ",
-            )
+            .fetch(indoc! {r#"
+                INSERT INTO items VALUES (3);
+                SELECT id FROM items ORDER BY id;
+                SELECT id FROM items WHERE false;
+                DELETE FROM items WHERE false;
+                SELECT 99;
+            "#})
             .map(|row| row.unwrap().value(0).unwrap().into_owned().into_owned())
             .collect::<Vec<_>>()
             .await;
         assert_eq!(rows, [2, 3, 11, 99].map(|n| Value::Int64(Some(n))));
         let affected = connection
-            .execute(
-                "
-            INSERT INTO items VALUES (4), (5);
-            CREATE TABLE after_insert (id INTEGER);
-            SELECT * FROM items;
-            UPDATE items SET id = id + 20 WHERE id = 4;
-            SELECT id FROM items WHERE false;
-            DELETE FROM items WHERE false;
-            CREATE TABLE after_update (id INTEGER);
-        ",
-            )
+            .execute(indoc! {r#"
+                INSERT INTO items VALUES (4), (5);
+                CREATE TABLE after_insert (id INTEGER);
+                SELECT * FROM items;
+                UPDATE items SET id = id + 20 WHERE id = 4;
+                SELECT id FROM items WHERE false;
+                DELETE FROM items WHERE false;
+                CREATE TABLE after_update (id INTEGER);
+            "#})
             .await
             .unwrap();
         assert_eq!(affected.rows_affected, Some(3));
@@ -107,6 +105,7 @@ mod tests {
 
     #[tokio::test]
     async fn prepared_returning_no_extra() {
+        init_logs();
         let mut connection =
             SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
                 .await
@@ -148,15 +147,13 @@ mod tests {
             matches!(rows[0].value(0), Some(Cow::Borrowed(Value::Varchar(Some(text)))) if text == "owned; text")
         );
         let affected = connection
-            .execute(
-                "
-            CREATE TABLE audit (value TEXT);
-            CREATE TRIGGER item_audit AFTER INSERT ON returning_items
-                BEGIN INSERT INTO audit VALUES (new.value); INSERT INTO audit VALUES (';'); END;
-            INSERT INTO returning_items VALUES ('triggered');
-            CREATE TABLE after_trigger (id INTEGER);
-        ",
-            )
+            .execute(indoc! {r#"
+                CREATE TABLE audit (value TEXT);
+                CREATE TRIGGER item_audit AFTER INSERT ON returning_items
+                    BEGIN INSERT INTO audit VALUES (new.value); INSERT INTO audit VALUES (';'); END;
+                INSERT INTO returning_items VALUES ('triggered');
+                CREATE TABLE after_trigger (id INTEGER);
+            "#})
             .await
             .unwrap();
         assert_eq!(affected.rows_affected, Some(1));
@@ -164,6 +161,7 @@ mod tests {
 
     #[tokio::test]
     async fn ordinary_fetch_collects_entities() {
+        init_logs();
         let mut connection =
             SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
                 .await
@@ -233,6 +231,7 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_utf8_text() {
+        init_logs();
         const DB_PATH: &'static str = "../target/debug/tests_invalid_utf8.sqlite";
         let _ = fs::remove_file(DB_PATH).await;
         let driver = SQLiteDriver::new();
@@ -249,6 +248,7 @@ mod tests {
 
     #[tokio::test]
     async fn bind_overflowing_unsigned_is_rejected() {
+        init_logs();
         const DB_PATH: &'static str = "../target/debug/tests_bind_overflow.sqlite";
         let _ = fs::remove_file(DB_PATH).await;
         let driver = SQLiteDriver::new();
@@ -283,6 +283,7 @@ mod tests {
 
     #[test]
     fn sqlite_special_floats() {
+        init_logs();
         assert_eq!(
             sqlite_render(Value::Float32(Some(f32::INFINITY))),
             "1.0e+10000"
@@ -306,6 +307,7 @@ mod tests {
 
     #[test]
     fn sqlite_unsupported_values() {
+        init_logs();
         let writer = sqlite_writer();
         for value in [
             Value::Unknown(Some("x".into())),
@@ -336,12 +338,16 @@ mod tests {
 
     #[test]
     fn sqlite_column_affinities() {
+        init_logs();
         let writer = sqlite_writer();
         let cases = [
             (Value::Boolean(None), "INTEGER"),
             (Value::Int64(None), "INTEGER"),
             (Value::Float32(None), "REAL"),
-            (Value::Decimal(Some(Decimal::new(1, 0)), 10, 2), "REAL(10,2)"),
+            (
+                Value::Decimal(Some(Decimal::new(1, 0)), 10, 2),
+                "REAL(10,2)",
+            ),
             (Value::Char(None), "TEXT"),
             (Value::Varchar(None), "TEXT"),
             (Value::Blob(None), "BLOB"),
@@ -371,6 +377,7 @@ mod tests {
 
     #[test]
     fn sqlite_column_type_override() {
+        init_logs();
         let writer = sqlite_writer();
         let column = ColumnDef::default();
         let mut types = BTreeMap::new();
@@ -398,6 +405,7 @@ mod tests {
 
     #[test]
     fn sqlite_blob_literals() {
+        init_logs();
         assert_eq!(
             sqlite_render(Value::Blob(Some(vec![0xDE, 0xAD].into()))),
             "X'DEAD'"
@@ -407,6 +415,7 @@ mod tests {
 
     #[test]
     fn sqlite_identifier_escaping() {
+        init_logs();
         let writer = sqlite_writer();
         let table = TableRef {
             name: "the\"table".into(),
@@ -446,6 +455,7 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_prepared_rejection() {
+        init_logs();
         let mut first = SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
             .unwrap();
@@ -463,6 +473,7 @@ mod tests {
 
     #[test]
     fn sqlite_generic_values() {
+        init_logs();
         let writer = sqlite_writer();
         let generic = GenericSqlWriter::new();
         for value in [Value::Int32(Some(7)), Value::Varchar(Some("a".into()))] {
@@ -484,6 +495,7 @@ mod tests {
 
     #[test]
     fn sqlite_limit_offset_clauses() {
+        init_logs();
         let writer = sqlite_writer();
         let mut ctx = Context::new(Fragment::SqlSelect, false);
 

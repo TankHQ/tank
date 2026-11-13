@@ -69,6 +69,7 @@ mod tests {
 
     #[test]
     fn describe_paths() {
+        init_logs();
         let memory = Url::parse("sqlite://localhost?mode=memory").unwrap();
         assert_eq!(describe_path(&memory), ":memory:");
 

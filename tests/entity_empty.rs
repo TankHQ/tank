@@ -1,14 +1,16 @@
 #[cfg(test)]
+mod fixtures;
+
+#[cfg(test)]
 mod tests {
+    use crate::fixtures::DRIVER;
     use indoc::indoc;
     use std::borrow::Cow;
-    use tank::{DynQuery, Entity, GenericSqlWriter, Sql, SqlWriter, TableRef};
+    use tank::{Entity, Sql, TableRef};
 
     #[derive(Entity, Default)]
     #[tank(schema = "the_schema", name = "empty_entity")]
     struct SomeEmptyEntity {}
-
-    const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
     fn empty_entity_sql() {
@@ -24,8 +26,10 @@ mod tests {
         assert_eq!(SomeEmptyEntity::primary_key_def().len(), 0);
         assert_eq!(SomeEmptyEntity::columns().len(), 0);
 
-        let mut query = DynQuery::default();
-        WRITER.write_create_table(&mut query, SomeEmptyEntity::table(), true);
+        let query = Sql()
+            .create_table(SomeEmptyEntity::table())
+            .if_not_exists()
+            .build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -35,17 +39,13 @@ mod tests {
             .trim()
         );
 
-        let mut query = DynQuery::default();
-        WRITER.write_drop_table(&mut query, SomeEmptyEntity::table(), false);
+        let query = Sql().drop_table(SomeEmptyEntity::table()).build(&DRIVER);
         assert_eq!(query.as_str(), r#"DROP TABLE "the_schema"."empty_entity";"#);
 
-        let mut query = DynQuery::default();
-        WRITER.write_select(
-            &mut query,
-            Sql()
-                .select(SomeEmptyEntity::columns())
-                .from(SomeEmptyEntity::table()),
-        );
+        let query = Sql()
+            .select(SomeEmptyEntity::columns())
+            .from(SomeEmptyEntity::table())
+            .build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -55,14 +55,11 @@ mod tests {
             .trim()
         );
 
-        let mut query = DynQuery::default();
-        WRITER.write_insert(
-            &mut query,
-            Sql()
-                .insert_into(SomeEmptyEntity::table())
-                .values(&[SomeEmptyEntity::default()])
-                .update(),
-        );
+        let query = Sql()
+            .insert_into(SomeEmptyEntity::table())
+            .values(&[SomeEmptyEntity::default()])
+            .update()
+            .build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -72,8 +69,10 @@ mod tests {
             .trim()
         );
 
-        let mut query = DynQuery::default();
-        WRITER.write_delete(&mut query, SomeEmptyEntity::table(), false);
+        let query = Sql()
+            .delete_from(SomeEmptyEntity::table())
+            .where_expr(false)
+            .build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"

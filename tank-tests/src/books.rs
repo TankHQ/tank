@@ -2,7 +2,7 @@
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
 use tank::{
     AsValue, Dataset, Driver, DynQuery, Entity, Executor, Query, QueryResult, Result, Row, Sql,
-    SqlWriter, Value, cols, expr, join,
+    Value, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -348,24 +348,20 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
+        let driver = executor.driver();
         let mut query = DynQuery::default();
-        let writer = executor.driver().sql_writer();
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select(Book::columns())
-                .from(Book::table())
-                .where_expr(expr!(Book::title == "Metro 2033"))
-                .limit(Some(1)),
-        );
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select(Book::columns())
-                .from(Book::table())
-                .where_expr(expr!(Book::title == "Harry Potter and the Deathly Hallows"))
-                .limit(Some(1)),
-        );
+        Sql()
+            .select(Book::columns())
+            .from(Book::table())
+            .where_expr(expr!(Book::title == "Metro 2033"))
+            .limit(Some(1))
+            .build_into(&driver, &mut query);
+        Sql()
+            .select(Book::columns())
+            .from(Book::table())
+            .where_expr(expr!(Book::title == "Harry Potter and the Deathly Hallows"))
+            .limit(Some(1))
+            .build_into(&driver, &mut query);
         let mut stream = pin!(executor.run(query));
         let Some(QueryResult::Row(row)) = stream.try_next().await? else {
             panic!("Could not get the first row")

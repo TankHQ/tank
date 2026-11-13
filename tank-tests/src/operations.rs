@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, QueryResult, Result, RowsAffected, Sql, SqlWriter, anyhow,
-    cols, expr, join,
+    Driver, DynQuery, Entity, Executor, QueryResult, Result, RowsAffected, Sql, anyhow, cols, expr,
+    join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, OffsetDateTime, Time, UtcOffset, macros::date};
@@ -138,36 +138,33 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
         // #region operations-batch
-        let writer = executor.driver().sql_writer();
+        let driver = executor.driver();
         let mut query = DynQuery::default();
-        writer.write_delete(
-            &mut query,
-            RadioLog::table(),
-            expr!(RadioLog::signal_strength < 10),
-        );
-        writer.write_insert(
-            &mut query,
-            Sql().insert_into(Operator::table()).values([&operator]),
-        );
-        writer.write_insert(
-            &mut query,
-            Sql().insert_into(RadioLog::table()).values(&[RadioLog {
+        Sql()
+            .delete_from(RadioLog::table())
+            .where_expr(expr!(RadioLog::signal_strength < 10))
+            .build_into(&driver, &mut query);
+        Sql()
+            .insert_into(Operator::table())
+            .values([&operator])
+            .build_into(&driver, &mut query);
+        Sql()
+            .insert_into(RadioLog::table())
+            .values(&[RadioLog {
                 id: Uuid::new_v4(),
                 operator: operator.id,
                 message: "Status report".into(),
                 unit_callsign: "Alpha-1".into(),
                 transmission_time: OffsetDateTime::now_utc(),
                 signal_strength: 55,
-            }]),
-        );
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select(RadioLog::columns())
-                .from(RadioLog::table())
-                .where_expr(true)
-                .limit(Some(50)),
-        );
+            }])
+            .build_into(&driver, &mut query);
+        Sql()
+            .select(RadioLog::columns())
+            .from(RadioLog::table())
+            .where_expr(true)
+            .limit(Some(50))
+            .build_into(&driver, &mut query);
         {
             let mut stream = pin!(executor.run(query));
             while let Some(result) = stream.try_next().await? {

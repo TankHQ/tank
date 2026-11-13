@@ -10,6 +10,7 @@ mod tests {
 
     #[test]
     fn pipeline_1() {
+        init_logs();
         #[derive(Entity)]
         #[tank(name = "the table")]
         struct MyType {
@@ -18,7 +19,6 @@ mod tests {
             pub second_column: Option<f64>,
             pub third_column: String,
         }
-        init_logs();
         let mut query = Sql()
             .select(cols!(
                 MyType::first_column,
@@ -92,6 +92,7 @@ mod tests {
 
     #[test]
     fn pipeline_2() {
+        init_logs();
         #[derive(Entity)]
         #[tank(name = "shopping carts")]
         struct Cart {
@@ -246,6 +247,7 @@ mod tests {
 
     #[test]
     fn pipeline_3() {
+        init_logs();
         #[derive(Entity)]
         #[tank(name = "transactions")]
         struct Transaction {
@@ -275,6 +277,7 @@ mod tests {
 
     #[test]
     fn pipeline_4() {
+        init_logs();
         #[derive(Entity)]
         #[tank(schema = "analytics", name = "raw telemetry")]
         struct Telemetry {

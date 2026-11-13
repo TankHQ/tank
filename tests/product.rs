@@ -1,12 +1,13 @@
 #[cfg(test)]
+mod fixtures;
+
+#[cfg(test)]
 mod tests {
+    use crate::fixtures::DRIVER;
     use indoc::indoc;
     use rust_decimal::Decimal;
     use std::borrow::Cow;
-    use tank::{
-        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, Sql, SqlWriter,
-        TableRef, Value,
-    };
+    use tank::{DefaultValueType, Entity, PrimaryKeyType, Sql, TableRef, Value};
     use time::{Date, Month, PrimitiveDateTime, Time};
 
     #[derive(Entity)]
@@ -36,7 +37,6 @@ mod tests {
             }
         }
     }
-    const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
     fn product_metadata() {
@@ -128,8 +128,7 @@ mod tests {
 
     #[test]
     fn product_sql() {
-        let mut query = DynQuery::default();
-        WRITER.write_create_table(&mut query, Product::table(), false);
+        let query = Sql().create_table(Product::table()).build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -143,13 +142,10 @@ mod tests {
             "#}
             .trim()
         );
-        let mut query = DynQuery::default();
-        WRITER.write_insert(
-            &mut query,
-            Sql()
-                .insert_into(Product::table())
-                .values(&[Product::sample()]),
-        );
+        let query = Sql()
+            .insert_into(Product::table())
+            .values(&[Product::sample()])
+            .build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -158,10 +154,9 @@ mod tests {
             "#}
             .trim()
         );
-        let mut query = DynQuery::default();
-        WRITER.write_insert(
-            &mut query,
-            Sql().insert_into(Product::table()).values(&[
+        let query = Sql()
+            .insert_into(Product::table())
+            .values(&[
                 Product {
                     id: 74,
                     name: "Headphones".into(),
@@ -185,8 +180,8 @@ mod tests {
                         Time::from_hms(9, 45, 30).unwrap(),
                     ),
                 },
-            ]),
-        );
+            ])
+            .build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"

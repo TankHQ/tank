@@ -149,12 +149,14 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
+        let driver = executor.driver();
         let mut query = DynQuery::default();
-        let writer = executor.driver().sql_writer();
-        writer.write_delete(&mut query, Intervals::table(), true);
-        writer.write_insert(
-            &mut query,
-            Sql().insert_into(Intervals::table()).values(&[
+        Sql()
+            .delete_from(Intervals::table())
+            .build_into(&driver, &mut query);
+        Sql()
+            .insert_into(Intervals::table())
+            .values(&[
                 Intervals {
                     pk: 4,
                     first: time::Duration::weeks(4) + time::Duration::hours(5),
@@ -170,15 +172,13 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
                     second: Interval::from_months(4) + Interval::from_days(2),
                     third: Duration::from_nanos(5000),
                 },
-            ]),
-        );
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select(Intervals::columns())
-                .from(Intervals::table())
-                .where_expr(true),
-        );
+            ])
+            .build_into(&driver, &mut query);
+        Sql()
+            .select(Intervals::columns())
+            .from(Intervals::table())
+            .where_expr(true)
+            .build_into(&driver, &mut query);
         let mut stream = pin!(executor.run(query));
 
         // DELETE

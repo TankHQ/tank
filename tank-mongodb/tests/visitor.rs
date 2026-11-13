@@ -18,6 +18,7 @@ mod tests {
 
     #[test]
     fn is_field() {
+        init_logs();
         {
             let mut matcher = IsField::default();
             assert_eq!(matcher.field, FieldType::None);

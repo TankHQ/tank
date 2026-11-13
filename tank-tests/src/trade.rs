@@ -3,7 +3,7 @@ use rust_decimal::Decimal;
 use std::{collections::BTreeMap, pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
     AsValue, Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery,
-    Result, RowsAffected, Sql, SqlWriter, Value,
+    Result, RowsAffected, Sql, Value,
     stream::{StreamExt, TryStreamExt},
 };
 use time::macros::datetime;
@@ -322,12 +322,14 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
-        let writer = executor.driver().sql_writer();
+        let driver = executor.driver();
         let mut query = DynQuery::default();
-        writer.write_delete(&mut query, Trade::table(), true);
-        writer.write_insert(
-            &mut query,
-            Sql().insert_into(Trade::table()).values(&[Trade {
+        Sql()
+            .delete_from(Trade::table())
+            .build_into(&driver, &mut query);
+        Sql()
+            .insert_into(Trade::table())
+            .values(&[Trade {
                 trade: 10002,
                 order: Uuid::parse_str("895dc048-be92-4a55-afbf-38a60936e844").unwrap(),
                 symbol: "RIVN".to_string(),
@@ -352,15 +354,13 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
                     ("strategy".into(), "arbitrage".into()),
                     ("risk_limit".into(), "high".into()),
                 ])),
-            }]),
-        );
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select(Trade::columns())
-                .from(Trade::table())
-                .where_expr(true),
-        );
+            }])
+            .build_into(&driver, &mut query);
+        Sql()
+            .select(Trade::columns())
+            .from(Trade::table())
+            .where_expr(true)
+            .build_into(&driver, &mut query);
         let mut stream = pin!(executor.run(query));
         let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) =
             stream.try_next().await?

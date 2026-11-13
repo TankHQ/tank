@@ -41,6 +41,7 @@ mod tests {
 
     #[tokio::test]
     async fn incremental_owned_snapshots() {
+        init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
                 .await
@@ -81,6 +82,7 @@ mod tests {
 
     #[tokio::test]
     async fn late_fetch_error_terminal() {
+        init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
                 .await
@@ -130,6 +132,7 @@ mod tests {
 
     #[tokio::test]
     async fn outer_advance_drains_rows() {
+        init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())
                 .await
@@ -221,6 +224,7 @@ mod tests {
 
     #[tokio::test]
     async fn drain_propagates_fetch_error() {
+        init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
                 .await
@@ -252,6 +256,7 @@ mod tests {
 
     #[tokio::test]
     async fn prepared_reuse_send_iterators() {
+        init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())
                 .await
@@ -310,24 +315,23 @@ mod tests {
 
     #[tokio::test]
     async fn statement_results_group_rows() {
+        init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())
                 .await
                 .unwrap();
         let results = connection
-            .run(
-                "
-            -- ; SELECT 'not a statement';
-            CREATE TABLE items (id INTEGER);
-            INSERT INTO items VALUES (1), (2);
-            /* ; */ SELECT id FROM items ORDER BY id;
-            UPDATE items SET id = id + 10 WHERE id = 1;
-            SELECT id FROM items WHERE false;
-            DELETE FROM items WHERE false;
-            INSERT INTO items VALUES (3) RETURNING id;
-            EXPLAIN SELECT * FROM items;
-        ",
-            )
+            .run(indoc! {r#"
+                -- ; SELECT 'not a statement';
+                CREATE TABLE items (id INTEGER);
+                INSERT INTO items VALUES (1), (2);
+                /* ; */ SELECT id FROM items ORDER BY id;
+                UPDATE items SET id = id + 10 WHERE id = 1;
+                SELECT id FROM items WHERE false;
+                DELETE FROM items WHERE false;
+                INSERT INTO items VALUES (3) RETURNING id;
+                EXPLAIN SELECT * FROM items;
+            "#})
             .map(|result| match result.unwrap() {
                 QueryResult::Row(_) => None,
                 QueryResult::Affected(affected) => Some(affected.rows_affected),
@@ -349,30 +353,26 @@ mod tests {
         assert!(results.len() >= 8);
         assert!(results[7..].iter().all(Option::is_none));
         let values = connection
-            .fetch(
-                "
-            INSERT INTO items VALUES (4);
-            SELECT id FROM items ORDER BY id;
-            SELECT id FROM items WHERE false;
-            DELETE FROM items WHERE false;
-            SELECT 99;
-        ",
-            )
+            .fetch(indoc! {r#"
+                INSERT INTO items VALUES (4);
+                SELECT id FROM items ORDER BY id;
+                SELECT id FROM items WHERE false;
+                DELETE FROM items WHERE false;
+                SELECT 99;
+            "#})
             .map(|row| row.unwrap().value(0).unwrap().into_owned().into_owned())
             .collect::<Vec<_>>()
             .await;
         assert_eq!(values, [2, 3, 4, 11, 99].map(|n| Value::Int32(Some(n))));
         assert_eq!(
             connection
-                .execute(
-                    "
-            INSERT INTO items VALUES (5), (6);
-            SELECT * FROM items;
-            UPDATE items SET id = id + 20 WHERE id = 5;
-            DELETE FROM items WHERE false;
-            CREATE TABLE after_write (id INTEGER);
-        "
-                )
+                .execute(indoc! {r#"
+                    INSERT INTO items VALUES (5), (6);
+                    SELECT * FROM items;
+                    UPDATE items SET id = id + 20 WHERE id = 5;
+                    DELETE FROM items WHERE false;
+                    CREATE TABLE after_write (id INTEGER);
+                "#})
                 .await
                 .unwrap()
                 .rows_affected,
@@ -384,6 +384,7 @@ mod tests {
 
     #[tokio::test]
     async fn prepared_empty_and_owned_rows() {
+        init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())
                 .await
@@ -484,6 +485,7 @@ mod tests {
 
     #[tokio::test]
     async fn url_parameters() {
+        init_logs();
         let mut connection = DuckDBConnection::connect(
             &DuckDBDriver::new(),
             "duckdb://:memory:?threads=6&max_memory=800MiB".into(),

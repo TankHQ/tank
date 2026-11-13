@@ -1,14 +1,17 @@
 #[cfg(test)]
+mod fixtures;
+
+#[cfg(test)]
 mod tests {
+    use crate::fixtures::DRIVER;
     use indoc::indoc;
     use std::fmt::Write;
     use tank::{
-        AsValue, Context, DynQuery, Entity, Expression, Fragment, GenericSqlWriter,
-        InsertIntoQuery, QueryResult, QueryResultOwned, RawQuery, RowOwned, RowsAffected, Sql,
-        SqlWriter, TableRef, cols, expr,
+        AsValue, Context, DynQuery, Entity, Expression, Fragment, InsertIntoQuery, QueryResult,
+        QueryResultOwned, RawQuery, RowOwned, RowsAffected, Sql, TableRef, cols, expr,
     };
 
-    const WRITER: GenericSqlWriter = GenericSqlWriter {};
+    const WRITER: tank::GenericSqlWriter = tank::GenericSqlWriter;
 
     #[test]
     fn query_1() {
@@ -18,11 +21,10 @@ mod tests {
             b: i8,
             c: String,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql().select(MyTable::columns()).from(MyTable::table()),
-        );
+        let sql = Sql()
+            .select(MyTable::columns())
+            .from(MyTable::table())
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -91,14 +93,11 @@ mod tests {
 
     #[test]
     fn query_table_function() {
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(cols!(range))
-                .from(expr!(range(3)))
-                .where_expr(expr!(range > 0)),
-        );
+        let sql = Sql()
+            .select(cols!(range))
+            .from(expr!(range(3)))
+            .where_expr(expr!(range > 0))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -119,17 +118,14 @@ mod tests {
             some_col: i128,
             second_column: Box<String>,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select([TheTable::second_column, TheTable::some_col])
-                .from(TheTable::table())
-                .where_expr(expr!(
-                    TheTable::second_column == "So%" as LIKE
-                        || TheTable::some_col >= 0 && TheTable::some_col < 10
-                )),
-        );
+        let sql = Sql()
+            .select([TheTable::second_column, TheTable::some_col])
+            .from(TheTable::table())
+            .where_expr(expr!(
+                TheTable::second_column == "So%" as LIKE
+                    || TheTable::some_col >= 0 && TheTable::some_col < 10
+            ))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -149,15 +145,12 @@ mod tests {
             amount: f64,
             status: String,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(cols!(Orders::customer_id, SUM(Orders::amount)))
-                .from(Orders::table())
-                .where_expr(expr!(Orders::status == "completed"))
-                .group_by([Orders::customer_id]),
-        );
+        let sql = Sql()
+            .select(cols!(Orders::customer_id, SUM(Orders::amount)))
+            .from(Orders::table())
+            .where_expr(expr!(Orders::status == "completed"))
+            .group_by([Orders::customer_id])
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -169,14 +162,11 @@ mod tests {
             .trim()
         );
 
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(cols!(Orders::customer_id as cid, SUM(Orders::amount)))
-                .from(Orders::table())
-                .group_by(cols!(Orders::customer_id as cid)),
-        );
+        let sql = Sql()
+            .select(cols!(Orders::customer_id as cid, SUM(Orders::amount)))
+            .from(Orders::table())
+            .group_by(cols!(Orders::customer_id as cid))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -196,16 +186,13 @@ mod tests {
             product: String,
             revenue: f64,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(cols!(Sales::region, SUM(Sales::revenue)))
-                .from(Sales::table())
-                .where_expr(expr!(Sales::revenue > 0))
-                .group_by([Sales::region])
-                .having(expr!(SUM(Sales::revenue) > 1000)),
-        );
+        let sql = Sql()
+            .select(cols!(Sales::region, SUM(Sales::revenue)))
+            .from(Sales::table())
+            .where_expr(expr!(Sales::revenue > 0))
+            .group_by([Sales::region])
+            .having(expr!(SUM(Sales::revenue) > 1000))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -227,15 +214,12 @@ mod tests {
             price: f64,
             category: String,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(Products::columns())
-                .from(Products::table())
-                .where_expr(expr!(Products::category == "electronics"))
-                .order_by(cols!(Products::price ASC)),
-        );
+        let sql = Sql()
+            .select(Products::columns())
+            .from(Products::table())
+            .where_expr(expr!(Products::category == "electronics"))
+            .order_by(cols!(Products::price ASC))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -256,15 +240,12 @@ mod tests {
             timestamp: i64,
             level: String,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(Events::columns())
-                .from(Events::table())
-                .order_by(cols!(Events::timestamp DESC))
-                .limit(Some(50)),
-        );
+        let sql = Sql()
+            .select(Events::columns())
+            .from(Events::table())
+            .order_by(cols!(Events::timestamp DESC))
+            .limit(Some(50))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -285,14 +266,11 @@ mod tests {
             name: String,
             salary: f64,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(Employees::columns())
-                .from(Employees::table())
-                .order_by(cols!(Employees::department ASC, Employees::salary DESC)),
-        );
+        let sql = Sql()
+            .select(Employees::columns())
+            .from(Employees::table())
+            .order_by(cols!(Employees::department ASC, Employees::salary DESC))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -313,23 +291,20 @@ mod tests {
             amount: f64,
             created_at: i64,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(cols!(
-                    Transactions::account_id,
-                    Transactions::category,
-                    SUM(Transactions::amount),
-                    COUNT(*)
-                ))
-                .from(Transactions::table())
-                .where_expr(expr!(Transactions::created_at > 1700000000))
-                .group_by(cols!(Transactions::account_id, Transactions::category))
-                .having(expr!(COUNT(*) > 5))
-                .order_by(cols!(SUM(Transactions::amount) DESC))
-                .limit(Some(100)),
-        );
+        let sql = Sql()
+            .select(cols!(
+                Transactions::account_id,
+                Transactions::category,
+                SUM(Transactions::amount),
+                COUNT(*)
+            ))
+            .from(Transactions::table())
+            .where_expr(expr!(Transactions::created_at > 1700000000))
+            .group_by(cols!(Transactions::account_id, Transactions::category))
+            .having(expr!(COUNT(*) > 5))
+            .order_by(cols!(SUM(Transactions::amount) DESC))
+            .limit(Some(100))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -353,18 +328,15 @@ mod tests {
             service: String,
             latency_ms: f64,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(cols!(
-                    Metrics::region,
-                    Metrics::service,
-                    AVG(Metrics::latency_ms)
-                ))
-                .from(Metrics::table())
-                .group_by([Metrics::region, Metrics::service]),
-        );
+        let sql = Sql()
+            .select(cols!(
+                Metrics::region,
+                Metrics::service,
+                AVG(Metrics::latency_ms)
+            ))
+            .from(Metrics::table())
+            .group_by([Metrics::region, Metrics::service])
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -383,13 +355,14 @@ mod tests {
             id: u32,
             name: String,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_create_table(&mut sql, Widget::table(), false);
+        let sql = Sql().create_table(Widget::table()).build(&DRIVER);
         let result = sql.as_str();
         assert!(result.contains("CREATE TABLE"));
         assert!(result.contains("\"widget\""));
-        let mut sql = DynQuery::default();
-        WRITER.write_create_table(&mut sql, Widget::table(), true);
+        let sql = Sql()
+            .create_table(Widget::table())
+            .if_not_exists()
+            .build(&DRIVER);
         assert!(sql.as_str().contains("IF NOT EXISTS"));
     }
 
@@ -399,11 +372,9 @@ mod tests {
         struct Widget {
             id: u32,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_drop_table(&mut sql, Widget::table(), false);
+        let sql = Sql().drop_table(Widget::table()).build(&DRIVER);
         assert!(sql.as_str().contains("DROP TABLE"));
-        let mut sql = DynQuery::default();
-        WRITER.write_drop_table(&mut sql, Widget::table(), true);
+        let sql = Sql().drop_table(Widget::table()).if_exists().build(&DRIVER);
         assert!(sql.as_str().contains("IF EXISTS"));
     }
 
@@ -415,14 +386,11 @@ mod tests {
             price: f64,
             note: String,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_update(
-            &mut sql,
-            Sql()
-                .update(Item::table())
-                .set(cols!(Item::price == Item::price * 1.001))
-                .where_expr(expr!(Item::id == 7)),
-        );
+        let sql = Sql()
+            .update(Item::table())
+            .set(cols!(Item::price == Item::price * 1.001))
+            .where_expr(expr!(Item::id == 7))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -432,13 +400,10 @@ mod tests {
             "#}
             .trim()
         );
-        let mut sql = DynQuery::default();
-        WRITER.write_update(
-            &mut sql,
-            Sql()
-                .update(Item::table())
-                .set(cols!(Item::price == 0.0, Item::note == "none")),
-        );
+        let sql = Sql()
+            .update(Item::table())
+            .set(cols!(Item::price == 0.0, Item::note == "none"))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -448,14 +413,11 @@ mod tests {
             "#}
             .trim()
         );
-        let mut sql = DynQuery::default();
-        WRITER.write_update(
-            &mut sql,
-            Sql()
-                .update(Item::table())
-                .set(cols!(Item::note == "none"))
-                .where_expr(true),
-        );
+        let sql = Sql()
+            .update(Item::table())
+            .set(cols!(Item::note == "none"))
+            .where_expr(true)
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -483,19 +445,18 @@ mod tests {
                 label: "b".into(),
             },
         ];
-        let mut sql = DynQuery::default();
-        WRITER.write_insert(
-            &mut sql,
-            Sql().insert_into(Item::table()).values(items.iter()),
-        );
+        let sql = Sql()
+            .insert_into(Item::table())
+            .values(items.iter())
+            .build(&DRIVER);
         let result = sql.as_str();
         assert!(result.contains("INSERT INTO"));
         assert!(result.contains("\"item\""));
-        let mut sql = DynQuery::default();
-        WRITER.write_insert(
-            &mut sql,
-            Sql().insert_into(Item::table()).values(&items).update(),
-        );
+        let sql = Sql()
+            .insert_into(Item::table())
+            .values(&items)
+            .update()
+            .build(&DRIVER);
         assert!(sql.as_str().contains("INSERT INTO"));
     }
 
@@ -516,8 +477,11 @@ mod tests {
             name: "archive".into(),
             ..Item::table().clone()
         };
-        let mut sql = DynQuery::default();
-        WRITER.write_insert(&mut sql, Sql().insert_into(archive).values(&items).update());
+        let sql = Sql()
+            .insert_into(archive)
+            .values(&items)
+            .update()
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -531,15 +495,12 @@ mod tests {
 
         // Rows of values, the upsert uses the primary key of the target table
         let rows = [[2_u32.as_value(), "b".as_value()]];
-        let mut sql = DynQuery::default();
-        WRITER.write_insert(
-            &mut sql,
-            Sql()
-                .insert_into(Item::table())
-                .columns(["id", "label"])
-                .values(&rows)
-                .update(),
-        );
+        let sql = Sql()
+            .insert_into(Item::table())
+            .columns(["id", "label"])
+            .values(&rows)
+            .update()
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -550,16 +511,13 @@ mod tests {
             "#}
             .trim()
         );
-        let mut sql = DynQuery::default();
         // Without a primary key there is nothing to upsert on
-        WRITER.write_insert(
-            &mut sql,
-            Sql()
-                .insert_into("logs")
-                .columns(["id", "label"])
-                .values(&rows)
-                .update(),
-        );
+        let sql = Sql()
+            .insert_into("logs")
+            .columns(["id", "label"])
+            .values(&rows)
+            .update()
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -570,15 +528,12 @@ mod tests {
         );
 
         // Rows of a query
-        let mut sql = DynQuery::default();
-        WRITER.write_insert(
-            &mut sql,
-            Sql()
-                .insert_into("archive")
-                .select(Item::columns())
-                .from(Item::table())
-                .where_expr(expr!(Item::id > 10)),
-        );
+        let sql = Sql()
+            .insert_into("archive")
+            .select(Item::columns())
+            .from(Item::table())
+            .where_expr(expr!(Item::id > 10))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -591,15 +546,12 @@ mod tests {
         );
 
         // Rows of a query into named columns
-        let mut sql = DynQuery::default();
-        WRITER.write_insert(
-            &mut sql,
-            Sql()
-                .insert_into(("backup", "archive"))
-                .columns(["id", "label"])
-                .select(Item::columns())
-                .from(Item::table()),
-        );
+        let sql = Sql()
+            .insert_into(("backup", "archive"))
+            .columns(["id", "label"])
+            .select(Item::columns())
+            .from(Item::table())
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -617,25 +569,19 @@ mod tests {
         struct Limitable {
             x: u32,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(Limitable::columns())
-                .from(Limitable::table())
-                .order_by(cols!(Limitable::x ASC))
-                .limit(Some(10)),
-        );
+        let sql = Sql()
+            .select(Limitable::columns())
+            .from(Limitable::table())
+            .order_by(cols!(Limitable::x ASC))
+            .limit(Some(10))
+            .build(&DRIVER);
         assert!(sql.as_str().contains("LIMIT 10"));
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(Limitable::columns())
-                .from(Limitable::table())
-                .order_by(cols!(Limitable::x ASC))
-                .limit(None),
-        );
+        let sql = Sql()
+            .select(Limitable::columns())
+            .from(Limitable::table())
+            .order_by(cols!(Limitable::x ASC))
+            .limit(None)
+            .build(&DRIVER);
         assert!(!sql.as_str().contains("LIMIT"));
     }
 
@@ -651,8 +597,7 @@ mod tests {
             .from(Distinctable::table())
             .limit(Some(10));
         assert!(query.is_distinct());
-        let mut sql = DynQuery::default();
-        WRITER.write_select(&mut sql, &query);
+        let sql = query.build(&DRIVER);
         assert!(
             sql.as_str().starts_with("SELECT DISTINCT "),
             "{}",
@@ -665,8 +610,7 @@ mod tests {
             .distinct()
             .limit(Some(10));
         assert!(query.is_distinct());
-        let mut sql = DynQuery::default();
-        WRITER.write_select(&mut sql, &query);
+        let sql = query.build(&DRIVER);
         assert!(
             sql.as_str().starts_with("SELECT DISTINCT "),
             "{}",
@@ -688,8 +632,7 @@ mod tests {
             .limit(Some(10))
             .offset(Some(5));
         assert_eq!(query.get_offset(), Some(5));
-        let mut sql = DynQuery::default();
-        WRITER.write_select(&mut sql, &query);
+        let sql = query.build(&DRIVER);
         assert!(sql.as_str().contains("LIMIT 10"), "{}", sql.as_str());
         assert!(sql.as_str().contains("OFFSET 5"), "{}", sql.as_str());
     }
@@ -704,8 +647,7 @@ mod tests {
             .select(OffsetOnly::columns())
             .from(OffsetOnly::table())
             .offset(Some(5));
-        let mut sql = DynQuery::default();
-        WRITER.write_select(&mut sql, &query);
+        let sql = query.build(&DRIVER);
         assert!(!sql.as_str().contains("LIMIT"), "{}", sql.as_str());
         assert!(sql.as_str().contains("OFFSET 5"), "{}", sql.as_str());
     }

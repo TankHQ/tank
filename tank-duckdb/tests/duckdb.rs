@@ -68,6 +68,7 @@ mod tests {
 
     #[test]
     fn duckdb_blob_literals() {
+        init_logs();
         assert_eq!(
             duckdb_render(Value::Blob(Some(vec![0xDE, 0xAD].into()))),
             "'\\xDE\\xAD'"
@@ -77,6 +78,7 @@ mod tests {
 
     #[test]
     fn duckdb_map_literal() {
+        init_logs();
         let writer = duckdb_writer();
         let mut map = HashMap::new();
         map.insert(Value::Varchar(Some("k".into())), Value::Int32(Some(1)));
@@ -97,6 +99,7 @@ mod tests {
 
     #[test]
     fn duckdb_not_glob_wrapping() {
+        init_logs();
         let writer = duckdb_writer();
         let mut out = DynQuery::default();
         BinaryOp {
@@ -127,6 +130,7 @@ mod tests {
 
     #[test]
     fn duckdb_current_timestamp() {
+        init_logs();
         let writer = duckdb_writer();
         let mut out = DynQuery::default();
         writer.write_current_timestamp_ms(&mut Context::empty(), &mut out);
@@ -135,6 +139,7 @@ mod tests {
 
     #[test]
     fn duckdb_interval_units() {
+        init_logs();
         assert_eq!(
             duckdb_render(Value::Interval(Some(Interval::from_days(2)))),
             "INTERVAL '2 DAYS'"
@@ -151,6 +156,7 @@ mod tests {
 
     #[test]
     fn duckdb_column_type_override() {
+        init_logs();
         let writer = duckdb_writer();
         let column = ColumnDef::default();
         let mut types = BTreeMap::new();
@@ -178,6 +184,7 @@ mod tests {
 
     #[test]
     fn duckdb_generic_values() {
+        init_logs();
         let writer = duckdb_writer();
         let generic = GenericSqlWriter::new();
         for value in [
@@ -203,6 +210,7 @@ mod tests {
 
     #[tokio::test]
     async fn bare_decimal_binding() {
+        init_logs();
         let _guard = MUTEX.lock().unwrap();
         // A bare `Decimal` decodes to `Value::Decimal(.., 0, scale)`. Binding it
         // used to hand DuckDB a `DECIMAL(width=0, scale=n)` type, tripping the
@@ -239,6 +247,7 @@ mod tests {
 
     #[tokio::test]
     async fn rows_outlive_their_chunk() {
+        init_logs();
         let _guard = MUTEX.lock().unwrap();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
@@ -277,6 +286,7 @@ mod tests {
 
     #[tokio::test]
     async fn bind_index_zero_based() {
+        init_logs();
         let _guard = MUTEX.lock().unwrap();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())

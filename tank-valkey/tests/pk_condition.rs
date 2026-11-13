@@ -2,6 +2,7 @@
 mod tests {
     use std::{borrow::Cow, str::FromStr};
     use tank::{Driver, Entity, Expression, Fragment, expr};
+    use tank_tests::init_logs;
     use tank_valkey::{IsPKCondition, ValkeyDriver, ValkeySqlWriter};
     use time::{Date, Month};
     use uuid::Uuid;
@@ -10,6 +11,7 @@ mod tests {
 
     #[tokio::test]
     pub async fn pk_condition_1() {
+        init_logs();
         #[derive(Entity)]
         #[tank(schema = "namespace", primary_key = (partition, name, id, day))]
         struct TableName {
@@ -169,6 +171,7 @@ mod tests {
 
     #[tokio::test]
     pub async fn pk_condition_errors() {
+        init_logs();
         #[derive(Entity)]
         #[tank(schema = "auth", primary_key = (user_id, token_type))]
         struct UserSession {

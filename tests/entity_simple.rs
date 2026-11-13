@@ -1,11 +1,12 @@
 #[cfg(test)]
+mod fixtures;
+
+#[cfg(test)]
 mod tests {
+    use crate::fixtures::DRIVER;
     use indoc::indoc;
     use std::{borrow::Cow, sync::Mutex};
-    use tank::{
-        DefaultValueType, DynQuery, Entity, GenericSqlWriter, PrimaryKeyType, Sql, SqlWriter,
-        TableRef, Value, expr,
-    };
+    use tank::{DefaultValueType, Entity, PrimaryKeyType, Sql, TableRef, Value, expr};
 
     #[derive(Entity)]
     #[tank(name = "simple_entity", unique = ("a", Self::c), unique = (SomeSimpleEntity::b, "c"), unique = "a")]
@@ -28,7 +29,6 @@ mod tests {
             }
         }
     }
-    const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
     fn simple_entity_metadata() {
@@ -83,8 +83,7 @@ mod tests {
 
     #[test]
     fn simple_entity_sql() {
-        let mut query = DynQuery::default();
-        WRITER.write_create_table(&mut query, SomeSimpleEntity::table(), false);
+        let query = Sql().create_table(SomeSimpleEntity::table()).build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -98,18 +97,17 @@ mod tests {
             "#}
             .trim()
         );
-        let mut query = DynQuery::default();
-        WRITER.write_drop_table(&mut query, SomeSimpleEntity::table(), true);
+        let query = Sql()
+            .drop_table(SomeSimpleEntity::table())
+            .if_exists()
+            .build(&DRIVER);
         assert_eq!(query.as_str(), r#"DROP TABLE IF EXISTS "simple_entity";"#);
-        let mut query = DynQuery::default();
-        WRITER.write_select(
-            &mut query,
-            Sql()
-                .select(SomeSimpleEntity::columns())
-                .from(SomeSimpleEntity::table())
-                .where_expr(expr!(SomeSimpleEntity::a > 100))
-                .limit(Some(1000)),
-        );
+        let query = Sql()
+            .select(SomeSimpleEntity::columns())
+            .from(SomeSimpleEntity::table())
+            .where_expr(expr!(SomeSimpleEntity::a > 100))
+            .limit(Some(1000))
+            .build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -120,14 +118,11 @@ mod tests {
             "#}
             .trim()
         );
-        let mut query = DynQuery::default();
-        WRITER.write_insert(
-            &mut query,
-            Sql()
-                .insert_into(SomeSimpleEntity::table())
-                .values(&[SomeSimpleEntity::make_some()])
-                .update(),
-        );
+        let query = Sql()
+            .insert_into(SomeSimpleEntity::table())
+            .values(&[SomeSimpleEntity::make_some()])
+            .update()
+            .build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
@@ -136,12 +131,10 @@ mod tests {
             "#}
             .trim()
         );
-        let mut query = DynQuery::default();
-        WRITER.write_delete(
-            &mut query,
-            SomeSimpleEntity::table(),
-            expr!(SomeSimpleEntity::b != "hello"),
-        );
+        let query = Sql()
+            .delete_from(SomeSimpleEntity::table())
+            .where_expr(expr!(SomeSimpleEntity::b != "hello"))
+            .build(&DRIVER);
         assert_eq!(
             query.as_str(),
             indoc! {r#"
