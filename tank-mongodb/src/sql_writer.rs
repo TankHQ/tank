@@ -55,6 +55,7 @@ impl MongoDBSqlWriter {
         &self,
         out: &mut DynQuery,
         table: &TableRef,
+        columns: &[ColumnDef],
         query: &impl SelectQuery<Data>,
     ) {
         let mut select = DynQuery::default();
@@ -72,13 +73,20 @@ impl MongoDBSqlWriter {
                 Self::find_pipeline(
                     v.filter,
                     v.options.sort,
+                    v.options.skip,
                     v.options.limit,
                     v.options.projection,
                 ),
             ),
             Payload::FindOne(v) => (
                 v.table,
-                Self::find_pipeline(v.filter, v.options.sort, Some(1), v.options.projection),
+                Self::find_pipeline(
+                    v.filter,
+                    v.options.sort,
+                    v.options.skip,
+                    Some(1),
+                    v.options.projection,
+                ),
             ),
             payload => {
                 log::error!(
@@ -87,6 +95,26 @@ impl MongoDBSqlWriter {
                 return;
             }
         };
+        if !columns.is_empty()
+            && let Some(last) = pipeline.last_mut()
+            && let Ok(proj) = last.get_document_mut("$project")
+            && proj.len() == columns.len()
+        {
+            let remapped = mem::take(proj)
+                .into_iter()
+                .zip(columns)
+                .map(|((old_key, val), col)| {
+                    let target_key = col.name().to_string();
+                    let val = if val == Bson::Int32(1) && target_key != old_key {
+                        Bson::String(format!("${old_key}"))
+                    } else {
+                        val
+                    };
+                    (target_key, val)
+                })
+                .collect();
+            *proj = remapped;
+        }
         let into: Bson = if table.schema.is_empty() {
             table.name.to_string().into()
         } else {
@@ -116,6 +144,7 @@ impl MongoDBSqlWriter {
     fn find_pipeline(
         filter: Bson,
         sort: Option<Document>,
+        skip: Option<u64>,
         limit: Option<i64>,
         projection: Option<Document>,
     ) -> Vec<Document> {
@@ -127,6 +156,9 @@ impl MongoDBSqlWriter {
         }
         if let Some(sort) = sort {
             pipeline.push(doc! { "$sort": sort });
+        }
+        if let Some(skip) = skip {
+            pipeline.push(doc! { "$skip": skip as i64 });
         }
         if let Some(limit) = limit {
             pipeline.push(doc! { "$limit": limit });
@@ -238,7 +270,12 @@ impl SqlCoreWriter for MongoDBSqlWriter {
     }
 
     fn write_column_ref(&self, context: &mut Context, out: &mut DynQuery, value: &ColumnRef) {
-        self.write_identifier(context, out, &value.name, false);
+        if context.qualify_columns && !context.table_ref.name.is_empty() {
+            let qualified = format!("{}.{}", context.table_ref.name, value.name);
+            self.write_identifier(context, out, &qualified, false);
+        } else {
+            self.write_identifier(context, out, &value.name, false);
+        }
     }
 }
 
@@ -995,9 +1032,14 @@ impl SqlWriter for MongoDBSqlWriter {
             {
                 bson = doc! { "$literal": bson }.into();
             }
-            if aggregate_function {
-                aggregate_aliases.push((bson.clone(), name.clone()));
-            }
+            aggregate_aliases.push((
+                bson.clone(),
+                if aggregate_function {
+                    name.clone()
+                } else {
+                    format!("_id.{name}")
+                },
+            ));
             update_group!(column, name.clone(), bson.clone(), aggregate_function);
             if aggregate_function {
                 bson = Bson::String(format!("${name}"));
@@ -1009,6 +1051,21 @@ impl SqlWriter for MongoDBSqlWriter {
             }
         }
         let aggregate_aliases = Arc::new(aggregate_aliases);
+        if is_asterisk && query.is_distinct() && !table.columns.is_empty() {
+            is_asterisk = false;
+            for column in table.columns {
+                let name = column.name().to_string();
+                update_group!(
+                    column,
+                    name.clone(),
+                    Bson::String(format!("${name}")),
+                    false
+                );
+                if let Some(project) = &mut project {
+                    project.insert(name.clone(), Bson::String(format!("$_id.{name}")));
+                }
+            }
+        }
         if is_asterisk {
             project = None;
         }
@@ -1060,6 +1117,7 @@ impl SqlWriter for MongoDBSqlWriter {
             }
             update_group!(column, name, bson, aggregate_function);
         }
+        let aggregate_pipeline = is_aggregate || query.is_distinct();
         let known_columns = Arc::new(group.keys().collect::<Vec<_>>());
         let mut having = Bson::Null;
         if let Some(condition) = query.get_having() {
@@ -1095,6 +1153,11 @@ impl SqlWriter for MongoDBSqlWriter {
                 };
                 let mut is_field = IsField {
                     known_columns: known_columns.clone(),
+                    aggregate_aliases: if aggregate_pipeline {
+                        aggregate_aliases.clone()
+                    } else {
+                        Default::default()
+                    },
                     ..Default::default()
                 };
                 order.accept_visitor(&mut is_field, self, &mut context.current, out);
@@ -1115,18 +1178,25 @@ impl SqlWriter for MongoDBSqlWriter {
                     }
                     FieldType::Identifier(v) => v,
                     FieldType::Column(v) => {
-                        let mut context = if is_aggregate && is_column(&v.name) {
-                            context.current.switch_table("_id".into())
+                        if aggregate_pipeline && is_column(&v.name) {
+                            format!("_id.{}", v.name)
                         } else {
-                            context
-                        };
-                        v.as_identifier(&mut context.current)
+                            v.name.into_owned()
+                        }
                     }
                 };
                 sort.insert(field, Bson::Int32(if is_asc { 1 } else { -1 }));
             }
         }
-        if !is_aggregate && let Some(project) = &mut project {
+        if aggregate_pipeline {
+            if let (Ok(group_id), Some(project)) = (group.get_document("_id"), &mut project) {
+                for key in group_id.keys() {
+                    if let Some(value) = project.get_mut(key) {
+                        *value = Bson::String(format!("$_id.{key}"));
+                    }
+                }
+            }
+        } else if let Some(project) = &mut project {
             for (_k, v) in project.iter_mut() {
                 if let Bson::String(value) = v
                     && value.starts_with("$_id.")
@@ -1136,7 +1206,8 @@ impl SqlWriter for MongoDBSqlWriter {
             }
         }
         let limit = query.get_limit();
-        let payload: Payload = if is_aggregate {
+        let offset = query.get_offset();
+        let payload: Payload = if aggregate_pipeline {
             let mut pipeline = Vec::new();
             if !where_expr.is_empty() {
                 pipeline.push(doc! { "$match": where_expr });
@@ -1153,6 +1224,9 @@ impl SqlWriter for MongoDBSqlWriter {
             }
             if !sort.is_empty() {
                 pipeline.push(doc! { "$sort": sort });
+            }
+            if let Some(offset) = offset {
+                pipeline.push(doc! { "$skip": offset as i64 });
             }
             if let Some(limit) = limit {
                 pipeline.push(doc! { "$limit": limit });
@@ -1178,6 +1252,7 @@ impl SqlWriter for MongoDBSqlWriter {
                     .comment(Bson::String(format!("Tank: select one entity from {name}")))
                     .projection(project)
                     .sort(if !sort.is_empty() { Some(sort) } else { None })
+                    .skip(offset.map(|v| v as _))
                     .build(),
             }
             .into()
@@ -1189,6 +1264,7 @@ impl SqlWriter for MongoDBSqlWriter {
                     .comment(Bson::String(format!("Tank: select entities from {name}")))
                     .projection(project)
                     .sort(if !sort.is_empty() { Some(sort) } else { None })
+                    .skip(offset.map(|v| v as _))
                     .limit(limit.map(|v| v as _))
                     .build(),
             }
@@ -1206,7 +1282,7 @@ impl SqlWriter for MongoDBSqlWriter {
         let update = query.get_update();
         let rows = match query.get_values() {
             Either::Left(rows) => rows,
-            Either::Right(select) => return self.write_insert_select(out, table, select),
+            Either::Right(select) => return self.write_insert_select(out, table, columns, select),
         };
         let name = table.full_name(self.separator()).into_owned();
         let labels: RowLabels = columns.iter().map(|c| c.name().to_string()).collect();

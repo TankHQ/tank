@@ -722,7 +722,7 @@ ORDER BY `symbol` ASC;
   },
   {
     "$sort": {
-      "trading._id.symbol": 1
+      "_id.symbol": 1
     }
   },
   {
@@ -821,7 +821,7 @@ LIMIT 5;
   },
   {
     "$sort": {
-      "ops._id.level": 1
+      "_id.level": 1
     }
   },
   {

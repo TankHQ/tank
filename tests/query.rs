@@ -640,6 +640,77 @@ mod tests {
     }
 
     #[test]
+    fn query_distinct() {
+        #[derive(Entity)]
+        struct Distinctable {
+            x: u32,
+        }
+        let query = Sql()
+            .select(Distinctable::columns())
+            .distinct()
+            .from(Distinctable::table())
+            .limit(Some(10));
+        assert!(query.is_distinct());
+        let mut sql = DynQuery::default();
+        WRITER.write_select(&mut sql, &query);
+        assert!(
+            sql.as_str().starts_with("SELECT DISTINCT "),
+            "{}",
+            sql.as_str()
+        );
+
+        let query = Sql()
+            .select(Distinctable::columns())
+            .from(Distinctable::table())
+            .distinct()
+            .limit(Some(10));
+        assert!(query.is_distinct());
+        let mut sql = DynQuery::default();
+        WRITER.write_select(&mut sql, &query);
+        assert!(
+            sql.as_str().starts_with("SELECT DISTINCT "),
+            "{}",
+            sql.as_str()
+        );
+    }
+
+    #[test]
+    fn query_offset() {
+        #[derive(Entity)]
+        struct Offsettable {
+            x: u32,
+        }
+        let order = cols!(Offsettable::x ASC);
+        let query = Sql()
+            .select(Offsettable::columns())
+            .from(Offsettable::table())
+            .order_by(order)
+            .limit(Some(10))
+            .offset(Some(5));
+        assert_eq!(query.get_offset(), Some(5));
+        let mut sql = DynQuery::default();
+        WRITER.write_select(&mut sql, &query);
+        assert!(sql.as_str().contains("LIMIT 10"), "{}", sql.as_str());
+        assert!(sql.as_str().contains("OFFSET 5"), "{}", sql.as_str());
+    }
+
+    #[test]
+    fn query_offset_without_limit() {
+        #[derive(Entity)]
+        struct OffsetOnly {
+            x: u32,
+        }
+        let query = Sql()
+            .select(OffsetOnly::columns())
+            .from(OffsetOnly::table())
+            .offset(Some(5));
+        let mut sql = DynQuery::default();
+        WRITER.write_select(&mut sql, &query);
+        assert!(!sql.as_str().contains("LIMIT"), "{}", sql.as_str());
+        assert!(sql.as_str().contains("OFFSET 5"), "{}", sql.as_str());
+    }
+
+    #[test]
     fn query_18() {
         #[derive(Entity)]
         struct Tbl {
@@ -665,6 +736,8 @@ mod tests {
         assert!(q.get_having().is_some());
         let _ob: Vec<_> = q.get_order_by().collect();
         assert_eq!(q.get_limit(), Some(5));
+        assert_eq!(q.get_offset(), None);
+        assert!(!q.is_distinct());
     }
 
     #[test]

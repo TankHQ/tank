@@ -4,7 +4,7 @@ use crate::{
     writer::{Context, SqlCoreWriter, SqlValueWriter},
 };
 
-/// Overridable SQL statement fragments: joins, column definitions, and upserts.
+/// Overridable SQL statement fragments: joins, column definitions, pagination, and upserts.
 pub trait SqlFragmentWriter: SqlValueWriter {
     /// Render join keyword(s) for the given join type.
     fn write_join_type(&self, _context: &mut Context, out: &mut DynQuery, join_type: &JoinType) {
@@ -176,6 +176,24 @@ pub trait SqlFragmentWriter: SqlValueWriter {
             );
         } else {
             out.push_str(" DO NOTHING");
+        }
+    }
+
+    /// Write the LIMIT and OFFSET clauses.
+    fn write_limit_offset(
+        &self,
+        _context: &mut Context,
+        out: &mut DynQuery,
+        limit: Option<u32>,
+        offset: Option<u32>,
+    ) {
+        if let Some(limit) = limit {
+            out.push_str("\nLIMIT ");
+            out.push_str(itoa::Buffer::new().format(limit));
+        }
+        if let Some(offset) = offset {
+            out.push_str("\nOFFSET ");
+            out.push_str(itoa::Buffer::new().format(offset));
         }
     }
 }

@@ -28,6 +28,7 @@ mod other;
 mod prepared;
 mod readme;
 mod requests;
+mod select_options;
 mod service;
 mod shopping;
 mod simple;
@@ -72,6 +73,7 @@ use rcgen::{
 };
 pub use readme::*;
 pub use requests::*;
+pub use select_options::*;
 pub use service::*;
 pub use shopping::*;
 pub use simple::*;
@@ -233,6 +235,8 @@ pub async fn execute_tests<D: Driver + 'static>(pool: &mut impl ConnectionPool<D
         boxed(readme),
         boxed(operations),
         boxed(advanced_operations),
+        #[cfg(not(feature = "disable-ordering"))]
+        boxed(select_options),
         boxed(cheat_sheet),
         boxed(insert_builder),
     ];

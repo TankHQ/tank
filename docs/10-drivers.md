@@ -66,7 +66,7 @@ The writer is split by concern across five traits, all in `tank-core`:
 | `SqlCoreWriter`       | Identifiers, table and column references, type names. Declares `as_dyn`    |
 | `SqlValueWriter`      | Literals: strings, numbers, date/time, intervals, UUIDs, lists, maps, JSON |
 | `SqlExpressionWriter` | Operands, operators and precedence, functions, `CASE`, `CAST`              |
-| `SqlFragmentWriter`   | Building blocks of statements: joins, column definitions, upsert clauses   |
+| `SqlFragmentWriter`   | Building blocks of statements: joins, column definitions, pagination, upsert clauses |
 | `SqlWriter`           | Complete statements (`write_create_table`, `write_select`, `write_insert`, `write_update`, `write_delete`, `write_drop_table`, transactions) |
 
 Callers emitting complete statements only need `SqlWriter` in scope, which requires the other four. A driver implements `SqlCoreWriter` (including `as_dyn`) and the traits it overrides, then opts into the rest with empty `impl` blocks.
@@ -77,6 +77,7 @@ Override only differences from the generic fallback:
 - Literal escaping quirks (BLOB, INTERVAL, UUID, arrays)
 - Parameter placeholder (override `write_question_mark`) if not `?`
 - Schema operations (override as no-ops if the engine lacks schemas, as SQLite does)
+- Pagination syntax via `write_limit_offset` if an offset needs a limit or different keywords
 - Upsert syntax via `write_insert_update_fragment` if divergence
 
 Call writer methods directly; overrides are dispatched normally. Use `self.as_dyn()` when passing the writer to an expression or dataset interface that requires a trait object, and in a default method that must reach a method declared on a sibling trait.

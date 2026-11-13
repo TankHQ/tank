@@ -178,7 +178,21 @@ impl SqlExpressionWriter for SQLiteSqlWriter {
     }
 }
 
-impl SqlFragmentWriter for SQLiteSqlWriter {}
+impl SqlFragmentWriter for SQLiteSqlWriter {
+    fn write_limit_offset(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        limit: Option<u32>,
+        offset: Option<u32>,
+    ) {
+        // SQLite only accepts OFFSET after a LIMIT; -1 means unlimited.
+        if limit.is_none() && offset.is_some() {
+            out.push_str("\nLIMIT -1");
+        }
+        GenericSqlWriter.write_limit_offset(context, out, limit, offset);
+    }
+}
 
 impl SqlWriter for SQLiteSqlWriter {
     fn write_create_schema(&self, _out: &mut DynQuery, _table: &TableRef, _if_not_exists: bool)

@@ -11,7 +11,7 @@ mod tests {
     use tank::{
         CollectionType, ColumnDef, ColumnRef, Connection, ConnectionPool, Context, Driver,
         DynQuery, Entity, Executor, Fragment, GenericSqlWriter, MapType, QueryResult, Row,
-        SqlCoreWriter, SqlValueWriter, SqlWriter, TableRef, Value,
+        SqlCoreWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value,
         stream::{StreamExt, TryStreamExt},
     };
     use tank_sqlite::{SQLiteConnection, SQLiteDriver};
@@ -480,5 +480,27 @@ mod tests {
             );
             assert_eq!(out.as_str(), expected.as_str());
         }
+    }
+
+    #[test]
+    fn sqlite_limit_offset_clauses() {
+        let writer = sqlite_writer();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+
+        let mut out = DynQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, None, None);
+        assert_eq!(out.as_str(), "");
+
+        let mut out = DynQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, Some(10), None);
+        assert_eq!(out.as_str(), "\nLIMIT 10");
+
+        let mut out = DynQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, Some(10), Some(5));
+        assert_eq!(out.as_str(), "\nLIMIT 10\nOFFSET 5");
+
+        let mut out = DynQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, None, Some(5));
+        assert_eq!(out.as_str(), "\nLIMIT -1\nOFFSET 5");
     }
 }

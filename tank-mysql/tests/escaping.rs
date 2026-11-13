@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use tank::{Context, DynQuery, Fragment, SqlValueWriter};
+    use tank::{Context, DynQuery, Fragment, SqlFragmentWriter, SqlValueWriter};
     use tank_mysql::MySQLSqlWriter;
 
     #[test]
@@ -31,5 +31,27 @@ mod tests {
         // string and loses the raw bytes.
         writer.write_blob(&mut ctx, &mut out, &[0x00, 0xFF, 0xDE, 0xAD]);
         assert_eq!(out.as_str(), "X'00FFDEAD'");
+    }
+
+    #[test]
+    fn mysql_limit_offset_clauses() {
+        let writer = MySQLSqlWriter::default();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+
+        let mut out = DynQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, None, None);
+        assert_eq!(out.as_str(), "");
+
+        let mut out = DynQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, Some(10), None);
+        assert_eq!(out.as_str(), "\nLIMIT 10");
+
+        let mut out = DynQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, Some(10), Some(5));
+        assert_eq!(out.as_str(), "\nLIMIT 10\nOFFSET 5");
+
+        let mut out = DynQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, None, Some(5));
+        assert_eq!(out.as_str(), "\nLIMIT 18446744073709551615\nOFFSET 5");
     }
 }

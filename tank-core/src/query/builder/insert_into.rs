@@ -91,6 +91,8 @@ impl InsertIntoQueryBuilder<(), NA> {
             having: None,
             order_by: None,
             limit: None,
+            offset: None,
+            distinct: false,
             _l: PhantomData,
             insert: self.with(NA, false),
         }

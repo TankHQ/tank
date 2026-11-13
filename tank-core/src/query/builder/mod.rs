@@ -34,6 +34,8 @@ impl Sql {
             having: Default::default(),
             order_by: Default::default(),
             limit: Default::default(),
+            offset: Default::default(),
+            distinct: Default::default(),
             _l: Default::default(),
             insert: NA,
         }

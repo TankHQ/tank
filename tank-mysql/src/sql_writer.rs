@@ -373,6 +373,20 @@ impl SqlFragmentWriter for MySQLSqlWriter {
             ",\n",
         );
     }
+
+    fn write_limit_offset(
+        &self,
+        context: &mut Context,
+        out: &mut DynQuery,
+        limit: Option<u32>,
+        offset: Option<u32>,
+    ) {
+        // MySQL requires LIMIT before OFFSET; u64::MAX is its documented unbounded count.
+        if limit.is_none() && offset.is_some() {
+            let _ = write!(out, "\nLIMIT {}", u64::MAX);
+        }
+        GenericSqlWriter.write_limit_offset(context, out, limit, offset);
+    }
 }
 
 impl SqlWriter for MySQLSqlWriter {

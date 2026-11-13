@@ -23,6 +23,43 @@ pub struct IsField<'a> {
     pub known_columns: Arc<Vec<&'a String>>,
     pub aggregate_aliases: AggregateAliases,
 }
+impl<'a> IsField<'a> {
+    fn resolve_expression(
+        &mut self,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        value: &dyn Expression,
+    ) -> bool {
+        if self.known_columns.is_empty() && self.aggregate_aliases.is_empty() {
+            return false;
+        }
+        let mut probe_ctx = context.clone();
+        let identifier = value.as_identifier(&mut probe_ctx.switch_table("".into()).current);
+        if self.known_columns.contains(&&identifier) {
+            self.field = FieldType::Identifier(identifier);
+            return true;
+        }
+        if !self.aggregate_aliases.is_empty() {
+            let mut probe_ctx = context.clone();
+            let mut query = MongoDBSqlWriter::make_prepared();
+            value.write_query(
+                writer,
+                &mut probe_ctx.switch_table("".into()).current,
+                &mut query,
+            );
+            if let Some(bson) = query
+                .as_prepared::<MongoDBDriver>()
+                .and_then(MongoDBPrepared::current_bson)
+                .map(mem::take)
+                && let Some((_, alias)) = self.aggregate_aliases.iter().find(|(b, _)| b == &bson)
+            {
+                self.field = FieldType::Identifier(alias.clone());
+                return true;
+            }
+        }
+        false
+    }
+}
 impl<'a> ExpressionVisitor for IsField<'a> {
     fn visit_column(
         &mut self,
@@ -73,68 +110,35 @@ impl<'a> ExpressionVisitor for IsField<'a> {
                 }
                 true
             }
-            _ => {
-                if self.known_columns.is_empty() && self.aggregate_aliases.is_empty() {
-                    return false;
-                }
-                let identifier = value.as_identifier(&mut context.switch_table("".into()).current);
-                if self.known_columns.contains(&&identifier) {
-                    self.field = FieldType::Identifier(identifier);
-                    return true;
-                }
-                if !self.aggregate_aliases.is_empty() {
-                    let mut query = MongoDBSqlWriter::make_prepared();
-                    value.write_query(writer, context, &mut query);
-                    if let Some(bson) = query
-                        .as_prepared::<MongoDBDriver>()
-                        .and_then(MongoDBPrepared::current_bson)
-                        .map(mem::take)
-                        && let Some((_, alias)) =
-                            self.aggregate_aliases.iter().find(|(b, _)| b == &bson)
-                    {
-                        self.field = FieldType::Identifier(alias.clone());
-                        return true;
-                    }
-                }
-                false
-            }
+            _ => self.resolve_expression(writer, context, value),
         }
     }
     fn visit_unary_op(
         &mut self,
-        _writer: &dyn SqlWriter,
+        writer: &dyn SqlWriter,
         context: &mut Context,
         _out: &mut DynQuery,
         value: &UnaryOp<&dyn Expression>,
     ) -> bool {
-        if self.known_columns.is_empty() {
-            return false;
-        }
-        let identifier = value.as_identifier(&mut context.switch_table("".into()).current);
-        if self.known_columns.contains(&&identifier) {
-            self.field = FieldType::Identifier(identifier);
-            true
-        } else {
-            false
-        }
+        self.resolve_expression(writer, context, value)
     }
     fn visit_binary_op(
         &mut self,
-        _writer: &dyn SqlWriter,
+        writer: &dyn SqlWriter,
         context: &mut Context,
         _out: &mut DynQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
-        if self.known_columns.is_empty() {
-            return false;
-        }
-        let identifier = value.as_identifier(&mut context.switch_table("".into()).current);
-        if self.known_columns.contains(&&identifier) {
-            self.field = FieldType::Identifier(identifier);
-            true
-        } else {
-            false
-        }
+        self.resolve_expression(writer, context, value)
+    }
+    fn visit_case(
+        &mut self,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        _out: &mut DynQuery,
+        value: &Case,
+    ) -> bool {
+        self.resolve_expression(writer, context, value)
     }
     fn visit_ordered(
         &mut self,
@@ -407,7 +411,12 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                     let field = match field.field {
                         FieldType::None => unreachable!(),
                         FieldType::Identifier(v) => v,
-                        FieldType::Column(v) => v.as_identifier(context),
+                        FieldType::Column(mut v) => {
+                            if !context.table_ref.is_empty() {
+                                v.schema = "".into();
+                            }
+                            v.as_identifier(context)
+                        }
                     };
                     let mut query: DynQuery = MongoDBSqlWriter::make_prepared();
                     value.write_query(writer, context, &mut query);

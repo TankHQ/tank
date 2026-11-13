@@ -194,6 +194,9 @@ pub trait SqlWriter:
             out.push('\n');
         }
         out.push_str("SELECT ");
+        if query.is_distinct() {
+            out.push_str("DISTINCT ");
+        }
         let qualified = query
             .get_from()
             .as_ref()
@@ -263,10 +266,7 @@ pub trait SqlWriter:
                 ", ",
             );
         }
-        if let Some(limit) = query.get_limit() {
-            out.push_str("\nLIMIT ");
-            out.push_str(itoa::Buffer::new().format(limit));
-        }
+        self.write_limit_offset(&mut context, out, query.get_limit(), query.get_offset());
         out.push(';');
     }
 

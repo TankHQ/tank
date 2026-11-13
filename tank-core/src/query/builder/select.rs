@@ -12,8 +12,24 @@ pub struct SelectQueryBuilder<Select, From, Where, GroupBy, Having, OrderBy, Lim
     pub(crate) having: Option<Having>,
     pub(crate) order_by: Option<OrderBy>,
     pub(crate) limit: Option<u32>,
+    pub(crate) offset: Option<u32>,
+    pub(crate) distinct: bool,
     pub(crate) _l: PhantomData<Limit>,
     pub(crate) insert: Insert,
+}
+
+impl<S, F, W, G, H, O, L, I> SelectQueryBuilder<S, F, W, G, H, O, L, I> {
+    /// Selects distinct rows, `SELECT DISTINCT`.
+    pub fn distinct(mut self) -> Self {
+        self.distinct = true;
+        self
+    }
+
+    /// Skips the first `offset` rows.
+    pub fn offset(mut self, offset: Option<u32>) -> Self {
+        self.offset = offset;
+        self
+    }
 }
 
 impl<S, I> SelectQueryBuilder<S, NA, NA, NA, NA, NA, NA, I> {
@@ -29,6 +45,8 @@ impl<S, I> SelectQueryBuilder<S, NA, NA, NA, NA, NA, NA, I> {
             having: Default::default(),
             order_by: Default::default(),
             limit: Default::default(),
+            offset: self.offset,
+            distinct: self.distinct,
             _l: Default::default(),
             insert: self.insert,
         }
@@ -51,6 +69,8 @@ impl<S, F, I> SelectQueryBuilder<S, F, NA, NA, NA, NA, NA, I> {
             having: Default::default(),
             order_by: Default::default(),
             limit: Default::default(),
+            offset: self.offset,
+            distinct: self.distinct,
             _l: Default::default(),
             insert: self.insert,
         }
@@ -73,6 +93,8 @@ impl<S, F, W, I> SelectQueryBuilder<S, F, W, NA, NA, NA, NA, I> {
             having: Default::default(),
             order_by: Default::default(),
             limit: Default::default(),
+            offset: self.offset,
+            distinct: self.distinct,
             _l: Default::default(),
             insert: self.insert,
         }
@@ -92,6 +114,8 @@ impl<S, F, W, G, I> SelectQueryBuilder<S, F, W, G, NA, NA, NA, I> {
             having: Some(having),
             order_by: Default::default(),
             limit: Default::default(),
+            offset: self.offset,
+            distinct: self.distinct,
             _l: Default::default(),
             insert: self.insert,
         }
@@ -114,6 +138,8 @@ impl<S, F, W, G, H, I> SelectQueryBuilder<S, F, W, G, H, NA, NA, I> {
             having: self.having,
             order_by: Some(order_by),
             limit: None,
+            offset: self.offset,
+            distinct: self.distinct,
             _l: Default::default(),
             insert: self.insert,
         }
@@ -130,6 +156,8 @@ impl<S, F, W, G, H, O, I> SelectQueryBuilder<S, F, W, G, H, O, NA, I> {
             having: self.having,
             order_by: self.order_by,
             limit,
+            offset: self.offset,
+            distinct: self.distinct,
             _l: Default::default(),
             insert: self.insert,
         }
@@ -178,6 +206,14 @@ where
     pub fn get_limit(&self) -> Option<u32> {
         self.limit
     }
+
+    pub fn get_offset(&self) -> Option<u32> {
+        self.offset
+    }
+
+    pub fn is_distinct(&self) -> bool {
+        self.distinct
+    }
 }
 
 impl<S, From, W, G, H, O, L> SelectQueryBuilder<S, From, W, G, H, O, L>
@@ -219,6 +255,10 @@ where
     fn get_order_by(&self) -> impl Iterator<Item = impl Expression> + Clone;
     /// Get LIMIT value.
     fn get_limit(&self) -> Option<u32>;
+    /// Get OFFSET value.
+    fn get_offset(&self) -> Option<u32>;
+    /// Whether the query selects distinct rows.
+    fn is_distinct(&self) -> bool;
     /// Build query.
     fn build<D: Driver>(&self, driver: &D) -> DynQuery;
     /// Build query into existing buffer.
@@ -262,6 +302,14 @@ where
         self.get_limit()
     }
 
+    fn get_offset(&self) -> Option<u32> {
+        self.get_offset()
+    }
+
+    fn is_distinct(&self) -> bool {
+        self.is_distinct()
+    }
+
     fn build<D: Driver>(&self, driver: &D) -> DynQuery {
         let mut query = DynQuery::default();
         self.build_into(driver, &mut query);
@@ -300,6 +348,14 @@ impl<'t, From: Dataset + 't, T: SelectQuery<From>> SelectQuery<From> for &'t T {
 
     fn get_limit(&self) -> Option<u32> {
         (**self).get_limit()
+    }
+
+    fn get_offset(&self) -> Option<u32> {
+        (**self).get_offset()
+    }
+
+    fn is_distinct(&self) -> bool {
+        (**self).is_distinct()
     }
 
     fn build<D: Driver>(&self, driver: &D) -> DynQuery {

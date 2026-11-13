@@ -490,6 +490,12 @@ mod tests {
             fn get_limit(&self) -> Option<u32> {
                 None
             }
+            fn get_offset(&self) -> Option<u32> {
+                None
+            }
+            fn is_distinct(&self) -> bool {
+                false
+            }
             fn build<D: tank::Driver>(&self, _: &D) -> DynQuery {
                 DynQuery::default()
             }
