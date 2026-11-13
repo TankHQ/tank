@@ -141,9 +141,12 @@ impl SqlWriter for SQLiteSqlWriter {
     }
 
     fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+        out.buffer().reserve(3 * value.len() + 3);
         out.push_str("X'");
-        for b in value {
-            let _ = write!(out, "{:02X}", b);
+        for &b in value {
+            out.push(HEX[(b >> 4) as usize] as char);
+            out.push(HEX[(b & 0xF) as usize] as char);
         }
         out.push('\'');
     }

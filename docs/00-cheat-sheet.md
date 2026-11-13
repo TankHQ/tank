@@ -172,11 +172,11 @@ use std::pin::pin;
 use tank::{QueryResult, Row, stream::TryStreamExt};
 
 {
-    let mut stream = pin!(connection.run(indoc! (r#"
+    let mut stream = pin!(connection.run(indoc! {r#"
         SELECT unit_id, callsign
         FROM army.deployments
         WHERE casualties > 0
-    "#)));
+    "#}));
     while let Some(result) = stream.try_next().await? {
         match result {
             QueryResult::Row(row) => {
@@ -209,12 +209,12 @@ This raw SQL uses PostgreSQL's `$1`, `$2` placeholders. Other drivers, such as D
 use indoc::indoc;
 use tank::{Entity, stream::TryStreamExt};
 
-let mut query = connection.prepare(indoc! (r#"
+let mut query = connection.prepare(indoc! {r#"
     SELECT unit_id, region, callsign, casualties, metadata
     FROM army.deployments
     WHERE unit_id = $1
     LIMIT $2
-"#)).await?;
+"#}).await?;
 query.bind(uid)?;
 query.bind(25)?;
 

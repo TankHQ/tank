@@ -31,6 +31,9 @@ pub enum Fragment {
     SqlSelectOrderBy,
     Timestamp,
     SqlSelectWhere,
+    SqlUpdate,
+    SqlUpdateSet,
+    SqlUpdateWhere,
 }
 
 /// Holds state during SQL generation, including current fragment, table context, and formatting options.

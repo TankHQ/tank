@@ -23,6 +23,8 @@ url.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+tank.workspace = true
+time.workspace = true
 tank-tests = { path = "../tank-tests", features = [
     "disable-arrays",
     "disable-intervals",

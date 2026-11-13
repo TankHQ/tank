@@ -114,12 +114,12 @@ mod tests {
         assert_eq!(columns[3].comment, "");
         assert_eq!(
             columns[4].comment,
-            indoc! {"
+            indoc! {r#"
                 List of all the full cart products
                 It's a list of lists of ids
 
                 Can also be empty
-            "}
+            "#}
             .trim()
         );
     }

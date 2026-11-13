@@ -276,7 +276,13 @@ mod tests {
         let start = Instant::now();
         let mut tx = connection.begin().await.unwrap();
         let updated = tx
-            .execute("UPDATE bench_trades SET price = price * 1.001 WHERE buy = true")
+            .execute(
+                Sql()
+                    .update(Trade::table())
+                    .set(cols!(Trade::price == Trade::price * 1.001))
+                    .where_expr(expr!(Trade::buy == true))
+                    .build(&tx.driver()),
+            )
             .await
             .unwrap();
         let deleted = Trade::delete_many(&mut tx, expr!(Trade::account >= 500))

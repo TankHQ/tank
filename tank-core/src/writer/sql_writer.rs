@@ -1,9 +1,9 @@
 use crate::{
     Action, BinaryOp, BinaryOpType, Case, ColumnDef, ColumnRef, Dataset, DynQuery, Error,
     Expression, Fragment, InsertIntoQuery, Interval, IsTrue, Join, JoinType, Operand, Order,
-    Ordered, PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, Value, WriteInList,
-    future::Either, possibly_parenthesized, separated_by, write_escaped, write_zero_padded,
-    writer::Context,
+    Ordered, PrimaryKeyType, SelectQuery, TableRef, UnaryOp, UnaryOpType, UpdateQuery, Value,
+    WriteInList, future::Either, possibly_parenthesized, separated_by, write_escaped,
+    write_zero_padded, writer::Context,
 };
 use rust_decimal::Decimal;
 use std::{
@@ -1373,6 +1373,50 @@ pub trait SqlWriter: Send {
         } else {
             out.push_str(" DO NOTHING");
         }
+    }
+
+    /// Write UPDATE statement.
+    fn write_update<Data>(&self, out: &mut DynQuery, query: impl UpdateQuery<Data>)
+    where
+        Self: Sized,
+        Data: Dataset,
+    {
+        let table = query.get_from();
+        let assignments = query.get_set();
+        let assignments_count = assignments.clone().count();
+        if assignments_count == 0 {
+            return;
+        }
+        out.buffer().reserve(128 + assignments_count * 32);
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("UPDATE ");
+        let mut context = Context::new(Fragment::SqlUpdate, table.qualified_columns());
+        table.write_table_name(self, &mut context, out);
+        out.push_str("\nSET ");
+        {
+            let mut set = context.switch_fragment(Fragment::SqlUpdateSet);
+            // A SET target is a bare column name, never a qualified one.
+            set.current.qualify_columns = false;
+            separated_by(
+                out,
+                assignments,
+                |out, assignment| assignment.write_query(self, &mut set.current, out),
+                ",\n",
+            );
+        }
+        if let Some(condition) = query.get_where()
+            && !condition.accept_visitor(&mut IsTrue, self, &mut context, out)
+        {
+            out.push_str("\nWHERE ");
+            condition.write_query(
+                self,
+                &mut context.switch_fragment(Fragment::SqlUpdateWhere).current,
+                out,
+            );
+        }
+        out.push(';');
     }
 
     /// Write DELETE statement.

@@ -1,19 +1,18 @@
-use crate::{
-    CBox, SQLiteDriver, SQLitePrepared, SQLiteTransaction,
-    extract::{extract_name, extract_value},
-};
+use crate::{CBox, SQLiteDriver, SQLitePrepared, SQLiteTransaction};
 use anyhow::anyhow;
 use libsqlite3_sys::*;
 use std::{
     borrow::Cow,
     ffi::{CStr, CString, c_char, c_int},
-    ptr,
+    future::Future,
+    hint, ptr,
     str::FromStr,
     sync::Arc,
 };
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Prepared, Query, QueryResult, Result,
-    RowOwned, RowsAffected, describe_path, error_message_from_ptr, truncate_long,
+    AsEntity, AsQuery, Connection, Context, Driver, DynQuery, Entity, Error, ErrorContext,
+    Executor, Fragment, Prepared, Query, QueryResult, Result, RowOwned, RowsAffected, Sql,
+    SqlWriter, describe_path, error_message_from_ptr, future::Either, truncate_long,
 };
 
 /// Wrapper for a SQLite `sqlite3` connection pointer used by the SQLite driver.
@@ -34,36 +33,212 @@ impl SQLiteConnection {
             )
         }
     }
+
+    /// Inserts every entity in `rows` through a single prepared statement.
+    fn append_entities<I>(&mut self, rows: I) -> Result<RowsAffected>
+    where
+        I: IntoIterator,
+        I::Item: AsEntity,
+    {
+        type E<I> = <<I as IntoIterator>::Item as AsEntity>::Entity;
+        let table = E::<I>::table();
+        let columns = E::<I>::columns();
+        let writer = self.driver().sql_writer();
+        let mut sql = DynQuery::with_capacity(32 + columns.len() * 12);
+        let mut context = Context::new(Fragment::SqlInsertInto, false);
+        sql.push_str("INSERT INTO ");
+        writer.write_table_ref(&mut context, &mut sql, table);
+        sql.push_str(" (");
+        for (i, column) in columns.iter().enumerate() {
+            if i != 0 {
+                sql.push_str(", ");
+            }
+            writer.write_identifier(&mut context, &mut sql, column.name(), true);
+        }
+        sql.push_str(") VALUES (");
+        for i in 0..columns.len() {
+            if i != 0 {
+                sql.push_str(", ");
+            }
+            sql.push('?');
+        }
+        sql.push(')');
+        let sql = CString::new(sql.as_str().as_ref())?;
+        let connection = *self.connection;
+        unsafe {
+            let mut statement =
+                SQLitePrepared::new(CBox::new(ptr::null_mut(), |p: *mut sqlite3_stmt| {
+                    if !p.is_null() {
+                        sqlite3_finalize(p);
+                    }
+                }));
+            let rc = sqlite3_prepare_v2(
+                connection,
+                sql.as_ptr(),
+                -1,
+                &mut *statement.statement,
+                ptr::null_mut(),
+            );
+            if rc != SQLITE_OK {
+                hint::cold_path();
+                return Err(self.prepare_error(rc, sql.as_c_str().to_string_lossy()));
+            }
+            // An implicit transaction per statement keeps file databases from syncing per row.
+            let own_transaction = sqlite3_get_autocommit(connection) != 0;
+            if own_transaction
+                && sqlite3_exec(
+                    connection,
+                    c"BEGIN".as_ptr(),
+                    None,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                ) != SQLITE_OK
+            {
+                hint::cold_path();
+                return Err(self.step_error(SQLITE_ERROR));
+            }
+            let mut affected = 0u64;
+            // Reused for temporal values, which the dialect formats as text.
+            let mut scratch = DynQuery::default();
+            for entity in rows {
+                let entity = entity.as_entity();
+                for (index, value) in entity.row_values().enumerate() {
+                    if let Err(error) =
+                        statement.bind_value(index as c_int + 1, &value, &mut scratch)
+                    {
+                        if own_transaction {
+                            sqlite3_exec(
+                                connection,
+                                c"ROLLBACK".as_ptr(),
+                                None,
+                                ptr::null_mut(),
+                                ptr::null_mut(),
+                            );
+                        }
+                        return Err(error);
+                    }
+                }
+                let rc = sqlite3_step(statement.statement());
+                if rc != SQLITE_DONE {
+                    hint::cold_path();
+                    let error = self.step_error(rc);
+                    if own_transaction {
+                        sqlite3_exec(
+                            connection,
+                            c"ROLLBACK".as_ptr(),
+                            None,
+                            ptr::null_mut(),
+                            ptr::null_mut(),
+                        );
+                    }
+                    return Err(error);
+                }
+                sqlite3_clear_bindings(statement.statement());
+                sqlite3_reset(statement.statement());
+                affected += 1;
+            }
+            if own_transaction
+                && sqlite3_exec(
+                    connection,
+                    c"COMMIT".as_ptr(),
+                    None,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                ) != SQLITE_OK
+            {
+                hint::cold_path();
+                return Err(self.step_error(SQLITE_ERROR));
+            }
+            Ok(RowsAffected {
+                rows_affected: Some(affected),
+                last_affected_id: Some(sqlite3_last_insert_rowid(connection)),
+            })
+        }
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn prepare_error(&self, rc: c_int, sql: Cow<'_, str>) -> Error {
+        Error::msg(self.last_error()).context(format!(
+            "While preparing (rc {rc}):\n{}",
+            truncate_long!(sql)
+        ))
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn step_error(&self, rc: c_int) -> Error {
+        Error::msg(self.last_error()).context(format!("While stepping a batched insert (rc {rc})"))
+    }
 }
 
 // Both iterator levels own this state. Even a rowset retained after the outer iterator
 // is dropped keeps the connection and prepared query borrowed. All native access is
-// serialized by the mutex; no worker can outlive those borrows.
+// serialized by the caller's exclusive borrow; the connection opens without a mutex.
 struct SQLiteCursor<'s, Q: AsMut<Query<SQLiteDriver>>> {
     connection: &'s mut SQLiteConnection,
     query: Q,
     statement: Option<SQLitePrepared>,
     offset: usize,
     generation: usize,
+    columns: c_int,
     active: bool,
     done: bool,
     names: Option<Arc<[String]>>,
 }
 
 impl<Q: AsMut<Query<SQLiteDriver>>> SQLiteCursor<'_, Q> {
-    fn statement(&mut self) -> *mut sqlite3_stmt {
+    /// The statement this cursor reads from, owned for raw SQL or borrowed from the query.
+    #[inline(always)]
+    fn prepared(&mut self) -> Option<&SQLitePrepared> {
         match self.query.as_mut() {
-            Query::Prepared(prepared) => prepared.statement(),
-            Query::Raw(_) => self
-                .statement
-                .as_ref()
-                .map_or(ptr::null_mut(), |s| s.statement()),
+            Query::Prepared(prepared) => Some(prepared),
+            Query::Raw(_) => self.statement.as_ref(),
         }
     }
 
+    #[inline(always)]
+    fn statement(&mut self) -> *mut sqlite3_stmt {
+        self.prepared()
+            .map_or(ptr::null_mut(), SQLitePrepared::statement)
+    }
+
+    #[cold]
+    #[inline(never)]
     fn error(&mut self) -> Error {
         Error::msg(self.connection.last_error())
             .context(format!("While running the query:\n{}", self.query.as_mut()))
+    }
+
+    /// Reads the column labels, which SQLite may only expose after the first step.
+    ///
+    /// Prepared statements keep them between runs; the count is re-checked so a
+    /// recompiled statement never decodes a different shape under old labels.
+    #[cold]
+    #[inline(never)]
+    fn init_names(&mut self) -> Result<Arc<[String]>> {
+        let Some(prepared) = self.prepared() else {
+            return Ok(Arc::default());
+        };
+        let columns = prepared.column_count();
+        let cached = if prepared.columns == columns {
+            prepared.labels.clone()
+        } else {
+            None
+        };
+        let names = match cached {
+            Some(names) => names,
+            None => (0..columns)
+                .map(|index| prepared.column_name(index))
+                .collect::<Result<Arc<[_]>>>()?,
+        };
+        if let Query::Prepared(prepared) = self.query.as_mut() {
+            prepared.columns = columns;
+            prepared.labels = Some(names.clone());
+        }
+        self.columns = columns;
+        self.names = Some(names.clone());
+        Ok(names)
     }
 
     fn reset(&mut self) {
@@ -74,10 +249,12 @@ impl<Q: AsMut<Query<SQLiteDriver>>> SQLiteCursor<'_, Q> {
             unsafe { sqlite3_reset(statement) };
         }
         self.active = false;
+        self.columns = 0;
         self.names = None;
         self.statement = None;
     }
 
+    /// Copies the current row out of the statement.
     fn row(&mut self) -> Result<Option<RowOwned>> {
         if !self.active {
             return Ok(None);
@@ -85,27 +262,22 @@ impl<Q: AsMut<Query<SQLiteDriver>>> SQLiteCursor<'_, Q> {
         let statement = self.statement();
         let result = unsafe {
             match sqlite3_step(statement) {
-                SQLITE_ROW => (|| {
-                    let count = sqlite3_column_count(statement);
-                    // Read labels after stepping: SQLite may have recompiled the VM.
-                    let names = match &self.names {
-                        Some(names) => names.clone(),
-                        None => {
-                            let names = (0..count)
-                                .map(|i| extract_name(statement, i))
-                                .collect::<Result<Arc<[_]>>>()?;
-                            self.names = Some(names.clone());
-                            names
-                        }
+                SQLITE_ROW => {
+                    let names = if let Some(names) = &self.names {
+                        names.clone()
+                    } else {
+                        hint::cold_path();
+                        self.init_names()?
                     };
-                    let values = (0..count)
-                        .map(|i| extract_value(statement, i))
-                        .collect::<Result<Vec<_>>>()?;
-                    Ok(Some(RowOwned {
-                        labels: names,
-                        values,
-                    }))
-                })(),
+                    let columns = self.columns;
+                    let mut values = Vec::with_capacity(columns as usize);
+                    if let Some(prepared) = self.prepared() {
+                        for index in 0..columns {
+                            values.push(prepared.extract(index)?.into_owned());
+                        }
+                    }
+                    Ok(Some(RowOwned::new(names, values)))
+                }
                 SQLITE_DONE => Ok(None),
                 _ => Err(self.error()),
             }
@@ -216,6 +388,12 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Drop for SQLiteCursor<'_, Q> {
 impl Connection for SQLiteConnection {
     async fn connect(driver: &SQLiteDriver, url: Cow<'static, str>) -> Result<Self> {
         let url = Self::sanitize_url(driver, url)?;
+        // Must run before SQLite initializes; memory statistics cost a counter update
+        // on every allocation and nothing in this driver reads them.
+        static CONFIGURE: std::sync::Once = std::sync::Once::new();
+        CONFIGURE.call_once(|| unsafe {
+            sqlite3_config(SQLITE_CONFIG_MEMSTATUS, 0 as c_int);
+        });
         let make_context = || format!("While trying to connect to SQLite {}", describe_path(&url));
         let connection_string = CString::from_str(&url.as_str().replacen("sqlite://", "file:", 1))
             .with_context(make_context)?;
@@ -228,13 +406,12 @@ impl Connection for SQLiteConnection {
                     log::error!("{error:#}");
                 }
             });
+            // The connection is only reachable through `&mut` borrows, so SQLite's own
+            // mutex would only add an uncontended lock to every column read.
             let rc = sqlite3_open_v2(
                 connection_string.as_ptr(),
                 &mut *connection,
-                SQLITE_OPEN_READWRITE
-                    | SQLITE_OPEN_CREATE
-                    | SQLITE_OPEN_URI
-                    | SQLITE_OPEN_FULLMUTEX,
+                SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI | SQLITE_OPEN_NOMUTEX,
                 ptr::null(),
             );
             if rc != SQLITE_OK {
@@ -340,10 +517,35 @@ impl Executor for SQLiteConnection {
             statement: None,
             offset: 0,
             generation: 0,
+            columns: 0,
             active: false,
             done: false,
             names: None,
         }))
+    }
+
+    fn append<It>(&mut self, rows: It) -> impl Future<Output = Result<RowsAffected>> + Send
+    where
+        It: IntoIterator + Send,
+        It::IntoIter: Send,
+        It::Item: AsEntity,
+    {
+        type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
+        let rows = rows.into_iter();
+        if E::<It>::columns().is_empty() {
+            // Without named columns the batch must go through the generic insert.
+            let entities = rows.collect::<Vec<_>>();
+            let mut query = DynQuery::default();
+            self.driver().sql_writer().write_insert(
+                &mut query,
+                Sql()
+                    .insert_into(E::<It>::table())
+                    .values(entities.iter().map(AsEntity::as_entity)),
+            );
+            Either::Right(self.execute(query))
+        } else {
+            Either::Left(std::future::ready(self.append_entities(rows)))
+        }
     }
 }
 

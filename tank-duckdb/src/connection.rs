@@ -1,10 +1,10 @@
 use crate::{
     DuckDBPrepared, DuckDBTransaction, ValueWrap,
-    column::DuckdbAppender,
+    appender::{DuckdbAppender, appender_error},
     driver::DuckDBDriver,
     ensure_rc,
     stream::DuckDBStream,
-    util::{CBox, appender_error},
+    util::CBox,
 };
 use anyhow::anyhow;
 use libduckdb_sys::*;

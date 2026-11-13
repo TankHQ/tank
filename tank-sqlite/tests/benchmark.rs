@@ -1,0 +1,405 @@
+#[cfg(test)]
+mod tests {
+    use std::{
+        alloc::{GlobalAlloc, Layout, System},
+        cmp::min,
+        fmt::{self, Display, Formatter},
+        future::ready,
+        sync::atomic::{AtomicUsize, Ordering},
+        time::{Duration, Instant},
+    };
+    use tank::{
+        AsValue, Connection, Entity, Executor, Row, Sql, Transaction, cols, expr,
+        stream::TryStreamExt,
+    };
+    use tank_sqlite::{SQLiteConnection, SQLiteDriver};
+    use tank_tests::init_logs;
+    use time::{Duration as TimeDuration, PrimitiveDateTime, macros::datetime};
+
+    /// Counts every heap operation, so each phase reports its allocations per operation.
+    struct CountingAllocator;
+
+    static ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);
+
+    unsafe impl GlobalAlloc for CountingAllocator {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+            unsafe { System.alloc(layout) }
+        }
+        unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+            ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+            unsafe { System.alloc_zeroed(layout) }
+        }
+        unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+            ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+            unsafe { System.realloc(ptr, layout, new_size) }
+        }
+        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+            unsafe { System.dealloc(ptr, layout) }
+        }
+    }
+
+    #[global_allocator]
+    static GLOBAL: CountingAllocator = CountingAllocator;
+
+    const SCALE: usize = if cfg!(debug_assertions) { 1 } else { 10 };
+    const ROWS: usize = 10_000 * SCALE;
+    const ROUNDS: usize = if cfg!(debug_assertions) { 1 } else { 7 };
+    const LOOKUPS: usize = 500 * SCALE;
+    const RANGES: usize = 20 * SCALE;
+    const FILTERS: usize = 10 * SCALE;
+    const AGGREGATES: usize = 5 * SCALE;
+    const SINGLE_WRITES: usize = 50 * SCALE;
+    const MIXED: usize = 200 * SCALE;
+    const ACCOUNTS: usize = 512;
+    const SYMBOLS: [&str; 16] = [
+        "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO", "BRK.B", "JPM", "V",
+        "XOM", "UNH", "MA", "COST", "HD",
+    ];
+
+    #[derive(Entity, Debug, Clone, PartialEq)]
+    #[tank(name = "bench_trades")]
+    struct Trade {
+        #[tank(primary_key)]
+        id: i64,
+        account: i32,
+        symbol: String,
+        buy: bool,
+        quantity: i32,
+        price: f64,
+        note: String,
+        memo: Option<String>,
+        executed_at: PrimitiveDateTime,
+    }
+
+    impl Trade {
+        fn generate(id: usize) -> Self {
+            Self {
+                id: id as i64,
+                account: (id % ACCOUNTS) as i32,
+                symbol: SYMBOLS[id % SYMBOLS.len()].into(),
+                buy: id % 3 != 0,
+                quantity: (id * 37 % 1000 + 1) as i32,
+                price: 50.0 + (id * 7919 % 100_000) as f64 / 100.0,
+                note: format!("order {id:08} routed via smart order router"),
+                memo: (id % 4 == 0).then(|| format!("client memo #{id}")),
+                executed_at: datetime!(2026-01-02 09:30:00) + TimeDuration::milliseconds(id as i64),
+            }
+        }
+    }
+
+    /// Fastest observed time and allocation count per phase across rounds.
+    #[derive(Default)]
+    struct Report(Vec<(&'static str, usize, Duration, usize)>);
+
+    impl Report {
+        fn record(
+            &mut self,
+            name: &'static str,
+            ops: usize,
+            elapsed: Duration,
+            allocations: usize,
+        ) {
+            match self.0.iter_mut().find(|(n, ..)| *n == name) {
+                Some((_, _, best, best_allocations)) => {
+                    *best = min(*best, elapsed);
+                    *best_allocations = min(*best_allocations, allocations);
+                }
+                None => self.0.push((name, ops, elapsed, allocations)),
+            }
+        }
+    }
+
+    impl Display for Report {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            writeln!(
+                f,
+                "SQLite benchmark: {ROWS} rows, best of {ROUNDS} rounds\n\
+                 {:<20} {:>8} {:>12} {:>12} {:>10}",
+                "phase", "ops", "total", "per op", "allocs/op"
+            )?;
+            let mut total = Duration::ZERO;
+            for &(name, ops, elapsed, allocations) in &self.0 {
+                total += elapsed;
+                writeln!(
+                    f,
+                    "{name:<20} {ops:>8} {:>12} {:>12} {:>10.1}",
+                    format!("{elapsed:.2?}"),
+                    format!("{:.2?}", elapsed / ops as u32),
+                    allocations as f64 / ops as f64,
+                )?;
+            }
+            write!(
+                f,
+                "{:<20} {:>8} {:>12}",
+                "total",
+                "",
+                format!("{total:.2?}")
+            )
+        }
+    }
+
+    /// Deterministic, well spread sequence of ids in `0..ROWS`.
+    fn spread(i: usize) -> i64 {
+        (i * 7919 % ROWS) as i64
+    }
+
+    async fn round(connection: &mut SQLiteConnection, trades: &[Trade], report: &mut Report) {
+        Trade::drop_table(connection, true, false).await.unwrap();
+        Trade::create_table(connection, true, false).await.unwrap();
+
+        // Bulk load through `append`.
+        let allocations = ALLOCATIONS.load(Ordering::Relaxed);
+        let start = Instant::now();
+        let affected = Trade::insert_many(connection, trades).await.unwrap();
+        report.record(
+            "append",
+            ROWS,
+            start.elapsed(),
+            ALLOCATIONS.load(Ordering::Relaxed) - allocations,
+        );
+        assert_eq!(affected.rows_affected, Some(ROWS as u64));
+
+        // Full table scan decoded into entities.
+        let allocations = ALLOCATIONS.load(Ordering::Relaxed);
+        let start = Instant::now();
+        let loaded: Vec<Trade> = Trade::find_many(connection, true, None)
+            .try_collect()
+            .await
+            .unwrap();
+        report.record(
+            "scan",
+            ROWS,
+            start.elapsed(),
+            ALLOCATIONS.load(Ordering::Relaxed) - allocations,
+        );
+        assert_eq!(loaded.len(), ROWS);
+        assert_eq!(loaded[ROWS / 2], trades[ROWS / 2]);
+
+        // Ad hoc filtered queries, rendered and parsed each time.
+        let allocations = ALLOCATIONS.load(Ordering::Relaxed);
+        let start = Instant::now();
+        let mut found = 0;
+        for i in 0..FILTERS {
+            let account = (i * 13 % ACCOUNTS) as i32;
+            found += Trade::find_many(
+                connection,
+                expr!(Trade::account == #account && Trade::buy == true),
+                None,
+            )
+            .try_fold(0, |n, _| ready(Ok(n + 1)))
+            .await
+            .unwrap();
+        }
+        report.record(
+            "filter",
+            FILTERS,
+            start.elapsed(),
+            ALLOCATIONS.load(Ordering::Relaxed) - allocations,
+        );
+        assert!(found > 0);
+
+        // Prepared point lookups by primary key.
+        let mut by_id = Trade::prepare_find(connection, expr!(Trade::id == ?), Some(1))
+            .await
+            .unwrap();
+        let allocations = ALLOCATIONS.load(Ordering::Relaxed);
+        let start = Instant::now();
+        for i in 0..LOOKUPS {
+            let id = spread(i);
+            by_id.bind(id).unwrap();
+            let trade: Vec<Trade> = connection
+                .fetch(&mut by_id)
+                .and_then(|row| ready(Trade::from_row(row)))
+                .try_collect()
+                .await
+                .unwrap();
+            assert_eq!(trade[0].id, id);
+        }
+        report.record(
+            "lookup_prepared",
+            LOOKUPS,
+            start.elapsed(),
+            ALLOCATIONS.load(Ordering::Relaxed) - allocations,
+        );
+
+        // Prepared range queries binding a string and an integer.
+        let mut by_symbol = Trade::prepare_find(
+            connection,
+            expr!(Trade::symbol == ? && Trade::account < ?),
+            None,
+        )
+        .await
+        .unwrap();
+        let allocations = ALLOCATIONS.load(Ordering::Relaxed);
+        let start = Instant::now();
+        for i in 0..RANGES {
+            let symbol = SYMBOLS[i % SYMBOLS.len()];
+            by_symbol.bind(symbol).unwrap().bind(64).unwrap();
+            let trades: Vec<Trade> = connection
+                .fetch(&mut by_symbol)
+                .and_then(|row| ready(Trade::from_row(row)))
+                .try_collect()
+                .await
+                .unwrap();
+            assert!(trades.iter().all(|t| t.symbol == symbol && t.account < 64));
+        }
+        report.record(
+            "range_prepared",
+            RANGES,
+            start.elapsed(),
+            ALLOCATIONS.load(Ordering::Relaxed) - allocations,
+        );
+
+        // Aggregation decoded through the raw row interface.
+        let query = Sql()
+            .select(cols!(
+                Trade::symbol,
+                COUNT(*),
+                SUM(Trade::quantity),
+                AVG(Trade::price)
+            ))
+            .from(Trade::table())
+            .where_expr(expr!(Trade::buy == true))
+            .group_by(cols!(Trade::symbol))
+            .build(&connection.driver());
+        let sql = query.as_str().into_owned();
+        let allocations = ALLOCATIONS.load(Ordering::Relaxed);
+        let start = Instant::now();
+        for _ in 0..AGGREGATES {
+            let groups = connection
+                .fetch(sql.as_str())
+                .try_fold(0, |groups, row| {
+                    ready(
+                        String::try_from_value(row.value(0).unwrap())
+                            .and_then(|_| i64::try_from_value(row.value(1).unwrap()))
+                            .and_then(|_| f64::try_from_value(row.value(3).unwrap()))
+                            .map(|_| groups + 1),
+                    )
+                })
+                .await
+                .unwrap();
+            assert_eq!(groups, SYMBOLS.len());
+        }
+        report.record(
+            "aggregate",
+            AGGREGATES,
+            start.elapsed(),
+            ALLOCATIONS.load(Ordering::Relaxed) - allocations,
+        );
+
+        // Single-row writes going through the SQL writer.
+        let allocations = ALLOCATIONS.load(Ordering::Relaxed);
+        let start = Instant::now();
+        for i in 0..SINGLE_WRITES {
+            Trade::insert_one(connection, &Trade::generate(ROWS + i))
+                .await
+                .unwrap();
+        }
+        report.record(
+            "insert_one",
+            SINGLE_WRITES,
+            start.elapsed(),
+            ALLOCATIONS.load(Ordering::Relaxed) - allocations,
+        );
+
+        let allocations = ALLOCATIONS.load(Ordering::Relaxed);
+        let start = Instant::now();
+        for i in 0..SINGLE_WRITES {
+            let mut trade = loaded[spread(i) as usize].clone();
+            trade.quantity += 1;
+            trade.memo = Some("amended".into());
+            trade.save(connection).await.unwrap();
+        }
+        report.record(
+            "save",
+            SINGLE_WRITES,
+            start.elapsed(),
+            ALLOCATIONS.load(Ordering::Relaxed) - allocations,
+        );
+
+        // Interleaved workload resembling an application serving requests.
+        let allocations = ALLOCATIONS.load(Ordering::Relaxed);
+        let start = Instant::now();
+        let mut next_id = ROWS + SINGLE_WRITES;
+        for i in 0..MIXED {
+            by_id.bind(spread(i)).unwrap();
+            let trade = connection
+                .fetch(&mut by_id)
+                .and_then(|row| ready(Trade::from_row(row)))
+                .try_next()
+                .await
+                .unwrap()
+                .unwrap();
+            match i % 10 {
+                0 => {
+                    let batch = (next_id..next_id + 32)
+                        .map(Trade::generate)
+                        .collect::<Vec<_>>();
+                    next_id += batch.len();
+                    Trade::insert_many(connection, &batch).await.unwrap();
+                }
+                3 => {
+                    let mut trade = trade;
+                    trade.price *= 1.01;
+                    trade.save(connection).await.unwrap();
+                }
+                7 => {
+                    let account = trade.account;
+                    Trade::find_many(connection, expr!(Trade::account == #account), Some(16))
+                        .try_collect::<Vec<_>>()
+                        .await
+                        .unwrap();
+                }
+                _ => {}
+            }
+        }
+        report.record(
+            "mixed",
+            MIXED,
+            start.elapsed(),
+            ALLOCATIONS.load(Ordering::Relaxed) - allocations,
+        );
+
+        // Bulk maintenance inside a transaction.
+        let allocations = ALLOCATIONS.load(Ordering::Relaxed);
+        let start = Instant::now();
+        let mut tx = connection.begin().await.unwrap();
+        let updated = tx
+            .execute(
+                Sql()
+                    .update(Trade::table())
+                    .set(cols!(Trade::price == Trade::price * 1.001))
+                    .where_expr(expr!(Trade::buy == true))
+                    .build(&tx.driver()),
+            )
+            .await
+            .unwrap();
+        let deleted = Trade::delete_many(&mut tx, expr!(Trade::account >= 500))
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        report.record(
+            "transaction",
+            1,
+            start.elapsed(),
+            ALLOCATIONS.load(Ordering::Relaxed) - allocations,
+        );
+        assert!(updated.rows_affected.unwrap() > 0 && deleted.rows_affected.unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn sqlite_benchmark() {
+        init_logs();
+        let mut connection =
+            SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+                .await
+                .unwrap();
+        let trades = (0..ROWS).map(Trade::generate).collect::<Vec<_>>();
+        let mut report = Report::default();
+        for _ in 0..ROUNDS {
+            round(&mut connection, &trades, &mut report).await;
+        }
+        println!("{report}");
+    }
+}

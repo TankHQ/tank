@@ -2,7 +2,6 @@
 mod cbox;
 mod connection;
 mod driver;
-mod extract;
 mod prepared;
 mod sql_writer;
 mod transaction;

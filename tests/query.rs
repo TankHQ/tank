@@ -408,6 +408,65 @@ mod tests {
     }
 
     #[test]
+    fn query_update() {
+        #[derive(Entity)]
+        struct Item {
+            id: u32,
+            price: f64,
+            note: String,
+        }
+        let mut sql = DynQuery::default();
+        WRITER.write_update(
+            &mut sql,
+            Sql()
+                .update(Item::table())
+                .set(cols!(Item::price == Item::price * 1.001))
+                .where_expr(expr!(Item::id == 7)),
+        );
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                UPDATE "item"
+                SET "price" = "price" * 1.001
+                WHERE "id" = 7;
+            "#}
+            .trim()
+        );
+        let mut sql = DynQuery::default();
+        WRITER.write_update(
+            &mut sql,
+            Sql()
+                .update(Item::table())
+                .set(cols!(Item::price == 0.0, Item::note == "none")),
+        );
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                UPDATE "item"
+                SET "price" = 0.0,
+                "note" = 'none';
+            "#}
+            .trim()
+        );
+        let mut sql = DynQuery::default();
+        WRITER.write_update(
+            &mut sql,
+            Sql()
+                .update(Item::table())
+                .set(cols!(Item::note == "none"))
+                .where_expr(true),
+        );
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                UPDATE "item"
+                SET "note" = 'none';
+            "#}
+            .trim()
+        );
+    }
+
+    #[test]
     fn query_insert() {
         #[derive(Entity)]
         struct Item {
@@ -632,6 +691,14 @@ mod tests {
                 .update()
                 .get_update()
         );
+        let assignments = [&expr!(Foo::id == 1) as &dyn Expression];
+        let update = Sql().update(Foo::table()).set(assignments.as_slice());
+        assert_eq!(update.get_from().name, "foo");
+        assert_eq!(update.get_set().count(), 1);
+        assert!(update.get_where().is_none());
+        let update = update.where_expr(expr!(Foo::id == 2));
+        assert!(update.get_where().is_some());
+        assert_eq!(update.get_set().count(), 1);
         assert!(Sql().delete_from(Foo::table()).get_where().is_none());
         assert!(
             Sql()

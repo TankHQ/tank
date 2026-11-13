@@ -3,6 +3,7 @@ mod delete;
 mod drop_table;
 mod insert_into;
 mod select;
+mod update;
 
 use crate::{
     ColumnDef, ColumnRef, Context, Dataset, DynQuery, Expression, ExpressionVisitor, OpPrecedence,
@@ -14,6 +15,7 @@ pub use drop_table::*;
 pub use insert_into::*;
 pub use select::*;
 use std::{borrow::Cow, iter};
+pub use update::*;
 
 /// Entry point of the query builders, as in `Sql().select(columns).from(table)`.
 #[derive(Default, Debug)]
@@ -43,6 +45,13 @@ impl Sql {
             values: NA,
             update: false,
             _update: Default::default(),
+        }
+    }
+    pub fn update<From: Dataset>(self, from: From) -> UpdateQueryBuilder<From, (), NA> {
+        UpdateQueryBuilder {
+            from,
+            set: (),
+            where_expr: Default::default(),
         }
     }
     pub fn delete_from<From: Dataset>(self, from: From) -> DeleteQueryBuilder<From, NA> {

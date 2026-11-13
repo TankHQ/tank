@@ -1,37 +1,296 @@
 use crate::{CBox, sql_writer::SQLiteSqlWriter};
-use anyhow::anyhow;
 use libsqlite3_sys::*;
 use rust_decimal::prelude::ToPrimitive;
 use std::{
+    borrow::Cow,
     ffi::{CStr, c_int},
     fmt::{self, Display},
+    hint,
     os::raw::{c_char, c_void},
+    slice,
+    sync::Arc,
 };
 use tank_core::{
     AsValue, Context, DynQuery, Error, Fragment, Prepared, Result, SqlWriter, Value,
-    error_message_from_ptr, truncate_long,
+    error_message_from_ptr, log_error, truncate_long,
 };
 
 /// Prepared statement wrapper for SQLite.
-///
-/// Manages the native statement pointer and binding index, and implements  the `Prepared` trait to bind parameters from `tank_core::Value`.
 #[derive(Debug)]
 pub struct SQLitePrepared {
     pub(crate) statement: CBox<*mut sqlite3_stmt>,
     pub(crate) index: u64,
+    /// Column labels of the last result, reused when the statement returns the same shape.
+    pub(crate) labels: Option<Arc<[String]>>,
+    pub(crate) columns: c_int,
 }
 
 impl SQLitePrepared {
     const WRITER: SQLiteSqlWriter = SQLiteSqlWriter {};
+
     pub(crate) fn new(statement: CBox<*mut sqlite3_stmt>) -> Self {
         Self {
             statement: statement.into(),
             index: 0,
+            labels: None,
+            columns: 0,
         }
     }
 
+    #[inline(always)]
     pub(crate) fn statement(&self) -> *mut sqlite3_stmt {
         *self.statement
+    }
+
+    /// Number of columns in the current result.
+    #[inline(always)]
+    pub(crate) fn column_count(&self) -> c_int {
+        unsafe { sqlite3_column_count(self.statement()) }
+    }
+
+    /// Name of the result column at `index`.
+    pub(crate) fn column_name(&self, index: c_int) -> Result<String> {
+        unsafe {
+            let name = sqlite3_column_name(self.statement(), index);
+            if name.is_null() {
+                return Err(Error::msg(format!(
+                    "Missing SQLite column name at index {index}"
+                )));
+            }
+            Ok(CStr::from_ptr(name).to_string_lossy().into_owned())
+        }
+    }
+
+    /// Decodes the result column at `index`, borrowing text and blob payloads.
+    ///
+    /// The borrow is valid until the statement is stepped, reset or finalized.
+    #[inline(always)]
+    pub(crate) fn extract<'a>(&self, index: c_int) -> Result<Value<'a>> {
+        let statement = self.statement();
+        unsafe {
+            match sqlite3_column_type(statement, index) {
+                SQLITE_INTEGER => Ok(Value::Int64(Some(sqlite3_column_int64(statement, index)))),
+                SQLITE_TEXT => {
+                    let ptr = sqlite3_column_text(statement, index);
+                    if ptr.is_null() {
+                        hint::cold_path();
+                        return Err(self.column_error(index));
+                    }
+                    let len = sqlite3_column_bytes(statement, index) as usize;
+                    Ok(Value::Varchar(Some(String::from_utf8_lossy(
+                        slice::from_raw_parts(ptr, len),
+                    ))))
+                }
+                SQLITE_FLOAT => Ok(Value::Float64(Some(sqlite3_column_double(
+                    statement, index,
+                )))),
+                SQLITE_NULL => Ok(Value::Null),
+                SQLITE_BLOB => {
+                    let ptr = sqlite3_column_blob(statement, index) as *const u8;
+                    if ptr.is_null() {
+                        hint::cold_path();
+                        // An empty blob may be reported as a null pointer.
+                        if sqlite3_column_bytes(statement, index) == 0
+                            && sqlite3_errcode(sqlite3_db_handle(statement)) != SQLITE_NOMEM
+                        {
+                            return Ok(Value::Blob(Some(Cow::Borrowed(&[]))));
+                        }
+                        return Err(self.column_error(index));
+                    }
+                    let len = sqlite3_column_bytes(statement, index) as usize;
+                    Ok(Value::Blob(Some(Cow::Borrowed(slice::from_raw_parts(
+                        ptr, len,
+                    )))))
+                }
+                column_type => {
+                    hint::cold_path();
+                    Err(Error::msg(format!(
+                        "Unexpected SQLite column type {column_type} at index {index}"
+                    )))
+                }
+            }
+        }
+    }
+
+    /// Builds the error for a column SQLite failed to materialize.
+    #[cold]
+    #[inline(never)]
+    fn column_error(&self, index: c_int) -> Error {
+        let message =
+            unsafe { error_message_from_ptr(sqlite3_errmsg(sqlite3_db_handle(self.statement()))) };
+        Error::msg(message.into_owned())
+            .context(format!("Could not extract the column at index {index}"))
+    }
+
+    /// Binds a value to a 1-based parameter.
+    ///
+    /// SQLite copies text and blob payloads, so `value` may be dropped right after.
+    /// `scratch` buffers temporal values the dialect renders as text.
+    #[inline]
+    pub(crate) fn bind_value(
+        &mut self,
+        index: c_int,
+        value: &Value<'_>,
+        scratch: &mut DynQuery,
+    ) -> Result<()> {
+        unsafe {
+            let rc = if value.is_null() {
+                sqlite3_bind_null(self.statement(), index)
+            } else {
+                match value {
+                    Value::Boolean(Some(v)) => {
+                        sqlite3_bind_int(self.statement(), index, *v as c_int)
+                    }
+                    Value::Int8(Some(v)) => sqlite3_bind_int(self.statement(), index, *v as c_int),
+                    Value::Int16(Some(v)) => sqlite3_bind_int(self.statement(), index, *v as c_int),
+                    Value::Int32(Some(v)) => sqlite3_bind_int(self.statement(), index, *v),
+                    Value::Int64(Some(v)) => sqlite3_bind_int64(self.statement(), index, *v),
+                    Value::Int128(Some(v)) => match sqlite3_int64::try_from(**v) {
+                        Ok(v) => sqlite3_bind_int64(self.statement(), index, v),
+                        Err(_) => {
+                            hint::cold_path();
+                            return Err(Self::unsupported(index, value));
+                        }
+                    },
+                    Value::UInt8(Some(v)) => {
+                        sqlite3_bind_int64(self.statement(), index, *v as sqlite3_int64)
+                    }
+                    Value::UInt16(Some(v)) => {
+                        sqlite3_bind_int64(self.statement(), index, *v as sqlite3_int64)
+                    }
+                    Value::UInt32(Some(v)) => {
+                        sqlite3_bind_int64(self.statement(), index, *v as sqlite3_int64)
+                    }
+                    Value::UInt64(Some(v)) => match sqlite3_int64::try_from(*v) {
+                        Ok(v) => sqlite3_bind_int64(self.statement(), index, v),
+                        Err(_) => {
+                            hint::cold_path();
+                            return Err(Self::unsupported(index, value));
+                        }
+                    },
+                    Value::UInt128(Some(v)) => match sqlite3_int64::try_from(**v) {
+                        Ok(v) => sqlite3_bind_int64(self.statement(), index, v),
+                        Err(_) => {
+                            hint::cold_path();
+                            return Err(Self::unsupported(index, value));
+                        }
+                    },
+                    Value::Float32(Some(v)) => {
+                        sqlite3_bind_double(self.statement(), index, *v as f64)
+                    }
+                    Value::Float64(Some(v)) => sqlite3_bind_double(self.statement(), index, *v),
+                    Value::Decimal(Some(v), ..) => match v.to_f64() {
+                        Some(v) => sqlite3_bind_double(self.statement(), index, v),
+                        None => {
+                            hint::cold_path();
+                            return Err(Self::unsupported(index, value));
+                        }
+                    },
+                    Value::Char(Some(v)) => {
+                        let mut buffer = [0u8; 4];
+                        self.bind_text(index, v.encode_utf8(&mut buffer))
+                    }
+                    Value::Varchar(Some(v)) => sqlite3_bind_text(
+                        self.statement(),
+                        index,
+                        v.as_ptr() as *const c_char,
+                        v.len() as c_int,
+                        SQLITE_TRANSIENT(),
+                    ),
+                    Value::Blob(Some(v)) => sqlite3_bind_blob(
+                        self.statement(),
+                        index,
+                        v.as_ptr() as *const c_void,
+                        v.len() as c_int,
+                        SQLITE_TRANSIENT(),
+                    ),
+                    Value::Date(Some(v)) => self.bind_written(index, scratch, |context, out| {
+                        Self::WRITER.write_date(context, out, v)
+                    }),
+                    Value::Time(Some(v)) => self.bind_written(index, scratch, |context, out| {
+                        Self::WRITER.write_time(context, out, v)
+                    }),
+                    Value::Timestamp(Some(v)) => {
+                        self.bind_written(index, scratch, |context, out| {
+                            Self::WRITER.write_timestamp(context, out, v)
+                        })
+                    }
+                    Value::TimestampWithTimezone(Some(v)) => {
+                        self.bind_written(index, scratch, |context, out| {
+                            Self::WRITER.write_timestamptz(context, out, v)
+                        })
+                    }
+                    Value::Uuid(Some(v)) => {
+                        let mut buffer = [0u8; 36];
+                        self.bind_text(index, v.hyphenated().encode_lower(&mut buffer))
+                    }
+                    _ => {
+                        hint::cold_path();
+                        return Err(Self::unsupported(index, value));
+                    }
+                }
+            };
+            if rc != SQLITE_OK {
+                hint::cold_path();
+                return Err(self.bind_error(index, rc));
+            }
+            Ok(())
+        }
+    }
+
+    /// Binds text that only lives for this call.
+    #[inline(always)]
+    unsafe fn bind_text(&self, index: c_int, value: &str) -> c_int {
+        unsafe {
+            sqlite3_bind_text(
+                self.statement(),
+                index,
+                value.as_ptr() as *const c_char,
+                value.len() as c_int,
+                SQLITE_TRANSIENT(),
+            )
+        }
+    }
+
+    /// Binds a temporal value written by the dialect, whose text only lives for this call.
+    #[inline]
+    unsafe fn bind_written(
+        &self,
+        index: c_int,
+        scratch: &mut DynQuery,
+        write: impl Fn(&mut Context, &mut DynQuery),
+    ) -> c_int {
+        scratch.clear();
+        write(&mut Context::fragment(Fragment::ParameterBinding), scratch);
+        let text = scratch.as_str();
+        unsafe { self.bind_text(index, text.as_ref()) }
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn unsupported(index: c_int, value: &Value<'_>) -> Error {
+        Error::msg(format!(
+            "Cannot use {value:?} as the parameter at index {index}"
+        ))
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn bind_error(&self, index: c_int, rc: c_int) -> Error {
+        let sql = unsafe { sqlite3_sql(self.statement()) };
+        let sql = if sql.is_null() {
+            ""
+        } else {
+            unsafe { CStr::from_ptr(sql) }
+                .to_str()
+                .unwrap_or("unprintable")
+        };
+        let message =
+            unsafe { error_message_from_ptr(sqlite3_errmsg(sqlite3_db_handle(self.statement()))) };
+        Error::msg(message.into_owned()).context(format!(
+            "Cannot bind the parameter {index} (rc {rc}) to query:\n{}",
+            truncate_long!(sql)
+        ))
     }
 
     pub fn last_error(&self) -> String {
@@ -84,174 +343,11 @@ impl Prepared for SQLitePrepared {
     fn bind_index(&mut self, v: impl AsValue, index: u64) -> Result<&mut Self> {
         // SQLite's parameter index is 1-based.
         let index = index as c_int + 1;
-        unsafe {
-            let value = v.as_value();
-            let statement = self.statement();
-            let rc = match value {
-                _ if value.is_null() => sqlite3_bind_null(statement, index),
-                Value::Boolean(Some(v), ..) => sqlite3_bind_int(statement, index, v as c_int),
-                Value::Int8(Some(v), ..) => sqlite3_bind_int(statement, index, v as c_int),
-                Value::Int16(Some(v), ..) => sqlite3_bind_int(statement, index, v as c_int),
-                Value::Int32(Some(v), ..) => sqlite3_bind_int(statement, index, v as c_int),
-                Value::Int64(Some(v), ..) => sqlite3_bind_int64(statement, index, v),
-                Value::Int128(Some(v), ..) => sqlite3_bind_int64(
-                    statement,
-                    index,
-                    sqlite3_int64::try_from(*v).map_err(|_| {
-                        anyhow!(
-                            "Cannot bind i128 value `{v}` into sqlite integer because it's out of bounds"
-                        )
-                    })?,
-                ),
-                Value::UInt8(Some(v), ..) => {
-                    sqlite3_bind_int64(statement, index, v as sqlite3_int64)
-                }
-                Value::UInt16(Some(v), ..) => {
-                    sqlite3_bind_int64(statement, index, v as sqlite3_int64)
-                }
-                Value::UInt32(Some(v), ..) => {
-                    sqlite3_bind_int64(statement, index, v as sqlite3_int64)
-                }
-                Value::UInt64(Some(v), ..) => sqlite3_bind_int64(
-                    statement,
-                    index,
-                    sqlite3_int64::try_from(v).map_err(|_| {
-                        anyhow!(
-                            "Cannot bind u64 value `{v}` into sqlite integer because it's out of bounds"
-                        )
-                    })?,
-                ),
-                Value::UInt128(Some(v), ..) => sqlite3_bind_int64(
-                    statement,
-                    index,
-                    sqlite3_int64::try_from(*v).map_err(|_| {
-                        anyhow!(
-                            "Cannot bind u128 value `{v}` into sqlite integer because it's out of bounds"
-                        )
-                    })?,
-                ),
-                Value::Float32(Some(v), ..) => sqlite3_bind_double(statement, index, v as f64),
-                Value::Float64(Some(v), ..) => sqlite3_bind_double(statement, index, v),
-                Value::Decimal(Some(v), ..) => sqlite3_bind_double(
-                    statement,
-                    index,
-                    v.to_f64()
-                        .ok_or_else(|| anyhow!("Cannot bind the Decimal value `{v}` to f64"))?,
-                ),
-                Value::Char(Some(v), ..) => {
-                    let v = v.to_string();
-                    sqlite3_bind_text(
-                        statement,
-                        index,
-                        v.as_ptr() as *const c_char,
-                        v.len() as c_int,
-                        SQLITE_TRANSIENT(),
-                    )
-                }
-                Value::Varchar(Some(v), ..) => sqlite3_bind_text(
-                    statement,
-                    index,
-                    v.as_ptr() as *const c_char,
-                    v.len() as c_int,
-                    SQLITE_TRANSIENT(),
-                ),
-                Value::Blob(Some(v), ..) => sqlite3_bind_blob(
-                    statement,
-                    index,
-                    v.as_ptr() as *const c_void,
-                    v.len() as c_int,
-                    SQLITE_TRANSIENT(),
-                ),
-                Value::Date(Some(v), ..) => {
-                    let mut out = DynQuery::with_capacity(32);
-                    Self::WRITER.write_date(
-                        &mut Context::fragment(Fragment::ParameterBinding),
-                        &mut out,
-                        &v,
-                    );
-                    sqlite3_bind_text(
-                        statement,
-                        index,
-                        out.as_str().as_ptr() as *const c_char,
-                        out.len() as c_int,
-                        SQLITE_TRANSIENT(),
-                    )
-                }
-                Value::Time(Some(v), ..) => {
-                    let mut out = DynQuery::with_capacity(32);
-                    Self::WRITER.write_time(
-                        &mut Context::fragment(Fragment::ParameterBinding),
-                        &mut out,
-                        &v,
-                    );
-                    sqlite3_bind_text(
-                        statement,
-                        index,
-                        out.as_str().as_ptr() as *const c_char,
-                        out.len() as c_int,
-                        SQLITE_TRANSIENT(),
-                    )
-                }
-                Value::Timestamp(Some(v), ..) => {
-                    let mut out = DynQuery::with_capacity(32);
-                    Self::WRITER.write_timestamp(
-                        &mut Context::fragment(Fragment::ParameterBinding),
-                        &mut out,
-                        &v,
-                    );
-                    sqlite3_bind_text(
-                        statement,
-                        index,
-                        out.as_str().as_ptr() as *const c_char,
-                        out.len() as c_int,
-                        SQLITE_TRANSIENT(),
-                    )
-                }
-                Value::TimestampWithTimezone(Some(v), ..) => {
-                    let mut out = DynQuery::with_capacity(32);
-                    Self::WRITER.write_timestamptz(
-                        &mut Context::fragment(Fragment::ParameterBinding),
-                        &mut out,
-                        &v,
-                    );
-                    sqlite3_bind_text(
-                        statement,
-                        index,
-                        out.as_str().as_ptr() as *const c_char,
-                        out.len() as c_int,
-                        SQLITE_TRANSIENT(),
-                    )
-                }
-                Value::Uuid(Some(v), ..) => {
-                    let v = v.to_string();
-                    sqlite3_bind_text(
-                        statement,
-                        index,
-                        v.as_ptr() as *const c_char,
-                        v.len() as c_int,
-                        SQLITE_TRANSIENT(),
-                    )
-                }
-                _ => {
-                    let error = anyhow!("Cannot use a {:?} as a query parameter", value);
-                    log::error!("{error:#}");
-                    return Err(error);
-                }
-            };
-            if rc != SQLITE_OK {
-                let db = sqlite3_db_handle(statement);
-                let query = sqlite3_sql(statement);
-                let error = Error::msg(error_message_from_ptr(sqlite3_errmsg(db)).to_string())
-                    .context(format!(
-                        "Cannot bind parameter {index} to query:\n{}",
-                        truncate_long!(CStr::from_ptr(query).to_string_lossy())
-                    ));
-                log::error!("{error:#}");
-                return Err(error);
-            }
-            self.index = index as u64;
-            Ok(self)
-        }
+        let value = v.as_value();
+        let mut scratch = DynQuery::default();
+        unsafe { self.bind_value(index, &value, &mut scratch) }.inspect_err(log_error)?;
+        self.index = index as u64;
+        Ok(self)
     }
 }
 

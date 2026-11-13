@@ -4,11 +4,10 @@ use std::{
     ops::{Deref, DerefMut},
     ptr,
 };
-use tank_core::{Error, error_message_from_ptr};
 
 pub(crate) trait CResource: Sized {
     fn is_null(&self) -> bool;
-    unsafe fn finalize(&mut self);
+    fn finalize(&mut self);
 }
 
 macro_rules! impl_resource {
@@ -19,7 +18,7 @@ macro_rules! impl_resource {
                 (*self).is_null()
             }
             #[inline(always)]
-            unsafe fn finalize(&mut self) {
+            fn finalize(&mut self) {
                 unsafe { $destroy(self) };
             }
         }
@@ -45,7 +44,7 @@ impl CResource for *mut c_char {
         (*self).is_null()
     }
     #[inline(always)]
-    unsafe fn finalize(&mut self) {
+    fn finalize(&mut self) {
         unsafe { duckdb_free(*self as _) };
     }
 }
@@ -56,7 +55,7 @@ impl CResource for duckdb_result {
         false
     }
     #[inline(always)]
-    unsafe fn finalize(&mut self) {
+    fn finalize(&mut self) {
         unsafe { duckdb_destroy_result(self) };
     }
 }
@@ -79,7 +78,7 @@ impl<T: CResource> Drop for CBox<T> {
     #[inline(always)]
     fn drop(&mut self) {
         if !self.0.is_null() {
-            unsafe { self.0.finalize() };
+            self.0.finalize();
         }
     }
 }
@@ -114,9 +113,4 @@ macro_rules! ensure_rc {($value:expr, $error:expr $(, $context:expr)? $(,)?) => 
         }
         value
     }};
-}
-
-#[inline(always)]
-pub(crate) fn appender_error(appender: duckdb_appender) -> Error {
-    Error::msg(error_message_from_ptr(unsafe { duckdb_appender_error(appender) }).into_owned())
 }

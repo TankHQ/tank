@@ -23,7 +23,7 @@ use std::{
     rc::Rc,
     sync::{Arc, RwLock},
 };
-use time::{PrimitiveDateTime, UtcDateTime, format_description::parse_borrowed};
+use time::{PrimitiveDateTime, UtcDateTime};
 use uuid::Uuid;
 
 /// Converts Rust inputs to values and decodes supported destination types.
@@ -835,14 +835,13 @@ impl_as_value!(Uuid, Value::Uuid, |input: &str| {
 ///
 /// Yields `None` when no format matches, and deliberately never builds an `anyhow::Error`.
 macro_rules! parse_time {
-    ($value: ident, $($formats:literal),+ $(,)?) => {
+    ($value: ident, $($formats:tt),+ $(,)?) => {
         'value: {
-            for format in [$($formats,)+] {
-                let Ok(format) = parse_borrowed::<2>(format) else {
-                    break 'value None;
-                };
-                let mut parsed = time::parsing::Parsed::new();
-                let remaining = parsed.parse_items($value.as_bytes(), &format);
+            const FORMATS: &[&[::time::format_description::BorrowedFormatItem<'static>]] =
+                &[$(::time::macros::format_description!($formats)),+];
+            for format in FORMATS {
+                let mut parsed = ::time::parsing::Parsed::new();
+                let remaining = parsed.parse_items($value.as_bytes(), format);
                 if let Ok(remaining) = remaining {
                     if let Ok(result) = parsed.try_into() {
                         $value = &$value[($value.len() - remaining.len())..];
@@ -923,12 +922,12 @@ impl_as_value!(
     |mut input: &str| {
         let result: time::PrimitiveDateTime = parse_time!(
             input,
-            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond]",
-            "[year]-[month]-[day]T[hour]:[minute]:[second]",
-            "[year]-[month]-[day]T[hour]:[minute]",
             "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond]",
             "[year]-[month]-[day] [hour]:[minute]:[second]",
             "[year]-[month]-[day] [hour]:[minute]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second]",
+            "[year]-[month]-[day]T[hour]:[minute]",
         )
         .ok_or_else(|| {
             anyhow!(
@@ -972,24 +971,24 @@ impl_as_value!(
         let original = input;
         if let Some(result) = parse_time!(
             input,
-            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
-            "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
-            "[year]-[month]-[day]T[hour]:[minute][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
             "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
             "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
             "[year]-[month]-[day] [hour]:[minute][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
-            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]",
-            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]",
-            "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]",
-            "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]",
-            "[year]-[month]-[day]T[hour]:[minute][offset_hour sign:mandatory]:[offset_minute]",
-            "[year]-[month]-[day]T[hour]:[minute][offset_hour sign:mandatory]",
             "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]",
             "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]",
             "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]",
             "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour sign:mandatory]",
             "[year]-[month]-[day] [hour]:[minute][offset_hour sign:mandatory]:[offset_minute]",
             "[year]-[month]-[day] [hour]:[minute][offset_hour sign:mandatory]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
+            "[year]-[month]-[day]T[hour]:[minute][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]",
+            "[year]-[month]-[day]T[hour]:[minute][offset_hour sign:mandatory]:[offset_minute]",
+            "[year]-[month]-[day]T[hour]:[minute][offset_hour sign:mandatory]",
         ) {
             if input.is_empty() {
                 return Ok(result);

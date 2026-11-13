@@ -1029,11 +1029,11 @@ use indoc::indoc;
 use tank::stream::TryStreamExt;
 
 let rows = connection
-    .fetch(indoc! {"
+    .fetch(indoc! {r#"
         SELECT callsign, casualties
         FROM army.deployments
         WHERE operational = false
-    "})
+    "#})
     .try_collect::<Vec<_>>()
     .await?;
 ```
