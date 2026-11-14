@@ -618,6 +618,39 @@ struct AppendItem {
 }
 
 #[tokio::test]
+async fn dropping_a_transaction_rolls_back() {
+    let mut connection =
+        SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+            .await
+            .unwrap();
+    AppendItem::create_table(&mut connection, false, false)
+        .await
+        .unwrap();
+    {
+        let mut transaction = connection.begin().await.unwrap();
+        transaction
+            .append((0..3).map(|id| AppendItem { id }))
+            .await
+            .unwrap();
+        assert_eq!(
+            AppendItem::find_many(&mut transaction, true, None)
+                .try_collect::<Vec<_>>()
+                .await
+                .unwrap()
+                .len(),
+            3
+        );
+    }
+    assert!(
+        AppendItem::find_many(&mut connection, true, None)
+            .try_next()
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
 async fn append_is_lazy_and_cancellation_rolls_back_only_implicit_transactions() {
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())

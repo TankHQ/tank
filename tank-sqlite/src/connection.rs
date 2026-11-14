@@ -13,7 +13,7 @@ use std::{
 use tank_core::{
     AsEntity, AsQuery, ColumnDef, Connection, Driver, DynQuery, Entity, Error, ErrorContext,
     Executor, Operand, Prepared, Query, QueryResult, Result, RowsAffected, Sql, SqlWriter,
-    describe_path, error_message_from_ptr, future::Either, truncate_long,
+    Transaction, describe_path, error_message_from_ptr, future::Either, truncate_long,
 };
 use tokio::task;
 
@@ -53,7 +53,7 @@ impl SQLiteConnection {
             );
             CString::new(sql.as_str().as_ref())?
         };
-        unsafe {
+        let mut statement = unsafe {
             let mut statement =
                 SQLitePrepared::new(CBox::new(ptr::null_mut(), |p: *mut sqlite3_stmt| {
                     if !p.is_null() {
@@ -71,76 +71,47 @@ impl SQLiteConnection {
                 hint::cold_path();
                 return Err(self.prepare_error(rc, sql.as_c_str().to_string_lossy()));
             }
-            // An implicit transaction per statement keeps file databases from syncing per row.
-            let own_transaction = sqlite3_get_autocommit(*self.connection) != 0;
-            if own_transaction
-                && sqlite3_exec(
-                    *self.connection,
-                    c"BEGIN".as_ptr(),
-                    None,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                ) != SQLITE_OK
-            {
-                hint::cold_path();
-                return Err(self.step_error(SQLITE_ERROR));
-            }
-            let mut rollback = CBox::new(
-                if own_transaction {
-                    *self.connection
-                } else {
-                    ptr::null_mut()
-                },
-                |connection| {
-                    sqlite3_exec(
-                        connection,
-                        c"ROLLBACK".as_ptr(),
-                        None,
-                        ptr::null_mut(),
-                        ptr::null_mut(),
-                    );
-                },
-            );
-            let mut affected = 0u64;
-            let mut rows = rows.into_iter();
-            loop {
-                let appended = rows.by_ref().take(256).try_fold(0u64, |count, entity| {
-                    for (index, value) in entity.as_entity().row_values().enumerate() {
-                        statement.bind_index(&value, index as _)?;
-                    }
-                    let rc = sqlite3_step(statement.statement());
-                    if rc != SQLITE_DONE {
-                        hint::cold_path();
-                        return Err(self.step_error(rc));
-                    }
+            statement
+        };
+        // A transaction owned by this call keeps file databases from syncing per row.
+        let transaction = if unsafe { sqlite3_get_autocommit(*self.connection) } == 0 {
+            None
+        } else {
+            Some(SQLiteTransaction::new(self).await?)
+        };
+        let mut affected = 0u64;
+        let mut rows = rows.into_iter();
+        loop {
+            let appended = rows.by_ref().take(256).try_fold(0u64, |count, entity| {
+                for (index, value) in entity.as_entity().row_values().enumerate() {
+                    statement.bind_index(value, index as _)?;
+                }
+                let rc = unsafe { sqlite3_step(statement.statement()) };
+                if rc != SQLITE_DONE {
+                    hint::cold_path();
+                    return Err(Self::step_error(&statement, rc));
+                }
+                unsafe {
                     sqlite3_clear_bindings(statement.statement());
                     sqlite3_reset(statement.statement());
-                    Ok(count + 1)
-                })?;
-                affected += appended;
-                if appended < 256 {
-                    break;
                 }
-                task::yield_now().await;
+                Ok(count + 1)
+            })?;
+            affected += appended;
+            if appended < 256 {
+                break;
             }
-            if own_transaction
-                && sqlite3_exec(
-                    *self.connection,
-                    c"COMMIT".as_ptr(),
-                    None,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                ) != SQLITE_OK
-            {
-                hint::cold_path();
-                return Err(self.step_error(SQLITE_ERROR));
-            }
-            rollback.ptr = ptr::null_mut();
-            Ok(RowsAffected {
-                rows_affected: Some(affected),
-                last_affected_id: Some(sqlite3_last_insert_rowid(*self.connection)),
-            })
+            task::yield_now().await;
         }
+        let last_affected_id =
+            unsafe { sqlite3_last_insert_rowid(sqlite3_db_handle(statement.statement())) };
+        if let Some(transaction) = transaction {
+            transaction.commit().await?;
+        }
+        Ok(RowsAffected {
+            rows_affected: Some(affected),
+            last_affected_id: Some(last_affected_id),
+        })
     }
 
     #[cold]
@@ -154,8 +125,9 @@ impl SQLiteConnection {
 
     #[cold]
     #[inline(never)]
-    fn step_error(&self, rc: c_int) -> Error {
-        Error::msg(self.last_error()).context(format!("While stepping a batched insert (rc {rc})"))
+    fn step_error(statement: &SQLitePrepared, rc: c_int) -> Error {
+        Error::msg(statement.last_error())
+            .context(format!("While stepping a batched insert (rc {rc})"))
     }
 }
 
