@@ -52,6 +52,9 @@ mod tests {
         assert!(!e.accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
         assert!(expr!([1, 2, 3]).accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
         assert!(expr!((1, 2)).accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
+        assert!(expr!((1, [3, 4])).accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
+        assert!(!expr!((1, ?)).accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
+        assert!(!expr!([1, col]).accept_visitor(&mut IsConstant, &WRITER, &mut ctx, &mut out));
         assert!(!expr!([alpha, bravo]).accept_visitor(
             &mut IsConstant,
             &WRITER,

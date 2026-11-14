@@ -8,7 +8,7 @@ use std::{borrow::Cow, mem, sync::Arc};
 use time::UtcDateTime;
 use uuid::Uuid;
 
-/// Renderable SQL expression.
+/// Fragment that represents an AST that can be written in a SQL query.
 pub trait Expression: OpPrecedence {
     /// Generates the SQL representation of this expression.
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery);
@@ -31,6 +31,10 @@ pub trait Expression: OpPrecedence {
         self.write_query(&writer, context, &mut out);
         mem::take(out.buffer())
     }
+}
+
+impl Expression for () {
+    fn write_query(&self, _writer: &dyn SqlWriter, _context: &mut Context, _out: &mut DynQuery) {}
 }
 
 impl<T: Expression> Expression for &T {
@@ -69,10 +73,6 @@ impl Expression for &dyn Expression {
     }
 }
 
-impl Expression for () {
-    fn write_query(&self, _writer: &dyn SqlWriter, _context: &mut Context, _out: &mut DynQuery) {}
-}
-
 impl Expression for bool {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         writer.write_bool(context, out, *self);
@@ -88,7 +88,22 @@ impl Expression for bool {
     }
 }
 
-impl Expression for &'static str {
+impl<const W: u8, const S: u8> Expression for FixedDecimal<W, S> {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+        writer.write_value(context, out, &(*self).as_value());
+    }
+    fn accept_visitor(
+        &self,
+        matcher: &mut dyn ExpressionVisitor,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+    ) -> bool {
+        matcher.visit_operand(writer, context, out, &Operand::Variable((*self).as_value()))
+    }
+}
+
+impl Expression for &'_ str {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         writer.write_string(context, out, self);
     }
@@ -103,7 +118,53 @@ impl Expression for &'static str {
     }
 }
 
-impl<'a> Expression for Value<'a> {
+impl Expression for String {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+        writer.write_string(context, out, self);
+    }
+    fn accept_visitor(
+        &self,
+        matcher: &mut dyn ExpressionVisitor,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+    ) -> bool {
+        matcher.visit_operand(writer, context, out, &Operand::LitStr(self))
+    }
+}
+
+impl Expression for Cow<'_, str> {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+        writer.write_string(context, out, self.as_ref());
+    }
+    fn accept_visitor(
+        &self,
+        matcher: &mut dyn ExpressionVisitor,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+    ) -> bool {
+        matcher.visit_operand(writer, context, out, &Operand::LitStr(self))
+    }
+}
+
+impl Expression for Box<[u8]> {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+        writer.write_value(context, out, &Value::Blob(Some(Cow::Borrowed(self))));
+    }
+    fn accept_visitor(
+        &self,
+        matcher: &mut dyn ExpressionVisitor,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+    ) -> bool {
+        let value = Value::Blob(Some(Cow::Borrowed(self)));
+        matcher.visit_operand(writer, context, out, &Operand::Variable(value))
+    }
+}
+
+impl Expression for Value<'_> {
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
         writer.write_value(context, out, self);
     }
@@ -118,9 +179,110 @@ impl<'a> Expression for Value<'a> {
     }
 }
 
-impl<'a, T: Expression> From<&'a T> for &'a dyn Expression {
-    fn from(value: &'a T) -> Self {
-        value as &'a dyn Expression
+impl Expression for Cow<'_, Value<'_>> {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+        writer.write_value(context, out, self);
+    }
+    fn accept_visitor(
+        &self,
+        matcher: &mut dyn ExpressionVisitor,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+    ) -> bool {
+        matcher.visit_operand(writer, context, out, &Operand::Value(self))
+    }
+}
+
+impl Expression for serde_json::Value {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+        writer.write_value(context, out, &Value::Json(Some(self.clone())));
+    }
+    fn accept_visitor(
+        &self,
+        matcher: &mut dyn ExpressionVisitor,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+    ) -> bool {
+        let value = Value::Json(Some(self.clone()));
+        matcher.visit_operand(writer, context, out, &Operand::Variable(value))
+    }
+}
+
+impl Expression for UtcDateTime {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+        writer.write_value(
+            context,
+            out,
+            &Value::Timestamp(Some(time::PrimitiveDateTime::new(self.date(), self.time()))),
+        );
+    }
+    fn accept_visitor(
+        &self,
+        matcher: &mut dyn ExpressionVisitor,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+    ) -> bool {
+        let value = Value::Timestamp(Some(time::PrimitiveDateTime::new(self.date(), self.time())));
+        matcher.visit_operand(writer, context, out, &Operand::Variable(value))
+    }
+}
+
+impl<T: AsValue + Expression> Expression for Option<T> {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+        match self {
+            Some(v) => v.write_query(writer, context, out),
+            None => writer.write_value(context, out, &T::as_empty_value()),
+        }
+    }
+    fn accept_visitor(
+        &self,
+        matcher: &mut dyn ExpressionVisitor,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+    ) -> bool {
+        match self {
+            Some(v) => v.accept_visitor(matcher, writer, context, out),
+            None => matcher.visit_operand(
+                writer,
+                context,
+                out,
+                &Operand::Variable(T::as_empty_value()),
+            ),
+        }
+    }
+}
+
+impl<T: Expression> Expression for Box<T> {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+        (**self).write_query(writer, context, out);
+    }
+    fn accept_visitor(
+        &self,
+        matcher: &mut dyn ExpressionVisitor,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+    ) -> bool {
+        (**self).accept_visitor(matcher, writer, context, out)
+    }
+}
+
+impl<T: Expression> Expression for Arc<T> {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+        (**self).write_query(writer, context, out);
+    }
+    fn accept_visitor(
+        &self,
+        matcher: &mut dyn ExpressionVisitor,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        out: &mut DynQuery,
+    ) -> bool {
+        (**self).accept_visitor(matcher, writer, context, out)
     }
 }
 
@@ -137,6 +299,15 @@ macro_rules! impl_expression {
                 out: &mut DynQuery,
             ) {
                 writer.write_value(context, out, &(*self).as_value());
+            }
+            fn accept_visitor(
+                &self,
+                matcher: &mut dyn ExpressionVisitor,
+                writer: &dyn SqlWriter,
+                context: &mut Context,
+                out: &mut DynQuery,
+            ) -> bool {
+                matcher.visit_operand(writer, context, out, &Operand::Variable((*self).as_value()))
             }
         }
     )*};
@@ -177,126 +348,8 @@ impl_expression!(
     chrono::DateTime<chrono::FixedOffset>,
 );
 
-impl OpPrecedence for UtcDateTime {
-    fn precedence(&self, _: &dyn SqlWriter) -> i32 {
-        0
-    }
-}
-impl Expression for UtcDateTime {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        writer.write_value(
-            context,
-            out,
-            &Value::Timestamp(Some(time::PrimitiveDateTime::new(self.date(), self.time()))),
-        );
-    }
-}
-
-impl OpPrecedence for String {
-    fn precedence(&self, _: &dyn SqlWriter) -> i32 {
-        0
-    }
-}
-impl Expression for String {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        writer.write_string(context, out, self);
-    }
-}
-
-impl OpPrecedence for Cow<'static, str> {
-    fn precedence(&self, _: &dyn SqlWriter) -> i32 {
-        0
-    }
-}
-impl Expression for Cow<'static, str> {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        writer.write_string(context, out, self.as_ref());
-    }
-}
-
-impl OpPrecedence for Box<[u8]> {
-    fn precedence(&self, _: &dyn SqlWriter) -> i32 {
-        0
-    }
-}
-impl Expression for Box<[u8]> {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        writer.write_value(context, out, &Value::Blob(Some(Cow::Borrowed(self))));
-    }
-}
-
-impl OpPrecedence for serde_json::Value {
-    fn precedence(&self, _: &dyn SqlWriter) -> i32 {
-        0
-    }
-}
-impl Expression for serde_json::Value {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        writer.write_value(context, out, &Value::Json(Some(self.clone())));
-    }
-}
-
-impl<const W: u8, const S: u8> OpPrecedence for FixedDecimal<W, S> {
-    fn precedence(&self, _: &dyn SqlWriter) -> i32 {
-        0
-    }
-}
-impl<const W: u8, const S: u8> Expression for FixedDecimal<W, S> {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        writer.write_value(context, out, &(*self).as_value());
-    }
-}
-
-impl<T: Expression> OpPrecedence for Arc<T> {
-    fn precedence(&self, _: &dyn SqlWriter) -> i32 {
-        0
-    }
-}
-impl<T: Expression> Expression for Arc<T> {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        (**self).write_query(writer, context, out);
-    }
-    fn accept_visitor(
-        &self,
-        matcher: &mut dyn ExpressionVisitor,
-        writer: &dyn SqlWriter,
-        context: &mut Context,
-        out: &mut DynQuery,
-    ) -> bool {
-        (**self).accept_visitor(matcher, writer, context, out)
-    }
-}
-
-impl<T: Expression> OpPrecedence for Box<T> {
-    fn precedence(&self, _: &dyn SqlWriter) -> i32 {
-        0
-    }
-}
-impl<T: Expression> Expression for Box<T> {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        (**self).write_query(writer, context, out);
-    }
-    fn accept_visitor(
-        &self,
-        matcher: &mut dyn ExpressionVisitor,
-        writer: &dyn SqlWriter,
-        context: &mut Context,
-        out: &mut DynQuery,
-    ) -> bool {
-        (**self).accept_visitor(matcher, writer, context, out)
-    }
-}
-
-impl<T: AsValue + Expression> OpPrecedence for Option<T> {
-    fn precedence(&self, _: &dyn SqlWriter) -> i32 {
-        0
-    }
-}
-impl<T: AsValue + Expression> Expression for Option<T> {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
-        match self {
-            Some(v) => v.write_query(writer, context, out),
-            None => writer.write_value(context, out, &T::as_empty_value()),
-        }
+impl<'a, T: Expression> From<&'a T> for &'a dyn Expression {
+    fn from(value: &'a T) -> Self {
+        value as &'a dyn Expression
     }
 }

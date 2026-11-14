@@ -1,7 +1,9 @@
 use crate::{
-    BinaryOp, BinaryOpType, Case, ColumnRef, Context, DynQuery, Expression, Operand, Order,
-    Ordered, SqlWriter, UnaryOp, Value,
+    BinaryOp, BinaryOpType, Case, ColumnRef, Context, DynQuery, Expression, GenericSqlWriter,
+    Operand, Order, Ordered, Result, SqlWriter, UnaryOp, Value, ValueOwned,
 };
+use anyhow::anyhow;
+use std::borrow::Cow;
 
 pub trait ExpressionVisitor {
     fn visit_column(
@@ -95,6 +97,45 @@ impl ExpressionVisitor for IsFalse {
             | Operand::Value(Value::Boolean(Some(false), ..)) => true,
             _ => false,
         }
+    }
+}
+
+/// Extracts the value of a literal expression, for drivers that store native values instead of SQL.
+#[derive(Default, Debug)]
+pub struct LiteralValue(pub Option<ValueOwned>);
+impl LiteralValue {
+    pub fn of(expression: &impl Expression) -> Result<ValueOwned> {
+        let mut literal = Self::default();
+        expression.accept_visitor(
+            &mut literal,
+            &GenericSqlWriter,
+            &mut Context::empty(),
+            &mut DynQuery::default(),
+        );
+        literal
+            .0
+            .ok_or_else(|| anyhow!("Expected a literal value, found a SQL expression"))
+    }
+}
+impl ExpressionVisitor for LiteralValue {
+    fn visit_operand(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        _context: &mut Context,
+        _out: &mut DynQuery,
+        value: &Operand,
+    ) -> bool {
+        self.0 = Some(match value {
+            Operand::Null => Value::Null,
+            Operand::LitBool(v) => Value::Boolean(Some(*v)),
+            Operand::LitInt(v) => Value::Int128(Some(Box::new(*v))),
+            Operand::LitFloat(v) => Value::Float64(Some(*v)),
+            Operand::LitStr(v) => Value::Varchar(Some(Cow::Owned((*v).into()))),
+            Operand::Variable(v) => v.clone().into_owned(),
+            Operand::Value(v) => (*v).clone().into_owned(),
+            _ => return false,
+        });
+        true
     }
 }
 
@@ -289,7 +330,7 @@ impl ExpressionVisitor for WriteInList {
     ) -> bool {
         match value {
             Operand::LitList(v) | Operand::LitTuple(v) => {
-                writer.write_tuple(context, out, &mut v.iter().map(|v| v as _))
+                writer.write_tuple(context, out, &mut v.iter().copied())
             }
             Operand::Variable(Value::Array(Some(v), ..) | Value::List(Some(v), ..))
             | Operand::Value(Value::Array(Some(v), ..) | Value::List(Some(v), ..)) => {

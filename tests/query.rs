@@ -5,13 +5,84 @@ mod fixtures;
 mod tests {
     use crate::fixtures::DRIVER;
     use indoc::indoc;
-    use std::fmt::Write;
+    use std::{cell::Cell, fmt::Write, iter};
     use tank::{
-        AsValue, Context, DynQuery, Entity, Expression, Fragment, InsertIntoQuery, QueryResult,
-        QueryResultOwned, RawQuery, RowOwned, RowsAffected, Sql, TableRef, cols, expr,
+        AsValue, Context, DynQuery, Entity, Expression, Fragment, InsertIntoQuery, Operand,
+        QueryResult, QueryResultOwned, RawQuery, RowOwned, RowsAffected, Sql, TableRef, cols, expr,
     };
 
     const WRITER: tank::GenericSqlWriter = tank::GenericSqlWriter;
+
+    #[test]
+    fn expression_insert_reuses_builder_and_upsert() {
+        #[derive(Entity)]
+        struct Item {
+            #[tank(primary_key)]
+            id: i32,
+            label: String,
+        }
+
+        let row = cols!(? + 1, COALESCE(?, "unknown"));
+        let query = Sql()
+            .insert_into(Item::table())
+            .columns(["id", "label"])
+            .values([row])
+            .update();
+        let expected = indoc! {r#"
+            INSERT INTO "item" ("id", "label") VALUES
+            (? + 1, COALESCE(?,'unknown'))
+            ON CONFLICT ("id") DO UPDATE SET
+            "label" = EXCLUDED."label";
+        "#}
+        .trim();
+        assert_eq!(query.build(&DRIVER).as_str(), expected);
+        let mut out = DynQuery::default();
+        InsertIntoQuery::build_into(&&query, &DRIVER, &mut out);
+        assert_eq!(out.as_str(), expected);
+
+        // Iterator closures are not evaluated or collected by the builder.
+        let visited = Cell::new(0);
+        let row = cols!(?, ?);
+        let rows = (0..2).map(|_| {
+            visited.set(visited.get() + 1);
+            row
+        });
+        let query = Sql()
+            .insert_into(Item::table())
+            .columns(["id", "label"])
+            .values(rows);
+        assert_eq!(visited.get(), 0);
+        assert_eq!(
+            query.build(&DRIVER).as_str(),
+            "INSERT INTO \"item\" (\"id\", \"label\") VALUES\n(?, ?),\n(?, ?);"
+        );
+        assert_eq!(visited.get(), 2);
+        assert_eq!(
+            query.build(&DRIVER).as_str(),
+            "INSERT INTO \"item\" (\"id\", \"label\") VALUES\n(?, ?),\n(?, ?);"
+        );
+        assert_eq!(visited.get(), 4);
+
+        // A runtime-width parameter row is a lazy iterator, no placeholder Vec.
+        let sql = Sql()
+            .insert_into(Item::table())
+            .columns(["id", "label"])
+            .values([iter::repeat_n(&Operand::QuestionMark, 2)])
+            .build(&DRIVER);
+        assert_eq!(
+            sql.as_str(),
+            "INSERT INTO \"item\" (\"id\", \"label\") VALUES\n(?, ?);"
+        );
+
+        let mut out = DynQuery::new("existing".into());
+        Sql()
+            .insert_into("item")
+            .columns(["id"])
+            .values(iter::empty::<[Operand<'_>; 1]>())
+            .update()
+            .build_into(&DRIVER, &mut out);
+        assert_eq!(out.as_str(), "existing");
+    }
 
     #[test]
     fn query_1() {
@@ -523,6 +594,36 @@ mod tests {
             indoc! {r#"
                 INSERT INTO "logs" ("id", "label") VALUES
                 (2, 'b');
+            "#}
+            .trim()
+        );
+
+        // Rows of expressions, such as the parameters bound by a prepared statement
+        let sql = Sql()
+            .insert_into(Item::table())
+            .columns(["id", "label"])
+            .values([cols!(?, ?)])
+            .build(&DRIVER);
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                INSERT INTO "item" ("id", "label") VALUES
+                (?, ?);
+            "#}
+            .trim()
+        );
+        let placeholders = [cols!(?, ?), cols!(?, ?)];
+        let sql = Sql()
+            .insert_into(Item::table())
+            .columns(["id", "label"])
+            .values(placeholders)
+            .build(&DRIVER);
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                INSERT INTO "item" ("id", "label") VALUES
+                (?, ?),
+                (?, ?);
             "#}
             .trim()
         );

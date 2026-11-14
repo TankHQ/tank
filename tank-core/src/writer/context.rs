@@ -142,7 +142,7 @@ pub struct ContextUpdater<'a> {
     pub previous: &'a mut Context,
 }
 
-impl<'a> Drop for ContextUpdater<'a> {
+impl Drop for ContextUpdater<'_> {
     #[inline]
     fn drop(&mut self) {
         self.previous.counter = self.current.counter;

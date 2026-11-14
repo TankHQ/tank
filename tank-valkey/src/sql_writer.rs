@@ -1,10 +1,10 @@
 use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
-use std::{fmt::Write, mem};
+use std::{fmt::Write, hint, mem};
 use tank_core::{
     AsValue, Case, ColumnDef, Context, Dataset, DynQuery, Expression, Fragment, InsertIntoQuery,
-    IsAsterisk, SelectQuery, SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter,
-    SqlWriter, TableRef, Value, column_def, future::Either,
+    IsAsterisk, LiteralValue, Result, SelectQuery, SqlCoreWriter, SqlExpressionWriter,
+    SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value, column_def, future::Either,
 };
 
 pub struct ValkeySqlWriter {
@@ -239,7 +239,17 @@ impl SqlWriter for ValkeySqlWriter {
         let mut context = Self::make_context(Fragment::SqlInsertInto);
         let prepared = Self::prepare_query(out, &mut context);
         for row in rows {
-            let values = row.collect::<Vec<_>>();
+            let values = match row
+                .map(|cell| LiteralValue::of(&cell))
+                .collect::<Result<Vec<_>>>()
+            {
+                Ok(values) => values,
+                Err(error) => {
+                    hint::cold_path();
+                    log::error!("Cannot insert into Valkey/Redis: {error:#}");
+                    return;
+                }
+            };
             let fields = || columns.iter().map(ColumnDef::name).zip(&values);
             // Same key as `IsPKCondition` builds from a primary key condition.
             let mut key = table.full_name(self.separator()).into_owned();

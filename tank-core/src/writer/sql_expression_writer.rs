@@ -128,16 +128,10 @@ pub trait SqlExpressionWriter: SqlValueWriter {
                     out.push_str(part);
                 }
             }
-            Operand::LitList(v) => self.write_list(
-                context,
-                out,
-                &mut v.iter().map(|v| v as &dyn Expression),
-                None,
-                false,
-            ),
-            Operand::LitTuple(v) => {
-                self.write_tuple(context, out, &mut v.iter().map(|v| v as &dyn Expression))
+            Operand::LitList(v) => {
+                self.write_list(context, out, &mut v.iter().copied(), None, false)
             }
+            Operand::LitTuple(v) => self.write_tuple(context, out, &mut v.iter().copied()),
             Operand::Type(v) => self.write_column_type(context, out, v),
             Operand::Variable(v) => self.write_value(context, out, v),
             Operand::Value(v) => self.write_value(context, out, v),

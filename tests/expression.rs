@@ -6,12 +6,90 @@ mod tests {
     use tank::{
         BinaryOp, BinaryOpType, Case, ColumnRef, Context, DefaultValueType, DynQuery, Entity,
         Expression, ExpressionVisitor, FixedDecimal, Fragment, GenericSqlWriter, Interval,
-        OpPrecedence, Operand, Order, Ordered, SqlWriter, UnaryOp, UnaryOpType, Value, expr,
+        LiteralValue, OpPrecedence, Operand, Order, Ordered, SqlWriter, UnaryOp, UnaryOpType,
+        Value, expr,
     };
     use time::{Date, Month, PrimitiveDateTime, Time, UtcDateTime};
     use uuid::Uuid;
 
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
+
+    #[test]
+    fn tuple_cells_are_arbitrary_expressions() {
+        let tuple = expr!((? + 1, COALESCE(?, "unknown"), if true { 2 } else { 3 }));
+        assert!(matches!(tuple, Operand::LitTuple([_, _, _])));
+        let mut out = DynQuery::default();
+        tuple.write_query(
+            &WRITER,
+            &mut Context::fragment(Fragment::SqlInsertIntoValues),
+            &mut out,
+        );
+        assert_eq!(
+            out.as_str(),
+            "(? + 1,COALESCE(?,'unknown'),CASE WHEN true THEN 2 ELSE 3 END)"
+        );
+
+        let mut out = DynQuery::default();
+        expr!((a, b) == [(1, 2), (3, 4)] as IN).write_query(
+            &WRITER,
+            &mut Context::default(),
+            &mut out,
+        );
+        assert_eq!(out.as_str(), "(a,b) IN ((1,2),(3,4))");
+
+        let mut out = DynQuery::default();
+        expr!([1 + 2, COALESCE(?, 4), (5, 6)]).write_query(
+            &WRITER,
+            &mut Context::default(),
+            &mut out,
+        );
+        assert_eq!(out.as_str(), "[1 + 2,COALESCE(?,4),(5,6)]");
+
+        let mut out = DynQuery::default();
+        expr!(()).write_query(&WRITER, &mut Context::default(), &mut out);
+        assert_eq!(out.as_str(), "()");
+        out.clear();
+        expr!((?,)).write_query(&WRITER, &mut Context::default(), &mut out);
+        assert_eq!(out.as_str(), "(?)");
+        out.clear();
+        expr!([]).write_query(&WRITER, &mut Context::default(), &mut out);
+        assert_eq!(out.as_str(), "[]");
+    }
+
+    #[test]
+    fn literal_value_visitor() {
+        let of = |e: &dyn Expression| LiteralValue::of(&e);
+        assert_eq!(of(&expr!(42)).unwrap(), Value::Int128(Some(Box::new(42))));
+        assert_eq!(
+            of(&expr!("text")).unwrap(),
+            Value::Varchar(Some("text".into()))
+        );
+        assert_eq!(of(&expr!(true)).unwrap(), Value::Boolean(Some(true)));
+        assert_eq!(of(&expr!(NULL)).unwrap(), Value::Null);
+        assert_eq!(of(&expr!(1.5)).unwrap(), Value::Float64(Some(1.5)));
+        let text = String::from("borrowed");
+        assert_eq!(
+            of(&expr!(#text)).unwrap(),
+            Value::Varchar(Some("borrowed".into()))
+        );
+        assert_eq!(of(&Value::Int32(Some(4))).unwrap(), Value::Int32(Some(4)));
+        // Plain Rust values, as passed to `values([[1, 2]])`.
+        assert_eq!(of(&7_i32).unwrap(), Value::Int32(Some(7)));
+        assert_eq!(
+            of(&String::from("s")).unwrap(),
+            Value::Varchar(Some("s".into()))
+        );
+        assert_eq!(of(&Some(5_i64)).unwrap(), Value::Int64(Some(5)));
+        assert_eq!(of(&None::<i64>).unwrap(), Value::Int64(None));
+        assert_eq!(
+            of(&Cow::<Value>::Owned(Value::Boolean(Some(true)))).unwrap(),
+            Value::Boolean(Some(true))
+        );
+        assert!(of(&expr!(?)).is_err());
+        assert!(of(&expr!(a)).is_err());
+        assert!(of(&expr!(1 + 2)).is_err());
+        assert!(of(&expr!((1, 2))).is_err());
+    }
 
     #[test]
     fn simple_expressions() {
@@ -131,14 +209,7 @@ mod tests {
         assert_eq!(query.as_str(), "CAST('1.5' AS DOUBLE)");
 
         let expr = expr!(["a", "b", "c"]);
-        assert!(matches!(
-            expr,
-            Operand::LitList([
-                Operand::LitStr("a"),
-                Operand::LitStr("b"),
-                Operand::LitStr("c"),
-            ])
-        ));
+        assert!(matches!(expr, Operand::LitList([_, _, _])));
         let mut query = DynQuery::default();
         expr.write_query(
             &WRITER,
@@ -152,11 +223,7 @@ mod tests {
             expr,
             BinaryOp {
                 op: BinaryOpType::Indexing,
-                lhs: Operand::LitList([
-                    Operand::LitInt(11),
-                    Operand::LitInt(22),
-                    Operand::LitInt(33),
-                ]),
+                lhs: Operand::LitList([_, _, _]),
                 rhs: Operand::LitInt(1),
             }
         ));
@@ -707,14 +774,6 @@ mod tests {
         assert_ne!(Operand::LitBool(true), Operand::LitBool(false));
         assert_ne!(Operand::LitBool(true), Operand::LitInt(1));
         assert_ne!(Operand::LitInt(0), Operand::LitInt(1));
-        assert_eq!(
-            Operand::LitList(&[Operand::LitInt(1)]),
-            Operand::LitList(&[Operand::LitInt(1)])
-        );
-        assert_eq!(
-            Operand::LitTuple(&[Operand::LitInt(1)]),
-            Operand::LitTuple(&[Operand::LitInt(1)])
-        );
     }
 
     #[test]

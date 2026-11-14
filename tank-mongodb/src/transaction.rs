@@ -38,7 +38,7 @@ impl<'c> Transaction<'c> for MongoDBTransaction<'c> {
     }
 }
 
-impl<'c> Drop for MongoDBTransaction<'c> {
+impl Drop for MongoDBTransaction<'_> {
     fn drop(&mut self) {
         if self.end_connection_session {
             self.connection.session = None;

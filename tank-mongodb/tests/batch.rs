@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use tank::{DynQuery, Entity, Sql, expr};
-    use tank_mongodb::{BatchPayload, MongoDBDriver, Payload};
-    use tank_tests::init_logs;
+    use tank::{AsValue, DynQuery, Entity, Sql, Value, cols, expr};
+    use tank_mongodb::{BatchPayload, InsertManyPayload, MongoDBDriver, Payload};
+    use tank_tests::{init_logs, silent_logs};
 
     const DRIVER: MongoDBDriver = MongoDBDriver {};
 
@@ -39,6 +39,59 @@ mod tests {
         assert_eq!(batch.len(), 2, "Batch should contain both payloads");
         assert!(matches!(batch[0], Payload::Delete(..)));
         assert!(matches!(batch[1], Payload::InsertOne(..)));
+    }
+
+    #[test]
+    fn insert_rows_of_plain_values() {
+        init_logs();
+        let mut query = DynQuery::default();
+        Sql()
+            .insert_into(Item::table())
+            .columns(["id", "name"])
+            .values([
+                [1_i64.as_value(), "a".as_value()],
+                [2_i64.as_value(), "b".as_value()],
+            ])
+            .build_into(&DRIVER, &mut query);
+        Sql()
+            .insert_into(Item::table())
+            .columns(["id"])
+            .values([[3_i64], [4_i64]])
+            .build_into(&DRIVER, &mut query);
+        let Some(Payload::Batch(BatchPayload { batch, .. })) = query
+            .as_prepared::<MongoDBDriver>()
+            .map(|v| v.get_payload())
+        else {
+            panic!("Expected batch payload");
+        };
+        let values = batch
+            .iter()
+            .flat_map(|payload| match payload {
+                Payload::InsertMany(InsertManyPayload { rows, .. }) => rows.iter(),
+                _ => panic!("Expected insert many payloads"),
+            })
+            .map(|row| row.values.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            values,
+            [
+                vec![Value::Int64(Some(1)), Value::Varchar(Some("a".into()))],
+                vec![Value::Int64(Some(2)), Value::Varchar(Some("b".into()))],
+                vec![Value::Int64(Some(3))],
+                vec![Value::Int64(Some(4))],
+            ]
+        );
+
+        // Parameters need a database to evaluate, nothing is written.
+        let mut query = DynQuery::default();
+        silent_logs! {
+            Sql()
+                .insert_into(Item::table())
+                .columns(["id", "name"])
+                .values([cols!(?, ?)])
+                .build_into(&DRIVER, &mut query);
+        }
+        assert!(query.is_empty());
     }
 
     #[test]

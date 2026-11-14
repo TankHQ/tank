@@ -13,6 +13,88 @@ use tank_sqlite::{SQLiteConnection, SQLiteDriver};
 use tank_tests::init_logs;
 
 #[tokio::test]
+async fn prepared_expression_rows_bind_reuse_and_upsert() {
+    #[derive(Entity, Debug, PartialEq)]
+    struct Item {
+        #[tank(primary_key)]
+        id: i64,
+        label: String,
+    }
+
+    let mut connection =
+        SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+            .await
+            .unwrap();
+    Item::create_table(&mut connection, false, false)
+        .await
+        .unwrap();
+
+    let row = cols!(? + 1, COALESCE(?, "unknown"));
+    let sql = Sql()
+        .insert_into(Item::table())
+        .columns(["id", "label"])
+        .values([row, row])
+        .update()
+        .build(&connection.driver());
+    let mut prepared = connection.prepare(sql).await.unwrap();
+    prepared
+        .bind(0i64)
+        .unwrap()
+        .bind(None::<String>)
+        .unwrap()
+        .bind(1i64)
+        .unwrap()
+        .bind("second")
+        .unwrap();
+    assert_eq!(
+        connection
+            .execute(&mut prepared)
+            .await
+            .unwrap()
+            .rows_affected,
+        Some(2)
+    );
+    prepared
+        .bind(0i64)
+        .unwrap()
+        .bind("updated")
+        .unwrap()
+        .bind(2i64)
+        .unwrap()
+        .bind("third")
+        .unwrap();
+    assert_eq!(
+        connection
+            .execute(&mut prepared)
+            .await
+            .unwrap()
+            .rows_affected,
+        Some(2)
+    );
+    let rows = Item::find_many(&mut connection, true, None)
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap();
+    assert_eq!(
+        rows,
+        vec![
+            Item {
+                id: 1,
+                label: "updated".into()
+            },
+            Item {
+                id: 2,
+                label: "second".into()
+            },
+            Item {
+                id: 3,
+                label: "third".into()
+            },
+        ]
+    );
+}
+
+#[tokio::test]
 async fn borrowed_and_owned_parameters_are_copied() {
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())

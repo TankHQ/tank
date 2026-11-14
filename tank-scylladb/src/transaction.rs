@@ -34,7 +34,7 @@ impl ScyllaDBTransaction<'_> {
     }
 }
 
-impl<'c> Executor for ScyllaDBTransaction<'c> {
+impl Executor for ScyllaDBTransaction<'_> {
     type Driver = ScyllaDBDriver;
 
     fn accepts_multiple_statements(&self) -> bool {

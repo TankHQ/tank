@@ -17,9 +17,9 @@ use std::{borrow::Cow, collections::HashMap, f64, mem, ops::Deref, sync::Arc};
 use tank_core::{
     AsValue, BinaryOp, BinaryOpType, Case, ColumnDef, ColumnRef, Context, Dataset, DynQuery,
     Expression, FindOrder, Fragment, InsertIntoQuery, Interval, IsAggregateFunction, IsAsterisk,
-    IsConstant, Operand, Order, Result, Row, RowLabels, RowOwned, SelectQuery, SqlCoreWriter,
-    SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, UnaryOp,
-    UnaryOpType, Value, anyhow, future::Either, truncate_long,
+    IsConstant, LiteralValue, Operand, Order, Result, Row, RowLabels, RowOwned, SelectQuery,
+    SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef,
+    UnaryOp, UnaryOpType, Value, anyhow, future::Either, truncate_long,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -1286,10 +1286,21 @@ impl SqlWriter for MongoDBSqlWriter {
         };
         let name = table.full_name(self.separator()).into_owned();
         let labels: RowLabels = columns.iter().map(|c| c.name().to_string()).collect();
-        let mut rows = rows
+        let rows = rows
             .into_iter()
-            .map(|row| RowOwned::new(labels.clone(), row.map(Value::into_owned).collect()))
-            .collect::<Vec<_>>();
+            .map(|row| {
+                row.map(|cell| LiteralValue::of(&cell))
+                    .collect::<Result<Vec<_>>>()
+                    .map(|values| RowOwned::new(labels.clone(), values))
+            })
+            .collect::<Result<Vec<_>>>();
+        let mut rows = match rows {
+            Ok(rows) => rows,
+            Err(error) => {
+                log::error!("Cannot insert into MongoDB: {error:#}");
+                return;
+            }
+        };
         if rows.is_empty() {
             return;
         }

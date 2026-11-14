@@ -7,13 +7,13 @@ use std::{
     borrow::Cow,
     ffi::{CStr, CString, c_char, c_int},
     future::Future,
-    hint, ptr,
+    hint, iter, ptr,
     str::FromStr,
 };
 use tank_core::{
-    AsEntity, AsQuery, Connection, Context, Driver, DynQuery, Entity, Error, ErrorContext,
-    Executor, Fragment, Prepared, Query, QueryResult, Result, RowsAffected, Sql, SqlCoreWriter,
-    SqlWriter, describe_path, error_message_from_ptr, future::Either, truncate_long,
+    AsEntity, AsQuery, ColumnDef, Connection, Driver, DynQuery, Entity, Error, ErrorContext,
+    Executor, Operand, Prepared, Query, QueryResult, Result, RowsAffected, Sql, SqlWriter,
+    describe_path, error_message_from_ptr, future::Either, truncate_long,
 };
 use tokio::task;
 
@@ -41,29 +41,18 @@ impl SQLiteConnection {
         I::Item: AsEntity,
     {
         type E<I> = <<I as IntoIterator>::Item as AsEntity>::Entity;
-        let table = E::<I>::table();
         let columns = E::<I>::columns();
-        let writer = self.driver().sql_writer();
-        let mut sql = DynQuery::with_capacity(32 + columns.len() * 12);
-        let mut context = Context::new(Fragment::SqlInsertInto, false);
-        sql.push_str("INSERT INTO ");
-        writer.write_table_ref(&mut context, &mut sql, table);
-        sql.push_str(" (");
-        for (i, column) in columns.iter().enumerate() {
-            if i != 0 {
-                sql.push_str(", ");
-            }
-            writer.write_identifier(&mut context, &mut sql, column.name(), true);
-        }
-        sql.push_str(") VALUES (");
-        for i in 0..columns.len() {
-            if i != 0 {
-                sql.push_str(", ");
-            }
-            sql.push('?');
-        }
-        sql.push(')');
-        let sql = CString::new(sql.as_str().as_ref())?;
+        let sql = {
+            let mut sql = DynQuery::default();
+            self.driver().sql_writer().write_insert(
+                &mut sql,
+                Sql()
+                    .insert_into(E::<I>::table())
+                    .columns(columns.iter().map(ColumnDef::name))
+                    .values([iter::repeat_n(&Operand::QuestionMark, columns.len())]),
+            );
+            CString::new(sql.as_str().as_ref())?
+        };
         unsafe {
             let mut statement =
                 SQLitePrepared::new(CBox::new(ptr::null_mut(), |p: *mut sqlite3_stmt| {

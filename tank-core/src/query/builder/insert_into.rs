@@ -1,5 +1,5 @@
 use crate::{
-    AsValue, ColumnDef, Dataset, Driver, DynQuery, Entity, Expression, ExpressionCollection, NA,
+    ColumnDef, Dataset, Driver, DynQuery, Entity, Expression, ExpressionCollection, NA,
     SelectQuery, SelectQueryBuilder, SqlWriter, TableRef, Value, future::Either,
 };
 use std::{borrow::Cow, iter, marker::PhantomData};
@@ -71,14 +71,15 @@ impl InsertIntoQueryBuilder<NA, NA> {
 }
 
 impl InsertIntoQueryBuilder<(), NA> {
-    /// Insert rows of values in the order of the columns, such as `[[1, 2], [3, 4]]` or vectors of [`Value`].
-    pub fn values<Rows>(self, rows: Rows) -> InsertIntoQueryBuilder<Rows, NA>
+    /// Insert rows of expressions following the columns order.
+    pub fn values<Rows>(self, rows: Rows) -> InsertIntoQueryBuilder<Rows::IntoIter, NA>
     where
-        Rows: IntoIterator + Clone,
+        Rows: IntoIterator,
+        Rows::IntoIter: Clone,
         Rows::Item: IntoIterator,
-        <Rows::Item as IntoIterator>::Item: AsValue,
+        <Rows::Item as IntoIterator>::Item: Expression,
     {
-        self.with(rows, false)
+        self.with(rows.into_iter(), false)
     }
 
     /// Insert the rows of a SELECT, continued like any SELECT, into the columns.
@@ -101,9 +102,7 @@ impl InsertIntoQueryBuilder<(), NA> {
 
 impl<R> InsertIntoQueryBuilder<R, NA>
 where
-    R: IntoIterator + Clone,
-    R::Item: IntoIterator,
-    <R::Item as IntoIterator>::Item: AsValue,
+    Self: InsertIntoQuery,
 {
     /// Update the existing rows on a conflict on the table primary key (upsert).
     pub fn update(self) -> InsertIntoQueryBuilder<R, bool> {
@@ -134,7 +133,7 @@ impl<R, U> InsertIntoQuery for InsertIntoQueryBuilder<R, U>
 where
     R: IntoIterator + Clone,
     R::Item: IntoIterator,
-    <R::Item as IntoIterator>::Item: AsValue,
+    <R::Item as IntoIterator>::Item: Expression,
 {
     type From = NA;
 
@@ -148,14 +147,11 @@ where
 
     fn get_values(
         &self,
-    ) -> Either<impl Iterator<Item = impl Iterator<Item = Value<'_>>>, &impl SelectQuery<Self::From>>
-    {
-        Either::<_, &NoSelect>::Left(
-            self.values
-                .clone()
-                .into_iter()
-                .map(|row| row.into_iter().map(AsValue::as_value)),
-        )
+    ) -> Either<
+        impl Iterator<Item = impl Iterator<Item = impl Expression>>,
+        &impl SelectQuery<Self::From>,
+    > {
+        Either::<_, &NoSelect>::Left(self.values.clone().into_iter().map(IntoIterator::into_iter))
     }
 
     fn get_update(&self) -> bool {
@@ -202,9 +198,11 @@ where
 
     fn get_values(
         &self,
-    ) -> Either<impl Iterator<Item = impl Iterator<Item = Value<'_>>>, &impl SelectQuery<Self::From>>
-    {
-        Either::Right::<iter::Empty<iter::Empty<Value>>, _>(self)
+    ) -> Either<
+        impl Iterator<Item = impl Iterator<Item = impl Expression>>,
+        &impl SelectQuery<Self::From>,
+    > {
+        Either::<iter::Empty<iter::Empty<NA>>, _>::Right(self)
     }
 
     fn get_update(&self) -> bool {
@@ -223,10 +221,13 @@ pub trait InsertIntoQuery {
     fn get_table(&self) -> &TableRef;
     /// Get the columns, empty for all the table columns in order.
     fn get_columns(&self) -> &[ColumnDef];
-    /// Get the rows of values, each in the order of the columns, or the SELECT producing them.
+    /// Get rows of expression cells, or the SELECT producing the inserted rows.
     fn get_values(
         &self,
-    ) -> Either<impl Iterator<Item = impl Iterator<Item = Value<'_>>>, &impl SelectQuery<Self::From>>;
+    ) -> Either<
+        impl Iterator<Item = impl Iterator<Item = impl Expression>>,
+        &impl SelectQuery<Self::From>,
+    >;
     /// Whether existing rows are updated on a primary key conflict.
     fn get_update(&self) -> bool;
     /// Build query.
@@ -260,8 +261,10 @@ impl<T: InsertIntoQuery> InsertIntoQuery for &T {
 
     fn get_values(
         &self,
-    ) -> Either<impl Iterator<Item = impl Iterator<Item = Value<'_>>>, &impl SelectQuery<Self::From>>
-    {
+    ) -> Either<
+        impl Iterator<Item = impl Iterator<Item = impl Expression>>,
+        &impl SelectQuery<Self::From>,
+    > {
         (**self).get_values()
     }
 

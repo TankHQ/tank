@@ -320,7 +320,7 @@ pub trait SqlWriter:
                 separated_by(
                     out,
                     row,
-                    |out, value| self.write_value(&mut context.current, out, &value),
+                    |out, cell| cell.write_query(self.as_dyn(), &mut context.current, out),
                     ", ",
                 );
                 out.push(')');

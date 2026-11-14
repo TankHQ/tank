@@ -370,7 +370,7 @@ impl<'a> Value<'a> {
     }
 }
 
-impl<'a> PartialEq for Value<'a> {
+impl PartialEq for Value<'_> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Null, Self::Null) => true,
@@ -423,7 +423,7 @@ impl<'a> PartialEq for Value<'a> {
     }
 }
 
-impl<'a> Eq for Value<'a> {}
+impl Eq for Value<'_> {}
 
 fn hash_f32_value<H: std::hash::Hasher>(value: f32, state: &mut H) {
     let bits = if value == 0.0 {
@@ -471,7 +471,7 @@ fn hash_map_value<'a, H: std::hash::Hasher>(
     value_ty.hash(state);
 }
 
-impl<'a> Hash for Value<'a> {
+impl Hash for Value<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         discriminant(self).hash(state);
         match self {
@@ -525,7 +525,7 @@ impl<'a> Hash for Value<'a> {
     }
 }
 
-impl<'a> Display for Value<'a> {
+impl Display for Value<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut out = DynQuery::default();
         self.write_query(&GenericSqlWriter::new(), &mut Default::default(), &mut out);
@@ -543,7 +543,7 @@ pub struct TypeDecoded {
     pub nullable: bool,
 }
 
-impl<'a> ToTokens for Value<'a> {
+impl ToTokens for Value<'_> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let ts = match self {
             Value::Null => quote!(::tank::Value::Null),

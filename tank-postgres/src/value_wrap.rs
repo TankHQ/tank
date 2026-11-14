@@ -13,7 +13,7 @@ use tank_core::Value;
 #[derive(Clone, Debug)]
 pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, Value<'a>>);
 
-impl<'a> Default for ValueWrap<'a> {
+impl Default for ValueWrap<'_> {
     fn default() -> Self {
         Self(Cow::Borrowed(&Value::Null))
     }
@@ -50,7 +50,7 @@ impl<'a> FromSql<'a> for ValueWrap<'a> {
     }
 }
 
-impl<'a> ToSql for ValueWrap<'a> {
+impl ToSql for ValueWrap<'_> {
     fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>>
     where
         Self: Sized,

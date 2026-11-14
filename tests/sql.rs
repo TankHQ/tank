@@ -303,7 +303,7 @@ mod tests {
             assert_eq!(out.as_str(), expected);
         }
 
-        let tuple = [Operand::LitInt(1), Operand::LitInt(2)];
+        let tuple: [&dyn Expression; 2] = [&Operand::LitInt(1), &Operand::LitInt(2)];
         for (operand, expected) in [
             (Operand::LitTuple(&tuple), "(1,2)"),
             (Operand::Value(&Value::Int32(Some(9))), "9"),
@@ -360,7 +360,7 @@ mod tests {
         assert_eq!(out.as_str(), "{f:1}");
 
         let args: &[&dyn Expression] = &[];
-        let lit_list = [Operand::LitInt(1), Operand::LitInt(2)];
+        let lit_list: [&dyn Expression; 2] = [&Operand::LitInt(1), &Operand::LitInt(2)];
         for (operand, expected) in [
             (Operand::Call("NOW", args), "NOW()"),
             (Operand::LitList(&lit_list), "[1,2]"),

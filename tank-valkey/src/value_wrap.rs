@@ -18,7 +18,7 @@ impl<'a> From<tank_core::Value<'a>> for ValueWrap<'a> {
     }
 }
 
-impl<'a> TryFrom<redis::Value> for ValueWrap<'a> {
+impl TryFrom<redis::Value> for ValueWrap<'_> {
     type Error = tank_core::Error;
 
     fn try_from(value: redis::Value) -> Result<Self, Self::Error> {
@@ -88,7 +88,7 @@ impl<'a> TryFrom<redis::Value> for ValueWrap<'a> {
     }
 }
 
-impl<'a> TryFrom<ValueWrap<'a>> for redis::Value {
+impl TryFrom<ValueWrap<'_>> for redis::Value {
     type Error = tank_core::Error;
 
     fn try_from(value: ValueWrap) -> Result<Self, Self::Error> {
@@ -190,13 +190,13 @@ impl<'a> TryFrom<ValueWrap<'a>> for redis::Value {
     }
 }
 
-impl<'a> FromRedisValue for ValueWrap<'a> {
+impl FromRedisValue for ValueWrap<'_> {
     fn from_redis_value(value: redis::Value) -> Result<Self, redis::ParsingError> {
         Self::try_from(value).map_err(|e| format!("{e}").into())
     }
 }
 
-impl<'a> ToRedisArgs for ValueWrap<'a> {
+impl ToRedisArgs for ValueWrap<'_> {
     fn write_redis_args<W>(&self, out: &mut W)
     where
         W: ?Sized + RedisWrite,

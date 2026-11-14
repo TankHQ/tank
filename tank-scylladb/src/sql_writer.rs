@@ -393,7 +393,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
             separated_by(
                 out,
                 row,
-                |out, value| self.write_value(&mut context.current, out, &value),
+                |out, expr| expr.write_query(self, &mut context.current, out),
                 ", ",
             );
             out.push_str(");");

@@ -23,7 +23,7 @@ pub struct IsField<'a> {
     pub known_columns: Arc<Vec<&'a String>>,
     pub aggregate_aliases: AggregateAliases,
 }
-impl<'a> IsField<'a> {
+impl IsField<'_> {
     fn resolve_expression(
         &mut self,
         writer: &dyn SqlWriter,
@@ -60,7 +60,7 @@ impl<'a> IsField<'a> {
         false
     }
 }
-impl<'a> ExpressionVisitor for IsField<'a> {
+impl ExpressionVisitor for IsField<'_> {
     fn visit_column(
         &mut self,
         _writer: &dyn SqlWriter,
@@ -157,7 +157,7 @@ pub struct WriteMatchExpression<'a> {
     pub known_columns: Arc<Vec<&'a String>>,
     pub aggregate_aliases: AggregateAliases,
 }
-impl<'a> WriteMatchExpression<'a> {
+impl WriteMatchExpression<'_> {
     pub fn new() -> Self {
         WriteMatchExpression::default()
     }
@@ -167,7 +167,7 @@ impl<'a> WriteMatchExpression<'a> {
         }
     }
 }
-impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
+impl ExpressionVisitor for WriteMatchExpression<'_> {
     fn visit_column(
         &mut self,
         writer: &dyn SqlWriter,
@@ -540,7 +540,7 @@ struct NotRewriter<'p, 'a, 'h> {
     parent: &'p mut WriteMatchExpression<'a>,
     handled: &'h mut bool,
 }
-impl<'p, 'a, 'h> NotRewriter<'p, 'a, 'h> {
+impl NotRewriter<'_, '_, '_> {
     fn invert(op: BinaryOpType) -> Option<BinaryOpType> {
         match op {
             BinaryOpType::Equal => Some(BinaryOpType::NotEqual),
@@ -563,7 +563,7 @@ impl<'p, 'a, 'h> NotRewriter<'p, 'a, 'h> {
         }
     }
 }
-impl<'p, 'a, 'h> ExpressionVisitor for NotRewriter<'p, 'a, 'h> {
+impl ExpressionVisitor for NotRewriter<'_, '_, '_> {
     fn visit_column(
         &mut self,
         writer: &dyn SqlWriter,

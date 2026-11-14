@@ -20,7 +20,7 @@ impl<'c> PostgresTransaction<'c> {
     }
 }
 
-impl<'c> Executor for PostgresTransaction<'c> {
+impl Executor for PostgresTransaction<'_> {
     type Driver = PostgresDriver;
 
     async fn do_prepare(&mut self, sql: String) -> Result<Query<PostgresDriver>> {

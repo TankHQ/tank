@@ -14,7 +14,7 @@ pub struct ValkeyTransaction<'c> {
     pub(crate) commands: Vec<Cmd>,
 }
 
-impl<'c> Executor for ValkeyTransaction<'c> {
+impl Executor for ValkeyTransaction<'_> {
     type Driver = ValkeyDriver;
 
     fn accepts_multiple_statements(&self) -> bool {
