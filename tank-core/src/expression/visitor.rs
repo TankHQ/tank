@@ -100,11 +100,12 @@ impl ExpressionVisitor for IsFalse {
     }
 }
 
-/// Extracts the value of a literal expression, for drivers that store native values instead of SQL.
-#[derive(Default, Debug)]
-pub struct LiteralValue(pub Option<ValueOwned>);
+/// Value of a literal expression, for drivers that store native values instead of SQL text.
+#[derive(Default)]
+pub struct LiteralValue(Option<ValueOwned>);
+
 impl LiteralValue {
-    pub fn of(expression: &impl Expression) -> Result<ValueOwned> {
+    pub fn new(expression: impl Expression) -> Result<ValueOwned> {
         let mut literal = Self::default();
         expression.accept_visitor(
             &mut literal,
@@ -117,6 +118,7 @@ impl LiteralValue {
             .ok_or_else(|| anyhow!("Expected a literal value, found a SQL expression"))
     }
 }
+
 impl ExpressionVisitor for LiteralValue {
     fn visit_operand(
         &mut self,

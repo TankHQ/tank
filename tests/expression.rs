@@ -58,37 +58,51 @@ mod tests {
 
     #[test]
     fn literal_value_visitor() {
-        let of = |e: &dyn Expression| LiteralValue::of(&e);
-        assert_eq!(of(&expr!(42)).unwrap(), Value::Int128(Some(Box::new(42))));
         assert_eq!(
-            of(&expr!("text")).unwrap(),
+            LiteralValue::new(expr!(42)).unwrap(),
+            Value::Int128(Some(Box::new(42)))
+        );
+        assert_eq!(
+            LiteralValue::new(expr!("text")).unwrap(),
             Value::Varchar(Some("text".into()))
         );
-        assert_eq!(of(&expr!(true)).unwrap(), Value::Boolean(Some(true)));
-        assert_eq!(of(&expr!(NULL)).unwrap(), Value::Null);
-        assert_eq!(of(&expr!(1.5)).unwrap(), Value::Float64(Some(1.5)));
-        let text = String::from("borrowed");
         assert_eq!(
-            of(&expr!(#text)).unwrap(),
-            Value::Varchar(Some("borrowed".into()))
-        );
-        assert_eq!(of(&Value::Int32(Some(4))).unwrap(), Value::Int32(Some(4)));
-        // Plain Rust values, as passed to `values([[1, 2]])`.
-        assert_eq!(of(&7_i32).unwrap(), Value::Int32(Some(7)));
-        assert_eq!(
-            of(&String::from("s")).unwrap(),
-            Value::Varchar(Some("s".into()))
-        );
-        assert_eq!(of(&Some(5_i64)).unwrap(), Value::Int64(Some(5)));
-        assert_eq!(of(&None::<i64>).unwrap(), Value::Int64(None));
-        assert_eq!(
-            of(&Cow::<Value>::Owned(Value::Boolean(Some(true)))).unwrap(),
+            LiteralValue::new(expr!(true)).unwrap(),
             Value::Boolean(Some(true))
         );
-        assert!(of(&expr!(?)).is_err());
-        assert!(of(&expr!(a)).is_err());
-        assert!(of(&expr!(1 + 2)).is_err());
-        assert!(of(&expr!((1, 2))).is_err());
+        assert_eq!(LiteralValue::new(expr!(NULL)).unwrap(), Value::Null);
+        assert_eq!(
+            LiteralValue::new(expr!(1.5)).unwrap(),
+            Value::Float64(Some(1.5))
+        );
+        let text = String::from("borrowed");
+        assert_eq!(
+            LiteralValue::new(expr!(#text)).unwrap(),
+            Value::Varchar(Some("borrowed".into()))
+        );
+        assert_eq!(
+            LiteralValue::new(Value::Int32(Some(4))).unwrap(),
+            Value::Int32(Some(4))
+        );
+        // Plain Rust values, as passed to `values([[1, 2]])`.
+        assert_eq!(LiteralValue::new(7_i32).unwrap(), Value::Int32(Some(7)));
+        assert_eq!(
+            LiteralValue::new(String::from("s")).unwrap(),
+            Value::Varchar(Some("s".into()))
+        );
+        assert_eq!(
+            LiteralValue::new(Some(5_i64)).unwrap(),
+            Value::Int64(Some(5))
+        );
+        assert_eq!(LiteralValue::new(None::<i64>).unwrap(), Value::Int64(None));
+        assert_eq!(
+            LiteralValue::new(Cow::<Value>::Owned(Value::Boolean(Some(true)))).unwrap(),
+            Value::Boolean(Some(true))
+        );
+        assert!(LiteralValue::new(expr!(?)).is_err());
+        assert!(LiteralValue::new(expr!(a)).is_err());
+        assert!(LiteralValue::new(expr!(1 + 2)).is_err());
+        assert!(LiteralValue::new(expr!((1, 2))).is_err());
     }
 
     #[test]

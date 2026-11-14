@@ -239,10 +239,7 @@ impl SqlWriter for ValkeySqlWriter {
         let mut context = Self::make_context(Fragment::SqlInsertInto);
         let prepared = Self::prepare_query(out, &mut context);
         for row in rows {
-            let values = match row
-                .map(|cell| LiteralValue::of(&cell))
-                .collect::<Result<Vec<_>>>()
-            {
+            let values = match row.map(LiteralValue::new).collect::<Result<Vec<_>>>() {
                 Ok(values) => values,
                 Err(error) => {
                     hint::cold_path();

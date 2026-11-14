@@ -1289,7 +1289,7 @@ impl SqlWriter for MongoDBSqlWriter {
         let rows = rows
             .into_iter()
             .map(|row| {
-                row.map(|cell| LiteralValue::of(&cell))
+                row.map(LiteralValue::new)
                     .collect::<Result<Vec<_>>>()
                     .map(|values| RowOwned::new(labels.clone(), values))
             })

@@ -12,6 +12,7 @@ use uuid::Uuid;
 pub trait Expression: OpPrecedence {
     /// Generates the SQL representation of this expression.
     fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery);
+
     /// Traverses the expression with a visitor.
     ///
     /// Returns `true` if the visitor matched this node.
@@ -24,6 +25,7 @@ pub trait Expression: OpPrecedence {
     ) -> bool {
         false
     }
+
     /// Renders the expression as a string suitable for use as an identifier.
     fn as_identifier(&self, context: &mut Context) -> String {
         let mut out = DynQuery::new(String::new());
