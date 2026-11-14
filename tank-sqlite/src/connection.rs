@@ -13,7 +13,7 @@ use std::{
 use tank_core::{
     AsEntity, AsQuery, ColumnDef, Connection, Driver, DynQuery, Entity, Error, ErrorContext,
     Executor, Operand, Prepared, Query, QueryResult, Result, RowsAffected, Sql, SqlWriter,
-    Transaction, describe_path, error_message_from_ptr, future::Either, stream, truncate_long,
+    Transaction, describe_path, error_message_from_ptr, future::Either, truncate_long,
 };
 use tokio::task;
 
@@ -237,10 +237,17 @@ impl<Q: AsMut<Query<SQLiteDriver>>> SQLiteCursor<'_, Q> {
         }
         unsafe {
             match self.query.as_mut() {
-                Query::Prepared(_) => {
-                    if self.generation != 0 || self.statement().is_null() {
+                Query::Prepared(prepared) => {
+                    let statement = prepared.statement();
+                    if self.generation != 0 || statement.is_null() {
                         self.done = true;
                         return Ok(None);
+                    }
+                    if sqlite3_db_handle(statement) != *self.connection.connection {
+                        self.done = true;
+                        return Err(Error::msg(
+                            "Prepared statement belongs to another SQLite connection",
+                        ));
                     }
                 }
                 Query::Raw(raw) => loop {
@@ -265,7 +272,19 @@ impl<Q: AsMut<Query<SQLiteDriver>>> SQLiteCursor<'_, Q> {
                         self.done = true;
                         return Err(self.error());
                     }
-                    self.offset += tail.offset_from(sql) as usize;
+                    let consumed = tail.offset_from(sql) as usize;
+                    if consumed == 0 {
+                        self.done = true;
+                        return Err(Error::msg(
+                            "SQLite made no progress while preparing the query",
+                        )
+                        .context(format!(
+                            "At byte {} of:\n{}",
+                            self.offset,
+                            truncate_long!(raw.0.get(self.offset..).unwrap_or_default())
+                        )));
+                    }
+                    self.offset += consumed;
                     if !statement.statement().is_null() {
                         self.statement = Some(statement);
                         break;
@@ -430,17 +449,8 @@ impl Executor for SQLiteConnection {
         query: impl AsQuery<SQLiteDriver> + 's,
     ) -> impl tank_core::stream::Stream<Item = Result<QueryResult<impl tank_core::Row + 's>>> + Send
     {
-        let mut query = query.as_query();
-        if let Query::Prepared(prepared) = query.as_mut() {
-            if !prepared.statement().is_null()
-                && unsafe { sqlite3_db_handle(prepared.statement()) } != *self.connection
-            {
-                return Either::Left(stream::once(std::future::ready(Err(anyhow!(
-                    "Prepared statement belongs to another SQLite connection"
-                )))));
-            }
-        }
-        tank_core::future::Either::Right(SQLiteStream::new(SQLiteCursor {
+        let query = query.as_query();
+        SQLiteStream::new(SQLiteCursor {
             connection: self,
             query,
             statement: None,
@@ -449,7 +459,7 @@ impl Executor for SQLiteConnection {
             initialized: false,
             active: false,
             done: false,
-        }))
+        })
     }
 
     fn append<It>(&mut self, rows: It) -> impl Future<Output = Result<RowsAffected>> + Send

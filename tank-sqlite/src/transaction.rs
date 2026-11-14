@@ -41,13 +41,13 @@ impl<'c> SQLiteTransaction<'c> {
     }
 
     fn do_rollback(&mut self) -> Result<()> {
-        static COMMIT: LazyLock<CString> = LazyLock::new(|| {
+        static ROLLBACK: LazyLock<CString> = LazyLock::new(|| {
             let mut out = DynQuery::default();
             let writer = SQLiteSqlWriter {};
-            writer.write_transaction_commit(&mut out);
+            writer.write_transaction_rollback(&mut out);
             unsafe { CString::from_vec_unchecked(mem::take(out.buffer().as_mut_vec())) }
         });
-        self.connection.do_execute(&COMMIT)?;
+        self.connection.do_execute(&ROLLBACK)?;
         self.is_done = true;
         Ok(())
     }
