@@ -5,14 +5,12 @@ use std::{
     borrow::Cow,
     ffi::{CStr, c_int},
     fmt::{self, Display},
-    hint,
-    os::raw::{c_char, c_void},
-    slice,
+    hint, slice,
     sync::Arc,
 };
 use tank_core::{
     AsValue, Context, DynQuery, Error, Fragment, Prepared, Result, SqlValueWriter, Value,
-    error_message_from_ptr, log_error, truncate_long,
+    error_message_from_ptr, truncate_long,
 };
 
 /// Prepared statement wrapper for SQLite.
@@ -28,6 +26,7 @@ pub struct SQLitePrepared {
 impl SQLitePrepared {
     const WRITER: SQLiteSqlWriter = SQLiteSqlWriter {};
 
+    #[inline(always)]
     pub(crate) fn new(statement: CBox<*mut sqlite3_stmt>) -> Self {
         Self {
             statement: statement.into(),
@@ -70,24 +69,23 @@ impl SQLitePrepared {
         unsafe {
             match sqlite3_column_type(statement, index) {
                 SQLITE_INTEGER => Ok(Value::Int64(Some(sqlite3_column_int64(statement, index)))),
+                SQLITE_FLOAT => Ok(Value::Float64(Some(sqlite3_column_double(
+                    statement, index,
+                )))),
                 SQLITE_TEXT => {
-                    let ptr = sqlite3_column_text(statement, index);
-                    if ptr.is_null() {
+                    let data = sqlite3_column_text(statement, index);
+                    if data.is_null() {
                         hint::cold_path();
                         return Err(self.column_error(index));
                     }
                     let len = sqlite3_column_bytes(statement, index) as usize;
                     Ok(Value::Varchar(Some(String::from_utf8_lossy(
-                        slice::from_raw_parts(ptr, len),
+                        slice::from_raw_parts(data, len),
                     ))))
                 }
-                SQLITE_FLOAT => Ok(Value::Float64(Some(sqlite3_column_double(
-                    statement, index,
-                )))),
-                SQLITE_NULL => Ok(Value::Null),
                 SQLITE_BLOB => {
-                    let ptr = sqlite3_column_blob(statement, index) as *const u8;
-                    if ptr.is_null() {
+                    let data = sqlite3_column_blob(statement, index) as *const u8;
+                    if data.is_null() {
                         hint::cold_path();
                         // An empty blob may be reported as a null pointer.
                         if sqlite3_column_bytes(statement, index) == 0
@@ -99,9 +97,10 @@ impl SQLitePrepared {
                     }
                     let len = sqlite3_column_bytes(statement, index) as usize;
                     Ok(Value::Blob(Some(Cow::Borrowed(slice::from_raw_parts(
-                        ptr, len,
+                        data, len,
                     )))))
                 }
+                SQLITE_NULL => Ok(Value::Null),
                 column_type => {
                     hint::cold_path();
                     Err(Error::msg(format!(
@@ -122,156 +121,26 @@ impl SQLitePrepared {
             .context(format!("Could not extract the column at index {index}"))
     }
 
-    /// Binds a value to a 1-based parameter.
-    ///
-    /// SQLite copies text and blob payloads, so `value` may be dropped right after.
-    /// `scratch` buffers temporal values the dialect renders as text.
-    #[inline]
-    pub(crate) fn bind_value(
-        &mut self,
-        index: c_int,
-        value: &Value<'_>,
-        scratch: &mut DynQuery,
-    ) -> Result<()> {
-        unsafe {
-            let rc = if value.is_null() {
-                sqlite3_bind_null(self.statement(), index)
-            } else {
-                match value {
-                    Value::Boolean(Some(v)) => {
-                        sqlite3_bind_int(self.statement(), index, *v as c_int)
-                    }
-                    Value::Int8(Some(v)) => sqlite3_bind_int(self.statement(), index, *v as c_int),
-                    Value::Int16(Some(v)) => sqlite3_bind_int(self.statement(), index, *v as c_int),
-                    Value::Int32(Some(v)) => sqlite3_bind_int(self.statement(), index, *v),
-                    Value::Int64(Some(v)) => sqlite3_bind_int64(self.statement(), index, *v),
-                    Value::Int128(Some(v)) => match sqlite3_int64::try_from(**v) {
-                        Ok(v) => sqlite3_bind_int64(self.statement(), index, v),
-                        Err(_) => {
-                            hint::cold_path();
-                            return Err(Self::unsupported(index, value));
-                        }
-                    },
-                    Value::UInt8(Some(v)) => {
-                        sqlite3_bind_int64(self.statement(), index, *v as sqlite3_int64)
-                    }
-                    Value::UInt16(Some(v)) => {
-                        sqlite3_bind_int64(self.statement(), index, *v as sqlite3_int64)
-                    }
-                    Value::UInt32(Some(v)) => {
-                        sqlite3_bind_int64(self.statement(), index, *v as sqlite3_int64)
-                    }
-                    Value::UInt64(Some(v)) => match sqlite3_int64::try_from(*v) {
-                        Ok(v) => sqlite3_bind_int64(self.statement(), index, v),
-                        Err(_) => {
-                            hint::cold_path();
-                            return Err(Self::unsupported(index, value));
-                        }
-                    },
-                    Value::UInt128(Some(v)) => match sqlite3_int64::try_from(**v) {
-                        Ok(v) => sqlite3_bind_int64(self.statement(), index, v),
-                        Err(_) => {
-                            hint::cold_path();
-                            return Err(Self::unsupported(index, value));
-                        }
-                    },
-                    Value::Float32(Some(v)) => {
-                        sqlite3_bind_double(self.statement(), index, *v as f64)
-                    }
-                    Value::Float64(Some(v)) => sqlite3_bind_double(self.statement(), index, *v),
-                    Value::Decimal(Some(v), ..) => match v.to_f64() {
-                        Some(v) => sqlite3_bind_double(self.statement(), index, v),
-                        None => {
-                            hint::cold_path();
-                            return Err(Self::unsupported(index, value));
-                        }
-                    },
-                    Value::Char(Some(v)) => {
-                        let mut buffer = [0u8; 4];
-                        self.bind_text(index, v.encode_utf8(&mut buffer))
-                    }
-                    Value::Varchar(Some(v)) => sqlite3_bind_text(
-                        self.statement(),
-                        index,
-                        v.as_ptr() as *const c_char,
-                        v.len() as c_int,
-                        SQLITE_TRANSIENT(),
-                    ),
-                    Value::Blob(Some(v)) => sqlite3_bind_blob(
-                        self.statement(),
-                        index,
-                        v.as_ptr() as *const c_void,
-                        v.len() as c_int,
-                        SQLITE_TRANSIENT(),
-                    ),
-                    Value::Date(Some(v)) => self.bind_written(index, scratch, |context, out| {
-                        Self::WRITER.write_date(context, out, v)
-                    }),
-                    Value::Time(Some(v)) => self.bind_written(index, scratch, |context, out| {
-                        Self::WRITER.write_time(context, out, v)
-                    }),
-                    Value::Timestamp(Some(v)) => {
-                        self.bind_written(index, scratch, |context, out| {
-                            Self::WRITER.write_timestamp(context, out, v)
-                        })
-                    }
-                    Value::TimestampWithTimezone(Some(v)) => {
-                        self.bind_written(index, scratch, |context, out| {
-                            Self::WRITER.write_timestamptz(context, out, v)
-                        })
-                    }
-                    Value::Uuid(Some(v)) => {
-                        let mut buffer = [0u8; 36];
-                        self.bind_text(index, v.hyphenated().encode_lower(&mut buffer))
-                    }
-                    _ => {
-                        hint::cold_path();
-                        return Err(Self::unsupported(index, value));
-                    }
-                }
-            };
-            if rc != SQLITE_OK {
-                hint::cold_path();
-                return Err(self.bind_error(index, rc));
-            }
-            Ok(())
-        }
-    }
-
-    /// Binds text that only lives for this call.
-    #[inline(always)]
-    unsafe fn bind_text(&self, index: c_int, value: &str) -> c_int {
-        unsafe {
-            sqlite3_bind_text(
-                self.statement(),
-                index,
-                value.as_ptr() as *const c_char,
-                value.len() as c_int,
-                SQLITE_TRANSIENT(),
-            )
-        }
-    }
-
     /// Binds a temporal value written by the dialect, whose text only lives for this call.
     #[inline]
     unsafe fn bind_written(
         &self,
         index: c_int,
-        scratch: &mut DynQuery,
+        query: &mut DynQuery,
         write: impl Fn(&mut Context, &mut DynQuery),
     ) -> c_int {
-        scratch.clear();
-        write(&mut Context::fragment(Fragment::ParameterBinding), scratch);
-        let text = scratch.as_str();
-        unsafe { self.bind_text(index, text.as_ref()) }
-    }
-
-    #[cold]
-    #[inline(never)]
-    fn unsupported(index: c_int, value: &Value<'_>) -> Error {
-        Error::msg(format!(
-            "Cannot use {value:?} as the parameter at index {index}"
-        ))
+        query.clear();
+        write(&mut Context::fragment(Fragment::ParameterBinding), query);
+        let v = query.as_str();
+        unsafe {
+            sqlite3_bind_text(
+                self.statement(),
+                index,
+                v.as_ptr() as _,
+                v.len() as _,
+                SQLITE_TRANSIENT(),
+            )
+        }
     }
 
     #[cold]
@@ -344,9 +213,125 @@ impl Prepared for SQLitePrepared {
         // SQLite's parameter index is 1-based.
         let index = index as c_int + 1;
         let value = v.as_value();
+        let statement = self.statement();
         let mut scratch = DynQuery::default();
-        self.bind_value(index, &value, &mut scratch)
-            .inspect_err(log_error)?;
+        #[cold]
+        #[inline(never)]
+        fn unsupported_value(index: c_int, value: &Value<'_>) -> Error {
+            Error::msg(format!(
+                "Cannot use {value:?} as the parameter at index {index}"
+            ))
+        }
+        unsafe {
+            let rc = if value.is_null() {
+                sqlite3_bind_null(statement, index)
+            } else {
+                match value {
+                    Value::Boolean(Some(v)) => sqlite3_bind_int(statement, index, v as _),
+                    Value::Int8(Some(v)) => sqlite3_bind_int(statement, index, v as _),
+                    Value::Int16(Some(v)) => sqlite3_bind_int(statement, index, v as _),
+                    Value::Int32(Some(v)) => sqlite3_bind_int(statement, index, v as _),
+                    Value::Int64(Some(v)) => sqlite3_bind_int64(statement, index, v as _),
+                    Value::Int128(Some(ref v)) => match sqlite3_int64::try_from(**v) {
+                        Ok(v) => sqlite3_bind_int64(statement, index, v as _),
+                        Err(_) => {
+                            hint::cold_path();
+                            return Err(unsupported_value(index, &value));
+                        }
+                    },
+                    Value::UInt8(Some(v)) => sqlite3_bind_int64(statement, index, v as _),
+                    Value::UInt16(Some(v)) => sqlite3_bind_int64(statement, index, v as _),
+                    Value::UInt32(Some(v)) => sqlite3_bind_int64(statement, index, v as _),
+                    Value::UInt64(Some(v)) => match sqlite3_int64::try_from(v) {
+                        Ok(v) => sqlite3_bind_int64(statement, index, v as _),
+                        Err(_) => {
+                            hint::cold_path();
+                            return Err(unsupported_value(index, &value));
+                        }
+                    },
+                    Value::UInt128(Some(ref v)) => match sqlite3_int64::try_from(**v) {
+                        Ok(v) => sqlite3_bind_int64(statement, index, v as _),
+                        Err(_) => {
+                            hint::cold_path();
+                            return Err(unsupported_value(index, &value));
+                        }
+                    },
+                    Value::Float32(Some(v)) => sqlite3_bind_double(statement, index, v as _),
+                    Value::Float64(Some(v)) => sqlite3_bind_double(statement, index, v as _),
+                    Value::Decimal(Some(v), ..) => match v.to_f64() {
+                        Some(v) => sqlite3_bind_double(statement, index, v as _),
+                        None => {
+                            hint::cold_path();
+                            return Err(unsupported_value(index, &value));
+                        }
+                    },
+                    Value::Char(Some(v)) => {
+                        let mut buffer = [0u8; 4];
+                        let value = v.encode_utf8(&mut buffer);
+                        sqlite3_bind_text(
+                            statement,
+                            index,
+                            value.as_ptr() as _,
+                            value.len() as _,
+                            SQLITE_TRANSIENT(),
+                        )
+                    }
+                    Value::Varchar(Some(v)) => sqlite3_bind_text(
+                        statement,
+                        index,
+                        v.as_ptr() as _,
+                        v.len() as _,
+                        SQLITE_TRANSIENT(),
+                    ),
+                    Value::Blob(Some(v)) => sqlite3_bind_blob(
+                        statement,
+                        index,
+                        v.as_ptr() as _,
+                        v.len() as _,
+                        SQLITE_TRANSIENT(),
+                    ),
+                    Value::Date(Some(v)) => {
+                        self.bind_written(index, &mut scratch, |context, out| {
+                            Self::WRITER.write_date(context, out, &v)
+                        })
+                    }
+                    Value::Time(Some(v)) => {
+                        self.bind_written(index, &mut scratch, |context, out| {
+                            Self::WRITER.write_time(context, out, &v)
+                        })
+                    }
+                    Value::Timestamp(Some(v)) => {
+                        self.bind_written(index, &mut scratch, |context, out| {
+                            Self::WRITER.write_timestamp(context, out, &v)
+                        })
+                    }
+                    Value::TimestampWithTimezone(Some(v)) => {
+                        self.bind_written(index, &mut scratch, |context, out| {
+                            Self::WRITER.write_timestamptz(context, out, &v)
+                        })
+                    }
+                    Value::Uuid(Some(v)) => {
+                        let mut buffer = [0u8; 36];
+                        let v = v.hyphenated().encode_lower(&mut buffer);
+                        sqlite3_bind_text(
+                            statement,
+                            index,
+                            v.as_ptr() as _,
+                            v.len() as _,
+                            SQLITE_TRANSIENT(),
+                        )
+                    }
+                    _ => {
+                        hint::cold_path();
+                        return Err(unsupported_value(index, &value));
+                    }
+                }
+            };
+            if rc != SQLITE_OK {
+                hint::cold_path();
+                return Err(self.bind_error(index, rc));
+            }
+        }
         self.index = index as u64;
         Ok(self)
     }

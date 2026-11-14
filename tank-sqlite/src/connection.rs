@@ -16,8 +16,6 @@ use tank_core::{
 };
 
 /// Wrapper for a SQLite `sqlite3` connection pointer used by the SQLite driver.
-///
-/// Provides helpers to prepare/execute statements and stream results into `tank_core` result types.
 #[derive(Debug)]
 pub struct SQLiteConnection {
     pub(crate) connection: CBox<*mut sqlite3>,
@@ -99,13 +97,10 @@ impl SQLiteConnection {
             }
             let mut affected = 0u64;
             // Reused for temporal values, which the dialect formats as text.
-            let mut scratch = DynQuery::default();
             for entity in rows {
                 let entity = entity.as_entity();
                 for (index, value) in entity.row_values().enumerate() {
-                    if let Err(error) =
-                        statement.bind_value(index as c_int + 1, &value, &mut scratch)
-                    {
+                    if let Err(error) = statement.bind_index(&value, index as _) {
                         if own_transaction {
                             sqlite3_exec(
                                 connection,

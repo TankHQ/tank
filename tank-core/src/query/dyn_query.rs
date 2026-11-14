@@ -13,7 +13,7 @@ pub enum DynQuery {
 }
 
 impl DynQuery {
-    pub fn new(value: String) -> Self {
+    pub const fn new(value: String) -> Self {
         Self::Raw(RawQuery(value))
     }
 
@@ -95,7 +95,7 @@ impl DynQuery {
 
 impl Default for DynQuery {
     fn default() -> Self {
-        Self::Raw(Default::default())
+        Self::new(Default::default())
     }
 }
 
