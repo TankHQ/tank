@@ -13,26 +13,32 @@ pub trait SqlWriter:
 {
     /// Emit BEGIN statement.
     fn write_transaction_begin(&self, out: &mut DynQuery) {
+        const SQL: &str = "BEGIN;";
+        out.buffer().reserve(SQL.len() + 1);
         if !out.is_empty() {
             out.push('\n');
         }
-        out.push_str("BEGIN;");
+        out.push_str(SQL);
     }
 
     /// Emit COMMIT statement.
     fn write_transaction_commit(&self, out: &mut DynQuery) {
+        const SQL: &str = "COMMIT;";
+        out.buffer().reserve(SQL.len() + 1);
         if !out.is_empty() {
             out.push('\n');
         }
-        out.push_str("COMMIT;");
+        out.push_str(SQL);
     }
 
     /// Emit ROLLBACK statement.
     fn write_transaction_rollback(&self, out: &mut DynQuery) {
+        const SQL: &str = "ROLLBACK;";
+        out.buffer().reserve(SQL.len() + 1);
         if !out.is_empty() {
             out.push('\n');
         }
-        out.push_str("ROLLBACK;");
+        out.push_str(SQL);
     }
 
     /// Emit CREATE SCHEMA.
@@ -152,6 +158,13 @@ pub trait SqlWriter:
     fn write_column_comment(&self, context: &mut Context, out: &mut DynQuery, column: &ColumnDef) {
         let mut context = context.switch_fragment(Fragment::SqlCommentOnColumn);
         context.current.qualify_columns = true;
+        // Exact length of `\nCOMMENT ON COLUMN "s"."t"."c" IS '...';` when nothing is escaped.
+        out.buffer().reserve(
+            34 + column.schema().len()
+                + column.table().len()
+                + column.name().len()
+                + column.comment.len(),
+        );
         if !out.is_empty() {
             out.push('\n');
         }
@@ -299,6 +312,7 @@ pub trait SqlWriter:
         let rows = match query.get_values() {
             Either::Left(rows) => rows,
             Either::Right(select) => {
+                out.buffer().reserve(32 + columns.len() * 32);
                 write_head(out, &mut context, true);
                 return self.write_select(out, select);
             }

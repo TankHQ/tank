@@ -11,7 +11,9 @@ mod tests {
         sync::atomic::{AtomicUsize, Ordering},
         time::Instant,
     };
-    use tank::{DynQuery, Entity, GenericSqlWriter, Interval, Sql, SqlWriter, cols, expr, join};
+    use tank::{
+        Context, DynQuery, Entity, GenericSqlWriter, Interval, Sql, SqlWriter, cols, expr, join,
+    };
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
 
@@ -276,6 +278,14 @@ mod tests {
             }),
             measure("drop_table", |out| {
                 WRITER.write_drop_table(out, Wide::table(), true)
+            }),
+            measure("transaction", |out| {
+                WRITER.write_transaction_begin(out);
+                WRITER.write_transaction_commit(out);
+                WRITER.write_transaction_rollback(out);
+            }),
+            measure("column_comment", |out| {
+                WRITER.write_column_comment(&mut Context::empty(), out, &Wide::table().columns[0])
             }),
         ];
         println!(
