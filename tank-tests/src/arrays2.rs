@@ -4,6 +4,7 @@
 use std::{pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
     Driver, DynQuery, Entity, Executor, Interval, Query, QueryResult, RawQuery, Result, Sql,
+    SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -26,7 +27,8 @@ pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
         let mut query = DynQuery::default();
-        let writer = executor.driver().sql_writer();
+        let driver = executor.driver();
+        let writer = driver.sql_writer();
         writer.write_drop_table(&mut query, Container::table(), true);
         writer.write_create_table(&mut query, Container::table(), true);
         let value = Container {

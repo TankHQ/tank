@@ -16,7 +16,7 @@ mod tests {
     use tank_tests::init_logs;
     use time::{Duration as TimeDuration, PrimitiveDateTime, macros::datetime};
 
-    /// Counts every heap operation, so each phase reports its allocations per operation.
+    /// Counts Rust heap allocations/reallocations, not SQLite's internal C allocator.
     struct CountingAllocator;
 
     static ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);
@@ -400,6 +400,56 @@ mod tests {
         for _ in 0..ROUNDS {
             round(&mut connection, &trades, &mut report).await;
         }
+        // Run separately so this diagnostic does not warm caches for the original phases.
+        Trade::drop_table(&mut connection, true, false)
+            .await
+            .unwrap();
+        Trade::create_table(&mut connection, true, false)
+            .await
+            .unwrap();
+        Trade::insert_many(&mut connection, &trades).await.unwrap();
+        for _ in 0..ROUNDS {
+            let allocations = ALLOCATIONS.load(Ordering::Relaxed);
+            let start = Instant::now();
+            let sum = connection
+                .fetch("SELECT * FROM bench_trades")
+                .try_fold(0i64, |sum, row| {
+                    ready(i64::try_from_value(row.value(0).unwrap()).map(|id| sum + id))
+                })
+                .await
+                .unwrap();
+            let elapsed = start.elapsed();
+            let allocations = ALLOCATIONS.load(Ordering::Relaxed) - allocations;
+            report.record("raw_stream", ROWS, elapsed, allocations);
+            assert_eq!(sum, (ROWS * (ROWS - 1) / 2) as i64);
+            assert!(
+                allocations < ROWS / 100,
+                "{allocations} allocations for {ROWS} rows"
+            );
+        }
         println!("{report}");
+        // Outside timed phases: expose engine work that driver optimizations cannot remove.
+        for (phase, sql) in [
+            (
+                "filter",
+                "SELECT * FROM bench_trades WHERE account = 13 AND buy = 1",
+            ),
+            (
+                "range_prepared",
+                "SELECT * FROM bench_trades WHERE symbol = 'AAPL' AND account < 64",
+            ),
+            (
+                "aggregate",
+                "SELECT symbol, COUNT(*), SUM(quantity), AVG(price) FROM bench_trades WHERE buy = 1 GROUP BY symbol",
+            ),
+        ] {
+            let plan = connection
+                .fetch(format!("EXPLAIN QUERY PLAN {sql}"))
+                .map_ok(|row| String::try_from_value(row.value(3).unwrap()).unwrap())
+                .try_collect::<Vec<_>>()
+                .await
+                .unwrap();
+            println!("{phase}: {}", plan.join("; "));
+        }
     }
 }

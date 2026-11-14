@@ -1130,6 +1130,52 @@ mod tests {
     }
 
     #[test]
+    fn borrowed_values_outlive_their_sources_after_into_owned() {
+        let values: [ValueOwned; 3] = {
+            let text = String::from("borrowed text");
+            let blob = vec![0u8, 255, 128];
+            [
+                Value::Varchar(Some(Cow::Borrowed(&text))),
+                Value::Blob(Some(Cow::Borrowed(&blob))),
+                Value::Unknown(Some(Cow::Borrowed(&text))),
+            ]
+            .map(Value::into_owned)
+        };
+        assert_eq!(
+            values,
+            [
+                Value::Varchar(Some(Cow::Owned("borrowed text".into()))),
+                Value::Blob(Some(Cow::Owned(vec![0, 255, 128]))),
+                Value::Unknown(Some(Cow::Owned("borrowed text".into()))),
+            ]
+        );
+    }
+
+    #[test]
+    fn into_owned_preserves_owned_buffers() {
+        for value in [
+            Value::Varchar(Some(Cow::Owned("owned text".into()))),
+            Value::Blob(Some(Cow::Owned(vec![0, 255, 128]))),
+            Value::Unknown(Some(Cow::Owned("unknown text".into()))),
+        ] {
+            let pointer = match &value {
+                Value::Varchar(Some(v)) | Value::Unknown(Some(v)) => v.as_ptr(),
+                Value::Blob(Some(v)) => v.as_ptr(),
+                _ => unreachable!(),
+            };
+            let owned = value.into_owned();
+            let owned_pointer = match &owned {
+                Value::Varchar(Some(Cow::Owned(v))) | Value::Unknown(Some(Cow::Owned(v))) => {
+                    v.as_ptr()
+                }
+                Value::Blob(Some(Cow::Owned(v))) => v.as_ptr(),
+                _ => panic!("Expected an owned payload"),
+            };
+            assert_eq!(owned_pointer, pointer);
+        }
+    }
+
+    #[test]
     fn value_into_owned() {
         let date = time::Date::from_calendar_date(2024, Month::March, 2).unwrap();
         let time = time::Time::from_hms(9, 8, 7).unwrap();
@@ -1147,6 +1193,7 @@ mod tests {
             Value::Float32(Some(1.5)),
             Value::Float64(Some(2.5)),
             Value::Char(Some('x')),
+            Value::Varchar(Some(Cow::Borrowed("a"))),
             Value::Blob(Some(Cow::Borrowed(&[1, 2]))),
             Value::Date(Some(date)),
             Value::Time(Some(time)),

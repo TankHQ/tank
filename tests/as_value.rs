@@ -927,6 +927,36 @@ mod tests {
     }
 
     #[test]
+    fn optional_values_with_owned_metadata() {
+        assert_eq!(
+            Option::<[i32; 2]>::try_from_value(<[i32; 2]>::as_empty_value()).unwrap(),
+            None
+        );
+        assert_eq!(
+            Option::<Vec<i32>>::try_from_value(Vec::<i32>::as_empty_value()).unwrap(),
+            None
+        );
+        assert_eq!(Option::<HashMap<i32, String>>::try_from_value(HashMap::<i32, String>::as_empty_value()).unwrap(), None);
+        assert_eq!(
+            Option::<serde_json::Value>::try_from_value(serde_json::Value::as_empty_value())
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            Option::<[i32; 2]>::try_from_value([1, 2].as_value()).unwrap(),
+            Some([1, 2])
+        );
+        assert_eq!(
+            Option::<[i32; 2]>::try_from_value(Vec::<i32>::as_empty_value()).unwrap(),
+            None
+        );
+        let text = String::from("keep the owned string buffer");
+        let pointer = text.as_ptr();
+        let text = Option::<String>::try_from_value(text).unwrap().unwrap();
+        assert_eq!(text.as_ptr(), pointer);
+    }
+
+    #[test]
     fn option_and_wrapper_conversions() {
         assert_eq!(Some(42_i32).as_value(), Value::Int32(Some(42)));
         assert_eq!(None::<i32>.as_value(), Value::Int32(None));

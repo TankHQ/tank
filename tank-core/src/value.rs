@@ -346,27 +346,26 @@ impl<'a> Value<'a> {
     /// Converts this value into an owning [`ValueOwned`], cloning any borrowed payload.
     #[inline]
     pub fn into_owned(self) -> ValueOwned {
-        match self {
-            Value::Varchar(Some(Cow::Borrowed(v))) => {
-                let owned = v.to_owned();
-                mem::forget(self);
-                Value::Varchar(Some(Cow::Owned(owned)))
-            }
-            Value::Blob(Some(Cow::Borrowed(v))) => {
-                let owned = v.to_owned();
-                mem::forget(self);
-                Value::Blob(Some(Cow::Owned(owned)))
-            }
-            Value::Unknown(Some(Cow::Borrowed(v))) => {
-                let owned = v.to_owned();
-                mem::forget(self);
-                Value::Unknown(Some(Cow::Owned(owned)))
-            }
-            Value::Array(..) | Value::List(..) | Value::Map(..) | Value::Struct(..) => {
-                self.into_owned_nested()
-            }
-            // All other variants carry no `'a` borrow, and moving `self` avoids `drop_in_place::<Value>`.
-            other => unsafe { mem::transmute::<Value<'a>, ValueOwned>(other) },
+        'simple_value: {
+            let owned = match self {
+                Value::Varchar(Some(Cow::Borrowed(v))) => {
+                    Value::Varchar(Some(Cow::Owned(v.to_owned())))
+                }
+                Value::Blob(Some(Cow::Borrowed(v))) => Value::Blob(Some(Cow::Owned(v.to_owned()))),
+                Value::Unknown(Some(Cow::Borrowed(v))) => {
+                    Value::Unknown(Some(Cow::Owned(v.to_owned())))
+                }
+                Value::Array(..) | Value::List(..) | Value::Map(..) | Value::Struct(..) => {
+                    break 'simple_value self.into_owned_nested();
+                }
+                // All other variants carry no `'a` borrow, and moving `self` avoids `drop_in_place::<Value>`.
+                other => {
+                    break 'simple_value unsafe { mem::transmute::<Value<'a>, ValueOwned>(other) };
+                }
+            };
+            // Avoid an opaque Value::drop call for simple values that don't allocate memory.
+            mem::forget(self);
+            owned
         }
     }
 }

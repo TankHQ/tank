@@ -16,7 +16,9 @@ It maps Tank operations and queries to native SQLite commands. Use it with the m
 
 ## Features
 - SQLite C API (FFI) using [libsqlite3-sys](https://crates.io/crates/libsqlite3-sys)
-- Queries stream row by row through [`async-stream`](https://crates.io/crates/async-stream), with each statement stepped using `sqlite3_step` and no result buffering
+- Queries stream row by row through `sqlite3_step`, without materializing complete results or using a worker/channel per row.
+- Row snapshots reuse cell and text/blob buffers when consumed immediately. Retained rows keep independent snapshots.
+- Long scans and bulk inserts yield cooperatively every 256 rows. SQLite calls themselves are synchronous: an expensive step or disk I/O can still block the executor thread.
 
 ## Install
 ```sh

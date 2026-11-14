@@ -1622,17 +1622,17 @@ impl<T: AsValue> AsValue for Option<T> {
             (!value.is_null()).then(|| <T as AsValue>::try_from_value(value))
         }
         match value.as_value() {
-            val @ Value::Null => {
-                // Suppress `Value` drop glue once `val` is known to be `Value::Null`.
-                mem::forget(val);
+            v @ Value::Null => {
+                // Avoid an opaque Value::drop call for simple values that don't allocate memory.
+                mem::forget(v);
                 Ok(None)
             }
-            val => {
+            v => {
                 // Compare against `T::as_empty_value()`'s constant discriminant so LLVM
                 // constant-folds `val.is_null()` to `T`'s single variant instead of a
                 // 28-entry jump table, materializing `other` only on the cold path.
                 let empty = T::as_empty_value();
-                let same = mem::discriminant(&val) == mem::discriminant(&empty);
+                let same = mem::discriminant(&v) == mem::discriminant(&empty);
                 let drop_empty = matches!(
                     empty,
                     Value::Array(..)
@@ -1646,16 +1646,16 @@ impl<T: AsValue> AsValue for Option<T> {
                     mem::forget(empty);
                 }
                 if same {
-                    if val.is_null() {
+                    if v.is_null() {
                         if !drop_empty {
-                            mem::forget(val);
+                            mem::forget(v);
                         }
                         Ok(None)
                     } else {
-                        <T as AsValue>::try_from_value(val).map(Some)
+                        <T as AsValue>::try_from_value(v).map(Some)
                     }
                 } else {
-                    let mut other = val;
+                    let mut other = v;
                     let res = fallback(&mut other).transpose();
                     mem::forget(other);
                     res
