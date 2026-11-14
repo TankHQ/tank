@@ -1,12 +1,11 @@
 use crate::{SQLiteConnection, SQLiteDriver, sql_writer::SQLiteSqlWriter};
-use libsqlite3_sys::{SQLITE_OK, sqlite3_exec};
 use std::{
-    ffi::{CStr, CString},
-    future::Future,
-    ptr,
+    ffi::CString,
+    future::{self, Future},
+    mem,
     sync::LazyLock,
 };
-use tank_core::{DynQuery, Error, Result, SqlWriter, Transaction, impl_executor_transaction};
+use tank_core::{DynQuery, Result, SqlWriter, Transaction, impl_executor_transaction, log_error};
 
 pub struct SQLiteTransaction<'c> {
     connection: &'c mut SQLiteConnection,
@@ -14,47 +13,42 @@ pub struct SQLiteTransaction<'c> {
 }
 
 impl<'c> SQLiteTransaction<'c> {
-    pub async fn new(connection: &'c mut SQLiteConnection) -> Result<Self> {
+    pub(crate) fn new(connection: &'c mut SQLiteConnection) -> Result<Self> {
         static BEGIN: LazyLock<CString> = LazyLock::new(|| {
             let mut out = DynQuery::default();
-            SQLiteSqlWriter {}.write_transaction_begin(&mut out);
-            CString::new(out.as_str().as_ref()).expect("a transaction statement holds no NUL bytes")
+            let writer = SQLiteSqlWriter {};
+            writer.write_transaction_begin(&mut out);
+            unsafe { CString::from_vec_unchecked(mem::take(out.buffer().as_mut_vec())) }
         });
         let transaction = Self {
             connection,
             is_done: false,
         };
-        Self::exec(transaction.connection, &BEGIN)?;
+        transaction.connection.do_execute(&BEGIN)?;
         Ok(transaction)
     }
 
-    /// Rolls the transaction back, leaving nothing for `Drop` to redo.
-    fn discard(&mut self) -> Result<()> {
-        static ROLLBACK: LazyLock<CString> = LazyLock::new(|| {
+    fn do_commit(&mut self) -> Result<()> {
+        static COMMIT: LazyLock<CString> = LazyLock::new(|| {
             let mut out = DynQuery::default();
-            SQLiteSqlWriter {}.write_transaction_rollback(&mut out);
-            CString::new(out.as_str().as_ref()).expect("a transaction statement holds no NUL bytes")
+            let writer = SQLiteSqlWriter {};
+            writer.write_transaction_commit(&mut out);
+            unsafe { CString::from_vec_unchecked(mem::take(out.buffer().as_mut_vec())) }
         });
+        self.connection.do_execute(&COMMIT)?;
         self.is_done = true;
-        Self::exec(self.connection, &ROLLBACK)
+        Ok(())
     }
 
-    fn exec(connection: &mut SQLiteConnection, statement: &CStr) -> Result<()> {
-        let rc = unsafe {
-            sqlite3_exec(
-                *connection.connection,
-                statement.as_ptr(),
-                None,
-                ptr::null_mut(),
-                ptr::null_mut(),
-            )
-        };
-        if rc != SQLITE_OK {
-            return Err(Error::msg(connection.last_error()).context(format!(
-                "While executing {} (rc {rc})",
-                statement.to_string_lossy()
-            )));
-        }
+    fn do_rollback(&mut self) -> Result<()> {
+        static COMMIT: LazyLock<CString> = LazyLock::new(|| {
+            let mut out = DynQuery::default();
+            let writer = SQLiteSqlWriter {};
+            writer.write_transaction_commit(&mut out);
+            unsafe { CString::from_vec_unchecked(mem::take(out.buffer().as_mut_vec())) }
+        });
+        self.connection.do_execute(&COMMIT)?;
+        self.is_done = true;
         Ok(())
     }
 }
@@ -63,9 +57,9 @@ impl<'c> SQLiteTransaction<'c> {
 impl Drop for SQLiteTransaction<'_> {
     fn drop(&mut self) {
         if !self.is_done
-            && let Err(error) = self.discard()
+            && let Err(error) = self.do_rollback()
         {
-            log::error!("While rolling back an unfinished transaction: {error:#}");
+            log_error(&error.context("While rolling back an unfinished transaction"));
         }
     }
 }
@@ -73,17 +67,10 @@ impl Drop for SQLiteTransaction<'_> {
 impl_executor_transaction!(SQLiteDriver, SQLiteTransaction<'c>, connection);
 impl<'c> Transaction<'c> for SQLiteTransaction<'c> {
     fn commit(mut self) -> impl Future<Output = Result<()>> + Send {
-        static COMMIT: LazyLock<CString> = LazyLock::new(|| {
-            let mut out = DynQuery::default();
-            SQLiteSqlWriter {}.write_transaction_commit(&mut out);
-            CString::new(out.as_str().as_ref()).expect("a transaction statement holds no NUL bytes")
-        });
-        let result = Self::exec(self.connection, &COMMIT);
-        self.is_done = result.is_ok();
-        std::future::ready(result)
+        future::ready(self.do_commit())
     }
 
     fn rollback(mut self) -> impl Future<Output = Result<()>> + Send {
-        std::future::ready(self.discard())
+        future::ready(self.do_rollback())
     }
 }

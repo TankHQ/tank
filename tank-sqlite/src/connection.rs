@@ -6,14 +6,14 @@ use libsqlite3_sys::*;
 use std::{
     borrow::Cow,
     ffi::{CStr, CString, c_char, c_int},
-    future::Future,
+    future::{self, Future},
     hint, iter, ptr,
     str::FromStr,
 };
 use tank_core::{
     AsEntity, AsQuery, ColumnDef, Connection, Driver, DynQuery, Entity, Error, ErrorContext,
     Executor, Operand, Prepared, Query, QueryResult, Result, RowsAffected, Sql, SqlWriter,
-    Transaction, describe_path, error_message_from_ptr, future::Either, truncate_long,
+    Transaction, describe_path, error_message_from_ptr, future::Either, stream, truncate_long,
 };
 use tokio::task;
 
@@ -24,6 +24,26 @@ pub struct SQLiteConnection {
 }
 
 impl SQLiteConnection {
+    pub(crate) fn do_execute(&mut self, statement: &CStr) -> Result<()> {
+        let rc = unsafe {
+            sqlite3_exec(
+                *self.connection,
+                statement.as_ptr(),
+                None,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            )
+        };
+        if rc != SQLITE_OK {
+            hint::cold_path();
+            return Err(Error::msg(self.last_error()).context(format!(
+                "While executing {} (rc {rc})",
+                truncate_long!(statement.to_string_lossy())
+            )));
+        }
+        Ok(())
+    }
+
     pub fn last_error(&self) -> String {
         unsafe {
             let errcode = sqlite3_errcode(*self.connection);
@@ -77,7 +97,7 @@ impl SQLiteConnection {
         let transaction = if unsafe { sqlite3_get_autocommit(*self.connection) } == 0 {
             None
         } else {
-            Some(SQLiteTransaction::new(self).await?)
+            Some(SQLiteTransaction::new(self)?)
         };
         let mut affected = 0u64;
         let mut rows = rows.into_iter();
@@ -357,7 +377,7 @@ impl Connection for SQLiteConnection {
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<SQLiteTransaction<'_>>> + Send {
-        SQLiteTransaction::new(self)
+        future::ready(SQLiteTransaction::new(self))
     }
 }
 
@@ -411,22 +431,13 @@ impl Executor for SQLiteConnection {
     ) -> impl tank_core::stream::Stream<Item = Result<QueryResult<impl tank_core::Row + 's>>> + Send
     {
         let mut query = query.as_query();
-        if let Query::Raw(raw) = query.as_mut() {
-            if raw.0.as_bytes().contains(&0) {
-                return tank_core::future::Either::Left(tank_core::stream::once(
-                    std::future::ready(Err(anyhow!("SQLite query contains an interior NUL byte"))),
-                ));
-            }
-        }
         if let Query::Prepared(prepared) = query.as_mut() {
             if !prepared.statement().is_null()
                 && unsafe { sqlite3_db_handle(prepared.statement()) } != *self.connection
             {
-                return tank_core::future::Either::Left(tank_core::stream::once(
-                    std::future::ready(Err(anyhow!(
-                        "Prepared statement belongs to another SQLite connection"
-                    ))),
-                ));
+                return Either::Left(stream::once(std::future::ready(Err(anyhow!(
+                    "Prepared statement belongs to another SQLite connection"
+                )))));
             }
         }
         tank_core::future::Either::Right(SQLiteStream::new(SQLiteCursor {
