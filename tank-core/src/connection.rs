@@ -21,11 +21,12 @@ pub trait Connection: Executor {
     where
         Self: Sized,
     {
+        const MEMORY: &str = ":memory:";
         let mut in_memory = false;
         if let Some((scheme, host)) = url.split_once("://")
-            && host.starts_with(":memory:")
+            && host.starts_with(MEMORY)
         {
-            url = format!("{scheme}://localhost{}", &host[8..]).into();
+            url = format!("{scheme}://localhost{}", &host[MEMORY.len()..]).into();
             in_memory = true;
         }
         let make_context = || {

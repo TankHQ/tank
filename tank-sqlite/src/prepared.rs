@@ -22,7 +22,7 @@ pub struct SQLitePrepared {
     pub(crate) labels: Option<Arc<[String]>>,
     pub(crate) columns: c_int,
     pub(crate) row: Option<Arc<SQLiteRowData>>,
-    buffer: DynQuery,
+    written: DynQuery,
 }
 
 impl SQLitePrepared {
@@ -36,41 +36,35 @@ impl SQLitePrepared {
             labels: None,
             columns: 0,
             row: None,
-            buffer: DynQuery::default(),
+            written: DynQuery::default(),
         }
-    }
-
-    /// Number of columns in the current result.
-    #[inline(always)]
-    pub(crate) fn column_count(&self) -> c_int {
-        unsafe { sqlite3_column_count(*self.statement) }
     }
 
     /// Name of the result column at `index`.
     pub(crate) fn column_name(&self, index: c_int) -> Result<String> {
         unsafe {
             let name = sqlite3_column_name(*self.statement, index);
-            if name.is_null() {
-                return Err(Error::msg(format!(
+            if !name.is_null() {
+                Ok(CStr::from_ptr(name).to_string_lossy().into_owned())
+            } else {
+                Err(Error::msg(format!(
                     "Missing SQLite column name at index {index}"
-                )));
+                )))
             }
-            Ok(CStr::from_ptr(name).to_string_lossy().into_owned())
         }
     }
 
     #[cold]
     #[inline(never)]
     fn init_labels(&mut self) -> Result<()> {
-        let statement = *self.statement;
-        let columns = self.column_count();
+        let columns = unsafe { sqlite3_column_count(*self.statement) };
         let recompiled =
-            unsafe { sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_REPREPARE, 1) } != 0;
+            unsafe { sqlite3_stmt_status(*self.statement, SQLITE_STMTSTATUS_REPREPARE, 1) } != 0;
         if self.labels.is_none() || self.columns != columns || recompiled {
             self.labels = Some(
                 (0..columns)
                     .map(|index| self.column_name(index))
-                    .collect::<Result<Arc<[_]>>>()?,
+                    .collect::<Result<_>>()?,
             );
             self.columns = columns;
             self.row = None;
@@ -278,25 +272,25 @@ impl Prepared for SQLitePrepared {
                         Value::Date(Some(v)) => Self::bind_written(
                             statement,
                             index,
-                            &mut self.buffer,
+                            &mut self.written,
                             |context, out| Self::WRITER.write_date(context, out, &v),
                         ),
                         Value::Time(Some(v)) => Self::bind_written(
                             statement,
                             index,
-                            &mut self.buffer,
+                            &mut self.written,
                             |context, out| Self::WRITER.write_time(context, out, &v),
                         ),
                         Value::Timestamp(Some(v)) => Self::bind_written(
                             statement,
                             index,
-                            &mut self.buffer,
+                            &mut self.written,
                             |context, out| Self::WRITER.write_timestamp(context, out, &v),
                         ),
                         Value::TimestampWithTimezone(Some(v)) => Self::bind_written(
                             statement,
                             index,
-                            &mut self.buffer,
+                            &mut self.written,
                             |context, out| Self::WRITER.write_timestamptz(context, out, &v),
                         ),
                         Value::Uuid(Some(v)) => {
