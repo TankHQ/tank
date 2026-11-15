@@ -82,9 +82,10 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                         let error = duckdb_result_error(result.deref_mut());
                         if !error.is_null() {
                             hint::cold_path();
-                            return Err(Error::msg(
-                                CStr::from_ptr(error).to_string_lossy().into_owned(),
-                            ));
+                            let error =
+                                Error::msg(CStr::from_ptr(error).to_string_lossy().into_owned());
+                            log::error!("{error:#}");
+                            return Err(error);
                         }
                         self.row = 0;
                         self.size = 0;
@@ -119,9 +120,10 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                     let error = duckdb_extract_statements_error(*extracted);
                     if !error.is_null() {
                         hint::cold_path();
-                        return Err(Error::msg(
-                            CStr::from_ptr(error).to_string_lossy().into_owned(),
-                        ));
+                        let error =
+                            Error::msg(CStr::from_ptr(error).to_string_lossy().into_owned());
+                        log::error!("{error:#}");
+                        return Err(error);
                     }
                     self.extracted = Some(extracted);
                 }

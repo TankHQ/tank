@@ -55,8 +55,10 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
     #[cold]
     #[inline(never)]
     fn error(&mut self) -> Error {
-        Error::msg(SQLiteConnection::last_error(*self.connection.handle))
-            .context(format!("While running the query:\n{}", self.query.as_mut()))
+        let error = Error::msg(SQLiteConnection::last_error(*self.connection.handle))
+            .context(format!("While running the query:\n{}", self.query.as_mut()));
+        log::error!("{error:#}");
+        error
     }
 
     fn reset(&mut self) {

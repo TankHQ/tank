@@ -6,7 +6,7 @@ use rustls::crypto::{CryptoProvider, aws_lc_rs::default_provider};
 use std::{borrow::Cow, fs, future, iter, mem, sync::Arc};
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Row, RowOwned,
-    RowsAffected, describe_url, stream::Stream, truncate_long,
+    RowsAffected, describe_url, stream::Stream, stream::TryStreamExt, truncate_long,
 };
 
 #[derive(Debug)]
@@ -214,5 +214,6 @@ impl Executor for ValkeyConnection {
             });
             yield row;
         }
+        .inspect_err(|e| log::error!("{e:#}"))
     }
 }

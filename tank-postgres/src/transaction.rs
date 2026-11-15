@@ -13,10 +13,13 @@ pub struct PostgresTransaction<'c>(pub(crate) tokio_postgres::Transaction<'c>);
 
 impl<'c> PostgresTransaction<'c> {
     pub async fn new(client: &'c mut PostgresConnection) -> Result<Self> {
-        Ok(Self(client.client.transaction().await.map_err(|e| {
-            log::error!("{e:#}");
-            e
-        })?))
+        Ok(Self(
+            client
+                .client
+                .transaction()
+                .await
+                .inspect_err(|e| log::error!("{e:#}"))?,
+        ))
     }
 }
 
@@ -24,14 +27,13 @@ impl Executor for PostgresTransaction<'_> {
     type Driver = PostgresDriver;
 
     async fn do_prepare(&mut self, sql: String) -> Result<Query<PostgresDriver>> {
-        Ok(
-            PostgresPrepared::new(self.0.prepare(&sql).await.map_err(|e| {
-                let error = Error::new(e);
-                log::error!("{error:#}");
-                error
-            })?)
-            .into(),
+        Ok(PostgresPrepared::new(
+            self.0
+                .prepare(&sql)
+                .await
+                .inspect_err(|e| log::error!("{e:#}"))?,
         )
+        .into())
     }
     fn run<'s>(
         &'s mut self,
@@ -55,10 +57,7 @@ impl Executor for PostgresTransaction<'_> {
                 Ok(Either::Right(self.0.query_portal_raw(&portal, 0).await?))
             }
         })
-        .map_err(|e| {
-            log::error!("{e:#}");
-            e
-        })
+        .inspect_err(|e| log::error!("{e:#}"))
     }
 }
 

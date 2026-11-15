@@ -34,7 +34,9 @@ pub trait Connection: Executor {
                 truncate_long!(url)
             )
         };
-        let mut result = Url::parse(&url).with_context(make_context)?;
+        let mut result = Url::parse(&url)
+            .with_context(make_context)
+            .inspect_err(|e| log::error!("{e:#}"))?;
         if in_memory {
             result.query_pairs_mut().append_pair("mode", "memory");
         }

@@ -111,17 +111,13 @@ impl Executor for PostgresConnection {
 
     async fn do_prepare(&mut self, sql: String) -> Result<Query<PostgresDriver>> {
         let sql = sql.as_str().trim_end().trim_end_matches(';');
-        Ok(
-            PostgresPrepared::new(self.client.prepare(&sql).await.map_err(|e| {
-                let error = Error::new(e).context(format!(
-                    "While preparing the query:\n{}",
-                    truncate_long!(sql)
-                ));
-                log::error!("{error:#}");
-                error
-            })?)
-            .into(),
-        )
+        let statement = self
+            .client
+            .prepare(&sql)
+            .await
+            .with_context(|| format!("While preparing the query:\n{}", truncate_long!(sql)))
+            .inspect_err(|e| log::error!("{e:#}"))?;
+        Ok(PostgresPrepared::new(statement).into())
     }
 
     fn run<'s>(

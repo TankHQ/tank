@@ -8,8 +8,8 @@ use async_stream::try_stream;
 use mongodb::{Client, ClientSession, Collection, Database, bson::Bson};
 use std::{borrow::Cow, future, hint};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Row,
-    RowsAffected, TableRef, describe_path,
+    AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, Result, Row, RowsAffected,
+    TableRef, describe_path,
     stream::{Stream, TryStreamExt},
     truncate_long,
 };
@@ -421,9 +421,6 @@ impl Executor for MongoDBConnection {
                 }
             }
         }
-        .map_err(move |e: Error| {
-            log::error!("{e:#}");
-            e
-        })
+        .inspect_err(|e| log::error!("{e:#}"))
     }
 }

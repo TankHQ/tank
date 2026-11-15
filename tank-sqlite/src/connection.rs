@@ -70,17 +70,17 @@ impl SQLiteConnection {
                         sqlite3_finalize(p);
                     }
                 }));
-            let rc = sqlite3_prepare_v2(
-                *self.handle,
-                sql.as_ptr(),
-                -1,
-                &mut *prepared.statement,
-                ptr::null_mut(),
+            ensure_rc!(
+                sqlite3_prepare_v2(
+                    *self.handle,
+                    sql.as_ptr(),
+                    -1,
+                    &mut *prepared.statement,
+                    ptr::null_mut(),
+                ),
+                Error::msg(Self::last_error(*self.handle)),
+                "While preparing a batch insert statement"
             );
-            if rc != SQLITE_OK {
-                hint::cold_path();
-                return Err(Error::msg(Self::last_error(*self.handle)));
-            }
             prepared
         };
         let transaction = if unsafe { sqlite3_get_autocommit(*self.handle) } == 0 {
