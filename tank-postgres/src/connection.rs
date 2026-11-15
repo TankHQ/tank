@@ -266,12 +266,8 @@ impl Executor for PostgresConnection {
 impl Connection for PostgresConnection {
     async fn connect(driver: &PostgresDriver, url: Cow<'static, str>) -> Result<Self> {
         let mut url = Self::sanitize_url(driver, url)?;
-        let make_context = || {
-            format!(
-                r#"Connecting to Postgres "{}""#,
-                describe_url::<PostgresDriver>(&url)
-            )
-        };
+        let target = describe_url::<PostgresDriver>(&url);
+        let make_context = || format!(r#"Connecting to Postgres "{target}""#);
         let mut take_url_param = |key: &str, env_var: &str, remove: bool| {
             let value = url
                 .query_pairs()
@@ -294,7 +290,7 @@ impl Connection for PostgresConnection {
                 if let Err(error) = connection.await
                     && !error.is_closed()
                 {
-                    log::error!("Postgres connection error: {:#?}", error);
+                    log::error!("Postgres connection error: {error:#?}");
                 }
             });
             (client, handle)
@@ -305,7 +301,7 @@ impl Connection for PostgresConnection {
                     .as_deref()
                     .unwrap_or("~/.postgresql/root.crt"),
             )
-            .context(context)?;
+            .context(make_context())?;
             if path.exists() {
                 builder.set_ca_file(path)?;
             }
@@ -314,7 +310,7 @@ impl Connection for PostgresConnection {
                     .as_deref()
                     .unwrap_or("~/.postgresql/postgresql.crt"),
             )
-            .context(context)?;
+            .context(make_context())?;
             if path.exists() {
                 builder.set_certificate_chain_file(path)?;
             }
@@ -323,7 +319,7 @@ impl Connection for PostgresConnection {
                     .as_deref()
                     .unwrap_or("~/.postgresql/postgresql.key"),
             )
-            .context(context)?;
+            .context(make_context())?;
             if path.exists() {
                 builder.set_private_key_file(path, SslFiletype::PEM)?;
             }

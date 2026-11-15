@@ -59,11 +59,11 @@ mod tests {
     async fn wrong_url() {
         init_logs();
         silent_logs! {
-        assert!(
-            SQLiteConnection::connect(&SQLiteDriver::new(), "duckdb://some_value".into())
-                .await
-                .is_err()
-        );
+            assert!(
+                SQLiteConnection::connect(&SQLiteDriver::new(), "duckdb://some_value".into())
+                    .await
+                    .is_err()
+            );
         }
     }
 
