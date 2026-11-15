@@ -8,10 +8,6 @@ use std::{
 };
 use tank_core::{Error, Query, QueryResult, Result, RowsAffected, stream::Stream, truncate_long};
 
-/// Steps a query's statements, bounding ready work per poll without a runtime-specific
-/// channel or worker queue.
-// All native access is serialized by the caller's exclusive borrow.
-// Rows own snapshots, never references into the connection opened without a mutex.
 pub(crate) struct SQLiteStream<'s, Q: AsMut<Query<SQLiteDriver>>> {
     connection: &'s mut SQLiteConnection,
     query: Q,
@@ -25,7 +21,7 @@ pub(crate) struct SQLiteStream<'s, Q: AsMut<Query<SQLiteDriver>>> {
 }
 
 impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
-    const BUDGET: u16 = 256;
+    const BATCH_SIZE: u16 = 256;
 
     pub(crate) fn new(connection: &'s mut SQLiteConnection, query: Q) -> Self {
         Self {
@@ -34,7 +30,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
             statement: None,
             offset: 0,
             generation: 0,
-            remaining: Self::BUDGET,
+            remaining: Self::BATCH_SIZE,
             initialized: false,
             active: false,
             done: false,
@@ -59,7 +55,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
     #[cold]
     #[inline(never)]
     fn error(&mut self) -> Error {
-        Error::msg(self.connection.last_error())
+        Error::msg(SQLiteConnection::last_error(*self.connection.handle))
             .context(format!("While running the query:\n{}", self.query.as_mut()))
     }
 
@@ -119,7 +115,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                         self.done = true;
                         return Ok(None);
                     }
-                    if sqlite3_db_handle(statement) != *self.connection.connection {
+                    if sqlite3_db_handle(statement) != *self.connection.handle {
                         self.done = true;
                         return Err(Error::msg(
                             "Prepared statement belongs to another SQLite connection",
@@ -138,7 +134,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                     }));
                     let mut tail = ptr::null();
                     let rc = sqlite3_prepare_v2(
-                        *self.connection.connection,
+                        *self.connection.handle,
                         sql,
                         len,
                         &mut *statement.statement,
@@ -173,7 +169,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
             if sqlite3_column_count(statement) > 0 {
                 return Ok(None);
             }
-            let connection = *self.connection.connection;
+            let connection = *self.connection.handle;
             let before = sqlite3_total_changes64(connection);
             while self.row()?.is_some() {}
             // changes64 is stale after DDL; total_changes distinguishes it from DML.
@@ -226,10 +222,9 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Stream for SQLiteStream<'_, Q> {
 
     #[inline(always)]
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        // The stream is never moved out, only advanced through &mut.
         let this = unsafe { self.get_unchecked_mut() };
         if this.remaining == 0 {
-            this.remaining = Self::BUDGET;
+            this.remaining = Self::BATCH_SIZE;
             cx.waker().wake_by_ref();
             return Poll::Pending;
         }

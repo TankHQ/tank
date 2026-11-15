@@ -96,7 +96,7 @@ impl Prepared for DuckDBPrepared {
             };
             ensure_rc!(
                 state?,
-                Error::msg(error_message_from_ptr(duckdb_prepare_error(prepared)).into_owned(),)
+                Error::msg(error_message_from_ptr(&duckdb_prepare_error(prepared)).into_owned(),)
                     .context(format!("While trying to bind the parameter {index}"))
             );
             self.index = index;

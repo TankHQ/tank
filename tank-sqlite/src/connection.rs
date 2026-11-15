@@ -1,4 +1,6 @@
-use crate::{CBox, SQLiteDriver, SQLitePrepared, SQLiteTransaction, stream::SQLiteStream};
+use crate::{
+    CBox, SQLiteDriver, SQLitePrepared, SQLiteTransaction, ensure_rc, stream::SQLiteStream,
+};
 use anyhow::anyhow;
 use libsqlite3_sys::*;
 use std::{
@@ -6,50 +8,40 @@ use std::{
     ffi::{CStr, CString, c_int},
     future::{self, Future},
     hint, iter, ptr,
-    str::FromStr,
 };
 use tank_core::{
     AsEntity, AsQuery, ColumnDef, Connection, Driver, DynQuery, Entity, Error, ErrorContext,
     Executor, Operand, Prepared, Query, QueryResult, Result, RowsAffected, Sql, SqlWriter,
-    Transaction, describe_path, error_message_from_ptr, future::Either, truncate_long,
+    Transaction, char_ptr_to_string, describe_path, error_message_from_ptr, future::Either,
+    log_error, truncate_long,
 };
 use tokio::task;
 
 /// Wrapper for a SQLite `sqlite3` connection pointer used by the SQLite driver.
 #[derive(Debug)]
 pub struct SQLiteConnection {
-    pub(crate) connection: CBox<*mut sqlite3>,
+    pub(crate) handle: CBox<*mut sqlite3>,
 }
 
 impl SQLiteConnection {
     pub(crate) fn do_execute(&mut self, statement: &CStr) -> Result<()> {
-        let rc = unsafe {
-            sqlite3_exec(
-                *self.connection,
-                statement.as_ptr(),
-                None,
-                ptr::null_mut(),
-                ptr::null_mut(),
-            )
-        };
-        if rc != SQLITE_OK {
-            hint::cold_path();
-            return Err(Error::msg(self.last_error()).context(format!(
-                "While executing {} (rc {rc})",
-                truncate_long!(statement.to_string_lossy())
-            )));
-        }
-        Ok(())
-    }
-
-    pub fn last_error(&self) -> String {
-        unsafe {
-            let errcode = sqlite3_errcode(*self.connection);
+        ensure_rc!(
+            unsafe {
+                sqlite3_exec(
+                    *self.handle,
+                    statement.as_ptr(),
+                    None,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                )
+            },
+            Error::msg(Self::last_error(*self.handle)),
             format!(
-                "Error ({errcode}): {}",
-                error_message_from_ptr(sqlite3_errmsg(*self.connection)),
+                "While executing {}",
+                truncate_long!(statement.to_string_lossy()),
             )
-        }
+        );
+        Ok(())
     }
 
     /// Inserts every entity in `rows` through a single prepared statement.
@@ -71,28 +63,28 @@ impl SQLiteConnection {
             );
             CString::new(sql.as_str().as_ref())?
         };
-        let mut statement = unsafe {
-            let mut statement =
+        let mut prepared = unsafe {
+            let mut prepared =
                 SQLitePrepared::new(CBox::new(ptr::null_mut(), |p: *mut sqlite3_stmt| {
                     if !p.is_null() {
                         sqlite3_finalize(p);
                     }
                 }));
             let rc = sqlite3_prepare_v2(
-                *self.connection,
+                *self.handle,
                 sql.as_ptr(),
                 -1,
-                &mut *statement.statement,
+                &mut *prepared.statement,
                 ptr::null_mut(),
             );
             if rc != SQLITE_OK {
                 hint::cold_path();
-                return Err(self.prepare_error(rc, sql.as_c_str().to_string_lossy()));
+                return Err(Error::msg(Self::last_error(*self.handle)));
             }
-            statement
+            prepared
         };
-        // A transaction owned by this call keeps file databases from syncing per row.
-        let transaction = if unsafe { sqlite3_get_autocommit(*self.connection) } == 0 {
+        let handle = *self.handle;
+        let transaction = if unsafe { sqlite3_get_autocommit(handle) } == 0 {
             None
         } else {
             Some(SQLiteTransaction::new(self)?)
@@ -102,16 +94,16 @@ impl SQLiteConnection {
         loop {
             let appended = rows.by_ref().take(256).try_fold(0u64, |count, entity| {
                 for (index, value) in entity.as_entity().row_values().enumerate() {
-                    statement.bind_index(value, index as _)?;
+                    prepared.bind_index(value, index as _)?;
                 }
-                let rc = unsafe { sqlite3_step(statement.statement()) };
-                if rc != SQLITE_DONE {
-                    hint::cold_path();
-                    return Err(Self::step_error(&statement, rc));
-                }
+                ensure_rc!(
+                    unsafe { sqlite3_step(prepared.statement()) },
+                    Error::msg(Self::last_error(handle)),
+                    "While executing a step on a prepared statement"
+                );
                 unsafe {
-                    sqlite3_clear_bindings(statement.statement());
-                    sqlite3_reset(statement.statement());
+                    sqlite3_clear_bindings(prepared.statement());
+                    sqlite3_reset(prepared.statement());
                 }
                 Ok(count + 1)
             })?;
@@ -122,7 +114,7 @@ impl SQLiteConnection {
             task::yield_now().await;
         }
         let last_affected_id =
-            unsafe { sqlite3_last_insert_rowid(sqlite3_db_handle(statement.statement())) };
+            unsafe { sqlite3_last_insert_rowid(sqlite3_db_handle(prepared.statement())) };
         if let Some(transaction) = transaction {
             transaction.commit().await?;
         }
@@ -134,72 +126,66 @@ impl SQLiteConnection {
 
     #[cold]
     #[inline(never)]
-    fn prepare_error(&self, rc: c_int, sql: Cow<'_, str>) -> Error {
-        Error::msg(self.last_error()).context(format!(
-            "While preparing (rc {rc}):\n{}",
-            truncate_long!(sql)
-        ))
-    }
-
-    #[cold]
-    #[inline(never)]
-    fn step_error(statement: &SQLitePrepared, rc: c_int) -> Error {
-        Error::msg(statement.last_error())
-            .context(format!("While stepping a batched insert (rc {rc})"))
+    pub(crate) fn last_error(handle: *mut sqlite3) -> String {
+        unsafe {
+            let ptr = sqlite3_errmsg(handle);
+            if ptr.is_null() {
+                return Default::default();
+            }
+            format!(
+                "Error ({}): {}",
+                sqlite3_errcode(handle),
+                error_message_from_ptr(&ptr),
+            )
+        }
     }
 }
 
 impl Connection for SQLiteConnection {
     async fn connect(driver: &SQLiteDriver, url: Cow<'static, str>) -> Result<Self> {
         let url = Self::sanitize_url(driver, url)?;
-        // Must run before SQLite initializes; memory statistics cost a counter update
-        // on every allocation and nothing in this driver reads them.
-        static CONFIGURE: std::sync::Once = std::sync::Once::new();
-        CONFIGURE.call_once(|| unsafe {
-            sqlite3_config(SQLITE_CONFIG_MEMSTATUS, 0 as c_int);
-        });
         let make_context = || format!("While trying to connect to SQLite {}", describe_path(&url));
-        let connection_string = CString::from_str(&url.as_str().replacen("sqlite://", "file:", 1))
-            .with_context(make_context)?;
+        let url = CString::from_vec_with_nul({
+            let mut bytes = url.as_str().replacen("sqlite://", "file:", 1).into_bytes();
+            bytes.push(0);
+            bytes
+        })
+        .with_context(make_context)?;
         let mut connection;
         unsafe {
             connection = CBox::new(ptr::null_mut(), |p| {
                 if sqlite3_close(p) != SQLITE_OK {
-                    let error = Error::msg(error_message_from_ptr(sqlite3_errmsg(p)).to_string())
+                    let error = Error::msg(Self::last_error(p))
                         .context("While closing the sqlite connection");
                     log::error!("{error:#}");
                 }
             });
-            // The connection is only reachable through `&mut` borrows, so SQLite's own
-            // mutex would only add an uncontended lock to every column read.
-            let rc = sqlite3_open_v2(
-                connection_string.as_ptr(),
-                &mut *connection,
-                SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI | SQLITE_OPEN_NOMUTEX,
-                ptr::null(),
+            ensure_rc!(
+                sqlite3_open_v2(
+                    url.as_ptr(),
+                    &mut *connection,
+                    SQLITE_OPEN_READWRITE
+                        | SQLITE_OPEN_CREATE
+                        | SQLITE_OPEN_URI
+                        | SQLITE_OPEN_NOMUTEX,
+                    ptr::null()
+                ),
+                Error::msg(Self::last_error(*connection)),
+                make_context(),
             );
-            if rc != SQLITE_OK {
-                let error =
-                    Error::msg(error_message_from_ptr(sqlite3_errmsg(*connection)).to_string())
-                        .context(make_context());
-                log::error!("{error:#}");
-                return Err(error);
-            }
-            let rc = sqlite3_exec(
-                *connection,
-                c"PRAGMA foreign_keys = ON".as_ptr(),
-                None,
-                ptr::null_mut(),
-                ptr::null_mut(),
+            ensure_rc!(
+                sqlite3_exec(
+                    *connection,
+                    c"PRAGMA foreign_keys = ON".as_ptr(),
+                    None,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                ),
+                Error::msg(Self::last_error(*connection)),
+                "While enabling foreign key enforcement",
             );
-            if rc != SQLITE_OK {
-                let error =
-                    Error::msg(error_message_from_ptr(sqlite3_errmsg(*connection)).to_string())
-                        .context("While enabling foreign key enforcement");
-                log::error!("{error:#}");
-            }
         }
-        Ok(Self { connection })
+        Ok(Self { handle: connection })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<SQLiteTransaction<'_>>> + Send {
@@ -213,37 +199,30 @@ impl Executor for SQLiteConnection {
     async fn do_prepare(&mut self, sql: String) -> Result<Query<SQLiteDriver>> {
         let prepared = unsafe {
             let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
-            let connection = *self.connection;
             let len = c_int::try_from(sql.len())?;
             let sql = CString::new(sql.as_bytes())?;
             let mut statement = CBox::new(ptr::null_mut(), |p: *mut sqlite3_stmt| {
-                if p.is_null() {
-                    return;
-                }
-                let db = sqlite3_db_handle(p);
-                let rc = sqlite3_finalize(p);
-                if rc != SQLITE_OK {
-                    let error = Error::msg(error_message_from_ptr(sqlite3_errmsg(db)).to_string())
-                        .context("While finalizing a prepared statement");
-                    log::error!("{error:#}");
+                let handle = sqlite3_db_handle(p);
+                if sqlite3_finalize(p) != SQLITE_OK {
+                    log_error(
+                        &Error::msg(Self::last_error(handle))
+                            .context("While finalizing a prepared statement"),
+                    );
                 }
             });
             let mut tail = ptr::null();
-            let rc = sqlite3_prepare_v2(connection, sql.as_ptr(), len, &mut *statement, &mut tail);
-            if rc != SQLITE_OK {
-                let error =
-                    Error::msg(error_message_from_ptr(sqlite3_errmsg(connection)).to_string())
-                        .context(make_context());
-                log::error!("{error:#}");
-                return Err(error);
-            }
+            ensure_rc!(
+                sqlite3_prepare_v2(*self.handle, sql.as_ptr(), len, &mut *statement, &mut tail),
+                Error::msg(Self::last_error(*self.handle)),
+                make_context(),
+            );
             if tail != ptr::null() && *tail != '\0' as i8 {
                 let error = anyhow!(
                     "Cannot prepare more than one statement at a time (remaining: {})",
-                    CStr::from_ptr(tail).to_str().unwrap_or("unprintable")
+                    truncate_long!(char_ptr_to_string(tail))
                 )
                 .context(make_context());
-                log::error!("{error:#}");
+                log_error(&error);
                 return Err(error);
             }
             statement

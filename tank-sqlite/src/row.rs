@@ -34,8 +34,8 @@ impl SQLiteRowData {
     #[cold]
     #[inline(never)]
     fn column_error(statement: *mut sqlite3_stmt, index: c_int) -> Error {
-        let message =
-            unsafe { error_message_from_ptr(sqlite3_errmsg(sqlite3_db_handle(statement))) };
+        let ptr = unsafe { sqlite3_errmsg(sqlite3_db_handle(statement)) };
+        let message = error_message_from_ptr(&ptr);
         Error::msg(message.into_owned())
             .context(format!("Could not extract the column at index {index}"))
     }

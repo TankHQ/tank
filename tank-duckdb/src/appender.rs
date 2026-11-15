@@ -141,5 +141,6 @@ impl DuckdbAppender {
 
 #[inline(always)]
 pub(crate) fn appender_error(appender: duckdb_appender) -> Error {
-    Error::msg(error_message_from_ptr(unsafe { duckdb_appender_error(appender) }).into_owned())
+    let ptr = unsafe { duckdb_appender_error(appender) };
+    Error::msg(error_message_from_ptr(&ptr).into_owned())
 }

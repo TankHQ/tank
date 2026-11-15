@@ -129,8 +129,8 @@ impl SQLitePrepared {
                 .to_str()
                 .unwrap_or("unprintable")
         };
-        let message =
-            unsafe { error_message_from_ptr(sqlite3_errmsg(sqlite3_db_handle(self.statement()))) };
+        let ptr = unsafe { sqlite3_errmsg(sqlite3_db_handle(self.statement())) };
+        let message = error_message_from_ptr(&ptr);
         Error::msg(message.into_owned()).context(format!(
             "Cannot bind the parameter {index} (rc {rc}) to query:\n{}",
             truncate_long!(sql)
@@ -160,7 +160,7 @@ impl SQLitePrepared {
             let errcode = sqlite3_errcode(db);
             format!(
                 "Error ({errcode}): {}",
-                error_message_from_ptr(sqlite3_errmsg(db)),
+                error_message_from_ptr(&sqlite3_errmsg(db)),
             )
         }
     }

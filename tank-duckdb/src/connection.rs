@@ -127,7 +127,7 @@ impl Executor for DuckDBConnection {
                 ensure_rc!(
                     duckdb_prepare(*self.connection, c_sql.as_ptr(), &mut *prepared),
                     Error::msg(
-                        error_message_from_ptr(duckdb_prepare_error(*prepared)).into_owned(),
+                        error_message_from_ptr(&duckdb_prepare_error(*prepared)).into_owned(),
                     )
                 );
                 Ok(DuckDBPrepared::new(prepared).into())
