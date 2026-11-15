@@ -45,7 +45,7 @@ impl SQLiteConnection {
     }
 
     /// Inserts every entity in `rows` through a single prepared statement.
-    async fn append_entities<I>(&mut self, rows: I) -> Result<RowsAffected>
+    async fn do_append<I>(&mut self, rows: I) -> Result<RowsAffected>
     where
         I: IntoIterator,
         I::Item: AsEntity,
@@ -159,6 +159,7 @@ impl Connection for SQLiteConnection {
         unsafe {
             connection = CBox::new(ptr::null_mut(), |p| {
                 if sqlite3_close(p) != SQLITE_OK {
+                    hint::cold_path();
                     let error = Error::msg(Self::last_error(p))
                         .context("While closing the sqlite connection");
                     log::error!("{error:#}");
@@ -204,7 +205,7 @@ impl Executor for SQLiteConnection {
         let prepared = unsafe {
             let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
             let len = c_int::try_from(sql.len())?;
-            let sql = CString::new(sql.as_bytes())?;
+            let sql: CString = CString::new(sql.as_bytes())?;
             let mut statement = CBox::new(ptr::null_mut(), |p: *mut sqlite3_stmt| {
                 let handle = sqlite3_db_handle(p);
                 if sqlite3_finalize(p) != SQLITE_OK {
@@ -222,8 +223,9 @@ impl Executor for SQLiteConnection {
                 make_context(),
             );
             if tail != ptr::null() && *tail != '\0' as i8 {
+                hint::cold_path();
                 let error = anyhow!(
-                    "Cannot prepare more than one statement at a time (remaining: {})",
+                    "Cannot prepare multiple statements at a time (remaining: {})",
                     truncate_long!(char_ptr_to_string(tail))
                 )
                 .context(make_context());
@@ -250,7 +252,7 @@ impl Executor for SQLiteConnection {
         It::Item: AsEntity,
     {
         type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
-        let rows = rows.into_iter();
+        let rows: <It as IntoIterator>::IntoIter = rows.into_iter();
         if E::<It>::columns().is_empty() {
             // Without named columns the batch must go through the generic insert.
             let entities = rows.collect::<Vec<_>>();
@@ -263,7 +265,7 @@ impl Executor for SQLiteConnection {
             );
             Either::Right(self.execute(query))
         } else {
-            Either::Left(self.append_entities(rows))
+            Either::Left(self.do_append(rows))
         }
     }
 }
