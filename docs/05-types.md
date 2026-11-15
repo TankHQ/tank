@@ -39,6 +39,7 @@ Tank maps ordinary Rust types to the closest column types each driver supports, 
 | `time::Duration`          | `INTERVAL`     | ❌        | `TIME(6)`                 | `TIME(6)`                 | `INTERVAL`     | ❌           | `DURATION`         | ❌           |
 | `tank::Interval`          | `INTERVAL`     | ❌        | `TIME(6)`                 | `TIME(6)`                 | `INTERVAL`     | ❌           | `DURATION`         | ❌           |
 | `uuid::Uuid`              | `UUID`         | `TEXT`    | `CHAR(36)`                | `UUID`                    | `UUID`         | `Uuid`       | `UUID`             | `String`     |
+| `std::net::IpAddr`        | `INET`         | `TEXT`    | `VARCHAR(45)`             | `INET6`                   | `INET`         | `String`     | `INET`             | `String`     |
 | `[T; N]`                  | `T[N]`         | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[N]`         | `Array`      | `VECTOR<T,N>`      | `List`       |
 | `VecDeque<T>`             | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array`      | `LIST<T>`          | `List`       |
 | `LinkedList<T>`           | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array`      | `LIST<T>`          | `List`       |
@@ -54,9 +55,12 @@ Tank maps ordinary Rust types to the closest column types each driver supports, 
 
 Driver-specific limits:
 - MariaDB's native `UUID` requires MariaDB mode and server 10.7+, MySQL mode uses `CHAR(36)`.
+- MariaDB `INET6` stores IPv4 addresses in IPv4-mapped IPv6 form. Tank normalizes them back to `IpAddr::V4` when decoding.
+- DuckDB `INET` comes from the `inet` core extension, autoloaded on first use. Plain addresses decode as `Value::IpAddr`. CIDR values decode as text (`address/mask`) because `IpAddr` has no mask.
 - MongoDB stores dates as BSON `DateTime` at UTC midnight. Timestamps use UTC milliseconds, losing original offsets and sub-millisecond precision.
 - ScyllaDB maps `[char; N]` to `ASCII`, not `VECTOR<T,N>`. Collection element/key types depend on the backend: Valkey requires scalar elements and map keys/values, and MongoDB requires string-convertible document keys.
-- Prepared parameters have additional restrictions: MySQL collections and DuckDB arrays/lists/maps are not supported, and ScyllaDB's `DURATION`, `TIMESTAMP`, and `VARINT` bindings are unimplemented. Valkey blob round trips are not supported reliably, despite Redis strings being binary-safe.
+- ScyllaDB has native `DURATION`, `TIMESTAMP`, `INET`, and `VARINT` columns and bindings, decoded as `tank::Value::{Interval, Timestamp, IpAddr, Int128, UInt128}`.
+- Prepared parameters have additional restrictions: MySQL collections and DuckDB arrays/lists/maps are not supported. Valkey blob round trips are not supported reliably, despite Redis strings being binary-safe.
 
 ## Wrapper Types
 Built-in wrappers usable directly in entities infer the SQL type from the inner type. Persisted fields must also be cloneable:

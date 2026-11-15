@@ -4,7 +4,9 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     ffi::{CStr, c_void},
-    hint, str,
+    hint,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    str,
 };
 use tank_core::{Interval, Value, ValueOwned};
 use time::PrimitiveDateTime;
@@ -286,28 +288,74 @@ impl DuckDBColumn {
                                     else {
                                         return None;
                                     };
-                                    Value::Struct(
-                                        Some(
-                                            struct_type
-                                                .fields
-                                                .iter()
-                                                .enumerate()
-                                                .map(|(i, (name, _))| {
-                                                    let child = duckdb_struct_vector_get_child(
-                                                        column.vector,
-                                                        i as _,
-                                                    );
-                                                    Some((
-                                                        name.clone(),
-                                                        DuckDBColumn::new(child)
-                                                            .extract(row)?
-                                                            .into_owned(),
-                                                    ))
-                                                })
-                                                .collect::<Option<Box<[_]>>>()?,
-                                        ),
-                                        struct_type,
-                                    )
+                                    if struct_type.name.name == "INET" {
+                                        let ip_type = DuckDBColumn::new(
+                                            duckdb_struct_vector_get_child(column.vector, 0),
+                                        )
+                                        .extract(row)?;
+                                        let address = DuckDBColumn::new(
+                                            duckdb_struct_vector_get_child(column.vector, 1),
+                                        )
+                                        .extract(row)?;
+                                        let mask = DuckDBColumn::new(
+                                            duckdb_struct_vector_get_child(column.vector, 2),
+                                        )
+                                        .extract(row)?;
+                                        match (ip_type.as_ref(), address.as_ref(), mask.as_ref()) {
+                                            (
+                                                Value::UInt8(Some(ip_type)),
+                                                Value::Int128(Some(address)),
+                                                Value::UInt16(Some(mask)),
+                                            ) => {
+                                                let (ip, default_mask) = match ip_type {
+                                                    1 => (
+                                                        IpAddr::V4(Ipv4Addr::from(
+                                                            **address as u32,
+                                                        )),
+                                                        32,
+                                                    ),
+                                                    2 => (
+                                                        IpAddr::V6(Ipv6Addr::from(
+                                                            (**address as u128) ^ (1_u128 << 127),
+                                                        )),
+                                                        128,
+                                                    ),
+                                                    _ => return None,
+                                                };
+                                                if *mask == default_mask {
+                                                    Value::IpAddr(Some(ip))
+                                                } else {
+                                                    Value::Varchar(Some(Cow::Owned(format!(
+                                                        "{ip}/{mask}"
+                                                    ))))
+                                                }
+                                            }
+                                            _ => return None,
+                                        }
+                                    } else {
+                                        Value::Struct(
+                                            Some(
+                                                struct_type
+                                                    .fields
+                                                    .iter()
+                                                    .enumerate()
+                                                    .map(|(i, (name, _))| {
+                                                        let child = duckdb_struct_vector_get_child(
+                                                            column.vector,
+                                                            i as _,
+                                                        );
+                                                        Some((
+                                                            name.clone(),
+                                                            DuckDBColumn::new(child)
+                                                                .extract(row)?
+                                                                .into_owned(),
+                                                        ))
+                                                    })
+                                                    .collect::<Option<Box<[_]>>>()?,
+                                            ),
+                                            struct_type,
+                                        )
+                                    }
                                 }
                                 DUCKDB_TYPE_DUCKDB_TYPE_MAP => {
                                     let Value::Map(_, map_type) = column.empty_value()? else {

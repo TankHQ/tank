@@ -61,20 +61,21 @@ Keep one doctrine in mind: a `Prepared` value is driver-local executable state, 
 
 The writer is split by concern across five traits, all in `tank-core`:
 
-| Trait                 | Writes                                                                     |
-| --------------------- | -------------------------------------------------------------------------- |
-| `SqlCoreWriter`       | Identifiers, table and column references, type names. Declares `as_dyn`    |
-| `SqlValueWriter`      | Literals: strings, numbers, date/time, intervals, UUIDs, lists, maps, JSON |
-| `SqlExpressionWriter` | Operands, operators and precedence, functions, `CASE`, `CAST`              |
+| Trait                 | Writes                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| `SqlCoreWriter`       | Identifiers, table and column references, type names. Declares `as_dyn`              |
+| `SqlValueWriter`      | Literals: strings, numbers, date/time, intervals, UUIDs, IPs, lists, maps, JSON      |
+| `SqlExpressionWriter` | Operands, operators and precedence, functions, `CASE`, `CAST`                        |
 | `SqlFragmentWriter`   | Building blocks of statements: joins, column definitions, pagination, upsert clauses |
-| `SqlWriter`           | Complete statements (`write_create_table`, `write_select`, `write_insert`, `write_update`, `write_delete`, `write_drop_table`, transactions) |
+| `SqlWriter`           | Complete statements: `write_create_table`, `write_select`, `write_insert`            |
+|                       |`write_update`, `write_delete`, `write_drop_table` and transactions                   |
 
 Callers emitting complete statements only need `SqlWriter` in scope, which requires the other four. A driver implements `SqlCoreWriter` (including `as_dyn`) and the traits it overrides, then opts into the rest with empty `impl` blocks.
 
 Override only differences from the generic fallback:
 - Identifier quoting style
 - Column type mapping
-- Literal escaping quirks (BLOB, INTERVAL, UUID, arrays)
+- Literal escaping quirks (BLOB, INTERVAL, UUID, INET, arrays)
 - Parameter placeholder (override `write_question_mark`) if not `?`
 - Schema operations (override as no-ops if the engine lacks schemas, as SQLite does)
 - Pagination syntax via `write_limit_offset` if an offset needs a limit or different keywords

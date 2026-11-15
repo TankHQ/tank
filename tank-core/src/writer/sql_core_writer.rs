@@ -133,6 +133,7 @@ pub trait SqlCoreWriter: Send {
             Value::TimestampWithTimezone(..) => out.push_str("TIMESTAMPTZ"),
             Value::Interval(..) => out.push_str("INTERVAL"),
             Value::Uuid(..) => out.push_str("UUID"),
+            Value::IpAddr(..) => out.push_str("VARCHAR"),
             Value::Array(_, t, ..) => {
                 self.write_column_type(context, out, &t.element);
                 out.push('[');

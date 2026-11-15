@@ -130,10 +130,7 @@ impl SerializeValue for ValueWrap {
                     .map_err(conversion_error)?
                     .map(|v| CqlTimestamp::from(v.assume_utc()))
                     .serialize(ty, writer),
-                NativeType::Inet => Option::<String>::try_from_value(value)
-                    .map_err(conversion_error)?
-                    .map(|v| v.parse::<IpAddr>())
-                    .transpose()
+                NativeType::Inet => Option::<IpAddr>::try_from_value(value)
                     .map_err(conversion_error)?
                     .serialize(ty, writer),
                 NativeType::SmallInt => do_serialize::<i16>(value, ty, writer),
@@ -358,10 +355,9 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                         }
                     }),
                 ),
-                NativeType::Inet => Value::Varchar(
-                    <Option<IpAddr> as DeserializeValue>::deserialize(ty, v)?
-                        .map(|v| Cow::Owned(v.to_string())),
-                ),
+                NativeType::Inet => {
+                    Value::IpAddr(<Option<IpAddr> as DeserializeValue>::deserialize(ty, v)?)
+                }
                 NativeType::Timeuuid => Value::Uuid(DeserializeValue::deserialize(ty, v)?),
                 NativeType::Uuid => Value::Uuid(DeserializeValue::deserialize(ty, v)?),
                 _ => {

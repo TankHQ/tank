@@ -58,6 +58,7 @@ impl SqlCoreWriter for ScyllaDBSqlWriter {
             Value::TimestampWithTimezone(..) => out.push_str("TIMESTAMP"),
             Value::Interval(..) => out.push_str("DURATION"),
             Value::Uuid(..) => out.push_str("UUID"),
+            Value::IpAddr(..) => out.push_str("INET"),
             Value::Array(_, t, ..) => {
                 if matches!(t.element, Value::Char(..)) {
                     out.push_str("ASCII");

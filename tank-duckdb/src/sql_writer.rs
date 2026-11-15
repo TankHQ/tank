@@ -26,6 +26,14 @@ impl SqlCoreWriter for DuckDBSqlWriter {
             out.push_str(t);
         }
     }
+
+    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
+        if matches!(value, Value::IpAddr(..)) {
+            out.push_str("INET");
+        } else {
+            GenericSqlWriter.write_column_type(context, out, value);
+        }
+    }
 }
 
 impl SqlValueWriter for DuckDBSqlWriter {

@@ -13,6 +13,7 @@ use std::{
     hash::{Hash, Hasher},
     iter,
     mem::{self, discriminant},
+    net::IpAddr,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -71,6 +72,8 @@ pub enum Value<'a> {
     Interval(Option<Interval>),
     /// UUID (Universally Unique Identifier).
     Uuid(Option<Uuid>),
+    /// IPv4 or IPv6 address.
+    IpAddr(Option<IpAddr>),
     /// Homogeneous array (values, element type info).
     Array(Option<Box<[Value<'a>]>>, Box<CollectionType<'a>>),
     /// Variable-length list (values, element type info).
@@ -168,6 +171,7 @@ impl<'a> Value<'a> {
             | Value::TimestampWithTimezone(None, ..)
             | Value::Interval(None, ..)
             | Value::Uuid(None, ..)
+            | Value::IpAddr(None, ..)
             | Value::Array(None, ..)
             | Value::List(None, ..)
             | Value::Map(None, ..)
@@ -205,6 +209,7 @@ impl<'a> Value<'a> {
             Value::TimestampWithTimezone(..) => Value::TimestampWithTimezone(None),
             Value::Interval(..) => Value::Interval(None),
             Value::Uuid(..) => Value::Uuid(None),
+            Value::IpAddr(..) => Value::IpAddr(None),
             Value::Array(_, t, ..) => Value::Array(None, t.clone()),
             Value::List(_, t, ..) => Value::List(None, t.clone()),
             Value::Map(_, t, ..) => Value::Map(None, t.clone()),
@@ -245,6 +250,7 @@ impl<'a> Value<'a> {
             }
             Value::Interval(..) => Interval::try_from_value(self).map(AsValue::as_value),
             Value::Uuid(..) => Uuid::try_from_value(self).map(AsValue::as_value),
+            Value::IpAddr(..) => IpAddr::try_from_value(self).map(AsValue::as_value),
             // Value::Array(_, ty, len, ..) => {
             //     Box::<[Value]>::try_from_value(self).map(AsValue::as_value)
             // }
@@ -286,6 +292,7 @@ impl<'a> Value<'a> {
             | Value::TimestampWithTimezone(..)
             | Value::Interval(..)
             | Value::Uuid(..)
+            | Value::IpAddr(..)
             | Value::Unknown(..) => true,
             _ => false,
         }
@@ -410,6 +417,7 @@ impl PartialEq for Value<'_> {
             (Self::TimestampWithTimezone(l), Self::TimestampWithTimezone(r)) => l == r,
             (Self::Interval(l), Self::Interval(r)) => l == r,
             (Self::Uuid(l), Self::Uuid(r)) => l == r,
+            (Self::IpAddr(l), Self::IpAddr(r)) => l == r,
             (Self::Array(l, lt), Self::Array(r, rt)) | (Self::List(l, lt), Self::List(r, rt)) => {
                 lt.len == rt.len && lt.element == rt.element && l == r
             }
@@ -509,6 +517,7 @@ impl Hash for Value<'_> {
             TimestampWithTimezone(v) => v.hash(state),
             Interval(v) => v.hash(state),
             Uuid(v) => v.hash(state),
+            IpAddr(v) => v.hash(state),
             Array(v, t) | List(v, t) => {
                 v.hash(state);
                 t.element.hash(state);
@@ -575,6 +584,7 @@ impl ToTokens for Value<'_> {
             Value::TimestampWithTimezone(..) => quote!(::tank::Value::TimestampWithTimezone(None)),
             Value::Interval(..) => quote!(::tank::Value::Interval(None)),
             Value::Uuid(..) => quote!(::tank::Value::Uuid(None)),
+            Value::IpAddr(..) => quote!(::tank::Value::IpAddr(None)),
             Value::Array(_, t, ..) => {
                 let (element, len) = (&t.element, t.len);
                 quote!(::tank::Value::Array(

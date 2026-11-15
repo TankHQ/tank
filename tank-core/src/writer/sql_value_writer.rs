@@ -4,7 +4,7 @@ use crate::{
     writer::{Context, SqlCoreWriter},
 };
 use rust_decimal::Decimal;
-use std::{collections::HashMap, fmt::Write};
+use std::{collections::HashMap, fmt::Write, net::IpAddr};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
 
@@ -95,6 +95,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
             Value::TimestampWithTimezone(Some(v), ..) => self.write_timestamptz(context, out, v),
             Value::Interval(Some(v), ..) => self.write_interval(context, out, v),
             Value::Uuid(Some(v), ..) => self.write_uuid(context, out, v),
+            Value::IpAddr(Some(v), ..) => self.write_ipaddr(context, out, v),
             Value::Array(Some(v), t, ..) | Value::List(Some(v), t, ..) => self.write_list(
                 context,
                 out,
@@ -360,6 +361,10 @@ pub trait SqlValueWriter: SqlCoreWriter {
         out.push_str(b);
         out.push_str(value.hyphenated().encode_lower(&mut Uuid::encode_buffer()));
         out.push_str(b);
+    }
+
+    fn write_ipaddr(&self, context: &mut Context, out: &mut DynQuery, value: &IpAddr) {
+        self.write_string(context, out, &value.to_string());
     }
 
     fn write_list(

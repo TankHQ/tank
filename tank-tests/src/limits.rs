@@ -1,7 +1,11 @@
 #![allow(unused_imports)]
 use crate::silent_logs;
 use rust_decimal::Decimal;
-use std::{pin::pin, sync::LazyLock};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    pin::pin,
+    sync::LazyLock,
+};
 use tank::{
     Driver, DynQuery, Entity, Executor, FixedDecimal, Interval, QueryResult, RawQuery, Result,
     RowsAffected, Sql, expr,
@@ -43,6 +47,8 @@ struct Limits {
     float64: f64,
     time: Time,
     date: Date,
+    ipv4: IpAddr,
+    ipv6: IpAddr,
     decimal: FixedDecimal<38, 9>,
     #[cfg(not(feature = "disable-intervals"))]
     interval: Interval,
@@ -88,6 +94,8 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
         #[cfg(feature = "disable-old-dates")]
         date: Date::from_calendar_date(1970, Month::January, 01)
             .expect("Very old date must be correct"),
+        ipv4: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+        ipv6: IpAddr::V6(Ipv6Addr::UNSPECIFIED),
         #[cfg(not(feature = "disable-large-decimals"))]
         decimal: FixedDecimal::from(decimal("-79228162514264337593.543950335")),
         #[cfg(feature = "disable-large-decimals")]
@@ -133,6 +141,8 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
         loaded.date,
         Date::from_calendar_date(1970, Month::January, 01).unwrap()
     );
+    assert_eq!(loaded.ipv4, IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+    assert_eq!(loaded.ipv6, IpAddr::V6(Ipv6Addr::UNSPECIFIED));
     #[cfg(not(feature = "disable-large-decimals"))]
     assert_eq!(loaded.decimal.0, decimal("-79228162514264337593.543950335"));
     #[cfg(feature = "disable-large-decimals")]
@@ -171,6 +181,10 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
         #[cfg(feature = "disable-large-dates")]
         date: Date::from_calendar_date(2149, Month::June, 6)
             .expect("Very old date must be correct"),
+        ipv4: IpAddr::V4(Ipv4Addr::BROADCAST),
+        ipv6: IpAddr::V6(Ipv6Addr::new(
+            0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+        )),
         #[cfg(not(feature = "disable-large-decimals"))]
         decimal: FixedDecimal::from(decimal("79228162514264337593.543950335")),
         #[cfg(feature = "disable-large-decimals")]
@@ -230,6 +244,13 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
         loaded.date,
         Date::from_calendar_date(2149, Month::June, 6).unwrap()
     );
+    assert_eq!(loaded.ipv4, IpAddr::V4(Ipv4Addr::BROADCAST));
+    assert_eq!(
+        loaded.ipv6,
+        IpAddr::V6(Ipv6Addr::new(
+            0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+        ))
+    );
     #[cfg(not(feature = "disable-large-decimals"))]
     assert_eq!(loaded.decimal.0, decimal("79228162514264337593.543950335"));
     #[cfg(feature = "disable-large-decimals")]
@@ -271,6 +292,8 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
                     float64: 0.0,
                     time: Time::from_hms(0, 0, 0).unwrap(),
                     date: Date::from_calendar_date(2000, Month::January, 01).unwrap(),
+                    ipv4: IpAddr::V4(Ipv4Addr::LOCALHOST),
+                    ipv6: IpAddr::V6(Ipv6Addr::LOCALHOST),
                     decimal: FixedDecimal::from(Decimal::ZERO),
                     #[cfg(not(feature = "disable-intervals"))]
                     interval: Interval::ZERO,
@@ -371,6 +394,8 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
             loaded.date,
             Date::from_calendar_date(-2000, Month::January, 01).unwrap()
         );
+        assert_eq!(loaded.ipv4, IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+        assert_eq!(loaded.ipv6, IpAddr::V6(Ipv6Addr::UNSPECIFIED));
         let Some(QueryResult::Row(row)) = stream.try_next().await? else {
             panic!("Could not get the row of the third statement");
         };
@@ -407,6 +432,13 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
         assert_eq!(
             loaded.date,
             Date::from_calendar_date(9999, Month::December, 31).unwrap()
+        );
+        assert_eq!(loaded.ipv4, IpAddr::V4(Ipv4Addr::BROADCAST));
+        assert_eq!(
+            loaded.ipv6,
+            IpAddr::V6(Ipv6Addr::new(
+                0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+            ))
         );
         #[cfg(all(
             not(feature = "disable-intervals"),

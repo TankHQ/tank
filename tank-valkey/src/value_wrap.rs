@@ -135,6 +135,7 @@ impl TryFrom<ValueWrap<'_>> for redis::Value {
             | tank_core::Value::TimestampWithTimezone(..)
             | tank_core::Value::Interval(..)
             | tank_core::Value::Uuid(..)
+            | tank_core::Value::IpAddr(..)
             | tank_core::Value::Json(..)
             | tank_core::Value::Unknown(..) => {
                 let tank_core::Value::Varchar(Some(v)) =
@@ -228,7 +229,8 @@ impl ToRedisArgs for ValueWrap<'_> {
             | tank_core::Value::Timestamp(Some(..), ..)
             | tank_core::Value::TimestampWithTimezone(Some(..), ..)
             | tank_core::Value::Interval(Some(..), ..)
-            | tank_core::Value::Uuid(Some(..), ..) => {
+            | tank_core::Value::Uuid(Some(..), ..)
+            | tank_core::Value::IpAddr(Some(..), ..) => {
                 if let Ok(v) = self
                     .0
                     .clone()

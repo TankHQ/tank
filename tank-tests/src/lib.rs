@@ -25,6 +25,7 @@ mod multiple;
 mod operations;
 mod orders;
 mod other;
+mod other_types;
 mod prepared;
 mod readme;
 mod requests;
@@ -66,6 +67,7 @@ pub use multiple::*;
 pub use operations::*;
 pub use orders::*;
 pub use other::*;
+pub use other_types::*;
 pub use prepared::*;
 use rcgen::{
     BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair,
@@ -192,53 +194,54 @@ pub async fn execute_tests<D: Driver + 'static>(pool: &mut impl ConnectionPool<D
     let tests: Vec<TestFn<D>> = vec![
         boxed(simple),
         boxed(kv_storage),
+        boxed(binary),
         boxed(trade_simple),
         boxed(trade_multiple),
+        boxed(insert_builder),
+        boxed(conditions),
+        boxed(other),
+        boxed(orders),
         boxed(users),
+        boxed(readme),
         boxed(aggregates),
-        boxed(binary),
-        boxed(books),
-        boxed(complex),
-        boxed(insane),
-        boxed(limits),
+        boxed(decimals),
+        #[cfg(not(feature = "disable-ordering"))]
+        boxed(select_options),
+        boxed(prepared),
+        boxed(bindings),
+        boxed(times),
+        #[cfg(not(feature = "disable-case"))]
+        boxed(case),
+        boxed(math),
+        boxed(metrics),
+        boxed(other_types),
+        boxed(enums),
+        boxed(custom),
+        boxed(service),
+        boxed(identifiers),
+        boxed(keywords),
+        boxed(ambiguity),
+        #[cfg(not(feature = "disable-transactions"))]
+        boxed(transaction1),
+        #[cfg(not(feature = "disable-transactions"))]
+        boxed(transaction2),
         #[cfg(not(feature = "disable-multiple-statements"))]
         boxed(multiple),
+        boxed(books),
+        boxed(shopping),
+        boxed(operations),
         #[cfg(not(feature = "disable-intervals"))]
         boxed(interval),
         #[cfg(not(feature = "disable-arrays"))]
         boxed(arrays1),
         #[cfg(not(feature = "disable-arrays"))]
         boxed(arrays2),
-        #[cfg(not(feature = "disable-transactions"))]
-        boxed(transaction1),
-        #[cfg(not(feature = "disable-transactions"))]
-        boxed(transaction2),
-        boxed(shopping),
-        boxed(orders),
-        boxed(times),
-        boxed(conditions),
-        #[cfg(not(feature = "disable-case"))]
-        boxed(case),
-        boxed(metrics),
-        boxed(math),
-        boxed(ambiguity),
-        boxed(other),
-        boxed(service),
-        boxed(enums),
-        boxed(custom),
-        boxed(decimals),
-        boxed(prepared),
-        boxed(bindings),
+        boxed(complex),
         boxed(requests),
-        boxed(keywords),
-        boxed(identifiers),
-        boxed(readme),
-        boxed(operations),
         boxed(advanced_operations),
-        #[cfg(not(feature = "disable-ordering"))]
-        boxed(select_options),
         boxed(cheat_sheet),
-        boxed(insert_builder),
+        boxed(limits),
+        boxed(insane),
     ];
     for test in tests {
         test(&mut connection)

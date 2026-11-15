@@ -344,10 +344,7 @@ mod tests {
             (Value::Boolean(None), "INTEGER"),
             (Value::Int64(None), "INTEGER"),
             (Value::Float32(None), "REAL"),
-            (
-                Value::Decimal(Some(Decimal::new(1, 0)), 10, 2),
-                "REAL(10,2)",
-            ),
+            (Value::Decimal(Some(Decimal::new(1, 0)), 10, 2), "REAL"),
             (Value::Char(None), "TEXT"),
             (Value::Varchar(None), "TEXT"),
             (Value::Blob(None), "BLOB"),
@@ -356,6 +353,7 @@ mod tests {
             (Value::Timestamp(None), "TEXT"),
             (Value::TimestampWithTimezone(None), "TEXT"),
             (Value::Uuid(None), "TEXT"),
+            (Value::IpAddr(None), "TEXT"),
         ];
         for (value, expected) in cases {
             let mut out = DynQuery::default();

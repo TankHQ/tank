@@ -77,31 +77,25 @@ impl SqlCoreWriter for SQLiteSqlWriter {
 
     fn write_column_type(&self, _context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
         match value {
-            Value::Boolean(..) => out.push_str("INTEGER"),
-            Value::Int8(..) => out.push_str("INTEGER"),
-            Value::Int16(..) => out.push_str("INTEGER"),
-            Value::Int32(..) => out.push_str("INTEGER"),
-            Value::Int64(..) => out.push_str("INTEGER"),
-            Value::UInt8(..) => out.push_str("INTEGER"),
-            Value::UInt16(..) => out.push_str("INTEGER"),
-            Value::UInt32(..) => out.push_str("INTEGER"),
-            Value::UInt64(..) => out.push_str("INTEGER"),
-            Value::Float32(..) => out.push_str("REAL"),
-            Value::Float64(..) => out.push_str("REAL"),
-            Value::Decimal(_, precision, scale, ..) => {
-                out.push_str("REAL");
-                if (precision, scale) != (&0, &0) {
-                    let _ = write!(out, "({precision},{scale})");
-                }
-            }
-            Value::Char(..) => out.push_str("TEXT"),
-            Value::Varchar(..) => out.push_str("TEXT"),
+            Value::Boolean(..)
+            | Value::Int8(..)
+            | Value::Int16(..)
+            | Value::Int32(..)
+            | Value::Int64(..)
+            | Value::UInt8(..)
+            | Value::UInt16(..)
+            | Value::UInt32(..)
+            | Value::UInt64(..) => out.push_str("INTEGER"),
+            Value::Float32(..) | Value::Float64(..) | Value::Decimal(..) => out.push_str("REAL"),
+            Value::Char(..)
+            | Value::Varchar(..)
+            | Value::Date(..)
+            | Value::Time(..)
+            | Value::Timestamp(..)
+            | Value::TimestampWithTimezone(..)
+            | Value::Uuid(..)
+            | Value::IpAddr(..) => out.push_str("TEXT"),
             Value::Blob(..) => out.push_str("BLOB"),
-            Value::Date(..) => out.push_str("TEXT"),
-            Value::Time(..) => out.push_str("TEXT"),
-            Value::Timestamp(..) => out.push_str("TEXT"),
-            Value::TimestampWithTimezone(..) => out.push_str("TEXT"),
-            Value::Uuid(..) => out.push_str("TEXT"),
             _ => log::error!("Unexpected tank::Value, SQLite does not support {value:?}"),
         };
     }

@@ -130,9 +130,7 @@ Parameters:
 Additional URL parameters are passed directly to the mysql_async API. See the full list of supported options from options structure [Opts](https://docs.rs/mysql_async/latest/mysql_async/struct.Opts.html).
 
 > [!NOTE]
-> **MariaDB support**: use `MariaDBDriver::mariadb()` with a `mysql://` URL to enable MariaDB mode. When active, Tank uses MariaDB native column types where they differ from MySQL, most notably `UUID` instead of `CHAR(36)` (MariaDB 10.7+).
->
-> Use the `column_type` attribute for other native DDL (e.g. `#[tank(column_type = (mariadb = "INET6", mysql = "VARCHAR(39)"))]` on a `String` field). The `mariadb` key applies only in MariaDB mode; the `mysql` key applies to both modes.
+> **MariaDB support**: use `MariaDBDriver::mariadb()` with a `mysql://` URL to enable MariaDB mode. When active, Tank uses MariaDB native column types where they differ from MySQL, most notably `UUID` instead of `CHAR(36)` (needs MariaDB 10.7+) and `INET6` instead of `VARCHAR(45)`.
 
 ### DuckDB
 DuckDB is your embedded artillery piece: fast, local, and always ready. Perfect for rapid deployment scenarios and testing under fire.
@@ -163,6 +161,9 @@ Modes:
 - `mode=memory`: in-memory access (temporary database that lives only for the duration of the connection)
 
 The `mode` parameter provides a common syntax for specifying connection access, similar to SQLite. The values map respectively to `access_mode=READ_ONLY`, `access_mode=READ_WRITE`, `access_mode=READ_WRITE` and the special `duckdb://:memory:` path. Additional URL parameters are passed directly to the DuckDB C API. See the full list of supported options on the [DuckDB website](https://duckdb.org/docs/stable/configuration/overview#global-configuration-options).
+
+> [!NOTE]
+> `std::net::IpAddr` columns use DuckDB's `INET` type from the `inet` core extension. DuckDB autoloads it on first use.
 
 ### MongoDB
 MongoDB is your guerrilla special forces unit operating in the "fog of war", gathering intel in whatever format it arrives.

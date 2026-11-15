@@ -4,7 +4,7 @@ use async_stream::try_stream;
 use postgres_protocol::types::{ArrayDimension, array_from_sql};
 use postgres_types::{FromSql, Kind, Type};
 use rust_decimal::Decimal;
-use std::{borrow::Cow, error::Error, iter, mem, pin::pin};
+use std::{borrow::Cow, error::Error, mem, net::IpAddr, pin::pin};
 use tank_core::{
     CollectionType, ErrorContext, RowOwned, Value, ValueOwned,
     stream::{Stream, StreamExt},
@@ -127,43 +127,44 @@ where
 }
 
 pub(crate) fn extract_value<'a>(
-    ty: &Type,
+    t: &Type,
     raw: Option<&'a [u8]>,
 ) -> Result<Value<'a>, Box<dyn Error + Sync + Send>> {
     fn convert<'a, T: FromSql<'a>>(
-        ty: &Type,
+        t: &Type,
         raw: Option<&'a [u8]>,
     ) -> Result<Option<T>, Box<dyn Error + Sync + Send>> {
         Ok(match raw {
-            Some(raw) => Some(T::from_sql(ty, raw)?),
+            Some(raw) => Some(T::from_sql(t, raw)?),
             None => None,
         })
     }
-    let kind = ty.kind();
+    let kind = t.kind();
     Ok(match kind {
-        Kind::Simple => match *ty {
-            Type::BOOL => Value::Boolean(convert::<bool>(ty, raw)?),
-            Type::CHAR => Value::Int8(convert::<i8>(ty, raw)?),
-            Type::INT2 => Value::Int16(convert::<i16>(ty, raw)?),
-            Type::INT4 => Value::Int32(convert::<i32>(ty, raw)?),
-            Type::INT8 => Value::Int64(convert::<i64>(ty, raw)?),
-            Type::FLOAT4 => Value::Float32(convert::<f32>(ty, raw)?),
-            Type::FLOAT8 => Value::Float64(convert::<f64>(ty, raw)?),
-            Type::NUMERIC => Value::Decimal(convert::<Decimal>(ty, raw)?, 0, 0),
-            Type::OID => Value::UInt32(convert::<u32>(ty, raw)?),
+        Kind::Simple => match *t {
+            Type::BOOL => Value::Boolean(convert::<bool>(t, raw)?),
+            Type::CHAR => Value::Int8(convert::<i8>(t, raw)?),
+            Type::INT2 => Value::Int16(convert::<i16>(t, raw)?),
+            Type::INT4 => Value::Int32(convert::<i32>(t, raw)?),
+            Type::INT8 => Value::Int64(convert::<i64>(t, raw)?),
+            Type::FLOAT4 => Value::Float32(convert::<f32>(t, raw)?),
+            Type::FLOAT8 => Value::Float64(convert::<f64>(t, raw)?),
+            Type::NUMERIC => Value::Decimal(convert::<Decimal>(t, raw)?, 0, 0),
+            Type::OID => Value::UInt32(convert::<u32>(t, raw)?),
             Type::VARCHAR | Type::TEXT | Type::NAME | Type::BPCHAR | Type::JSON | Type::XML => {
-                Value::Varchar(convert::<&str>(ty, raw)?.map(Cow::Borrowed))
+                Value::Varchar(convert::<&str>(t, raw)?.map(Cow::Borrowed))
             }
-            Type::BYTEA => Value::Blob(convert::<&[u8]>(ty, raw)?.map(Cow::Borrowed)),
-            Type::DATE => Value::Date(convert::<Date>(ty, raw)?),
-            Type::TIME => Value::Time(convert::<Time>(ty, raw)?),
-            Type::TIMESTAMP => Value::Timestamp(convert::<PrimitiveDateTime>(ty, raw)?),
-            Type::TIMESTAMPTZ => Value::TimestampWithTimezone(convert::<OffsetDateTime>(ty, raw)?),
-            Type::INTERVAL => Value::Interval(convert::<IntervalWrap>(ty, raw)?.map(Into::into)),
-            Type::UUID => Value::Uuid(convert::<Uuid>(ty, raw)?),
-            Type::UNKNOWN => Value::Unknown(convert::<&str>(ty, raw)?.map(Cow::Borrowed)),
+            Type::BYTEA => Value::Blob(convert::<&[u8]>(t, raw)?.map(Cow::Borrowed)),
+            Type::DATE => Value::Date(convert::<Date>(t, raw)?),
+            Type::TIME => Value::Time(convert::<Time>(t, raw)?),
+            Type::TIMESTAMP => Value::Timestamp(convert::<PrimitiveDateTime>(t, raw)?),
+            Type::TIMESTAMPTZ => Value::TimestampWithTimezone(convert::<OffsetDateTime>(t, raw)?),
+            Type::INTERVAL => Value::Interval(convert::<IntervalWrap>(t, raw)?.map(Into::into)),
+            Type::UUID => Value::Uuid(convert::<Uuid>(t, raw)?),
+            Type::INET => Value::IpAddr(convert::<IpAddr>(t, raw)?),
+            Type::UNKNOWN => Value::Unknown(convert::<&str>(t, raw)?.map(Cow::Borrowed)),
             _ => {
-                return Err(anyhow!("Unexpected {ty} variant for Kind::Simple").into());
+                return Err(anyhow!("Unexpected {t} variant for Kind::Simple").into());
             }
         },
         Kind::Array(inner_ty) => {
@@ -209,43 +210,46 @@ fn build_array<'a, 'b>(
     let Some(dimension) = it.next() else {
         return Err(tank_core::anyhow!("An array must have at least one dimension").into());
     };
-    let len = dimension.len as u32;
+    let len = dimension.len as usize;
     Ok(if it.len() == 0 {
-        let begin = begin as u32 * len;
         Value::Array(
             Some(
                 (begin..(begin + len))
                     .map(|i| {
-                        values
-                            .get_mut(i as usize)
-                            .map(mem::take)
-                            .unwrap_or_else(|| {
-                                log::error!(
-                                    "Unexpected error, array element {i} is missing from the decoded values"
-                                );
-                                Value::Null
-                            })
+                        values.get_mut(i).map(mem::take).unwrap_or_else(|| {
+                            log::error!(
+                                "Unexpected error, array element {i} is missing from the decoded values"
+                            );
+                            Value::Null
+                        })
                     })
                     .collect(),
             ),
             Box::new(CollectionType {
                 element: element_ty.clone(),
-                len,
+                len: len as u32,
             }),
         )
     } else {
-        let first = build_array(begin, values, element_ty, it.clone())?;
-        let nested_ty = first.as_null();
-        let elements = iter::chain(
-            iter::once(Ok(first)),
-            (1..len).map(|i| build_array(i as usize + begin, values, &nested_ty, it.clone())),
-        )
-        .collect::<Result<_, _>>()?;
+        // `begin` is a flat offset; each element of this dimension spans the remaining dimensions.
+        let stride = it.clone().map(|v| v.len as usize).product::<usize>();
+        let elements = (0..len)
+            .map(|i| build_array(begin + i * stride, values, element_ty, it.clone()))
+            .collect::<Result<Vec<_>, _>>()?;
+        let nested_ty = elements.first().map(Value::as_null).unwrap_or_else(|| {
+            Value::Array(
+                None,
+                Box::new(CollectionType {
+                    element: element_ty.clone(),
+                    len: 0,
+                }),
+            )
+        });
         Value::Array(
-            Some(elements),
+            Some(elements.into_boxed_slice()),
             Box::new(CollectionType {
                 element: nested_ty,
-                len,
+                len: len as u32,
             }),
         )
     })
@@ -319,6 +323,7 @@ pub fn postgres_type_to_value(ty: &Type) -> ValueOwned {
         Type::TIMESTAMPTZ => Value::TimestampWithTimezone(None),
         Type::INTERVAL => Value::Interval(None),
         Type::UUID => Value::Uuid(None),
+        Type::INET => Value::IpAddr(None),
         Type::BOOL_ARRAY => list(Value::Boolean(None)),
         Type::INT2_ARRAY => list(Value::Int16(None)),
         Type::INT4_ARRAY => list(Value::Int32(None)),
@@ -334,6 +339,7 @@ pub fn postgres_type_to_value(ty: &Type) -> ValueOwned {
         Type::TIMESTAMPTZ_ARRAY => list(Value::TimestampWithTimezone(None)),
         Type::INTERVAL_ARRAY => list(Value::Interval(None)),
         Type::UUID_ARRAY => list(Value::Uuid(None)),
+        Type::INET_ARRAY => list(Value::IpAddr(None)),
         Type::JSON_ARRAY => list(Value::Json(None)),
         Type::JSON => Value::Json(None),
         _ => Value::Null,
@@ -365,6 +371,7 @@ pub fn value_to_postgres_type(value: &Value<'_>) -> Type {
         Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ,
         Value::Interval(..) => Type::INTERVAL,
         Value::Uuid(..) => Type::UUID,
+        Value::IpAddr(..) => Type::INET,
         Value::Array(_, t, ..) | Value::List(_, t, ..) => match t.element {
             Value::Boolean(..) => Type::BOOL_ARRAY,
             Value::Int8(..) => Type::INT2_ARRAY,
@@ -389,6 +396,7 @@ pub fn value_to_postgres_type(value: &Value<'_>) -> Type {
             Value::TimestampWithTimezone(..) => Type::TIMESTAMPTZ_ARRAY,
             Value::Interval(..) => Type::INTERVAL_ARRAY,
             Value::Uuid(..) => Type::UUID_ARRAY,
+            Value::IpAddr(..) => Type::INET_ARRAY,
             Value::Array(..) | Value::List(..) => value_to_postgres_type(&t.element),
             Value::Map(..) | Value::Json(..) | Value::Struct(..) => Type::JSON_ARRAY,
             _ => Type::UNKNOWN,

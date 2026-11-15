@@ -145,6 +145,7 @@ impl SqlCoreWriter for MySQLSqlWriter {
             Value::TimestampWithTimezone(..) => out.push_str("DATETIME"),
             Value::Interval(..) => out.push_str("TIME(6)"),
             Value::Uuid(..) => out.push_str(if self.mariadb { "UUID" } else { "CHAR(36)" }),
+            Value::IpAddr(..) => out.push_str(if self.mariadb { "INET6" } else { "VARCHAR(45)" }),
             Value::Array(..) => out.push_str("JSON"),
             Value::List(..) => out.push_str("JSON"),
             Value::Map(..) => out.push_str("JSON"),

@@ -359,7 +359,9 @@ impl From<ValueWrap<'_>> for CBox<duckdb_logical_type> {
                     Value::UInt128(..) => DUCKDB_TYPE_DUCKDB_TYPE_UHUGEINT,
                     Value::Float32(..) => DUCKDB_TYPE_DUCKDB_TYPE_FLOAT,
                     Value::Float64(..) => DUCKDB_TYPE_DUCKDB_TYPE_DOUBLE,
-                    Value::Char(..) | Value::Varchar(..) => DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR,
+                    Value::Char(..) | Value::Varchar(..) | Value::IpAddr(..) => {
+                        DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR
+                    }
                     Value::Blob(..) => DUCKDB_TYPE_DUCKDB_TYPE_BLOB,
                     Value::Date(..) => DUCKDB_TYPE_DUCKDB_TYPE_DATE,
                     Value::Time(..) => DUCKDB_TYPE_DUCKDB_TYPE_TIME,
@@ -417,6 +419,10 @@ impl TryFrom<ValueWrap<'_>> for CBox<duckdb_value> {
                 }
                 Value::Interval(Some(v)) => duckdb_create_interval(ValueWrap::from_interval(v)),
                 Value::Uuid(Some(v)) => duckdb_create_uuid(ValueWrap::from_u128(v.as_u128())),
+                Value::IpAddr(Some(v)) => {
+                    let address = v.to_string();
+                    duckdb_create_varchar_length(address.as_ptr() as _, address.len() as _)
+                }
                 Value::Array(Some(v), t) | Value::List(Some(v), t) => {
                     let mut values = v
                         .iter()

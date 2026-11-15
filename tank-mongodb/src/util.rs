@@ -49,6 +49,7 @@ pub fn value_to_bson(v: &Value<'_>) -> Result<Bson> {
             subtype: BinarySubtype::Uuid,
             bytes: v.as_bytes().to_vec(),
         }),
+        Value::IpAddr(Some(v), ..) => Bson::String(v.to_string()),
         Value::Array(Some(v), ..) => {
             Bson::Array(v.iter().map(value_to_bson).collect::<Result<_>>()?)
         }

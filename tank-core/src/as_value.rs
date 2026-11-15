@@ -16,6 +16,7 @@ use std::{
     collections::{BTreeMap, HashMap, LinkedList, VecDeque},
     hash::Hash,
     hint, mem,
+    net::IpAddr,
     num::{
         NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI128, NonZeroIsize, NonZeroU8,
         NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128, NonZeroUsize,
@@ -110,6 +111,7 @@ impl AsValue for &Value<'_> {
             Value::TimestampWithTimezone(v) => Value::TimestampWithTimezone(*v),
             Value::Interval(v) => Value::Interval(*v),
             Value::Uuid(v) => Value::Uuid(*v),
+            Value::IpAddr(v) => Value::IpAddr(*v),
             Value::Array(v, t) => Value::Array(
                 v.as_ref()
                     .map(|v| v.iter().map(AsValue::as_value).collect()),
@@ -611,6 +613,7 @@ impl_as_value!(
         | Value::Timestamp(Some(..), ..)
         | Value::TimestampWithTimezone(Some(..), ..)
         | Value::Uuid(Some(..), ..)
+        | Value::IpAddr(Some(..), ..)
     ) => Ok(v.to_string()),
     Value::Json(Some(serde_json::Value::String(v)), ..) => Ok(v),
 );
@@ -821,21 +824,29 @@ impl_as_value!(Interval, Value::Interval, |mut input: &str| {
         return Err(make_context());
     }
     Ok(interval)
-},);
+});
 
 impl_as_value!(std::time::Duration, Value::Interval, |v| {
     <Interval as AsValue>::parse(v).map(Into::into)
-},);
+});
 
 impl_as_value!(time::Duration, Value::Interval, |v| {
     <Interval as AsValue>::parse(v).map(Into::into)
-},);
+});
 
 impl_as_value!(Uuid, Value::Uuid, |input: &str| {
     let uuid = Uuid::parse_str(input)
         .with_context(|| format!("Cannot parse a uuid value from `{}`", truncate_long!(input)))?;
     Ok(uuid)
-},);
+});
+
+impl_as_value!(IpAddr, Value::IpAddr, |input: &str| {
+    let address = input.parse::<IpAddr>()?;
+    Ok(match address {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map(IpAddr::V4).unwrap_or(address),
+        IpAddr::V4(..) => address,
+    })
+});
 
 /// Parses `$value` against each of the given formats, returning the first
 /// successful parse and advancing `$value` past the consumed input.

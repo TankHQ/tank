@@ -76,6 +76,7 @@ impl SqlCoreWriter for PostgresSqlWriter {
             Value::TimestampWithTimezone(..) => out.push_str("TIMESTAMP WITH TIME ZONE"),
             Value::Interval(..) => out.push_str("INTERVAL"),
             Value::Uuid(..) => out.push_str("UUID"),
+            Value::IpAddr(..) => out.push_str("INET"),
             Value::Array(_, t, ..) => {
                 self.write_column_type(context, out, &t.element);
                 let _ = write!(out, "[{}]", t.len);
