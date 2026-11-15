@@ -242,7 +242,7 @@ mod tests {
     }
 
     #[test]
-    fn stream_try_collect_and_forwarders() {
+    fn stream_try_collect() {
         block_on(async {
             let collected: Vec<i32> = stream::iter(vec![Ok::<_, Error>(1), Ok(2)])
                 .map_ok(|v| v * 2)
@@ -263,7 +263,7 @@ mod tests {
     }
 
     #[test]
-    fn query_and_builder_conversions() {
+    fn query_builder_conversions() {
         let mut raw: Query<TestDriver> = "SELECT 1".into();
         assert!(!raw.is_prepared());
         assert_eq!(raw.to_string(), "SELECT 1");
@@ -594,7 +594,7 @@ mod tests {
     }
 
     #[test]
-    fn pool_and_connection_helpers() {
+    fn pool_connection_helpers() {
         block_on(async {
             struct NoPrepare(TestExecutor);
             impl Executor for NoPrepare {

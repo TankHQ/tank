@@ -19,7 +19,7 @@ mod tests {
     }
 
     #[test]
-    fn list_with_quote_is_escaped() {
+    fn list_quote_escaped() {
         init_logs();
         let v = Value::List(
             Some(
@@ -38,7 +38,7 @@ mod tests {
     }
 
     #[test]
-    fn map_with_quote_is_escaped() {
+    fn map_quote_escaped() {
         init_logs();
         let mut m = HashMap::new();
         m.insert(

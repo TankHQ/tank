@@ -160,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn primary_key_action_tokens() {
+    fn primary_key_tokens() {
         assert_eq!(
             PrimaryKeyType::PrimaryKey.to_token_stream().to_string(),
             ":: tank :: PrimaryKeyType :: PrimaryKey"

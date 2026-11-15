@@ -3,7 +3,7 @@ mod fixtures;
 
 #[cfg(test)]
 mod tests {
-    use crate::fixtures::DRIVER;
+    use crate::fixtures::{DRIVER, GenericDriver};
     use quote::ToTokens;
     use rust_decimal::Decimal;
     use std::{
@@ -16,7 +16,7 @@ mod tests {
     };
     use syn::{Path, parse_str};
     use tank::{
-        CollectionType, Context, Dataset, DynQuery, EitherIterator, Entity, Expression,
+        CollectionType, Connection, Context, Dataset, DynQuery, EitherIterator, Entity, Expression,
         FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType, QueryResult,
         References, Row, RowLabels, RowOwned, RowsAffected, SelectQuery, Sql, SqlExpressionWriter,
         SqlValueWriter, SqlWriter, StructType, TRUNCATE_LONG_LIMIT, TableRef, Value, as_c_string,
@@ -28,7 +28,7 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
-    fn table_ref_full_name() {
+    fn table_ref_name() {
         assert_eq!(TableRef::new("users".into()).full_name("."), "users");
         let t = TableRef {
             name: "users".into(),
@@ -47,7 +47,7 @@ mod tests {
     }
 
     #[test]
-    fn table_ref_with_alias() {
+    fn table_ref_alias() {
         let t = TableRef::new("users".into());
         let aliased = t.with_alias("u".into());
         assert_eq!(aliased.name, "users");
@@ -55,7 +55,7 @@ mod tests {
     }
 
     #[test]
-    fn table_ref_is_empty() {
+    fn table_ref_empty() {
         assert!(TableRef::default().is_empty());
         assert!(!TableRef::new("t".into()).is_empty());
         let schema_only = TableRef {
@@ -71,7 +71,7 @@ mod tests {
     }
 
     #[test]
-    fn table_ref_from_str() {
+    fn table_ref_parse() {
         let t: TableRef = "my_table".into();
         assert_eq!(t.name, "my_table");
         assert_eq!(t.schema, "");
@@ -117,7 +117,7 @@ mod tests {
     }
 
     #[test]
-    fn table_ref_write_alias_reference() {
+    fn alias_reference_write() {
         let writer = GenericSqlWriter::new();
         let table = TableRef {
             name: "events".into(),
@@ -132,7 +132,7 @@ mod tests {
     }
 
     #[test]
-    fn table_ref_to_tokens() {
+    fn table_ref_tokens() {
         let table = TableRef {
             name: "events".into(),
             schema: "analytics".into(),
@@ -148,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    fn util_quote_cow_owned() {
+    fn quote_cow_owned() {
         let value: Cow<'static, str> = Cow::Owned(String::from("events"));
         let tokens = quote_cow(&value).to_string();
         assert_eq!(tokens, ":: std :: borrow :: Cow :: Owned (\"events\")");
@@ -213,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn rows_affected_to_query_result() {
+    fn rows_affected_result() {
         let r = RowsAffected {
             rows_affected: Some(1),
             last_affected_id: None,
@@ -259,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn util_value_to_json_scalars() {
+    fn value_json_scalars() {
         assert_eq!(value_to_json(&Value::Null), Some(serde_json::Value::Null));
         assert_eq!(
             value_to_json(&Value::Boolean(Some(true))),
@@ -430,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_schema_create_drop() {
+    fn schema_create_drop() {
         #[derive(Entity)]
         #[tank(schema = "analytics", name = "events")]
         struct SchemaEntity {
@@ -470,7 +470,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_select_without_from() {
+    fn select_without_from() {
         struct NoFrom;
         impl SelectQuery<TableRef> for NoFrom {
             fn get_select(&self) -> impl Iterator<Item = impl Expression> + Clone {
@@ -511,7 +511,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_select_star() {
+    fn writer_select_star() {
         #[derive(Entity)]
         struct StarTable {
             id: i32,
@@ -525,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_composite_values() {
+    fn writer_composite_values() {
         let writer = GenericSqlWriter::new();
         let mut value = DynQuery::default();
         let mut map = HashMap::new();
@@ -575,7 +575,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_write_json_string() {
+    fn write_json_string() {
         let writer = GenericSqlWriter::new();
         let mut value = DynQuery::default();
         let mut context = Context::fragment(Fragment::Json);
@@ -647,7 +647,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_write_timestamptz() {
+    fn write_timestamptz_value() {
         let writer = GenericSqlWriter::new();
         let mut value = DynQuery::default();
         let dt = OffsetDateTime::new_in_offset(
@@ -665,7 +665,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_special_floats() {
+    fn sql_writer_floats() {
         let writer = GenericSqlWriter::new();
         for f in [f64::INFINITY, f64::NEG_INFINITY] {
             let mut value = DynQuery::default();
@@ -692,7 +692,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_transaction_statements() {
+    fn sql_writer_transactions() {
         let writer = GenericSqlWriter::new();
         let mut q1 = DynQuery::default();
         writer.write_transaction_begin(&mut q1);
@@ -707,7 +707,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_insert_empty_entities() {
+    fn empty_entities_insert() {
         #[derive(Entity)]
         struct EmptyInsert {
             id: i32,
@@ -722,7 +722,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_append_to_existing() {
+    fn sql_writer_append() {
         #[derive(Entity)]
         struct AppendTable {
             id: i32,
@@ -763,7 +763,7 @@ mod tests {
     }
 
     #[test]
-    fn do_nothing_pk_only() {
+    fn nothing_pk_only() {
         #[derive(Entity)]
         struct PkOnly {
             #[tank(primary_key)]
@@ -842,7 +842,7 @@ mod tests {
     }
 
     #[test]
-    fn util_as_c_string() {
+    fn c_string_conversion() {
         let cs = as_c_string("hello");
         assert_eq!(cs.to_str().unwrap(), "hello");
 
@@ -953,7 +953,7 @@ mod tests {
     }
 
     #[test]
-    fn join_table_ref_same_schema() {
+    fn join_same_schema() {
         #[derive(Entity)]
         #[tank(schema = "common")]
         struct Left1 {
@@ -1006,7 +1006,7 @@ mod tests {
     }
 
     #[test]
-    fn value_to_json_unrepresentable() {
+    fn json_unrepresentable() {
         let mut map = HashMap::new();
         map.insert(
             Value::Int32(Some(1)),
@@ -1056,7 +1056,7 @@ mod tests {
     }
 
     #[test]
-    fn util_decimal_from_scaled() {
+    fn decimal_scaled_conversion() {
         assert_eq!(decimal_from_scaled(1234, 2).unwrap(), Decimal::new(1234, 2));
         assert_eq!(
             decimal_from_scaled(200_i128, 29).unwrap(),
@@ -1088,7 +1088,7 @@ mod tests {
     }
 
     #[test]
-    fn util_truncate_long_multibyte() {
+    fn truncate_multibyte() {
         assert_eq!(format!("{}", truncate_long!("SELECT 1")), "SELECT 1");
 
         let long_ascii = "X".repeat(TRUNCATE_LONG_LIMIT + 100);
@@ -1108,7 +1108,7 @@ mod tests {
     }
 
     #[test]
-    fn row_get_column_mismatched_lengths() {
+    fn column_length_mismatch() {
         let labels: RowLabels = RowLabels::from(vec!["a".to_string(), "b".to_string()]);
         let values = vec![Value::Int32(Some(1))];
         let row = RowOwned::new(labels, values);
@@ -1139,7 +1139,17 @@ mod tests {
     }
 
     #[test]
-    fn matches_path_matches_trailing_segments() {
+    fn sanitize_url_schemes() {
+        let error = <GenericDriver as Connection>::sanitize_url(&DRIVER, "bogus://host".into())
+            .expect_err("The scheme is not accepted");
+        assert!(
+            format!("{error:#}").contains(r#"Must start with "generic://""#),
+            "{error:#}"
+        );
+    }
+
+    #[test]
+    fn matches_path_segments() {
         let path: Path = parse_str("std::num::NonZeroI32").unwrap();
         assert!(matches_path(&path, &["std", "num", "NonZeroI32"]));
         assert!(matches_path(&path, &["num", "NonZeroI32"]));

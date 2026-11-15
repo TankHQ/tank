@@ -76,7 +76,7 @@ mod tests {
     }
 
     #[test]
-    fn nonstatic_strings_and_cows() {
+    fn nonstatic_strings_cows() {
         let text = String::from("some string");
         assert_borrowed_string(text.as_str().as_value(), &text);
         assert_borrowed_string((&text).as_value(), &text);
@@ -93,7 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn owned_string_buffers_move() {
+    fn owned_string_moves() {
         let text = String::from("move encoding and decoding without reallocating");
         let pointer = text.as_ptr();
         let value = text.as_value();
@@ -125,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_reference_encodings_borrow_payloads() {
+    fn nested_reference_borrows() {
         let text = String::from("nested");
         assert_borrowed_string((&&&text).as_value(), &text);
         assert_borrowed_string((&&text.as_str()).as_value(), &text);
@@ -208,7 +208,7 @@ mod tests {
     }
 
     #[test]
-    fn owned_targets_decode_borrowed_sources() {
+    fn owned_decode_borrowed() {
         let text = String::from("borrowed source");
         let decoded = String::try_from_value(&text).unwrap();
         assert_eq!(decoded, text);
@@ -259,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn encode_only_default_decoder() {
+    fn encode_default_decoder() {
         struct InputOnly(i32);
 
         impl AsValue for InputOnly {
@@ -435,7 +435,7 @@ mod tests {
     }
 
     #[test]
-    fn bool_from_various_types() {
+    fn bool_from_types() {
         assert_eq!(bool::try_from_value(Value::Int8(Some(1))).unwrap(), true);
         assert_eq!(bool::try_from_value(Value::Int8(Some(0))).unwrap(), false);
         assert_eq!(bool::try_from_value(Value::Int16(Some(1))).unwrap(), true);
@@ -476,7 +476,7 @@ mod tests {
     }
 
     #[test]
-    fn decimal_from_various_types() {
+    fn decimal_from_types() {
         assert_eq!(
             Decimal::try_from_value(Value::Int8(Some(5))).unwrap(),
             Decimal::new(5, 0)
@@ -553,7 +553,7 @@ mod tests {
     }
 
     #[test]
-    fn integer_from_text_and_float() {
+    fn integer_text_float() {
         assert_eq!(
             i32::try_from_value(Value::Varchar(Some("42".into()))).unwrap(),
             42
@@ -567,7 +567,7 @@ mod tests {
     }
 
     #[test]
-    fn integer_cross_type_conversions() {
+    fn integer_cross_conversions() {
         assert_eq!(i16::try_from_value(Value::Int8(Some(5))).unwrap(), 5);
         assert_eq!(i16::try_from_value(Value::UInt8(Some(200))).unwrap(), 200);
         assert_eq!(i16::try_from_value(Value::UInt16(Some(100))).unwrap(), 100);
@@ -708,7 +708,7 @@ mod tests {
     }
 
     #[test]
-    fn string_from_various_types() {
+    fn string_from_types() {
         assert_eq!(
             String::try_from_value(Value::Int32(Some(42))).unwrap(),
             "42"
@@ -895,7 +895,7 @@ mod tests {
     }
 
     #[test]
-    fn vec_and_list_conversions() {
+    fn vec_list_conversions() {
         let v = vec![1_i32, 2, 3].as_value();
         let back: Vec<i32> = Vec::try_from_value(v).unwrap();
         assert_eq!(back, vec![1, 2, 3]);
@@ -927,7 +927,7 @@ mod tests {
     }
 
     #[test]
-    fn optional_values_with_owned_metadata() {
+    fn optional_owned_metadata() {
         assert_eq!(
             Option::<[i32; 2]>::try_from_value(<[i32; 2]>::as_empty_value()).unwrap(),
             None
@@ -957,7 +957,7 @@ mod tests {
     }
 
     #[test]
-    fn option_and_wrapper_conversions() {
+    fn option_wrapper_conversions() {
         assert_eq!(Some(42_i32).as_value(), Value::Int32(Some(42)));
         assert_eq!(None::<i32>.as_value(), Value::Int32(None));
         assert_eq!((&None::<i32>).as_value(), Value::Int32(None));
@@ -977,7 +977,7 @@ mod tests {
     }
 
     #[test]
-    fn fixed_decimal_round_trip() {
+    fn fixed_decimal_roundtrip() {
         let fd: FixedDecimal<10, 2> = Decimal::new(1234, 2).into();
         let v = fd.as_value();
         let back: FixedDecimal<10, 2> = FixedDecimal::try_from_value(v).unwrap();
@@ -1019,7 +1019,7 @@ mod tests {
     }
 
     #[test]
-    fn array_from_varchar_chars() {
+    fn array_varchar_chars() {
         let v = <[char; 3]>::try_from_value(Value::Varchar(Some("abc".into()))).unwrap();
         assert_eq!(v, ['a', 'b', 'c']);
         assert!(<[char; 2]>::try_from_value(Value::Varchar(Some("abc".into()))).is_err());
@@ -1124,13 +1124,13 @@ mod tests {
     }
 
     #[test]
-    fn blob_hex_decode_errors() {
+    fn blob_hex_errors() {
         assert!(Box::<[u8]>::parse("not-hex").is_err());
         assert!(Box::<[u8]>::try_from_value(Value::Int32(Some(1))).is_err());
     }
 
     #[test]
-    fn map_from_json_object() {
+    fn map_from_json() {
         let json = serde_json::json!({"1": 10, "2": 20});
         let map: HashMap<i32, i32> = HashMap::try_from_value(Value::Json(Some(json))).unwrap();
         assert_eq!(map.get(&1), Some(&10));
@@ -1151,7 +1151,7 @@ mod tests {
     }
 
     #[test]
-    fn wrapper_cell_refcell_rwlock() {
+    fn wrapper_cell_refcell() {
         assert_eq!(Cell::new(5_i32).as_value(), Value::Int32(Some(5)));
         assert_eq!(RefCell::new(6_i32).as_value(), Value::Int32(Some(6)));
         assert_eq!(RwLock::new(7_i32).as_value(), Value::Int32(Some(7)));
@@ -1165,7 +1165,7 @@ mod tests {
     }
 
     #[test]
-    fn static_str_and_cow_parse() {
+    fn static_cow_parse() {
         assert_eq!(<Cow<'static, str> as AsValue>::parse("hi").unwrap(), "hi");
         // `&'static str` can never be decoded from a database value.
         // The payload would have to borrow from the row buffer, whose lifetime is not `'static`.
@@ -1251,7 +1251,7 @@ mod tests {
     }
 
     #[test]
-    fn reference_and_empty_as_value() {
+    fn reference_empty_value() {
         let date = Date::from_calendar_date(2024, Month::May, 6).unwrap();
         let time = Time::from_hms(1, 2, 3).unwrap();
         let ts = PrimitiveDateTime::new(date, time);

@@ -98,7 +98,7 @@ mod tests {
     }
 
     #[test]
-    fn duckdb_not_glob_wrapping() {
+    fn duckdb_not_glob() {
         init_logs();
         let writer = duckdb_writer();
         let mut out = DynQuery::default();
@@ -155,7 +155,7 @@ mod tests {
     }
 
     #[test]
-    fn duckdb_column_type_override() {
+    fn duckdb_type_override() {
         init_logs();
         let writer = duckdb_writer();
         let column = ColumnDef::default();
@@ -246,7 +246,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rows_outlive_their_chunk() {
+    async fn rows_outlive_chunk() {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
         let mut connection =
@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bind_index_zero_based() {
+    async fn bind_index_base() {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
         let mut connection =

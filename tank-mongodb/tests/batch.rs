@@ -15,7 +15,7 @@ mod tests {
     }
 
     #[test]
-    fn batch_preserves_all_payloads() {
+    fn batch_preserves_payloads() {
         init_logs();
         let mut query = DynQuery::default();
         Sql()
@@ -42,7 +42,7 @@ mod tests {
     }
 
     #[test]
-    fn insert_rows_of_plain_values() {
+    fn insert_plain_values() {
         init_logs();
         let mut query = DynQuery::default();
         Sql()
@@ -130,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn batch_upsert_and_delete() {
+    fn batch_upsert_delete() {
         init_logs();
         let mut query = DynQuery::default();
         Sql()
@@ -158,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn drop_collection_replaces_previous() {
+    fn drop_collection_replaces() {
         init_logs();
         let mut query = DynQuery::default();
         Sql()

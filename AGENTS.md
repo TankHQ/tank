@@ -27,11 +27,12 @@ Read before modifying `tank-core`, `tank-macros`, or database drivers.
 
 - Never call `.min(...)` or `.max(...)` methods. Use the symmetric functions `std::cmp::{min, max}` (`min(a, b)`, `max(a, b)`).
 - Prefer iterator/stream combinators and direct data flow over verbose state machines or extra helper types.
+- Keep test functions names short with at most three underscore-separated words.
 - Comments explain non-obvious invariants, ABI/LLVM constraints, or protocol subtleties, not obvious behavior. Keep them to 1-3 lines.
 
 ## Value Layout (`tank-core/src/value/`)
 
-- Preserve `size_of::<Value>() == 32` and `align_of::<Value>() == 8`, enforced by `tests/value.rs::value_layout_is_compact`. Unboxed payloads must not exceed 24 bytes, or 16 bytes when niche-free and requiring 16-byte alignment.
+- Preserve `size_of::<Value>() == 32` and `align_of::<Value>() == 8`, enforced by `tests/value.rs::value_layout_compact`. Unboxed payloads must not exceed 24 bytes, or 16 bytes when niche-free and requiring 16-byte alignment.
 - Box wide/rare variants as follows: `Int128(Option<Box<i128>>)`, `UInt128(Option<Box<u128>>)`, `Array(Option<Box<[Value<'a>]>>, Box<CollectionType<'a>>)`, `List(Option<Vec<Value<'a>>>, Box<Value<'a>>)`, `Map(Option<HashMap<Value<'a>, Value<'a>>>, Box<(Value<'a>, Value<'a>)>)`, `Struct(Option<Vec<(String, Value<'a>)>>, Box<StructType<'a>>)`.
 - Keep `Value::Json(Option<JsonValue>)` inline. `serde_json::Value`'s niche makes its `Option` 24 bytes, avoiding an extra allocation.
 - In `interval.rs`, `Interval` is 16 bytes, aligned to 8 (`nanos: i64`, `days: i32`, `months: i32`). Its 24-byte `Option` fits inline in `Value::Interval`. Use `i128` arithmetic intermediates only when `nanos` overflows `i64`.

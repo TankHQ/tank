@@ -15,7 +15,7 @@ mod tests {
     const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     #[test]
-    fn tuple_cells_are_arbitrary_expressions() {
+    fn tuple_cells_expressions() {
         let tuple = expr!((? + 1, COALESCE(?, "unknown"), if true { 2 } else { 3 }));
         assert!(matches!(tuple, Operand::LitTuple([_, _, _])));
         let mut out = DynQuery::default();
@@ -927,7 +927,7 @@ mod tests {
 
     // Tests kept from the branch that were not present on master
     #[test]
-    fn binary_op_to_tokens() {
+    fn binary_op_tokens() {
         assert_eq!(
             BinaryOpType::Addition.to_token_stream().to_string(),
             ":: tank :: BinaryOpType :: \"Addition\""
@@ -939,7 +939,7 @@ mod tests {
     }
 
     #[test]
-    fn current_timestamp_ms_macro() {
+    fn timestamp_ms_macro() {
         {
             let expr = expr!(current_timestamp_ms!());
             assert!(matches!(expr, Operand::CurrentTimestampMs));
@@ -974,7 +974,7 @@ mod tests {
     }
 
     #[test]
-    fn default_value_visitor_precedence() {
+    fn value_visitor_precedence() {
         struct Count;
         impl ExpressionVisitor for Count {
             fn visit_operand(

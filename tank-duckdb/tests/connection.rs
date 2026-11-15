@@ -81,7 +81,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn late_fetch_error_terminal() {
+    async fn late_fetch_error() {
         init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
@@ -131,7 +131,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn outer_advance_drains_rows() {
+    async fn advance_drains_rows() {
         init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())
@@ -223,7 +223,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn drain_propagates_fetch_error() {
+    async fn drain_fetch_error() {
         init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
@@ -255,7 +255,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prepared_reuse_send_iterators() {
+    async fn prepared_reuse_iterators() {
         init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())
@@ -314,7 +314,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn statement_results_group_rows() {
+    async fn results_group_rows() {
         init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())
@@ -383,7 +383,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prepared_empty_and_owned_rows() {
+    async fn prepared_owned_rows() {
         init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())

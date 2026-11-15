@@ -13,7 +13,7 @@ use tank_sqlite::{SQLiteConnection, SQLiteDriver};
 use tank_tests::init_logs;
 
 #[tokio::test]
-async fn prepared_expression_rows_bind_reuse_and_upsert() {
+async fn prepared_expression_upsert() {
     #[derive(Entity, Debug, PartialEq)]
     struct Item {
         #[tank(primary_key)]
@@ -95,7 +95,7 @@ async fn prepared_expression_rows_bind_reuse_and_upsert() {
 }
 
 #[tokio::test]
-async fn borrowed_and_owned_parameters_are_copied() {
+async fn borrowed_owned_parameters() {
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -147,7 +147,7 @@ async fn borrowed_and_owned_parameters_are_copied() {
 }
 
 #[tokio::test]
-async fn late_step_errors_reusable() {
+async fn late_step_reusable() {
     init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
@@ -181,7 +181,7 @@ async fn late_step_errors_reusable() {
 }
 
 #[tokio::test]
-async fn outer_advance_reports_drain_errors() {
+async fn advance_drain_errors() {
     init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
@@ -233,7 +233,7 @@ async fn outer_advance_reports_drain_errors() {
 }
 
 #[tokio::test]
-async fn partial_rows_survive_drop() {
+async fn partial_rows_drop() {
     init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
@@ -287,7 +287,7 @@ async fn partial_rows_survive_drop() {
 }
 
 #[tokio::test]
-async fn abandoned_returning_finishes_write() {
+async fn abandoned_returning_write() {
     init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
@@ -351,7 +351,7 @@ async fn abandoned_returning_finishes_write() {
 }
 
 #[tokio::test]
-async fn fetch_late_prepare_errors() {
+async fn late_prepare_errors() {
     init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
@@ -396,7 +396,7 @@ async fn fetch_late_prepare_errors() {
 }
 
 #[tokio::test]
-async fn skipping_rows_reports_write_errors() {
+async fn skipping_write_errors() {
     init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
@@ -428,7 +428,7 @@ async fn skipping_rows_reports_write_errors() {
 }
 
 #[tokio::test]
-async fn huge_select_cancels_on_drop() {
+async fn select_cancel_drop() {
     init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::default(), "sqlite://:memory:".into())
@@ -495,7 +495,7 @@ async fn huge_select_cancels_on_drop() {
 }
 
 #[tokio::test]
-async fn retained_snapshots_preserve_text_blobs_and_dynamic_types() {
+async fn retained_snapshot_types() {
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -539,7 +539,7 @@ async fn retained_snapshots_preserve_text_blobs_and_dynamic_types() {
 }
 
 #[tokio::test]
-async fn prepared_snapshots_survive_reuse_and_schema_changes() {
+async fn snapshots_survive_schema() {
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -579,7 +579,7 @@ async fn prepared_snapshots_survive_reuse_and_schema_changes() {
 }
 
 #[tokio::test]
-async fn streamed_scan_yields_without_materializing_the_result() {
+async fn streamed_scan_yields() {
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -618,7 +618,7 @@ struct AppendItem {
 }
 
 #[tokio::test]
-async fn dropping_a_transaction_rolls_back() {
+async fn transaction_drop_rollback() {
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -651,7 +651,7 @@ async fn dropping_a_transaction_rolls_back() {
 }
 
 #[tokio::test]
-async fn append_is_lazy_and_cancellation_rolls_back_only_implicit_transactions() {
+async fn append_cancellation_rollback() {
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await

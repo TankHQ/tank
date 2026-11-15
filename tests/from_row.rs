@@ -142,7 +142,7 @@ mod tests {
     }
 
     #[test]
-    fn native_row_fresh_values() {
+    fn native_fresh_values() {
         #[derive(Debug)]
         struct NativeRow {
             names: RowLabels,
@@ -202,7 +202,7 @@ mod tests {
     }
 
     #[test]
-    fn row_values_borrow_when_possible() {
+    fn row_values_borrow() {
         #[derive(Entity)]
         struct Mixed {
             name: String,
@@ -229,7 +229,7 @@ mod tests {
     }
 
     #[test]
-    fn retained_row_owns_payloads() {
+    fn retained_row_payloads() {
         #[derive(Debug, Entity)]
         struct Retained {
             text: ValueOwned,
@@ -246,7 +246,7 @@ mod tests {
     }
 
     #[test]
-    fn required_decodes_lazy_once() {
+    fn required_lazy_decode() {
         let source = CountingSource::new(vec![
             Some(Value::Null),
             Some("converted".as_value()),
@@ -272,7 +272,7 @@ mod tests {
     }
 
     #[test]
-    fn ordered_rows_conversion_hooks() {
+    fn ordered_conversion_hooks() {
         let source = CountingSource::new(vec![
             Some(42_i32.as_value()),
             Some("converted".as_value()),
@@ -291,7 +291,7 @@ mod tests {
     }
 
     #[test]
-    fn borrowed_conversion_reuses_rows() {
+    fn borrowed_conversion_reuse() {
         let source = CountingSource::new(vec![
             Some(42_i32.as_value()),
             Some("converted".as_value()),
@@ -324,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn borrowed_materialized_conversion_owns_output() {
+    fn materialized_conversion_owns() {
         #[derive(Debug)]
         struct BorrowedRow<'a> {
             names: RowLabels,
@@ -495,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_names_first_field() {
+    fn duplicate_names_first() {
         #[derive(Default, Debug, Entity)]
         struct DuplicateNames {
             #[tank(name = "value")]
@@ -536,7 +536,7 @@ mod tests {
     }
 
     #[test]
-    fn default_decodes_lazy_columns() {
+    fn default_lazy_columns() {
         let source = CountingSource::new(vec![
             Some(Value::Null),
             Some("direct".as_value()),
@@ -572,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_labels_last_value() {
+    fn duplicate_labels_last() {
         let source = CountingSource::new(vec![
             Some(1_i32.as_value()),
             Some("first".as_value()),
@@ -593,7 +593,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_required_column_still_errors() {
+    fn missing_required_column() {
         let source = CountingSource::new(vec![Some(1_i32.as_value())]);
         let error = Required::from_row(&source.row(&["id"])).unwrap_err();
         assert!(
@@ -632,7 +632,7 @@ mod tests {
     }
 
     #[test]
-    fn ordered_early_stop_parity() {
+    fn ordered_early_stop() {
         let labels = ["id", "db_text", "direct"];
         let values = [
             1_i32.as_value(),
@@ -749,7 +749,7 @@ mod tests {
     }
 
     #[test]
-    fn from_row_moves_string_buffers() {
+    fn row_moves_strings() {
         #[derive(Debug, Entity)]
         struct OwnedStrings {
             required: String,

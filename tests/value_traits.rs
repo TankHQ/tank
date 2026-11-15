@@ -676,7 +676,7 @@ mod tests {
     }
 
     #[test]
-    fn value_partial_eq_complex() {
+    fn partial_eq_complex() {
         assert_eq!(
             Value::Float32(Some(f32::NAN)),
             Value::Float32(Some(f32::NAN))
@@ -920,7 +920,7 @@ mod tests {
     }
 
     #[test]
-    fn value_null_equality_is_reflexive() {
+    fn null_equality_reflexive() {
         assert_eq!(Value::Null, Value::Null);
         assert_eq!(Value::Null, Value::Null.clone());
         let mut set = HashSet::new();
@@ -1079,7 +1079,7 @@ mod tests {
     }
 
     #[test]
-    fn collection_try_as_is_unsupported() {
+    fn collection_try_unsupported() {
         let arr = Value::Array(
             Some(vec![Value::Int32(Some(1))].into()),
             Box::new(CollectionType {
@@ -1130,7 +1130,7 @@ mod tests {
     }
 
     #[test]
-    fn borrowed_values_outlive_their_sources_after_into_owned() {
+    fn borrowed_values_outlive() {
         let values: [ValueOwned; 3] = {
             let text = String::from("borrowed text");
             let blob = vec![0u8, 255, 128];
@@ -1152,7 +1152,7 @@ mod tests {
     }
 
     #[test]
-    fn into_owned_preserves_owned_buffers() {
+    fn owned_preserves_buffers() {
         for value in [
             Value::Varchar(Some(Cow::Owned("owned text".into()))),
             Value::Blob(Some(Cow::Owned(vec![0, 255, 128]))),

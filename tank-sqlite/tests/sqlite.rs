@@ -104,7 +104,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prepared_returning_no_extra() {
+    async fn prepared_no_extra() {
         init_logs();
         let mut connection =
             SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
@@ -160,7 +160,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ordinary_fetch_collects_entities() {
+    async fn fetch_collects_entities() {
         init_logs();
         let mut connection =
             SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
@@ -247,7 +247,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bind_overflowing_unsigned_is_rejected() {
+    async fn overflowing_bind_rejected() {
         init_logs();
         const DB_PATH: &'static str = "../target/debug/tests_bind_overflow.sqlite";
         let _ = fs::remove_file(DB_PATH).await;
@@ -376,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_column_type_override() {
+    fn sqlite_type_override() {
         init_logs();
         let writer = sqlite_writer();
         let column = ColumnDef::default();
@@ -494,7 +494,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_limit_offset_clauses() {
+    fn sqlite_limit_offset() {
         init_logs();
         let writer = sqlite_writer();
         let mut ctx = Context::new(Fragment::SqlSelect, false);

@@ -482,7 +482,7 @@ mod tests {
     }
 
     #[test]
-    fn join_with_many_parentheses() {
+    fn join_many_parentheses() {
         let join = join!(
             ((((((Alpha RIGHT JOIN Bravo ON (((((((((((((Alpha::_a)) <= (((((((Bravo::_first))))))))))))))))))))))))
         );

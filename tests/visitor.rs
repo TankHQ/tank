@@ -148,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    fn visitor_default_impls_return_false() {
+    fn visitor_default_impls() {
         struct Defaults;
         impl ExpressionVisitor for Defaults {}
         let mut visitor = Defaults;
@@ -163,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn visitor_delegates_through_wrappers() {
+    fn visitor_delegates_wrappers() {
         let mut out = Default::default();
         let mut ctx = Default::default();
         let arc_true = Arc::new(expr!(true));
@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    fn visitor_write_in_list() {
+    fn visitor_write_list() {
         let mut visitor = WriteInList;
         let mut out = DynQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelect, false);

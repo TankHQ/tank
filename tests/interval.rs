@@ -334,7 +334,7 @@ mod tests {
     }
 
     #[test]
-    fn units_mask_and_unit_value() {
+    fn units_mask_value() {
         let interval = Interval::from_years(2);
         let mask = interval.units_mask();
         assert_eq!(mask, 1 << 7); // Year bit
@@ -389,7 +389,7 @@ mod tests {
     }
 
     #[test]
-    fn add_assign_sub_assign() {
+    fn add_assign_sub() {
         let mut interval = Interval::from_days(5);
         interval += Interval::from_days(3);
         assert_eq!(interval, Interval::from_days(8));
@@ -441,7 +441,7 @@ mod tests {
     }
 
     #[test]
-    fn large_i128_constructors_keep_sign() {
+    fn i128_constructors_sign() {
         for v in [i128::MAX, i128::MIN] {
             let n = Interval::from_nanos(v);
             assert_eq!(
@@ -465,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    fn large_interval_do_not_overflow() {
+    fn large_interval_bounds() {
         let extremes = [
             Interval::new(i32::MIN, 0, 0),
             Interval::new(i32::MAX, 0, 0),
@@ -489,7 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn long_fraction_does_not_panic() {
+    fn long_fraction_parse() {
         for digits in 1..=40 {
             let input = format!("12:30:00.{}", "9".repeat(digits));
             let result = Interval::try_from_value(Value::Varchar(Some(input.into())));
@@ -600,7 +600,7 @@ mod tests {
     }
 
     #[test]
-    fn write_then_parse_round_trip() {
+    fn write_parse_roundtrip() {
         for interval in [
             Interval::from_years(20_000) + Interval::from_millis(300),
             Interval::from_months(5) + Interval::from_days(-2) + Interval::from_secs(1),

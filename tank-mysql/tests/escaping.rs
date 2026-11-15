@@ -5,7 +5,7 @@ mod tests {
     use tank_tests::init_logs;
 
     #[test]
-    fn backslash_is_escaped_in_strings() {
+    fn backslash_escaped_strings() {
         init_logs();
         let writer = MySQLSqlWriter::default();
         let mut out = DynQuery::default();
@@ -25,7 +25,7 @@ mod tests {
     }
 
     #[test]
-    fn binary_is_written_as_hex_literal() {
+    fn binary_hex_literal() {
         init_logs();
         let writer = MySQLSqlWriter::default();
         let mut out = DynQuery::default();
@@ -37,7 +37,7 @@ mod tests {
     }
 
     #[test]
-    fn mysql_limit_offset_clauses() {
+    fn mysql_limit_offset() {
         init_logs();
         let writer = MySQLSqlWriter::default();
         let mut ctx = Context::new(Fragment::SqlSelect, false);

@@ -43,9 +43,16 @@ pub trait Connection: Executor {
             .iter()
             .any(|name| url.starts_with(name) && url[name.len()..].starts_with("://"))
         {
-            return Err(anyhow!(r#"Must start with "{}""#, names.join(", ")))
-                .with_context(make_context)
-                .inspect_err(|e| log::error!("{e:#}"));
+            return Err(anyhow!(
+                r#"Must start with {}"#,
+                names
+                    .iter()
+                    .map(|name| format!(r#""{name}://""#))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
+            .with_context(make_context)
+            .inspect_err(|e| log::error!("{e:#}"));
         }
         Ok(result)
     }

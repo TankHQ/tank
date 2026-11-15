@@ -14,7 +14,7 @@ mod tests {
     const WRITER: tank::GenericSqlWriter = tank::GenericSqlWriter;
 
     #[test]
-    fn expression_insert_reuses_builder_and_upsert() {
+    fn expression_insert_upsert() {
         #[derive(Entity)]
         struct Item {
             #[tank(primary_key)]
@@ -739,7 +739,7 @@ mod tests {
     }
 
     #[test]
-    fn query_offset_without_limit() {
+    fn offset_without_limit() {
         #[derive(Entity)]
         struct OffsetOnly {
             x: u32,

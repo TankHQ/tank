@@ -102,7 +102,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_methods_and_nulls() -> Result<()> {
+    fn invalid_methods_nulls() -> Result<()> {
         for text in ["", "not a method", "GET\n"] {
             assert!(<MethodWrap as AsValue>::try_from_value(text).is_err());
             assert!(MethodWrap::<Option<Method>>::try_from_value(text).is_err());
@@ -117,7 +117,7 @@ mod tests {
     }
 
     #[test]
-    fn entity_encoding_and_nullability() -> Result<()> {
+    fn entity_encoding_nullability() -> Result<()> {
         let required = Request {
             id: 1,
             target: "/health".into(),
@@ -154,7 +154,7 @@ mod tests {
     }
 
     #[test]
-    fn entity_decoding_ordered_and_reordered() -> Result<()> {
+    fn entity_decoding_order() -> Result<()> {
         for ordered in [true, false] {
             for value in [
                 "GET".as_value(),

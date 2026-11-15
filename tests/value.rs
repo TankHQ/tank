@@ -1126,7 +1126,7 @@ mod tests {
     }
 
     #[test]
-    fn value_option_and_box_wrappers() {
+    fn option_box_wrappers() {
         let none_val = (None::<i32>).as_value();
         assert_eq!(none_val, Value::Int32(None));
         let some_val = Some(42_i32).as_value();
@@ -1834,7 +1834,7 @@ mod tests {
     }
 
     #[test]
-    fn value_partial_eq_complex() {
+    fn partial_eq_complex() {
         assert_eq!(
             Value::Float32(Some(f32::NAN)),
             Value::Float32(Some(f32::NAN))
@@ -2078,7 +2078,7 @@ mod tests {
     }
 
     #[test]
-    fn value_float_hash_matches_equality() {
+    fn float_hash_equality() {
         let mut f32_set = HashSet::new();
         f32_set.insert(Value::Float32(Some(0.0)));
         f32_set.insert(Value::Float32(Some(-0.0)));
@@ -2095,7 +2095,7 @@ mod tests {
     }
 
     #[test]
-    fn value_map_hash_matches_equality() {
+    fn map_hash_equality() {
         let empty = Value::Map(
             Some(std::collections::HashMap::new().into()),
             Box::new(MapType {
@@ -2203,7 +2203,7 @@ mod as_value_tests {
     }
 
     #[test]
-    fn bool_from_various_types() {
+    fn bool_from_types() {
         assert_eq!(bool::try_from_value(Value::Int8(Some(1))).unwrap(), true);
         assert_eq!(bool::try_from_value(Value::Int8(Some(0))).unwrap(), false);
         assert_eq!(bool::try_from_value(Value::Int16(Some(1))).unwrap(), true);
@@ -2243,7 +2243,7 @@ mod as_value_tests {
     }
 
     #[test]
-    fn decimal_from_various_types() {
+    fn decimal_from_types() {
         assert_eq!(
             Decimal::try_from_value(Value::Int8(Some(5))).unwrap(),
             Decimal::new(5, 0)
@@ -2280,7 +2280,7 @@ mod as_value_tests {
     }
 
     #[test]
-    fn integer_from_json_and_text() {
+    fn integer_json_text() {
         assert_eq!(
             i32::try_from_value(Value::Json(Some(serde_json::json!(42)))).unwrap(),
             42
@@ -2306,7 +2306,7 @@ mod as_value_tests {
     }
 
     #[test]
-    fn integer_cross_type_conversions() {
+    fn integer_cross_conversions() {
         assert_eq!(i16::try_from_value(Value::Int8(Some(5))).unwrap(), 5);
         assert_eq!(i16::try_from_value(Value::UInt8(Some(200))).unwrap(), 200);
         assert_eq!(i16::try_from_value(Value::UInt16(Some(100))).unwrap(), 100);
@@ -2368,7 +2368,7 @@ mod as_value_tests {
     }
 
     #[test]
-    fn string_from_various_types() {
+    fn string_from_types() {
         assert_eq!(
             String::try_from_value(Value::Int32(Some(42))).unwrap(),
             "42"
@@ -2476,7 +2476,7 @@ mod as_value_tests {
     }
 
     #[test]
-    fn vec_and_list_conversions() {
+    fn vec_list_conversions() {
         let v = vec![1_i32, 2, 3].as_value();
         let back: Vec<i32> = Vec::try_from_value(v).unwrap();
         assert_eq!(back, vec![1, 2, 3]);
@@ -2503,7 +2503,7 @@ mod as_value_tests {
     }
 
     #[test]
-    fn option_and_wrapper_conversions() {
+    fn option_wrapper_conversions() {
         assert_eq!(Some(42_i32).as_value(), Value::Int32(Some(42)));
         assert_eq!(None::<i32>.as_value(), Value::Int32(None));
         let back: Option<i32> = Option::try_from_value(Value::Int32(Some(42))).unwrap();
@@ -2521,7 +2521,7 @@ mod as_value_tests {
     }
 
     #[test]
-    fn fixed_decimal_round_trip() {
+    fn fixed_decimal_roundtrip() {
         let fd: FixedDecimal<10, 2> = Decimal::new(1234, 2).into();
         let v = fd.as_value();
         let back: FixedDecimal<10, 2> = FixedDecimal::try_from_value(v).unwrap();
@@ -2541,7 +2541,7 @@ mod as_value_tests {
 
     // Tests kept from the branch that were not present on master
     #[test]
-    fn value_float_to_integer() {
+    fn float_to_integer() {
         assert_eq!(i64::try_from_value(5.0_f64.as_value()).unwrap(), 5);
         assert_eq!(i32::try_from_value((5.0_f32).as_value()).unwrap(), 5);
         assert_eq!(u8::try_from_value((200.0_f32).as_value()).unwrap(), 200);
@@ -2601,7 +2601,7 @@ mod as_value_tests {
     }
 
     #[test]
-    fn value_layout_is_compact() {
+    fn value_layout_compact() {
         assert!(
             mem::size_of::<Value<'_>>() <= 32,
             "Value grew to {} bytes; it must stay <= 32",

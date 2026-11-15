@@ -17,7 +17,7 @@ mod tests {
     }
 
     #[test]
-    fn negative_subhour_interval_keeps_its_sign() {
+    fn negative_subhour_sign() {
         init_logs();
         assert_eq!(render(-Interval::from_mins(30)), "'-00:30:00.0'");
         assert_eq!(render(-Interval::from_secs(1)), "'-00:00:01.0'");
@@ -27,7 +27,7 @@ mod tests {
     }
 
     #[test]
-    fn mixed_sign_interval_renders_consistently() {
+    fn mixed_sign_interval() {
         init_logs();
         // -1 day + 30 minutes is -23:30, not -24:30.
         assert_eq!(
@@ -42,7 +42,7 @@ mod tests {
     }
 
     #[test]
-    fn describe_url_includes_host_port_and_database() {
+    fn describe_url_target() {
         init_logs();
         let url = Url::parse("mysql://user@db.example.com:3307/shop").unwrap();
         let target = describe_url::<MySQLDriver>(&url);
