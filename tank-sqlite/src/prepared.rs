@@ -1,4 +1,4 @@
-use crate::{CBox, SQLiteRow, row::SQLiteRowData, sql_writer::SQLiteSqlWriter};
+use crate::{CBox, SQLiteConnection, SQLiteRow, row::SQLiteRowData, sql_writer::SQLiteSqlWriter};
 use libsqlite3_sys::*;
 use rust_decimal::prelude::ToPrimitive;
 use std::{
@@ -40,21 +40,16 @@ impl SQLitePrepared {
         }
     }
 
-    #[inline(always)]
-    pub(crate) fn statement(&self) -> *mut sqlite3_stmt {
-        *self.statement
-    }
-
     /// Number of columns in the current result.
     #[inline(always)]
     pub(crate) fn column_count(&self) -> c_int {
-        unsafe { sqlite3_column_count(self.statement()) }
+        unsafe { sqlite3_column_count(*self.statement) }
     }
 
     /// Name of the result column at `index`.
     pub(crate) fn column_name(&self, index: c_int) -> Result<String> {
         unsafe {
-            let name = sqlite3_column_name(self.statement(), index);
+            let name = sqlite3_column_name(*self.statement, index);
             if name.is_null() {
                 return Err(Error::msg(format!(
                     "Missing SQLite column name at index {index}"
@@ -67,7 +62,7 @@ impl SQLitePrepared {
     #[cold]
     #[inline(never)]
     fn init_labels(&mut self) -> Result<()> {
-        let statement = self.statement();
+        let statement = *self.statement;
         let columns = self.column_count();
         let recompiled =
             unsafe { sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_REPREPARE, 1) } != 0;
@@ -88,7 +83,7 @@ impl SQLitePrepared {
         if initialize {
             self.init_labels()?;
         }
-        let statement = self.statement();
+        let statement = *self.statement;
         let labels = self
             .labels
             .as_ref()
@@ -121,7 +116,7 @@ impl SQLitePrepared {
     #[cold]
     #[inline(never)]
     fn bind_error(&self, index: c_int, rc: c_int) -> Error {
-        let sql = unsafe { sqlite3_sql(self.statement()) };
+        let sql = unsafe { sqlite3_sql(*self.statement) };
         let sql = if sql.is_null() {
             ""
         } else {
@@ -129,7 +124,7 @@ impl SQLitePrepared {
                 .to_str()
                 .unwrap_or("unprintable")
         };
-        let ptr = unsafe { sqlite3_errmsg(sqlite3_db_handle(self.statement())) };
+        let ptr = unsafe { sqlite3_errmsg(sqlite3_db_handle(*self.statement)) };
         let message = error_message_from_ptr(&ptr);
         Error::msg(message.into_owned()).context(format!(
             "Cannot bind the parameter {index} (rc {rc}) to query:\n{}",
@@ -147,22 +142,11 @@ impl SQLitePrepared {
 
     pub(crate) fn release_bindings(&mut self) -> Result<&mut Self> {
         self.index = 0;
-        let rc = unsafe { sqlite3_clear_bindings(self.statement()) };
+        let rc = unsafe { sqlite3_clear_bindings(*self.statement) };
         if rc != SQLITE_OK {
             return Err(self.bind_error(0, rc));
         }
         Ok(self)
-    }
-
-    pub fn last_error(&self) -> String {
-        unsafe {
-            let db = sqlite3_db_handle(self.statement());
-            let errcode = sqlite3_errcode(db);
-            format!(
-                "Error ({errcode}): {}",
-                error_message_from_ptr(&sqlite3_errmsg(db)),
-            )
-        }
     }
 }
 
@@ -172,16 +156,18 @@ impl Prepared for SQLitePrepared {
     }
 
     fn is_empty(&self) -> bool {
-        self.statement().is_null()
+        self.statement.is_null()
     }
 
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         self.index = 0;
         unsafe {
-            let rc = sqlite3_reset(self.statement());
+            let rc = sqlite3_reset(*self.statement);
             let error = || {
-                let error = Error::msg(self.last_error())
-                    .context("Could not clear the bindings from Sqlite statement");
+                let error = Error::msg(SQLiteConnection::last_error(sqlite3_db_handle(
+                    *self.statement,
+                )))
+                .context("Could not clear the bindings from Sqlite statement");
                 log::error!("{error:#}");
                 error
             };
@@ -203,7 +189,7 @@ impl Prepared for SQLitePrepared {
         // SQLite's parameter index is 1-based.
         let index = index as c_int + 1;
         let value = v.as_value();
-        let statement = self.statement();
+        let statement = *self.statement;
         unsafe {
             let rc = if value.is_null() {
                 sqlite3_bind_null(statement, index)
@@ -346,9 +332,9 @@ impl Prepared for SQLitePrepared {
 
 impl Display for SQLitePrepared {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ptr = unsafe { sqlite3_sql(self.statement()) };
+        let ptr = unsafe { sqlite3_sql(*self.statement) };
         if ptr.is_null() {
-            return write!(f, "{:p}", self.statement());
+            return write!(f, "{:p}", *self.statement);
         }
         let sql = unsafe { CStr::from_ptr(ptr) }.to_string_lossy();
         f.write_str(&sql)

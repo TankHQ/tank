@@ -49,7 +49,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
     #[inline(always)]
     fn statement(&mut self) -> *mut sqlite3_stmt {
         self.prepared()
-            .map_or(ptr::null_mut(), |prepared| prepared.statement())
+            .map_or(ptr::null_mut(), |prepared| *prepared.statement)
     }
 
     #[cold]
@@ -64,7 +64,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
             if let Query::Prepared(prepared) = self.query.as_mut() {
                 // Step errors are already reported. Raw statements are finalized
                 // below; only reusable statements need a separate reset.
-                unsafe { sqlite3_reset(prepared.statement()) };
+                unsafe { sqlite3_reset(*prepared.statement) };
             }
         }
         self.active = false;
@@ -110,7 +110,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
         unsafe {
             match self.query.as_mut() {
                 Query::Prepared(prepared) => {
-                    let statement = prepared.statement();
+                    let statement = *prepared.statement;
                     if self.generation != 0 || statement.is_null() {
                         self.done = true;
                         return Ok(None);
@@ -157,7 +157,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                         )));
                     }
                     self.offset += consumed;
-                    if !statement.statement().is_null() {
+                    if !statement.statement.is_null() {
                         self.statement = Some(statement);
                         break;
                     }
@@ -252,7 +252,7 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Drop for SQLiteStream<'_, Q> {
         }
         self.reset();
         if let Query::Prepared(prepared) = self.query.as_mut() {
-            if !prepared.statement().is_null() {
+            if !prepared.statement.is_null() {
                 if let Err(error) = prepared.release_bindings() {
                     log::error!("{error:#}");
                 }

@@ -83,8 +83,7 @@ impl SQLiteConnection {
             }
             prepared
         };
-        let handle = *self.handle;
-        let transaction = if unsafe { sqlite3_get_autocommit(handle) } == 0 {
+        let transaction = if unsafe { sqlite3_get_autocommit(*self.handle) } == 0 {
             None
         } else {
             Some(SQLiteTransaction::new(self)?)
@@ -97,13 +96,15 @@ impl SQLiteConnection {
                     prepared.bind_index(value, index as _)?;
                 }
                 ensure_rc!(
-                    unsafe { sqlite3_step(prepared.statement()) },
-                    Error::msg(Self::last_error(handle)),
+                    unsafe { sqlite3_step(*prepared.statement) },
+                    Error::msg(Self::last_error(unsafe {
+                        sqlite3_db_handle(*prepared.statement)
+                    })),
                     "While executing a step on a prepared statement"
                 );
                 unsafe {
-                    sqlite3_clear_bindings(prepared.statement());
-                    sqlite3_reset(prepared.statement());
+                    sqlite3_clear_bindings(*prepared.statement);
+                    sqlite3_reset(*prepared.statement);
                 }
                 Ok(count + 1)
             })?;
@@ -114,7 +115,7 @@ impl SQLiteConnection {
             task::yield_now().await;
         }
         let last_affected_id =
-            unsafe { sqlite3_last_insert_rowid(sqlite3_db_handle(prepared.statement())) };
+            unsafe { sqlite3_last_insert_rowid(sqlite3_db_handle(*prepared.statement)) };
         if let Some(transaction) = transaction {
             transaction.commit().await?;
         }
