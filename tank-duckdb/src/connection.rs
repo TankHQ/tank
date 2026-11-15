@@ -19,7 +19,7 @@ use std::{
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
     QueryResult, Result, Row, RowsAffected, SqlCoreWriter, as_c_string, describe_path,
-    error_message_from_ptr, log_error, log_warn, stream::Stream, truncate_long,
+    error_message_from_ptr, stream::Stream, truncate_long,
 };
 
 /// Wrapper around a DuckDB `duckdb_connection` pointer used by the DuckDB driver.
@@ -66,7 +66,8 @@ impl Connection for DuckDBConnection {
                                     let error = anyhow!(
                                         "Unknown value {v:?} for `mode`, expected one of: `ro`, `rw`, `rwc`, `memory`"
                                     );
-                                    return Err(error).inspect_err(log_warn);
+                                    log::error!("{error:#}");
+                                    return Err(error);
                                 }
                             }
                             .as_ptr(),
@@ -133,7 +134,7 @@ impl Executor for DuckDBConnection {
                 Ok(DuckDBPrepared::new(prepared).into())
             })()
             .with_context(|| format!("While preparing the query:\n{}", truncate_long!(sql)))
-            .inspect_err(log_error),
+            .inspect_err(|error| log::error!("{error:#}")),
         )
     }
 

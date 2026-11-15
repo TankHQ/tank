@@ -1,6 +1,6 @@
 use crate::{
     ColumnDef, Context, Driver, DynQuery, Executor, Expression, Fragment, Query, RawQuery, Result,
-    Row, RowOwned, RowsAffected, Sql, TableRef, Value, future::Either, log_error, stream::Stream,
+    Row, RowOwned, RowsAffected, Sql, TableRef, Value, future::Either, stream::Stream,
     truncate_long, writer::SqlWriter,
 };
 use anyhow::anyhow;
@@ -262,7 +262,7 @@ pub trait Entity: AsEntity + Expression {
                 Err(anyhow!(
                     "Cannot save an entity without a primary key, it would always result in an insert",
                 ))
-                .inspect_err(log_error),
+                .inspect_err(|e| log::error!("{e:#}")),
             ));
         }
         let mut query = DynQuery::default();
@@ -303,7 +303,7 @@ pub trait Entity: AsEntity + Expression {
                 Err(anyhow!(
                     "Cannot delete an entity without a primary key, it would delete nothing",
                 ))
-                .inspect_err(log_error),
+                .inspect_err(|e| log::error!("{e:#}")),
             ));
         }
         Either::Right(

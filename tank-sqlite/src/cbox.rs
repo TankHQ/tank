@@ -83,7 +83,7 @@ macro_rules! ensure_rc {($value:expr, $error:expr $(, $context:expr)? $(,)?) => 
             ::std::hint::cold_path();
             return Err($error)
                 $(.context($context))?
-                .inspect_err(::tank_core::log_error);
+                .inspect_err(|e| ::log::error!("{e:#}"));
         }
         value
     }};

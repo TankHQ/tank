@@ -5,7 +5,7 @@ use std::{
     mem,
     sync::LazyLock,
 };
-use tank_core::{DynQuery, Result, SqlWriter, Transaction, impl_executor_transaction, log_error};
+use tank_core::{DynQuery, Result, SqlWriter, Transaction, impl_executor_transaction};
 
 pub struct SQLiteTransaction<'c> {
     connection: &'c mut SQLiteConnection,
@@ -59,7 +59,10 @@ impl Drop for SQLiteTransaction<'_> {
         if !self.is_done
             && let Err(error) = self.do_rollback()
         {
-            log_error(&error.context("While rolling back an unfinished transaction"));
+            log::error!(
+                "{:#}",
+                error.context("While rolling back an unfinished transaction")
+            );
         }
     }
 }

@@ -14,7 +14,7 @@ use std::{
 };
 use tank_core::{
     Error, ErrorContext, Query, QueryResult, Result, RowsAffected, error_message_from_ptr,
-    log_error, stream::Stream,
+    stream::Stream,
 };
 
 /// Lazily runs each statement of a query, yielding its rows or affected-row count.
@@ -67,7 +67,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
         let _ = self
             .finish()
             .context("While cleaning up DuckDB execution")
-            .inspect_err(log_error);
+            .inspect_err(|e| log::error!("{e:#}"));
         error.context(context)
     }
 
@@ -210,6 +210,6 @@ impl<Q: AsMut<Query<DuckDBDriver>>> Drop for DuckDBStream<'_, Q> {
         let _ = self
             .finish()
             .context("While dropping DuckDB execution")
-            .inspect_err(log_error);
+            .inspect_err(|e| log::error!("{e:#}"));
     }
 }

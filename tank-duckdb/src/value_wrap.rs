@@ -9,7 +9,7 @@ use std::{
 };
 use tank_core::{
     CollectionType, Error, ErrorContext, Interval, MapType, Result, StructType, TableRef, Value,
-    ValueOwned, as_c_string, char_ptr_to_string, decimal_from_scaled, log_error,
+    ValueOwned, as_c_string, char_ptr_to_string, decimal_from_scaled,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time, macros::date};
 use uuid::Uuid;
@@ -465,8 +465,9 @@ impl TryFrom<ValueWrap<'_>> for CBox<duckdb_value> {
         });
         if result.is_null() {
             hint::cold_path();
-            return Err(anyhow!("Could not create a DuckDB value for {value:?}"))
-                .inspect_err(log_error);
+            let error = anyhow!("Could not create a DuckDB value for {value:?}");
+            log::error!("{error:#}");
+            return Err(error);
         }
         Ok(result)
     }

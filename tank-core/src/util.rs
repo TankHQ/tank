@@ -8,7 +8,7 @@ use std::{
     cmp::min,
     collections::BTreeMap,
     ffi::{CStr, CString, c_char},
-    fmt::{self, Write},
+    fmt::Write,
     hint, iter, ptr,
 };
 use syn::Path;
@@ -206,16 +206,6 @@ pub fn as_c_string(str: impl AsRef<[u8]>) -> CString {
                 .collect(),
         )
     }
-}
-
-#[cold]
-pub fn log_error<E: fmt::Display>(error: &E) {
-    log::error!("{error:#}");
-}
-
-#[cold]
-pub fn log_warn<E: fmt::Display>(error: &E) {
-    log::warn!("{error:#}");
 }
 
 #[inline(always)]
@@ -470,7 +460,7 @@ pub fn describe_path(url: &Url) -> String {
 #[macro_export]
 macro_rules! send_value {
     ($tx:ident, $value:expr) => {{
-        let _ = $tx.send($value).inspect_err($crate::log_error);
+        let _ = $tx.send($value).inspect_err(|e| ::log::error!("{e:#}"));
     }};
 }
 

@@ -13,7 +13,7 @@ use tank_core::{
     AsEntity, AsQuery, ColumnDef, Connection, Driver, DynQuery, Entity, Error, ErrorContext,
     Executor, Operand, Prepared, Query, QueryResult, Result, RowsAffected, Sql, SqlWriter,
     Transaction, char_ptr_to_string, describe_path, error_message_from_ptr, future::Either,
-    log_error, truncate_long,
+    truncate_long,
 };
 use tokio::task;
 
@@ -95,13 +95,15 @@ impl SQLiteConnection {
                 for (index, value) in entity.as_entity().row_values().enumerate() {
                     prepared.bind_index(value, index as _)?;
                 }
-                ensure_rc!(
-                    unsafe { sqlite3_step(*prepared.statement) },
-                    Error::msg(Self::last_error(unsafe {
+                let rc = unsafe { sqlite3_step(*prepared.statement) };
+                if rc != SQLITE_DONE {
+                    hint::cold_path();
+                    return Err(Error::msg(Self::last_error(unsafe {
                         sqlite3_db_handle(*prepared.statement)
-                    })),
-                    "While executing a step on a prepared statement"
-                );
+                    })))
+                    .context("While executing a step on a prepared statement")
+                    .inspect_err(|error| log::error!("{error:#}"));
+                }
                 unsafe {
                     sqlite3_clear_bindings(*prepared.statement);
                     sqlite3_reset(*prepared.statement);
@@ -205,9 +207,10 @@ impl Executor for SQLiteConnection {
             let mut statement = CBox::new(ptr::null_mut(), |p: *mut sqlite3_stmt| {
                 let handle = sqlite3_db_handle(p);
                 if sqlite3_finalize(p) != SQLITE_OK {
-                    log_error(
-                        &Error::msg(Self::last_error(handle))
-                            .context("While finalizing a prepared statement"),
+                    log::error!(
+                        "{:#}",
+                        Error::msg(Self::last_error(handle))
+                            .context("While finalizing a prepared statement")
                     );
                 }
             });
@@ -223,7 +226,7 @@ impl Executor for SQLiteConnection {
                     truncate_long!(char_ptr_to_string(tail))
                 )
                 .context(make_context());
-                log_error(&error);
+                log::error!("{error:#}");
                 return Err(error);
             }
             statement

@@ -1,4 +1,4 @@
-use crate::{Driver, ErrorContext, Executor, Result, log_error, truncate_long};
+use crate::{Driver, ErrorContext, Executor, Result, truncate_long};
 use anyhow::anyhow;
 use std::{
     borrow::Cow,
@@ -43,7 +43,7 @@ pub trait Connection: Executor {
                 names.join(", ")
             ))
             .with_context(make_context)
-            .inspect_err(log_error);
+            .inspect_err(|e| log::error!("{e:#}"));
         }
         Ok(result)
     }
