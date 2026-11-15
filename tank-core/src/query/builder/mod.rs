@@ -139,14 +139,12 @@ impl ExpressionCollection for NA {
     }
 }
 
-/// A single column, as in `.group_by(Entity::field)`.
 impl ExpressionCollection for ColumnRef {
     fn expr_iter(&self) -> impl Iterator<Item = impl Expression> + Clone {
         iter::once(self)
     }
 }
 
-/// A single column, as in `.order_by(Entity::field)`.
 impl ExpressionCollection for ColumnDef {
     fn expr_iter(&self) -> impl Iterator<Item = impl Expression> + Clone {
         iter::once(self)

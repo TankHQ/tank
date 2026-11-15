@@ -1,8 +1,5 @@
 use crate::{Dataset, Driver, DynQuery, Expression, ExpressionCollection, NA, SqlWriter};
 
-/// UPDATE query builder.
-///
-/// Use `Sql().update(dataset).set(assignments)` to start.
 pub struct UpdateQueryBuilder<From, Set, Where> {
     pub(crate) from: From,
     pub(crate) set: Set,
@@ -59,9 +56,9 @@ impl<F: Dataset, S: ExpressionCollection, W: Expression> UpdateQueryBuilder<F, S
     }
 }
 
-/// UPDATE query statement.
+/// UPDATE table SET column = value, ... [WHERE condition]
 ///
-/// Build one with `Sql().update(dataset).set(cols!(E::field == value = E::field + 1, ...))`.
+/// Use `Sql().update(dataset).set(assignments)` to start.
 pub trait UpdateQuery<From: Dataset> {
     /// Get the dataset holding the updated rows.
     fn get_from(&self) -> &From;

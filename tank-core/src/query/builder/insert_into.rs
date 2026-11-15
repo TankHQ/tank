@@ -6,11 +6,9 @@ use std::{borrow::Cow, iter, marker::PhantomData};
 
 type NoSelect = SelectQueryBuilder<NA, NA, NA, NA, NA, NA, NA>;
 
-/// INSERT ... SELECT, a SELECT carrying the table and columns its rows are inserted into.
 pub type InsertSelectQueryBuilder<S, F = NA, W = NA, G = NA, H = NA, O = NA, L = NA> =
     SelectQueryBuilder<S, F, W, G, H, O, L, InsertIntoQueryBuilder<NA, NA>>;
 
-/// INSERT query builder, inserting rows of values or the result of a SELECT.
 pub struct InsertIntoQueryBuilder<Values, Update> {
     pub(crate) table: TableRef,
     pub(crate) columns: Cow<'static, [ColumnDef]>,
@@ -48,8 +46,8 @@ impl InsertIntoQueryBuilder<NA, NA> {
     {
         // A table named by hand takes the columns and primary key of the entities.
         if self.table.columns.is_empty() {
-            self.table.columns = E::columns();
-            self.table.primary_key = E::table().primary_key;
+            self.table.columns = E::columns().into();
+            self.table.primary_key = E::table().primary_key.clone();
         }
         self.columns = Cow::Borrowed(E::columns());
         self.with(entities.into_iter().map(E::row_values), false)
@@ -210,7 +208,7 @@ where
     }
 }
 
-/// INSERT query builder.
+/// INSERT INTO table (columns) VALUES (values), ... [ON CONFLICT (primary key) DO UPDATE SET ...]
 ///
 /// Use `Sql().insert_into(table)` to start, then `values(&entities)`, `columns(names).values(rows)`
 /// or `select(columns).from(dataset)...`, failing on primary key conflicts without `update`.

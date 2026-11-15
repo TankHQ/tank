@@ -64,8 +64,8 @@ mod tests {
         ));
 
         assert_eq!(
-            Employee::primary_key_def()
-                .iter()
+            Employee::table()
+                .primary_key()
                 .map(|c| &c.column_ref.name)
                 .collect::<Vec<_>>(),
             ["id"]

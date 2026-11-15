@@ -38,7 +38,7 @@ impl<E> DropTableQueryBuilder<E> {
     }
 }
 
-/// DROP TABLE query builder.
+/// DROP TABLE [IF EXISTS] table
 ///
 /// Use `Sql().drop_table(table)` to start.
 pub trait DropTableQuery {

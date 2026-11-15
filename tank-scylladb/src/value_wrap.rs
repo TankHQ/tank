@@ -415,12 +415,8 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
                 frozen: _,
                 definition,
             } => {
-                let type_ref = TableRef {
-                    schema: definition.keyspace.to_string().into(),
-                    name: definition.name.to_string().into(),
-                    alias: "".into(),
-                    ..Default::default()
-                };
+                let mut type_ref = TableRef::new(definition.name.to_string().into());
+                type_ref.schema = definition.keyspace.to_string().into();
                 let fields = UdtIterator::deserialize(ty, v)?
                     .map(|((name, ty), res)| {
                         res.and_then(|v| {

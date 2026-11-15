@@ -5,8 +5,8 @@ use std::{
     task::{Context, Waker},
 };
 use tank::{
-    AsValue, Connection, DynQuery, Entity, Executor, QueryResult, Row, Sql, Transaction, Value,
-    cols,
+    AsValue, ColumnDef, Connection, DynQuery, Entity, Executor, QueryResult, Row, Sql, Transaction,
+    Value, cols,
     stream::{StreamExt, TryStreamExt},
 };
 use tank_sqlite::{SQLiteConnection, SQLiteDriver};
@@ -229,7 +229,12 @@ async fn advance_drain_errors() {
             .is_err()
     );
     connection
-        .execute("CREATE TABLE reused (id INT)")
+        .execute(
+            Sql()
+                .create_table("reused")
+                .columns([ColumnDef::from_type::<i32>("id")])
+                .build(&connection.driver()),
+        )
         .await
         .unwrap();
 }
@@ -283,7 +288,12 @@ async fn partial_rows_drop() {
         // Abandon stream before the second row.
     }
     connection
-        .execute("CREATE TABLE reused (id INT)")
+        .execute(
+            Sql()
+                .create_table("reused")
+                .columns([ColumnDef::from_type::<i32>("id")])
+                .build(&connection.driver()),
+        )
         .await
         .unwrap();
 }
@@ -296,7 +306,12 @@ async fn abandoned_returning_write() {
             .await
             .unwrap();
     connection
-        .execute("CREATE TABLE items (id INT)")
+        .execute(
+            Sql()
+                .create_table("items")
+                .columns([ColumnDef::from_type::<i32>("id")])
+                .build(&connection.driver()),
+        )
         .await
         .unwrap();
     {
@@ -405,7 +420,22 @@ async fn skipping_write_errors() {
             .await
             .unwrap();
     connection
-        .execute("CREATE TABLE items (id INT PRIMARY KEY); INSERT INTO items VALUES (1)")
+        .execute(
+            Sql()
+                .create_table("items")
+                .columns([ColumnDef::from_type::<i32>("id").primary_key()])
+                .build(&connection.driver()),
+        )
+        .await
+        .unwrap();
+    connection
+        .execute(
+            Sql()
+                .insert_into("items")
+                .columns(["id"])
+                .values([[1_i32.as_value()]])
+                .build(&connection.driver()),
+        )
         .await
         .unwrap();
     {
@@ -476,11 +506,22 @@ async fn select_cancel_drop() {
     }
     // The connection must be reusable once the abandoned statement is released.
     connection
-        .execute("CREATE TABLE reused (id INT)")
+        .execute(
+            Sql()
+                .create_table("reused")
+                .columns([ColumnDef::from_type::<i32>("id")])
+                .build(&connection.driver()),
+        )
         .await
         .unwrap();
     connection
-        .execute("INSERT INTO reused VALUES (7)")
+        .execute(
+            Sql()
+                .insert_into("reused")
+                .columns(["id"])
+                .values([[7_i32.as_value()]])
+                .build(&connection.driver()),
+        )
         .await
         .unwrap();
     let rows = connection
@@ -548,7 +589,22 @@ async fn snapshots_survive_schema() {
             .await
             .unwrap();
     connection
-        .execute("CREATE TABLE items (old_name TEXT); INSERT INTO items VALUES ('first')")
+        .execute(
+            Sql()
+                .create_table("items")
+                .columns([ColumnDef::from_type::<String>("old_name")])
+                .build(&connection.driver()),
+        )
+        .await
+        .unwrap();
+    connection
+        .execute(
+            Sql()
+                .insert_into("items")
+                .columns(["old_name"])
+                .values([["first"]])
+                .build(&connection.driver()),
+        )
         .await
         .unwrap();
     let mut prepared = connection.prepare("SELECT * FROM items").await.unwrap();

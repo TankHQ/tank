@@ -23,7 +23,7 @@ mod tests {
                 ..
             }
         ));
-        assert_eq!(SomeEmptyEntity::primary_key_def().len(), 0);
+        assert_eq!(SomeEmptyEntity::table().primary_key().count(), 0);
         assert_eq!(SomeEmptyEntity::columns().len(), 0);
 
         let query = Sql()

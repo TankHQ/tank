@@ -13,11 +13,11 @@ pub struct TableRef {
     /// Optional alias for the table.
     pub alias: Cow<'static, str>,
     /// List of columns defined in this table.
-    pub columns: &'static [ColumnDef],
-    /// List of columns forming the primary key.
-    pub primary_key: &'static [&'static ColumnDef],
-    /// Unique constraints, each a list of columns.
-    pub unique: &'static [&'static [&'static ColumnDef]],
+    pub columns: Cow<'static, [ColumnDef]>,
+    /// Indices into `columns` of the primary key, in key order.
+    pub(crate) primary_key: Cow<'static, [usize]>,
+    /// Indices into `columns` of each unique constraint.
+    pub(crate) unique: Cow<'static, [Cow<'static, [usize]>]>,
 }
 
 impl TableRef {
@@ -27,10 +27,30 @@ impl TableRef {
             name,
             schema: Cow::Borrowed(""),
             alias: Cow::Borrowed(""),
-            columns: &[],
-            primary_key: &[],
-            unique: &[],
+            columns: Cow::Borrowed(&[]),
+            primary_key: Cow::Borrowed(&[]),
+            unique: Cow::Borrowed(&[]),
         }
+    }
+    /// Sets the primary key as indices into `columns`, in key order.
+    pub fn with_primary_key(mut self, indices: Cow<'static, [usize]>) -> Self {
+        self.primary_key = indices;
+        self
+    }
+    /// Sets the unique constraints, each a list of indices into `columns`.
+    pub fn with_unique(mut self, groups: Cow<'static, [Cow<'static, [usize]>]>) -> Self {
+        self.unique = groups;
+        self
+    }
+    /// Primary key columns, in key order.
+    pub fn primary_key(&self) -> impl Iterator<Item = &ColumnDef> + Clone {
+        self.primary_key.iter().filter_map(|&i| self.columns.get(i))
+    }
+    /// Unique constraints, the columns of each one.
+    pub fn unique(&self) -> impl Iterator<Item = impl Iterator<Item = &ColumnDef> + Clone> + Clone {
+        self.unique
+            .iter()
+            .map(|group| group.iter().filter_map(|&i| self.columns.get(i)))
     }
     /// Returns the fully qualified name (schema.table) or the alias if one is present.
     pub fn full_name(&self, separator: &str) -> Cow<'static, str> {

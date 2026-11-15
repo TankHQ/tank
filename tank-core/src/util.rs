@@ -258,7 +258,7 @@ pub fn extract_number<'s, const SIGNED: bool>(input: &mut &'s str) -> &'s str {
     result
 }
 
-pub fn column_def(name: &str, table: &TableRef) -> Option<&'static ColumnDef> {
+pub fn column_def<'a>(name: &str, table: &'a TableRef) -> Option<&'a ColumnDef> {
     table.columns.iter().find(|v| v.name() == name)
 }
 

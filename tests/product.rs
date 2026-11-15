@@ -50,8 +50,8 @@ mod tests {
             }
         ));
         assert_eq!(
-            Product::primary_key_def()
-                .iter()
+            Product::table()
+                .primary_key()
                 .map(|c| &c.column_ref.name)
                 .collect::<Vec<_>>(),
             ["id"]

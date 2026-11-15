@@ -44,25 +44,13 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
         let ident = &col.ident;
         quote!(self.#ident)
     });
-    let primary_keys_def = table.primary_key.iter().map(|i| quote!(&columns[#i]));
-    let unique_groups = table
+    let primary_key_indices = &table.primary_key;
+    // Borrowed slices of column indices, `'static` inside the `const` blocks they are placed in.
+    let unique_indices = table
         .unique
         .iter()
         .filter(|v| !v.is_empty())
-        .map(|v| {
-            let len = v.len();
-            let i = v.iter();
-            quote! {{
-                static GROUP: ::std::sync::LazyLock<[&'static ::tank::ColumnDef; #len]> =
-                    ::std::sync::LazyLock::new(|| {
-                        let columns = #ident::columns();
-                        [#(&columns[#i]),*]
-                    });
-                &*GROUP
-            }}
-        })
-        .collect::<Vec<_>>();
-    let unique_len = unique_groups.len();
+        .map(|v| quote!(::std::borrow::Cow::Borrowed(&[#(#v),*])));
     let primary_key_types = primary_key_cols.clone().map(|col| col.ty.clone());
     let (column_trait, column) = column_trait(&table);
     let field_values = table
@@ -131,33 +119,21 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
             type PrimaryKey<'a> = (#(&'a #primary_key_types,)*);
 
             fn table() -> &'static ::tank::TableRef {
-                static RESULT: ::std::sync::LazyLock<Box<::tank::TableRef>> =
-                    ::std::sync::LazyLock::new(||
-                        Box::new(
-                            ::tank::TableRef {
-                                name: ::std::borrow::Cow::Borrowed(#name),
-                                schema: ::std::borrow::Cow::Borrowed(#schema),
-                                alias: ::std::borrow::Cow::Borrowed(""),
-                                columns: #ident::columns(),
-                                primary_key: #ident::primary_key_def(),
-                                unique: #ident::unique_defs(),
-                            }
-                        )
-                    );
-                RESULT.as_ref()
-            }
-
-            fn columns() -> &'static [::tank::ColumnDef] {
-                static RESULT: ::std::sync::LazyLock<Box<[::tank::ColumnDef]>> =
-                    ::std::sync::LazyLock::new(|| vec![#(#columns),*].into_boxed_slice());
-                &RESULT
-            }
-
-            fn primary_key_def() ->  &'static [&'static ::tank::ColumnDef] {
-                static RESULT: ::std::sync::LazyLock<Box<[&'static ::tank::ColumnDef]>> =
+                static COLUMNS: ::std::sync::LazyLock<Box<[::tank::ColumnDef]>> =
+                    ::std::sync::LazyLock::new(|| Box::new([#(#columns),*]));
+                static RESULT: ::std::sync::LazyLock<::tank::TableRef> =
                     ::std::sync::LazyLock::new(|| {
-                        let columns = <#ident as ::tank::Entity>::columns();
-                        vec![#(#primary_keys_def),*].into_boxed_slice()
+                        let mut table =
+                            ::tank::TableRef::new(::std::borrow::Cow::Borrowed(#name));
+                        table.schema = ::std::borrow::Cow::Borrowed(#schema);
+                        table.columns = ::std::borrow::Cow::Borrowed(&**COLUMNS);
+                        table
+                            .with_primary_key(::std::borrow::Cow::Borrowed(
+                                const { &[#(#primary_key_indices),*] },
+                            ))
+                            .with_unique(::std::borrow::Cow::Borrowed(
+                                const { &[#(#unique_indices),*] },
+                            ))
                     });
                 &RESULT
             }
@@ -170,13 +146,6 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 let primary_key = self.primary_key();
                 #primary_key_condition_declaration
                 ::tank::expr!(#primary_key_condition_expression)
-            }
-
-            fn unique_defs() -> &'static [&'static [&'static ::tank::ColumnDef]] {
-                static RESULT: ::std::sync::LazyLock<
-                    [&'static [&'static ::tank::ColumnDef]; #unique_len],
-                > = ::std::sync::LazyLock::new(|| [#(#unique_groups),*]);
-                &*RESULT
             }
 
             #[inline]

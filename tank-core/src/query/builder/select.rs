@@ -3,7 +3,6 @@ use crate::{
 };
 use std::{iter, marker::PhantomData};
 
-/// SELECT query builder, `Insert` holds the target of an INSERT ... SELECT.
 pub struct SelectQueryBuilder<Select, From, Where, GroupBy, Having, OrderBy, Limit, Insert = NA> {
     pub(crate) select: Select,
     pub(crate) from: Option<From>,
@@ -234,9 +233,9 @@ where
     }
 }
 
-/// SELECT query builder.
+/// SELECT [DISTINCT] columns [FROM dataset] [WHERE condition] [GROUP BY columns] [HAVING condition] [ORDER BY columns] [LIMIT n] [OFFSET n]
 ///
-/// Use `Sql().select(columns)` to start.
+/// Use `Sql().select(columns).from(dataset)` to start.
 pub trait SelectQuery<From>
 where
     From: Dataset,

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use std::{path::Path, sync::Mutex};
-    use tank_core::{Connection, describe_path};
+    use tank_core::{ColumnDef, Connection, Executor, Sql, describe_path};
     use tank_sqlite::{SQLiteConnection, SQLiteDriver};
     use tank_tests::{init_logs, silent_logs};
     use tokio::fs;
@@ -53,6 +53,76 @@ mod tests {
                 "Should not be able to open in read only unexisting database"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn read_only_rejects_writes() {
+        init_logs();
+        const DB_PATH: &'static str = "../target/debug/read_only.sqlite";
+        let _guard = MUTEX.lock().unwrap();
+        if Path::new(DB_PATH).exists() {
+            fs::remove_file(DB_PATH)
+                .await
+                .expect("Failed to remove the read-only test database");
+        }
+        let driver = SQLiteDriver::new();
+        {
+            let mut connection =
+                SQLiteConnection::connect(&driver, format!("sqlite://{DB_PATH}?mode=rwc").into())
+                    .await
+                    .expect("Could not create the read-only test database");
+            let create_table = Sql()
+                .create_table("t")
+                .if_not_exists()
+                .columns([
+                    ColumnDef::from_type::<i32>("id").primary_key(),
+                    ColumnDef::from_type::<String>("value"),
+                ])
+                .build(&driver);
+            connection
+                .execute(create_table)
+                .await
+                .expect("Could not create the test table");
+            let insert = Sql()
+                .insert_into("t")
+                .columns(["value"])
+                .values([["before"]])
+                .build(&driver);
+            connection
+                .execute(insert)
+                .await
+                .expect("Could not insert into the test table");
+        }
+        {
+            let mut connection =
+                SQLiteConnection::connect(&driver, format!("sqlite://{DB_PATH}?mode=ro").into())
+                    .await
+                    .expect("Could not open the database read-only");
+            let insert = Sql()
+                .insert_into("t")
+                .columns(["value"])
+                .values([["after"]])
+                .build(&driver);
+            let error = connection
+                .execute(insert)
+                .await
+                .expect_err("Writing through a read-only connection must fail");
+            assert!(
+                format!("{error:#}").to_lowercase().contains("readonly"),
+                "Unexpected read-only error: {error:#}"
+            );
+            let create_table = Sql()
+                .create_table("other")
+                .columns([ColumnDef::from_type::<i32>("id")])
+                .build(&driver);
+            assert!(
+                connection.execute(create_table).await.is_err(),
+                "Creating a table through a read-only connection must fail"
+            );
+        }
+        fs::remove_file(DB_PATH)
+            .await
+            .expect("Failed to remove the read-only test database");
     }
 
     #[tokio::test]

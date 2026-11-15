@@ -7,8 +7,9 @@ mod tests {
     use indoc::indoc;
     use std::{cell::Cell, fmt::Write, iter};
     use tank::{
-        AsValue, Context, DynQuery, Entity, Expression, Fragment, InsertIntoQuery, Operand,
-        QueryResult, QueryResultOwned, RawQuery, RowOwned, RowsAffected, Sql, TableRef, cols, expr,
+        Action, AsValue, ColumnDef, ColumnRef, Context, DynQuery, Entity, Expression, Fragment,
+        InsertIntoQuery, Operand, QueryResult, QueryResultOwned, RawQuery, RowOwned, RowsAffected,
+        Sql, cols, expr,
     };
 
     const WRITER: tank::GenericSqlWriter = tank::GenericSqlWriter;
@@ -435,6 +436,137 @@ mod tests {
             .if_not_exists()
             .build(&DRIVER);
         assert!(sql.as_str().contains("IF NOT EXISTS"));
+
+        // Entity columns name the constraints.
+        let sql = Sql()
+            .create_table("widget_copy")
+            .columns(Widget::columns().iter().cloned())
+            .primary_key([Widget::id])
+            .unique([Widget::name])
+            .build(&DRIVER);
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                CREATE TABLE "widget_copy" (
+                "id" UINTEGER PRIMARY KEY,
+                "name" TEXT NOT NULL,
+                UNIQUE ("name"));
+            "#}
+            .trim()
+        );
+
+        // Runtime columns, without an entity.
+        let builder = Sql().create_table("runtime").if_not_exists().columns([
+            ColumnDef::from_type::<i32>("id").primary_key(),
+            ColumnDef::from_type::<String>("name").nullable(true),
+        ]);
+        assert_eq!(builder.get_table().columns.len(), 2);
+        assert_eq!(builder.get_table().columns[0].name(), "id");
+        assert_eq!(builder.get_table().columns[1].name(), "name");
+        assert_eq!(
+            builder.build(&DRIVER).as_str(),
+            indoc! {r#"
+                CREATE TABLE IF NOT EXISTS "runtime" (
+                "id" INTEGER PRIMARY KEY,
+                "name" TEXT);
+            "#}
+            .trim()
+        );
+
+        // Composite keys, grouped unique constraints, foreign keys and defaults.
+        let sql = Sql()
+            .create_table("child")
+            .columns([
+                ColumnDef::from_type::<i32>("a"),
+                ColumnDef::from_type::<i32>("b"),
+                ColumnDef::from_type::<String>("c").nullable(true),
+                ColumnDef::from_type::<i32>("parent_id")
+                    .references(ColumnRef {
+                        name: "id".into(),
+                        table: "parent".into(),
+                        schema: "lookup".into(),
+                    })
+                    .on_delete(Action::Cascade)
+                    .default_value(0_i64),
+            ])
+            .primary_key(["a", "b"])
+            .unique(["a", "c"])
+            .unique(["b"])
+            .build(&DRIVER);
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                CREATE TABLE "child" (
+                "a" INTEGER,
+                "b" INTEGER,
+                "c" TEXT,
+                "parent_id" INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY ("a", "b"),
+                UNIQUE ("a", "c"),
+                UNIQUE ("b"),
+                FOREIGN KEY ("parent_id") REFERENCES "lookup"."parent"("id") ON DELETE CASCADE);
+            "#}
+            .trim()
+        );
+
+        // A single column key named by the table replaces the one of the columns.
+        let builder = Sql()
+            .create_table("keyed")
+            .columns([
+                ColumnDef::from_type::<i32>("id"),
+                ColumnDef::from_type::<i32>("other").primary_key(),
+            ])
+            .primary_key(["id"]);
+        let primary_key = builder.get_table().primary_key().map(ColumnDef::name);
+        assert!(primary_key.eq(["id"]));
+        assert_eq!(
+            builder.build(&DRIVER).as_str(),
+            indoc! {r#"
+                CREATE TABLE "keyed" (
+                "id" INTEGER PRIMARY KEY,
+                "other" INTEGER NOT NULL);
+            "#}
+            .trim()
+        );
+
+        // The key order is its own, not the columns one.
+        let builder = Sql()
+            .create_table("pair")
+            .columns([
+                ColumnDef::from_type::<i32>("a"),
+                ColumnDef::from_type::<i32>("b"),
+            ])
+            .primary_key(["b", "a"]);
+        let primary_key = builder.get_table().primary_key().map(ColumnDef::name);
+        assert!(primary_key.eq(["b", "a"]));
+        assert_eq!(
+            builder.build(&DRIVER).as_str(),
+            indoc! {r#"
+                CREATE TABLE "pair" (
+                "a" INTEGER,
+                "b" INTEGER,
+                PRIMARY KEY ("b", "a"));
+            "#}
+            .trim()
+        );
+
+        // Several marked columns form a composite key, in declaration order.
+        let builder = Sql().create_table("marked").columns([
+            ColumnDef::from_type::<i32>("a").primary_key(),
+            ColumnDef::from_type::<i32>("b").primary_key(),
+        ]);
+        let primary_key = builder.get_table().primary_key().map(ColumnDef::name);
+        assert!(primary_key.eq(["a", "b"]));
+        assert_eq!(
+            builder.build(&DRIVER).as_str(),
+            indoc! {r#"
+                CREATE TABLE "marked" (
+                "a" INTEGER,
+                "b" INTEGER,
+                PRIMARY KEY ("a", "b"));
+            "#}
+            .trim()
+        );
     }
 
     #[test]
@@ -544,10 +676,8 @@ mod tests {
             label: "a".into(),
         }];
 
-        let archive = TableRef {
-            name: "archive".into(),
-            ..Item::table().clone()
-        };
+        let mut archive = Item::table().clone();
+        archive.name = "archive".into();
         let sql = Sql()
             .insert_into(archive)
             .values(&items)

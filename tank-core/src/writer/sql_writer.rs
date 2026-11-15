@@ -96,22 +96,22 @@ pub trait SqlWriter:
         out.push_str(" (\n");
         separated_by(
             out,
-            table.columns,
+            table.columns.iter(),
             |out, col| {
                 self.write_create_table_column_fragment(&mut context, out, col);
             },
             ",\n",
         );
-        let pk = table.primary_key;
-        if pk.len() > 1 {
-            self.write_create_table_primary_key_fragment(&mut context, out, pk.iter().map(|v| *v));
+        if table.primary_key.len() > 1 {
+            self.write_create_table_primary_key_fragment(&mut context, out, table.primary_key());
         }
-        for unique in table.unique {
-            if unique.len() > 0 {
+        for unique in table.unique() {
+            let mut unique = unique.peekable();
+            if unique.peek().is_some() {
                 out.push_str(",\nUNIQUE (");
                 separated_by(
                     out,
-                    unique.iter(),
+                    unique,
                     |out, col| {
                         self.write_identifier(
                             &mut context
@@ -351,7 +351,7 @@ pub trait SqlWriter:
             self.write_insert_update_fragment(
                 &mut context.current,
                 out,
-                table.primary_key.iter().copied(),
+                table.primary_key(),
                 columns.iter(),
             );
         }

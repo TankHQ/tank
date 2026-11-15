@@ -1,10 +1,10 @@
 use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
-use std::{fmt::Write, hint, mem};
+use std::{borrow::Cow, fmt::Write, hint, mem};
 use tank_core::{
     AsValue, Case, ColumnDef, Context, Dataset, DynQuery, Expression, Fragment, InsertIntoQuery,
     IsAsterisk, LiteralValue, Result, SelectQuery, SqlCoreWriter, SqlExpressionWriter,
-    SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value, column_def, future::Either,
+    SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value, future::Either,
 };
 
 pub struct ValkeySqlWriter {
@@ -142,7 +142,7 @@ impl SqlWriter for ValkeySqlWriter {
         let mut is_pk_condition = IsPKCondition::new(
             self.keys_with_names,
             table.full_name(self.separator()).into_owned(),
-            table.primary_key,
+            &table,
         );
         if !where_expr.accept_visitor(
             &mut is_pk_condition,
@@ -172,13 +172,17 @@ impl SqlWriter for ValkeySqlWriter {
                 log::error!("Valkey/Redis can only query columns, found: {id}",);
                 return;
             }
-            let Some(column_def) = column_def(&is_field.field, &table) else {
+            let is_column = |c: &&ColumnDef| c.name() == is_field.field;
+            let found = match &table.columns {
+                Cow::Borrowed(defined) => defined.iter().find(is_column).map(Cow::Borrowed),
+                Cow::Owned(defined) => defined.iter().find(is_column).cloned().map(Cow::Owned),
+            };
+            let Some(column_def) = found else {
                 log::error!(
                     "Valkey/Redis can only query known columns, {id} was not defined in the entity",
                 );
                 return;
             };
-            prepared.columns.push(column_def);
             let ty = &column_def.value;
             match ty {
                 v if v.is_scalar() => prepared.commands.push(Cmd::hget(key, id)),
@@ -211,6 +215,7 @@ impl SqlWriter for ValkeySqlWriter {
                     return;
                 }
             };
+            prepared.columns.push(column_def);
         }
     }
 
@@ -224,7 +229,7 @@ impl SqlWriter for ValkeySqlWriter {
             log::error!("Valkey/Redis does not support INSERT ... SELECT");
             return;
         };
-        if table.primary_key.is_empty() {
+        if table.primary_key().next().is_none() {
             log::error!(
                 "Valkey/Redis needs the primary key of {} to build the keys, use the `Entity::table()` as target",
                 table.full_name(self.separator())
@@ -245,19 +250,16 @@ impl SqlWriter for ValkeySqlWriter {
             let fields = || columns.iter().map(ColumnDef::name).zip(&values);
             // Same key as `IsPKCondition` builds from a primary key condition.
             let mut key = table.full_name(self.separator()).into_owned();
-            for column in table.primary_key {
-                let Some((_, value)) = fields().find(|(name, _)| *name == column.name()) else {
-                    log::error!(
-                        "The row has no value for the primary key column `{}`",
-                        column.name()
-                    );
+            for name in table.primary_key().map(ColumnDef::name) {
+                let Some((_, value)) = fields().find(|(field, _)| *field == name) else {
+                    log::error!("The row has no value for the primary key column `{name}`");
                     return;
                 };
                 if !key.is_empty() {
                     key.push_str(self.separator());
                 }
                 if self.keys_with_names {
-                    key.push_str(column.name());
+                    key.push_str(name);
                     key.push_str(self.separator());
                 }
                 let mut rendered = DynQuery::new(key);
@@ -326,7 +328,7 @@ impl SqlWriter for ValkeySqlWriter {
         let mut is_pk_condition = IsPKCondition::new(
             self.keys_with_names,
             table.full_name(self.separator()).into_owned(),
-            table.primary_key,
+            &table,
         );
         if !condition.accept_visitor(
             &mut is_pk_condition,

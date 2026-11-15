@@ -38,7 +38,7 @@ impl<F: Dataset, W: Expression> DeleteQueryBuilder<F, W> {
     }
 }
 
-/// DELETE query builder.
+/// DELETE FROM table [WHERE condition]
 ///
 /// Use `Sql().delete_from(dataset)` to start, deleting every row without `where_expr`.
 pub trait DeleteQuery<From: Dataset> {

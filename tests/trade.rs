@@ -75,8 +75,8 @@ mod tests {
             }
         ));
         assert_eq!(
-            Trade::primary_key_def()
-                .iter()
+            Trade::table()
+                .primary_key()
                 .map(|c| &c.column_ref.name)
                 .collect::<Vec<_>>(),
             ["trade_id", "execution_time"]

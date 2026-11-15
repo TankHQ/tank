@@ -42,7 +42,7 @@ mod tests {
             }
         ));
 
-        assert_eq!(SomeSimpleEntity::primary_key_def().len(), 0);
+        assert_eq!(SomeSimpleEntity::table().primary_key().count(), 0);
 
         let columns = SomeSimpleEntity::columns();
         assert_eq!(columns.len(), 3);

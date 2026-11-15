@@ -1057,7 +1057,7 @@ impl SqlWriter for MongoDBSqlWriter {
         let aggregate_aliases = Arc::new(aggregate_aliases);
         if is_asterisk && query.is_distinct() && !table.columns.is_empty() {
             is_asterisk = false;
-            for column in table.columns {
+            for column in table.columns.iter() {
                 let name = column.name().to_string();
                 update_group!(
                     column,
@@ -1311,7 +1311,7 @@ impl SqlWriter for MongoDBSqlWriter {
         let mut context = Context::fragment(Fragment::SqlInsertInto);
         context.quote_identifiers = false;
         let payload: Payload = if update {
-            if table.primary_key.is_empty() {
+            if table.primary_key().next().is_none() {
                 log::error!(
                     "Upserting rows in {name} needs the table primary key, use the `Entity::table()` as target"
                 );
@@ -1319,16 +1319,15 @@ impl SqlWriter for MongoDBSqlWriter {
             }
             let upserts = rows.drain(..).filter_map(|row| {
                 let filter = table
-                    .primary_key
-                    .iter()
-                    .map(|column| {
-                        let value = row.get_column(column.name()).ok_or_else(|| {
+                    .primary_key()
+                    .map(|col| {
+                        let value = row.get_column(col.name()).ok_or_else(|| {
                             anyhow!(
                                 "The row has no value for the primary key column `{}`",
-                                column.name()
+                                col.name()
                             )
                         })?;
-                        Ok((column.name().to_string(), value_to_bson(&value)?))
+                        Ok((name.to_string(), value_to_bson(&value)?))
                     })
                     .collect::<Result<Document>>();
                 let modifications = RowWrap(Cow::Borrowed(&row)).try_into();

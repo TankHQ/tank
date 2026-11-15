@@ -29,19 +29,15 @@ pub trait Entity: AsEntity + Expression {
     fn table() -> &'static TableRef;
 
     /// All column definitions in declaration order.
-    fn columns() -> &'static [ColumnDef];
-
-    /// Primary key column definitions. Empty if no PK defined.
-    fn primary_key_def() -> &'static [&'static ColumnDef];
+    fn columns() -> &'static [ColumnDef] {
+        &Self::table().columns
+    }
 
     /// Extract PK value(s) from `self`.
     fn primary_key(&self) -> Self::PrimaryKey<'_>;
 
     /// Build an expression matching the PK of `self`.
     fn primary_key_expr(&self) -> impl Expression;
-
-    /// Unique constraint definitions, each a list of columns.
-    fn unique_defs() -> &'static [&'static [&'static ColumnDef]];
 
     /// Values of all persisted columns in declaration order, borrowing from `self` where possible.
     fn row_values(&self) -> impl ExactSizeIterator<Item = Value<'_>>;
@@ -257,7 +253,7 @@ pub trait Entity: AsEntity + Expression {
         Self: Sized,
         for<'s> &'s Self: AsEntity,
     {
-        if Self::primary_key_def().is_empty() {
+        if Self::table().primary_key().next().is_none() {
             return Either::Left(future::ready(
                 Err(anyhow!(
                     "Cannot save an entity without a primary key, it would always result in an insert",
@@ -298,7 +294,7 @@ pub trait Entity: AsEntity + Expression {
     where
         Self: Sized,
     {
-        if Self::primary_key_def().is_empty() {
+        if Self::table().primary_key().next().is_none() {
             return Either::Left(future::ready(
                 Err(anyhow!(
                     "Cannot delete an entity without a primary key, it would delete nothing",

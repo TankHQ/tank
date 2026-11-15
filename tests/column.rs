@@ -27,7 +27,7 @@ mod tests {
         assert_eq!(col_ref.table, "my_table");
         assert_eq!(col_ref.schema, "the_schema");
 
-        let my_column = ColumnRef::new("my_column".into());
+        let my_column = ColumnRef::new("my_column");
         assert_eq!(my_column.name, "my_column");
         assert_eq!(my_column.table, "");
         assert_eq!(my_column.schema, "");

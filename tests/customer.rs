@@ -38,7 +38,7 @@ mod tests {
             }
         ));
 
-        assert_eq!(Customer::primary_key_def().len(), 0);
+        assert_eq!(Customer::table().primary_key().count(), 0);
         let columns = Customer::columns();
         assert_eq!(columns.len(), 5);
         assert_eq!(columns[0].column_ref.name, "transaction_ids");

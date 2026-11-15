@@ -11,7 +11,7 @@ mod tests {
     };
     use tank::{
         CollectionType, ColumnDef, ColumnRef, Connection, ConnectionPool, Context, Driver,
-        DynQuery, Entity, Executor, Fragment, GenericSqlWriter, MapType, QueryResult, Row,
+        DynQuery, Entity, Executor, Fragment, GenericSqlWriter, MapType, QueryResult, Row, Sql,
         SqlCoreWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value,
         stream::{StreamExt, TryStreamExt},
     };
@@ -121,7 +121,12 @@ mod tests {
         let mut comments = connection.prepare("-- ; only a comment").await.unwrap();
         assert_eq!(connection.run(&mut comments).count().await, 0);
         connection
-            .execute("CREATE TABLE returning_items (value TEXT)")
+            .execute(
+                Sql()
+                    .create_table("returning_items")
+                    .columns([ColumnDef::from_type::<String>("value")])
+                    .build(&connection.driver()),
+            )
             .await
             .unwrap();
         let mut query = connection
@@ -415,12 +420,7 @@ mod tests {
     fn sqlite_identifier_escaping() {
         init_logs();
         let writer = sqlite_writer();
-        let table = TableRef {
-            name: "the\"table".into(),
-            schema: "s".into(),
-            alias: "a".into(),
-            ..Default::default()
-        };
+        let table = TableRef::from(("s", "the\"table")).with_alias("a".into());
         let mut out = DynQuery::default();
         writer.write_table_ref(
             &mut Context::fragment(Fragment::SqlSelectFrom),

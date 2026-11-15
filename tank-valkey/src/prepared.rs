@@ -1,11 +1,14 @@
 use redis::{Cmd, Pipeline};
-use std::fmt::{self, Debug, Display};
+use std::{
+    borrow::Cow,
+    fmt::{self, Debug, Display},
+};
 use tank_core::{AsValue, ColumnDef, Prepared, Result};
 
 #[derive(Default, Debug)]
 pub struct ValkeyPrepared {
     pub(crate) commands: Vec<Cmd>,
-    pub(crate) columns: Vec<&'static ColumnDef>,
+    pub(crate) columns: Vec<Cow<'static, ColumnDef>>,
 }
 
 impl ValkeyPrepared {

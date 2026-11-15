@@ -30,19 +30,10 @@ mod tests {
     #[test]
     fn table_ref_name() {
         assert_eq!(TableRef::new("users".into()).full_name("."), "users");
-        let t = TableRef {
-            name: "users".into(),
-            schema: "public".into(),
-            ..Default::default()
-        };
+        let t = TableRef::from(("public", "users"));
         assert_eq!(t.full_name("."), "public.users");
         assert_eq!(t.full_name("_"), "public_users");
-        let t = TableRef {
-            name: "users".into(),
-            schema: "public".into(),
-            alias: "u".into(),
-            ..Default::default()
-        };
+        let t = TableRef::from(("public", "users")).with_alias("u".into());
         assert_eq!(t.full_name("."), "u");
     }
 
@@ -58,15 +49,10 @@ mod tests {
     fn table_ref_empty() {
         assert!(TableRef::default().is_empty());
         assert!(!TableRef::new("t".into()).is_empty());
-        let schema_only = TableRef {
-            schema: "s".into(),
-            ..Default::default()
-        };
+        let mut schema_only = TableRef::default();
+        schema_only.schema = "s".into();
         assert!(!schema_only.is_empty());
-        let alias_only = TableRef {
-            alias: "a".into(),
-            ..Default::default()
-        };
+        let alias_only = TableRef::default().with_alias("a".into());
         assert!(!alias_only.is_empty());
     }
 
@@ -80,12 +66,7 @@ mod tests {
     #[test]
     fn table_ref_write() {
         let writer = GenericSqlWriter::new();
-        let table = TableRef {
-            name: "events".into(),
-            schema: "analytics".into(),
-            alias: "e".into(),
-            ..Default::default()
-        };
+        let table = TableRef::from(("analytics", "events")).with_alias("e".into());
 
         let mut from_context = Context::fragment(Fragment::SqlSelectFrom);
         let mut rendered = DynQuery::default();
@@ -119,12 +100,7 @@ mod tests {
     #[test]
     fn alias_reference_write() {
         let writer = GenericSqlWriter::new();
-        let table = TableRef {
-            name: "events".into(),
-            schema: "analytics".into(),
-            alias: "e".into(),
-            ..Default::default()
-        };
+        let table = TableRef::from(("analytics", "events")).with_alias("e".into());
 
         let mut rendered = DynQuery::default();
         table.write_table_name(&writer, &mut Context::empty(), &mut rendered);
@@ -133,12 +109,7 @@ mod tests {
 
     #[test]
     fn table_ref_tokens() {
-        let table = TableRef {
-            name: "events".into(),
-            schema: "analytics".into(),
-            alias: "e".into(),
-            ..Default::default()
-        };
+        let table = TableRef::from(("analytics", "events")).with_alias("e".into());
 
         let tokens = table.to_token_stream().to_string();
         assert!(tokens.contains(":: tank :: TableRef"));

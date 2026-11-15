@@ -1,7 +1,7 @@
 use std::{borrow::Cow, mem};
 use tank_core::{
-    BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
-    IsConstant, Operand, Ordered, SqlWriter,
+    BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
+    IsConstant, Operand, Ordered, SqlWriter, TableRef,
 };
 
 #[derive(Default, Debug)]
@@ -55,27 +55,31 @@ impl ExpressionVisitor for IsField {
     }
 }
 
-pub struct IsPKCondition {
+pub struct IsPKCondition<'a> {
     keys_with_names: bool,
     pub key: String,
     started: bool,
-    original_pk: &'static [&'static ColumnDef],
-    pk: &'static [&'static ColumnDef],
+    table: &'a TableRef,
+    /// Primary key columns already matched, in key order.
+    matched: usize,
     retry: bool,
 }
-impl IsPKCondition {
-    pub fn new(keys_with_names: bool, prefix: String, pk: &'static [&'static ColumnDef]) -> Self {
+impl<'a> IsPKCondition<'a> {
+    pub fn new(keys_with_names: bool, prefix: String, table: &'a TableRef) -> Self {
         IsPKCondition {
             keys_with_names,
             key: prefix,
             started: false,
-            original_pk: pk,
-            pk,
+            table,
+            matched: 0,
             retry: false,
         }
     }
+    fn is_complete(&self) -> bool {
+        self.table.primary_key().nth(self.matched).is_none()
+    }
 }
-impl ExpressionVisitor for IsPKCondition {
+impl ExpressionVisitor for IsPKCondition<'_> {
     fn visit_binary_op(
         &mut self,
         writer: &dyn SqlWriter,
@@ -90,7 +94,7 @@ impl ExpressionVisitor for IsPKCondition {
                 let mut lhs_done = false;
                 let mut rhs_done = false;
                 loop {
-                    let pk_len_before = self.pk.len();
+                    let matched_before = self.matched;
                     if !lhs_done {
                         self.retry = false;
                         lhs_done = value.lhs.accept_visitor(self, writer, context, out);
@@ -106,12 +110,12 @@ impl ExpressionVisitor for IsPKCondition {
                         }
                     }
                     if lhs_done && rhs_done {
-                        if top && !self.pk.is_empty() {
+                        if top && !self.is_complete() {
                             return false;
                         }
                         return true;
                     }
-                    if self.pk.len() == pk_len_before {
+                    if self.matched == matched_before {
                         self.retry = true;
                         return false;
                     }
@@ -139,17 +143,18 @@ impl ExpressionVisitor for IsPKCondition {
                 } else {
                     return false;
                 };
-                let matched_count = self.original_pk.len().saturating_sub(self.pk.len());
-                if self.original_pk[..matched_count]
-                    .iter()
-                    .any(|c| c.column_ref.name == is_column.field)
+                let mut primary_key = self.table.primary_key();
+                if primary_key
+                    .by_ref()
+                    .take(self.matched)
+                    .any(|c| c.name() == is_column.field)
                 {
                     return true;
                 }
-                let Some(first) = self.pk.first() else {
+                let Some(next) = primary_key.next() else {
                     return false;
                 };
-                if is_column.field != first.column_ref.name {
+                if next.name() != is_column.field {
                     self.retry = true;
                     return false;
                 }
@@ -163,8 +168,8 @@ impl ExpressionVisitor for IsPKCondition {
                 let mut out = DynQuery::new(mem::take(&mut self.key));
                 value.write_query(writer, context, &mut out);
                 self.key = mem::take(out.buffer());
-                self.pk = &self.pk[1..];
-                if top && !self.pk.is_empty() {
+                self.matched += 1;
+                if top && !self.is_complete() {
                     return false;
                 }
                 true
