@@ -39,12 +39,15 @@ impl DynQuery {
     #[cold]
     #[inline(never)]
     fn reset_to_raw(&mut self) -> &mut String {
-        log::error!("DynQuery::buffer changed the query to raw, deleting the previous content");
-        *self = Self::Raw(Default::default());
-        let Self::Raw(RawQuery(value)) = self else {
-            unreachable!();
-        };
-        value
+        log::error!(
+            "DynQuery::buffer reset a prepared query to raw, discarding its prepared content"
+        );
+        loop {
+            if let Self::Raw(RawQuery(value)) = self {
+                return value;
+            }
+            *self = Self::Raw(Default::default());
+        }
     }
 
     pub fn as_prepared<D: Driver>(&mut self) -> Option<&mut D::Prepared> {

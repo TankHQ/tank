@@ -109,7 +109,9 @@ impl TryFrom<ValueWrap<'_>> for redis::Value {
                 let tank_core::Value::Int64(Some(v)) =
                     value.try_as(&tank_core::Value::Int64(None))?
                 else {
-                    unreachable!("Unexpected error, it should be Int64 here");
+                    return Err(anyhow!(
+                        "Expected an Int64 value while converting to redis::Value"
+                    ));
                 };
                 redis::Value::Int(v)
             }
@@ -119,7 +121,9 @@ impl TryFrom<ValueWrap<'_>> for redis::Value {
                 let tank_core::Value::Float64(Some(v)) =
                     value.try_as(&tank_core::Value::Float64(None))?
                 else {
-                    unreachable!("Unexpected error, it should be Float64 here");
+                    return Err(anyhow!(
+                        "Expected a Float64 value while converting to redis::Value"
+                    ));
                 };
                 redis::Value::Double(v)
             }
@@ -136,7 +140,9 @@ impl TryFrom<ValueWrap<'_>> for redis::Value {
                 let tank_core::Value::Varchar(Some(v)) =
                     value.try_as(&tank_core::Value::Varchar(None))?
                 else {
-                    unreachable!("Unexpected error, it should be Varchar here");
+                    return Err(anyhow!(
+                        "Expected a Varchar value while converting to redis::Value"
+                    ));
                 };
                 redis::Value::BulkString(v.as_bytes().into())
             }

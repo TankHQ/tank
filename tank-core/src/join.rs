@@ -89,10 +89,7 @@ impl Parse for JoinType {
             let it = tokens.clone().take(keywords.len());
             if it.eq(keywords.iter().copied()) {
                 for _ in 0..keywords.len() {
-                    input.parse::<Ident>().expect(&format!(
-                        "Unexpected error, the input should contain {:?} as next Ident tokens at this point",
-                        keywords
-                    ));
+                    input.parse::<Ident>()?;
                 }
                 return Ok(*join_type);
             }

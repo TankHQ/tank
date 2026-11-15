@@ -162,7 +162,10 @@ impl Executor for MongoDBConnection {
                     let collection = self.collection(table);
                     let mut options = options.clone();
                     options.let_vars = params;
-                    let session = self.session.as_mut().unwrap();
+                    let Some(session) = self.session.as_mut() else {
+                        log::error!("MongoDB session is unexpectedly missing");
+                        return;
+                    };
                     let mut stream = collection
                         .find(filter.clone())
                         .session(&mut *session)
@@ -347,7 +350,10 @@ impl Executor for MongoDBConnection {
                     let collection = self.collection(table);
                     let mut options = options.clone();
                     options.let_vars = params;
-                    let session = self.session.as_mut().unwrap();
+                    let Some(session) = self.session.as_mut() else {
+                        log::error!("MongoDB session is unexpectedly missing");
+                        return;
+                    };
                     let mut stream = collection
                         .aggregate(pipeline.iter().cloned())
                         .session(&mut *session)

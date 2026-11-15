@@ -78,10 +78,11 @@ impl SQLitePrepared {
             self.init_labels()?;
         }
         let statement = *self.statement;
-        let labels = self
-            .labels
-            .as_ref()
-            .expect("labels initialized before reading a row");
+        let Some(labels) = self.labels.as_ref() else {
+            return Err(Error::msg(
+                "Row labels were not initialized before reading a row",
+            ));
+        };
         SQLiteRow::read(&mut self.row, labels, statement)
     }
 

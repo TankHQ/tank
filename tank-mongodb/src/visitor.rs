@@ -321,7 +321,13 @@ impl ExpressionVisitor for WriteMatchExpression<'_> {
                     is_expr = true;
                 } else {
                     for (i, _) in arg_is_expr.iter().enumerate().filter(|(_, v)| **v) {
-                        args[i] = doc! { "$expr": mem::take(&mut args[i]) }.into();
+                        if let Some(arg) = args.get_mut(i) {
+                            *arg = doc! { "$expr": mem::take(arg) }.into();
+                        } else {
+                            log::error!(
+                                "Argument {i} is flagged as an expression but is out of bounds"
+                            );
+                        }
                     }
                     is_expr = false;
                 }
@@ -409,7 +415,10 @@ impl ExpressionVisitor for WriteMatchExpression<'_> {
                         return false;
                     };
                     let field = match field.field {
-                        FieldType::None => unreachable!(),
+                        FieldType::None => {
+                            log::error!("Unexpected FieldType::None in WriteMatchExpression");
+                            return false;
+                        }
                         FieldType::Identifier(v) => v,
                         FieldType::Column(mut v) => {
                             if !context.table_ref.is_empty() {

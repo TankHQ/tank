@@ -132,7 +132,13 @@ pub trait SqlWriter:
             out,
             foreign_keys,
             |out, column| {
-                let references = column.references.as_ref().unwrap();
+                let Some(references) = column.references.as_ref() else {
+                    log::error!(
+                        "Column `{}` was filtered as a foreign key but has no references",
+                        column.name()
+                    );
+                    return;
+                };
                 out.push_str(",\nFOREIGN KEY (");
                 self.write_identifier(&mut context, out, &column.name(), true);
                 out.push_str(") REFERENCES ");

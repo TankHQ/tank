@@ -149,7 +149,13 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                 } else {
                     match self.query.as_mut() {
                         Query::Prepared(query) => *query.statement,
-                        Query::Raw(_) => unreachable!(),
+                        Query::Raw(_) => {
+                            let error = Error::msg(
+                                "A raw query reached the prepared statement execution path",
+                            );
+                            log::error!("{error:#}");
+                            return Err(error);
+                        }
                     }
                 };
                 self.index += 1;

@@ -537,7 +537,10 @@ impl_as_value!(
         if input.chars().count() != 1 {
             return Err(anyhow!("Cannot convert `{input:?}` to char"))
         }
-        Ok(input.chars().next().expect("Should have one character"))
+        input
+            .chars()
+            .next()
+            .ok_or_else(|| anyhow!("Cannot convert `{input:?}` to char"))
     },
     Value::Varchar(Some(v), ..) => {
         if v.chars().count() != 1 {
@@ -546,7 +549,9 @@ impl_as_value!(
                 truncate_long!(v)
             ))
         }
-        Ok(v.chars().next().unwrap())
+        v.chars()
+            .next()
+            .ok_or_else(|| anyhow!("Cannot convert varchar `{}` to char", truncate_long!(v)))
     },
     Value::Json(Some(serde_json::Value::String(v)), ..) => {
         if v.chars().count() != 1 {
@@ -555,7 +560,9 @@ impl_as_value!(
                 truncate_long!(v)
             ))
         }
-        Ok(v.chars().next().unwrap())
+        v.chars()
+            .next()
+            .ok_or_else(|| anyhow!("Cannot convert json `{}` to char", truncate_long!(v)))
     },
     value @ (
         Value::Int8(Some(..), ..)
@@ -1777,8 +1784,14 @@ where
     where
         Self: 'a,
     {
-        // A borrow of the guarded data must not escape the guard.
-        (&*self.borrow()).as_value().into_owned()
+        match self.try_borrow() {
+            // A borrow of the guarded data must not escape the guard.
+            Ok(borrowed) => (&*borrowed).as_value().into_owned(),
+            Err(_) => {
+                log::error!("RefCell is already mutably borrowed while converting to a Value");
+                Value::Null
+            }
+        }
     }
 }
 
@@ -1791,7 +1804,7 @@ impl<T: AsValue> AsValue for RwLock<T> {
         Self: 'a,
     {
         self.into_inner()
-            .expect("Error occurred while trying to take the content of the RwLock")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .as_value()
     }
     fn try_from_value(value: impl AsValue) -> Result<Self> {
@@ -1816,9 +1829,7 @@ where
     where
         Self: 'a,
     {
-        (&*self
-            .read()
-            .expect("Error occurred while trying to read the RwLock"))
+        (&*self.read().unwrap_or_else(|poisoned| poisoned.into_inner()))
             .as_value()
             .into_owned()
     }

@@ -21,7 +21,7 @@ pub trait Driver: Default + Clone + Sync + Send + Debug {
 
     /// Returns the primary name of the driver.
     fn name(&self) -> &'static str {
-        Self::NAME[0]
+        Self::NAME.first().copied().unwrap_or_default()
     }
 
     /// Creates a connection pool from a string literal, owned `String`, or `Cow` URL.

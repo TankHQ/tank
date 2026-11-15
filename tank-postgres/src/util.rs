@@ -206,14 +206,26 @@ fn build_array<'a, 'b>(
     element_ty: &Value<'a>,
     mut it: impl ExactSizeIterator<Item = &'b ArrayDimension> + Clone,
 ) -> Result<Value<'a>, Box<dyn Error + Sync + Send>> {
-    let dimension = it.next().expect("Must have one dimension at least");
+    let Some(dimension) = it.next() else {
+        return Err(tank_core::anyhow!("An array must have at least one dimension").into());
+    };
     let len = dimension.len as u32;
     Ok(if it.len() == 0 {
         let begin = begin as u32 * len;
         Value::Array(
             Some(
                 (begin..(begin + len))
-                    .map(|i| mem::take(&mut values[i as usize]))
+                    .map(|i| {
+                        values
+                            .get_mut(i as usize)
+                            .map(mem::take)
+                            .unwrap_or_else(|| {
+                                log::error!(
+                                    "Unexpected error, array element {i} is missing from the decoded values"
+                                );
+                                Value::Null
+                            })
+                    })
                     .collect(),
             ),
             Box::new(CollectionType {
@@ -329,7 +341,6 @@ pub fn postgres_type_to_value(ty: &Type) -> ValueOwned {
 }
 
 pub fn value_to_postgres_type(value: &Value<'_>) -> Type {
-    assert!(matches!(Type::BPCHAR_ARRAY.kind(), Kind::Array(..)));
     match value {
         Value::Boolean(..) => Type::BOOL,
         Value::Int8(..) => Type::INT2,

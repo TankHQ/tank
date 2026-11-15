@@ -139,7 +139,7 @@ impl ExpressionVisitor for IsPKCondition {
                 } else {
                     return false;
                 };
-                let matched_count = self.original_pk.len() - self.pk.len();
+                let matched_count = self.original_pk.len().saturating_sub(self.pk.len());
                 if self.original_pk[..matched_count]
                     .iter()
                     .any(|c| c.column_ref.name == is_column.field)

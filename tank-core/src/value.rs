@@ -339,7 +339,10 @@ impl<'a> Value<'a> {
                     name: t.name,
                 }),
             ),
-            _ => unreachable!(),
+            other => {
+                log::error!("Unexpected non composite value value: {other:?}");
+                Value::Null
+            }
         }
     }
 

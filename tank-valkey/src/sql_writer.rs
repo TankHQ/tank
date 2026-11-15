@@ -38,13 +38,12 @@ impl ValkeySqlWriter {
         query: &'a mut DynQuery,
         _context: &mut Context,
     ) -> &'a mut ValkeyPrepared {
-        if query.as_prepared::<ValkeyDriver>().is_none() {
+        loop {
+            if let Some(prepared) = query.as_prepared::<ValkeyDriver>() {
+                return prepared;
+            }
             *query = Self::make_prepared();
         }
-        let Some(prepared) = query.as_prepared::<ValkeyDriver>() else {
-            unreachable!();
-        };
-        prepared
     }
 }
 
@@ -158,15 +157,11 @@ impl SqlWriter for ValkeySqlWriter {
         let mut columns = query.get_select();
         let columns_count = columns.clone().into_iter().count();
         let key = is_pk_condition.key.as_str();
-        if columns_count == 0
-            || columns_count == 1
-                && columns.next().unwrap().accept_visitor(
-                    &mut IsAsterisk,
-                    self,
-                    &mut context,
-                    &mut Default::default(),
-                )
-        {
+        let single_asterisk = columns_count == 1
+            && columns.next().is_some_and(|column| {
+                column.accept_visitor(&mut IsAsterisk, self, &mut context, &mut Default::default())
+            });
+        if columns_count == 0 || single_asterisk {
             prepared.commands.push(Cmd::hgetall(key));
             return;
         }

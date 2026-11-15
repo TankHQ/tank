@@ -259,7 +259,8 @@ impl SqlCoreWriter for MongoDBSqlWriter {
         {
             *target = Bson::String(String::new());
             let Bson::String(value) = target else {
-                unreachable!("It must be a string here");
+                log::error!("Unexpected error, target must be a string here");
+                return;
             };
             value
         } else {
@@ -682,7 +683,10 @@ impl SqlExpressionWriter for MongoDBSqlWriter {
                             BinaryOpType::NotLike => BinaryOpType::Like,
                             BinaryOpType::NotRegexp => BinaryOpType::Regexp,
                             BinaryOpType::NotGlob => BinaryOpType::Glob,
-                            _ => unreachable!(),
+                            _ => {
+                                log::error!("Unexpected negated binary operation");
+                                BinaryOpType::Glob
+                            }
                         },
                         lhs: value.lhs,
                         rhs: value.rhs,
@@ -979,12 +983,12 @@ impl SqlWriter for MongoDBSqlWriter {
                     group.insert($name, $bson);
                     is_aggregate = true;
                 } else {
-                    group
-                        .entry("_id".into())
-                        .or_insert(Document::new().into())
-                        .as_document_mut()
-                        .expect("Field _id should be a document")
-                        .insert($name, $bson);
+                    match group.entry("_id".into()).or_insert(Document::new().into()) {
+                        Bson::Document(document) => {
+                            document.insert($name, $bson);
+                        }
+                        _ => log::error!("Unexpected error, `_id` field is not a document"),
+                    }
                 }
             };
         }

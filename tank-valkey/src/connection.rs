@@ -190,19 +190,25 @@ impl Executor for ValkeyConnection {
             let mut labels = Arc::new_zeroed_slice(prepared.columns.len());
             let mut values = Vec::with_capacity(prepared.columns.len());
             {
-                let labels_mut = Arc::get_mut(&mut labels).unwrap();
+                let Some(labels_mut) = Arc::get_mut(&mut labels) else {
+                    log::error!("Failed to get mutable access to the row labels");
+                    return;
+                };
                 for (i, (col, mut redis_val)) in iter::zip(prepared.columns.iter(),results.into_iter()).enumerate()
                 {
                     labels_mut[i].write(col.name().into());
                     if let (tank_core::Value::Map(..), redis::Value::Array(array)) =
                         (&col.value, &mut redis_val)
                     {
-                        redis_val = redis::Value::Map(
-                            array
-                                .chunks_mut(2)
-                                .map(|v| (mem::take(&mut v[0]), mem::take(&mut v[1])))
-                                .collect(),
-                        )
+                        let mut pairs = array.chunks_exact_mut(2);
+                        let map = pairs
+                            .by_ref()
+                            .map(|v| (mem::take(&mut v[0]), mem::take(&mut v[1])))
+                            .collect();
+                        if !pairs.into_remainder().is_empty() {
+                            log::error!("Received an odd number of elements for a map value");
+                        }
+                        redis_val = redis::Value::Map(map)
                     }
                     let converted: ValueWrap = redis_val.try_into().with_context(context)?;
                     values.push(converted.0.into_owned());
