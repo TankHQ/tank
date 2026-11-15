@@ -28,7 +28,12 @@ pub trait Connection: Executor {
             url = format!("{scheme}://localhost{}", &host[8..]).into();
             in_memory = true;
         }
-        let make_context = || format!("While parsing the connection URL:\n{}", truncate_long!(url));
+        let make_context = || {
+            format!(
+                r#"While parsing the connection URL "{}""#,
+                truncate_long!(url)
+            )
+        };
         let mut result = Url::parse(&url).with_context(make_context)?;
         if in_memory {
             result.query_pairs_mut().append_pair("mode", "memory");
@@ -38,12 +43,9 @@ pub trait Connection: Executor {
             .iter()
             .any(|name| url.starts_with(name) && url[name.len()..].starts_with("://"))
         {
-            return Err(anyhow!(
-                "Connection URL must start with: {}",
-                names.join(", ")
-            ))
-            .with_context(make_context)
-            .inspect_err(|e| log::error!("{e:#}"));
+            return Err(anyhow!(r#"Must start with "{}""#, names.join(", ")))
+                .with_context(make_context)
+                .inspect_err(|e| log::error!("{e:#}"));
         }
         Ok(result)
     }

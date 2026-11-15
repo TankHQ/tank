@@ -19,7 +19,7 @@ use std::{
 use tank_core::{
     AsEntity, AsQuery, Connection, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
     QueryResult, RawQuery, Result, Row, RowLabels, RowOwned, RowsAffected, SqlCoreWriter,
-    Transaction,
+    Transaction, describe_url,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
@@ -265,8 +265,13 @@ impl Executor for PostgresConnection {
 
 impl Connection for PostgresConnection {
     async fn connect(driver: &PostgresDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = "While trying to connect to Postgres";
-        let mut url = Self::sanitize_url(driver, url).context(context)?;
+        let mut url = Self::sanitize_url(driver, url)?;
+        let make_context = || {
+            format!(
+                r#"Connecting to Postgres "{}""#,
+                describe_url::<PostgresDriver>(&url)
+            )
+        };
         let mut take_url_param = |key: &str, env_var: &str, remove: bool| {
             let value = url
                 .query_pairs()

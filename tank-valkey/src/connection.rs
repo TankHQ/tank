@@ -6,7 +6,7 @@ use rustls::crypto::{CryptoProvider, aws_lc_rs::default_provider};
 use std::{borrow::Cow, fs, future, iter, mem, sync::Arc};
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Row, RowOwned,
-    RowsAffected, stream::Stream, truncate_long,
+    RowsAffected, describe_url, stream::Stream, truncate_long,
 };
 
 #[derive(Debug)]
@@ -25,8 +25,13 @@ impl Connection for ValkeyConnection {
         if CryptoProvider::get_default().is_none() {
             let _ = default_provider().install_default();
         }
-        let context = "While trying to connect to Valkey";
-        let url = Self::sanitize_url(driver, url).context(context)?;
+        let url = Self::sanitize_url(driver, url)?;
+        let make_context = || {
+            format!(
+                r#"Connecting to Valkey "{}""#,
+                describe_url::<ValkeyDriver>(&url)
+            )
+        };
         let mut root_cert = None;
         let mut client_cert = None;
         let mut client_key = None;
@@ -36,21 +41,21 @@ impl Connection for ValkeyConnection {
                     root_cert = Some(
                         fs::read(v.as_ref())
                             .with_context(|| format!("Failed to read SSL CA file `{v}`"))
-                            .context(context)?,
+                            .with_context(make_context)?,
                     );
                 }
                 "sslcert" | "ssl_cert" => {
                     client_cert = Some(
                         fs::read(v.as_ref())
                             .with_context(|| format!("Failed to read SSL certificate file `{v}`"))
-                            .context(context)?,
+                            .with_context(make_context)?,
                     );
                 }
                 "sslkey" | "ssl_key" => {
                     client_key = Some(
                         fs::read(v.as_ref())
                             .with_context(|| format!("Failed to read SSL private key file `{v}`"))
-                            .context(context)?,
+                            .with_context(make_context)?,
                     );
                 }
                 _ => {}
@@ -64,14 +69,14 @@ impl Connection for ValkeyConnection {
             (Some(_), None) => {
                 let error =
                     anyhow!("SSL private key must be provided when SSL certificate is specified")
-                        .context(context);
+                        .context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
             }
             (None, Some(_)) => {
                 let error =
                     anyhow!("SSL certificate must be provided when SSL private key is specified")
-                        .context(context);
+                        .context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
             }
@@ -86,7 +91,7 @@ impl Connection for ValkeyConnection {
                 },
             )
             .map_err(Error::new)
-            .context(context)?
+            .with_context(make_context)?
         } else {
             Client::open(url.as_str()).map_err(Error::new)?
         };
@@ -94,7 +99,7 @@ impl Connection for ValkeyConnection {
             .get_multiplexed_async_connection()
             .await
             .map_err(Error::new)
-            .context(context)?;
+            .with_context(make_context)?;
         Ok(Self {
             driver: *driver,
             connection,

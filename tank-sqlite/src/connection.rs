@@ -37,7 +37,7 @@ impl SQLiteConnection {
             },
             Error::msg(Self::last_error(*self.handle)),
             format!(
-                "While executing {}",
+                "While executing:\n{}",
                 truncate_long!(statement.to_string_lossy()),
             )
         );
@@ -132,14 +132,15 @@ impl SQLiteConnection {
     pub(crate) fn last_error(handle: *mut sqlite3) -> String {
         unsafe {
             let ptr = sqlite3_errmsg(handle);
-            if ptr.is_null() {
-                return Default::default();
+            if !ptr.is_null() {
+                format!(
+                    "Error ({}): {}",
+                    sqlite3_errcode(handle),
+                    error_message_from_ptr(&ptr),
+                )
+            } else {
+                Default::default()
             }
-            format!(
-                "Error ({}): {}",
-                sqlite3_errcode(handle),
-                error_message_from_ptr(&ptr),
-            )
         }
     }
 }
@@ -147,7 +148,7 @@ impl SQLiteConnection {
 impl Connection for SQLiteConnection {
     async fn connect(driver: &SQLiteDriver, url: Cow<'static, str>) -> Result<Self> {
         let url = Self::sanitize_url(driver, url)?;
-        let make_context = || format!("While trying to connect to SQLite {}", describe_path(&url));
+        let make_context = || format!(r#"Connecting to SQLite "{}""#, describe_path(&url));
         let url = CString::from_vec_with_nul({
             let mut bytes = url.as_str().replacen("sqlite://", "file:", 1).into_bytes();
             bytes.push(0);

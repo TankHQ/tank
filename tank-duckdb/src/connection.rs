@@ -35,7 +35,7 @@ impl Connection for DuckDBConnection {
         static DATABASE_CACHE: LazyLock<CBox<duckdb_instance_cache>> =
             LazyLock::new(|| CBox(unsafe { duckdb_create_instance_cache() }));
         let url = Self::sanitize_url(driver, url)?;
-        let make_context = || format!("While trying to connect to DuckDB {}", describe_path(&url));
+        let make_context = || format!(r#"Connecting to DuckDB "{}""#, describe_path(&url));
         let mut config = CBox::<duckdb_config>::null();
         ensure_rc!(
             unsafe { duckdb_create_config(&mut *config) },

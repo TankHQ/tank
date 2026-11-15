@@ -48,8 +48,8 @@ mod tests {
                     &SQLiteDriver::new(),
                     format!("sqlite://{DB_PATH}?mode=ro").into(),
                 )
-                    .await
-                    .is_err(),
+                .await
+                .is_err(),
                 "Should not be able to open in read only unexisting database"
             );
         }
@@ -59,11 +59,11 @@ mod tests {
     async fn wrong_url() {
         init_logs();
         silent_logs! {
-            assert!(
-                SQLiteConnection::connect(&SQLiteDriver::new(), "duckdb://some_value".into())
-                    .await
-                    .is_err()
-            );
+        assert!(
+            SQLiteConnection::connect(&SQLiteDriver::new(), "duckdb://some_value".into())
+                .await
+                .is_err()
+        );
         }
     }
 

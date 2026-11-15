@@ -21,10 +21,10 @@ pub type MariaDBConnection = MySQLConnection;
 impl Connection for MySQLConnection {
     async fn connect(driver: &MySQLDriver, url: Cow<'static, str>) -> Result<Self> {
         let mut url = Self::sanitize_url(driver, url)?;
-        let make_context = |url: &Url| {
+        let make_context = || {
             format!(
-                "While trying to connect to MySQL {}",
-                describe_url::<MySQLDriver>(url)
+                r#"Connecting to MySQL "{}""#,
+                describe_url::<MySQLDriver>(&url)
             )
         };
         let mut driver = *driver;
@@ -52,14 +52,14 @@ impl Connection for MySQLConnection {
         let ssl_ca = take_url_param(&mut url, "ssl_ca", "MYSQL_SSL_CA", true);
         let ssl_cert = take_url_param(&mut url, "ssl_cert", "MYSQL_SSL_CERT", true);
         let ssl_key = take_url_param(&mut url, "ssl_key", "MYSQL_SSL_KEY", true);
-        let opts = Opts::from_url(url.as_str()).with_context(|| make_context(&url))?;
+        let opts = Opts::from_url(url.as_str()).with_context(make_context)?;
         let mut ssl_opts = opts.ssl_opts().cloned();
         let mut opts = OptsBuilder::from_opts(opts);
         if let Some(ssl_ca) = ssl_ca {
             let ca_path = PathBuf::from(ssl_ca);
             if !ca_path.exists() {
                 let error = anyhow!("SSL CA file not found: `{}`", ca_path.to_string_lossy())
-                    .context(make_context(&url));
+                    .context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
             }
@@ -72,14 +72,14 @@ impl Connection for MySQLConnection {
                 if !ssl_cert.exists() {
                     let error =
                         anyhow!("SSL CERT file not found: `{}`", ssl_cert.to_string_lossy())
-                            .context(make_context(&url));
+                            .context(make_context());
                     log::error!("{error:#}");
                     return Err(error);
                 }
                 let ssl_key = PathBuf::from(ssl_key);
                 if !ssl_key.exists() {
                     let error = anyhow!("SSL KEY file not found: `{}`", ssl_key.to_string_lossy())
-                        .context(make_context(&url));
+                        .context(make_context());
                     log::error!("{error:#}");
                     return Err(error);
                 }
@@ -92,20 +92,20 @@ impl Connection for MySQLConnection {
             }
             (Some(_), None) => {
                 let error = anyhow!("SSL KEY file must be provided when SSL CERT is specified")
-                    .context(make_context(&url));
+                    .context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
             }
             (None, Some(_)) => {
                 let error = anyhow!("SSL CERT file must be provided when SSL KEY is specified")
-                    .context(make_context(&url));
+                    .context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
             }
             (None, None) => {}
         }
         opts = opts.ssl_opts(ssl_opts);
-        let connection = Conn::new(opts).await.with_context(|| make_context(&url))?;
+        let connection = Conn::new(opts).await.with_context(make_context)?;
         Ok(MySQLConnection {
             conn: MySQLQueryable {
                 executor: connection,
