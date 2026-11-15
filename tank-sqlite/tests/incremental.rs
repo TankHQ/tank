@@ -14,6 +14,7 @@ use tank_tests::init_logs;
 
 #[tokio::test]
 async fn prepared_expression_upsert() {
+    init_logs();
     #[derive(Entity, Debug, PartialEq)]
     struct Item {
         #[tank(primary_key)]
@@ -96,6 +97,7 @@ async fn prepared_expression_upsert() {
 
 #[tokio::test]
 async fn borrowed_owned_parameters() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -540,6 +542,7 @@ async fn retained_snapshot_types() {
 
 #[tokio::test]
 async fn snapshots_survive_schema() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -580,6 +583,7 @@ async fn snapshots_survive_schema() {
 
 #[tokio::test]
 async fn streamed_scan_yields() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -612,13 +616,14 @@ async fn streamed_scan_yields() {
     assert_eq!(seen, 1000);
 }
 
-#[derive(Entity)]
-struct AppendItem {
-    id: i64,
-}
-
 #[tokio::test]
 async fn transaction_drop_rollback() {
+    init_logs();
+    #[derive(Entity)]
+    struct AppendItem {
+        id: i64,
+    }
+
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -652,6 +657,12 @@ async fn transaction_drop_rollback() {
 
 #[tokio::test]
 async fn append_cancellation_rollback() {
+    init_logs();
+    #[derive(Entity)]
+    struct AppendItem {
+        id: i64,
+    }
+
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await

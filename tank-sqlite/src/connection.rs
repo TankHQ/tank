@@ -134,7 +134,7 @@ impl SQLiteConnection {
             let ptr = sqlite3_errmsg(handle);
             if !ptr.is_null() {
                 format!(
-                    "Error ({}): {}",
+                    "Error {} {}",
                     sqlite3_errcode(handle),
                     error_message_from_ptr(&ptr),
                 )

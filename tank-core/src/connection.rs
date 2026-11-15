@@ -49,7 +49,7 @@ pub trait Connection: Executor {
                     .iter()
                     .map(|name| format!(r#""{name}://""#))
                     .collect::<Vec<_>>()
-                    .join(", ")
+                    .join(" or ")
             ))
             .with_context(make_context)
             .inspect_err(|e| log::error!("{e:#}"));
