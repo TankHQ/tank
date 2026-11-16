@@ -126,11 +126,8 @@ mod tests {
             })
         }
 
-        fn do_prepare(
-            &mut self,
-            _: &str,
-        ) -> impl Future<Output = Result<Query<TestDriver>>> + Send {
-            async move { Ok(Query::prepared(TestDriver)) }
+        fn do_prepare(&mut self, _: &str) -> impl Future<Output = Result<TestDriver>> + Send {
+            async move { Ok(TestDriver) }
         }
     }
 
@@ -619,8 +616,7 @@ mod tests {
             assert!(
                 Executor::do_prepare(&mut exec_ref, "SELECT 1")
                     .await
-                    .unwrap()
-                    .is_prepared()
+                    .is_ok()
             );
             {
                 let mut stream = pin!(Executor::run(&mut exec_ref, ""));

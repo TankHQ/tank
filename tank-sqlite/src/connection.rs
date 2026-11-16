@@ -11,9 +11,8 @@ use std::{
 };
 use tank_core::{
     AnyQuery, AppendDefault, AsEntity, AsQuery, ColumnDef, Connection, Driver, Entity, Error,
-    ErrorContext, Executor, Operand, Prepared, Query, QueryResult, Result, RowsAffected, Sql,
-    SqlWriter, Transaction, char_ptr_to_string, describe_path, error_message_from_ptr,
-    future::Either, truncate_long,
+    ErrorContext, Executor, Operand, Prepared, QueryResult, Result, RowsAffected, Sql, SqlWriter,
+    char_ptr_to_string, describe_path, error_message_from_ptr, future::Either, truncate_long,
 };
 use tokio::task;
 
@@ -21,112 +20,10 @@ use tokio::task;
 #[derive(Debug)]
 pub struct SQLiteConnection {
     pub(crate) handle: CBox<*mut sqlite3>,
+    draft: AnyQuery,
 }
 
 impl SQLiteConnection {
-    pub(crate) fn do_execute(&mut self, statement: &CStr) -> Result<()> {
-        ensure_rc!(
-            unsafe {
-                sqlite3_exec(
-                    *self.handle,
-                    statement.as_ptr(),
-                    None,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                )
-            },
-            Error::msg(Self::last_error(*self.handle)),
-            format!(
-                "While executing:\n{}",
-                truncate_long!(statement.to_string_lossy()),
-            )
-        );
-        Ok(())
-    }
-
-    /// Inserts every entity in `rows` through a single prepared statement.
-    async fn do_append<I>(&mut self, rows: I) -> Result<RowsAffected>
-    where
-        I: IntoIterator,
-        I::Item: AsEntity,
-    {
-        type E<I> = <<I as IntoIterator>::Item as AsEntity>::Entity;
-        let columns = E::<I>::columns();
-        let sql = {
-            let mut sql = AnyQuery::default();
-            self.driver().sql_writer().write_insert(
-                &mut sql,
-                Sql()
-                    .insert_into(E::<I>::table())
-                    .columns(columns.iter().map(ColumnDef::name))
-                    .values([iter::repeat_n(&Operand::QuestionMark, columns.len())]),
-            );
-            CString::new(sql.as_str().as_ref())?
-        };
-        let mut prepared = unsafe {
-            let mut prepared =
-                SQLitePrepared::new(CBox::new(ptr::null_mut(), |p: *mut sqlite3_stmt| {
-                    if !p.is_null() {
-                        sqlite3_finalize(p);
-                    }
-                }));
-            ensure_rc!(
-                sqlite3_prepare_v2(
-                    *self.handle,
-                    sql.as_ptr(),
-                    -1,
-                    &mut *prepared.statement,
-                    ptr::null_mut(),
-                ),
-                Error::msg(Self::last_error(*self.handle)),
-                "While preparing a batch insert statement"
-            );
-            prepared
-        };
-        let transaction = if unsafe { sqlite3_get_autocommit(*self.handle) } == 0 {
-            None
-        } else {
-            Some(SQLiteTransaction::new(self)?)
-        };
-        let mut affected = 0u64;
-        let mut rows = rows.into_iter();
-        loop {
-            let appended = rows.by_ref().take(256).try_fold(0u64, |count, entity| {
-                for (index, value) in entity.as_entity().row_values().enumerate() {
-                    prepared.bind_index(value, index as _)?;
-                }
-                let rc = unsafe { sqlite3_step(*prepared.statement) };
-                if rc != SQLITE_DONE {
-                    hint::cold_path();
-                    return Err(Error::msg(Self::last_error(unsafe {
-                        sqlite3_db_handle(*prepared.statement)
-                    })))
-                    .context("While executing a step on a prepared statement")
-                    .inspect_err(|error| log::error!("{error:#}"));
-                }
-                unsafe {
-                    sqlite3_clear_bindings(*prepared.statement);
-                    sqlite3_reset(*prepared.statement);
-                }
-                Ok(count + 1)
-            })?;
-            affected += appended;
-            if appended < 256 {
-                break;
-            }
-            task::yield_now().await;
-        }
-        let last_affected_id =
-            unsafe { sqlite3_last_insert_rowid(sqlite3_db_handle(*prepared.statement)) };
-        if let Some(transaction) = transaction {
-            transaction.commit().await?;
-        }
-        Ok(RowsAffected {
-            rows_affected: Some(affected),
-            last_affected_id: Some(last_affected_id),
-        })
-    }
-
     #[cold]
     #[inline(never)]
     pub(crate) fn last_error(handle: *mut sqlite3) -> String {
@@ -142,6 +39,79 @@ impl SQLiteConnection {
                 Default::default()
             }
         }
+    }
+
+    pub(crate) fn do_execute(&mut self, statement: &CStr) -> Result<()> {
+        ensure_rc!(
+            unsafe {
+                sqlite3_exec(
+                    *self.handle,
+                    statement.as_ptr(),
+                    None,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                )
+            },
+            Error::msg(Self::last_error(*self.handle)),
+            format!(
+                "While executing:\n{}",
+                truncate_long!(statement.to_string_lossy(), true),
+            )
+        );
+        Ok(())
+    }
+
+    /// Inserts entities in `rows` through a single prepared statement.
+    async fn do_append<I>(&mut self, rows: I) -> Result<RowsAffected>
+    where
+        I: IntoIterator,
+        I::Item: AsEntity,
+    {
+        type E<I> = <<I as IntoIterator>::Item as AsEntity>::Entity;
+        let columns = E::<I>::columns();
+        self.draft.clear();
+        self.driver().sql_writer().write_insert(
+            &mut self.draft,
+            Sql()
+                .insert_into(E::<I>::table())
+                .columns(columns.iter().map(ColumnDef::name))
+                .values([iter::repeat_n(&Operand::QuestionMark, columns.len())]),
+        );
+        let sql = self.draft.buffer().as_str();
+        let mut prepared = self.do_prepare(sql).await?;
+        let mut affected = 0_u64;
+        const BATCH_SIZE: usize = 256;
+        let mut rows = rows.into_iter();
+        loop {
+            let appended = rows
+                .by_ref()
+                .take(BATCH_SIZE)
+                .try_fold(0_u64, |count, entity| {
+                    for (index, value) in entity.as_entity().row_values().enumerate() {
+                        prepared.bind_index(value, index as _)?;
+                    }
+                    ensure_rc!(
+                        unsafe { sqlite3_step(*prepared.statement) },
+                        Error::msg(Self::last_error(unsafe {
+                            sqlite3_db_handle(*prepared.statement)
+                        })),
+                        "While executing a step on a prepared statement",
+                    );
+                    prepared.clear_bindings()?;
+                    Ok(count + 1)
+                })?;
+            affected += appended;
+            if appended < 256 {
+                break;
+            }
+            task::yield_now().await;
+        }
+        let last_affected_id =
+            unsafe { sqlite3_last_insert_rowid(sqlite3_db_handle(*prepared.statement)) };
+        Ok(RowsAffected {
+            rows_affected: Some(affected),
+            last_affected_id: Some(last_affected_id),
+        })
     }
 }
 
@@ -190,7 +160,10 @@ impl Connection for SQLiteConnection {
                 "While enabling foreign key enforcement",
             );
         }
-        Ok(Self { handle: connection })
+        Ok(Self {
+            handle: connection,
+            draft: Default::default(),
+        })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<SQLiteTransaction<'_>>> + Send {
@@ -201,7 +174,7 @@ impl Connection for SQLiteConnection {
 impl Executor for SQLiteConnection {
     type Driver = SQLiteDriver;
 
-    async fn do_prepare(&mut self, sql: &str) -> Result<Query<SQLiteDriver>> {
+    async fn do_prepare(&mut self, sql: &str) -> Result<SQLitePrepared> {
         let prepared = unsafe {
             let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
             let len = c_int::try_from(sql.len())?;

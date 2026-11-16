@@ -1,7 +1,7 @@
 use crate::{
     AggregatePayload, BatchPayload, CreateCollectionPayload, DeletePayload, DropCollectionPayload,
     DropDatabasePayload, FindManyPayload, FindOnePayload, InsertManyPayload, InsertOnePayload,
-    MongoDBDriver, MongoDBTransaction, Payload, RowWrap, UpsertPayload,
+    MongoDBDriver, MongoDBPrepared, MongoDBTransaction, Payload, RowWrap, UpsertPayload,
 };
 use anyhow::anyhow;
 use async_stream::try_stream;
@@ -93,10 +93,7 @@ impl Connection for MongoDBConnection {
 impl Executor for MongoDBConnection {
     type Driver = MongoDBDriver;
 
-    fn do_prepare(
-        &mut self,
-        _query: &str,
-    ) -> impl Future<Output = Result<Query<MongoDBDriver>>> + Send {
+    fn do_prepare(&mut self, _query: &str) -> impl Future<Output = Result<MongoDBPrepared>> + Send {
         future::ready(Err(anyhow!("MongoDB does not support prepare")))
     }
 

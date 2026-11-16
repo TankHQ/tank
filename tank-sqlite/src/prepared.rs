@@ -1,4 +1,7 @@
-use crate::{CBox, SQLiteConnection, SQLiteRow, row::SQLiteRowData, sql_writer::SQLiteSqlWriter};
+use crate::{
+    CBox, SQLiteConnection, SQLiteRow, ensure_rc, row::SQLiteRowData, sql_writer::SQLiteSqlWriter,
+};
+use anyhow::anyhow;
 use libsqlite3_sys::*;
 use rust_decimal::prelude::ToPrimitive;
 use std::{
@@ -22,7 +25,7 @@ pub struct SQLitePrepared {
     pub(crate) labels: Option<Arc<[String]>>,
     pub(crate) columns: c_int,
     pub(crate) row: Option<Arc<SQLiteRowData>>,
-    written: AnyQuery,
+    draft: AnyQuery,
 }
 
 impl SQLitePrepared {
@@ -36,20 +39,18 @@ impl SQLitePrepared {
             labels: None,
             columns: 0,
             row: None,
-            written: AnyQuery::default(),
+            draft: AnyQuery::default(),
         }
     }
 
     /// Name of the result column at `index`.
-    pub(crate) fn column_name(&self, index: c_int) -> Result<String> {
+    pub(crate) fn column_name(&self, index: c_int) -> Result<Cow<'_, str>> {
         unsafe {
             let name = sqlite3_column_name(*self.statement, index);
             if !name.is_null() {
-                Ok(CStr::from_ptr(name).to_string_lossy().into_owned())
+                Ok(CStr::from_ptr(name).to_string_lossy())
             } else {
-                Err(Error::msg(format!(
-                    "Missing SQLite column name at index {index}"
-                )))
+                Err(anyhow!("Missing SQLite column name at index {index}"))
             }
         }
     }
@@ -63,7 +64,7 @@ impl SQLitePrepared {
         if self.labels.is_none() || self.columns != columns || recompiled {
             self.labels = Some(
                 (0..columns)
-                    .map(|index| self.column_name(index))
+                    .map(|index| self.column_name(index).map(Into::into))
                     .collect::<Result<_>>()?,
             );
             self.columns = columns;
@@ -134,43 +135,39 @@ impl SQLitePrepared {
             "Cannot use {value:?} as the parameter at index {index}"
         ))
     }
-
-    pub(crate) fn release_bindings(&mut self) -> Result<&mut Self> {
-        self.index = 0;
-        let rc = unsafe { sqlite3_clear_bindings(*self.statement) };
-        if rc != SQLITE_OK {
-            return Err(self.bind_error(0, rc));
-        }
-        Ok(self)
-    }
 }
 
 impl Prepared for SQLitePrepared {
+    #[inline(always)]
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 
+    #[inline(always)]
     fn is_empty(&self) -> bool {
         self.statement.is_null()
     }
 
+    #[inline(always)]
     fn clear_bindings(&mut self) -> Result<&mut Self> {
-        self.index = 0;
         unsafe {
-            let rc = sqlite3_reset(*self.statement);
-            let error = || {
-                let error = Error::msg(SQLiteConnection::last_error(sqlite3_db_handle(
+            ensure_rc!(
+                sqlite3_reset(*self.statement),
+                Error::msg(SQLiteConnection::last_error(sqlite3_db_handle(
                     *self.statement,
-                )))
-                .context("Could not clear the bindings from Sqlite statement");
-                log::error!("{error:#}");
-                error
-            };
-            if rc != SQLITE_OK {
-                return Err(error());
-            }
+                ))),
+                "While resetting SQLite statement"
+            );
+            ensure_rc!(
+                sqlite3_clear_bindings(*self.statement),
+                Error::msg(SQLiteConnection::last_error(sqlite3_db_handle(
+                    *self.statement
+                ))),
+                "While clearing SQLite statement binadings"
+            );
         }
-        self.release_bindings()
+        self.index = 0;
+        Ok(self)
     }
 
     #[inline(always)]
@@ -195,7 +192,7 @@ impl Prepared for SQLitePrepared {
                         Value::Int8(Some(v)) => sqlite3_bind_int(statement, index, v as _),
                         Value::Int16(Some(v)) => sqlite3_bind_int(statement, index, v as _),
                         Value::Int32(Some(v)) => sqlite3_bind_int(statement, index, v as _),
-                        Value::Int64(Some(v)) => sqlite3_bind_int64(statement, index, v),
+                        Value::Int64(Some(v)) => sqlite3_bind_int64(statement, index, v as _),
                         Value::Int128(Some(ref v)) => {
                             break 'simple_value match sqlite3_int64::try_from(**v) {
                                 Ok(v) => sqlite3_bind_int64(statement, index, v as _),
@@ -209,7 +206,7 @@ impl Prepared for SQLitePrepared {
                         Value::UInt16(Some(v)) => sqlite3_bind_int64(statement, index, v as _),
                         Value::UInt32(Some(v)) => sqlite3_bind_int64(statement, index, v as _),
                         Value::UInt64(Some(v)) => match sqlite3_int64::try_from(v) {
-                            Ok(v) => sqlite3_bind_int64(statement, index, v),
+                            Ok(v) => sqlite3_bind_int64(statement, index, v as _),
                             Err(_) => {
                                 hint::cold_path();
                                 return Err(Self::unsupported_value(index, value));
@@ -225,7 +222,7 @@ impl Prepared for SQLitePrepared {
                             };
                         }
                         Value::Float32(Some(v)) => sqlite3_bind_double(statement, index, v as _),
-                        Value::Float64(Some(v)) => sqlite3_bind_double(statement, index, v),
+                        Value::Float64(Some(v)) => sqlite3_bind_double(statement, index, v as _),
                         Value::Decimal(Some(v), ..) => match v.to_f64() {
                             Some(v) => sqlite3_bind_double(statement, index, v as _),
                             None => {
@@ -270,30 +267,26 @@ impl Prepared for SQLitePrepared {
                             }
                             rc
                         }
-                        Value::Date(Some(v)) => Self::bind_written(
-                            statement,
-                            index,
-                            &mut self.written,
-                            |context, out| Self::WRITER.write_date(context, out, &v),
-                        ),
-                        Value::Time(Some(v)) => Self::bind_written(
-                            statement,
-                            index,
-                            &mut self.written,
-                            |context, out| Self::WRITER.write_time(context, out, &v),
-                        ),
-                        Value::Timestamp(Some(v)) => Self::bind_written(
-                            statement,
-                            index,
-                            &mut self.written,
-                            |context, out| Self::WRITER.write_timestamp(context, out, &v),
-                        ),
-                        Value::TimestampWithTimezone(Some(v)) => Self::bind_written(
-                            statement,
-                            index,
-                            &mut self.written,
-                            |context, out| Self::WRITER.write_timestamptz(context, out, &v),
-                        ),
+                        Value::Date(Some(v)) => {
+                            Self::bind_written(statement, index, &mut self.draft, |context, out| {
+                                Self::WRITER.write_date(context, out, &v)
+                            })
+                        }
+                        Value::Time(Some(v)) => {
+                            Self::bind_written(statement, index, &mut self.draft, |context, out| {
+                                Self::WRITER.write_time(context, out, &v)
+                            })
+                        }
+                        Value::Timestamp(Some(v)) => {
+                            Self::bind_written(statement, index, &mut self.draft, |context, out| {
+                                Self::WRITER.write_timestamp(context, out, &v)
+                            })
+                        }
+                        Value::TimestampWithTimezone(Some(v)) => {
+                            Self::bind_written(statement, index, &mut self.draft, |context, out| {
+                                Self::WRITER.write_timestamptz(context, out, &v)
+                            })
+                        }
                         Value::Uuid(Some(v)) => {
                             let mut buffer = [0u8; 36];
                             let v = v.hyphenated().encode_lower(&mut buffer);
@@ -315,10 +308,13 @@ impl Prepared for SQLitePrepared {
                     rc
                 }
             };
-            if rc != SQLITE_OK {
-                hint::cold_path();
-                return Err(self.bind_error(index, rc));
-            }
+            ensure_rc!(
+                rc,
+                Error::msg(SQLiteConnection::last_error(sqlite3_db_handle(
+                    *self.statement
+                ))),
+                format!("While binding {} (0-based) to {self}", index - 1),
+            );
         }
         self.index = index as u64;
         Ok(self)
@@ -327,11 +323,15 @@ impl Prepared for SQLitePrepared {
 
 impl Display for SQLitePrepared {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ptr = unsafe { sqlite3_sql(*self.statement) };
-        if ptr.is_null() {
-            return write!(f, "{:p}", *self.statement);
+        unsafe {
+            f.write_str("SQLitePrepared:")?;
+            let ptr = sqlite3_sql(*self.statement);
+            if !ptr.is_null() {
+                f.write_str("\n");
+                f.write_str(&truncate_long!(CStr::from_ptr(ptr).to_string_lossy(), true))
+            } else {
+                write!(f, " {:p}", *self.statement)
+            }
         }
-        let sql = unsafe { CStr::from_ptr(ptr) }.to_string_lossy();
-        f.write_str(&sql)
     }
 }

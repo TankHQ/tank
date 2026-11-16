@@ -17,9 +17,9 @@ use std::{
     sync::LazyLock,
 };
 use tank_core::{
-    AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, Result, Row, RowsAffected, SqlCoreWriter, as_c_string, describe_path,
-    error_message_from_ptr, stream::Stream, truncate_long,
+    AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, QueryResult,
+    Result, Row, RowsAffected, SqlCoreWriter, as_c_string, describe_path, error_message_from_ptr,
+    stream::Stream, truncate_long,
 };
 
 /// Wrapper around a DuckDB `duckdb_connection` pointer used by the DuckDB driver.
@@ -116,10 +116,7 @@ impl Connection for DuckDBConnection {
 impl Executor for DuckDBConnection {
     type Driver = DuckDBDriver;
 
-    fn do_prepare(
-        &mut self,
-        sql: &str,
-    ) -> impl Future<Output = Result<Query<DuckDBDriver>>> + Send {
+    fn do_prepare(&mut self, sql: &str) -> impl Future<Output = Result<DuckDBPrepared>> + Send {
         future::ready(
             (|| unsafe {
                 let c_sql = CString::new(sql.as_bytes())
@@ -131,7 +128,7 @@ impl Executor for DuckDBConnection {
                         error_message_from_ptr(&duckdb_prepare_error(*prepared)).into_owned(),
                     )
                 );
-                Ok(DuckDBPrepared::new(prepared).into())
+                Ok(DuckDBPrepared::new(prepared))
             })()
             .with_context(|| format!("While preparing the query:\n{}", truncate_long!(sql)))
             .inspect_err(|error| log::error!("{error:#}")),

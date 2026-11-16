@@ -26,14 +26,13 @@ impl<'c> PostgresTransaction<'c> {
 impl Executor for PostgresTransaction<'_> {
     type Driver = PostgresDriver;
 
-    async fn do_prepare(&mut self, sql: &str) -> Result<Query<PostgresDriver>> {
+    async fn do_prepare(&mut self, sql: &str) -> Result<PostgresPrepared> {
         Ok(PostgresPrepared::new(
             self.0
                 .prepare(sql)
                 .await
                 .inspect_err(|e| log::error!("{e:#}"))?,
-        )
-        .into())
+        ))
     }
     fn run<'s>(
         &'s mut self,

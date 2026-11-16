@@ -550,7 +550,7 @@ macro_rules! impl_executor_transaction {
             fn do_prepare(
                 &mut self,
                 sql: &str,
-            ) -> impl Future<Output = ::tank_core::Result<::tank_core::Query<Self::Driver>>> + Send
+            ) -> impl Future<Output = ::tank_core::Result<<Self::Driver as ::tank_core::Driver>::Prepared>> + Send
             {
                 self.$connection.do_prepare(sql)
             }

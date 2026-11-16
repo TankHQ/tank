@@ -42,9 +42,7 @@ where
     }
 }
 
-/// Async query execution.
-///
-/// Implemented by connections.
+/// Async query execution. Implemented by connections.
 pub trait Executor: Send {
     /// Associated driver.
     type Driver: Driver;
@@ -70,7 +68,7 @@ pub trait Executor: Send {
         let mut query = query.as_query();
         async move {
             match query.as_mut() {
-                Query::Raw(RawQuery(sql)) => self.do_prepare(sql).await,
+                Query::Raw(RawQuery(sql)) => self.do_prepare(sql).await.map(Query::Prepared),
                 query => Ok(mem::take(query)),
             }
         }
@@ -80,7 +78,7 @@ pub trait Executor: Send {
     fn do_prepare(
         &mut self,
         _sql: &str,
-    ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
+    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Prepared>> + Send {
         future::ready(Err(anyhow!(
             "{} does not support prepare",
             self.driver().name().to_case(Case::Pascal)
@@ -198,7 +196,7 @@ impl<S: Executor + ?Sized> Executor for &mut S {
     fn do_prepare(
         &mut self,
         sql: &str,
-    ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
+    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Prepared>> + Send {
         (**self).do_prepare(sql)
     }
 

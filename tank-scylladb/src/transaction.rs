@@ -41,7 +41,7 @@ impl Executor for ScyllaDBTransaction<'_> {
         false
     }
 
-    async fn do_prepare(&mut self, sql: &str) -> Result<Query<ScyllaDBDriver>> {
+    async fn do_prepare(&mut self, sql: &str) -> Result<ScyllaDBPrepared> {
         let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
         let statement = self
             .connection
@@ -49,7 +49,7 @@ impl Executor for ScyllaDBTransaction<'_> {
             .prepare(sql)
             .await
             .with_context(make_context)?;
-        Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
+        Ok(ScyllaDBPrepared::new(statement))
     }
 
     fn run<'s>(

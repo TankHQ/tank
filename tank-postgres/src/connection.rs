@@ -109,7 +109,7 @@ impl PostgresConnection {
 impl Executor for PostgresConnection {
     type Driver = PostgresDriver;
 
-    async fn do_prepare(&mut self, sql: &str) -> Result<Query<PostgresDriver>> {
+    async fn do_prepare(&mut self, sql: &str) -> Result<PostgresPrepared> {
         let sql = sql.trim_end().trim_end_matches(';');
         let statement = self
             .client
@@ -117,7 +117,7 @@ impl Executor for PostgresConnection {
             .await
             .with_context(|| format!("While preparing the query:\n{}", truncate_long!(sql)))
             .inspect_err(|e| log::error!("{e:#}"))?;
-        Ok(PostgresPrepared::new(statement).into())
+        Ok(PostgresPrepared::new(statement))
     }
 
     fn run<'s>(
