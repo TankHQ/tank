@@ -17,6 +17,7 @@ pub struct ScyllaDBPrepared {
 }
 
 impl ScyllaDBPrepared {
+    #[inline(always)]
     pub(crate) fn new(statement: PreparedStatement) -> Self {
         Self {
             statement,
@@ -25,6 +26,7 @@ impl ScyllaDBPrepared {
         }
     }
 
+    #[inline]
     pub(crate) fn take_params(&mut self) -> Result<Vec<ValueWrap>> {
         self.index = 0;
         Ok(mem::take(&mut self.params))
@@ -32,20 +34,24 @@ impl ScyllaDBPrepared {
 }
 
 impl Prepared for ScyllaDBPrepared {
+    #[inline(always)]
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 
+    #[inline(always)]
     fn is_empty(&self) -> bool {
         self.statement.get_statement().is_empty()
     }
 
+    #[inline(always)]
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         self.params.clear();
         self.index = 0;
         Ok(self)
     }
 
+    #[inline(always)]
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         self.bind_index(value, self.index)
     }

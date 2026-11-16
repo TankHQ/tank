@@ -52,7 +52,7 @@ pub trait AsValue {
     {
         Err(anyhow!(
             "Cannot parse '{}' as {} (the parse method is not implemented)",
-            truncate_long!(input.as_ref()),
+            truncate_long!(input.as_ref(), true),
             any::type_name::<Self>()
         ))
     }

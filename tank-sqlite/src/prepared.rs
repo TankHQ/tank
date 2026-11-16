@@ -12,8 +12,8 @@ use std::{
     sync::Arc,
 };
 use tank_core::{
-    AnyQuery, AsValue, Context, Error, Fragment, Prepared, Result, SqlValueWriter, Value,
-    error_message_from_ptr, truncate_long,
+    AnyQuery, AsValue, Context, Error, ErrorContext, Fragment, Prepared, Result, SqlValueWriter,
+    Value, truncate_long,
 };
 
 /// Prepared statement wrapper for SQLite.
@@ -34,7 +34,7 @@ impl SQLitePrepared {
     #[inline(always)]
     pub(crate) fn new(statement: CBox<*mut sqlite3_stmt>) -> Self {
         Self {
-            statement: statement.into(),
+            statement,
             index: 0,
             labels: None,
             columns: 0,
@@ -111,29 +111,8 @@ impl SQLitePrepared {
 
     #[cold]
     #[inline(never)]
-    fn bind_error(&self, index: c_int, rc: c_int) -> Error {
-        let sql = unsafe { sqlite3_sql(*self.statement) };
-        let sql = if sql.is_null() {
-            ""
-        } else {
-            unsafe { CStr::from_ptr(sql) }
-                .to_str()
-                .unwrap_or("unprintable")
-        };
-        let ptr = unsafe { sqlite3_errmsg(sqlite3_db_handle(*self.statement)) };
-        let message = error_message_from_ptr(&ptr);
-        Error::msg(message.into_owned()).context(format!(
-            "Cannot bind the parameter {index} (rc {rc}) to query:\n{}",
-            truncate_long!(sql)
-        ))
-    }
-
-    #[cold]
-    #[inline(never)]
     fn unsupported_value(index: c_int, value: Value<'_>) -> Error {
-        Error::msg(format!(
-            "Cannot use {value:?} as the parameter at index {index}"
-        ))
+        anyhow!("Cannot use {value:?} as the parameter at index {index}")
     }
 }
 
@@ -163,7 +142,7 @@ impl Prepared for SQLitePrepared {
                 Error::msg(SQLiteConnection::last_error(sqlite3_db_handle(
                     *self.statement
                 ))),
-                "While clearing SQLite statement binadings"
+                "While clearing SQLite statement bindings"
             );
         }
         self.index = 0;
@@ -327,11 +306,12 @@ impl Display for SQLitePrepared {
             f.write_str("SQLitePrepared:")?;
             let ptr = sqlite3_sql(*self.statement);
             if !ptr.is_null() {
-                f.write_str("\n");
-                f.write_str(&truncate_long!(CStr::from_ptr(ptr).to_string_lossy(), true))
+                f.write_str("\n")?;
+                f.write_str(&truncate_long!(CStr::from_ptr(ptr).to_string_lossy(), true))?;
             } else {
-                write!(f, " {:p}", *self.statement)
+                write!(f, " {:p}", *self.statement)?;
             }
         }
+        Ok(())
     }
 }

@@ -10,7 +10,6 @@ use std::{
     borrow::Cow,
     env,
     iter::zip,
-    mem,
     path::PathBuf,
     pin::{Pin, pin},
     str::FromStr,
@@ -126,40 +125,33 @@ impl Executor for PostgresConnection {
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
         let mut query = query.as_query();
         let context = format!("While running the query:\n{}", query.as_mut());
-        let mut owned = mem::take(query.as_mut());
         try_stream! {
-            match owned {
-                Query::Raw(raw) => {
-                    let sql = &raw.0;
-                    {
-                        let stream = stream_postgres_simple_query_message_to_tank_query_result(
-                            async move || self.client.simple_query_raw(sql).await.map_err(Into::into),
-                        );
-                        let mut stream = pin!(stream);
-                        while let Some(value) = stream.next().await.transpose()? {
-                            yield value;
-                        }
-                    }
-                    *query.as_mut() = Query::Raw(raw);
+            // The raw variant streams without a transaction, borrow the caller's SQL so an
+            // abandoned stream leaves the query intact.
+            if let Query::Raw(RawQuery(sql)) = query.as_mut() {
+                let stream = stream_postgres_simple_query_message_to_tank_query_result(
+                    async move || self.client.simple_query_raw(sql.as_str()).await.map_err(Into::into),
+                );
+                let mut stream = pin!(stream);
+                while let Some(value) = stream.next().await.transpose()? {
+                    yield value;
                 }
-                Query::Prepared(..) => {
-                    let mut transaction = self.begin().await?;
-                    {
-                        let mut stream = pin!(transaction.run(&mut owned));
-                        while let Some(value) = stream.next().await.transpose()? {
-                            yield match value {
-                                QueryResult::Row(r) => QueryResult::Row(RowOwned::new(
-                                    r.labels().into(),
-                                    r.into_values().collect(),
-                                )),
-                                QueryResult::Affected(a) => QueryResult::Affected(a),
-                            };
-                        }
-                    }
-                    transaction.commit().await?;
-                    *query.as_mut() = mem::take(&mut owned);
+                return;
+            }
+            let mut transaction = self.begin().await?;
+            {
+                let mut stream = pin!(transaction.run(&mut *query.as_mut()));
+                while let Some(value) = stream.next().await.transpose()? {
+                    yield match value {
+                        QueryResult::Row(r) => QueryResult::Row(RowOwned::new(
+                            r.labels().into(),
+                            r.into_values().collect(),
+                        )),
+                        QueryResult::Affected(a) => QueryResult::Affected(a),
+                    };
                 }
             }
+            transaction.commit().await?;
         }
         .map_err(move |e: Error| {
             let error = e.context(context.clone());

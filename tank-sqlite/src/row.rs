@@ -1,6 +1,8 @@
+use crate::SQLiteConnection;
+use anyhow::anyhow;
 use libsqlite3_sys::*;
 use std::{borrow::Cow, ffi::c_int, hint, ops::Range, slice, sync::Arc};
-use tank_core::{Error, Result, Row, RowLabels, RowOwned, Value, error_message_from_ptr};
+use tank_core::{Error, Result, Row, RowLabels, RowOwned, Value};
 
 /// A stable row snapshot, independent of SQLite's transient column buffers.
 #[derive(Debug)]
@@ -31,15 +33,6 @@ impl SQLiteRowData {
         }
     }
 
-    #[cold]
-    #[inline(never)]
-    fn column_error(statement: *mut sqlite3_stmt, index: c_int) -> Error {
-        let ptr = unsafe { sqlite3_errmsg(sqlite3_db_handle(statement)) };
-        let message = error_message_from_ptr(&ptr);
-        Error::msg(message.into_owned())
-            .context(format!("Could not extract the column at index {index}"))
-    }
-
     fn read(&mut self, statement: *mut sqlite3_stmt) -> Result<()> {
         self.bytes.clear();
         for (index, cell) in self.cells.iter_mut().enumerate() {
@@ -64,7 +57,12 @@ impl SQLiteRowData {
                                 || len != 0
                                 || sqlite3_errcode(sqlite3_db_handle(statement)) == SQLITE_NOMEM
                             {
-                                return Err(Self::column_error(statement, index));
+                                return Err(Error::msg(SQLiteConnection::last_error(
+                                    sqlite3_db_handle(statement),
+                                ))
+                                .context(format!(
+                                    "Could not extract the column at index {index}"
+                                )));
                             }
                         } else {
                             self.bytes
@@ -79,9 +77,9 @@ impl SQLiteRowData {
                     }
                     kind => {
                         hint::cold_path();
-                        return Err(Error::msg(format!(
+                        return Err(anyhow!(
                             "Unexpected SQLite column type {kind} at index {index}"
-                        )));
+                        ));
                     }
                 }
             };

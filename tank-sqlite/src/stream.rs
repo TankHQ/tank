@@ -6,7 +6,9 @@ use std::{
     ptr,
     task::{Context, Poll},
 };
-use tank_core::{Error, Query, QueryResult, Result, RowsAffected, stream::Stream, truncate_long};
+use tank_core::{
+    Error, Prepared, Query, QueryResult, Result, RowsAffected, stream::Stream, truncate_long,
+};
 
 pub(crate) struct SQLiteStream<'s, Q: AsMut<Query<SQLiteDriver>>> {
     connection: &'s mut SQLiteConnection,
@@ -155,7 +157,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                         .context(format!(
                             "At byte {} of:\n{}",
                             self.offset,
-                            truncate_long!(raw.0.get(self.offset..).unwrap_or_default())
+                            truncate_long!(raw.0.get(self.offset..).unwrap_or_default(), true)
                         )));
                     }
                     self.offset += consumed;
@@ -253,12 +255,11 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Drop for SQLiteStream<'_, Q> {
             }
         }
         self.reset();
-        if let Query::Prepared(prepared) = self.query.as_mut() {
-            if !prepared.statement.is_null() {
-                if let Err(error) = prepared.release_bindings() {
-                    log::error!("{error:#}");
-                }
-            }
+        if let Query::Prepared(prepared) = self.query.as_mut()
+            && !prepared.statement.is_null()
+            && let Err(error) = prepared.clear_bindings()
+        {
+            log::error!("{error:#}");
         }
     }
 }

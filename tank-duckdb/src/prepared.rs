@@ -16,6 +16,7 @@ pub struct DuckDBPrepared {
 }
 
 impl DuckDBPrepared {
+    #[inline(always)]
     pub(crate) fn new(statement: CBox<duckdb_prepared_statement>) -> Self {
         Self {
             statement,
@@ -35,10 +36,12 @@ impl Display for DuckDBPrepared {
 }
 
 impl Prepared for DuckDBPrepared {
+    #[inline(always)]
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 
+    #[inline(always)]
     fn is_empty(&self) -> bool {
         self.statement.is_null()
     }
@@ -96,7 +99,7 @@ impl Prepared for DuckDBPrepared {
             };
             ensure_rc!(
                 state?,
-                Error::msg(error_message_from_ptr(&duckdb_prepare_error(prepared)).into_owned(),)
+                Error::msg(error_message_from_ptr(&duckdb_prepare_error(prepared)).into_owned())
                     .context(format!("While trying to bind the parameter {index}"))
             );
             self.index = index;

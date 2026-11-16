@@ -57,20 +57,24 @@ impl PostgresPrepared {
 }
 
 impl Prepared for PostgresPrepared {
+    #[inline(always)]
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 
+    #[inline(always)]
     fn is_empty(&self) -> bool {
         false
     }
 
+    #[inline(always)]
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         self.params.clear();
         self.index = 0;
         Ok(self)
     }
 
+    #[inline(always)]
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         self.bind_index(value, self.index)
     }
