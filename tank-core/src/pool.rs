@@ -27,7 +27,7 @@ pub struct DBConnectionManager<D: Driver> {
 }
 
 impl<D: Driver> DBConnectionManager<D> {
-    pub fn new(driver: D, url: Cow<'static, str>) -> Self {
+    pub const fn new(driver: D, url: Cow<'static, str>) -> Self {
         Self { driver, url }
     }
 }

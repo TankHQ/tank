@@ -80,7 +80,7 @@ impl AnyQuery {
     }
 
     #[inline(always)]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         match self {
             Self::Raw(RawQuery(sql)) => sql.len(),
             Self::Prepared(..) => 0,

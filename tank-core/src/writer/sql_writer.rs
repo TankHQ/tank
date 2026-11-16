@@ -430,7 +430,7 @@ pub trait SqlWriter:
 pub struct GenericSqlWriter;
 impl GenericSqlWriter {
     /// New generic writer.
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {}
     }
 }

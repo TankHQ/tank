@@ -133,6 +133,14 @@ where
     }
 }
 
+/// Borrows a `Cow<'_, str>` as `&str`, usable in constant functions.
+pub const fn cow_str<'a, 'b: 'a>(value: &'a Cow<'b, str>) -> &'a str {
+    match value {
+        Cow::Borrowed(value) => value,
+        Cow::Owned(value) => value.as_str(),
+    }
+}
+
 /// Quote an `Option<T>` into tokens.
 pub fn quote_option<T: ToTokens>(value: &Option<T>) -> TokenStream {
     match value {
@@ -350,7 +358,7 @@ pub fn decimal_from_scaled(mut mantissa: i128, mut scale: u32) -> Result<Decimal
 /// Largest byte offset `<= limit` that is a valid UTF-8 character boundary in `value`
 #[doc(hidden)]
 #[inline]
-pub fn truncate_bound(value: &str, limit: usize) -> usize {
+pub const fn truncate_bound(value: &str, limit: usize) -> usize {
     if value.len() <= limit {
         return value.len();
     }
@@ -426,24 +434,6 @@ pub fn describe_path(url: &Url) -> String {
             (host, "") => host.into(),
             (host, path) => format!("{host}{}", truncate_long(path)),
         })
-}
-
-/// Sends the value through the channel and logs in case of error.
-///
-/// Parameters:
-/// * `$tx`: sender channel
-/// * `$value`: value to be sent
-///
-/// *Example*:
-/// ```ignore
-/// send_value!(tx, Ok(QueryResult::Row(row)));
-/// ```
-
-#[macro_export]
-macro_rules! send_value {
-    ($tx:ident, $value:expr) => {{
-        let _ = $tx.send($value).inspect_err(|e| ::log::error!("{e:#}"));
-    }};
 }
 
 /// Incrementally accumulates tokens from a speculative parse stream until one

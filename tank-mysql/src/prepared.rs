@@ -21,7 +21,7 @@ pub struct MySQLPrepared {
 
 impl MySQLPrepared {
     #[inline(always)]
-    pub(crate) fn new(statement: Statement) -> Self {
+    pub(crate) const fn new(statement: Statement) -> Self {
         Self {
             statement,
             params: Vec::new(),

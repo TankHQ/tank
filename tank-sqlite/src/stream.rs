@@ -25,7 +25,7 @@ pub(crate) struct SQLiteStream<'s, Q: AsMut<Query<SQLiteDriver>>> {
 impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
     const BATCH_SIZE: u16 = 256;
 
-    pub(crate) fn new(connection: &'s mut SQLiteConnection, query: Q) -> Self {
+    pub(crate) const fn new(connection: &'s mut SQLiteConnection, query: Q) -> Self {
         Self {
             connection,
             query,

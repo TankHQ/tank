@@ -24,7 +24,7 @@ impl MongoDBPrepared {
             index: Default::default(),
         }
     }
-    pub fn get_payload(&self) -> &Payload {
+    pub const fn get_payload(&self) -> &Payload {
         &self.payload
     }
     pub(crate) fn take_payload(&mut self) -> Payload {

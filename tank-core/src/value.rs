@@ -145,7 +145,7 @@ impl<'a> Value<'a> {
 
     /// Checks if the value is NULL.
     #[inline(always)]
-    pub fn is_null(&self) -> bool {
+    pub const fn is_null(&self) -> bool {
         match self {
             Value::Null
             | Value::Boolean(None, ..)
@@ -267,7 +267,7 @@ impl<'a> Value<'a> {
     }
 
     /// Checks if the value is a scalar type (not an array, struct, etc.).
-    pub fn is_scalar(&self) -> bool {
+    pub const fn is_scalar(&self) -> bool {
         match self {
             Value::Boolean(..)
             | Value::Int8(..)

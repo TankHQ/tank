@@ -33,7 +33,7 @@ impl<F: Dataset, S: ExpressionCollection> UpdateQueryBuilder<F, S, NA> {
 }
 
 impl<F: Dataset, S: ExpressionCollection, W: Expression> UpdateQueryBuilder<F, S, W> {
-    pub fn get_from(&self) -> &F {
+    pub const fn get_from(&self) -> &F {
         &self.from
     }
 
@@ -41,7 +41,7 @@ impl<F: Dataset, S: ExpressionCollection, W: Expression> UpdateQueryBuilder<F, S
         self.set.expr_iter()
     }
 
-    pub fn get_where(&self) -> &Option<W> {
+    pub const fn get_where(&self) -> &Option<W> {
         &self.where_expr
     }
 

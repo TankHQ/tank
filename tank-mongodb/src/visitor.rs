@@ -550,7 +550,7 @@ struct NotRewriter<'p, 'a, 'h> {
     handled: &'h mut bool,
 }
 impl NotRewriter<'_, '_, '_> {
-    fn invert(op: BinaryOpType) -> Option<BinaryOpType> {
+    const fn invert(op: BinaryOpType) -> Option<BinaryOpType> {
         match op {
             BinaryOpType::Equal => Some(BinaryOpType::NotEqual),
             BinaryOpType::NotEqual => Some(BinaryOpType::Equal),

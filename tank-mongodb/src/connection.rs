@@ -23,14 +23,14 @@ pub struct MongoDBConnection {
 }
 
 impl MongoDBConnection {
-    pub(crate) fn new(client: Client, default_database: Database) -> Self {
+    pub(crate) const fn new(client: Client, default_database: Database) -> Self {
         MongoDBConnection {
             client,
             session: None,
             default_database,
         }
     }
-    pub fn is_session(&self) -> bool {
+    pub const fn is_session(&self) -> bool {
         self.session.is_some()
     }
     pub async fn start_session(&mut self) -> Result<&mut Self> {

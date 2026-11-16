@@ -65,7 +65,7 @@ pub struct IsPKCondition<'a> {
     retry: bool,
 }
 impl<'a> IsPKCondition<'a> {
-    pub fn new(keys_with_names: bool, prefix: String, table: &'a TableRef) -> Self {
+    pub const fn new(keys_with_names: bool, prefix: String, table: &'a TableRef) -> Self {
         IsPKCondition {
             keys_with_names,
             key: prefix,

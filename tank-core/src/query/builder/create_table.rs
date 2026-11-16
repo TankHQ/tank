@@ -68,11 +68,11 @@ impl<E, P> CreateTableQueryBuilder<E, bool, P> {
 }
 
 impl<E, C, P> CreateTableQueryBuilder<E, C, P> {
-    pub fn get_table(&self) -> &TableRef {
+    pub const fn get_table(&self) -> &TableRef {
         &self.table
     }
 
-    pub fn get_not_exists(&self) -> bool {
+    pub const fn get_not_exists(&self) -> bool {
         self.if_not_exists
     }
 

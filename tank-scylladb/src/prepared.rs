@@ -18,7 +18,7 @@ pub struct ScyllaDBPrepared {
 
 impl ScyllaDBPrepared {
     #[inline(always)]
-    pub(crate) fn new(statement: PreparedStatement) -> Self {
+    pub(crate) const fn new(statement: PreparedStatement) -> Self {
         Self {
             statement,
             params: Vec::new(),

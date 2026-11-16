@@ -12,7 +12,7 @@ pub enum DefaultValueType {
 }
 
 impl DefaultValueType {
-    pub fn is_set(&self) -> bool {
+    pub const fn is_set(&self) -> bool {
         matches!(
             self,
             DefaultValueType::Value(..) | DefaultValueType::Expression(..)

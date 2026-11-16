@@ -12,7 +12,7 @@ pub struct ValkeyPrepared {
 }
 
 impl ValkeyPrepared {
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.commands.is_empty()
     }
 

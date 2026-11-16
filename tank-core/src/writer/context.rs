@@ -118,7 +118,7 @@ impl Context {
         }
     }
 
-    pub fn switch_table<'s>(&'s mut self, table_ref: TableRef) -> ContextUpdater<'s> {
+    pub const fn switch_table<'s>(&'s mut self, table_ref: TableRef) -> ContextUpdater<'s> {
         let is_empty = table_ref.is_empty();
         ContextUpdater {
             current: Context {

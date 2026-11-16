@@ -1,4 +1,4 @@
-use crate::{ColumnDef, Entity, quote_cow};
+use crate::{ColumnDef, Entity, cow_str, quote_cow};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
 use std::borrow::Cow;
@@ -69,8 +69,10 @@ impl TableRef {
         result
     }
     /// Checks if the table reference has no name, schema, or alias.
-    pub fn is_empty(&self) -> bool {
-        self.name.is_empty() && self.schema.is_empty() && self.alias.is_empty()
+    pub const fn is_empty(&self) -> bool {
+        cow_str(&self.name).is_empty()
+            && cow_str(&self.schema).is_empty()
+            && cow_str(&self.alias).is_empty()
     }
 }
 

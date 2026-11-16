@@ -15,11 +15,11 @@ impl<F: Dataset> DeleteQueryBuilder<F, NA> {
 }
 
 impl<F: Dataset, W: Expression> DeleteQueryBuilder<F, W> {
-    pub fn get_from(&self) -> &F {
+    pub const fn get_from(&self) -> &F {
         &self.from
     }
 
-    pub fn get_where(&self) -> &Option<W> {
+    pub const fn get_where(&self) -> &Option<W> {
         &self.where_expr
     }
 

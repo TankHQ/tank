@@ -14,7 +14,7 @@ pub(crate) struct DuckdbAppender {
 }
 
 impl DuckdbAppender {
-    pub(crate) fn new(vector: duckdb_vector) -> Self {
+    pub(crate) const fn new(vector: duckdb_vector) -> Self {
         Self {
             vector,
             data: ptr::null_mut(),
@@ -23,7 +23,7 @@ impl DuckdbAppender {
     }
 
     /// Whether values like `value` can be written directly into a data chunk.
-    pub(crate) fn supports(value: &Value) -> bool {
+    pub(crate) const fn supports(value: &Value) -> bool {
         matches!(
             value,
             Value::Boolean(..)
@@ -100,7 +100,7 @@ impl DuckdbAppender {
     }
 
     #[inline(always)]
-    fn write<T>(&self, row: usize, value: T) {
+    const fn write<T>(&self, row: usize, value: T) {
         unsafe { self.data.cast::<T>().add(row).write(value) }
     }
 

@@ -1,6 +1,6 @@
 use crate::{
     AnyQuery, AsValue, DefaultValueType, Expression, ExpressionVisitor, OpPrecedence, SqlWriter,
-    TableRef, ValueOwned, writer::Context,
+    TableRef, ValueOwned, cow_str, writer::Context,
 };
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
@@ -138,17 +138,17 @@ impl ColumnDef {
         }
     }
     /// Sets whether the column accepts `NULL`.
-    pub fn nullable(mut self, nullable: bool) -> Self {
+    pub const fn nullable(mut self, nullable: bool) -> Self {
         self.nullable = nullable;
         self
     }
     /// Marks the column as primary key, several marked columns form a composite key in the table builder.
-    pub fn primary_key(mut self) -> Self {
+    pub const fn primary_key(mut self) -> Self {
         self.primary_key = PrimaryKeyType::PrimaryKey;
         self
     }
     /// Marks the column as unique.
-    pub fn unique(mut self) -> Self {
+    pub const fn unique(mut self) -> Self {
         self.unique = true;
         self
     }
@@ -163,26 +163,26 @@ impl ColumnDef {
         self
     }
     /// Sets the action performed when the referenced row is deleted.
-    pub fn on_delete(mut self, action: Action) -> Self {
+    pub const fn on_delete(mut self, action: Action) -> Self {
         self.on_delete = Some(action);
         self
     }
     /// Sets the action performed when the referenced row is updated.
-    pub fn on_update(mut self, action: Action) -> Self {
+    pub const fn on_update(mut self, action: Action) -> Self {
         self.on_update = Some(action);
         self
     }
     /// Column name.
-    pub fn name(&self) -> &str {
-        &self.column_ref.name
+    pub const fn name(&self) -> &str {
+        cow_str(&self.column_ref.name)
     }
     /// Table name.
-    pub fn table(&self) -> &str {
-        &self.column_ref.table
+    pub const fn table(&self) -> &str {
+        cow_str(&self.column_ref.table)
     }
     /// Schema name.
-    pub fn schema(&self) -> &str {
-        &self.column_ref.schema
+    pub const fn schema(&self) -> &str {
+        cow_str(&self.column_ref.schema)
     }
 }
 

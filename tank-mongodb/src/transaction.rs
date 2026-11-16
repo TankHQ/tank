@@ -7,7 +7,7 @@ pub struct MongoDBTransaction<'c> {
 }
 
 impl<'c> MongoDBTransaction<'c> {
-    pub fn new(connection: &'c mut MongoDBConnection, end_connection_session: bool) -> Self {
+    pub const fn new(connection: &'c mut MongoDBConnection, end_connection_session: bool) -> Self {
         Self {
             connection,
             end_connection_session,

@@ -13,7 +13,7 @@ pub struct ValkeySqlWriter {
 }
 
 impl ValkeySqlWriter {
-    pub fn new(separator: &'static str, keys_with_names: bool) -> Self {
+    pub const fn new(separator: &'static str, keys_with_names: bool) -> Self {
         Self {
             separator,
             keys_with_names,

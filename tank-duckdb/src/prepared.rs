@@ -17,7 +17,7 @@ pub struct DuckDBPrepared {
 
 impl DuckDBPrepared {
     #[inline(always)]
-    pub(crate) fn new(statement: CBox<duckdb_prepared_statement>) -> Self {
+    pub(crate) const fn new(statement: CBox<duckdb_prepared_statement>) -> Self {
         Self {
             statement,
             index: 0,

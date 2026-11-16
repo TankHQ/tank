@@ -60,12 +60,12 @@ impl ScyllaDBConnection {
     }
 
     /// Access the underlying session object from `scylla` crate
-    pub fn session_ref(&self) -> &Session {
+    pub const fn session_ref(&self) -> &Session {
         &self.session
     }
 
     /// Access the underlying session object from `scylla` crate
-    pub fn session_mut(&mut self) -> &mut Session {
+    pub const fn session_mut(&mut self) -> &mut Session {
         &mut self.session
     }
 }

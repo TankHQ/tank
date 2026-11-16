@@ -20,13 +20,13 @@ pub struct SelectQueryBuilder<Select, From, Where, GroupBy, Having, OrderBy, Lim
 
 impl<S, F, W, G, H, O, L, I> SelectQueryBuilder<S, F, W, G, H, O, L, I> {
     /// Selects distinct rows, `SELECT DISTINCT`.
-    pub fn distinct(mut self) -> Self {
+    pub const fn distinct(mut self) -> Self {
         self.distinct = true;
         self
     }
 
     /// Skips the first `offset` rows.
-    pub fn offset(mut self, offset: Option<u32>) -> Self {
+    pub const fn offset(mut self, offset: Option<u32>) -> Self {
         self.offset = offset;
         self
     }
@@ -177,11 +177,11 @@ where
         self.select.expr_iter()
     }
 
-    pub fn get_from(&self) -> &Option<From> {
+    pub const fn get_from(&self) -> &Option<From> {
         &self.from
     }
 
-    pub fn get_where(&self) -> &Option<impl Expression> {
+    pub const fn get_where(&self) -> &Option<impl Expression> {
         &self.where_expr
     }
 
@@ -192,7 +192,7 @@ where
         }
     }
 
-    pub fn get_having(&self) -> &Option<impl Expression> {
+    pub const fn get_having(&self) -> &Option<impl Expression> {
         &self.having
     }
 
@@ -203,15 +203,15 @@ where
         }
     }
 
-    pub fn get_limit(&self) -> Option<u32> {
+    pub const fn get_limit(&self) -> Option<u32> {
         self.limit
     }
 
-    pub fn get_offset(&self) -> Option<u32> {
+    pub const fn get_offset(&self) -> Option<u32> {
         self.offset
     }
 
-    pub fn is_distinct(&self) -> bool {
+    pub const fn is_distinct(&self) -> bool {
         self.distinct
     }
 }

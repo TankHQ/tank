@@ -23,11 +23,11 @@ pub type MariaDBSqlWriter = MySQLSqlWriter;
 impl MySQLSqlWriter {
     const DEFAULT_PK_VARCHAR_TYPE: &'static str = "VARCHAR(60)";
 
-    pub(crate) fn mysql() -> Self {
+    pub(crate) const fn mysql() -> Self {
         Self { mariadb: false }
     }
 
-    pub(crate) fn mariadb() -> Self {
+    pub(crate) const fn mariadb() -> Self {
         Self { mariadb: true }
     }
 

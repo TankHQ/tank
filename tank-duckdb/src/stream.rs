@@ -32,7 +32,7 @@ pub struct DuckDBStream<'s, Q: AsMut<Query<DuckDBDriver>>> {
 
 impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
     #[inline(always)]
-    pub(crate) fn new(connection: &'s mut DuckDBConnection, query: Q) -> Self {
+    pub(crate) const fn new(connection: &'s mut DuckDBConnection, query: Q) -> Self {
         Self {
             batch: None,
             row: 0,

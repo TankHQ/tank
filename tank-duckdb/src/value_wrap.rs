@@ -20,7 +20,7 @@ impl ValueWrap<'_> {
     const EPOCH_JULIAN_DAY: i32 = date!(1970 - 01 - 01).to_julian_day();
 
     #[inline(always)]
-    pub(crate) fn from_i128(v: i128) -> duckdb_hugeint {
+    pub(crate) const fn from_i128(v: i128) -> duckdb_hugeint {
         duckdb_hugeint {
             lower: v as _,
             upper: (v >> 64) as _,
@@ -28,12 +28,12 @@ impl ValueWrap<'_> {
     }
 
     #[inline(always)]
-    pub(crate) fn to_i128(v: &duckdb_hugeint) -> i128 {
+    pub(crate) const fn to_i128(v: &duckdb_hugeint) -> i128 {
         (v.upper as i128) << 64 | v.lower as i128
     }
 
     #[inline(always)]
-    pub(crate) fn from_u128(v: u128) -> duckdb_uhugeint {
+    pub(crate) const fn from_u128(v: u128) -> duckdb_uhugeint {
         duckdb_uhugeint {
             lower: v as _,
             upper: (v >> 64) as _,
@@ -74,7 +74,7 @@ impl ValueWrap<'_> {
     }
 
     #[inline(always)]
-    pub(crate) fn from_date(v: &Date) -> duckdb_date {
+    pub(crate) const fn from_date(v: &Date) -> duckdb_date {
         duckdb_date {
             days: v.to_julian_day() - Self::EPOCH_JULIAN_DAY,
         }
@@ -85,7 +85,7 @@ impl ValueWrap<'_> {
     }
 
     #[inline(always)]
-    pub(crate) fn from_time(v: &Time) -> duckdb_time {
+    pub(crate) const fn from_time(v: &Time) -> duckdb_time {
         let (h, m, s, us) = v.as_hms_micro();
         duckdb_time {
             micros: (h as i64 * 3_600 + m as i64 * 60 + s as i64) * 1_000_000 + us as i64,
@@ -110,7 +110,7 @@ impl ValueWrap<'_> {
     }
 
     #[inline(always)]
-    pub(crate) fn from_timestamp(v: &PrimitiveDateTime) -> duckdb_timestamp {
+    pub(crate) const fn from_timestamp(v: &PrimitiveDateTime) -> duckdb_timestamp {
         duckdb_timestamp {
             micros: Self::from_date(&v.date()).days as i64 * 86_400_000_000
                 + Self::from_time(&v.time()).micros,
@@ -134,14 +134,14 @@ impl ValueWrap<'_> {
     }
 
     #[inline(always)]
-    pub(crate) fn from_timestamptz(v: &OffsetDateTime) -> duckdb_timestamp {
+    pub(crate) const fn from_timestamptz(v: &OffsetDateTime) -> duckdb_timestamp {
         duckdb_timestamp {
             micros: (v.unix_timestamp_nanos() / 1_000) as _,
         }
     }
 
     #[inline(always)]
-    pub(crate) fn from_interval(v: &Interval) -> duckdb_interval {
+    pub(crate) const fn from_interval(v: &Interval) -> duckdb_interval {
         duckdb_interval {
             months: v.months,
             days: v.days,
@@ -151,7 +151,7 @@ impl ValueWrap<'_> {
 
     /// DuckDB stores a UUID as a `HUGEINT` with the sign bit flipped, so they sort as unsigned.
     #[inline(always)]
-    pub(crate) fn from_uuid(v: &Uuid) -> duckdb_hugeint {
+    pub(crate) const fn from_uuid(v: &Uuid) -> duckdb_hugeint {
         let (upper, lower) = v.as_u64_pair();
         duckdb_hugeint {
             lower,
@@ -160,12 +160,12 @@ impl ValueWrap<'_> {
     }
 
     #[inline(always)]
-    pub(crate) fn to_uuid(v: &duckdb_hugeint) -> Uuid {
+    pub(crate) const fn to_uuid(v: &duckdb_hugeint) -> Uuid {
         Uuid::from_u64_pair(v.upper as u64 ^ (1 << 63), v.lower)
     }
 
     #[inline(always)]
-    pub(crate) fn bytes_slice(b: &duckdb_string_t) -> &[u8] {
+    pub(crate) const fn bytes_slice(b: &duckdb_string_t) -> &[u8] {
         unsafe {
             let len = b.value.inlined.length as usize;
             let ptr = [

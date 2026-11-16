@@ -18,11 +18,11 @@ impl DropTableQueryBuilder<NA> {
 }
 
 impl<E> DropTableQueryBuilder<E> {
-    pub fn get_table(&self) -> &TableRef {
+    pub const fn get_table(&self) -> &TableRef {
         &self.table
     }
 
-    pub fn get_exists(&self) -> bool {
+    pub const fn get_exists(&self) -> bool {
         self.if_exists
     }
 

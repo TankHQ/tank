@@ -25,15 +25,15 @@ pub enum Query<D: Driver> {
 
 impl<D: Driver> Query<D> {
     /// New raw query.
-    pub fn raw(value: String) -> Self {
+    pub const fn raw(value: String) -> Self {
         Query::Raw(RawQuery(value))
     }
     /// New prepared query.
-    pub fn prepared(value: D::Prepared) -> Self {
+    pub const fn prepared(value: D::Prepared) -> Self {
         Query::Prepared(value)
     }
     /// True if it is the prepared variant.
-    pub fn is_prepared(&self) -> bool {
+    pub const fn is_prepared(&self) -> bool {
         matches!(self, Query::Prepared(..))
     }
     /// Renders raw SQL as borrowed text, or the prepared statement as debug text.
