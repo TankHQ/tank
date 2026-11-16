@@ -123,7 +123,7 @@ pub struct Operator {
 ###### 02 · Live Fire
 ## Every maneuver, one typed API
 
-Below are sample Rust operations and representative SQL or native query output for each backend. Each card defines its own entities and uses illustrative UUIDs; bulk-insert SQL may represent a native ingestion path. Swipe through the deck to cycle maneuvers and inspect the live fire across backends.
+Below are sample Rust operations and representative SQL or native query output for each backend. Each card defines its own entities and uses illustrative UUIDs. Bulk-insert SQL may represent a native ingestion path. Swipe through the deck to cycle maneuvers and inspect the live fire across backends.
 
 <SwipeDeck>
 

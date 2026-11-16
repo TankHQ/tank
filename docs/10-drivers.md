@@ -81,7 +81,7 @@ Override only differences from the generic fallback:
 - Pagination syntax via `write_limit_offset` if an offset needs a limit or different keywords
 - Upsert syntax via `write_insert_update_fragment` if divergence
 
-Call writer methods directly; overrides are dispatched normally. Use `self.as_dyn()` when passing the writer to an expression or dataset interface that requires a trait object, and in a default method that must reach a method declared on a sibling trait.
+Call writer methods directly. Overrides are dispatched normally. Use `self.as_dyn()` when passing the writer to an expression or dataset interface that requires a trait object, and in a default method that must reach a method declared on a sibling trait.
 
 Tip: Check the default methods of the writer traits in `tank-core` when overriding dialect behavior.
 
@@ -104,9 +104,11 @@ Enable feature flags to disable specific functionality until green.
 ### Feature Flags
 `tank-tests` exposes opt-out switches to avoid testing the driver on unsupported features:
 - `disable-arrays`: fixed-size arrays (example: `[u8; 13]`)
+- `disable-case`: conditional expressions (`if`, `match`, `CASE`) not supported
 - `disable-glob`: `GLOB` pattern matching not supported
 - `disable-groups`: `GROUP BY` SQL semantic not supported
 - `disable-infinity`: infinite values for floating point numbers
+- `disable-insert-select`: `INSERT ... SELECT` not supported
 - `disable-intervals`: interval / duration value types
 - `disable-joins`: SQL join semantics
 - `disable-large-integers`: `i128`, `u128`, or full-range `u64` values unsupported
@@ -129,7 +131,7 @@ Enable feature flags to disable specific functionality until green.
 - `prepare` handles multiple statements cleanly, or rejects them with an explicit error
 - Streams drop promptly (no leaked locks or file handles)
 - For SQL-text drivers, `SqlWriter` prints multi-statement sequences with proper separators and terminal `;`
-- Upsert path (`save()`) works if PK exists; documented fallback if not supported
+- Upsert path (`save()`) works if PK exists, with a documented fallback if not supported
 
 Remove a flag the moment your driver truly supports the capability. Each removed flag unlocks corresponding test sorties.
 

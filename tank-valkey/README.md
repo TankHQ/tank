@@ -36,7 +36,7 @@ use tank_valkey::ValkeyDriver;
 let driver = ValkeyDriver::default();
 let pool = driver
     .connect_pool(
-        "valkeys://user:password@127.0.0.1:6379/0?sslmode=require&sslrootcert=ca.pem&sslcert=client-cert.pem&sslkey=client-key.pem",
+        "valkeys://user:password@127.0.0.1:6379/0?sslrootcert=ca.pem&sslcert=client-cert.pem&sslkey=client-key.pem",
         PoolConfig::new(),
     )
     .await?;
@@ -61,7 +61,9 @@ Due to the key-value nature of Valkey and Redis, this driver has stricter limita
 - **Transactions use pipelines**: Tank queues commands and executes them through a Redis pipeline on `commit()`. `rollback()` is a no-op. Commands are not automatically wrapped in `MULTI/EXEC`.
 
 ## Running Tests
-Tests need a Valkey/Redis instance. Provide a connection URL via `TANK_VALKEY_TEST`. If absent, a containerized Valkey will be launched automatically using [testcontainers-modules](https://crates.io/crates/testcontainers-modules).
+The Valkey and Redis suites manage their own throwaway containers via [testcontainers-modules](https://crates.io/crates/testcontainers-modules). No database setup is needed. Set environment variable `TANK_VALKEY_TEST` / `TANK_REDIS_TEST` to use your own servers.
+
+Docker is required:
 
 1. Ensure Docker is running on Linux:
 ```sh

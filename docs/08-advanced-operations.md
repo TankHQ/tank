@@ -54,7 +54,7 @@ Objective: strongest certified transmissions excluding routine radio checks.
 <<< @/../tank-tests/src/operations.rs#operations-select-order
 
 ## Expr
-[`expr!()`](https://docs.rs/tank/latest/tank/macro.expr.html) parses a Rust-like expression into a typed AST that drivers translate into backend-specific queries. Use it for conditions or default values.
+[`expr!()`](https://docs.rs/tank/latest/tank/macro.expr.html) parses a Rust-like expression into a typed AST that drivers translate into backend-specific queries. Use it for query conditions and, through [`cols!`](#cols), for projections.
 
 It accepts a subset of Rust syntax with additional sentinel tokens for SQL semantics:
 - `42`, `1.2`, `"Alpha"`, `true`, `NULL`, `[1, 2, 3]` literal values

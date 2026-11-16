@@ -1,7 +1,7 @@
 use crate::{YourDBDriver, YourDBPrepared, YourDBTransaction};
 use std::borrow::Cow;
 use tank_core::{
-    AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, Result, Row, RowOwned, anyhow,
+    AsQuery, Connection, Executor, Query, QueryResult, Result, Row, RowOwned, anyhow, describe_url,
     stream::{self, Stream},
 };
 use url::Url;
@@ -32,10 +32,9 @@ impl Connection for YourDBConnection {
         let url = Self::sanitize_url(driver, url)?;
         let make_context = || {
             format!(
-                r#"Connecting to YourDB "{}""#,
-                describe_url::<YourDBDriver>(&url)
-            )
-        };
+            r#"Connecting to YourDB "{}""#,
+            describe_url::<YourDBDriver>(&url)
+        );
         // Establish connection
         Ok(YourDBConnection { url })
     }

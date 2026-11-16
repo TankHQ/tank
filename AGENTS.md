@@ -29,6 +29,8 @@ Read before modifying `tank-core`, `tank-macros`, or database drivers.
 - Prefer iterator/stream combinators and direct data flow over verbose state machines or extra helper types.
 - Keep test functions names short with at most three underscore-separated words.
 - Comments explain non-obvious invariants, ABI/LLVM constraints, or protocol subtleties, not obvious behavior. Keep them to 1-3 lines.
+- Never use semicolons or any non-ascii dash character in prose. Use a period, comma, colon, or ascii dash instead. Semicolons remain fine inside code blocks and inline code.
+- Keep documentation prose short and direct.
 
 ## Value Layout (`tank-core/src/value/`)
 

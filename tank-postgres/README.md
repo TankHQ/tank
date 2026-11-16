@@ -45,7 +45,9 @@ Run this inside an async function. The returned connection can execute Tank enti
 Certificate filenames are resolved relative to the working directory. Use paths appropriate for your deployment.
 
 ## Running Tests
-Tests need a Postgres instance. Provide a connection URL via `TANK_POSTGRES_TEST`. If absent, a containerized Postgres will be launched automatically using [testcontainers-modules](https://crates.io/crates/testcontainers-modules).
+The tests manage their own throwaway containers via [testcontainers-modules](https://crates.io/crates/testcontainers-modules). No database setup is needed. Set environment variable `TANK_POSTGRES_TEST` to use your own server.
+
+Docker is required:
 
 1. Ensure Docker is running on Linux:
 ```sh

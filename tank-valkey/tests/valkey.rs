@@ -19,7 +19,6 @@ mod tests {
 
         // Unencrypted
         let (url, container) = init_valkey(false).await;
-        let container = container.expect("Could not launch the container");
         {
             let driver: ValkeyDriver = ValkeyDriver::default();
             let mut pool = driver
@@ -44,7 +43,6 @@ mod tests {
 
         // SSL
         let (url, container) = init_valkey(true).await;
-        let container = container.expect("Could not launch the SSL container");
         {
             let driver: ValkeyDriver = ValkeyDriver::default();
             let mut pool = driver

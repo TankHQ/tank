@@ -12,4 +12,4 @@ This crate defines the types that form the foundation of the library. It is inte
 
 🖥️ https://github.com/TankHQ/tank
 
-📦 https://crates.io/crates/tank
+📦 https://crates.io/crates/tank-core

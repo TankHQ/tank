@@ -47,7 +47,9 @@ Certificate filenames are resolved relative to the working directory. Use paths 
 For mutual TLS, `tlsCertificateKeyFile` should point to a PEM file containing both the client certificate and private key.
 
 ## Running Tests
-Tests need a MongoDB instance. Provide a connection URL via `TANK_MONGODB_TEST`. If absent, a containerized MongoDB will be launched automatically using [testcontainers-modules](https://crates.io/crates/testcontainers-modules).
+The tests manage their own throwaway containers via [testcontainers-modules](https://crates.io/crates/testcontainers-modules). No database setup is needed. Set environment variable `TANK_MONGODB_TEST` to use your own server.
+
+Docker is required:
 
 1. Ensure Docker is running on Linux:
 ```sh

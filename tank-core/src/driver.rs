@@ -25,11 +25,11 @@ pub trait Driver: Default + Clone + Sync + Send + Debug {
     }
 
     /// Creates a connection pool from a string literal, owned `String`, or `Cow` URL.
-    fn connect_pool(
+    fn connect_pool<U: Into<Cow<'static, str>>>(
         &self,
-        url: impl Into<Cow<'static, str>>,
+        url: U,
         config: PoolConfig,
-    ) -> impl Future<Output = Result<impl ConnectionPool<Self>>> + Send {
+    ) -> impl Future<Output = Result<impl ConnectionPool<Self> + use<Self, U>>> + Send {
         let url = url.into();
         let config = config.into();
         async move {

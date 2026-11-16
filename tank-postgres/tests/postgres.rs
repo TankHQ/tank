@@ -20,7 +20,6 @@ mod tests {
 
         // Unencrypted
         let (url, container) = init(false).await;
-        let container = container.expect("Could not launch the container");
         let mut pool = DRIVER
             .connect_pool(url, PoolConfig::new())
             .await
@@ -31,7 +30,6 @@ mod tests {
 
         // SSL
         let (url, container) = init(true).await;
-        let container = container.expect("Could not launch the SSL container");
         let mut pool = DRIVER
             .connect_pool(url, PoolConfig::new())
             .await
@@ -58,7 +56,7 @@ mod tests {
         let url_full = Url::parse(&url_full).expect("Could not parse the url returned from init");
         let mut url_base = url_full.clone();
         url_base.set_query(None);
-        let _container = container.expect("Could not launch container");
+        let _container = container;
         let _ = PostgresConnection::connect(&PostgresDriver::new(), url_full.to_string().into())
             .await
             .expect("Connection should succeed");

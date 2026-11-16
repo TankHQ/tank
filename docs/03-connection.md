@@ -36,7 +36,7 @@ Every database connection abstraction implements the [`Connection`](https://docs
 
 Once the line is open, the connection exposes both the [`Connection`](https://docs.rs/tank/latest/tank/trait.Connection.html) and [`Executor`](https://docs.rs/tank/latest/tank/trait.Executor.html) interfaces. Supported operations depend on the driver: MongoDB and Valkey use native query representations rather than raw SQL or SQL preparation. Check the [capability matrix](04-capabilities.md) before deploying.
 
-The helpers below borrow a caller-owned driver and return opaque pools without boxing. Create the driver in the caller (e.g. `PostgresDriver::new()`), pass it by reference, and keep it alive while using the returned pool. See [Dynamic Pool](#dynamic-pool) when you need type erasure or a shared handle.
+The helpers below take a caller-owned driver and return opaque pools without boxing. Create the driver in the caller (e.g. `PostgresDriver::new()`) and pass it by reference. The pool keeps its own clone, so it can outlive the driver. See [Dynamic Pool](#dynamic-pool) when you need type erasure or a shared handle.
 
 ### Postgres
 Postgres is your heavy artillery: powerful, networked, built for sustained campaigns with multiple units coordinating strikes.
@@ -251,6 +251,7 @@ Parameters:
 - `tcp_nodelay (bool)`: Set the nodelay TCP flag, true by default.
 - `tcp_keepalive_interval (f64)`: Interval between keepalive TCP messages in seconds, by default no keepalive messages are sent.
 - `keepalive_interval (f64)`: Interval in seconds between keepalive CQL messages, the default is 30.
+- `keepalive_timeout (f64)`: Timeout in seconds for keepalive CQL messages.
 - `disallow_shard_aware_port (bool)`: Prevents the driver from connecting to the shard-aware port, even if the node supports it (ScyllaDB only).
 - `compression`: Data compression algorithm, no compression by default:
     - `lz4`
