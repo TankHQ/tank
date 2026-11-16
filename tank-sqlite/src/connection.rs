@@ -56,7 +56,7 @@ impl SQLiteConnection {
             Error::msg(Self::last_error(*self.handle)),
             format!(
                 "While executing:\n{}",
-                truncate_long!(statement.to_string_lossy(), true),
+                truncate_long(&statement.to_string_lossy()),
             )
         );
         Ok(())
@@ -195,7 +195,7 @@ impl Executor for SQLiteConnection {
 
     async fn do_prepare(&mut self, sql: &str) -> Result<SQLitePrepared> {
         let prepared = unsafe {
-            let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
+            let make_context = || format!("While preparing the query:\n{}", truncate_long(sql));
             let len = c_int::try_from(sql.len())?;
             let sql: CString = CString::new(sql.as_bytes())?;
             let mut statement = CBox::new(ptr::null_mut(), |p: *mut sqlite3_stmt| {
@@ -219,7 +219,7 @@ impl Executor for SQLiteConnection {
                 hint::cold_path();
                 let error = anyhow!(
                     "Cannot prepare multiple statements at a time (remaining: {})",
-                    truncate_long!(char_ptr_to_string(tail), true)
+                    truncate_long(&char_ptr_to_string(tail))
                 )
                 .context(make_context());
                 log::error!("{error:#}");

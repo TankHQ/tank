@@ -10,7 +10,7 @@ pub struct RawQuery(pub String);
 
 impl Display for RawQuery {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", truncate_long!(self.0))
+        write!(f, "{}", truncate_long(&self.0))
     }
 }
 

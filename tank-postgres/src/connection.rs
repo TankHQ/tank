@@ -114,7 +114,7 @@ impl Executor for PostgresConnection {
             .client
             .prepare(&sql)
             .await
-            .with_context(|| format!("While preparing the query:\n{}", truncate_long!(sql)))
+            .with_context(|| format!("While preparing the query:\n{}", truncate_long(sql)))
             .inspect_err(|e| log::error!("{e:#}"))?;
         Ok(PostgresPrepared::new(statement))
     }

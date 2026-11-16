@@ -32,7 +32,7 @@ pub trait Connection: Executor {
         let make_context = || {
             format!(
                 r#"While parsing the connection URL "{}""#,
-                truncate_long!(url)
+                truncate_long(&url)
             )
         };
         let mut result = Url::parse(&url)

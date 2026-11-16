@@ -143,7 +143,7 @@ impl Executor for ValkeyConnection {
             let context = || {
                 format!(
                     "While executing the query: {}",
-                    truncate_long!(format!("{pipeline:?}"), true)
+                    truncate_long(&format!("{pipeline:?}"))
                 )
             };
             let raw_result = pipeline

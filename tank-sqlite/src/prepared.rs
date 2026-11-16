@@ -307,7 +307,11 @@ impl Display for SQLitePrepared {
             let ptr = sqlite3_sql(*self.statement);
             if !ptr.is_null() {
                 f.write_str("\n")?;
-                f.write_str(&truncate_long!(CStr::from_ptr(ptr).to_string_lossy(), true))?;
+                write!(
+                    f,
+                    "{}",
+                    truncate_long(&CStr::from_ptr(ptr).to_string_lossy())
+                )?;
             } else {
                 write!(f, " {:p}", *self.statement)?;
             }

@@ -1025,7 +1025,7 @@ impl SqlWriter for MongoDBSqlWriter {
             else {
                 log::error!(
                     "Failed to get the bson in MongoDBSqlWriter::write_select while rendering the column {}",
-                    truncate_long!(&name, true)
+                    truncate_long(&name)
                 );
                 return;
             };
@@ -1108,7 +1108,7 @@ impl SqlWriter for MongoDBSqlWriter {
             else {
                 log::error!(
                     "Failed to get the bson in MongoDBSqlWriter::write_select while rendering the {} column",
-                    truncate_long!(&name, true)
+                    truncate_long(&name)
                 );
                 return;
             };

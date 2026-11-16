@@ -42,7 +42,7 @@ impl Executor for ScyllaDBTransaction<'_> {
     }
 
     async fn do_prepare(&mut self, sql: &str) -> Result<ScyllaDBPrepared> {
-        let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
+        let make_context = || format!("While preparing the query:\n{}", truncate_long(sql));
         let statement = self
             .connection
             .session

@@ -52,7 +52,7 @@ pub trait AsValue {
     {
         Err(anyhow!(
             "Cannot parse '{}' as {} (the parse method is not implemented)",
-            truncate_long!(input.as_ref(), true),
+            truncate_long(input.as_ref()),
             any::type_name::<Self>()
         ))
     }
@@ -548,23 +548,23 @@ impl_as_value!(
         if v.chars().count() != 1 {
             return Err(anyhow!(
                 "Cannot convert varchar `{}` to char because it has more than one character",
-                truncate_long!(v)
+                truncate_long(&v)
             ))
         }
         v.chars()
             .next()
-            .ok_or_else(|| anyhow!("Cannot convert varchar `{}` to char", truncate_long!(v)))
+            .ok_or_else(|| anyhow!("Cannot convert varchar `{}` to char", truncate_long(&v)))
     },
     Value::Json(Some(serde_json::Value::String(v)), ..) => {
         if v.chars().count() != 1 {
             return Err(anyhow!(
                 "Cannot convert json `{}` to char because it has more than one character",
-                truncate_long!(v)
+                truncate_long(&v)
             ))
         }
         v.chars()
             .next()
-            .ok_or_else(|| anyhow!("Cannot convert json `{}` to char", truncate_long!(v)))
+            .ok_or_else(|| anyhow!("Cannot convert json `{}` to char", truncate_long(&v)))
     },
     value @ (
         Value::Int8(Some(..), ..)
@@ -671,7 +671,7 @@ impl AsValue for Box<[u8]> {
         .map(Into::into)
         .context(format!(
             "While decoding `{}` as {}",
-            truncate_long!(input),
+            truncate_long(input),
             any::type_name::<Self>()
         ))?;
         Ok(result)
@@ -691,7 +691,7 @@ impl AsValue for &Box<[u8]> {
 }
 
 impl_as_value!(Interval, Value::Interval, |mut input: &str| {
-    let make_context = || anyhow!("Cannot parse interval from `{}`", truncate_long!(input));
+    let make_context = || anyhow!("Cannot parse interval from `{}`", truncate_long(input));
     match input.chars().peekable().peek() {
         Some(v) if *v == '"' || *v == '\'' => {
             input = &input[1..];
@@ -836,7 +836,7 @@ impl_as_value!(time::Duration, Value::Interval, |v| {
 
 impl_as_value!(Uuid, Value::Uuid, |input: &str| {
     let uuid = Uuid::parse_str(input)
-        .with_context(|| format!("Cannot parse a uuid value from `{}`", truncate_long!(input)))?;
+        .with_context(|| format!("Cannot parse a uuid value from `{}`", truncate_long(input)))?;
     Ok(uuid)
 });
 
@@ -878,7 +878,7 @@ impl_as_value!(
     |input: &str| {
         let mut value = input;
         let mut result: time::Date = parse_time!(value, "[year]-[month]-[day]")
-            .ok_or_else(|| anyhow!("Cannot parse `{}` as time::Date", truncate_long!(input)))?;
+            .ok_or_else(|| anyhow!("Cannot parse `{}` as time::Date", truncate_long(input)))?;
         {
             let mut attempt = value.trim_start();
             let suffix = consume_while(&mut attempt, char::is_ascii_alphabetic);
@@ -892,7 +892,7 @@ impl_as_value!(
             }
         }
         if !value.is_empty() {
-            return Err(anyhow!("Cannot parse `{}` as time::Date", truncate_long!(input)))
+            return Err(anyhow!("Cannot parse `{}` as time::Date", truncate_long(input)))
         }
         Ok(result)
     },
@@ -914,9 +914,9 @@ impl_as_value!(
             "[hour]:[minute]:[second]",
             "[hour]:[minute]",
         )
-        .ok_or_else(|| anyhow!("Cannot parse `{}` as time::Time", truncate_long!(input)))?;
+        .ok_or_else(|| anyhow!("Cannot parse `{}` as time::Time", truncate_long(input)))?;
         if !input.is_empty() {
-            return Err(anyhow!("Cannot parse `{}` as time::Time", truncate_long!(input)))
+            return Err(anyhow!("Cannot parse `{}` as time::Time", truncate_long(input)))
         }
         Ok(result)
     },
@@ -950,13 +950,13 @@ impl_as_value!(
         .ok_or_else(|| {
             anyhow!(
                 "Cannot parse `{}` as time::PrimitiveDateTime",
-                truncate_long!(input)
+                truncate_long(input)
             )
         })?;
         if !input.is_empty() {
             return Err(anyhow!(
                 "Cannot parse `{}` as time::PrimitiveDateTime",
-                truncate_long!(input)
+                truncate_long(input)
             ));
         }
         Ok(result)
@@ -1015,7 +1015,7 @@ impl_as_value!(
         if let Ok(result) = <PrimitiveDateTime as AsValue>::parse(original) {
             return Ok(result.assume_utc());
         }
-        Err(anyhow!("Cannot parse `{}` as time::OffsetDateTime", truncate_long!(original)))
+        Err(anyhow!("Cannot parse `{}` as time::OffsetDateTime", truncate_long(original)))
     },
     Value::Timestamp(Some(timestamp), ..) => Ok(timestamp.assume_utc()),
 );
@@ -1283,7 +1283,7 @@ impl_as_value! { @copy Decimal {
         Ok(input.parse::<Decimal>().with_context(|| {
             anyhow!(
                 "Cannot parse a decimal value from `{}`",
-                truncate_long!(input)
+                truncate_long(input)
             )
         })?)
     }

@@ -8,7 +8,7 @@ use std::{
     cmp::min,
     collections::BTreeMap,
     ffi::{CStr, CString, c_char},
-    fmt::Write,
+    fmt::{self, Display, Write},
     hint, iter, ptr,
 };
 use syn::Path;
@@ -361,49 +361,31 @@ pub fn truncate_bound(value: &str, limit: usize) -> usize {
     end
 }
 
-#[macro_export]
-/// Truncate long strings for logging and error messages purpose.
+/// Shortens long strings for logging and error messages.
 ///
-/// Returns a `format_args!` that yields at most `TRUNCATE_LONG_LIMIT` bytes from
-/// the start of the input followed by `...` when truncation occurred. Minimal
-/// overhead. Multi-byte characters are not split.
-///
-/// If true is the second argument, it evaluates the first argument just once.
-///
-/// # Examples
-/// ```ignore
-/// use tank_core::truncate_long;
-/// let short = "SELECT 1";
-/// assert_eq!(format!("{}", truncate_long!(short)), "SELECT 1\n");
-/// let long = format!("SELECT {}", "X".repeat(600));
-/// let logged = format!("{}", truncate_long!(long));
-/// assert!(logged.starts_with("SELECT XXXXXX"));
-/// assert!(logged.ends_with("...\n"));
-/// ```
-macro_rules! truncate_long {
-    ($query:expr) => {
-        format_args!(
-            "{}{}",
-            $query[..$crate::truncate_bound(&*$query, $crate::TRUNCATE_LONG_LIMIT)].trim(),
-            if $query.len() > $crate::TRUNCATE_LONG_LIMIT {
-                "...\n"
-            } else {
-                ""
-            },
-        )
-    };
-    ($query:expr,true) => {{
-        let query = $query;
-        format!(
-            "{}{}",
-            query[..$crate::truncate_bound(&*query, $crate::TRUNCATE_LONG_LIMIT)].trim(),
-            if query.len() > $crate::TRUNCATE_LONG_LIMIT {
-                "...\n"
-            } else {
-                ""
-            },
-        )
-    }};
+/// Yields at most [`TRUNCATE_LONG_LIMIT`] bytes from the start of the input,
+/// followed by `...` when truncation occurred. Multi-byte characters are not split.
+pub fn truncate_long(text: &str) -> impl Display + '_ {
+    struct Truncated<'a> {
+        prefix: &'a str,
+        suffix: &'a str,
+    }
+
+    impl Display for Truncated<'_> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str(self.prefix)?;
+            f.write_str(self.suffix)
+        }
+    }
+
+    Truncated {
+        prefix: text[..truncate_bound(text, TRUNCATE_LONG_LIMIT)].trim(),
+        suffix: if text.len() > TRUNCATE_LONG_LIMIT {
+            "...\n"
+        } else {
+            ""
+        },
+    }
 }
 
 /// Builds a short, log friendly description of a networked connection target:
@@ -422,7 +404,7 @@ pub fn describe_url<D: Driver>(url: &Url) -> String {
         .path_segments()
         .and_then(|mut v| v.find(|s| !s.is_empty()))
     {
-        let _ = write!(&mut target, "/{}", truncate_long!(database));
+        let _ = write!(&mut target, "/{}", truncate_long(database));
     }
     target
 }
@@ -437,12 +419,12 @@ pub fn describe_path(url: &Url) -> String {
         .or_else(|| {
             url.query_pairs()
                 .find(|(k, _)| k.eq_ignore_ascii_case("path"))
-                .map(|(_, v)| format!("{}", truncate_long!(v)))
+                .map(|(_, v)| format!("{}", truncate_long(&v)))
         })
         .unwrap_or_else(|| match (url.host_str().unwrap_or_default(), url.path()) {
             ("", "" | "/") => "N/A".into(),
             (host, "") => host.into(),
-            (host, path) => format!("{host}{}", truncate_long!(path)),
+            (host, path) => format!("{host}{}", truncate_long(path)),
         })
 }
 

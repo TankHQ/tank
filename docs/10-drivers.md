@@ -144,7 +144,7 @@ Remove a flag the moment your driver truly supports the capability. Each removed
 Return early with rich context:
 - Return errors for recoverable failures rather than panicking
 - Wrong URL prefix: immediate `anyhow!("YourDB connection URL must start with yourdb://")`
-- Prepare failure: attach truncated query text (`truncate_long!` style) to context
+- Prepare failure: attach truncated query text (`truncate_long` style) to context
 - Bind failure: specify parameter index and offending value type
 
 *Forge the chassis. Calibrate the barrel. Roll new armor onto the field.*

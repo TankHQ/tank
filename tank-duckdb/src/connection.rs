@@ -130,7 +130,7 @@ impl Executor for DuckDBConnection {
                 );
                 Ok(DuckDBPrepared::new(prepared))
             })()
-            .with_context(|| format!("While preparing the query:\n{}", truncate_long!(sql)))
+            .with_context(|| format!("While preparing the query:\n{}", truncate_long(sql)))
             .inspect_err(|error| log::error!("{error:#}")),
         )
     }

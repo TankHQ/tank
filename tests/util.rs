@@ -1061,10 +1061,10 @@ mod tests {
 
     #[test]
     fn truncate_multibyte() {
-        assert_eq!(format!("{}", truncate_long!("SELECT 1")), "SELECT 1");
+        assert_eq!(format!("{}", truncate_long("SELECT 1")), "SELECT 1");
 
         let long_ascii = "X".repeat(TRUNCATE_LONG_LIMIT + 100);
-        let truncated = format!("{}", truncate_long!(long_ascii));
+        let truncated = format!("{}", truncate_long(&long_ascii));
         assert!(truncated.ends_with("...\n"));
         assert_eq!(
             truncated.trim_end_matches("...\n").trim().len(),
@@ -1072,11 +1072,18 @@ mod tests {
         );
 
         let long_utf8 = "€".repeat(TRUNCATE_LONG_LIMIT);
-        let truncated = format!("{}", truncate_long!(long_utf8));
+        let truncated = format!("{}", truncate_long(&long_utf8));
         assert!(truncated.ends_with("...\n"));
 
-        let truncated = format!("{}", truncate_long!(long_utf8.clone(), true));
+        // The input expression is evaluated once.
+        fn input<'a>(calls: &mut usize, text: &'a str) -> &'a str {
+            *calls += 1;
+            text
+        }
+        let mut calls = 0;
+        let truncated = format!("{}", truncate_long(input(&mut calls, &long_utf8)));
         assert!(truncated.ends_with("...\n"));
+        assert_eq!(calls, 1);
     }
 
     #[test]

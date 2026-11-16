@@ -157,7 +157,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                         .context(format!(
                             "At byte {} of:\n{}",
                             self.offset,
-                            truncate_long!(raw.0.get(self.offset..).unwrap_or_default(), true)
+                            truncate_long(raw.0.get(self.offset..).unwrap_or_default())
                         )));
                     }
                     self.offset += consumed;
