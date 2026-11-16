@@ -134,7 +134,7 @@ where
 }
 
 /// Borrows a `Cow<'_, str>` as `&str`, usable in constant functions.
-pub const fn cow_str<'a, 'b: 'a>(value: &'a Cow<'b, str>) -> &'a str {
+pub(crate) const fn cow_str<'a, 'b: 'a>(value: &'a Cow<'b, str>) -> &'a str {
     match value {
         Cow::Borrowed(value) => value,
         Cow::Owned(value) => value.as_str(),
