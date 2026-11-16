@@ -28,7 +28,7 @@ Before you can unleash Tank's firepower, secure your supply lines. Open a **Conn
     * **Direct**: [`PostgresConnection::connect(&driver, "postgres://...".into()).await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.connect) opens a single unmanaged connection using the driver-specific connection type.
 
 2. **Deploy**: Use the connection for queries, inserts, updates, and deletes.
-3. **Lock (optional)**: Start a transaction with [`connection.begin().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.begin). This borrows the connection; all operations route through the transactional executor until `commit()` or `rollback()`.
+3. **Lock (optional)**: Start a transaction with [`connection.begin().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.begin). This borrows the connection. All operations route through the transactional executor until `commit()` or `rollback()`.
 4. **Terminate**: Direct connections close when dropped. Pooled connections return to their pool instead. [`disconnect().await?`](https://docs.rs/tank/latest/tank/trait.Connection.html#method.disconnect) requests an explicit shutdown when supported, but does not force a pooled connection to close.
 
 ## Connect
@@ -120,6 +120,7 @@ async fn establish_mysql_connection(driver: &MySQLDriver) -> Result<impl Connect
 
 **URL Format**:
 - `mysql://user:password@host:port/database`
+- `mariadb://user:password@host:port/database`
 
 Parameters:
 - `require_ssl (bool)`: Require secure connection, defaults to false.
@@ -130,7 +131,7 @@ Parameters:
 Additional URL parameters are passed directly to the mysql_async API. See the full list of supported options from options structure [Opts](https://docs.rs/mysql_async/latest/mysql_async/struct.Opts.html).
 
 > [!NOTE]
-> **MariaDB support**: use `MariaDBDriver::mariadb()` with a `mysql://` URL to enable MariaDB mode. When active, Tank uses MariaDB native column types where they differ from MySQL, most notably `UUID` instead of `CHAR(36)` (needs MariaDB 10.7+) and `INET6` instead of `VARCHAR(45)`.
+> **MariaDB support**: use `MariaDBDriver::mariadb()`, or a URL starting with `mariadb://`, to select MariaDB mode. In that mode Tank uses MariaDB native types, such as `UUID` instead of `CHAR(36)` (MariaDB 10.7+) and `INET6` instead of `VARCHAR(45)`.
 
 ### DuckDB
 DuckDB is your embedded artillery piece: fast, local, and always ready. Perfect for rapid deployment scenarios and testing under fire.
@@ -278,7 +279,7 @@ The parameters are used to create an object of type [`SessionBuilder`](https://d
 
 `driver.connect_pool(...)` returns an opaque `impl ConnectionPool<Driver>` type. The compiler knows its concrete type, but you cannot name that return type directly in a struct field.
 
-Use [`into_box()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_box) or [`into_arc()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_arc) to type-erase the pool into a `Box<dyn ConnectionPool<D>>` or `Arc<dyn ConnectionPool<D>>` respectively. Both can be stored in struct fields; use `Arc` for a clonable shared handle:
+Use [`into_box()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_box) or [`into_arc()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.into_arc) to type-erase the pool into a `Box<dyn ConnectionPool<D>>` or `Arc<dyn ConnectionPool<D>>` respectively. Both can be stored in struct fields. Use `Arc` for a clonable shared handle:
 
 ```rust
 use tank::{ConnectionPool, Driver, PoolConfig, Result};

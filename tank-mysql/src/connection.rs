@@ -26,6 +26,10 @@ impl Connection for MySQLConnection {
         let mut driver = *driver;
         if url.scheme() == "mariadb" {
             driver.mariadb = true;
+            // `mysql_async` only accepts the `mysql` scheme.
+            url.set_scheme("mysql")
+                .map_err(|_| anyhow!("Could not normalize the MariaDB URL scheme"))
+                .with_context(make_context)?;
         }
         let take_url_param = |url: &mut Url, key: &str, env_var: &str, remove: bool| {
             let value = url
