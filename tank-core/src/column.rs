@@ -1,5 +1,5 @@
 use crate::{
-    AsValue, DefaultValueType, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter,
+    AnyQuery, AsValue, DefaultValueType, Expression, ExpressionVisitor, OpPrecedence, SqlWriter,
     TableRef, ValueOwned, writer::Context,
 };
 use proc_macro2::TokenStream;
@@ -213,7 +213,7 @@ impl OpPrecedence for ColumnRef {
 }
 
 impl Expression for ColumnRef {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         writer.write_column_ref(context, out, self);
     }
     fn accept_visitor(
@@ -221,7 +221,7 @@ impl Expression for ColumnRef {
         matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
     ) -> bool {
         matcher.visit_column(writer, context, out, self)
     }
@@ -234,7 +234,7 @@ impl OpPrecedence for ColumnDef {
 }
 
 impl Expression for ColumnDef {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         writer.write_column_ref(context, out, &self.column_ref);
     }
 
@@ -243,7 +243,7 @@ impl Expression for ColumnDef {
         matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
     ) -> bool {
         matcher.visit_column(writer, context, out, &self.column_ref)
     }

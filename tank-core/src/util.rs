@@ -1,4 +1,4 @@
-use crate::{AsValue, ColumnDef, Driver, DynQuery, Result, TableRef, Value, anyhow};
+use crate::{AnyQuery, AsValue, ColumnDef, Driver, Result, TableRef, Value, anyhow};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
 use rust_decimal::{Decimal, prelude::ToPrimitive};
@@ -154,12 +154,12 @@ pub fn matches_path(path: &Path, expect: &[&str]) -> bool {
 
 /// Write an iterator of items separated by a delimiter into a string.
 pub fn separated_by<T, F>(
-    out: &mut DynQuery,
+    out: &mut AnyQuery,
     values: impl IntoIterator<Item = T>,
     mut f: F,
     separator: &str,
 ) where
-    F: FnMut(&mut DynQuery, T),
+    F: FnMut(&mut AnyQuery, T),
 {
     let mut len = out.len();
     for v in values {
@@ -173,7 +173,7 @@ pub fn separated_by<T, F>(
 
 /// Write, escaping occurrences of `search` char with `replace` while copying into buffer.
 #[inline]
-pub fn write_escaped(out: &mut DynQuery, value: &str, search: char, replace: &str) {
+pub fn write_escaped(out: &mut AnyQuery, value: &str, search: char, replace: &str) {
     let mut rest = value;
     let char_len = search.len_utf8();
     while let Some(i) = rest.find(search) {
@@ -186,7 +186,7 @@ pub fn write_escaped(out: &mut DynQuery, value: &str, search: char, replace: &st
 
 /// Write `value` left padded with zeros to at least `width` digits, without going through `fmt`.
 #[inline]
-pub fn write_zero_padded(out: &mut DynQuery, value: u32, width: usize) {
+pub fn write_zero_padded(out: &mut AnyQuery, value: u32, width: usize) {
     let mut buffer = itoa::Buffer::new();
     let digits = buffer.format(value);
     let zeros = min(width.saturating_sub(digits.len()), 9);
@@ -549,7 +549,7 @@ macro_rules! impl_executor_transaction {
 
             fn do_prepare(
                 &mut self,
-                sql: String,
+                sql: &str,
             ) -> impl Future<Output = ::tank_core::Result<::tank_core::Query<Self::Driver>>> + Send
             {
                 self.$connection.do_prepare(sql)

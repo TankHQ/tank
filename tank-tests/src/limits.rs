@@ -7,7 +7,7 @@ use std::{
     sync::LazyLock,
 };
 use tank::{
-    Driver, DynQuery, Entity, Executor, FixedDecimal, Interval, QueryResult, RawQuery, Result,
+    AnyQuery, Driver, Entity, Executor, FixedDecimal, Interval, QueryResult, RawQuery, Result,
     RowsAffected, Sql, expr,
     stream::{StreamExt, TryStreamExt},
 };
@@ -328,7 +328,7 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
         let driver = executor.driver();
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .delete_from(Limits::table())
             .build_into(&driver, &mut query);

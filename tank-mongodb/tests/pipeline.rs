@@ -33,7 +33,8 @@ mod tests {
             ))
             .group_by([MyType::first_column, MyType::third_column])
             .having(expr!(MyType::first_column >= "a"))
-            .build(&DRIVER);
+            .build(&DRIVER)
+            .into_any();
         let Some(Payload::Aggregate(AggregatePayload { pipeline, .. })) = query
             .as_prepared::<MongoDBDriver>()
             .and_then(|v| Some(v.get_payload()))
@@ -133,7 +134,8 @@ mod tests {
                     && country != "FR%" as LIKE
             ))
             .limit(Some(1000))
-            .build(&DRIVER);
+            .build(&DRIVER)
+            .into_any();
 
         let Some(Payload::Aggregate(AggregatePayload { pipeline, .. })) = query
             .as_prepared::<MongoDBDriver>()
@@ -257,7 +259,8 @@ mod tests {
         let mut query = Sql()
             .select(cols!(Transaction::id, ABS(Transaction::amount),))
             .from(Transaction::table())
-            .build(&DRIVER);
+            .build(&DRIVER)
+            .into_any();
 
         let Some(Payload::FindMany(FindManyPayload { options, .. })) = query
             .as_prepared::<MongoDBDriver>()
@@ -379,7 +382,8 @@ mod tests {
             ))
             .limit(Some(25))
             .offset(Some(10))
-            .build(&DRIVER);
+            .build(&DRIVER)
+            .into_any();
 
         let Some(Payload::Aggregate(AggregatePayload {
             table, pipeline, ..

@@ -4,7 +4,7 @@ use std::{
     mem,
 };
 use tank_core::{
-    ColumnDef, ColumnRef, Context, DynQuery, Expression, GenericSqlWriter, SqlCoreWriter,
+    AnyQuery, ColumnDef, ColumnRef, Context, Expression, GenericSqlWriter, SqlCoreWriter,
     SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value,
     write_escaped,
 };
@@ -22,7 +22,7 @@ impl SqlCoreWriter for SQLiteSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
@@ -31,7 +31,7 @@ impl SqlCoreWriter for SQLiteSqlWriter {
         }
     }
 
-    fn write_column_ref(&self, context: &mut Context, out: &mut DynQuery, value: &ColumnRef) {
+    fn write_column_ref(&self, context: &mut Context, out: &mut AnyQuery, value: &ColumnRef) {
         if context.qualify_columns {
             let table_ref = mem::take(&mut context.table_ref);
             let mut schema = &table_ref.schema;
@@ -60,7 +60,7 @@ impl SqlCoreWriter for SQLiteSqlWriter {
         self.write_identifier(context, out, &value.name, true);
     }
 
-    fn write_table_ref(&self, context: &mut Context, out: &mut DynQuery, value: &TableRef) {
+    fn write_table_ref(&self, context: &mut Context, out: &mut AnyQuery, value: &TableRef) {
         if self.is_alias_declaration(context) || value.alias.is_empty() {
             out.push('"');
             if !value.schema.is_empty() {
@@ -75,7 +75,7 @@ impl SqlCoreWriter for SQLiteSqlWriter {
         }
     }
 
-    fn write_column_type(&self, _context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
+    fn write_column_type(&self, _context: &mut Context, out: &mut AnyQuery, value: &Value<'_>) {
         match value {
             Value::Boolean(..)
             | Value::Int8(..)
@@ -102,7 +102,7 @@ impl SqlCoreWriter for SQLiteSqlWriter {
 }
 
 impl SqlValueWriter for SQLiteSqlWriter {
-    fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
+    fn write_value_f32(&self, context: &mut Context, out: &mut AnyQuery, value: f32) {
         if value.is_infinite() {
             if value.is_sign_negative() {
                 out.push('-');
@@ -118,7 +118,7 @@ impl SqlValueWriter for SQLiteSqlWriter {
         GenericSqlWriter::new().write_value_f32(context, out, value);
     }
 
-    fn write_value_f64(&self, context: &mut Context, out: &mut DynQuery, value: f64) {
+    fn write_value_f64(&self, context: &mut Context, out: &mut AnyQuery, value: f64) {
         if value.is_infinite() {
             if value.is_sign_negative() {
                 out.push('-');
@@ -134,7 +134,7 @@ impl SqlValueWriter for SQLiteSqlWriter {
         GenericSqlWriter::new().write_value_f64(context, out, value);
     }
 
-    fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, _context: &mut Context, out: &mut AnyQuery, value: &[u8]) {
         const HEX: &[u8; 16] = b"0123456789ABCDEF";
         out.buffer().reserve(3 * value.len() + 3);
         out.push_str("X'");
@@ -148,7 +148,7 @@ impl SqlValueWriter for SQLiteSqlWriter {
     fn write_list(
         &self,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &mut dyn Iterator<Item = &dyn Expression>,
         _t: Option<&Value<'_>>,
         _is_array: bool,
@@ -159,7 +159,7 @@ impl SqlValueWriter for SQLiteSqlWriter {
     fn write_map(
         &self,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &HashMap<Value<'_>, Value<'_>>,
     ) {
         log::error!("SQLite does not support maps");
@@ -167,7 +167,7 @@ impl SqlValueWriter for SQLiteSqlWriter {
 }
 
 impl SqlExpressionWriter for SQLiteSqlWriter {
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut AnyQuery) {
         out.push_str("(unixepoch('subsec') * 1000)");
     }
 }
@@ -176,7 +176,7 @@ impl SqlFragmentWriter for SQLiteSqlWriter {
     fn write_limit_offset(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         limit: Option<u32>,
         offset: Option<u32>,
     ) {
@@ -189,14 +189,14 @@ impl SqlFragmentWriter for SQLiteSqlWriter {
 }
 
 impl SqlWriter for SQLiteSqlWriter {
-    fn write_create_schema(&self, _out: &mut DynQuery, _table: &TableRef, _if_not_exists: bool)
+    fn write_create_schema(&self, _out: &mut AnyQuery, _table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
     {
         // SQLite does not support schema
     }
 
-    fn write_drop_schema(&self, _out: &mut DynQuery, _table: &TableRef, _if_exists: bool)
+    fn write_drop_schema(&self, _out: &mut AnyQuery, _table: &TableRef, _if_exists: bool)
     where
         Self: Sized,
     {
@@ -206,7 +206,7 @@ impl SqlWriter for SQLiteSqlWriter {
     fn write_column_comment(
         &self,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _column: &ColumnDef,
     ) {
     }

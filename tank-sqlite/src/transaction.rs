@@ -5,7 +5,7 @@ use std::{
     mem,
     sync::LazyLock,
 };
-use tank_core::{DynQuery, Result, SqlWriter, Transaction, impl_executor_transaction};
+use tank_core::{AnyQuery, Result, SqlWriter, Transaction, impl_executor_transaction};
 
 pub struct SQLiteTransaction<'c> {
     connection: &'c mut SQLiteConnection,
@@ -15,7 +15,7 @@ pub struct SQLiteTransaction<'c> {
 impl<'c> SQLiteTransaction<'c> {
     pub(crate) fn new(connection: &'c mut SQLiteConnection) -> Result<Self> {
         static BEGIN: LazyLock<CString> = LazyLock::new(|| {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             let writer = SQLiteSqlWriter {};
             writer.write_transaction_begin(&mut out);
             unsafe { CString::from_vec_unchecked(mem::take(out.buffer().as_mut_vec())) }
@@ -30,7 +30,7 @@ impl<'c> SQLiteTransaction<'c> {
 
     fn do_commit(&mut self) -> Result<()> {
         static COMMIT: LazyLock<CString> = LazyLock::new(|| {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             let writer = SQLiteSqlWriter {};
             writer.write_transaction_commit(&mut out);
             unsafe { CString::from_vec_unchecked(mem::take(out.buffer().as_mut_vec())) }
@@ -42,7 +42,7 @@ impl<'c> SQLiteTransaction<'c> {
 
     fn do_rollback(&mut self) -> Result<()> {
         static ROLLBACK: LazyLock<CString> = LazyLock::new(|| {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             let writer = SQLiteSqlWriter {};
             writer.write_transaction_rollback(&mut out);
             unsafe { CString::from_vec_unchecked(mem::take(out.buffer().as_mut_vec())) }

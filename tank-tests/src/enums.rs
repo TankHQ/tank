@@ -8,7 +8,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use tank::{
-    AsValue, Driver, DynQuery, Entity, Error, Executor, FixedDecimal, Query, QueryResult, RawQuery,
+    AnyQuery, AsValue, Driver, Entity, Error, Executor, FixedDecimal, Query, QueryResult, RawQuery,
     Result, RowsAffected, Sql, SqlWriter, Value, ValueOwned, anyhow, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };

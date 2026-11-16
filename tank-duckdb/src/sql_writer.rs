@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use tank_core::{
-    BinaryOpType, ColumnDef, Context, DynQuery, GenericSqlWriter, Interval, SqlCoreWriter,
+    AnyQuery, BinaryOpType, ColumnDef, Context, GenericSqlWriter, Interval, SqlCoreWriter,
     SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, Value, separated_by,
 };
 
@@ -18,7 +18,7 @@ impl SqlCoreWriter for DuckDBSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
@@ -27,7 +27,7 @@ impl SqlCoreWriter for DuckDBSqlWriter {
         }
     }
 
-    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
+    fn write_column_type(&self, context: &mut Context, out: &mut AnyQuery, value: &Value<'_>) {
         if matches!(value, Value::IpAddr(..)) {
             out.push_str("INET");
         } else {
@@ -51,7 +51,7 @@ impl SqlValueWriter for DuckDBSqlWriter {
     fn write_map(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &HashMap<Value<'_>, Value<'_>>,
     ) {
         out.push_str("MAP{");
@@ -81,7 +81,7 @@ impl SqlExpressionWriter for DuckDBSqlWriter {
         }
     }
 
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut AnyQuery) {
         out.push_str("epoch_ms(current_timestamp)");
     }
 }

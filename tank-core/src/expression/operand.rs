@@ -1,5 +1,5 @@
 use crate::{
-    Dataset, DynQuery, Expression, ExpressionVisitor, OpPrecedence, TableRef, Value,
+    AnyQuery, Dataset, Expression, ExpressionVisitor, OpPrecedence, TableRef, Value,
     writer::{Context, SqlWriter},
 };
 use std::fmt;
@@ -53,7 +53,7 @@ impl OpPrecedence for Operand<'_> {
 }
 
 impl Expression for Operand<'_> {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         writer.write_operand(context, out, self)
     }
 
@@ -62,7 +62,7 @@ impl Expression for Operand<'_> {
         matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
     ) -> bool {
         matcher.visit_operand(writer, context, out, self)
     }
@@ -73,7 +73,7 @@ impl Dataset for Operand<'_> {
         false
     }
 
-    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         self.write_query(writer, context, out);
     }
 

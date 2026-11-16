@@ -1,5 +1,5 @@
 use crate::{
-    Action, ColumnDef, Dataset, DynQuery, Expression, Fragment, Join, JoinType, PrimaryKeyType,
+    Action, AnyQuery, ColumnDef, Dataset, Expression, Fragment, Join, JoinType, PrimaryKeyType,
     separated_by,
     writer::{Context, SqlCoreWriter, SqlValueWriter},
 };
@@ -7,7 +7,7 @@ use crate::{
 /// Overridable SQL statement fragments: joins, column definitions, pagination, and upserts.
 pub trait SqlFragmentWriter: SqlValueWriter {
     /// Render join keyword(s) for the given join type.
-    fn write_join_type(&self, _context: &mut Context, out: &mut DynQuery, join_type: &JoinType) {
+    fn write_join_type(&self, _context: &mut Context, out: &mut AnyQuery, join_type: &JoinType) {
         out.push_str(match &join_type {
             JoinType::Default => "JOIN",
             JoinType::Inner => "INNER JOIN",
@@ -23,7 +23,7 @@ pub trait SqlFragmentWriter: SqlValueWriter {
     fn write_join(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         join: &Join<&dyn Dataset, &dyn Dataset, &dyn Expression>,
     ) {
         let mut context = context.switch_fragment(Fragment::SqlJoin);
@@ -45,7 +45,7 @@ pub trait SqlFragmentWriter: SqlValueWriter {
     fn write_create_table_column_fragment(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         column: &ColumnDef,
     ) where
         Self: Sized,
@@ -81,7 +81,7 @@ pub trait SqlFragmentWriter: SqlValueWriter {
     fn write_create_table_primary_key_fragment<'a, It>(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         primary_key: It,
     ) where
         Self: Sized,
@@ -111,7 +111,7 @@ pub trait SqlFragmentWriter: SqlValueWriter {
     fn write_create_table_references_action(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         action: &Action,
     ) {
         out.push_str(match action {
@@ -126,7 +126,7 @@ pub trait SqlFragmentWriter: SqlValueWriter {
     fn write_column_comment_inline(
         &self,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _column: &ColumnDef,
     ) where
         Self: Sized,
@@ -137,7 +137,7 @@ pub trait SqlFragmentWriter: SqlValueWriter {
     fn write_insert_update_fragment<'a>(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         primary_key: impl Iterator<Item = &'a ColumnDef> + Clone,
         columns: impl Iterator<Item = &'a ColumnDef> + Clone,
     ) where
@@ -183,7 +183,7 @@ pub trait SqlFragmentWriter: SqlValueWriter {
     fn write_limit_offset(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         limit: Option<u32>,
         offset: Option<u32>,
     ) {

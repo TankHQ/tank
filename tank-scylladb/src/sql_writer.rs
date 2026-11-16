@@ -4,7 +4,7 @@ use indoc::indoc;
 use std::fmt::Write;
 use std::{collections::BTreeMap, iter};
 use tank_core::{
-    ColumnDef, Context, Dataset, DynQuery, Expression, Fragment, GenericSqlWriter, InsertIntoQuery,
+    AnyQuery, ColumnDef, Context, Dataset, Expression, Fragment, GenericSqlWriter, InsertIntoQuery,
     Interval, IsTrue, PrimaryKeyType, Result, SqlCoreWriter, SqlExpressionWriter,
     SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value, future::Either, separated_by,
 };
@@ -24,7 +24,7 @@ impl SqlCoreWriter for ScyllaDBSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
@@ -33,7 +33,7 @@ impl SqlCoreWriter for ScyllaDBSqlWriter {
         }
     }
 
-    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
+    fn write_column_type(&self, context: &mut Context, out: &mut AnyQuery, value: &Value<'_>) {
         match value {
             Value::Boolean(..) => out.push_str("BOOLEAN"),
             Value::Int8(..) => out.push_str("TINYINT"),
@@ -90,7 +90,7 @@ impl SqlCoreWriter for ScyllaDBSqlWriter {
 }
 
 impl SqlValueWriter for ScyllaDBSqlWriter {
-    fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
+    fn write_value_f32(&self, context: &mut Context, out: &mut AnyQuery, value: f32) {
         if value.is_infinite() {
             if value.is_sign_negative() {
                 out.push('-');
@@ -101,7 +101,7 @@ impl SqlValueWriter for ScyllaDBSqlWriter {
         GenericSqlWriter::new().write_value_f32(context, out, value);
     }
 
-    fn write_value_f64(&self, context: &mut Context, out: &mut DynQuery, value: f64) {
+    fn write_value_f64(&self, context: &mut Context, out: &mut AnyQuery, value: f64) {
         if value.is_infinite() {
             if value.is_sign_negative() {
                 out.push('-');
@@ -112,7 +112,7 @@ impl SqlValueWriter for ScyllaDBSqlWriter {
         GenericSqlWriter::new().write_value_f64(context, out, value);
     }
 
-    fn write_blob(&self, context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, context: &mut Context, out: &mut AnyQuery, value: &[u8]) {
         let delimiter = if context.fragment == Fragment::Json {
             "\""
         } else {
@@ -137,7 +137,7 @@ impl SqlValueWriter for ScyllaDBSqlWriter {
         UNITS
     }
 
-    fn write_interval(&self, _context: &mut Context, out: &mut DynQuery, value: &Interval) {
+    fn write_interval(&self, _context: &mut Context, out: &mut AnyQuery, value: &Interval) {
         if value.is_zero() {
             out.push_str("0s");
         }
@@ -167,7 +167,7 @@ impl SqlValueWriter for ScyllaDBSqlWriter {
         }
     }
 
-    fn write_uuid(&self, context: &mut Context, out: &mut DynQuery, value: &Uuid) {
+    fn write_uuid(&self, context: &mut Context, out: &mut AnyQuery, value: &Uuid) {
         let _ = match context.fragment {
             Fragment::Json | Fragment::JsonKey => write!(out, "\"{value}\""),
             _ => write!(out, "{value}"),
@@ -177,7 +177,7 @@ impl SqlValueWriter for ScyllaDBSqlWriter {
     fn write_list(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
         ty: Option<&Value<'_>>,
         is_array: bool,
@@ -220,7 +220,7 @@ impl SqlValueWriter for ScyllaDBSqlWriter {
 }
 
 impl SqlExpressionWriter for ScyllaDBSqlWriter {
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut AnyQuery) {
         out.push_str("toUnixTimestamp(currentTimestamp())");
     }
 }
@@ -229,7 +229,7 @@ impl SqlFragmentWriter for ScyllaDBSqlWriter {
     fn write_create_table_column_fragment(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         column: &ColumnDef,
     ) where
         Self: Sized,
@@ -251,7 +251,7 @@ impl SqlFragmentWriter for ScyllaDBSqlWriter {
     fn write_create_table_primary_key_fragment<'a, It>(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         primary_key: It,
     ) where
         Self: Sized,
@@ -291,23 +291,23 @@ impl SqlFragmentWriter for ScyllaDBSqlWriter {
 }
 
 impl SqlWriter for ScyllaDBSqlWriter {
-    fn write_transaction_begin(&self, out: &mut DynQuery) {
+    fn write_transaction_begin(&self, out: &mut AnyQuery) {
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("BEGIN BATCH");
     }
 
-    fn write_transaction_commit(&self, out: &mut DynQuery) {
+    fn write_transaction_commit(&self, out: &mut AnyQuery) {
         if !out.is_empty() {
             out.push('\n');
         }
         out.push_str("APPLY BATCH;");
     }
 
-    fn write_transaction_rollback(&self, _out: &mut DynQuery) {}
+    fn write_transaction_rollback(&self, _out: &mut AnyQuery) {}
 
-    fn write_create_schema(&self, out: &mut DynQuery, table: &TableRef, if_not_exists: bool)
+    fn write_create_schema(&self, out: &mut AnyQuery, table: &TableRef, if_not_exists: bool)
     where
         Self: Sized,
     {
@@ -330,7 +330,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         "#});
     }
 
-    fn write_drop_schema(&self, out: &mut DynQuery, table: &TableRef, if_exists: bool)
+    fn write_drop_schema(&self, out: &mut AnyQuery, table: &TableRef, if_exists: bool)
     where
         Self: Sized,
     {
@@ -350,12 +350,12 @@ impl SqlWriter for ScyllaDBSqlWriter {
     fn write_column_comment(
         &self,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _column: &ColumnDef,
     ) {
     }
 
-    fn write_insert(&self, out: &mut DynQuery, query: impl InsertIntoQuery)
+    fn write_insert(&self, out: &mut AnyQuery, query: impl InsertIntoQuery)
     where
         Self: Sized,
     {
@@ -404,7 +404,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         }
     }
 
-    fn write_delete(&self, out: &mut DynQuery, from: &dyn Dataset, condition: impl Expression)
+    fn write_delete(&self, out: &mut AnyQuery, from: &dyn Dataset, condition: impl Expression)
     where
         Self: Sized,
     {

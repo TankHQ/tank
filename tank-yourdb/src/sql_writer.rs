@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use tank_core::{
-    ColumnDef, Context, DynQuery, SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter,
+    AnyQuery, ColumnDef, Context, SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter,
     SqlValueWriter, SqlWriter,
 };
 
@@ -14,7 +14,7 @@ impl SqlCoreWriter for YourDBSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {

@@ -1,5 +1,5 @@
 use crate::{
-    BinaryOp, BinaryOpType, Case, ColumnRef, Context, DynQuery, Expression, GenericSqlWriter,
+    AnyQuery, BinaryOp, BinaryOpType, Case, ColumnRef, Context, Expression, GenericSqlWriter,
     Operand, Order, Ordered, Result, SqlWriter, UnaryOp, Value, ValueOwned,
 };
 use anyhow::anyhow;
@@ -10,7 +10,7 @@ pub trait ExpressionVisitor {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &ColumnRef,
     ) -> bool {
         false
@@ -19,7 +19,7 @@ pub trait ExpressionVisitor {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &Operand,
     ) -> bool {
         false
@@ -28,7 +28,7 @@ pub trait ExpressionVisitor {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &UnaryOp<&dyn Expression>,
     ) -> bool {
         false
@@ -37,7 +37,7 @@ pub trait ExpressionVisitor {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         false
@@ -46,7 +46,7 @@ pub trait ExpressionVisitor {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &Ordered<&dyn Expression>,
     ) -> bool {
         false
@@ -55,7 +55,7 @@ pub trait ExpressionVisitor {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &Case,
     ) -> bool {
         false
@@ -69,7 +69,7 @@ impl ExpressionVisitor for IsTrue {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {
@@ -88,7 +88,7 @@ impl ExpressionVisitor for IsFalse {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {
@@ -111,7 +111,7 @@ impl LiteralValue {
             &mut literal,
             &GenericSqlWriter,
             &mut Context::empty(),
-            &mut DynQuery::default(),
+            &mut AnyQuery::default(),
         );
         literal
             .0
@@ -124,7 +124,7 @@ impl ExpressionVisitor for LiteralValue {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         self.0 = Some(match value {
@@ -148,7 +148,7 @@ impl ExpressionVisitor for IsConstant {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {
@@ -170,7 +170,7 @@ impl ExpressionVisitor for IsConstant {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         if value.op == BinaryOpType::Alias {
@@ -188,7 +188,7 @@ impl ExpressionVisitor for IsAggregateFunction {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {
@@ -207,7 +207,7 @@ impl ExpressionVisitor for IsAggregateFunction {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         if value.op == BinaryOpType::Alias {
@@ -225,7 +225,7 @@ impl ExpressionVisitor for IsAsterisk {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         matches!(value, Operand::Asterisk)
@@ -239,7 +239,7 @@ impl ExpressionVisitor for IsQuestionMark {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         matches!(value, Operand::QuestionMark)
@@ -255,7 +255,7 @@ impl ExpressionVisitor for IsAlias {
         &mut self,
         _writer: &dyn SqlWriter,
         context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         if value.op != BinaryOpType::Alias {
@@ -275,7 +275,7 @@ impl ExpressionVisitor for FindOrder {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &ColumnRef,
     ) -> bool {
         true
@@ -284,7 +284,7 @@ impl ExpressionVisitor for FindOrder {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &Operand,
     ) -> bool {
         true
@@ -293,7 +293,7 @@ impl ExpressionVisitor for FindOrder {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &UnaryOp<&dyn Expression>,
     ) -> bool {
         true
@@ -302,7 +302,7 @@ impl ExpressionVisitor for FindOrder {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         true
@@ -311,7 +311,7 @@ impl ExpressionVisitor for FindOrder {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Ordered<&dyn Expression>,
     ) -> bool {
         self.order = value.order;
@@ -327,7 +327,7 @@ impl ExpressionVisitor for WriteInList {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {

@@ -11,7 +11,7 @@ mod tests {
         sync::Mutex,
     };
     use tank::{
-        BinaryOp, BinaryOpType, ColumnDef, Connection, ConnectionPool, Context, Driver, DynQuery,
+        AnyQuery, BinaryOp, BinaryOpType, ColumnDef, Connection, ConnectionPool, Context, Driver,
         Executor, Expression, Fragment, GenericSqlWriter, Interval, MapType, Operand, PoolConfig,
         Prepared, Query, Row, SqlCoreWriter, SqlExpressionWriter, SqlValueWriter, SqlWriter, Value,
         stream::{StreamExt, TryStreamExt},
@@ -57,7 +57,7 @@ mod tests {
     }
 
     fn duckdb_render(value: Value<'_>) -> String {
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         duckdb_writer().write_value(
             &mut Context::new(Fragment::SqlSelect, false),
             &mut out,
@@ -82,7 +82,7 @@ mod tests {
         let writer = duckdb_writer();
         let mut map = HashMap::new();
         map.insert(Value::Varchar(Some("k".into())), Value::Int32(Some(1)));
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_value(
             &mut Context::new(Fragment::SqlSelect, false),
             &mut out,
@@ -101,7 +101,7 @@ mod tests {
     fn duckdb_not_glob() {
         init_logs();
         let writer = duckdb_writer();
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         BinaryOp {
             op: BinaryOpType::NotGlob,
             lhs: Operand::LitIdent("a"),
@@ -114,7 +114,7 @@ mod tests {
         );
         assert_eq!(out.as_str(), "NOT (a GLOB 'x')");
 
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         BinaryOp {
             op: BinaryOpType::Glob,
             lhs: Operand::LitIdent("a"),
@@ -132,7 +132,7 @@ mod tests {
     fn duckdb_current_timestamp() {
         init_logs();
         let writer = duckdb_writer();
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_current_timestamp_ms(&mut Context::empty(), &mut out);
         assert_eq!(out.as_str(), "epoch_ms(current_timestamp)");
     }
@@ -161,7 +161,7 @@ mod tests {
         let column = ColumnDef::default();
         let mut types = BTreeMap::new();
         types.insert("sqlite", "IGNORED");
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_column_overridden_type(
             &mut Context::new(Fragment::SqlCreateTable, false),
             &mut out,
@@ -172,7 +172,7 @@ mod tests {
 
         let mut types = BTreeMap::new();
         types.insert("duckdb", "CUSTOM");
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_column_overridden_type(
             &mut Context::new(Fragment::SqlCreateTable, false),
             &mut out,
@@ -192,13 +192,13 @@ mod tests {
             Value::Varchar(Some("a".into())),
             Value::Boolean(Some(true)),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             writer.write_value(
                 &mut Context::new(Fragment::SqlSelect, false),
                 &mut out,
                 &value,
             );
-            let mut expected = DynQuery::default();
+            let mut expected = AnyQuery::default();
             generic.write_value(
                 &mut Context::new(Fragment::SqlSelect, false),
                 &mut expected,

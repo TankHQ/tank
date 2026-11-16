@@ -2,7 +2,7 @@
 mod tests {
     use std::sync::Arc;
     use tank::{
-        CollectionType, Context, DynQuery, Entity, Expression, ExpressionVisitor, FindOrder,
+        AnyQuery, CollectionType, Context, Entity, Expression, ExpressionVisitor, FindOrder,
         Fragment, GenericSqlWriter, IsAggregateFunction, IsAlias, IsAsterisk, IsConstant, IsFalse,
         IsQuestionMark, IsTrue, Operand, Order, Value, ValueOwned, WriteInList, cols, expr,
     };
@@ -180,7 +180,7 @@ mod tests {
     #[test]
     fn visitor_write_list() {
         let mut visitor = WriteInList;
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         let values: Box<[ValueOwned]> = vec![Value::Int32(Some(3)), Value::Int32(Some(4))].into();
         assert!(visitor.visit_operand(

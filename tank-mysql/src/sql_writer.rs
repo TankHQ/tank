@@ -3,7 +3,7 @@ use std::{
     fmt::Write,
 };
 use tank_core::{
-    ColumnDef, Context, DynQuery, EitherIterator, Error, Expression, Fragment, GenericSqlWriter,
+    AnyQuery, ColumnDef, Context, EitherIterator, Error, Expression, Fragment, GenericSqlWriter,
     Interval, PrimaryKeyType, SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter,
     SqlValueWriter, SqlWriter, Value, separated_by, write_escaped,
 };
@@ -33,7 +33,7 @@ impl MySQLSqlWriter {
 
     /// Wrap the JSON emitted at `start` in a SQL string literal, escaping the
     /// characters that would otherwise terminate or alter it.
-    fn quote_json_literal(out: &mut DynQuery, start: usize) {
+    fn quote_json_literal(out: &mut AnyQuery, start: usize) {
         let body = out.buffer().split_off(start);
         out.push('\'');
         for c in body.chars() {
@@ -55,7 +55,7 @@ impl SqlCoreWriter for MySQLSqlWriter {
     fn write_identifier(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &str,
         quoted: bool,
     ) {
@@ -71,7 +71,7 @@ impl SqlCoreWriter for MySQLSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
@@ -94,7 +94,7 @@ impl SqlCoreWriter for MySQLSqlWriter {
         }
     }
 
-    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value) {
+    fn write_column_type(&self, context: &mut Context, out: &mut AnyQuery, value: &Value) {
         if context.fragment == Fragment::Casting {
             match value {
                 Value::Int8(..)
@@ -156,7 +156,7 @@ impl SqlCoreWriter for MySQLSqlWriter {
 }
 
 impl SqlValueWriter for MySQLSqlWriter {
-    fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
+    fn write_value_f32(&self, context: &mut Context, out: &mut AnyQuery, value: f32) {
         if value.is_infinite() || value.is_nan() {
             if value.is_infinite() {
                 log::error!(
@@ -171,7 +171,7 @@ impl SqlValueWriter for MySQLSqlWriter {
         GenericSqlWriter::new().write_value_f32(context, out, value);
     }
 
-    fn write_value_f64(&self, context: &mut Context, out: &mut DynQuery, value: f64) {
+    fn write_value_f64(&self, context: &mut Context, out: &mut AnyQuery, value: f64) {
         if value.is_infinite() || value.is_nan() {
             if value.is_infinite() {
                 log::error!(
@@ -186,7 +186,7 @@ impl SqlValueWriter for MySQLSqlWriter {
         GenericSqlWriter::new().write_value_f64(context, out, value);
     }
 
-    fn write_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
+    fn write_string(&self, context: &mut Context, out: &mut AnyQuery, value: &str) {
         if matches!(
             context.fragment,
             Fragment::None | Fragment::ParameterBinding
@@ -215,7 +215,7 @@ impl SqlValueWriter for MySQLSqlWriter {
         out.push('\'');
     }
 
-    fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, _context: &mut Context, out: &mut AnyQuery, value: &[u8]) {
         out.push_str("X'");
         for b in value {
             let _ = write!(out, "{b:02X}");
@@ -223,7 +223,7 @@ impl SqlValueWriter for MySQLSqlWriter {
         out.push('\'');
     }
 
-    fn write_timestamptz(&self, context: &mut Context, out: &mut DynQuery, value: &OffsetDateTime) {
+    fn write_timestamptz(&self, context: &mut Context, out: &mut AnyQuery, value: &OffsetDateTime) {
         let d = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -240,7 +240,7 @@ impl SqlValueWriter for MySQLSqlWriter {
         out.push_str(d);
     }
 
-    fn write_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {
+    fn write_interval(&self, context: &mut Context, out: &mut AnyQuery, value: &Interval) {
         let d = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -270,7 +270,7 @@ impl SqlValueWriter for MySQLSqlWriter {
     fn write_list(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
         _t: Option<&Value>,
         _is_array: bool,
@@ -293,7 +293,7 @@ impl SqlValueWriter for MySQLSqlWriter {
         }
     }
 
-    fn write_map(&self, context: &mut Context, out: &mut DynQuery, value: &HashMap<Value, Value>) {
+    fn write_map(&self, context: &mut Context, out: &mut AnyQuery, value: &HashMap<Value, Value>) {
         let inside_string = context.fragment == Fragment::Json;
         let mut context = context.switch_fragment(Fragment::Json);
         let start = out.len();
@@ -319,7 +319,7 @@ impl SqlValueWriter for MySQLSqlWriter {
 }
 
 impl SqlExpressionWriter for MySQLSqlWriter {
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut AnyQuery) {
         out.push_str("CAST(UNIX_TIMESTAMP(NOW(3)) * 1000 AS UNSIGNED)");
     }
 }
@@ -328,7 +328,7 @@ impl SqlFragmentWriter for MySQLSqlWriter {
     fn write_column_comment_inline(
         &self,
         mut context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         column: &ColumnDef,
     ) where
         Self: Sized,
@@ -340,7 +340,7 @@ impl SqlFragmentWriter for MySQLSqlWriter {
     fn write_insert_update_fragment<'a>(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         primary_key: impl Iterator<Item = &'a ColumnDef> + Clone,
         columns: impl Iterator<Item = &'a ColumnDef> + Clone,
     ) where
@@ -378,7 +378,7 @@ impl SqlFragmentWriter for MySQLSqlWriter {
     fn write_limit_offset(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         limit: Option<u32>,
         offset: Option<u32>,
     ) {
@@ -394,7 +394,7 @@ impl SqlWriter for MySQLSqlWriter {
     fn write_column_comment(
         &self,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _column: &ColumnDef,
     ) {
     }

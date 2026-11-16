@@ -1,4 +1,4 @@
-use crate::{Driver, DynQuery, Query, RawQuery};
+use crate::{AnyQuery, Driver, Query, RawQuery};
 
 pub trait AsQuery<D: Driver> {
     type Output: AsMut<Query<D>> + Send;
@@ -19,12 +19,12 @@ impl<'q, D: Driver + 'q> AsQuery<D> for &'q mut Query<D> {
     }
 }
 
-impl<D: Driver> AsQuery<D> for DynQuery {
+impl<D: Driver> AsQuery<D> for AnyQuery {
     type Output = Query<D>;
     fn as_query(self) -> Self::Output {
         match self {
-            DynQuery::Raw(v) => Query::Raw(v),
-            DynQuery::Prepared(p) => match p.as_any().downcast::<D::Prepared>() {
+            AnyQuery::Raw(v) => Query::Raw(v),
+            AnyQuery::Prepared(p) => match p.as_any().downcast::<D::Prepared>() {
                 Ok(p) => Query::Prepared(*p),
                 Err(..) => Query::raw(Default::default()),
             },

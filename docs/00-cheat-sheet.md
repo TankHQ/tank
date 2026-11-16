@@ -232,10 +232,10 @@ query.bind(10)?;
 ### SqlWriter
 
 ```rust
-use tank::{DynQuery, Entity, Sql, SqlWriter, stream::TryStreamExt};
+use tank::{AnyQuery, Entity, Sql, SqlWriter, stream::TryStreamExt};
 
 let writer = connection.driver().sql_writer();
-let mut query = DynQuery::default();
+let mut query = AnyQuery::default();
 
 writer.write_create_table(&mut query, EntityExample::table(), true);
 writer.write_insert(

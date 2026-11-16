@@ -1,13 +1,13 @@
 #[cfg(test)]
 mod tests {
-    use tank::{AsValue, Context, DynQuery, Fragment, Interval, SqlValueWriter, describe_url};
+    use tank::{AnyQuery, AsValue, Context, Fragment, Interval, SqlValueWriter, describe_url};
     use tank_mysql::{MySQLDriver, MySQLSqlWriter};
     use tank_tests::init_logs;
     use url::Url;
 
     fn render(interval: Interval) -> String {
         let writer = MySQLSqlWriter::default();
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_value(
             &mut Context::new(Fragment::SqlSelect, false),
             &mut out,

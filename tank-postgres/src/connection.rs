@@ -17,7 +17,7 @@ use std::{
     sync::Arc,
 };
 use tank_core::{
-    AsEntity, AsQuery, Connection, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
+    AnyQuery, AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
     QueryResult, RawQuery, Result, Row, RowLabels, RowOwned, RowsAffected, SqlCoreWriter,
     Transaction, describe_url,
     stream::{Stream, StreamExt, TryStreamExt},
@@ -109,8 +109,8 @@ impl PostgresConnection {
 impl Executor for PostgresConnection {
     type Driver = PostgresDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<PostgresDriver>> {
-        let sql = sql.as_str().trim_end().trim_end_matches(';');
+    async fn do_prepare(&mut self, sql: &str) -> Result<Query<PostgresDriver>> {
+        let sql = sql.trim_end().trim_end_matches(';');
         let statement = self
             .client
             .prepare(&sql)
@@ -191,7 +191,7 @@ impl Executor for PostgresConnection {
                 E::<It>::table().full_name(writer.separator())
             )
         };
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         writer.write_copy(&mut query, E::<It>::table());
         let sink = match self
             .client

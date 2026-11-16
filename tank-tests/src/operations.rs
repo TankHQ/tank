@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    Driver, DynQuery, Entity, Executor, QueryResult, Result, RowsAffected, Sql, anyhow, cols, expr,
+    AnyQuery, Driver, Entity, Executor, QueryResult, Result, RowsAffected, Sql, anyhow, cols, expr,
     join,
     stream::{StreamExt, TryStreamExt},
 };
@@ -139,7 +139,7 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     {
         // #region operations-batch
         let driver = executor.driver();
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .delete_from(RadioLog::table())
             .where_expr(expr!(RadioLog::signal_strength < 10))

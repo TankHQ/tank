@@ -14,7 +14,7 @@ mod tests {
         vec::IntoIter,
     };
     use tank::{
-        AsQuery, AsValue, Connection, ConnectionPool, Context, Dataset, Driver, DynQuery, Entity,
+        AnyQuery, AsQuery, AsValue, Connection, ConnectionPool, Context, Dataset, Driver, Entity,
         Error, Executor, Expression, ExpressionCollection, ExpressionVisitor, Fragment,
         GenericSqlWriter, InsertIntoQuery, NA, OpPrecedence, PoolConfig, PooledConnection,
         Prepared, Query, QueryResult, RawQuery, Result, Row, RowOwned, RowsAffected, Sql,
@@ -128,7 +128,7 @@ mod tests {
 
         fn do_prepare(
             &mut self,
-            _: String,
+            _: &str,
         ) -> impl Future<Output = Result<Query<TestDriver>>> + Send {
             async move { Ok(Query::prepared(TestDriver)) }
         }
@@ -292,24 +292,24 @@ mod tests {
             "v"
         );
 
-        let matching: DynQuery = Query::<TestDriver>::prepared(TestDriver).into();
+        let matching: AnyQuery = Query::<TestDriver>::prepared(TestDriver).into();
         assert!(AsQuery::<TestDriver>::as_query(matching).is_prepared());
-        let mut dyn_q: DynQuery = prepared.into_dyn();
+        let mut dyn_q: AnyQuery = prepared.into_any();
         assert!(dyn_q.as_str().contains("TestDriver"));
         assert_eq!(dyn_q.len(), 0);
         assert!(!dyn_q.is_empty());
         assert!(dyn_q.as_prepared::<TestDriver>().is_some());
         assert!(
-            String::from(DynQuery::from(Query::<TestDriver>::prepared(TestDriver)))
+            String::from(AnyQuery::from(Query::<TestDriver>::prepared(TestDriver)))
                 .contains("TestDriver")
         );
         let back: Query<TestDriver> = dyn_q.into();
         assert!(back.is_prepared());
 
-        let mut dyn_prep: DynQuery = Query::<TestDriver>::prepared(TestDriver).into();
+        let mut dyn_prep: AnyQuery = Query::<TestDriver>::prepared(TestDriver).into();
         assert_eq!(dyn_prep.buffer().as_str(), "");
         assert!(dyn_prep.as_prepared::<TestDriver>().is_none());
-        let mut dyn_prep: DynQuery = Query::<TestDriver>::prepared(TestDriver).into();
+        let mut dyn_prep: AnyQuery = Query::<TestDriver>::prepared(TestDriver).into();
         dyn_prep.clear();
         assert_eq!(dyn_prep.into_query(TestDriver).to_string(), "");
 
@@ -337,7 +337,7 @@ mod tests {
                 Ok(self)
             }
         }
-        let mut other = DynQuery::Prepared(Box::new(OtherPrepared));
+        let mut other = AnyQuery::Prepared(Box::new(OtherPrepared));
         assert!(other.is_empty());
         assert!(other.as_prepared::<TestDriver>().is_none());
         assert!(!Query::<TestDriver>::from(other).is_prepared());
@@ -346,7 +346,7 @@ mod tests {
         impl ExpressionVisitor for Visitor {}
         let na = NA;
         assert_eq!(na.precedence(&GenericSqlWriter::new()), 0);
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         na.write_query(&GenericSqlWriter::new(), &mut Context::empty(), &mut out);
         assert!(!na.accept_visitor(
             &mut Visitor,
@@ -583,7 +583,7 @@ mod tests {
             }
             assert!(Keyless { value: 1 }.delete(&mut exec).await.is_err());
 
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             item.write_table_name(
                 &GenericSqlWriter::new(),
                 &mut Context::fragment(Fragment::SqlSelectFrom),
@@ -617,7 +617,7 @@ mod tests {
             assert!(Executor::accepts_multiple_statements(&&mut exec_ref));
             assert_eq!(Executor::driver(&&mut exec_ref).name(), "test");
             assert!(
-                Executor::do_prepare(&mut exec_ref, "SELECT 1".to_string())
+                Executor::do_prepare(&mut exec_ref, "SELECT 1")
                     .await
                     .unwrap()
                     .is_prepared()

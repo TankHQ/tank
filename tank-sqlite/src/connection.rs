@@ -10,10 +10,10 @@ use std::{
     hint, iter, ptr,
 };
 use tank_core::{
-    AsEntity, AsQuery, ColumnDef, Connection, Driver, DynQuery, Entity, Error, ErrorContext,
-    Executor, Operand, Prepared, Query, QueryResult, Result, RowsAffected, Sql, SqlWriter,
-    Transaction, char_ptr_to_string, describe_path, error_message_from_ptr, future::Either,
-    truncate_long,
+    AnyQuery, AppendDefault, AsEntity, AsQuery, ColumnDef, Connection, Driver, Entity, Error,
+    ErrorContext, Executor, Operand, Prepared, Query, QueryResult, Result, RowsAffected, Sql,
+    SqlWriter, Transaction, char_ptr_to_string, describe_path, error_message_from_ptr,
+    future::Either, truncate_long,
 };
 use tokio::task;
 
@@ -53,7 +53,7 @@ impl SQLiteConnection {
         type E<I> = <<I as IntoIterator>::Item as AsEntity>::Entity;
         let columns = E::<I>::columns();
         let sql = {
-            let mut sql = DynQuery::default();
+            let mut sql = AnyQuery::default();
             self.driver().sql_writer().write_insert(
                 &mut sql,
                 Sql()
@@ -201,7 +201,7 @@ impl Connection for SQLiteConnection {
 impl Executor for SQLiteConnection {
     type Driver = SQLiteDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<SQLiteDriver>> {
+    async fn do_prepare(&mut self, sql: &str) -> Result<Query<SQLiteDriver>> {
         let prepared = unsafe {
             let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
             let len = c_int::try_from(sql.len())?;
@@ -255,15 +255,7 @@ impl Executor for SQLiteConnection {
         let rows: <It as IntoIterator>::IntoIter = rows.into_iter();
         if E::<It>::columns().is_empty() {
             // Without named columns the batch must go through the generic insert.
-            let entities = rows.collect::<Vec<_>>();
-            let mut query = DynQuery::default();
-            self.driver().sql_writer().write_insert(
-                &mut query,
-                Sql()
-                    .insert_into(E::<It>::table())
-                    .values(entities.iter().map(AsEntity::as_entity)),
-            );
-            Either::Right(self.execute(query))
+            Either::Right(self.append_default(rows))
         } else {
             Either::Left(self.do_append(rows))
         }

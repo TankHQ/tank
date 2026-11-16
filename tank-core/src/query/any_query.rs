@@ -5,14 +5,19 @@ use std::{
     fmt::{self, Write},
 };
 
-/// Dyn compatible version of `Query`
+/// [`Query`] with the driver erased: raw SQL text, or a boxed prepared statement.
+///
+/// The driver is known again when it converts into a [`Query<D>`](Query), which downcasts
+/// the prepared variant, so a query built for one driver becomes empty for another.
 #[derive(Debug)]
-pub enum DynQuery {
+pub enum AnyQuery {
+    /// Raw SQL text.
     Raw(RawQuery),
+    /// Prepared statement of an unknown driver.
     Prepared(Box<dyn Prepared>),
 }
 
-impl DynQuery {
+impl AnyQuery {
     pub const fn new(value: String) -> Self {
         Self::Raw(RawQuery(value))
     }
@@ -40,7 +45,7 @@ impl DynQuery {
     #[inline(never)]
     fn reset_to_raw(&mut self) -> &mut String {
         log::error!(
-            "DynQuery::buffer reset a prepared query to raw, discarding its prepared content"
+            "AnyQuery::buffer reset a prepared query to raw, discarding its prepared content"
         );
         loop {
             if let Self::Raw(RawQuery(value)) = self {
@@ -96,13 +101,13 @@ impl DynQuery {
     }
 }
 
-impl Default for DynQuery {
+impl Default for AnyQuery {
     fn default() -> Self {
         Self::new(Default::default())
     }
 }
 
-impl Write for DynQuery {
+impl Write for AnyQuery {
     #[inline]
     fn write_char(&mut self, c: char) -> fmt::Result {
         self.push(c);
@@ -115,7 +120,7 @@ impl Write for DynQuery {
     }
 }
 
-impl<D: Driver> From<Query<D>> for DynQuery {
+impl<D: Driver> From<Query<D>> for AnyQuery {
     fn from(value: Query<D>) -> Self {
         match value {
             Query::Raw(v) => Self::Raw(v),
@@ -124,11 +129,11 @@ impl<D: Driver> From<Query<D>> for DynQuery {
     }
 }
 
-impl<D: Driver> From<DynQuery> for Query<D> {
-    fn from(value: DynQuery) -> Self {
+impl<D: Driver> From<AnyQuery> for Query<D> {
+    fn from(value: AnyQuery) -> Self {
         match value {
-            DynQuery::Raw(r) => Self::Raw(r),
-            DynQuery::Prepared(p) => match p.as_any().downcast::<D::Prepared>() {
+            AnyQuery::Raw(r) => Self::Raw(r),
+            AnyQuery::Prepared(p) => match p.as_any().downcast::<D::Prepared>() {
                 Ok(p) => Query::Prepared(*p),
                 Err(..) => Query::raw(Default::default()),
             },
@@ -136,11 +141,11 @@ impl<D: Driver> From<DynQuery> for Query<D> {
     }
 }
 
-impl From<DynQuery> for String {
-    fn from(value: DynQuery) -> Self {
+impl From<AnyQuery> for String {
+    fn from(value: AnyQuery) -> Self {
         match value {
-            DynQuery::Raw(RawQuery(value)) => value,
-            DynQuery::Prepared(value) => format!("{:?}", value),
+            AnyQuery::Raw(RawQuery(value)) => value,
+            AnyQuery::Prepared(value) => format!("{:?}", value),
         }
     }
 }

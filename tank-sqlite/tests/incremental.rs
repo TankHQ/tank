@@ -5,7 +5,7 @@ use std::{
     task::{Context, Waker},
 };
 use tank::{
-    AsValue, ColumnDef, Connection, DynQuery, Entity, Executor, QueryResult, Row, Sql, Transaction,
+    AnyQuery, AsValue, ColumnDef, Connection, Entity, Executor, QueryResult, Row, Sql, Transaction,
     Value, cols,
     stream::{StreamExt, TryStreamExt},
 };
@@ -375,7 +375,7 @@ async fn late_prepare_errors() {
             .await
             .unwrap();
     {
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .select(cols!(1))
             .build_into(&connection.driver(), &mut query);

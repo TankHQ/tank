@@ -12,7 +12,7 @@ mod tests {
         collections::{BTreeMap, HashMap},
     };
     use tank::{
-        Action, ColumnRef, DefaultValueType, Driver, DynQuery, Entity, PrimaryKeyType, Sql,
+        Action, AnyQuery, ColumnRef, DefaultValueType, Driver, Entity, PrimaryKeyType, Sql,
         SqlWriter, TableRef, Value, expr,
     };
     use time::macros::datetime;
@@ -254,7 +254,7 @@ mod tests {
             "#}
             .trim()
         );
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         let writer = DRIVER.sql_writer();
         for column in Trade::columns().iter().filter(|c| !c.comment.is_empty()) {
             writer.write_column_comment(&mut Default::default(), &mut query, column);

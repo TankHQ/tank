@@ -1,5 +1,5 @@
 use crate::{
-    BinaryOp, BinaryOpType, Case, DynQuery, Expression, Fragment, Operand, Order, Ordered, UnaryOp,
+    AnyQuery, BinaryOp, BinaryOpType, Case, Expression, Fragment, Operand, Order, Ordered, UnaryOp,
     UnaryOpType, WriteInList, possibly_parenthesized, separated_by,
     writer::{Context, SqlValueWriter},
 };
@@ -9,7 +9,7 @@ pub trait SqlExpressionWriter: SqlValueWriter {
     fn write_function(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         function: &str,
         args: &[&dyn Expression],
     ) {
@@ -109,7 +109,7 @@ pub trait SqlExpressionWriter: SqlValueWriter {
         }
     }
 
-    fn write_operand(&self, context: &mut Context, out: &mut DynQuery, value: &Operand) {
+    fn write_operand(&self, context: &mut Context, out: &mut AnyQuery, value: &Operand) {
         match value {
             Operand::Null => self.write_null(context, out),
             Operand::LitBool(v) => self.write_bool(context, out, *v),
@@ -142,19 +142,19 @@ pub trait SqlExpressionWriter: SqlValueWriter {
         };
     }
 
-    fn write_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
+    fn write_question_mark(&self, context: &mut Context, out: &mut AnyQuery) {
         context.counter += 1;
         out.push('?');
     }
 
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut AnyQuery) {
         out.push_str("NOW()");
     }
 
     fn write_unary_op(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &UnaryOp<&dyn Expression>,
     ) {
         match value.op {
@@ -172,7 +172,7 @@ pub trait SqlExpressionWriter: SqlValueWriter {
     fn write_binary_op(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) {
         // Standard SQL does not allow select-list aliases in GROUP BY/ORDER BY.
@@ -225,7 +225,7 @@ pub trait SqlExpressionWriter: SqlValueWriter {
     fn write_cast(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         expr: &dyn Expression,
         ty: &dyn Expression,
     ) {
@@ -238,7 +238,7 @@ pub trait SqlExpressionWriter: SqlValueWriter {
     }
 
     /// Render a `CASE` expression.
-    fn write_case(&self, context: &mut Context, out: &mut DynQuery, value: &Case) {
+    fn write_case(&self, context: &mut Context, out: &mut AnyQuery, value: &Case) {
         out.push_str("CASE");
         if let Some(v) = value.value {
             out.push(' ');
@@ -261,7 +261,7 @@ pub trait SqlExpressionWriter: SqlValueWriter {
     fn write_ordered(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Ordered<&dyn Expression>,
     ) {
         value.expression.write_query(self.as_dyn(), context, out);

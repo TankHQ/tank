@@ -6,7 +6,7 @@ mod select;
 mod update;
 
 use crate::{
-    ColumnDef, ColumnRef, Context, Dataset, DynQuery, Expression, ExpressionVisitor, OpPrecedence,
+    AnyQuery, ColumnDef, ColumnRef, Context, Dataset, Expression, ExpressionVisitor, OpPrecedence,
     SqlWriter, TableRef,
 };
 pub use create_table::*;
@@ -89,7 +89,7 @@ impl Dataset for NA {
         &self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
     ) {
     }
     fn table_ref(&self) -> TableRef {
@@ -104,13 +104,13 @@ impl OpPrecedence for NA {
 }
 
 impl Expression for NA {
-    fn write_query(&self, _writer: &dyn SqlWriter, _context: &mut Context, _out: &mut DynQuery) {}
+    fn write_query(&self, _writer: &dyn SqlWriter, _context: &mut Context, _out: &mut AnyQuery) {}
     fn accept_visitor(
         &self,
         _matcher: &mut dyn ExpressionVisitor,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
     ) -> bool {
         false
     }

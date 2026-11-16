@@ -10,8 +10,8 @@ mod tests {
         sync::Mutex,
     };
     use tank::{
-        CollectionType, ColumnDef, ColumnRef, Connection, ConnectionPool, Context, Driver,
-        DynQuery, Entity, Executor, Fragment, GenericSqlWriter, MapType, QueryResult, Row, Sql,
+        AnyQuery, CollectionType, ColumnDef, ColumnRef, Connection, ConnectionPool, Context,
+        Driver, Entity, Executor, Fragment, GenericSqlWriter, MapType, QueryResult, Row, Sql,
         SqlCoreWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value,
         stream::{StreamExt, TryStreamExt},
     };
@@ -277,7 +277,7 @@ mod tests {
     }
 
     fn sqlite_render(value: Value<'_>) -> String {
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         sqlite_writer().write_value(
             &mut Context::new(Fragment::SqlSelect, false),
             &mut out,
@@ -331,7 +331,7 @@ mod tests {
                 }),
             ),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             writer.write_value(
                 &mut Context::new(Fragment::SqlSelect, false),
                 &mut out,
@@ -361,7 +361,7 @@ mod tests {
             (Value::IpAddr(None), "TEXT"),
         ];
         for (value, expected) in cases {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             writer.write_column_type(
                 &mut Context::new(Fragment::SqlCreateTable, false),
                 &mut out,
@@ -369,7 +369,7 @@ mod tests {
             );
             assert_eq!(out.as_str(), expected, "wrong affinity for {value:?}");
         }
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_column_type(
             &mut Context::new(Fragment::SqlCreateTable, false),
             &mut out,
@@ -385,7 +385,7 @@ mod tests {
         let column = ColumnDef::default();
         let mut types = BTreeMap::new();
         types.insert("postgres", "SOMETHING");
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_column_overridden_type(
             &mut Context::new(Fragment::SqlCreateTable, false),
             &mut out,
@@ -396,7 +396,7 @@ mod tests {
 
         let mut types = BTreeMap::new();
         types.insert("sqlite", "CUSTOM");
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_column_overridden_type(
             &mut Context::new(Fragment::SqlCreateTable, false),
             &mut out,
@@ -421,7 +421,7 @@ mod tests {
         init_logs();
         let writer = sqlite_writer();
         let table = TableRef::from(("s", "the\"table")).with_alias("a".into());
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_table_ref(
             &mut Context::fragment(Fragment::SqlSelectFrom),
             &mut out,
@@ -434,7 +434,7 @@ mod tests {
             table: "t".into(),
             schema: "s".into(),
         };
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_column_ref(
             &mut Context::new(Fragment::SqlSelect, true),
             &mut out,
@@ -442,7 +442,7 @@ mod tests {
         );
         assert_eq!(out.as_str(), "\"s.t\".\"co\"\"l\"");
 
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_column_ref(
             &mut Context::new(Fragment::SqlSelect, false),
             &mut out,
@@ -475,13 +475,13 @@ mod tests {
         let writer = sqlite_writer();
         let generic = GenericSqlWriter::new();
         for value in [Value::Int32(Some(7)), Value::Varchar(Some("a".into()))] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             writer.write_value(
                 &mut Context::new(Fragment::SqlSelect, false),
                 &mut out,
                 &value,
             );
-            let mut expected = DynQuery::default();
+            let mut expected = AnyQuery::default();
             generic.write_value(
                 &mut Context::new(Fragment::SqlSelect, false),
                 &mut expected,
@@ -497,19 +497,19 @@ mod tests {
         let writer = sqlite_writer();
         let mut ctx = Context::new(Fragment::SqlSelect, false);
 
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_limit_offset(&mut ctx, &mut out, None, None);
         assert_eq!(out.as_str(), "");
 
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_limit_offset(&mut ctx, &mut out, Some(10), None);
         assert_eq!(out.as_str(), "\nLIMIT 10");
 
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_limit_offset(&mut ctx, &mut out, Some(10), Some(5));
         assert_eq!(out.as_str(), "\nLIMIT 10\nOFFSET 5");
 
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_limit_offset(&mut ctx, &mut out, None, Some(5));
         assert_eq!(out.as_str(), "\nLIMIT -1\nOFFSET 5");
     }

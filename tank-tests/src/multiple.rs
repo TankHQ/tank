@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
-use tank::{AsValue, DynQuery, Result, Row, Sql, expr};
+use tank::{AnyQuery, AsQuery, AsValue, Result, Row, Sql, expr};
 use tank::{
     Entity, Executor, QueryResult,
     stream::{StreamExt, TryStreamExt},
@@ -31,7 +31,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     let driver = executor.driver();
-    let mut query = DynQuery::default();
+    let mut query = AnyQuery::default();
     query.push_str("    \n\n  \n \n\t\t\n   \n    ");
     // 1
     Sql()
@@ -136,7 +136,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
         .where_expr(expr!(Two::a2 == 0))
         .build_into(&driver, &mut query);
     query.push_str("            \t    \t\t  \n \n \n \t    \n\n\n ");
-    let mut query = <DynQuery as tank::AsQuery<_>>::as_query(query);
+    let mut query = query.as_query();
     let result = executor
         .run(&mut query)
         .map_ok(|result| match result {

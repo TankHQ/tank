@@ -11,18 +11,19 @@ mod tests {
         collections::{BTreeMap, HashMap},
         ffi::{CString, c_char},
         fmt::Write,
-        ptr,
+        iter, ptr,
         vec::IntoIter,
     };
     use syn::{Path, parse_str};
     use tank::{
-        CollectionType, Connection, Context, Dataset, DynQuery, EitherIterator, Entity, Expression,
-        FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType, QueryResult,
-        References, Row, RowLabels, RowOwned, RowsAffected, SelectQuery, Sql, SqlExpressionWriter,
-        SqlValueWriter, SqlWriter, StructType, TRUNCATE_LONG_LIMIT, TableRef, Value, as_c_string,
-        column_def, consume_while, decimal_from_scaled, error_message_from_ptr, extract_number,
-        matches_path, month_to_number, number_to_month, quote_btree_map, quote_cow, quote_option,
-        separated_by, truncate_bound, truncate_long, value_to_json, write_escaped,
+        AnyQuery, CollectionType, Connection, Context, Dataset, Driver, EitherIterator, Entity,
+        Expression, FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType,
+        Operand, Query, QueryResult, References, Row, RowLabels, RowOwned, RowsAffected,
+        SelectQuery, Sql, SqlExpressionWriter, SqlValueWriter, SqlWriter, StructType,
+        TRUNCATE_LONG_LIMIT, TableRef, Value, as_c_string, column_def, consume_while,
+        decimal_from_scaled, error_message_from_ptr, extract_number, matches_path, month_to_number,
+        number_to_month, quote_btree_map, quote_cow, quote_option, separated_by, truncate_bound,
+        truncate_long, value_to_json, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
@@ -69,14 +70,14 @@ mod tests {
         let table = TableRef::from(("analytics", "events")).with_alias("e".into());
 
         let mut from_context = Context::fragment(Fragment::SqlSelectFrom);
-        let mut rendered = DynQuery::default();
+        let mut rendered = AnyQuery::default();
         table.write_table_name(&writer, &mut from_context, &mut rendered);
         assert_eq!(rendered.as_str().as_ref(), r#""analytics"."events" e"#);
         assert_eq!(table.table_ref(), table);
         assert!(!table.qualified_columns());
 
         let mut join_context = Context::fragment(Fragment::SqlJoin);
-        let mut rendered_borrowed = DynQuery::default();
+        let mut rendered_borrowed = AnyQuery::default();
         (&table).write_table_name(&writer, &mut join_context, &mut rendered_borrowed);
         assert_eq!(
             rendered_borrowed.as_str().as_ref(),
@@ -87,7 +88,7 @@ mod tests {
 
         let dynamic: &dyn Dataset = &table;
         assert!(!dynamic.qualified_columns());
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         (&dynamic).write_table_name(
             &writer,
             &mut Context::fragment(Fragment::SqlSelectFrom),
@@ -102,7 +103,7 @@ mod tests {
         let writer = GenericSqlWriter::new();
         let table = TableRef::from(("analytics", "events")).with_alias("e".into());
 
-        let mut rendered = DynQuery::default();
+        let mut rendered = AnyQuery::default();
         table.write_table_name(&writer, &mut Context::empty(), &mut rendered);
         assert_eq!(rendered.as_str().as_ref(), "e");
     }
@@ -194,8 +195,8 @@ mod tests {
     }
 
     #[test]
-    fn dyn_query_operations() {
-        let mut query = DynQuery::default();
+    fn any_query_operations() {
+        let mut query = AnyQuery::default();
         assert!(query.is_empty());
         assert_eq!(query.len(), 0);
         query.push_str("SELECT ");
@@ -205,24 +206,24 @@ mod tests {
         assert_eq!(query.len(), 8);
         assert_eq!(query.as_str().as_ref(), "SELECT *");
 
-        let mut query = DynQuery::with_capacity(1024);
+        let mut query = AnyQuery::with_capacity(1024);
         assert!(query.is_empty());
         query.push_str("hello");
         assert_eq!(query.as_str().as_ref(), "hello");
 
-        let query = DynQuery::new("SELECT 1".into());
+        let query = AnyQuery::new("SELECT 1".into());
         assert_eq!(query.as_str().as_ref(), "SELECT 1");
         assert_eq!(query.len(), 8);
         assert!(!query.is_empty());
 
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         write!(query, "INSERT INTO {} VALUES ({})", "t", 42).unwrap();
         assert_eq!(query.as_str().as_ref(), "INSERT INTO t VALUES (42)");
 
-        let string: String = DynQuery::new("hello world".into()).into();
+        let string: String = AnyQuery::new("hello world".into()).into();
         assert_eq!(string, "hello world");
 
-        let mut query = DynQuery::new("initial".into());
+        let mut query = AnyQuery::new("initial".into());
         query.buffer().clear();
         assert!(query.is_empty());
         query.buffer().push_str("new content");
@@ -383,19 +384,19 @@ mod tests {
 
     #[test]
     fn util_write_escaped() {
-        let mut v = DynQuery::default();
+        let mut v = AnyQuery::default();
         write_escaped(&mut v, "hello", '\'', "''");
         assert_eq!(v.as_str().as_ref(), "hello");
 
-        let mut v = DynQuery::default();
+        let mut v = AnyQuery::default();
         write_escaped(&mut v, "it's a test", '\'', "''");
         assert_eq!(v.as_str().as_ref(), "it''s a test");
 
-        let mut v = DynQuery::default();
+        let mut v = AnyQuery::default();
         write_escaped(&mut v, "a\"b\"c", '"', "\"\"");
         assert_eq!(v.as_str().as_ref(), "a\"\"b\"\"c");
 
-        let mut v = DynQuery::default();
+        let mut v = AnyQuery::default();
         write_escaped(&mut v, "a😀b😀c", '😀', "[]");
         assert_eq!(v.as_str().as_ref(), "a[]b[]c");
     }
@@ -408,34 +409,34 @@ mod tests {
             id: i32,
         }
         let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
+        let mut q = AnyQuery::default();
         writer.write_create_schema(&mut q, SchemaEntity::table(), true);
         assert_eq!(
             q.as_str().as_ref(),
             "CREATE SCHEMA IF NOT EXISTS \"analytics\";"
         );
 
-        let mut q2 = DynQuery::default();
+        let mut q2 = AnyQuery::default();
         writer.write_create_schema(&mut q2, SchemaEntity::table(), false);
         assert_eq!(q2.as_str().as_ref(), "CREATE SCHEMA \"analytics\";");
 
-        let mut q3 = DynQuery::default();
+        let mut q3 = AnyQuery::default();
         writer.write_drop_schema(&mut q3, SchemaEntity::table(), true);
         assert_eq!(q3.as_str().as_ref(), "DROP SCHEMA IF EXISTS \"analytics\";");
-        let mut q4 = DynQuery::default();
+        let mut q4 = AnyQuery::default();
         writer.write_drop_schema(&mut q4, SchemaEntity::table(), false);
         assert_eq!(q4.as_str().as_ref(), "DROP SCHEMA \"analytics\";");
 
-        let mut q5 = DynQuery::new("-- c".into());
+        let mut q5 = AnyQuery::new("-- c".into());
         writer.write_create_schema(&mut q5, SchemaEntity::table(), false);
         assert!(q5.as_str().starts_with("-- c\nCREATE SCHEMA"));
 
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_cast(
             &mut Context::empty(),
             &mut out,
-            &tank::Operand::LitInt(1),
-            &tank::Operand::Type(Value::Int64(None)),
+            &Operand::LitInt(1),
+            &Operand::Type(Value::Int64(None)),
         );
         assert_eq!(out.as_str(), "CAST(1 AS BIGINT)");
     }
@@ -445,7 +446,7 @@ mod tests {
         struct NoFrom;
         impl SelectQuery<TableRef> for NoFrom {
             fn get_select(&self) -> impl Iterator<Item = impl Expression> + Clone {
-                std::iter::empty::<tank::Operand<'_>>()
+                iter::empty::<Operand<'_>>()
             }
             fn get_from(&self) -> &Option<TableRef> {
                 &None
@@ -454,13 +455,13 @@ mod tests {
                 &None::<bool>
             }
             fn get_group_by(&self) -> impl Iterator<Item = impl Expression> + Clone {
-                std::iter::empty::<tank::Operand<'_>>()
+                iter::empty::<Operand<'_>>()
             }
             fn get_having(&self) -> &Option<impl Expression> {
                 &None::<bool>
             }
             fn get_order_by(&self) -> impl Iterator<Item = impl Expression> + Clone {
-                std::iter::empty::<tank::Operand<'_>>()
+                iter::empty::<Operand<'_>>()
             }
             fn get_limit(&self) -> Option<u32> {
                 None
@@ -471,12 +472,12 @@ mod tests {
             fn is_distinct(&self) -> bool {
                 false
             }
-            fn build<D: tank::Driver>(&self, _: &D) -> DynQuery {
-                DynQuery::default()
+            fn build<D: Driver>(&self, _: &D) -> Query<D> {
+                AnyQuery::default().into()
             }
-            fn build_into<D: tank::Driver>(&self, _: &D, _: &mut DynQuery) {}
+            fn build_into<D: Driver>(&self, _: &D, _: &mut AnyQuery) {}
         }
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         GenericSqlWriter::new().write_select(&mut out, &NoFrom);
         assert_eq!(out.as_str(), "SELECT *;");
     }
@@ -498,7 +499,7 @@ mod tests {
     #[test]
     fn writer_composite_values() {
         let writer = GenericSqlWriter::new();
-        let mut value = DynQuery::default();
+        let mut value = AnyQuery::default();
         let mut map = HashMap::new();
         map.insert(Value::Varchar(Some("key1".into())), Value::Int32(Some(100)));
         writer.write_value(
@@ -515,7 +516,7 @@ mod tests {
         assert!(value.as_str().contains("key1"));
         assert!(value.as_str().contains("100"));
 
-        let mut value = DynQuery::default();
+        let mut value = AnyQuery::default();
         writer.write_value(
             &mut Default::default(),
             &mut value,
@@ -536,7 +537,7 @@ mod tests {
         assert!(value.as_str().contains("Alice"));
         assert!(value.as_str().contains("30"));
 
-        let mut value = DynQuery::default();
+        let mut value = AnyQuery::default();
         writer.write_value(
             &mut Default::default(),
             &mut value,
@@ -548,7 +549,7 @@ mod tests {
     #[test]
     fn write_json_string() {
         let writer = GenericSqlWriter::new();
-        let mut value = DynQuery::default();
+        let mut value = AnyQuery::default();
         let mut context = Context::fragment(Fragment::Json);
         writer.write_value(
             &mut context,
@@ -598,7 +599,7 @@ mod tests {
             (Fragment::JsonKey, Value::Int32(Some(3)), "\"3\""),
             (Fragment::JsonKey, Value::Float64(Some(1.5)), "\"1.5\""),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             writer.write_value(&mut Context::new(fragment, false), &mut out, &value);
             assert_eq!(out.as_str(), expected);
         }
@@ -607,7 +608,7 @@ mod tests {
     #[test]
     fn sql_writer_blob() {
         let writer = GenericSqlWriter::new();
-        let mut value = DynQuery::default();
+        let mut value = AnyQuery::default();
         writer.write_value(
             &mut Default::default(),
             &mut value,
@@ -620,7 +621,7 @@ mod tests {
     #[test]
     fn write_timestamptz_value() {
         let writer = GenericSqlWriter::new();
-        let mut value = DynQuery::default();
+        let mut value = AnyQuery::default();
         let dt = OffsetDateTime::new_in_offset(
             Date::from_calendar_date(2025, Month::June, 15).unwrap(),
             Time::from_hms(10, 30, 0).unwrap(),
@@ -639,7 +640,7 @@ mod tests {
     fn sql_writer_floats() {
         let writer = GenericSqlWriter::new();
         for f in [f64::INFINITY, f64::NEG_INFINITY] {
-            let mut value = DynQuery::default();
+            let mut value = AnyQuery::default();
             writer.write_value(
                 &mut Default::default(),
                 &mut value,
@@ -653,7 +654,7 @@ mod tests {
             Value::Float32(Some(f32::INFINITY)),
             Value::Float32(Some(f32::NAN)),
         ] {
-            let mut query = DynQuery::default();
+            let mut query = AnyQuery::default();
             writer.write_value(&mut Default::default(), &mut query, &value);
             let s = query.as_str();
             assert!(s.contains("CAST"));
@@ -665,14 +666,14 @@ mod tests {
     #[test]
     fn sql_writer_transactions() {
         let writer = GenericSqlWriter::new();
-        let mut q1 = DynQuery::default();
+        let mut q1 = AnyQuery::default();
         writer.write_transaction_begin(&mut q1);
         assert_eq!(q1.as_str().as_ref(), "BEGIN;");
         writer.write_transaction_commit(&mut q1);
         assert_eq!(q1.as_str().as_ref(), "BEGIN;\nCOMMIT;");
         writer.write_transaction_rollback(&mut q1);
         assert_eq!(q1.as_str().as_ref(), "BEGIN;\nCOMMIT;\nROLLBACK;");
-        let mut q2 = DynQuery::new("SELECT 1".into());
+        let mut q2 = AnyQuery::new("SELECT 1".into());
         writer.write_transaction_begin(&mut q2);
         assert_eq!(q2.as_str(), "SELECT 1\nBEGIN;");
     }
@@ -683,7 +684,7 @@ mod tests {
         struct EmptyInsert {
             id: i32,
         }
-        let mut q = DynQuery::default();
+        let mut q = AnyQuery::default();
         let entities: Vec<&EmptyInsert> = vec![];
         Sql()
             .insert_into(EmptyInsert::table())
@@ -698,34 +699,34 @@ mod tests {
         struct AppendTable {
             id: i32,
         }
-        let mut q = DynQuery::new("-- comment".into());
+        let mut q = AnyQuery::new("-- comment".into());
         Sql()
             .select(AppendTable::columns())
             .from(AppendTable::table())
             .build_into(&DRIVER, &mut q);
-        let mut q = DynQuery::new("-- comment".into());
+        let mut q = AnyQuery::new("-- comment".into());
         Sql()
             .select(AppendTable::columns())
             .from(AppendTable::table())
             .build_into(&DRIVER, &mut q);
         assert!(q.as_str().starts_with("-- comment\nSELECT"));
 
-        let mut q = DynQuery::new("-- c".into());
+        let mut q = AnyQuery::new("-- c".into());
         Sql()
             .create_table(AppendTable::table())
             .build_into(&DRIVER, &mut q);
         assert!(q.as_str().starts_with("-- c\nCREATE TABLE"));
-        let mut q = DynQuery::new("-- c".into());
+        let mut q = AnyQuery::new("-- c".into());
         Sql()
             .drop_table(AppendTable::table())
             .build_into(&DRIVER, &mut q);
         assert!(q.as_str().starts_with("-- c\nDROP TABLE"));
-        let mut q = DynQuery::new("-- c".into());
+        let mut q = AnyQuery::new("-- c".into());
         Sql()
             .delete_from(AppendTable::table())
             .build_into(&DRIVER, &mut q);
         assert!(q.as_str().starts_with("-- c\nDELETE FROM"));
-        let mut q = DynQuery::new("-- c".into());
+        let mut q = AnyQuery::new("-- c".into());
         Sql()
             .insert_into(AppendTable::table())
             .values(&[AppendTable { id: 1 }])
@@ -740,7 +741,7 @@ mod tests {
             #[tank(primary_key)]
             id: i32,
         }
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .insert_into(PkOnly::table())
             .values(&[PkOnly { id: 1 }])
@@ -752,7 +753,7 @@ mod tests {
         struct NoPk {
             value: i32,
         }
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .insert_into(NoPk::table())
             .values(&[NoPk { value: 1 }])
@@ -823,7 +824,7 @@ mod tests {
 
     #[test]
     fn util_separated_by() {
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         separated_by(
             &mut out,
             [1, 2, 3],
@@ -834,7 +835,7 @@ mod tests {
         );
         assert_eq!(out.as_str(), "1, 2, 3");
 
-        let mut out2 = DynQuery::default();
+        let mut out2 = AnyQuery::default();
         separated_by(
             &mut out2,
             [42],

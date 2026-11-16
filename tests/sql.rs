@@ -8,7 +8,7 @@ mod tests {
     use rust_decimal::Decimal;
     use std::{collections::BTreeMap, str::FromStr};
     use tank::{
-        BinaryOp, BinaryOpType, ColumnDef, Context, DynQuery, Entity, Expression, Fragment,
+        AnyQuery, BinaryOp, BinaryOpType, ColumnDef, Context, Entity, Expression, Fragment,
         GenericSqlWriter, Operand, Sql, SqlCoreWriter, SqlExpressionWriter, SqlValueWriter, Value,
         expr,
     };
@@ -280,12 +280,12 @@ mod tests {
             (Value::Json(None), "JSON"),
             (Value::Null, ""),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             WRITER.write_column_type(&mut ctx, &mut out, &value);
             assert_eq!(out.as_str(), expected);
         }
 
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         WRITER.write_column_overridden_type(
             &mut ctx,
             &mut out,
@@ -298,7 +298,7 @@ mod tests {
             (Value::UInt8(Some(1)), "1"),
             (Value::UInt128(Some(Box::new(5))), "5"),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             WRITER.write_value(&mut Context::empty(), &mut out, &value);
             assert_eq!(out.as_str(), expected);
         }
@@ -308,7 +308,7 @@ mod tests {
             (Operand::LitTuple(&tuple), "(1,2)"),
             (Operand::Value(&Value::Int32(Some(9))), "9"),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             WRITER.write_operand(&mut ctx, &mut out, &operand);
             assert_eq!(out.as_str(), expected);
         }
@@ -320,7 +320,7 @@ mod tests {
                 len: 2,
             }),
         );
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         WRITER.write_value(&mut Context::empty(), &mut out, &arr);
         assert_eq!(out.as_str(), "[1,2]");
 
@@ -331,7 +331,7 @@ mod tests {
                 len: 0,
             }),
         );
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         WRITER.write_value(&mut Context::empty(), &mut out, &list);
         assert_eq!(out.as_str(), "[a]");
 
@@ -344,7 +344,7 @@ mod tests {
                 value: Value::Int32(None),
             }),
         );
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         WRITER.write_value(&mut Context::empty(), &mut out, &map);
         assert_eq!(out.as_str(), "{k:1}");
 
@@ -355,7 +355,7 @@ mod tests {
                 name: tank::TableRef::new("t".into()),
             }),
         );
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         WRITER.write_value(&mut Context::empty(), &mut out, &strukt);
         assert_eq!(out.as_str(), "{f:1}");
 
@@ -366,13 +366,13 @@ mod tests {
             (Operand::LitList(&lit_list), "[1,2]"),
             (Operand::LitIdent("ident"), "ident"),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             WRITER.write_operand(&mut Context::empty(), &mut out, &operand);
             assert_eq!(out.as_str(), expected);
         }
 
         // CAST goes through the dedicated cast fragment.
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         BinaryOp {
             op: BinaryOpType::Cast,
             lhs: Operand::LitInt(1),
@@ -392,7 +392,7 @@ mod tests {
             (BinaryOpType::Glob, "a GLOB 'x'"),
             (BinaryOpType::ShiftLeft, "a << 'x'"),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             (BinaryOp {
                 op,
                 lhs: Operand::LitIdent("a"),

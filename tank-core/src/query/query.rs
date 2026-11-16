@@ -1,6 +1,9 @@
-use crate::{AsValue, Driver, DynQuery, Prepared, Result, RowOwned, RowsAffected, truncate_long};
+use crate::{AnyQuery, AsValue, Driver, Prepared, Result, RowOwned, RowsAffected, truncate_long};
 use anyhow::anyhow;
-use std::fmt::{self, Display};
+use std::{
+    borrow::Cow,
+    fmt::{self, Display},
+};
 
 #[derive(Default, Clone, Debug)]
 pub struct RawQuery(pub String);
@@ -33,6 +36,21 @@ impl<D: Driver> Query<D> {
     pub fn is_prepared(&self) -> bool {
         matches!(self, Query::Prepared(..))
     }
+    /// Renders raw SQL as borrowed text, or the prepared statement as debug text.
+    pub fn as_str(&self) -> Cow<'_, str> {
+        match self {
+            Query::Raw(RawQuery(sql)) => Cow::Borrowed(sql),
+            Query::Prepared(prepared) => Cow::Owned(format!("{prepared:?}")),
+        }
+    }
+    /// True when the query holds no SQL text and its prepared statement is empty.
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Query::Raw(RawQuery(sql)) => sql.is_empty(),
+            Query::Prepared(prepared) => prepared.is_empty(),
+        }
+    }
     /// Clear bound values.
     pub fn clear_bindings(&mut self) -> Result<&mut Self> {
         if let Self::Prepared(prepared) = self {
@@ -60,7 +78,7 @@ impl<D: Driver> Query<D> {
         prepared.bind_index(value, index)?;
         Ok(self)
     }
-    pub fn into_dyn(self) -> DynQuery {
+    pub fn into_any(self) -> AnyQuery {
         self.into()
     }
 }

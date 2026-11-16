@@ -77,7 +77,7 @@ impl Executor for ScyllaDBConnection {
         false
     }
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<ScyllaDBDriver>> {
+    async fn do_prepare(&mut self, sql: &str) -> Result<Query<ScyllaDBDriver>> {
         let context = format!("While preparing the query:\n{}", truncate_long!(sql));
         let statement = self.session.prepare(sql).await.with_context(|| context)?;
         Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))

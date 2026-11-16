@@ -1,5 +1,5 @@
 use crate::{
-    ColumnDef, Dataset, DynQuery, Expression, Fragment, InsertIntoQuery, IsTrue, SelectQuery,
+    AnyQuery, ColumnDef, Dataset, Expression, Fragment, InsertIntoQuery, IsTrue, SelectQuery,
     TableRef, UpdateQuery,
     future::Either,
     separated_by,
@@ -12,7 +12,7 @@ pub trait SqlWriter:
     SqlCoreWriter + SqlValueWriter + SqlExpressionWriter + SqlFragmentWriter
 {
     /// Emit BEGIN statement.
-    fn write_transaction_begin(&self, out: &mut DynQuery) {
+    fn write_transaction_begin(&self, out: &mut AnyQuery) {
         const SQL: &str = "BEGIN;";
         out.buffer().reserve(SQL.len() + 1);
         if !out.is_empty() {
@@ -22,7 +22,7 @@ pub trait SqlWriter:
     }
 
     /// Emit COMMIT statement.
-    fn write_transaction_commit(&self, out: &mut DynQuery) {
+    fn write_transaction_commit(&self, out: &mut AnyQuery) {
         const SQL: &str = "COMMIT;";
         out.buffer().reserve(SQL.len() + 1);
         if !out.is_empty() {
@@ -32,7 +32,7 @@ pub trait SqlWriter:
     }
 
     /// Emit ROLLBACK statement.
-    fn write_transaction_rollback(&self, out: &mut DynQuery) {
+    fn write_transaction_rollback(&self, out: &mut AnyQuery) {
         const SQL: &str = "ROLLBACK;";
         out.buffer().reserve(SQL.len() + 1);
         if !out.is_empty() {
@@ -42,7 +42,7 @@ pub trait SqlWriter:
     }
 
     /// Emit CREATE SCHEMA.
-    fn write_create_schema(&self, out: &mut DynQuery, table: &TableRef, if_not_exists: bool)
+    fn write_create_schema(&self, out: &mut AnyQuery, table: &TableRef, if_not_exists: bool)
     where
         Self: Sized,
     {
@@ -60,7 +60,7 @@ pub trait SqlWriter:
     }
 
     /// Emit DROP SCHEMA.
-    fn write_drop_schema(&self, out: &mut DynQuery, table: &TableRef, if_exists: bool)
+    fn write_drop_schema(&self, out: &mut AnyQuery, table: &TableRef, if_exists: bool)
     where
         Self: Sized,
     {
@@ -78,7 +78,7 @@ pub trait SqlWriter:
     }
 
     /// Emit CREATE TABLE with columns and constraints.
-    fn write_create_table(&self, out: &mut DynQuery, table: &TableRef, if_not_exists: bool)
+    fn write_create_table(&self, out: &mut AnyQuery, table: &TableRef, if_not_exists: bool)
     where
         Self: Sized,
     {
@@ -161,7 +161,7 @@ pub trait SqlWriter:
     }
 
     /// Write the `COMMENT ON COLUMN` statement of a single column.
-    fn write_column_comment(&self, context: &mut Context, out: &mut DynQuery, column: &ColumnDef) {
+    fn write_column_comment(&self, context: &mut Context, out: &mut AnyQuery, column: &ColumnDef) {
         let mut context = context.switch_fragment(Fragment::SqlCommentOnColumn);
         context.current.qualify_columns = true;
         // Exact length of `\nCOMMENT ON COLUMN "s"."t"."c" IS '...';` when nothing is escaped.
@@ -182,7 +182,7 @@ pub trait SqlWriter:
     }
 
     /// Write DROP TABLE statement.
-    fn write_drop_table(&self, out: &mut DynQuery, table: &TableRef, if_exists: bool)
+    fn write_drop_table(&self, out: &mut AnyQuery, table: &TableRef, if_exists: bool)
     where
         Self: Sized,
     {
@@ -201,7 +201,7 @@ pub trait SqlWriter:
     }
 
     /// Write SELECT statement.
-    fn write_select<'a, Data>(&self, out: &mut DynQuery, query: impl SelectQuery<Data>)
+    fn write_select<'a, Data>(&self, out: &mut AnyQuery, query: impl SelectQuery<Data>)
     where
         Self: Sized,
         Data: Dataset + 'a,
@@ -290,14 +290,14 @@ pub trait SqlWriter:
     }
 
     /// Write INSERT statement printing rows of values or a SELECT.
-    fn write_insert(&self, out: &mut DynQuery, query: impl InsertIntoQuery)
+    fn write_insert(&self, out: &mut AnyQuery, query: impl InsertIntoQuery)
     where
         Self: Sized,
     {
         let table = query.get_table();
         let columns = query.get_columns();
         // A SELECT without named columns fills all the table columns, rows always name theirs.
-        let write_head = |out: &mut DynQuery, context: &mut Context, all: bool| {
+        let write_head = |out: &mut AnyQuery, context: &mut Context, all: bool| {
             if !out.is_empty() {
                 out.push('\n');
             }
@@ -359,7 +359,7 @@ pub trait SqlWriter:
     }
 
     /// Write UPDATE statement.
-    fn write_update<Data>(&self, out: &mut DynQuery, query: impl UpdateQuery<Data>)
+    fn write_update<Data>(&self, out: &mut AnyQuery, query: impl UpdateQuery<Data>)
     where
         Self: Sized,
         Data: Dataset,
@@ -403,7 +403,7 @@ pub trait SqlWriter:
     }
 
     /// Write DELETE statement.
-    fn write_delete(&self, out: &mut DynQuery, from: &dyn Dataset, condition: impl Expression)
+    fn write_delete(&self, out: &mut AnyQuery, from: &dyn Dataset, condition: impl Expression)
     where
         Self: Sized,
     {

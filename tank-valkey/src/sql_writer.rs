@@ -2,7 +2,7 @@ use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
 use redis::Cmd;
 use std::{borrow::Cow, fmt::Write, hint, mem};
 use tank_core::{
-    AsValue, Case, ColumnDef, Context, Dataset, DynQuery, Expression, Fragment, InsertIntoQuery,
+    AnyQuery, AsValue, Case, ColumnDef, Context, Dataset, Expression, Fragment, InsertIntoQuery,
     IsAsterisk, LiteralValue, Result, SelectQuery, SqlCoreWriter, SqlExpressionWriter,
     SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value, future::Either,
 };
@@ -20,8 +20,8 @@ impl ValkeySqlWriter {
         }
     }
 
-    pub fn make_prepared() -> DynQuery {
-        DynQuery::Prepared(Box::new(ValkeyPrepared::default()))
+    pub fn make_prepared() -> AnyQuery {
+        AnyQuery::Prepared(Box::new(ValkeyPrepared::default()))
     }
 
     pub fn make_context(fragment: Fragment) -> Context {
@@ -35,7 +35,7 @@ impl ValkeySqlWriter {
     }
 
     pub(crate) fn prepare_query<'a>(
-        query: &'a mut DynQuery,
+        query: &'a mut AnyQuery,
         _context: &mut Context,
     ) -> &'a mut ValkeyPrepared {
         loop {
@@ -56,7 +56,7 @@ impl SqlCoreWriter for ValkeySqlWriter {
         &self.separator
     }
 
-    fn write_table_ref(&self, context: &mut Context, out: &mut DynQuery, value: &TableRef) {
+    fn write_table_ref(&self, context: &mut Context, out: &mut AnyQuery, value: &TableRef) {
         if self.is_alias_declaration(context) || value.alias.is_empty() {
             if !value.schema.is_empty() {
                 self.write_identifier(context, out, &value.schema, context.quote_identifiers);
@@ -71,13 +71,13 @@ impl SqlCoreWriter for ValkeySqlWriter {
 }
 
 impl SqlValueWriter for ValkeySqlWriter {
-    fn write_string(&self, _context: &mut Context, out: &mut DynQuery, value: &str) {
+    fn write_string(&self, _context: &mut Context, out: &mut AnyQuery, value: &str) {
         out.push_str(value);
     }
 }
 
 impl SqlExpressionWriter for ValkeySqlWriter {
-    fn write_case(&self, _context: &mut Context, _out: &mut DynQuery, _value: &Case) {
+    fn write_case(&self, _context: &mut Context, _out: &mut AnyQuery, _value: &Case) {
         log::error!("Valkey does not support CASE expressions");
     }
 }
@@ -85,21 +85,21 @@ impl SqlExpressionWriter for ValkeySqlWriter {
 impl SqlFragmentWriter for ValkeySqlWriter {}
 
 impl SqlWriter for ValkeySqlWriter {
-    fn write_create_schema(&self, out: &mut DynQuery, _table: &TableRef, _if_not_exists: bool)
+    fn write_create_schema(&self, out: &mut AnyQuery, _table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
     {
         Self::prepare_query(out, &mut Default::default());
     }
 
-    fn write_drop_schema(&self, out: &mut DynQuery, _table: &TableRef, _if_exists: bool)
+    fn write_drop_schema(&self, out: &mut AnyQuery, _table: &TableRef, _if_exists: bool)
     where
         Self: Sized,
     {
         Self::prepare_query(out, &mut Default::default());
     }
 
-    fn write_create_table(&self, out: &mut DynQuery, _table: &TableRef, _if_not_exists: bool)
+    fn write_create_table(&self, out: &mut AnyQuery, _table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
     {
@@ -109,12 +109,12 @@ impl SqlWriter for ValkeySqlWriter {
     fn write_column_comment(
         &self,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _column: &ColumnDef,
     ) {
     }
 
-    fn write_drop_table(&self, out: &mut DynQuery, _table: &TableRef, _if_exists: bool)
+    fn write_drop_table(&self, out: &mut AnyQuery, _table: &TableRef, _if_exists: bool)
     where
         Self: Sized,
     {
@@ -122,7 +122,7 @@ impl SqlWriter for ValkeySqlWriter {
         Self::prepare_query(out, &mut Default::default());
     }
 
-    fn write_select<'a, Data>(&self, out: &mut DynQuery, query: impl SelectQuery<Data>)
+    fn write_select<'a, Data>(&self, out: &mut AnyQuery, query: impl SelectQuery<Data>)
     where
         Self: Sized,
         Data: Dataset + 'a,
@@ -219,7 +219,7 @@ impl SqlWriter for ValkeySqlWriter {
         }
     }
 
-    fn write_insert(&self, out: &mut DynQuery, query: impl InsertIntoQuery)
+    fn write_insert(&self, out: &mut AnyQuery, query: impl InsertIntoQuery)
     where
         Self: Sized,
     {
@@ -262,7 +262,7 @@ impl SqlWriter for ValkeySqlWriter {
                     key.push_str(name);
                     key.push_str(self.separator());
                 }
-                let mut rendered = DynQuery::new(key);
+                let mut rendered = AnyQuery::new(key);
                 self.write_value(&mut context, &mut rendered, value);
                 key = mem::take(rendered.buffer());
             }
@@ -319,7 +319,7 @@ impl SqlWriter for ValkeySqlWriter {
         }
     }
 
-    fn write_delete(&self, out: &mut DynQuery, from: &dyn Dataset, condition: impl Expression)
+    fn write_delete(&self, out: &mut AnyQuery, from: &dyn Dataset, condition: impl Expression)
     where
         Self: Sized,
     {

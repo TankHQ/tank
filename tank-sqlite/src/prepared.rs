@@ -9,7 +9,7 @@ use std::{
     sync::Arc,
 };
 use tank_core::{
-    AsValue, Context, DynQuery, Error, Fragment, Prepared, Result, SqlValueWriter, Value,
+    AnyQuery, AsValue, Context, Error, Fragment, Prepared, Result, SqlValueWriter, Value,
     error_message_from_ptr, truncate_long,
 };
 
@@ -22,7 +22,7 @@ pub struct SQLitePrepared {
     pub(crate) labels: Option<Arc<[String]>>,
     pub(crate) columns: c_int,
     pub(crate) row: Option<Arc<SQLiteRowData>>,
-    written: DynQuery,
+    written: AnyQuery,
 }
 
 impl SQLitePrepared {
@@ -36,7 +36,7 @@ impl SQLitePrepared {
             labels: None,
             columns: 0,
             row: None,
-            written: DynQuery::default(),
+            written: AnyQuery::default(),
         }
     }
 
@@ -91,8 +91,8 @@ impl SQLitePrepared {
     unsafe fn bind_written(
         statement: *mut sqlite3_stmt,
         index: c_int,
-        buffer: &mut DynQuery,
-        write: impl Fn(&mut Context, &mut DynQuery),
+        buffer: &mut AnyQuery,
+        write: impl Fn(&mut Context, &mut AnyQuery),
     ) -> c_int {
         buffer.clear();
         write(&mut Context::fragment(Fragment::ParameterBinding), buffer);

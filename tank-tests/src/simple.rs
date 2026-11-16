@@ -8,7 +8,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use tank::{
-    Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery, Result,
+    AnyQuery, Driver, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery, Result,
     RowsAffected, Sql, expr, stream::TryStreamExt,
 };
 use time::{Date, Time, macros::date};
@@ -99,7 +99,7 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
         let driver = executor.driver();
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .delete_from(SimpleFields::table())
             .where_expr(false)
@@ -205,7 +205,7 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
         let driver = executor.driver();
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .delete_from(SimpleFields::table())
             .build_into(&driver, &mut query);

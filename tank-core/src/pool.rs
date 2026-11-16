@@ -196,7 +196,7 @@ impl<D: Driver> Executor for PooledConnection<D> {
         self.object.prepare(query)
     }
 
-    fn do_prepare(&mut self, sql: String) -> impl Future<Output = Result<Query<D>>> + Send {
+    fn do_prepare(&mut self, sql: &str) -> impl Future<Output = Result<Query<D>>> + Send {
         self.object.do_prepare(sql)
     }
 

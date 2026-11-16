@@ -8,7 +8,7 @@ use std::{
     sync::LazyLock,
 };
 use tank::{
-    Driver, DynQuery, Entity, Executor, Interval, Query, QueryResult, RawQuery, Result, Sql,
+    AnyQuery, Driver, Entity, Executor, Interval, Query, QueryResult, RawQuery, Result, Sql,
     SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
@@ -93,7 +93,7 @@ pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         let driver = executor.driver();
         let writer = driver.sql_writer();
         writer.write_drop_table(&mut query, Container::table(), true);

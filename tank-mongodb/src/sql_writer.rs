@@ -15,7 +15,7 @@ use mongodb::{
 };
 use std::{borrow::Cow, collections::HashMap, f64, mem, ops::Deref, sync::Arc};
 use tank_core::{
-    AsValue, BinaryOp, BinaryOpType, Case, ColumnDef, ColumnRef, Context, Dataset, DynQuery,
+    AnyQuery, AsValue, BinaryOp, BinaryOpType, Case, ColumnDef, ColumnRef, Context, Dataset,
     Expression, FindOrder, Fragment, InsertIntoQuery, Interval, IsAggregateFunction, IsAsterisk,
     IsConstant, LiteralValue, Operand, Order, Result, Row, RowLabels, RowOwned, SelectQuery,
     SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef,
@@ -26,7 +26,7 @@ use uuid::Uuid;
 
 macro_rules! write_value_fn {
     ($fn_name:ident, $ty:ty, $bson:path) => {
-        fn $fn_name(&self, _context: &mut Context, out: &mut DynQuery, value: $ty) {
+        fn $fn_name(&self, _context: &mut Context, out: &mut AnyQuery, value: $ty) {
             let Some(target) = out
                 .as_prepared::<MongoDBDriver>()
                 .and_then(MongoDBPrepared::current_bson)
@@ -46,19 +46,19 @@ macro_rules! write_value_fn {
 pub struct MongoDBSqlWriter {}
 
 impl MongoDBSqlWriter {
-    pub fn make_prepared() -> DynQuery {
-        DynQuery::Prepared(Box::new(MongoDBPrepared::default()))
+    pub fn make_prepared() -> AnyQuery {
+        AnyQuery::Prepared(Box::new(MongoDBPrepared::default()))
     }
 
     /// INSERT ... SELECT as an aggregation, whose final `$merge` stage inserts the documents.
     fn write_insert_select<'a, Data: Dataset + 'a>(
         &self,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         table: &TableRef,
         columns: &[ColumnDef],
         query: &impl SelectQuery<Data>,
     ) {
-        let mut select = DynQuery::default();
+        let mut select = AnyQuery::default();
         self.write_select(&mut select, query);
         let Some(select) = select.as_prepared::<MongoDBDriver>() else {
             log::error!("Failed to render the SELECT of MongoDBSqlWriter::write_insert_select");
@@ -184,7 +184,7 @@ impl MongoDBSqlWriter {
         }
     }
 
-    pub(crate) fn prepare_query(query: &mut DynQuery, context: &mut Context, payload: Payload) {
+    pub(crate) fn prepare_query(query: &mut AnyQuery, context: &mut Context, payload: Payload) {
         if let Some(prepared) = query.as_prepared::<MongoDBDriver>() {
             if let Err(e) = prepared.add_payload(payload) {
                 let error = e.context("While preparing the query (adding payload)");
@@ -197,7 +197,7 @@ impl MongoDBSqlWriter {
                     "The query is not empty, MongoDBSqlWriter::prepare_query will drop the content",
                 );
             }
-            *query = DynQuery::Prepared(Box::new(MongoDBPrepared::new(payload, context.counter)));
+            *query = AnyQuery::Prepared(Box::new(MongoDBPrepared::new(payload, context.counter)));
         }
     }
 
@@ -249,7 +249,7 @@ impl SqlCoreWriter for MongoDBSqlWriter {
     fn write_identifier(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &str,
         _quoted: bool,
     ) {
@@ -270,7 +270,7 @@ impl SqlCoreWriter for MongoDBSqlWriter {
         out.push_str(value);
     }
 
-    fn write_column_ref(&self, context: &mut Context, out: &mut DynQuery, value: &ColumnRef) {
+    fn write_column_ref(&self, context: &mut Context, out: &mut AnyQuery, value: &ColumnRef) {
         if context.qualify_columns && !context.table_ref.name.is_empty() {
             let qualified = format!("{}.{}", context.table_ref.name, value.name);
             self.write_identifier(context, out, &qualified, false);
@@ -281,7 +281,7 @@ impl SqlCoreWriter for MongoDBSqlWriter {
 }
 
 impl SqlValueWriter for MongoDBSqlWriter {
-    fn write_value(&self, _context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
+    fn write_value(&self, _context: &mut Context, out: &mut AnyQuery, value: &Value<'_>) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -299,7 +299,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
         };
     }
 
-    fn write_null(&self, _context: &mut Context, out: &mut DynQuery) {
+    fn write_null(&self, _context: &mut Context, out: &mut AnyQuery) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -321,7 +321,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
     write_value_fn!(write_value_f32, f32, Bson::Double);
     write_value_fn!(write_value_f64, f64, Bson::Double);
 
-    fn write_value_i128(&self, context: &mut Context, out: &mut DynQuery, value: i128) {
+    fn write_value_i128(&self, context: &mut Context, out: &mut AnyQuery, value: i128) {
         match i64::try_from_value(value.as_value()) {
             Ok(v) => self.write_value_i64(context, out, v),
             Err(e) => {
@@ -331,7 +331,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
         }
     }
 
-    fn write_value_u64(&self, context: &mut Context, out: &mut DynQuery, value: u64) {
+    fn write_value_u64(&self, context: &mut Context, out: &mut AnyQuery, value: u64) {
         match i64::try_from_value(value.as_value()) {
             Ok(v) => self.write_value_i64(context, out, v),
             Err(e) => {
@@ -341,7 +341,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
         }
     }
 
-    fn write_value_u128(&self, context: &mut Context, out: &mut DynQuery, value: u128) {
+    fn write_value_u128(&self, context: &mut Context, out: &mut AnyQuery, value: u128) {
         match i64::try_from_value(value.as_value()) {
             Ok(v) => self.write_value_i64(context, out, v),
             Err(e) => {
@@ -351,7 +351,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
         }
     }
 
-    fn write_string(&self, _context: &mut Context, out: &mut DynQuery, value: &str) {
+    fn write_string(&self, _context: &mut Context, out: &mut AnyQuery, value: &str) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -362,7 +362,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
         *target = Bson::String(value.into());
     }
 
-    fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, _context: &mut Context, out: &mut AnyQuery, value: &[u8]) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -376,7 +376,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
         });
     }
 
-    fn write_date(&self, _context: &mut Context, out: &mut DynQuery, value: &Date) {
+    fn write_date(&self, _context: &mut Context, out: &mut AnyQuery, value: &Date) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -391,7 +391,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
         ))
     }
 
-    fn write_time(&self, _context: &mut Context, out: &mut DynQuery, value: &Time) {
+    fn write_time(&self, _context: &mut Context, out: &mut AnyQuery, value: &Time) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -405,7 +405,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
     fn write_timestamp(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &PrimitiveDateTime,
     ) {
         let Some(target) = out
@@ -422,7 +422,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
     fn write_timestamptz(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &OffsetDateTime,
     ) {
         let Some(target) = out
@@ -436,12 +436,12 @@ impl SqlValueWriter for MongoDBSqlWriter {
         *target = Bson::DateTime(bson::DateTime::from_millis(ms as _));
     }
 
-    fn write_interval(&self, _context: &mut Context, _out: &mut DynQuery, _value: &Interval) {
+    fn write_interval(&self, _context: &mut Context, _out: &mut AnyQuery, _value: &Interval) {
         log::error!("MongoDB does not support interval types");
         return;
     }
 
-    fn write_uuid(&self, _context: &mut Context, out: &mut DynQuery, value: &Uuid) {
+    fn write_uuid(&self, _context: &mut Context, out: &mut AnyQuery, value: &Uuid) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -458,7 +458,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
     fn write_list(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
         _t: Option<&Value<'_>>,
         _is_array: bool,
@@ -493,7 +493,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
     fn write_tuple(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
     ) {
         let Some(target) = out
@@ -526,7 +526,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
     fn write_map(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &HashMap<Value<'_>, Value<'_>>,
     ) {
         let Some(target) = out
@@ -558,7 +558,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
     fn write_struct(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &[(String, Value<'_>)],
     ) {
         let Some(target) = out
@@ -585,7 +585,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
 }
 
 impl SqlExpressionWriter for MongoDBSqlWriter {
-    fn write_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
+    fn write_question_mark(&self, context: &mut Context, out: &mut AnyQuery) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -599,7 +599,7 @@ impl SqlExpressionWriter for MongoDBSqlWriter {
         context.counter += 1;
     }
 
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut AnyQuery) {
         let Some(target) = out
             .as_prepared::<MongoDBDriver>()
             .and_then(MongoDBPrepared::current_bson)
@@ -615,7 +615,7 @@ impl SqlExpressionWriter for MongoDBSqlWriter {
     fn write_unary_op(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &UnaryOp<&dyn Expression>,
     ) {
         match value.op {
@@ -652,7 +652,7 @@ impl SqlExpressionWriter for MongoDBSqlWriter {
     fn write_binary_op(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) {
         match value.op {
@@ -771,7 +771,7 @@ impl SqlExpressionWriter for MongoDBSqlWriter {
         );
     }
 
-    fn write_case(&self, context: &mut Context, out: &mut DynQuery, value: &Case) {
+    fn write_case(&self, context: &mut Context, out: &mut AnyQuery, value: &Case) {
         let mut render = |expression: &dyn Expression| {
             let mut query = Self::make_prepared();
             expression.write_query(self, context, &mut query);
@@ -816,7 +816,7 @@ impl SqlExpressionWriter for MongoDBSqlWriter {
     fn write_function(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         function: &str,
         args: &[&dyn Expression],
     ) {
@@ -886,7 +886,7 @@ impl SqlExpressionWriter for MongoDBSqlWriter {
 impl SqlFragmentWriter for MongoDBSqlWriter {}
 
 impl SqlWriter for MongoDBSqlWriter {
-    fn write_create_schema(&self, out: &mut DynQuery, table: &TableRef, _if_not_exists: bool)
+    fn write_create_schema(&self, out: &mut AnyQuery, table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
     {
@@ -900,7 +900,7 @@ impl SqlWriter for MongoDBSqlWriter {
         );
     }
 
-    fn write_drop_schema(&self, out: &mut DynQuery, table: &TableRef, _if_exists: bool)
+    fn write_drop_schema(&self, out: &mut AnyQuery, table: &TableRef, _if_exists: bool)
     where
         Self: Sized,
     {
@@ -914,7 +914,7 @@ impl SqlWriter for MongoDBSqlWriter {
         );
     }
 
-    fn write_create_table(&self, out: &mut DynQuery, table: &TableRef, _if_not_exists: bool)
+    fn write_create_table(&self, out: &mut AnyQuery, table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
     {
@@ -936,12 +936,12 @@ impl SqlWriter for MongoDBSqlWriter {
     fn write_column_comment(
         &self,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _column: &ColumnDef,
     ) {
     }
 
-    fn write_drop_table(&self, out: &mut DynQuery, table: &TableRef, _if_exists: bool)
+    fn write_drop_table(&self, out: &mut AnyQuery, table: &TableRef, _if_exists: bool)
     where
         Self: Sized,
     {
@@ -955,7 +955,7 @@ impl SqlWriter for MongoDBSqlWriter {
         );
     }
 
-    fn write_select<'a, Data>(&self, out: &mut DynQuery, query: impl SelectQuery<Data>)
+    fn write_select<'a, Data>(&self, out: &mut AnyQuery, query: impl SelectQuery<Data>)
     where
         Self: Sized,
         Data: Dataset + 'a,
@@ -1277,7 +1277,7 @@ impl SqlWriter for MongoDBSqlWriter {
         Self::prepare_query(out, &mut context, payload);
     }
 
-    fn write_insert(&self, out: &mut DynQuery, query: impl InsertIntoQuery)
+    fn write_insert(&self, out: &mut AnyQuery, query: impl InsertIntoQuery)
     where
         Self: Sized,
     {
@@ -1327,7 +1327,7 @@ impl SqlWriter for MongoDBSqlWriter {
                                 col.name()
                             )
                         })?;
-                        Ok((name.to_string(), value_to_bson(&value)?))
+                        Ok((col.name().to_string(), value_to_bson(&value)?))
                     })
                     .collect::<Result<Document>>();
                 let modifications = RowWrap(Cow::Borrowed(&row)).try_into();
@@ -1381,7 +1381,7 @@ impl SqlWriter for MongoDBSqlWriter {
         Self::prepare_query(out, &mut context, payload);
     }
 
-    fn write_delete(&self, out: &mut DynQuery, from: &dyn Dataset, condition: impl Expression)
+    fn write_delete(&self, out: &mut AnyQuery, from: &dyn Dataset, condition: impl Expression)
     where
         Self: Sized,
     {

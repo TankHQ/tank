@@ -1,5 +1,5 @@
 use crate::{
-    ColumnDef, Context, Driver, DynQuery, Executor, Expression, Fragment, Query, RawQuery, Result,
+    AnyQuery, ColumnDef, Context, Driver, Executor, Expression, Fragment, Query, RawQuery, Result,
     Row, RowOwned, RowsAffected, Sql, TableRef, Value, future::Either, stream::Stream,
     truncate_long, writer::SqlWriter,
 };
@@ -73,7 +73,7 @@ pub trait Entity: AsEntity + Expression {
         Self: Sized,
     {
         async move {
-            let mut query = DynQuery::with_capacity(2048);
+            let mut query = AnyQuery::with_capacity(2048);
             let writer = executor.driver().sql_writer();
             if create_schema && !Self::table().schema.is_empty() {
                 writer.write_create_schema(&mut query, Self::table(), true);
@@ -118,7 +118,7 @@ pub trait Entity: AsEntity + Expression {
         Self: Sized,
     {
         async move {
-            let mut query = DynQuery::with_capacity(256);
+            let mut query = AnyQuery::with_capacity(256);
             let writer = executor.driver().sql_writer();
             writer.write_drop_table(&mut query, Self::table(), if_exists);
             if drop_schema && !Self::table().schema.is_empty() {
@@ -140,7 +140,7 @@ pub trait Entity: AsEntity + Expression {
         executor: &mut impl Executor,
         entity: E,
     ) -> impl Future<Output = Result<RowsAffected>> + Send {
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         executor.driver().sql_writer().write_insert(
             &mut query,
             Sql()
@@ -178,10 +178,10 @@ pub trait Entity: AsEntity + Expression {
             .where_expr(condition)
             .limit(limit);
         let writer = executor.driver().sql_writer();
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         writer.write_select(&mut query, &builder);
         async {
-            if let DynQuery::Raw(RawQuery(sql)) = query {
+            if let AnyQuery::Raw(RawQuery(sql)) = query {
                 executor.prepare(sql).await
             } else {
                 Ok(query.into())
@@ -235,7 +235,7 @@ pub trait Entity: AsEntity + Expression {
     where
         Self: Sized,
     {
-        let mut query = DynQuery::with_capacity(128);
+        let mut query = AnyQuery::with_capacity(128);
         executor
             .driver()
             .sql_writer()
@@ -261,7 +261,7 @@ pub trait Entity: AsEntity + Expression {
                 .inspect_err(|e| log::error!("{e:#}")),
             ));
         }
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         executor.driver().sql_writer().write_insert(
             &mut query,
             Sql().insert_into(Self::table()).values([self]).update(),

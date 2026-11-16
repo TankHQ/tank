@@ -9,16 +9,16 @@ Three firing modes:
 - `executor.fetch(query)`: Yields only rows. The default implementation calls `Executor::run` and discards `QueryResult::Affected`. Drivers may override it.
 - `executor.execute(query)`: Damage report only. Aggregates all `RowsAffected` across the batch and returns a single total. Internally calls `Executor::run` and discards rows (if any).
 
-Anything implementing [`AsQuery`](https://docs.rs/tank/latest/tank/trait.AsQuery.html) works: `String`, `&str`, `DynQuery`, `Query<D>`, or `&mut Query<D>`.
+Anything implementing [`AsQuery`](https://docs.rs/tank/latest/tank/trait.AsQuery.html) works: `&str`, `String`, `Query<D>`, `&mut Query<D>` or `AnyQuery`.
 
 ## Composing SQL With `SqlWriter`
-SQL drivers expose a `SqlWriter` for dialect-correct SQL fragments. Use the writer to buffer multiple statements into one `DynQuery`. MongoDB and Valkey use native query representations and do not accept raw SQL.
+SQL drivers expose a `SqlWriter` that knows DB-specific SQL fragments. The writer writes into a `AnyQuery`: SQL drivers append text to the `AnyQuery::Raw` variant containing a string buffer, while NoSQL drivers (like MongoDB and Valkey) switch to `AnyQuery::Prepared` and construct their native payload.
 
-`DynQuery` is the raw-query staging area. Use it while composing executable SQL text. Once you call `prepare(...)`, execution moves to a driver-specific prepared handle rather than an extendable SQL buffer.
+`AnyQuery` is a type erased representation of a query. Hand it to an executor as it is and the call consumes it or turn it into a driver specific `Query<D>` by calling `into_query(executor.driver())` and hand it as `&mut query` to fire it as many times as needed.
 
 Example building 9 statements (3 *CREATE TABLE*, 3 *INSERT INTO* and 3 *SELECT*):
 ```rust
-use tank::{Driver, DynQuery, Entity, Sql, SqlWriter, stream::TryStreamExt};
+use tank::{AnyQuery, Driver, Entity, Sql, SqlWriter, stream::TryStreamExt};
 
 #[derive(Entity)]
 struct One { a1: u32, string: String, c1: u64 }
@@ -28,7 +28,7 @@ struct Two { a2: u32, string: String }
 struct Three { string: String }
 
 let writer = executor.driver().sql_writer();
-let mut query = DynQuery::default();
+let mut query = AnyQuery::default();
 writer.write_create_table(&mut query, One::table(), true);
 writer.write_create_table(&mut query, Two::table(), true);
 writer.write_create_table(&mut query, Three::table(), true);

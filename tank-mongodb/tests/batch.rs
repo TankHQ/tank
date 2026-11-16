@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use tank::{AsValue, DynQuery, Entity, Sql, Value, cols, expr};
+    use tank::{AnyQuery, AsValue, Entity, Sql, Value, cols, expr};
     use tank_mongodb::{BatchPayload, InsertManyPayload, MongoDBDriver, Payload};
     use tank_tests::{init_logs, silent_logs};
 
@@ -17,7 +17,7 @@ mod tests {
     #[test]
     fn batch_preserves_payloads() {
         init_logs();
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .delete_from(Item::table())
             .where_expr(expr!(Item::id == 1))
@@ -44,7 +44,7 @@ mod tests {
     #[test]
     fn insert_plain_values() {
         init_logs();
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .insert_into(Item::table())
             .columns(["id", "name"])
@@ -83,7 +83,7 @@ mod tests {
         );
 
         // Parameters need a database to evaluate, nothing is written.
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         silent_logs! {
             Sql()
                 .insert_into(Item::table())
@@ -97,7 +97,7 @@ mod tests {
     #[test]
     fn batch_three_operations() {
         init_logs();
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .insert_into(Item::table())
             .values(&[Item {
@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn batch_upsert_delete() {
         init_logs();
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .insert_into(Item::table())
             .values(&[Item {
@@ -160,7 +160,7 @@ mod tests {
     #[test]
     fn drop_collection_replaces() {
         init_logs();
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .insert_into(Item::table())
             .values(&[Item {

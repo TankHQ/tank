@@ -1,6 +1,6 @@
 use self::Value::*;
 use crate::{
-    AsValue, DynQuery, Expression, GenericSqlWriter, Result, TableRef, interval::Interval,
+    AnyQuery, AsValue, Expression, GenericSqlWriter, Result, TableRef, interval::Interval,
 };
 use anyhow::anyhow;
 use quote::{ToTokens, quote};
@@ -539,7 +539,7 @@ impl Hash for Value<'_> {
 
 impl Display for Value<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         self.write_query(&GenericSqlWriter::new(), &mut Default::default(), &mut out);
         let _ = f.write_str(out.buffer());
         Ok(())

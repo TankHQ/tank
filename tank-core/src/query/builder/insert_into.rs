@@ -1,5 +1,5 @@
 use crate::{
-    ColumnDef, Dataset, Driver, DynQuery, Entity, Expression, ExpressionCollection, NA,
+    AnyQuery, ColumnDef, Dataset, Driver, Entity, Expression, ExpressionCollection, NA, Query,
     SelectQuery, SelectQueryBuilder, SqlWriter, TableRef, Value, future::Either,
 };
 use std::{borrow::Cow, iter, marker::PhantomData};
@@ -118,11 +118,11 @@ impl<V, U> InsertIntoQueryBuilder<V, U>
 where
     Self: InsertIntoQuery,
 {
-    pub fn build<D: Driver>(&self, driver: &D) -> DynQuery {
+    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
         InsertIntoQuery::build(self, driver)
     }
 
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
+    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
         InsertIntoQuery::build_into(self, driver, out);
     }
 }
@@ -166,11 +166,11 @@ where
     H: Expression,
     O: ExpressionCollection,
 {
-    pub fn build<D: Driver>(&self, driver: &D) -> DynQuery {
+    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
         InsertIntoQuery::build(self, driver)
     }
 
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
+    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
         InsertIntoQuery::build_into(self, driver, out);
     }
 }
@@ -210,8 +210,8 @@ where
 
 /// INSERT INTO table (columns) VALUES (values), ... [ON CONFLICT (primary key) DO UPDATE SET ...]
 ///
-/// Use `Sql().insert_into(table)` to start, then `values(&entities)`, `columns(names).values(rows)`
-/// or `select(columns).from(dataset)...`, failing on primary key conflicts without `update`.
+/// Use `Sql().insert_into(table)` to start.
+/// Then `values(&entities)`, `columns(names).values(rows)` or `select(columns).from(dataset)...`.
 pub trait InsertIntoQuery {
     /// Dataset of the SELECT producing the rows, unused for rows of values.
     type From: Dataset;
@@ -229,16 +229,16 @@ pub trait InsertIntoQuery {
     /// Whether existing rows are updated on a primary key conflict.
     fn get_update(&self) -> bool;
     /// Build query.
-    fn build<D: Driver>(&self, driver: &D) -> DynQuery
+    fn build<D: Driver>(&self, driver: &D) -> Query<D>
     where
         Self: Sized,
     {
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         self.build_into(driver, &mut query);
-        query
+        query.into()
     }
     /// Build query into existing buffer.
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery)
+    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery)
     where
         Self: Sized,
     {

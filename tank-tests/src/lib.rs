@@ -208,6 +208,8 @@ pub async fn execute_tests<D: Driver + 'static>(pool: &mut impl ConnectionPool<D
         #[cfg(not(feature = "disable-ordering"))]
         boxed(select_options),
         boxed(prepared),
+        boxed(prepared_abandoned_stream),
+        boxed(prepared_builder_reuse),
         boxed(bindings),
         boxed(times),
         #[cfg(not(feature = "disable-case"))]

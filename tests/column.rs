@@ -3,7 +3,7 @@ mod tests {
     use quote::ToTokens;
     use std::{borrow::Cow, collections::HashSet, sync::Arc};
     use tank::{
-        Action, AsValue, ColumnDef, ColumnRef, Context, DefaultValueType, DynQuery, Entity,
+        Action, AnyQuery, AsValue, ColumnDef, ColumnRef, Context, DefaultValueType, Entity,
         Expression, Fragment, GenericSqlWriter, IsAsterisk, OpPrecedence, PrimaryKeyType, Row,
         Value,
     };
@@ -98,7 +98,7 @@ mod tests {
         let value = DefaultValueType::Value(Value::Int64(Some(7)));
         assert!(value.is_set());
         assert_eq!(format!("{value:?}"), "Value(Int64(Some(7)))");
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         value.write_query(&writer, &mut Context::empty(), &mut out);
         assert_eq!(out.as_str(), "7");
 
@@ -106,7 +106,7 @@ mod tests {
         assert!(expression.is_set());
         assert_eq!(format!("{expression:?}"), "Expression(\"..\")");
         assert_eq!(expression.precedence(&writer), 0);
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         expression.write_query(&writer, &mut Context::empty(), &mut out);
         assert_eq!(out.as_str(), "true");
 
@@ -143,7 +143,7 @@ mod tests {
             id: i32,
         }
         let column = &VTable::columns()[0];
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         let mut context = Context::empty();
         assert!(!column.accept_visitor(
             &mut IsAsterisk,

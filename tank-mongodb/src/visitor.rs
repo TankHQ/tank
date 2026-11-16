@@ -2,7 +2,7 @@ use crate::{MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter, glob_to_regex, lik
 use mongodb::bson::{Bson, Document, Regex, doc};
 use std::{borrow::Cow, iter, mem, sync::Arc};
 use tank_core::{
-    AsValue, BinaryOp, BinaryOpType, Case, ColumnRef, Context, DynQuery, Expression,
+    AnyQuery, AsValue, BinaryOp, BinaryOpType, Case, ColumnRef, Context, Expression,
     ExpressionVisitor, IsConstant, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp,
     UnaryOpType, Value, ValueOwned,
 };
@@ -65,7 +65,7 @@ impl ExpressionVisitor for IsField<'_> {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &ColumnRef,
     ) -> bool {
         self.field = FieldType::Column(value.clone());
@@ -75,7 +75,7 @@ impl ExpressionVisitor for IsField<'_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {
@@ -117,7 +117,7 @@ impl ExpressionVisitor for IsField<'_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &UnaryOp<&dyn Expression>,
     ) -> bool {
         self.resolve_expression(writer, context, value)
@@ -126,7 +126,7 @@ impl ExpressionVisitor for IsField<'_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         self.resolve_expression(writer, context, value)
@@ -135,7 +135,7 @@ impl ExpressionVisitor for IsField<'_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Case,
     ) -> bool {
         self.resolve_expression(writer, context, value)
@@ -144,7 +144,7 @@ impl ExpressionVisitor for IsField<'_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Ordered<&dyn Expression>,
     ) -> bool {
         value.expression.accept_visitor(self, writer, context, out)
@@ -172,7 +172,7 @@ impl ExpressionVisitor for WriteMatchExpression<'_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &ColumnRef,
     ) -> bool {
         value.write_query(writer, context, out);
@@ -183,7 +183,7 @@ impl ExpressionVisitor for WriteMatchExpression<'_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         let top = !self.started;
@@ -234,7 +234,7 @@ impl ExpressionVisitor for WriteMatchExpression<'_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &UnaryOp<&dyn Expression>,
     ) -> bool {
         let top = !self.started;
@@ -277,7 +277,7 @@ impl ExpressionVisitor for WriteMatchExpression<'_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         let top = !self.started;
@@ -427,7 +427,7 @@ impl ExpressionVisitor for WriteMatchExpression<'_> {
                             v.as_identifier(context)
                         }
                     };
-                    let mut query: DynQuery = MongoDBSqlWriter::make_prepared();
+                    let mut query: AnyQuery = MongoDBSqlWriter::make_prepared();
                     value.write_query(writer, context, &mut query);
                     let Some(val_bson) = query
                         .as_prepared::<MongoDBDriver>()
@@ -513,7 +513,7 @@ impl ExpressionVisitor for WriteMatchExpression<'_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Ordered<&dyn Expression>,
     ) -> bool {
         value.write_query(writer, context, out);
@@ -524,7 +524,7 @@ impl ExpressionVisitor for WriteMatchExpression<'_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Case,
     ) -> bool {
         // `$switch` only exists as an aggregation expression, it is never a field filter.
@@ -577,7 +577,7 @@ impl ExpressionVisitor for NotRewriter<'_, '_, '_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &ColumnRef,
     ) -> bool {
         let rhs = Operand::LitBool(false);
@@ -594,7 +594,7 @@ impl ExpressionVisitor for NotRewriter<'_, '_, '_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         if matches!(value, Operand::LitIdent(..) | Operand::LitField(..)) {
@@ -615,7 +615,7 @@ impl ExpressionVisitor for NotRewriter<'_, '_, '_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         if let Some(op) = Self::invert(value.op) {
@@ -642,7 +642,7 @@ impl ExpressionVisitor for NegateNumber {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {

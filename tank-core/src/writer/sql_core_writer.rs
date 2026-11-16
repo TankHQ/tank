@@ -1,5 +1,5 @@
 use crate::{
-    ColumnDef, ColumnRef, DynQuery, Fragment, TableRef, Value, write_escaped,
+    AnyQuery, ColumnDef, ColumnRef, Fragment, TableRef, Value, write_escaped,
     writer::{Context, SqlWriter},
 };
 use std::{collections::BTreeMap, mem};
@@ -26,7 +26,7 @@ pub trait SqlCoreWriter: Send {
     fn write_identifier(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &str,
         quoted: bool,
     ) {
@@ -40,7 +40,7 @@ pub trait SqlCoreWriter: Send {
     }
 
     /// Write table reference.
-    fn write_table_ref(&self, context: &mut Context, out: &mut DynQuery, value: &TableRef) {
+    fn write_table_ref(&self, context: &mut Context, out: &mut AnyQuery, value: &TableRef) {
         let alias_declaration = self.is_alias_declaration(context);
         if alias_declaration || value.alias.is_empty() {
             if !value.schema.is_empty() {
@@ -58,7 +58,7 @@ pub trait SqlCoreWriter: Send {
     }
 
     /// Write column reference.
-    fn write_column_ref(&self, context: &mut Context, out: &mut DynQuery, value: &ColumnRef) {
+    fn write_column_ref(&self, context: &mut Context, out: &mut AnyQuery, value: &ColumnRef) {
         if context.qualify_columns {
             let table_ref = mem::take(&mut context.table_ref);
             let mut schema = &table_ref.schema;
@@ -89,7 +89,7 @@ pub trait SqlCoreWriter: Send {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
@@ -99,7 +99,7 @@ pub trait SqlCoreWriter: Send {
     }
 
     /// Write SQL type name.
-    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
+    fn write_column_type(&self, context: &mut Context, out: &mut AnyQuery, value: &Value<'_>) {
         match value {
             Value::Boolean(..) => out.push_str("BOOLEAN"),
             Value::Int8(..) => out.push_str("TINYINT"),

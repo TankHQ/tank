@@ -3,7 +3,7 @@ mod tests {
     use indoc::indoc;
     use std::{path::Path, pin::pin, sync::Mutex};
     use tank::{
-        AsValue, Connection, DynQuery, Entity, Executor, QueryResult, Row, Sql, Value, cols, expr,
+        AnyQuery, AsValue, Connection, Entity, Executor, QueryResult, Row, Sql, Value, cols, expr,
         stream::{StreamExt, TryStreamExt},
     };
     use tank_duckdb::{DuckDBConnection, DuckDBDriver};
@@ -88,7 +88,7 @@ mod tests {
                 .await
                 .unwrap();
         {
-            let mut query = DynQuery::default();
+            let mut query = AnyQuery::default();
             Sql()
                 .select(cols!(CAST(if range == 1000000 {
                     "invalid"
@@ -138,7 +138,7 @@ mod tests {
                 .await
                 .unwrap();
         {
-            let mut query = DynQuery::default();
+            let mut query = AnyQuery::default();
             Sql()
                 .create_table(Ordered::table())
                 .build_into(&DRIVER, &mut query);
@@ -191,7 +191,7 @@ mod tests {
         }
         // Dropping an unfinished batch does not eagerly execute subsequent statements.
         {
-            let mut query = DynQuery::default();
+            let mut query = AnyQuery::default();
             Sql()
                 .select(cols!(Ordered::value))
                 .from(Ordered::table())
@@ -229,7 +229,7 @@ mod tests {
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
                 .await
                 .unwrap();
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .select(cols!(CAST(if range == 1000000 {
                 "invalid"
@@ -443,7 +443,7 @@ mod tests {
         )
         .await
         .expect("Could not open a second connection to the same database");
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .create_table(SharedDb::table())
             .build_into(&DRIVER, &mut query);

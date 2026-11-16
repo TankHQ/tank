@@ -173,7 +173,7 @@ pub fn derive_entity(input: TokenStream) -> TokenStream {
                 &self,
                 writer: &dyn ::tank::SqlWriter,
                 context: &mut ::tank::Context,
-                out: &mut ::tank::DynQuery,
+                out: &mut ::tank::AnyQuery,
             ) {
                 #(#write_fields)*
             }

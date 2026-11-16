@@ -2,7 +2,7 @@
 mod tests {
     use std::{collections::HashSet, time::Duration};
     use tank::{
-        AsValue, Context, DynQuery, Fragment, GenericSqlWriter, Interval, IntervalUnit,
+        AnyQuery, AsValue, Context, Fragment, GenericSqlWriter, Interval, IntervalUnit,
         SqlValueWriter, Value,
     };
 
@@ -10,7 +10,7 @@ mod tests {
 
     macro_rules! test_interval {
         ($interval:expr, $expected:literal) => {{
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             WRITER.write_value(
                 &mut Context::new(Fragment::SqlSelect, false),
                 &mut out,
@@ -608,7 +608,7 @@ mod tests {
             Interval::from_days(-11),
             Interval::from_micros(999_999_999),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             WRITER.write_value(
                 &mut Context::new(Fragment::None, false),
                 &mut out,

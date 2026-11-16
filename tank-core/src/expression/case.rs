@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, Expression, ExpressionVisitor, OpPrecedence,
+    AnyQuery, Expression, ExpressionVisitor, OpPrecedence,
     writer::{Context, SqlWriter},
 };
 
@@ -26,7 +26,7 @@ impl OpPrecedence for Case<'_> {
 }
 
 impl Expression for Case<'_> {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         writer.write_case(context, out, self);
     }
 
@@ -35,7 +35,7 @@ impl Expression for Case<'_> {
         matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
     ) -> bool {
         matcher.visit_case(writer, context, out, self)
     }

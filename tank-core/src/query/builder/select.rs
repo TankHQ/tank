@@ -1,5 +1,6 @@
 use crate::{
-    Dataset, Driver, DynQuery, EitherIterator, Expression, ExpressionCollection, NA, SqlWriter,
+    AnyQuery, Dataset, Driver, EitherIterator, Expression, ExpressionCollection, NA, Query,
+    SqlWriter,
 };
 use std::{iter, marker::PhantomData};
 
@@ -224,11 +225,11 @@ where
     H: Expression,
     O: ExpressionCollection,
 {
-    pub fn build<D: Driver>(&self, driver: &D) -> DynQuery {
+    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
         SelectQuery::build(self, driver)
     }
 
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
+    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
         SelectQuery::build_into(self, driver, out);
     }
 }
@@ -259,9 +260,9 @@ where
     /// Whether the query selects distinct rows.
     fn is_distinct(&self) -> bool;
     /// Build query.
-    fn build<D: Driver>(&self, driver: &D) -> DynQuery;
+    fn build<D: Driver>(&self, driver: &D) -> Query<D>;
     /// Build query into existing buffer.
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery);
+    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery);
 }
 
 impl<S, From, W, G, H, O, L, I> SelectQuery<From> for SelectQueryBuilder<S, From, W, G, H, O, L, I>
@@ -309,13 +310,13 @@ where
         self.is_distinct()
     }
 
-    fn build<D: Driver>(&self, driver: &D) -> DynQuery {
-        let mut query = DynQuery::default();
+    fn build<D: Driver>(&self, driver: &D) -> Query<D> {
+        let mut query = AnyQuery::default();
         self.build_into(driver, &mut query);
-        query
+        query.into()
     }
 
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
+    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
         driver.sql_writer().write_select(out, self);
     }
 }
@@ -357,11 +358,11 @@ impl<'t, From: Dataset + 't, T: SelectQuery<From>> SelectQuery<From> for &'t T {
         (**self).is_distinct()
     }
 
-    fn build<D: Driver>(&self, driver: &D) -> DynQuery {
+    fn build<D: Driver>(&self, driver: &D) -> Query<D> {
         (**self).build(driver)
     }
 
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
+    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
         (**self).build_into(driver, out);
     }
 }

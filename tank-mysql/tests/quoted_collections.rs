@@ -2,14 +2,14 @@
 mod tests {
     use std::collections::HashMap;
     use tank::{
-        CollectionType, Context, Driver, DynQuery, Fragment, MapType, SqlValueWriter, Value,
+        AnyQuery, CollectionType, Context, Driver, Fragment, MapType, SqlValueWriter, Value,
     };
     use tank_mysql::MySQLDriver;
     use tank_tests::init_logs;
 
     fn render(v: &Value) -> String {
         let writer = MySQLDriver::default().sql_writer();
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_value(
             &mut Context::new(Fragment::SqlInsertIntoValues, false),
             &mut out,

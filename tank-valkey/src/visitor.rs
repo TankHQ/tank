@@ -1,6 +1,6 @@
 use std::{borrow::Cow, mem};
 use tank_core::{
-    BinaryOp, BinaryOpType, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
+    AnyQuery, BinaryOp, BinaryOpType, ColumnRef, Context, Expression, ExpressionVisitor,
     IsConstant, Operand, Ordered, SqlWriter, TableRef,
 };
 
@@ -14,7 +14,7 @@ impl ExpressionVisitor for IsField {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &ColumnRef,
     ) -> bool {
         self.field = value.name.clone();
@@ -24,7 +24,7 @@ impl ExpressionVisitor for IsField {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {
@@ -48,7 +48,7 @@ impl ExpressionVisitor for IsField {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Ordered<&dyn Expression>,
     ) -> bool {
         value.expression.accept_visitor(self, writer, context, out)
@@ -84,7 +84,7 @@ impl ExpressionVisitor for IsPKCondition<'_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         let top = !self.started;
@@ -165,7 +165,7 @@ impl ExpressionVisitor for IsPKCondition<'_> {
                     self.key.push_str(&is_column.field);
                     self.key.push_str(writer.separator());
                 }
-                let mut out = DynQuery::new(mem::take(&mut self.key));
+                let mut out = AnyQuery::new(mem::take(&mut self.key));
                 value.write_query(writer, context, &mut out);
                 self.key = mem::take(out.buffer());
                 self.matched += 1;
@@ -181,7 +181,7 @@ impl ExpressionVisitor for IsPKCondition<'_> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Ordered<&dyn Expression>,
     ) -> bool {
         value.expression.accept_visitor(self, writer, context, out)

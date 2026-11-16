@@ -1,5 +1,5 @@
 use crate::{
-    BinaryOp, BinaryOpType, DynQuery, Error, Expression, Fragment, Interval, Operand, Value,
+    AnyQuery, BinaryOp, BinaryOpType, Error, Expression, Fragment, Interval, Operand, Value,
     separated_by, write_escaped, write_zero_padded,
     writer::{Context, SqlCoreWriter},
 };
@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 macro_rules! write_integer_fn {
     ($fn_name:ident, $ty:ty) => {
-        fn $fn_name(&self, context: &mut Context, out: &mut DynQuery, value: $ty) {
+        fn $fn_name(&self, context: &mut Context, out: &mut AnyQuery, value: $ty) {
             if context.fragment == Fragment::JsonKey {
                 out.push('"');
             }
@@ -25,7 +25,7 @@ macro_rules! write_integer_fn {
 
 macro_rules! write_float_fn {
     ($fn_name:ident, $ty:ty, $value_ty:expr) => {
-        fn $fn_name(&self, context: &mut Context, out: &mut DynQuery, value: $ty) {
+        fn $fn_name(&self, context: &mut Context, out: &mut AnyQuery, value: $ty) {
             let mut buffer = ryu::Buffer::new();
             if value.is_infinite() {
                 self.as_dyn().write_binary_op(
@@ -67,7 +67,7 @@ macro_rules! write_float_fn {
 /// Literal value rendering for the SQL dialect.
 pub trait SqlValueWriter: SqlCoreWriter {
     /// Write value.
-    fn write_value(&self, context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
+    fn write_value(&self, context: &mut Context, out: &mut AnyQuery, value: &Value<'_>) {
         match value {
             Value::Boolean(Some(v), ..) => self.write_bool(context, out, *v),
             Value::Int8(Some(v), ..) => self.write_value_i8(context, out, *v),
@@ -113,7 +113,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
         };
     }
 
-    fn write_null(&self, context: &mut Context, out: &mut DynQuery) {
+    fn write_null(&self, context: &mut Context, out: &mut AnyQuery) {
         out.push_str(if context.fragment == Fragment::Json {
             "null"
         } else {
@@ -121,7 +121,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
         });
     }
 
-    fn write_bool(&self, context: &mut Context, out: &mut DynQuery, value: bool) {
+    fn write_bool(&self, context: &mut Context, out: &mut AnyQuery, value: bool) {
         if context.fragment == Fragment::JsonKey {
             out.push('"');
         }
@@ -145,7 +145,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
     write_float_fn!(write_value_f32, f32, Value::Float32(None));
     write_float_fn!(write_value_f64, f64, Value::Float64(None));
 
-    fn write_decimal(&self, context: &mut Context, out: &mut DynQuery, value: &Decimal) {
+    fn write_decimal(&self, context: &mut Context, out: &mut AnyQuery, value: &Decimal) {
         let b = if context.fragment == Fragment::JsonKey {
             "\""
         } else {
@@ -156,7 +156,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
         out.push_str(b);
     }
 
-    fn write_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
+    fn write_string(&self, context: &mut Context, out: &mut AnyQuery, value: &str) {
         if matches!(context.fragment, Fragment::Json | Fragment::JsonKey) {
             let buffer = unsafe { out.buffer().as_mut_vec() };
             if let Err(e) = serde_json::to_writer(buffer, value) {
@@ -178,7 +178,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
         }
     }
 
-    fn write_blob(&self, context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, context: &mut Context, out: &mut AnyQuery, value: &[u8]) {
         let b = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -195,7 +195,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
         out.push_str(b);
     }
 
-    fn write_date(&self, context: &mut Context, out: &mut DynQuery, value: &Date) {
+    fn write_date(&self, context: &mut Context, out: &mut AnyQuery, value: &Date) {
         let b = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -214,7 +214,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
         out.push_str(b);
     }
 
-    fn write_time(&self, context: &mut Context, out: &mut DynQuery, value: &Time) {
+    fn write_time(&self, context: &mut Context, out: &mut AnyQuery, value: &Time) {
         let b = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -240,7 +240,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
     fn write_timestamp(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &PrimitiveDateTime,
     ) {
         let b = match context.fragment {
@@ -256,7 +256,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
         out.push_str(b);
     }
 
-    fn write_timestamptz(&self, context: &mut Context, out: &mut DynQuery, value: &OffsetDateTime) {
+    fn write_timestamptz(&self, context: &mut Context, out: &mut AnyQuery, value: &OffsetDateTime) {
         let b = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -299,7 +299,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
         UNITS
     }
 
-    fn write_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {
+    fn write_interval(&self, context: &mut Context, out: &mut AnyQuery, value: &Interval) {
         out.push_str("INTERVAL ");
         let b = match context.fragment {
             Fragment::None => "",
@@ -352,7 +352,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
         out.push_str(b);
     }
 
-    fn write_uuid(&self, context: &mut Context, out: &mut DynQuery, value: &Uuid) {
+    fn write_uuid(&self, context: &mut Context, out: &mut AnyQuery, value: &Uuid) {
         let b = match context.fragment {
             Fragment::None => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -363,14 +363,14 @@ pub trait SqlValueWriter: SqlCoreWriter {
         out.push_str(b);
     }
 
-    fn write_ipaddr(&self, context: &mut Context, out: &mut DynQuery, value: &IpAddr) {
+    fn write_ipaddr(&self, context: &mut Context, out: &mut AnyQuery, value: &IpAddr) {
         self.write_string(context, out, &value.to_string());
     }
 
     fn write_list(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
         _t: Option<&Value<'_>>,
         _is_array: bool,
@@ -390,7 +390,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
     fn write_tuple(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
     ) {
         out.push('(');
@@ -408,7 +408,7 @@ pub trait SqlValueWriter: SqlCoreWriter {
     fn write_map(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &HashMap<Value<'_>, Value<'_>>,
     ) {
         out.push('{');
@@ -425,14 +425,14 @@ pub trait SqlValueWriter: SqlCoreWriter {
         out.push('}');
     }
 
-    fn write_json(&self, context: &mut Context, out: &mut DynQuery, value: &serde_json::Value) {
+    fn write_json(&self, context: &mut Context, out: &mut AnyQuery, value: &serde_json::Value) {
         self.write_string(context, out, &value.to_string());
     }
 
     fn write_struct(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &[(String, Value<'_>)],
     ) {
         out.push('{');

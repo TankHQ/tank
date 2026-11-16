@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fmt::Write};
 use tank_core::{
-    ColumnDef, Context, Dataset, DynQuery, Expression, Fragment, SqlCoreWriter,
+    AnyQuery, ColumnDef, Context, Dataset, Expression, Fragment, SqlCoreWriter,
     SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value,
     separated_by,
 };
@@ -11,7 +11,7 @@ pub struct PostgresSqlWriter {}
 
 impl PostgresSqlWriter {
     /// Write COPY FROM STDIN BINARY.
-    pub fn write_copy(&self, out: &mut DynQuery, table: &TableRef) {
+    pub fn write_copy(&self, out: &mut AnyQuery, table: &TableRef) {
         out.buffer().reserve(128);
         out.push_str("COPY ");
         let mut context = Context::new(Default::default(), table.qualified_columns());
@@ -37,7 +37,7 @@ impl SqlCoreWriter for PostgresSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
@@ -46,7 +46,7 @@ impl SqlCoreWriter for PostgresSqlWriter {
         }
     }
 
-    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
+    fn write_column_type(&self, context: &mut Context, out: &mut AnyQuery, value: &Value<'_>) {
         match value {
             Value::Boolean(..) => out.push_str("BOOLEAN"),
             Value::Int8(..) => out.push_str("SMALLINT"),
@@ -92,7 +92,7 @@ impl SqlCoreWriter for PostgresSqlWriter {
 }
 
 impl SqlValueWriter for PostgresSqlWriter {
-    fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, _context: &mut Context, out: &mut AnyQuery, value: &[u8]) {
         out.push_str("'\\x");
         for b in value {
             let _ = write!(out, "{:02X}", b);
@@ -100,7 +100,7 @@ impl SqlValueWriter for PostgresSqlWriter {
         out.push('\'');
     }
 
-    fn write_date(&self, context: &mut Context, out: &mut DynQuery, value: &Date) {
+    fn write_date(&self, context: &mut Context, out: &mut AnyQuery, value: &Date) {
         let (l, r) = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => ("", ""),
             Fragment::Json | Fragment::JsonKey => ("\"", "\""),
@@ -122,7 +122,7 @@ impl SqlValueWriter for PostgresSqlWriter {
         let _ = write!(out, "{l}{year:04}-{month:02}-{day:02}{suffix}{r}");
     }
 
-    fn write_time(&self, context: &mut Context, out: &mut DynQuery, value: &Time) {
+    fn write_time(&self, context: &mut Context, out: &mut AnyQuery, value: &Time) {
         let (l, r) = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => ("", ""),
             Fragment::Json | Fragment::JsonKey => ("\"", "\""),
@@ -141,7 +141,7 @@ impl SqlValueWriter for PostgresSqlWriter {
     fn write_timestamp(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &PrimitiveDateTime,
     ) {
         let is_timestamp = context.fragment == Fragment::Timestamp;
@@ -161,7 +161,7 @@ impl SqlValueWriter for PostgresSqlWriter {
         out.push_str(r);
     }
 
-    fn write_timestamptz(&self, context: &mut Context, out: &mut DynQuery, value: &OffsetDateTime) {
+    fn write_timestamptz(&self, context: &mut Context, out: &mut AnyQuery, value: &OffsetDateTime) {
         let (l, r) = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => ("", ""),
             Fragment::Json | Fragment::JsonKey => ("\"", "\""),
@@ -192,7 +192,7 @@ impl SqlValueWriter for PostgresSqlWriter {
     fn write_list(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
         ty: Option<&Value<'_>>,
         _is_array: bool,
@@ -216,12 +216,12 @@ impl SqlValueWriter for PostgresSqlWriter {
 }
 
 impl SqlExpressionWriter for PostgresSqlWriter {
-    fn write_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
+    fn write_question_mark(&self, context: &mut Context, out: &mut AnyQuery) {
         context.counter += 1;
         let _ = write!(out, "${}", context.counter);
     }
 
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut AnyQuery) {
         out.push_str("CAST(EXTRACT(EPOCH FROM NOW()) * 1000 AS BIGINT)");
     }
 }

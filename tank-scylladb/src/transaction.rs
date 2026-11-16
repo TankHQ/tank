@@ -2,7 +2,7 @@ use crate::{ScyllaDBConnection, ScyllaDBDriver, ScyllaDBPrepared, ValueWrap};
 use scylla::statement::batch::Batch;
 use std::future;
 use tank_core::{
-    AsEntity, AsQuery, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query, QueryResult,
+    AnyQuery, AsEntity, AsQuery, Driver, Entity, Error, ErrorContext, Executor, Query, QueryResult,
     RawQuery, Result, Row, RowsAffected, Sql, SqlWriter, Transaction,
     future::Either,
     stream::{self, Stream},
@@ -41,12 +41,12 @@ impl Executor for ScyllaDBTransaction<'_> {
         false
     }
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<ScyllaDBDriver>> {
+    async fn do_prepare(&mut self, sql: &str) -> Result<Query<ScyllaDBDriver>> {
         let make_context = || format!("While preparing the query:\n{}", truncate_long!(sql));
         let statement = self
             .connection
             .session
-            .prepare(sql.as_str())
+            .prepare(sql)
             .await
             .with_context(make_context)?;
         Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
@@ -87,7 +87,7 @@ impl Executor for ScyllaDBTransaction<'_> {
         It::Item: AsEntity,
     {
         let writer = self.driver().sql_writer();
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         // Use a match loop so `entity` is scoped to the `Some` arm and is provably
         // dead before the `.await`, keeping `It::Item: Send` out of the requirements.
         let mut iter = entities.into_iter();

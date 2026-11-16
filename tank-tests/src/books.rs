@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
 use tank::{
-    AsValue, Dataset, Driver, DynQuery, Entity, Executor, Query, QueryResult, Result, Row, Sql,
+    AnyQuery, AsValue, Dataset, Driver, Entity, Executor, Query, QueryResult, Result, Row, Sql,
     Value, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
@@ -349,7 +349,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
         let driver = executor.driver();
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .select(Book::columns())
             .from(Book::table())

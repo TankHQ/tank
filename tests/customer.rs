@@ -7,7 +7,7 @@ mod tests {
     use indoc::indoc;
     use std::borrow::Cow;
     use tank::{
-        AsValue, DefaultValueType, Driver, DynQuery, Entity, PrimaryKeyType, Sql, SqlWriter,
+        AnyQuery, AsValue, DefaultValueType, Driver, Entity, PrimaryKeyType, Sql, SqlWriter,
         TableRef, Value, expr,
     };
 
@@ -142,7 +142,7 @@ mod tests {
             "#}
             .trim()
         );
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         let writer = DRIVER.sql_writer();
         for column in Customer::columns().iter().filter(|c| !c.comment.is_empty()) {
             writer.write_column_comment(&mut Default::default(), &mut query, column);

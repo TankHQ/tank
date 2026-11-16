@@ -118,7 +118,7 @@ impl Executor for DuckDBConnection {
 
     fn do_prepare(
         &mut self,
-        sql: String,
+        sql: &str,
     ) -> impl Future<Output = Result<Query<DuckDBDriver>>> + Send {
         future::ready(
             (|| unsafe {

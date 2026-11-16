@@ -18,8 +18,8 @@ impl<T: mysql_async::prelude::Queryable + Send> Executor for MySQLQueryable<T> {
         self.driver
     }
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<MySQLDriver>> {
-        Ok(MySQLPrepared::new(self.executor.prep(sql.as_str()).await?).into())
+    async fn do_prepare(&mut self, sql: &str) -> Result<Query<MySQLDriver>> {
+        Ok(MySQLPrepared::new(self.executor.prep(sql).await?).into())
     }
 
     fn run<'s>(

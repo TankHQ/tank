@@ -7,7 +7,7 @@ mod tests {
     use indoc::indoc;
     use std::{cell::Cell, fmt::Write, iter};
     use tank::{
-        Action, AsValue, ColumnDef, ColumnRef, Context, DynQuery, Entity, Expression, Fragment,
+        Action, AnyQuery, AsValue, ColumnDef, ColumnRef, Context, Entity, Expression, Fragment,
         InsertIntoQuery, Operand, QueryResult, QueryResultOwned, RawQuery, RowOwned, RowsAffected,
         Sql, cols, expr,
     };
@@ -37,7 +37,7 @@ mod tests {
         "#}
         .trim();
         assert_eq!(query.build(&DRIVER).as_str(), expected);
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         InsertIntoQuery::build_into(&&query, &DRIVER, &mut out);
         assert_eq!(out.as_str(), expected);
 
@@ -75,7 +75,7 @@ mod tests {
             "INSERT INTO \"item\" (\"id\", \"label\") VALUES\n(?, ?);"
         );
 
-        let mut out = DynQuery::new("existing".into());
+        let mut out = AnyQuery::new("existing".into());
         Sql()
             .insert_into("item")
             .columns(["id"])
@@ -116,7 +116,7 @@ mod tests {
             note: Option<String>,
         }
         let render = |expression: &dyn Expression| {
-            let mut sql = DynQuery::default();
+            let mut sql = AnyQuery::default();
             expression.write_query(
                 &WRITER,
                 &mut Context::new(Fragment::SqlSelect, false),
@@ -967,7 +967,7 @@ mod tests {
         let rq = RawQuery("hello".to_string());
         assert_eq!(rq.0, "hello");
 
-        let mut q = DynQuery::default();
+        let mut q = AnyQuery::default();
         let _ = q.write_str("SELECT 1");
         let s: String = q.into();
         assert_eq!(s, "SELECT 1");
