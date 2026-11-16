@@ -32,14 +32,14 @@ impl SQLitePrepared {
     const WRITER: SQLiteSqlWriter = SQLiteSqlWriter {};
 
     #[inline(always)]
-    pub(crate) fn new(statement: CBox<*mut sqlite3_stmt>) -> Self {
+    pub(crate) const fn new(statement: CBox<*mut sqlite3_stmt>) -> Self {
         Self {
             statement,
             index: 0,
             labels: None,
             columns: 0,
             row: None,
-            draft: AnyQuery::default(),
+            draft: AnyQuery::new(String::new()),
         }
     }
 

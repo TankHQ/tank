@@ -42,6 +42,7 @@ impl SQLiteConnection {
         }
     }
 
+    #[inline(always)]
     pub(crate) fn do_execute(&mut self, statement: &CStr) -> Result<()> {
         ensure_rc!(
             unsafe {
@@ -144,9 +145,10 @@ impl Connection for SQLiteConnection {
             bytes
         })
         .with_context(make_context)?;
+        let mut handle;
         let mut connection;
         unsafe {
-            connection = CBox::new(ptr::null_mut(), |p| {
+            handle = CBox::new(ptr::null_mut(), |p| {
                 if sqlite3_close(p) != SQLITE_OK {
                     hint::cold_path();
                     let error = Error::msg(Self::last_error(p))
@@ -157,34 +159,26 @@ impl Connection for SQLiteConnection {
             ensure_rc!(
                 sqlite3_open_v2(
                     url.as_ptr(),
-                    &mut *connection,
+                    &mut *handle,
                     SQLITE_OPEN_READWRITE
                         | SQLITE_OPEN_CREATE
                         | SQLITE_OPEN_URI
                         | SQLITE_OPEN_NOMUTEX,
                     ptr::null()
                 ),
-                Error::msg(Self::last_error(*connection)),
+                Error::msg(Self::last_error(*handle)),
                 make_context(),
             );
-            ensure_rc!(
-                sqlite3_exec(
-                    *connection,
-                    c"PRAGMA foreign_keys = ON".as_ptr(),
-                    None,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                ),
-                Error::msg(Self::last_error(*connection)),
-                "While enabling foreign key enforcement",
-            );
+            connection = Self {
+                handle,
+                draft: Default::default(),
+            };
+            connection.do_execute(c"PRAGMA foreign_keys = ON")?;
         }
-        Ok(Self {
-            handle: connection,
-            draft: Default::default(),
-        })
+        Ok(connection)
     }
 
+    #[inline(always)]
     fn begin(&mut self) -> impl Future<Output = Result<SQLiteTransaction<'_>>> + Send {
         future::ready(SQLiteTransaction::new(self))
     }
