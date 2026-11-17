@@ -42,19 +42,13 @@ impl ScyllaDBConnection {
     const DEFAULT_BATCH_SIZE: usize = 50 << 10;
 
     /// True when connected to Apache Cassandra rather than ScyllaDB.
-    pub fn is_cassandra(&self) -> bool {
-        // ScyllaDB nodes advertise shard metadata during the CQL handshake, Cassandra nodes do not.
-        !self
-            .session
-            .get_cluster_state()
-            .get_nodes_info()
-            .iter()
-            .any(|n| n.sharder().is_some())
+    pub const fn is_cassandra(&self) -> bool {
+        self.driver.is_cassandra
     }
 
     /// Reads the batch size limit from the server.
     async fn fetch_batch_size(&mut self) -> usize {
-        let (schema, table, setting) = if self.driver.cassandra {
+        let (schema, table, setting) = if self.is_cassandra() {
             ("system_views", "settings", "batch_size_fail_threshold")
         } else {
             ("system", "config", "batch_size_fail_threshold_in_kb")
@@ -460,7 +454,13 @@ impl Connection for ScyllaDBConnection {
             driver: *driver,
             batch_size: 0,
         };
-        connection.driver.cassandra = connection.is_cassandra();
+        // ScyllaDB nodes advertise shard metadata during the CQL handshake, Cassandra nodes do not.
+        connection.driver.is_cassandra = !connection
+            .session
+            .get_cluster_state()
+            .get_nodes_info()
+            .iter()
+            .any(|n| n.sharder().is_some());
         connection.batch_size = connection.fetch_batch_size().await;
         Ok(connection)
     }

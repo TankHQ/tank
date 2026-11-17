@@ -17,7 +17,7 @@ pub(crate) struct SQLiteStream<'s, Q: AsMut<Query<SQLiteDriver>>> {
     offset: usize,
     generation: usize,
     remaining: u16,
-    initialized: bool,
+    is_initialized: bool,
     active: bool,
     done: bool,
 }
@@ -33,7 +33,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
             offset: 0,
             generation: 0,
             remaining: Self::BATCH_SIZE,
-            initialized: false,
+            is_initialized: false,
             active: false,
             done: false,
         }
@@ -54,15 +54,6 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
             .map_or(ptr::null_mut(), |prepared| *prepared.statement)
     }
 
-    #[cold]
-    #[inline(never)]
-    fn error(&mut self) -> Error {
-        let error = Error::msg(SQLiteConnection::last_error(*self.connection.handle))
-            .context(format!("While running the query:\n{}", self.query.as_mut()));
-        log::error!("{error:#}");
-        error
-    }
-
     fn reset(&mut self) {
         if self.active {
             if let Query::Prepared(prepared) = self.query.as_mut() {
@@ -72,7 +63,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
             }
         }
         self.active = false;
-        self.initialized = false;
+        self.is_initialized = false;
         self.statement = None;
     }
 
@@ -86,14 +77,14 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
         let result = unsafe {
             match sqlite3_step(statement) {
                 SQLITE_ROW => {
-                    let initialize = !self.initialized;
-                    self.initialized = true;
+                    let initialize = !self.is_initialized;
+                    self.is_initialized = true;
                     self.prepared()
                         .map(|prepared| prepared.read_row(initialize))
                         .transpose()
                 }
                 SQLITE_DONE => Ok(None),
-                _ => Err(self.error()),
+                _ => Err(SQLiteConnection::last_error(*self.connection.handle)),
             }
         };
         if !matches!(&result, Ok(Some(_))) {
@@ -146,7 +137,9 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                     );
                     if rc != SQLITE_OK {
                         self.done = true;
-                        return Err(self.error());
+                        let error = SQLiteConnection::last_error(*self.connection.handle);
+                        log::error!("error:#");
+                        return Err(error);
                     }
                     let consumed = tail.offset_from(sql) as usize;
                     if consumed == 0 {

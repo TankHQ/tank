@@ -13,18 +13,20 @@ use uuid::Uuid;
 /// SQL writer for ScyllaDB/Cassandra dialect.
 #[derive(Default)]
 pub struct ScyllaDBSqlWriter {
-    cassandra: bool,
+    is_cassandra: bool,
 }
 
 pub type CassandraSqlWriter = ScyllaDBSqlWriter;
 
 impl ScyllaDBSqlWriter {
     pub(crate) const fn scylladb() -> Self {
-        Self { cassandra: false }
+        Self {
+            is_cassandra: false,
+        }
     }
 
     pub(crate) const fn cassandra() -> Self {
-        Self { cassandra: true }
+        Self { is_cassandra: true }
     }
 }
 
@@ -40,7 +42,7 @@ impl SqlCoreWriter for ScyllaDBSqlWriter {
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
-        if let Some(t) = if self.cassandra {
+        if let Some(t) = if self.is_cassandra {
             types.get("cassandra").or_else(|| types.get("scylladb"))
         } else {
             types.get("scylladb")

@@ -7,7 +7,7 @@ use tank_core::Driver;
 /// It uses the `scylla` crate under the hood which is designed to be compatible with both ScyllaDB and Apache Cassandra databases.
 #[derive(Default, Clone, Copy, Debug)]
 pub struct ScyllaDBDriver {
-    pub(crate) cassandra: bool,
+    pub(crate) is_cassandra: bool,
 }
 
 impl ScyllaDBDriver {
@@ -17,12 +17,14 @@ impl ScyllaDBDriver {
 
     /// Construct a driver configured for ScyllaDB.
     pub const fn scylladb() -> Self {
-        Self { cassandra: false }
+        Self {
+            is_cassandra: false,
+        }
     }
 
     /// Construct a driver configured for Apache Cassandra.
     pub const fn cassandra() -> Self {
-        Self { cassandra: true }
+        Self { is_cassandra: true }
     }
 }
 
@@ -37,7 +39,7 @@ impl Driver for ScyllaDBDriver {
     const NAME: &'static [&'static str] = &["scylladb", "cassandra"];
 
     fn sql_writer(&self) -> Self::SqlWriter {
-        if self.cassandra {
+        if self.is_cassandra {
             ScyllaDBSqlWriter::cassandra()
         } else {
             ScyllaDBSqlWriter::scylladb()

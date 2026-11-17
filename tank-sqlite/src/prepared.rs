@@ -132,16 +132,12 @@ impl Prepared for SQLitePrepared {
         unsafe {
             ensure_rc!(
                 sqlite3_reset(*self.statement),
-                Error::msg(SQLiteConnection::last_error(sqlite3_db_handle(
-                    *self.statement,
-                ))),
+                SQLiteConnection::last_error(sqlite3_db_handle(*self.statement,)),
                 "While resetting SQLite statement"
             );
             ensure_rc!(
                 sqlite3_clear_bindings(*self.statement),
-                Error::msg(SQLiteConnection::last_error(sqlite3_db_handle(
-                    *self.statement
-                ))),
+                SQLiteConnection::last_error(sqlite3_db_handle(*self.statement)),
                 "While clearing SQLite statement bindings"
             );
         }
@@ -289,9 +285,7 @@ impl Prepared for SQLitePrepared {
             };
             ensure_rc!(
                 rc,
-                Error::msg(SQLiteConnection::last_error(sqlite3_db_handle(
-                    *self.statement
-                ))),
+                SQLiteConnection::last_error(sqlite3_db_handle(*self.statement)),
                 format!("While binding {} (0-based) to {self}", index - 1),
             );
         }
