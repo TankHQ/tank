@@ -11,10 +11,22 @@ use tank_core::{
 use uuid::Uuid;
 
 /// SQL writer for ScyllaDB/Cassandra dialect.
-///
-/// Emits ScyllaDB/Cassandra specific SQL syntax to mantain compatibility with tank operations.
 #[derive(Default)]
-pub struct ScyllaDBSqlWriter {}
+pub struct ScyllaDBSqlWriter {
+    cassandra: bool,
+}
+
+pub type CassandraSqlWriter = ScyllaDBSqlWriter;
+
+impl ScyllaDBSqlWriter {
+    pub(crate) const fn scylladb() -> Self {
+        Self { cassandra: false }
+    }
+
+    pub(crate) const fn cassandra() -> Self {
+        Self { cassandra: true }
+    }
+}
 
 impl SqlCoreWriter for ScyllaDBSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
@@ -28,7 +40,11 @@ impl SqlCoreWriter for ScyllaDBSqlWriter {
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
-        if let Some(t) = types.get("scylladb") {
+        if let Some(t) = if self.cassandra {
+            types.get("cassandra").or_else(|| types.get("scylladb"))
+        } else {
+            types.get("scylladb")
+        } {
             out.push_str(t);
         }
     }

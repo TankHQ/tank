@@ -10,10 +10,9 @@ use std::{
     hint, iter, mem, ptr,
 };
 use tank_core::{
-    AnyQuery, AppendDefault, AsEntity, AsQuery, ColumnDef, Connection, Driver, Entity, Error,
-    ErrorContext, Executor, Operand, Prepared, QueryResult, Result, RowsAffected, Sql, SqlWriter,
-    Transaction, char_ptr_to_string, describe_path, error_message_from_ptr, future::Either,
-    truncate_long,
+    AnyQuery, AppendDefault, AsEntity, AsQuery, ColumnDef, Connection, Entity, Error, ErrorContext,
+    Executor, Operand, Prepared, QueryResult, Result, RowsAffected, Sql, Transaction,
+    char_ptr_to_string, describe_path, error_message_from_ptr, future::Either, truncate_long,
 };
 use tokio::task;
 
@@ -69,21 +68,18 @@ impl SQLiteConnection {
         I: IntoIterator,
         I::Item: AsEntity,
     {
-        type E<I> = <<I as IntoIterator>::Item as AsEntity>::Entity;
-        const BATCH_SIZE: usize = 256;
-        let columns = E::<I>::columns();
-        let mut affected = RowsAffected::default();
+        const ROWS: usize = 256;
+        let table = <I::Item as AsEntity>::Entity::table();
         let mut rows = rows.into_iter();
+        let mut affected = RowsAffected::default();
         let mut prepared = {
             let mut out = mem::take(&mut self.draft);
-            out.clear(); // Clears the content, not the allocated memory
-            self.driver().sql_writer().write_insert(
-                &mut out,
-                Sql()
-                    .insert_into(E::<I>::table())
-                    .columns(columns.iter().map(ColumnDef::name))
-                    .values([iter::repeat_n(&Operand::QuestionMark, columns.len())]),
-            );
+            out.clear(); // Clear the content, keep the allocated memory
+            Sql()
+                .insert_into(table)
+                .columns(table.columns.iter().map(ColumnDef::name))
+                .values([iter::repeat_n(&Operand::QuestionMark, table.columns.len())])
+                .build_into(&self.driver(), &mut out);
             let prepared = self.do_prepare(out.buffer()).await;
             self.draft = out;
             prepared?
@@ -91,36 +87,34 @@ impl SQLiteConnection {
         let transaction = if unsafe { sqlite3_get_autocommit(*self.handle) } == 0 {
             None
         } else {
-            // Start a transaction if not inside one to make sure the appends either all succeeds or none
+            // Start a transaction if not inside one so the append either all succeeds or rolls back.
             Some(self.begin().await?)
         };
         loop {
-            // Scoped so the batch never lives across an await,
-            // which keeps the future `Send` without requiring `I::Item: Send`.
+            // Scoped so `entity` never lives across `.await`, keeping the future `Send`.
             {
-                let batch = rows.by_ref().take(BATCH_SIZE).collect::<Vec<_>>();
-                if batch.is_empty() {
-                    break;
-                }
-                for entity in &batch {
-                    for (index, value) in entity.as_entity().row_values().enumerate() {
-                        prepared.bind_index(value, index as _)?;
+                let mut count = 0;
+                for entity in rows.by_ref().take(ROWS) {
+                    for value in entity.as_entity().row_values() {
+                        prepared.bind(value)?;
                     }
                     // `sqlite3_step` reports a finished insert as `SQLITE_DONE`, not `SQLITE_OK`.
-                    let rc = unsafe { sqlite3_step(*prepared.statement) };
-                    if rc != SQLITE_DONE {
+                    if unsafe { sqlite3_step(*prepared.statement) } != SQLITE_DONE {
                         hint::cold_path();
-                        let error = Error::msg(Self::last_error(unsafe {
-                            sqlite3_db_handle(*prepared.statement)
-                        }))
-                        .context("While executing a step on a prepared statement");
+                        let db = unsafe { sqlite3_db_handle(*prepared.statement) };
+                        let error = Error::msg(Self::last_error(db))
+                            .context("While executing a step on a prepared statement");
                         log::error!("{error:#}");
                         return Err(error);
                     }
                     prepared.clear_bindings()?;
+                    count += 1;
+                }
+                if count == 0 {
+                    break;
                 }
                 affected.extend([RowsAffected {
-                    rows_affected: Some(batch.len() as _),
+                    rows_affected: Some(count),
                     last_affected_id: Some(unsafe {
                         sqlite3_last_insert_rowid(sqlite3_db_handle(*prepared.statement))
                     }),
@@ -238,9 +232,8 @@ impl Executor for SQLiteConnection {
         It::IntoIter: Send,
         It::Item: AsEntity,
     {
-        type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
-        let rows: <It as IntoIterator>::IntoIter = rows.into_iter();
-        if E::<It>::columns().is_empty() {
+        let rows = rows.into_iter();
+        if <It::Item as AsEntity>::Entity::columns().is_empty() {
             // Without named columns the batch must go through the generic insert.
             Either::Right(self.append_default(rows))
         } else {

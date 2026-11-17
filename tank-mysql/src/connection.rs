@@ -1,10 +1,10 @@
 use crate::{MySQLDriver, MySQLQueryable, MySQLTransaction};
 use anyhow::anyhow;
 use core::fmt;
-use mysql_async::{ClientIdentity, Conn, Opts, OptsBuilder};
+use mysql_async::{ClientIdentity, Conn, Opts, OptsBuilder, prelude::Queryable};
 use rustls::crypto::{CryptoProvider, aws_lc_rs::default_provider};
 use std::{borrow::Cow, env, fmt::Debug, path::PathBuf};
-use tank_core::{Connection, ErrorContext, Result, describe_url, impl_executor_transaction};
+use tank_core::{Connection, Error, ErrorContext, Result, describe_url, impl_executor_transaction};
 use url::Url;
 
 /// Connection wrapper used by the MySQL/MariaDB driver.
@@ -105,11 +105,21 @@ impl Connection for MySQLConnection {
             (None, None) => {}
         }
         opts = opts.ssl_opts(ssl_opts);
-        let connection = Conn::new(opts).await.with_context(make_context)?;
+        let mut connection = Conn::new(opts).await.with_context(make_context)?;
+        let max_allowed_packet = match connection.opts().max_allowed_packet() {
+            Some(v) => v,
+            None => connection
+                .query_first::<usize, _>("SELECT @@max_allowed_packet")
+                .await
+                .map_err(Error::new)
+                .and_then(|v| v.context("The server did not return `max_allowed_packet`"))
+                .with_context(make_context)?,
+        };
         Ok(MySQLConnection {
             conn: MySQLQueryable {
                 executor: connection,
                 driver,
+                max_allowed_packet,
             },
         })
     }

@@ -185,6 +185,10 @@ impl<D: Driver> Executor for PooledConnection<D> {
         self.object.accepts_multiple_statements()
     }
 
+    fn batch_size(&self) -> usize {
+        self.object.batch_size()
+    }
+
     fn driver(&self) -> D {
         self.object.driver()
     }

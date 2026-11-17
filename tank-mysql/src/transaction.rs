@@ -16,6 +16,7 @@ pub type MariaDBTransaction<'c> = MySQLTransaction<'c>;
 impl<'c> MySQLTransaction<'c> {
     pub async fn new(connection: &'c mut MySQLConnection) -> Result<Self> {
         let driver = connection.conn.driver;
+        let max_allowed_packet = connection.conn.max_allowed_packet;
         Ok(Self {
             transaction: MySQLQueryable {
                 executor: connection
@@ -25,6 +26,7 @@ impl<'c> MySQLTransaction<'c> {
                     .await
                     .inspect_err(|e| log::error!("{e:#}"))?,
                 driver,
+                max_allowed_packet,
             },
         })
     }

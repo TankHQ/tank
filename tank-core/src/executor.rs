@@ -1,12 +1,12 @@
 use crate::{
-    AsEntity, AsQuery, Driver, Entity, Query, QueryResult, RawQuery, Result, Row, RowsAffected,
-    Sql,
+    AsEntity, AsQuery, Driver, Entity, MAX_BATCH_SIZE, Query, QueryResult, RawQuery, Result, Row,
+    RowsAffected, Sql,
     stream::{Stream, StreamExt},
-    writer::SqlWriter,
 };
 use anyhow::anyhow;
 use convert_case::{Case, Casing};
 use std::{
+    cmp::max,
     future::{self, Future},
     mem,
     pin::{Pin, pin},
@@ -50,6 +50,11 @@ pub trait Executor: Send {
     /// Checks if the driver supports multiple SQL statements in a single request.
     fn accepts_multiple_statements(&self) -> bool {
         true
+    }
+
+    /// Optimal size in bytes of a single request.
+    fn batch_size(&self) -> usize {
+        MAX_BATCH_SIZE
     }
 
     /// Returns the driver instance associated with this executor.
@@ -128,7 +133,7 @@ pub trait Executor: Send {
     }
 }
 
-/// Generic batch insert through regular SQL, for drivers that don't support actual append
+/// Generic batch insert through regular SQL, for drivers that don't support actual append.
 #[doc(hidden)]
 pub trait AppendDefault: Executor {
     fn append_default<It>(
@@ -140,32 +145,50 @@ pub trait AppendDefault: Executor {
         It::IntoIter: Send,
         It::Item: AsEntity,
     {
-        type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
-        const BATCH_SIZE: usize = 256;
-        let writer = self.driver().sql_writer();
+        const DEFAULT_ROWS: usize = 1024;
         let mut entities = entities.into_iter();
         async move {
-            let mut affected = RowsAffected::default();
-            // The SQL string buffer is reused through `query`.
+            // Reuses the allocated SQL buffer across batches.
             let mut query = Query::<Self::Driver>::default();
+            let mut rows = 0;
+            let mut affected = RowsAffected::default();
+            let batch_size = self.batch_size();
+            let driver = self.driver();
+            let table = <It::Item as AsEntity>::Entity::table();
             loop {
-                // Scoped so the batch never lives across an await
-                // which keeps the future `Send` without requiring `It::Item: Send`
+                // Scoped so `Peekable` and `batch` never live across `.await`, keeping the future `Send`.
                 {
-                    let batch = entities.by_ref().take(BATCH_SIZE).collect::<Vec<_>>();
-                    if batch.is_empty() {
+                    let mut batch = entities.by_ref().peekable();
+                    let Some(first) = batch.peek() else {
                         break;
-                    }
-                    let mut out = mem::take(&mut query).into_any();
-                    out.clear(); // Clears the content, doesn't lose the allocated buffer.
-                    writer.write_insert(
-                        &mut out,
+                    };
+                    let mut out = mem::take(&mut query).into_any(); // Take the buffer
+                    out.clear(); // Clear the content, keep the allocated memory
+                    if rows == 0 {
+                        // Probe the first entity to get the actual SQL size.
                         Sql()
-                            .insert_into(E::<It>::table())
-                            .values(batch.iter().map(AsEntity::as_entity)),
+                            .insert_into(table)
+                            .values([first.as_entity()])
+                            .build_into(&driver, &mut out);
+                        rows = max(batch_size.checked_div(out.len()).unwrap_or(DEFAULT_ROWS), 1);
+                    }
+                    let batch = batch.take(rows).collect::<Vec<_>>();
+                    if out.is_empty() || batch.len() > 1 {
+                        out.clear();
+                        Sql()
+                            .insert_into(table)
+                            .values(batch.iter().map(AsEntity::as_entity))
+                            .build_into(&driver, &mut out);
+                    }
+                    rows = max(
+                        batch_size
+                            .saturating_mul(batch.len())
+                            .checked_div(out.len())
+                            .unwrap_or(DEFAULT_ROWS),
+                        1,
                     );
                     query = out.into(); // Give the buffer back
-                };
+                }
                 affected.extend([self.execute(&mut query).await?]);
             }
             Ok(affected)
@@ -180,6 +203,10 @@ impl<S: Executor + ?Sized> Executor for &mut S {
 
     fn accepts_multiple_statements(&self) -> bool {
         (**self).accepts_multiple_statements()
+    }
+
+    fn batch_size(&self) -> usize {
+        (**self).batch_size()
     }
 
     fn driver(&self) -> Self::Driver {

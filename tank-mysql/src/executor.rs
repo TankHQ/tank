@@ -1,14 +1,15 @@
 use crate::{MySQLDriver, MySQLPrepared, RowWrap};
 use async_stream::try_stream;
-use std::sync::Arc;
+use std::{cmp::min, sync::Arc};
 use tank_core::{
-    AsQuery, Error, Executor, Query, RawQuery, Result, Row,
+    AsQuery, Error, Executor, MAX_BATCH_SIZE, Query, RawQuery, Result, Row,
     stream::{Stream, StreamExt, TryStreamExt},
 };
 
 pub(crate) struct MySQLQueryable<T: mysql_async::prelude::Queryable> {
     pub(crate) executor: T,
     pub(crate) driver: MySQLDriver,
+    pub(crate) max_allowed_packet: usize,
 }
 
 impl<T: mysql_async::prelude::Queryable + Send> Executor for MySQLQueryable<T> {
@@ -16,6 +17,10 @@ impl<T: mysql_async::prelude::Queryable + Send> Executor for MySQLQueryable<T> {
 
     fn driver(&self) -> MySQLDriver {
         self.driver
+    }
+
+    fn batch_size(&self) -> usize {
+        min(self.max_allowed_packet / 4 * 3, MAX_BATCH_SIZE)
     }
 
     async fn do_prepare(&mut self, sql: &str) -> Result<MySQLPrepared> {

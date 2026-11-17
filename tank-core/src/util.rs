@@ -14,6 +14,8 @@ use std::{
 use syn::Path;
 use url::Url;
 
+pub const MAX_BATCH_SIZE: usize = 15 << 20; // 15 MiB
+
 #[derive(Clone)]
 /// Iterator adapter for two types.
 pub enum EitherIterator<A, B>
@@ -517,6 +519,10 @@ macro_rules! impl_executor_transaction {
 
             fn accepts_multiple_statements(&self) -> bool {
                 self.$connection.accepts_multiple_statements()
+            }
+
+            fn batch_size(&self) -> usize {
+                self.$connection.batch_size()
             }
 
             fn do_prepare(

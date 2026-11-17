@@ -16,9 +16,9 @@ mod tests {
     use tank::{
         AnyQuery, AsQuery, AsValue, Connection, ConnectionPool, Context, Dataset, Driver, Entity,
         Error, Executor, Expression, ExpressionCollection, ExpressionVisitor, Fragment,
-        GenericSqlWriter, InsertIntoQuery, NA, OpPrecedence, PoolConfig, PooledConnection,
-        Prepared, Query, QueryResult, RawQuery, Result, Row, RowOwned, RowsAffected, Sql,
-        Transaction, anyhow, cols, describe_path, describe_url, expr,
+        GenericSqlWriter, InsertIntoQuery, MAX_BATCH_SIZE, NA, OpPrecedence, PoolConfig,
+        PooledConnection, Prepared, Query, QueryResult, RawQuery, Result, Row, RowOwned,
+        RowsAffected, Sql, Transaction, anyhow, cols, describe_path, describe_url, expr,
         future::Either,
         stream::{self, Stream, StreamExt, TryStreamExt},
     };
@@ -147,6 +147,93 @@ mod tests {
         async fn rollback(self) -> Result<()> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn append_byte_batches() {
+        #[derive(Default)]
+        struct SizedExecutor {
+            limit: usize,
+            sent: Vec<String>,
+        }
+
+        impl Executor for SizedExecutor {
+            type Driver = TestDriver;
+
+            fn batch_size(&self) -> usize {
+                self.limit
+            }
+
+            fn run<'s>(
+                &'s mut self,
+                query: impl AsQuery<TestDriver> + 's,
+            ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
+                let mut query = query.as_query();
+                if let Query::Raw(RawQuery(sql)) = query.as_mut() {
+                    self.sent.push(sql.clone());
+                }
+                stream::empty::<Result<QueryResult<RowOwned>>>()
+            }
+        }
+        block_on(async {
+            let mut empty = SizedExecutor {
+                limit: 4096,
+                ..Default::default()
+            };
+            empty.append(Vec::<ExecutorItem>::new()).await.unwrap();
+            assert!(empty.sent.is_empty());
+
+            // Same width ids, so every row has the same size.
+            let items = (1000..1300)
+                .map(|id| ExecutorItem {
+                    id,
+                    name: format!("item_{id:04}"),
+                })
+                .collect::<Vec<_>>();
+            let mut single = SizedExecutor {
+                limit: 4096,
+                ..Default::default()
+            };
+            single.append(&items[..1]).await.unwrap();
+            assert_eq!(single.sent.len(), 1);
+            assert!(single.sent[0].contains("'item_1000'"));
+
+            for limit in [1, 4096, 1 << 20] {
+                let mut exec = SizedExecutor {
+                    limit,
+                    ..Default::default()
+                };
+                exec.append(&items).await.unwrap();
+                let rows = exec.sent.iter().map(|s| s.matches("'item_").count());
+                assert_eq!(rows.sum::<usize>(), items.len(), "limit {limit}");
+                if limit == 1 {
+                    // A row over the limit is still sent, alone.
+                    assert_eq!(exec.sent.len(), items.len());
+                } else {
+                    // The first batch is probed from one row, the following ones are measured.
+                    assert!(exec.sent.iter().all(|s| s.len() <= limit), "limit {limit}");
+                    let middle = exec.sent.get(1..exec.sent.len() - 1).unwrap_or_default();
+                    assert!(
+                        middle.iter().all(|s| s.len() >= limit / 10 * 8),
+                        "limit {limit}"
+                    );
+                }
+            }
+
+            // Quotes double in SQL literals, probing the dialect writer still stays within `limit`.
+            let quoted = (1000..1100)
+                .map(|id| ExecutorItem {
+                    id,
+                    name: "'".repeat(40),
+                })
+                .collect::<Vec<_>>();
+            let mut exec = SizedExecutor {
+                limit: 512,
+                ..Default::default()
+            };
+            exec.append(&quoted).await.unwrap();
+            assert!(exec.sent.iter().all(|s| s.len() <= 512));
+        });
     }
 
     #[test]
@@ -612,6 +699,7 @@ mod tests {
             assert!(exec.prepare(&mut already).await.unwrap().is_prepared());
             let mut exec_ref = &mut exec;
             assert!(Executor::accepts_multiple_statements(&&mut exec_ref));
+            assert_eq!(Executor::batch_size(&&mut exec_ref), MAX_BATCH_SIZE);
             assert_eq!(Executor::driver(&&mut exec_ref).name(), "test");
             assert!(
                 Executor::do_prepare(&mut exec_ref, "SELECT 1")
@@ -655,6 +743,7 @@ mod tests {
                 .unwrap();
             let mut conn = pool.get().await.unwrap();
             assert!(conn.accepts_multiple_statements());
+            assert_eq!(conn.batch_size(), MAX_BATCH_SIZE);
             assert_eq!(conn.driver().name(), "test");
             let _ = &*conn;
             let _ = conn.as_ref();

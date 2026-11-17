@@ -37,8 +37,16 @@ impl ScyllaDBTransaction<'_> {
 impl Executor for ScyllaDBTransaction<'_> {
     type Driver = ScyllaDBDriver;
 
+    fn driver(&self) -> Self::Driver {
+        self.connection.driver
+    }
+
     fn accepts_multiple_statements(&self) -> bool {
         false
+    }
+
+    fn batch_size(&self) -> usize {
+        self.connection.batch_size
     }
 
     async fn do_prepare(&mut self, sql: &str) -> Result<ScyllaDBPrepared> {
