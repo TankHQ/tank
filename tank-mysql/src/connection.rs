@@ -25,7 +25,7 @@ impl Connection for MySQLConnection {
         let make_context = || format!(r#"Connecting to MySQL "{target}""#);
         let mut driver = *driver;
         if url.scheme() == "mariadb" {
-            driver.mariadb = true;
+            driver.is_mariadb = true;
             // `mysql_async` only accepts the `mysql` scheme.
             url.set_scheme("mysql")
                 .map_err(|_| anyhow!("Could not normalize the MariaDB URL scheme"))

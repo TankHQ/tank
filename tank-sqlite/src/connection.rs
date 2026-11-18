@@ -26,18 +26,13 @@ pub struct SQLiteConnection {
 impl SQLiteConnection {
     #[cold]
     #[inline(never)]
-    pub(crate) fn last_error(handle: *mut sqlite3) -> String {
+    pub(crate) fn last_error(handle: *mut sqlite3) -> Error {
         unsafe {
-            let ptr = sqlite3_errmsg(handle);
-            if !ptr.is_null() {
-                format!(
-                    "Error [{}] {}",
-                    sqlite3_errcode(handle),
-                    error_message_from_ptr(&ptr),
-                )
-            } else {
-                Default::default()
-            }
+            anyhow!(
+                "Error [{}] {}",
+                sqlite3_errcode(handle),
+                error_message_from_ptr(&sqlite3_errmsg(handle)),
+            )
         }
     }
 
@@ -53,7 +48,7 @@ impl SQLiteConnection {
                     ptr::null_mut(),
                 )
             },
-            Error::msg(Self::last_error(*self.handle)),
+            Self::last_error(*self.handle),
             format!(
                 "While executing:\n{}",
                 truncate_long(&statement.to_string_lossy()),
@@ -102,7 +97,7 @@ impl SQLiteConnection {
                     if unsafe { sqlite3_step(*prepared.statement) } != SQLITE_DONE {
                         hint::cold_path();
                         let db = unsafe { sqlite3_db_handle(*prepared.statement) };
-                        let error = Error::msg(Self::last_error(db))
+                        let error = Self::last_error(db)
                             .context("While executing a step on a prepared statement");
                         log::error!("{error:#}");
                         return Err(error);
@@ -145,8 +140,7 @@ impl Connection for SQLiteConnection {
             handle = CBox::new(ptr::null_mut(), |p| {
                 if sqlite3_close(p) != SQLITE_OK {
                     hint::cold_path();
-                    let error = Error::msg(Self::last_error(p))
-                        .context("While closing the sqlite connection");
+                    let error = Self::last_error(p).context("While closing the sqlite connection");
                     log::error!("{error:#}");
                 }
             });
@@ -160,7 +154,7 @@ impl Connection for SQLiteConnection {
                         | SQLITE_OPEN_NOMUTEX,
                     ptr::null()
                 ),
-                Error::msg(Self::last_error(*handle)),
+                Self::last_error(*handle),
                 make_context(),
             );
             connection = Self {
@@ -192,15 +186,14 @@ impl Executor for SQLiteConnection {
                     hint::cold_path();
                     log::error!(
                         "{:#}",
-                        Error::msg(Self::last_error(handle))
-                            .context("While finalizing a prepared statement")
+                        Self::last_error(handle).context("While finalizing a prepared statement")
                     );
                 }
             });
             let mut tail = ptr::null();
             ensure_rc!(
                 sqlite3_prepare_v2(*self.handle, sql.as_ptr(), len, &mut *statement, &mut tail),
-                Error::msg(Self::last_error(*self.handle)),
+                Self::last_error(*self.handle),
                 make_context(),
             );
             if tail != ptr::null() && *tail != 0 {

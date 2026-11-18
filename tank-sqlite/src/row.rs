@@ -2,7 +2,7 @@ use crate::SQLiteConnection;
 use anyhow::anyhow;
 use libsqlite3_sys::*;
 use std::{borrow::Cow, ffi::c_int, hint, ops::Range, slice, sync::Arc};
-use tank_core::{Error, Result, Row, RowLabels, RowOwned, Value};
+use tank_core::{Result, Row, RowLabels, RowOwned, Value};
 
 /// A stable row snapshot, independent of SQLite's transient column buffers.
 #[derive(Debug)]
@@ -57,8 +57,8 @@ impl SQLiteRowData {
                                 || len != 0
                                 || sqlite3_errcode(sqlite3_db_handle(statement)) == SQLITE_NOMEM
                             {
-                                return Err(Error::msg(SQLiteConnection::last_error(
-                                    sqlite3_db_handle(statement),
+                                return Err(SQLiteConnection::last_error(sqlite3_db_handle(
+                                    statement,
                                 ))
                                 .context(format!(
                                     "Could not extract the column at index {index}"

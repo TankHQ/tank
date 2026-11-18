@@ -12,7 +12,7 @@ use time::{OffsetDateTime, PrimitiveDateTime};
 /// SQL writer for the MySQL dialect.
 #[derive(Default)]
 pub struct MySQLSqlWriter {
-    mariadb: bool,
+    is_mariadb: bool,
 }
 
 /// SQL writer for the MariaDB dialect.
@@ -24,11 +24,11 @@ impl MySQLSqlWriter {
     const DEFAULT_PK_VARCHAR_TYPE: &'static str = "VARCHAR(60)";
 
     pub(crate) const fn mysql() -> Self {
-        Self { mariadb: false }
+        Self { is_mariadb: false }
     }
 
     pub(crate) const fn mariadb() -> Self {
-        Self { mariadb: true }
+        Self { is_mariadb: true }
     }
 
     /// Wrap the JSON emitted at `start` in a SQL string literal, escaping the
@@ -75,7 +75,7 @@ impl SqlCoreWriter for MySQLSqlWriter {
         column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
-        if let Some(t) = if self.mariadb {
+        if let Some(t) = if self.is_mariadb {
             types.get("mariadb").or_else(|| types.get("mysql"))
         } else {
             types.get("mysql")
@@ -144,8 +144,12 @@ impl SqlCoreWriter for MySQLSqlWriter {
             Value::Timestamp(..) => out.push_str("DATETIME"),
             Value::TimestampWithTimezone(..) => out.push_str("DATETIME"),
             Value::Interval(..) => out.push_str("TIME(6)"),
-            Value::Uuid(..) => out.push_str(if self.mariadb { "UUID" } else { "CHAR(36)" }),
-            Value::IpAddr(..) => out.push_str(if self.mariadb { "INET6" } else { "VARCHAR(45)" }),
+            Value::Uuid(..) => out.push_str(if self.is_mariadb { "UUID" } else { "CHAR(36)" }),
+            Value::IpAddr(..) => out.push_str(if self.is_mariadb {
+                "INET6"
+            } else {
+                "VARCHAR(45)"
+            }),
             Value::Array(..) => out.push_str("JSON"),
             Value::List(..) => out.push_str("JSON"),
             Value::Map(..) => out.push_str("JSON"),

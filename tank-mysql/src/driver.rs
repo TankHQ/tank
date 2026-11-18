@@ -4,18 +4,18 @@ use tank_core::Driver;
 /// MySQL/MariaDB driver.
 #[derive(Clone, Copy, Debug)]
 pub struct MySQLDriver {
-    pub(crate) mariadb: bool,
+    pub(crate) is_mariadb: bool,
 }
 
 impl MySQLDriver {
     /// Construct a driver configured for MySQL
     pub const fn mysql() -> Self {
-        Self { mariadb: false }
+        Self { is_mariadb: false }
     }
 
     /// Construct a driver configured for MariaDB
     pub const fn mariadb() -> Self {
-        Self { mariadb: true }
+        Self { is_mariadb: true }
     }
 }
 
@@ -34,7 +34,7 @@ impl Driver for MySQLDriver {
     const NAME: &'static [&'static str] = &["mysql", "mariadb"];
 
     fn sql_writer(&self) -> Self::SqlWriter {
-        if self.mariadb {
+        if self.is_mariadb {
             MySQLSqlWriter::mariadb()
         } else {
             MySQLSqlWriter::mysql()
