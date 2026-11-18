@@ -7,9 +7,7 @@ mod tests {
     use indoc::indoc;
     use rust_decimal::{Decimal, prelude::FromPrimitive};
     use std::{borrow::Cow, sync::Arc, time::Duration};
-    use tank::{
-        Action, DefaultValueType, Entity, PrimaryKeyType, QueryBuilder, Sql, TableRef, Value, expr,
-    };
+    use tank::{Action, DefaultValueType, Entity, PrimaryKeyType, Sql, TableRef, Value, expr};
 
     #[derive(Entity)]
     #[tank(name = "a_table", primary_key = ("bravo", "delta"))]

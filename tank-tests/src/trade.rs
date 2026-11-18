@@ -2,8 +2,8 @@
 use rust_decimal::Decimal;
 use std::{collections::BTreeMap, pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
-    AnyQuery, AsValue, Driver, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult,
-    RawQuery, Result, RowsAffected, Sql, Value,
+    AnyQuery, AsValue, Driver, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery,
+    Result, RowsAffected, Sql, Value,
     stream::{StreamExt, TryStreamExt},
 };
 use time::macros::datetime;
@@ -326,7 +326,7 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
         let mut query = AnyQuery::default();
         Sql()
             .delete_from(Trade::table())
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         Sql()
             .insert_into(Trade::table())
             .values(&[Trade {
@@ -355,12 +355,12 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
                     ("risk_limit".into(), "high".into()),
                 ])),
             }])
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         Sql()
             .select(Trade::columns())
             .from(Trade::table())
             .where_expr(true)
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         let mut stream = pin!(executor.run(query));
         let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) =
             stream.try_next().await?

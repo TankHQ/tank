@@ -123,7 +123,7 @@ impl Executor for PostgresConnection {
         &'s mut self,
         query: impl AsQuery<PostgresDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         let context = format!("While running the query:\n{}", query.as_mut());
         try_stream! {
             // The raw variant streams without a transaction, borrow the caller's SQL so an
@@ -164,7 +164,7 @@ impl Executor for PostgresConnection {
         &'s mut self,
         query: impl AsQuery<PostgresDriver> + 's,
     ) -> impl Stream<Item = Result<impl Row + 's>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         PostgresStream::new(async move { self.fetch_inner(query.as_mut()).await })
     }
 

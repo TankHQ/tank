@@ -7,8 +7,8 @@ mod tests {
     use indoc::indoc;
     use std::borrow::Cow;
     use tank::{
-        AnyQuery, AsValue, DefaultValueType, Driver, Entity, PrimaryKeyType, QueryBuilder, Sql,
-        SqlWriter, TableRef, Value, expr,
+        AnyQuery, AsValue, DefaultValueType, Driver, Entity, PrimaryKeyType, Sql, SqlWriter,
+        TableRef, Value, expr,
     };
 
     #[derive(Entity)]

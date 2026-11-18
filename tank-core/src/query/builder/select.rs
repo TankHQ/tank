@@ -1,6 +1,6 @@
 use crate::{
-    AnyQuery, Dataset, Driver, EitherIterator, Expression, ExpressionCollection, NA, QueryBuilder,
-    SqlWriter,
+    AnyQuery, BoxQueryBuilder, Dataset, Driver, EitherIterator, Expression, ExpressionCollection,
+    NA, Query, SqlWriter,
 };
 use std::{iter, marker::PhantomData};
 
@@ -289,7 +289,11 @@ where
     }
 }
 
-impl<'t, From: Dataset + 't, T: SelectQuery<From>> SelectQuery<From> for &'t T {
+impl<'t, From, T> SelectQuery<From> for &'t T
+where
+    From: Dataset + 't,
+    T: SelectQuery<From>,
+{
     fn get_select(&self) -> impl Iterator<Item = impl Expression> + Clone {
         (**self).get_select()
     }
@@ -327,7 +331,7 @@ impl<'t, From: Dataset + 't, T: SelectQuery<From>> SelectQuery<From> for &'t T {
     }
 }
 
-impl<S, From, W, G, H, O, L> QueryBuilder for SelectQueryBuilder<S, From, W, G, H, O, L>
+impl<S, From, W, G, H, O, L> SelectQueryBuilder<S, From, W, G, H, O, L>
 where
     S: ExpressionCollection,
     From: Dataset,
@@ -336,7 +340,23 @@ where
     H: Expression,
     O: ExpressionCollection,
 {
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        driver.sql_writer().write_select(out, self);
+    /// Builds the query for `driver`.
+    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
+        let mut query = AnyQuery::default();
+        self.write_into(&driver.sql_writer(), &mut query);
+        query.into()
+    }
+
+    /// Writes the statement into an existing query.
+    pub fn write_into(&self, writer: &impl SqlWriter, out: &mut AnyQuery) {
+        writer.write_select(out, self);
+    }
+
+    /// Erases the builder into a [`BoxQueryBuilder`], to store it and run it later on any executor.
+    pub fn boxed(self) -> BoxQueryBuilder
+    where
+        Self: 'static,
+    {
+        BoxQueryBuilder::new(move |writer, out| self.write_into(writer, out))
     }
 }

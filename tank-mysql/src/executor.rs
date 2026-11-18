@@ -31,7 +31,7 @@ impl<T: mysql_async::prelude::Queryable + Send> Executor for MySQLQueryable<T> {
         &'s mut self,
         query: impl AsQuery<MySQLDriver> + 's,
     ) -> impl Stream<Item = Result<tank_core::QueryResult<impl Row + 's>>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         try_stream! {
             match query.as_mut() {

@@ -1,4 +1,4 @@
-use crate::{AnyQuery, Driver, NA, QueryBuilder, SqlWriter, TableRef};
+use crate::{AnyQuery, BoxQueryBuilder, Driver, NA, Query, SqlWriter, TableRef};
 use std::marker::PhantomData;
 
 pub struct DropTableQueryBuilder<Exists> {
@@ -47,10 +47,24 @@ impl<E> DropTableQuery for DropTableQueryBuilder<E> {
     }
 }
 
-impl<E> QueryBuilder for DropTableQueryBuilder<E> {
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        driver
-            .sql_writer()
-            .write_drop_table(out, &self.table, self.if_exists);
+impl<E> DropTableQueryBuilder<E> {
+    /// Builds the query for `driver`.
+    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
+        let mut query = AnyQuery::default();
+        self.write_into(&driver.sql_writer(), &mut query);
+        query.into()
+    }
+
+    /// Writes the statement into an existing query.
+    pub fn write_into(&self, writer: &impl SqlWriter, out: &mut AnyQuery) {
+        writer.write_drop_table(out, &self.table, self.if_exists);
+    }
+
+    /// Erases the builder into a [`BoxQueryBuilder`], to store it and run it later on any executor.
+    pub fn boxed(self) -> BoxQueryBuilder
+    where
+        Self: 'static,
+    {
+        BoxQueryBuilder::new(move |writer, out| self.write_into(writer, out))
     }
 }

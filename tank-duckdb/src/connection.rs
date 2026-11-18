@@ -139,7 +139,7 @@ impl Executor for DuckDBConnection {
         &'s mut self,
         query: impl AsQuery<DuckDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        DuckDBStream::new(self, query.as_query())
+        DuckDBStream::new(self, query.as_query(&self.driver()))
     }
 
     fn append<It>(&mut self, rows: It) -> impl Future<Output = Result<RowsAffected>> + Send

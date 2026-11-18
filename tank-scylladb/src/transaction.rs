@@ -64,7 +64,7 @@ impl Executor for ScyllaDBTransaction<'_> {
         &'s mut self,
         query: impl AsQuery<ScyllaDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         let context = format!(
             "While running the query (appending a statement to a ScyllaDB/Cassandra batch):\n{:?}",
             query.as_mut()

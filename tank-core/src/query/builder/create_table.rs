@@ -1,4 +1,6 @@
-use crate::{AnyQuery, ColumnDef, Driver, NA, PrimaryKeyType, QueryBuilder, SqlWriter, TableRef};
+use crate::{
+    AnyQuery, BoxQueryBuilder, ColumnDef, Driver, NA, PrimaryKeyType, Query, SqlWriter, TableRef,
+};
 use std::{borrow::Cow, marker::PhantomData};
 
 pub struct CreateTableQueryBuilder<Exists, Columns = NA, PrimaryKey = NA> {
@@ -128,10 +130,24 @@ impl<E, C, P> CreateTableQuery for CreateTableQueryBuilder<E, C, P> {
     }
 }
 
-impl<E, C, P> QueryBuilder for CreateTableQueryBuilder<E, C, P> {
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        driver
-            .sql_writer()
-            .write_create_table(out, &self.table, self.if_not_exists);
+impl<E, C, P> CreateTableQueryBuilder<E, C, P> {
+    /// Builds the query for `driver`.
+    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
+        let mut query = AnyQuery::default();
+        self.write_into(&driver.sql_writer(), &mut query);
+        query.into()
+    }
+
+    /// Writes the statement into an existing query.
+    pub fn write_into(&self, writer: &impl SqlWriter, out: &mut AnyQuery) {
+        writer.write_create_table(out, &self.table, self.if_not_exists);
+    }
+
+    /// Erases the builder into a [`BoxQueryBuilder`], to store it and run it later on any executor.
+    pub fn boxed(self) -> BoxQueryBuilder
+    where
+        Self: 'static,
+    {
+        BoxQueryBuilder::new(move |writer, out| self.write_into(writer, out))
     }
 }

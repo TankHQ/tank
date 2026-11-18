@@ -9,7 +9,7 @@ Three firing modes:
 - `executor.fetch(query)`: Yields only rows. The default implementation calls `Executor::run` and discards `QueryResult::Affected`. Drivers may override it.
 - `executor.execute(query)`: Damage report only. Aggregates all `RowsAffected` across the batch and returns a single total. Internally calls `Executor::run` and discards rows (if any).
 
-Anything implementing [`AsQuery`](https://docs.rs/tank/latest/tank/trait.AsQuery.html) works: `&str`, `String`, `Query<D>`, `&mut Query<D>` or `AnyQuery`.
+Anything implementing [`AsQuery`](https://docs.rs/tank/latest/tank/trait.AsQuery.html) works: `&str`, `String`, `Query<D>`, `&mut Query<D>` or `AnyQuery`. The conversion receives the executor's driver instance, so a query can be rendered with the exact dialect of that connection. Custom implementations follow `fn as_query(self, driver: &D) -> Self::Output`.
 
 ## Composing SQL With `SqlWriter`
 SQL drivers expose a `SqlWriter` that knows DB-specific SQL fragments. The writer writes into an `AnyQuery`: SQL drivers append text to the `AnyQuery::Raw` variant containing a string buffer, while NoSQL drivers (like MongoDB and Valkey) switch to `AnyQuery::Prepared` and construct their native payload.
@@ -74,7 +74,7 @@ let rows = results
 The create table query builder can be used stand alone. Tables that have no Rust struct can still be created and dropped. `ColumnDef::from_type::<T>("name")` takes the column type from `T`, then the builder methods add the constraints:
 
 ```rust
-use tank::{Action, ColumnDef, ColumnRef, QueryBuilder, Sql};
+use tank::{Action, ColumnDef, ColumnRef, Sql};
 use uuid::Uuid;
 
 let query = Sql()

@@ -3,8 +3,8 @@
 use crate::silent_logs;
 use std::{pin::pin, sync::LazyLock, time::Duration};
 use tank::{
-    AnyQuery, Context, Driver, Entity, Executor, Fragment, Interval, QueryBuilder, QueryResult,
-    RawQuery, Result, RowsAffected, Sql, SqlValueWriter, SqlWriter, Value, expr,
+    AnyQuery, Context, Driver, Entity, Executor, Fragment, Interval, QueryResult, RawQuery, Result,
+    RowsAffected, Sql, SqlValueWriter, SqlWriter, Value, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -153,7 +153,7 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
         let mut query = AnyQuery::default();
         Sql()
             .delete_from(Intervals::table())
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         Sql()
             .insert_into(Intervals::table())
             .values(&[
@@ -173,12 +173,12 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
                     third: Duration::from_nanos(5000),
                 },
             ])
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         Sql()
             .select(Intervals::columns())
             .from(Intervals::table())
             .where_expr(true)
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         let mut stream = pin!(executor.run(query));
 
         // DELETE

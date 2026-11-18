@@ -25,7 +25,7 @@ impl Executor for ValkeyTransaction<'_> {
         &'s mut self,
         query: impl AsQuery<ValkeyDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         let Query::Prepared(prepared) = query.as_mut() else {
             return Either::Left(stream::once(future::ready(Err(anyhow!(
                 "Query is not the expected tank::Query::Prepared variant (Valkey/Redis driver uses prepared)",

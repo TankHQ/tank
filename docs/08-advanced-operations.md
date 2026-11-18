@@ -112,7 +112,7 @@ Example of valid syntax
 ## Update Queries
 `Sql().update(dataset)` builds an `UPDATE`. Each item of `set` is an assignment, written with `==` and rendered as `=`:
 ```rust
-use tank::{Entity, QueryBuilder, Sql, cols, expr};
+use tank::{Entity, Sql, cols, expr};
 
 let affected = executor
     .execute(

@@ -203,7 +203,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     {
         // #region cheat-sheet-query-builder
         use tank::{
-            QueryBuilder, Sql, cols, expr,
+            Sql, cols, expr,
             stream::{StreamExt, TryStreamExt},
         };
 
@@ -238,9 +238,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     {
         use crate::{Author, AuthorColumnTrait, Book, BookColumnTrait};
         // #region cheat-sheet-joins
-        use tank::{
-            Entity, QueryBuilder, Sql, cols, expr, join, stream::StreamExt, stream::TryStreamExt,
-        };
+        use tank::{Entity, Sql, cols, expr, join, stream::StreamExt, stream::TryStreamExt};
 
         #[derive(Entity)]
         struct BookWithAuthor {
@@ -298,7 +296,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
         // #region cheat-sheet-streams
         use std::{future::ready, pin::pin};
-        use tank::{Entity, QueryBuilder, QueryResult, Row, Sql, cols, stream::TryStreamExt};
+        use tank::{Entity, QueryResult, Row, Sql, cols, stream::TryStreamExt};
 
         // You can filter inside rust instead of the database
         let casualties: Vec<EntityExample> = connection
@@ -367,7 +365,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
     {
         // #region cheat-sheet-builder-insert
-        use tank::{QueryBuilder, Sql};
+        use tank::Sql;
 
         connection
             .execute(
@@ -384,7 +382,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     #[cfg(not(feature = "disable-updates"))]
     {
         // #region cheat-sheet-builder-update
-        use tank::{QueryBuilder, Sql, cols};
+        use tank::{Sql, cols};
 
         connection
             .execute(
@@ -400,7 +398,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
     {
         // #region cheat-sheet-builder-delete
-        use tank::{QueryBuilder, Sql};
+        use tank::Sql;
 
         connection
             .execute(
@@ -415,7 +413,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
     {
         // #region cheat-sheet-builder-create-table
-        use tank::{ColumnDef, QueryBuilder, Sql};
+        use tank::{ColumnDef, Sql};
 
         connection
             .execute(
@@ -434,7 +432,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
     {
         // #region cheat-sheet-builder-drop-table
-        use tank::{QueryBuilder, Sql};
+        use tank::Sql;
 
         connection
             .execute(

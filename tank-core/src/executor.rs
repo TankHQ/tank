@@ -1,6 +1,6 @@
 use crate::{
-    AsEntity, AsQuery, Driver, Entity, MAX_BATCH_SIZE, Query, QueryBuilder, QueryResult, RawQuery,
-    Result, Row, RowsAffected, Sql,
+    AsEntity, AsQuery, Driver, Entity, MAX_BATCH_SIZE, Query, QueryResult, RawQuery, Result, Row,
+    RowsAffected, Sql,
     stream::{Stream, StreamExt},
 };
 use anyhow::anyhow;
@@ -70,7 +70,7 @@ pub trait Executor: Send {
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
     ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         async move {
             match query.as_mut() {
                 Query::Raw(RawQuery(sql)) => self.do_prepare(sql).await.map(Query::Prepared),
@@ -169,7 +169,7 @@ pub trait AppendDefault: Executor {
                         Sql()
                             .insert_into(table)
                             .values([first.as_entity()])
-                            .build_into(&driver, &mut out);
+                            .write_into(&driver.sql_writer(), &mut out);
                         rows = max(batch_size.checked_div(out.len()).unwrap_or(DEFAULT_ROWS), 1);
                     }
                     let batch = batch.take(rows).collect::<Vec<_>>();
@@ -178,7 +178,7 @@ pub trait AppendDefault: Executor {
                         Sql()
                             .insert_into(table)
                             .values(batch.iter().map(AsEntity::as_entity))
-                            .build_into(&driver, &mut out);
+                            .write_into(&driver.sql_writer(), &mut out);
                     }
                     rows = max(
                         batch_size

@@ -7,8 +7,8 @@ use std::{
     sync::LazyLock,
 };
 use tank::{
-    AnyQuery, Driver, Entity, Executor, FixedDecimal, Interval, QueryBuilder, QueryResult,
-    RawQuery, Result, RowsAffected, Sql, expr,
+    AnyQuery, Driver, Entity, Executor, FixedDecimal, Interval, QueryResult, RawQuery, Result,
+    RowsAffected, Sql, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, Time};
@@ -331,21 +331,21 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
         let mut query = AnyQuery::default();
         Sql()
             .delete_from(Limits::table())
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         Sql()
             .insert_into(Limits::table())
             .values(&[minimals, maximals])
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         Sql()
             .select(Limits::columns())
             .from(Limits::table())
             .where_expr(expr!(!Limits::boolean))
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         Sql()
             .select(Limits::columns())
             .from(Limits::table())
             .where_expr(expr!(Limits::boolean))
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         let mut stream = pin!(executor.run(query));
         let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) =
             stream.try_next().await?

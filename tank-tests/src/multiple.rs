@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
-use tank::{AnyQuery, AsQuery, AsValue, QueryBuilder, Result, Row, Sql, expr};
+use tank::{AnyQuery, AsQuery, AsValue, Driver, Result, Row, Sql, expr};
 use tank::{
     Entity, Executor, QueryResult,
     stream::{StreamExt, TryStreamExt},
@@ -37,34 +37,34 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     Sql()
         .drop_table(One::table())
         .if_exists()
-        .build_into(&driver, &mut query);
+        .write_into(&driver.sql_writer(), &mut query);
     query.push_str("\t\t");
     // 2
     Sql()
         .drop_table(Two::table())
         .if_exists()
-        .build_into(&driver, &mut query);
+        .write_into(&driver.sql_writer(), &mut query);
     // 3
     Sql()
         .drop_table(Three::table())
         .if_exists()
-        .build_into(&driver, &mut query);
+        .write_into(&driver.sql_writer(), &mut query);
     // 4
     Sql()
         .create_table(One::table())
         .if_not_exists()
-        .build_into(&driver, &mut query);
+        .write_into(&driver.sql_writer(), &mut query);
     query.push('\n');
     // 5
     Sql()
         .create_table(Two::table())
         .if_not_exists()
-        .build_into(&driver, &mut query);
+        .write_into(&driver.sql_writer(), &mut query);
     // 6
     Sql()
         .create_table(Three::table())
         .if_not_exists()
-        .build_into(&driver, &mut query);
+        .write_into(&driver.sql_writer(), &mut query);
     query.push_str(" ");
     // 7
     Sql()
@@ -83,7 +83,7 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
                 string: "eee".into(),
             },
         ])
-        .build_into(&driver, &mut query);
+        .write_into(&driver.sql_writer(), &mut query);
     query.push_str("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
     // 8
     Sql()
@@ -96,13 +96,13 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
                 string: "ccc".into(),
             },
         ])
-        .build_into(&driver, &mut query);
+        .write_into(&driver.sql_writer(), &mut query);
     // 9
     Sql()
         .select([Three::string])
         .from(Three::table())
         .where_expr(true)
-        .build_into(&driver, &mut query);
+        .write_into(&driver.sql_writer(), &mut query);
     // 10
     Sql()
         .insert_into(One::table())
@@ -111,32 +111,32 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
             string: "zzz".into(),
             c1: 512,
         }])
-        .build_into(&driver, &mut query);
+        .write_into(&driver.sql_writer(), &mut query);
     // 11
     Sql()
         .select([One::a1, One::string, One::c1])
         .from(One::table())
         .where_expr(true)
-        .build_into(&driver, &mut query);
+        .write_into(&driver.sql_writer(), &mut query);
     // 12
     Sql()
         .select([Two::a2, Two::string])
         .from(Two::table())
         .where_expr(true)
-        .build_into(&driver, &mut query);
+        .write_into(&driver.sql_writer(), &mut query);
     // 13: An empty SELECT still contributes a statement result.
     Sql()
         .select([Two::a2, Two::string])
         .from(Two::table())
         .where_expr(false)
-        .build_into(&driver, &mut query);
+        .write_into(&driver.sql_writer(), &mut query);
     // 14: A write that affects no rows must not disappear either.
     Sql()
         .delete_from(Two::table())
         .where_expr(expr!(Two::a2 == 0))
-        .build_into(&driver, &mut query);
+        .write_into(&driver.sql_writer(), &mut query);
     query.push_str("            \t    \t\t  \n \n \n \t    \n\n\n ");
-    let mut query = query.as_query();
+    let mut query = query.as_query(&driver);
     let result = executor
         .run(&mut query)
         .map_ok(|result| match result {

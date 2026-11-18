@@ -8,8 +8,8 @@ use std::{
     sync::LazyLock,
 };
 use tank::{
-    AnyQuery, Driver, Entity, Executor, Interval, Query, QueryBuilder, QueryResult, RawQuery,
-    Result, Sql, SqlWriter,
+    AnyQuery, Driver, Entity, Executor, Interval, Query, QueryResult, RawQuery, Result, Sql,
+    SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -107,13 +107,13 @@ pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
         Sql()
             .insert_into(Container::table())
             .values([value].iter())
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         Sql()
             .select(Container::columns())
             .from(Container::table())
             .where_expr(true)
             .limit(Some(1))
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         let rows = executor
             .run(query)
             .try_collect::<Vec<_>>()

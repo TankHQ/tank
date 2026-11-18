@@ -3,13 +3,13 @@ mod fixtures;
 
 #[cfg(test)]
 mod tests {
-    use crate::fixtures::DRIVER;
+    use crate::fixtures::{DRIVER, GenericDriver};
     use indoc::indoc;
-    use std::{cell::Cell, fmt::Write, iter};
+    use std::{cell::Cell, fmt::Write, iter, sync::LazyLock};
     use tank::{
-        Action, AnyQuery, AsValue, ColumnDef, ColumnRef, Context, Entity, Expression, Fragment,
-        InsertIntoQuery, Operand, QueryBuilder, QueryResult, QueryResultOwned, RawQuery, RowOwned,
-        RowsAffected, Sql, cols, expr,
+        Action, AnyQuery, AsQuery, AsValue, BoxQueryBuilder, ColumnDef, ColumnRef, Context, Driver,
+        Entity, Expression, Fragment, InsertIntoQuery, Operand, QueryResult, QueryResultOwned,
+        RawQuery, RowOwned, RowsAffected, Sql, cols, expr,
     };
 
     const WRITER: tank::GenericSqlWriter = tank::GenericSqlWriter;
@@ -38,7 +38,7 @@ mod tests {
         .trim();
         assert_eq!(query.build(&DRIVER).as_str(), expected);
         let mut out = AnyQuery::default();
-        query.build_into(&DRIVER, &mut out);
+        query.write_into(&DRIVER.sql_writer(), &mut out);
         assert_eq!(out.as_str(), expected);
 
         // Iterator closures are not evaluated or collected by the builder.
@@ -81,7 +81,7 @@ mod tests {
             .columns(["id"])
             .values(iter::empty::<[Operand<'_>; 1]>())
             .update()
-            .build_into(&DRIVER, &mut out);
+            .write_into(&DRIVER.sql_writer(), &mut out);
         assert_eq!(out.as_str(), "existing");
     }
 
@@ -639,26 +639,45 @@ mod tests {
             id: i32,
             label: String,
         }
-        let item = Item {
+        static ITEM: LazyLock<Item> = LazyLock::new(|| Item {
             id: 1,
             label: "a".into(),
-        };
-        let queries: Vec<Box<dyn QueryBuilder + '_>> = vec![
-            Box::new(Sql().create_table(Item::table())),
-            Box::new(Sql().insert_into(Item::table()).values([&item])),
-            Box::new(
-                Sql()
-                    .select(Item::columns())
-                    .from(Item::table())
-                    .where_expr(true),
-            ),
-            Box::new(
-                Sql()
-                    .delete_from(Item::table())
-                    .where_expr(expr!(Item::id == 1)),
-            ),
+        });
+        let item = &*ITEM;
+        // Built without a driver, rendered later by whichever driver executes it.
+        let queries: Vec<BoxQueryBuilder> = vec![
+            Sql().create_table(Item::table()).boxed(),
+            Sql().insert_into(Item::table()).values([item]).boxed(),
+            Sql()
+                .select(Item::columns())
+                .from(Item::table())
+                .where_expr(true)
+                .boxed(),
+            Sql()
+                .delete_from(Item::table())
+                .where_expr(expr!(Item::id == 1))
+                .boxed(),
         ];
-        assert_eq!(queries.len(), 4);
+        let direct = [
+            Sql().create_table(Item::table()).build(&DRIVER),
+            Sql()
+                .insert_into(Item::table())
+                .values([item])
+                .build(&DRIVER),
+            Sql()
+                .select(Item::columns())
+                .from(Item::table())
+                .where_expr(true)
+                .build(&DRIVER),
+            Sql()
+                .delete_from(Item::table())
+                .where_expr(expr!(Item::id == 1))
+                .build(&DRIVER),
+        ];
+        for (query, direct) in queries.iter().zip(direct) {
+            let mut rendered = AsQuery::<GenericDriver>::as_query(query, &DRIVER);
+            assert_eq!(rendered.as_mut().as_str(), direct.as_str());
+        }
     }
 
     #[test]

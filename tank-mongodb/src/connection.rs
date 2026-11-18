@@ -109,7 +109,7 @@ impl Executor for MongoDBConnection {
                 )
             };
         }
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         try_stream! {
             let Query::Prepared(prepared) = query.as_mut() else {
                 Err(anyhow!(

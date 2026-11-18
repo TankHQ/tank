@@ -16,14 +16,13 @@ mod tests {
     };
     use syn::{Path, parse_str};
     use tank::{
-        AnyQuery, CollectionType, Connection, Context, Dataset, EitherIterator, Entity, Expression,
-        FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType, Operand,
-        QueryBuilder, QueryResult, References, Row, RowLabels, RowOwned, RowsAffected, SelectQuery,
-        Sql, SqlExpressionWriter, SqlValueWriter, SqlWriter, StructType, TRUNCATE_LONG_LIMIT,
-        TableRef, Value, as_c_string, column_def, consume_while, decimal_from_scaled,
-        error_message_from_ptr, extract_number, matches_path, month_to_number, number_to_month,
-        quote_btree_map, quote_cow, quote_option, separated_by, truncate_bound, truncate_long,
-        value_to_json, write_escaped,
+        AnyQuery, CollectionType, Connection, Context, Dataset, Driver, EitherIterator, Entity,
+        Expression, FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType,
+        Operand, QueryResult, References, Row, RowLabels, RowOwned, RowsAffected, SelectQuery, Sql,
+        SqlExpressionWriter, SqlValueWriter, SqlWriter, StructType, TRUNCATE_LONG_LIMIT, TableRef,
+        Value, as_c_string, column_def, consume_while, decimal_from_scaled, error_message_from_ptr,
+        extract_number, matches_path, month_to_number, number_to_month, quote_btree_map, quote_cow,
+        quote_option, separated_by, truncate_bound, truncate_long, value_to_json, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
@@ -685,7 +684,7 @@ mod tests {
         Sql()
             .insert_into(EmptyInsert::table())
             .values(entities)
-            .build_into(&DRIVER, &mut q);
+            .write_into(&DRIVER.sql_writer(), &mut q);
         assert!(q.is_empty());
     }
 
@@ -699,34 +698,34 @@ mod tests {
         Sql()
             .select(AppendTable::columns())
             .from(AppendTable::table())
-            .build_into(&DRIVER, &mut q);
+            .write_into(&DRIVER.sql_writer(), &mut q);
         let mut q = AnyQuery::new("-- comment".into());
         Sql()
             .select(AppendTable::columns())
             .from(AppendTable::table())
-            .build_into(&DRIVER, &mut q);
+            .write_into(&DRIVER.sql_writer(), &mut q);
         assert!(q.as_str().starts_with("-- comment\nSELECT"));
 
         let mut q = AnyQuery::new("-- c".into());
         Sql()
             .create_table(AppendTable::table())
-            .build_into(&DRIVER, &mut q);
+            .write_into(&DRIVER.sql_writer(), &mut q);
         assert!(q.as_str().starts_with("-- c\nCREATE TABLE"));
         let mut q = AnyQuery::new("-- c".into());
         Sql()
             .drop_table(AppendTable::table())
-            .build_into(&DRIVER, &mut q);
+            .write_into(&DRIVER.sql_writer(), &mut q);
         assert!(q.as_str().starts_with("-- c\nDROP TABLE"));
         let mut q = AnyQuery::new("-- c".into());
         Sql()
             .delete_from(AppendTable::table())
-            .build_into(&DRIVER, &mut q);
+            .write_into(&DRIVER.sql_writer(), &mut q);
         assert!(q.as_str().starts_with("-- c\nDELETE FROM"));
         let mut q = AnyQuery::new("-- c".into());
         Sql()
             .insert_into(AppendTable::table())
             .values(&[AppendTable { id: 1 }])
-            .build_into(&DRIVER, &mut q);
+            .write_into(&DRIVER.sql_writer(), &mut q);
         assert!(q.as_str().starts_with("-- c\nINSERT INTO"));
     }
 
@@ -742,7 +741,7 @@ mod tests {
             .insert_into(PkOnly::table())
             .values(&[PkOnly { id: 1 }])
             .update()
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         assert!(query.as_str().contains("DO NOTHING"));
 
         #[derive(Entity)]
@@ -754,7 +753,7 @@ mod tests {
             .insert_into(NoPk::table())
             .values(&[NoPk { value: 1 }])
             .update()
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         assert!(!query.as_str().contains("ON CONFLICT"));
     }
 

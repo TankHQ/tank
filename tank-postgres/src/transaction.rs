@@ -38,7 +38,7 @@ impl Executor for PostgresTransaction<'_> {
         &'s mut self,
         query: impl AsQuery<PostgresDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         stream_postgres_row_to_tank_row(async move || match query.as_mut() {
             Query::Raw(RawQuery(sql)) => {
                 let stream = self

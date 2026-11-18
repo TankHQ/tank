@@ -5,8 +5,8 @@ use std::{
     task::{Context, Waker},
 };
 use tank::{
-    AnyQuery, AsValue, ColumnDef, Connection, Entity, Executor, QueryBuilder, QueryResult, Row,
-    Sql, Transaction, Value, cols,
+    AnyQuery, AsValue, ColumnDef, Connection, Driver, Entity, Executor, QueryResult, Row, Sql,
+    Transaction, Value, cols,
     stream::{StreamExt, TryStreamExt},
 };
 use tank_sqlite::{SQLiteConnection, SQLiteDriver};
@@ -378,11 +378,11 @@ async fn late_prepare_errors() {
         let mut query = AnyQuery::default();
         Sql()
             .select(cols!(1))
-            .build_into(&connection.driver(), &mut query);
+            .write_into(&connection.driver().sql_writer(), &mut query);
         Sql()
             .select(cols!(*))
             .from("missing_table")
-            .build_into(&connection.driver(), &mut query);
+            .write_into(&connection.driver().sql_writer(), &mut query);
         let mut rows = pin!(connection.fetch(query));
         assert!(rows.next().await.unwrap().is_ok());
         assert!(rows.next().await.unwrap().is_err());

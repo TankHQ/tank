@@ -1,9 +1,11 @@
 mod create_table;
 mod delete;
 mod drop_table;
+mod dyn_writer;
 mod insert_into;
 mod select;
 mod update;
+mod view;
 
 use crate::{
     AnyQuery, ColumnDef, ColumnRef, Context, Dataset, Driver, Expression, ExpressionVisitor,
@@ -12,28 +14,11 @@ use crate::{
 pub use create_table::*;
 pub use delete::*;
 pub use drop_table::*;
+pub(crate) use dyn_writer::*;
 pub use insert_into::*;
 pub use select::*;
 use std::{borrow::Cow, iter};
 pub use update::*;
-
-/// Common interface of every builder created by [`Sql`].
-pub trait QueryBuilder {
-    /// Builds the query for `driver`.
-    fn build<D: Driver>(&self, driver: &D) -> Query<D>
-    where
-        Self: Sized,
-    {
-        let mut query = AnyQuery::default();
-        self.build_into(driver, &mut query);
-        query.into()
-    }
-
-    /// Writes the query for `driver` into an existing buffer.
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery)
-    where
-        Self: Sized;
-}
 
 /// Entry point of the query builders, as in `Sql().select(columns).from(table)`.
 #[derive(Default, Debug)]
@@ -93,6 +78,29 @@ impl Sql {
             if_exists: Default::default(),
             _e: Default::default(),
         }
+    }
+}
+
+/// A builder of any statement kind, erased by calling `.boxed()` before the driver is known.
+///
+/// Store it, then run it on any executor with `execute(&query)`: the executor's driver renders it.
+pub struct BoxQueryBuilder(Box<dyn Fn(&AnyWriter, &mut AnyQuery)>);
+
+impl BoxQueryBuilder {
+    pub(crate) fn new(write: impl Fn(&AnyWriter, &mut AnyQuery) + 'static) -> Self {
+        Self(Box::new(write))
+    }
+
+    /// Builds the query for `driver`.
+    pub fn build<D: Driver + 'static>(&self, driver: &D) -> Query<D> {
+        let mut query = AnyQuery::default();
+        self.build_into(driver, &mut query);
+        query.into()
+    }
+
+    /// Writes the query for `driver` into an existing buffer.
+    pub fn build_into<D: Driver + 'static>(&self, driver: &D, out: &mut AnyQuery) {
+        (self.0)(&AnyWriter::new(Box::new(driver.sql_writer())), out);
     }
 }
 

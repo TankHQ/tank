@@ -17,8 +17,8 @@ mod tests {
         AnyQuery, AsQuery, AsValue, Connection, ConnectionPool, Context, Dataset, Driver, Entity,
         Error, Executor, Expression, ExpressionCollection, ExpressionVisitor, Fragment,
         GenericSqlWriter, InsertIntoQuery, MAX_BATCH_SIZE, NA, OpPrecedence, PoolConfig,
-        PooledConnection, Prepared, Query, QueryBuilder, QueryResult, RawQuery, Result, Row,
-        RowOwned, RowsAffected, Sql, Transaction, anyhow, cols, describe_path, describe_url, expr,
+        PooledConnection, Prepared, Query, QueryResult, RawQuery, Result, Row, RowOwned,
+        RowsAffected, Sql, Transaction, anyhow, cols, describe_path, describe_url, expr,
         future::Either,
         stream::{self, Stream, StreamExt, TryStreamExt},
     };
@@ -117,7 +117,7 @@ mod tests {
             &'s mut self,
             query: impl AsQuery<TestDriver> + 's,
         ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-            let _ = query.as_query();
+            let _ = query.as_query(&self.driver());
             let results = mem::take(&mut self.results);
             let consumed = &self.consumed;
             stream::iter(TestResults {
@@ -168,7 +168,7 @@ mod tests {
                 &'s mut self,
                 query: impl AsQuery<TestDriver> + 's,
             ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-                let mut query = query.as_query();
+                let mut query = query.as_query(&self.driver());
                 if let Query::Raw(RawQuery(sql)) = query.as_mut() {
                     self.sent.push(sql.clone());
                 }
@@ -364,20 +364,20 @@ mod tests {
         assert_eq!(prepared.to_string(), "test");
 
         assert_eq!(
-            AsQuery::<TestDriver>::as_query(RawQuery("z".into()))
+            AsQuery::<TestDriver>::as_query(RawQuery("z".into()), &TestDriver)
                 .as_mut()
                 .to_string(),
             "z"
         );
         assert_eq!(
-            AsQuery::<TestDriver>::as_query(Query::raw("v".into()))
+            AsQuery::<TestDriver>::as_query(Query::raw("v".into()), &TestDriver)
                 .as_mut()
                 .to_string(),
             "v"
         );
 
         let matching: AnyQuery = Query::<TestDriver>::prepared(TestDriver).into();
-        assert!(AsQuery::<TestDriver>::as_query(matching).is_prepared());
+        assert!(AsQuery::<TestDriver>::as_query(matching, &TestDriver).is_prepared());
         let mut dyn_q: AnyQuery = prepared.into_any();
         assert!(dyn_q.as_str().contains("TestDriver"));
         assert_eq!(dyn_q.len(), 0);
@@ -442,10 +442,10 @@ mod tests {
 
         let create = Sql().create_table(ExecutorItem::table());
         assert!(!create.build(&TestDriver).is_empty());
-        create.build_into(&TestDriver, &mut out);
+        create.write_into(&TestDriver.sql_writer(), &mut out);
         let drop = Sql().drop_table(ExecutorItem::table());
         assert!(!drop.build(&TestDriver).is_empty());
-        drop.build_into(&TestDriver, &mut out);
+        drop.write_into(&TestDriver.sql_writer(), &mut out);
         let rows = [ExecutorItem::default()];
         let insert = Sql().insert_into(ExecutorItem::table()).values(&rows);
         let Either::Left(values) = insert.get_values() else {
@@ -453,7 +453,7 @@ mod tests {
         };
         assert_eq!(values.count(), 1);
         assert!(!insert.build(&TestDriver).is_empty());
-        insert.build_into(&TestDriver, &mut out);
+        insert.write_into(&TestDriver.sql_writer(), &mut out);
         let upsert = Sql()
             .insert_into(ExecutorItem::table())
             .values(&rows)
@@ -474,12 +474,12 @@ mod tests {
                 .as_str()
                 .starts_with("DELETE FROM")
         );
-        delete.build_into(&TestDriver, &mut out);
+        delete.write_into(&TestDriver.sql_writer(), &mut out);
         let select = Sql()
             .select(ExecutorItem::columns())
             .from(ExecutorItem::table());
         assert!(!select.build(&TestDriver).is_empty());
-        select.build_into(&TestDriver, &mut out);
+        select.write_into(&TestDriver.sql_writer(), &mut out);
     }
 
     #[test]

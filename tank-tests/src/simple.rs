@@ -8,8 +8,8 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use tank::{
-    AnyQuery, Driver, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult, RawQuery,
-    Result, RowsAffected, Sql, expr, stream::TryStreamExt,
+    AnyQuery, Driver, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery, Result,
+    RowsAffected, Sql, expr, stream::TryStreamExt,
 };
 use time::{Date, Time, macros::date};
 use tokio::sync::Mutex;
@@ -103,12 +103,12 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
         Sql()
             .delete_from(SimpleFields::table())
             .where_expr(false)
-            .build_into(&driver, &mut query); // Does not delete anything
+            .write_into(&driver.sql_writer(), &mut query); // Does not delete anything
         Sql()
             .select(SimpleFields::columns())
             .from(SimpleFields::table())
             .where_expr(true)
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         {
             let mut stream = pin!(executor.run(query));
             let result = stream.try_next().await?;
@@ -208,16 +208,16 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
         let mut query = AnyQuery::default();
         Sql()
             .delete_from(SimpleFields::table())
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         Sql()
             .insert_into(SimpleFields::table())
             .values(&[entity])
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         Sql()
             .select(SimpleFields::columns())
             .from(SimpleFields::table())
             .where_expr(true)
-            .build_into(&driver, &mut query);
+            .write_into(&driver.sql_writer(), &mut query);
         {
             let mut stream = pin!(executor.run(query));
             let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) =

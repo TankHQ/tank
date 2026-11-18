@@ -7,7 +7,7 @@ mod tests {
     use indoc::indoc;
     use rust_decimal::Decimal;
     use std::borrow::Cow;
-    use tank::{DefaultValueType, Entity, PrimaryKeyType, QueryBuilder, Sql, TableRef, Value};
+    use tank::{DefaultValueType, Entity, PrimaryKeyType, Sql, TableRef, Value};
     use time::{Date, Month, PrimitiveDateTime, Time};
 
     #[derive(Entity)]

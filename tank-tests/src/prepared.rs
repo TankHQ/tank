@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::pin::pin;
 use tank::{
-    Entity, Executor, Query, QueryBuilder, Result, Sql, cols, expr,
+    Entity, Executor, Query, Result, Sql, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 

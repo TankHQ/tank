@@ -1,6 +1,7 @@
 use crate::{
-    AnyQuery, ColumnDef, Dataset, Driver, Entity, Expression, ExpressionCollection, NA,
-    QueryBuilder, SelectQuery, SelectQueryBuilder, SqlWriter, TableRef, Value, future::Either,
+    AnyQuery, BoxQueryBuilder, ColumnDef, Dataset, Driver, Entity, Expression,
+    ExpressionCollection, NA, Query, SelectQuery, SelectQueryBuilder, SqlWriter, TableRef, Value,
+    future::Either,
 };
 use std::{borrow::Cow, iter, marker::PhantomData};
 
@@ -144,7 +145,7 @@ where
     }
 }
 
-impl<S, F, W, G, H, O, L> QueryBuilder for InsertSelectQueryBuilder<S, F, W, G, H, O, L>
+impl<S, F, W, G, H, O, L> InsertSelectQueryBuilder<S, F, W, G, H, O, L>
 where
     S: ExpressionCollection,
     F: Dataset,
@@ -153,8 +154,24 @@ where
     H: Expression,
     O: ExpressionCollection,
 {
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        driver.sql_writer().write_insert(out, self);
+    /// Builds the query for `driver`.
+    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
+        let mut query = AnyQuery::default();
+        self.write_into(&driver.sql_writer(), &mut query);
+        query.into()
+    }
+
+    /// Writes the statement into an existing query.
+    pub fn write_into(&self, writer: &impl SqlWriter, out: &mut AnyQuery) {
+        writer.write_insert(out, self);
+    }
+
+    /// Erases the builder into a [`BoxQueryBuilder`], to store it and run it later on any executor.
+    pub fn boxed(self) -> BoxQueryBuilder
+    where
+        Self: 'static,
+    {
+        BoxQueryBuilder::new(move |writer, out| self.write_into(writer, out))
     }
 }
 
@@ -238,11 +255,27 @@ impl<T: InsertIntoQuery> InsertIntoQuery for &T {
     }
 }
 
-impl<V, U> QueryBuilder for InsertIntoQueryBuilder<V, U>
+impl<V, U> InsertIntoQueryBuilder<V, U>
 where
     Self: InsertIntoQuery,
 {
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        driver.sql_writer().write_insert(out, self);
+    /// Builds the query for `driver`.
+    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
+        let mut query = AnyQuery::default();
+        self.write_into(&driver.sql_writer(), &mut query);
+        query.into()
+    }
+
+    /// Writes the statement into an existing query.
+    pub fn write_into(&self, writer: &impl SqlWriter, out: &mut AnyQuery) {
+        writer.write_insert(out, self);
+    }
+
+    /// Erases the builder into a [`BoxQueryBuilder`], to store it and run it later on any executor.
+    pub fn boxed(self) -> BoxQueryBuilder
+    where
+        Self: 'static,
+    {
+        BoxQueryBuilder::new(move |writer, out| self.write_into(writer, out))
     }
 }

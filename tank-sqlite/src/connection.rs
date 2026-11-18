@@ -10,8 +10,8 @@ use std::{
     hint, iter, mem, ptr,
 };
 use tank_core::{
-    AnyQuery, AppendDefault, AsEntity, AsQuery, ColumnDef, Connection, Entity, Error, ErrorContext,
-    Executor, Operand, Prepared, QueryBuilder, QueryResult, Result, RowsAffected, Sql, Transaction,
+    AnyQuery, AppendDefault, AsEntity, AsQuery, ColumnDef, Connection, Driver, Entity, Error,
+    ErrorContext, Executor, Operand, Prepared, QueryResult, Result, RowsAffected, Sql, Transaction,
     char_ptr_to_string, describe_path, error_message_from_ptr, future::Either, truncate_long,
 };
 use tokio::task;
@@ -74,7 +74,7 @@ impl SQLiteConnection {
                 .insert_into(table)
                 .columns(table.columns.iter().map(ColumnDef::name))
                 .values([iter::repeat_n(&Operand::QuestionMark, table.columns.len())])
-                .build_into(&self.driver(), &mut out);
+                .write_into(&self.driver().sql_writer(), &mut out);
             let prepared = self.do_prepare(out.buffer()).await;
             self.draft = out;
             prepared?
@@ -216,7 +216,7 @@ impl Executor for SQLiteConnection {
         query: impl AsQuery<SQLiteDriver> + 's,
     ) -> impl tank_core::stream::Stream<Item = Result<QueryResult<impl tank_core::Row + 's>>> + Send
     {
-        SQLiteStream::new(self, query.as_query())
+        SQLiteStream::new(self, query.as_query(&self.driver()))
     }
 
     fn append<It>(&mut self, rows: It) -> impl Future<Output = Result<RowsAffected>> + Send

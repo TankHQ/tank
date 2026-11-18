@@ -6,9 +6,7 @@ mod tests {
     use crate::fixtures::DRIVER;
     use indoc::indoc;
     use std::{borrow::Cow, sync::Mutex};
-    use tank::{
-        DefaultValueType, Entity, PrimaryKeyType, QueryBuilder, Sql, TableRef, Value, expr,
-    };
+    use tank::{DefaultValueType, Entity, PrimaryKeyType, Sql, TableRef, Value, expr};
 
     #[derive(Entity)]
     #[tank(name = "simple_entity", unique = ("a", Self::c), unique = (SomeSimpleEntity::b, "c"), unique = "a")]

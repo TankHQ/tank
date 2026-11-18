@@ -12,6 +12,7 @@ mod conditions;
 mod custom;
 mod decimals;
 mod enums;
+mod fixtures;
 mod identifiers;
 mod insane;
 mod insert_builder;
@@ -27,6 +28,7 @@ mod orders;
 mod other;
 mod other_types;
 mod prepared;
+mod query_builder;
 mod readme;
 mod requests;
 mod select_options;
@@ -53,6 +55,7 @@ pub use conditions::*;
 pub use custom::*;
 pub use decimals::*;
 pub use enums::*;
+pub use fixtures::*;
 pub use identifiers::*;
 pub use insane::*;
 pub use insert_builder::*;
@@ -69,6 +72,7 @@ pub use orders::*;
 pub use other::*;
 pub use other_types::*;
 pub use prepared::*;
+pub use query_builder::*;
 use rcgen::{
     BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair,
     KeyUsagePurpose, SanType,
@@ -198,6 +202,7 @@ pub async fn execute_tests<D: Driver + 'static>(pool: &mut impl ConnectionPool<D
         boxed(trade_simple),
         boxed(trade_multiple),
         boxed(insert_builder),
+        boxed(query_builder),
         boxed(conditions),
         boxed(other),
         boxed(orders),

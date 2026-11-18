@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use tank::{AnyQuery, AsValue, Entity, QueryBuilder, Sql, Value, cols, expr};
+    use tank::{AnyQuery, AsValue, Driver, Entity, Sql, Value, cols, expr};
     use tank_mongodb::{BatchPayload, InsertManyPayload, MongoDBDriver, Payload};
     use tank_tests::{init_logs, silent_logs};
 
@@ -21,14 +21,14 @@ mod tests {
         Sql()
             .delete_from(Item::table())
             .where_expr(expr!(Item::id == 1))
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         Sql()
             .insert_into(Item::table())
             .values(&[Item {
                 id: 2,
                 name: "test".into(),
             }])
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
 
         let Some(Payload::Batch(BatchPayload { batch, .. })) = query
             .as_prepared::<MongoDBDriver>()
@@ -52,12 +52,12 @@ mod tests {
                 [1_i64.as_value(), "a".as_value()],
                 [2_i64.as_value(), "b".as_value()],
             ])
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         Sql()
             .insert_into(Item::table())
             .columns(["id"])
             .values([[3_i64], [4_i64]])
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         let Some(Payload::Batch(BatchPayload { batch, .. })) = query
             .as_prepared::<MongoDBDriver>()
             .map(|v| v.get_payload())
@@ -89,7 +89,7 @@ mod tests {
                 .insert_into(Item::table())
                 .columns(["id", "name"])
                 .values([cols!(?, ?)])
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
         }
         assert!(query.is_empty());
     }
@@ -104,18 +104,18 @@ mod tests {
                 id: 1,
                 name: "first".into(),
             }])
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         Sql()
             .insert_into(Item::table())
             .values(&[Item {
                 id: 2,
                 name: "second".into(),
             }])
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         Sql()
             .delete_from(Item::table())
             .where_expr(expr!(Item::id == 1))
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
 
         let Some(Payload::Batch(BatchPayload { batch, .. })) = query
             .as_prepared::<MongoDBDriver>()
@@ -140,11 +140,11 @@ mod tests {
                 name: "upserted".into(),
             }])
             .update()
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         Sql()
             .delete_from(Item::table())
             .where_expr(expr!(Item::id == 99))
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
 
         let Some(Payload::Batch(BatchPayload { batch, .. })) = query
             .as_prepared::<MongoDBDriver>()
@@ -167,11 +167,11 @@ mod tests {
                 id: 1,
                 name: "will be dropped".into(),
             }])
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         Sql()
             .drop_table(Item::table())
             .if_exists()
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         let payload = query
             .as_prepared::<MongoDBDriver>()
             .map(|v| v.get_payload())

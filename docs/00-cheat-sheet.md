@@ -153,7 +153,13 @@ expr!(match EntityExample::region { "North" | "South" => 1, _ => 2 });
 
 ## Query Builder
 
-Call `Sql()` to start a typed builder for the operations that outgrow the entity helpers. Every builder ends with `.build(&driver)`, and the resulting query can be later fired with `run`, `fetch` or `execute` only by the executor of that specific driver. Every builder implements [`QueryBuilder`](https://docs.rs/tank/latest/tank/trait.QueryBuilder.html), so a `Box<dyn QueryBuilder>` can hold any statement in a list.
+Call `Sql()` to start a typed builder for the operations that go beyond the entity helpers.
+
+Finish a builder with `.build(&driver)`, which returns a query for that driver, ready for `run`, `fetch` or `execute` on the executor of the same driver.
+
+Call `.boxed()` instead to erase the driver and get a [`BoxQueryBuilder`](https://docs.rs/tank/latest/tank/struct.BoxQueryBuilder.html): store it, then any executor runs it with `execute(&query)`, rendered by its own driver.
+
+To append a statement to an existing [`AnyQuery`](https://docs.rs/tank/latest/tank/enum.AnyQuery.html) buffer, call `.write_into(&driver.sql_writer(), &mut out)`.
 
 ### Select
 

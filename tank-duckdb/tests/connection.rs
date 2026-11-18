@@ -3,8 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::{path::Path, pin::pin, sync::Mutex};
     use tank::{
-        AnyQuery, AsValue, Connection, Entity, Executor, QueryBuilder, QueryResult, Row, Sql,
-        Value, cols, expr,
+        AnyQuery, AsValue, Connection, Driver, Entity, Executor, QueryResult, Row, Sql, Value,
+        cols, expr,
         stream::{StreamExt, TryStreamExt},
     };
     use tank_duckdb::{DuckDBConnection, DuckDBDriver};
@@ -97,10 +97,10 @@ mod tests {
                     range as String
                 } as i64)))
                 .from(expr!(range(1000010)))
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             Sql()
                 .create_table(MustNotRun::table())
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             let mut results = pin!(connection.run(query));
             let mut count = 0;
             let error = loop {
@@ -142,30 +142,30 @@ mod tests {
             let mut query = AnyQuery::default();
             Sql()
                 .create_table(Ordered::table())
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             Sql()
                 .insert_into(Ordered::table())
                 .values(&[Ordered { id: 1, value: 7 }, Ordered { id: 2, value: 7 }])
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             Sql()
                 .select(cols!(Ordered::value))
                 .from(Ordered::table())
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             Sql()
                 .insert_into(Ordered::table())
                 .values(&[Ordered { id: 1, value: 8 }])
                 .update()
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             Sql()
                 .select(cols!(Ordered::value))
                 .from(Ordered::table())
                 .where_expr(expr!(Ordered::id == 1))
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             Sql()
                 .select(cols!(Ordered::value))
                 .from(Ordered::table())
                 .where_expr(false)
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             let mut results = pin!(connection.run(query));
             assert!(
                 matches!(results.next().await.unwrap().unwrap(), QueryResult::Affected(a) if a.rows_affected == Some(0))
@@ -196,11 +196,11 @@ mod tests {
             Sql()
                 .select(cols!(Ordered::value))
                 .from(Ordered::table())
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             Sql()
                 .insert_into(Ordered::table())
                 .values(&[Ordered { id: 3, value: 99 }])
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             let mut results = pin!(connection.run(query));
             assert!(matches!(
                 results.next().await.unwrap().unwrap(),
@@ -238,11 +238,11 @@ mod tests {
                 CAST(range as String)
             } as i64)))
             .from(expr!(range(1000010)))
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         Sql()
             .select(cols!(42))
             .from(expr!(range(1)))
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         assert!(connection.execute(query).await.is_err());
         assert_eq!(
             connection
@@ -447,11 +447,11 @@ mod tests {
         let mut query = AnyQuery::default();
         Sql()
             .create_table(SharedDb::table())
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         Sql()
             .insert_into(SharedDb::table())
             .values(&[SharedDb { v: 7 }])
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         c1.execute(query).await.unwrap();
         drop(c1);
         assert_eq!(

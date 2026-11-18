@@ -1,5 +1,6 @@
 use crate::{
-    AnyQuery, Dataset, Driver, Expression, ExpressionCollection, NA, QueryBuilder, SqlWriter,
+    AnyQuery, BoxQueryBuilder, Dataset, Driver, Expression, ExpressionCollection, NA, Query,
+    SqlWriter,
 };
 
 pub struct UpdateQueryBuilder<From, Set, Where> {
@@ -21,7 +22,11 @@ impl<F: Dataset> UpdateQueryBuilder<F, (), NA> {
     }
 }
 
-impl<F: Dataset, S: ExpressionCollection> UpdateQueryBuilder<F, S, NA> {
+impl<F, S> UpdateQueryBuilder<F, S, NA>
+where
+    F: Dataset,
+    S: ExpressionCollection,
+{
     pub fn where_expr<Where: Expression>(
         self,
         condition: Where,
@@ -34,7 +39,12 @@ impl<F: Dataset, S: ExpressionCollection> UpdateQueryBuilder<F, S, NA> {
     }
 }
 
-impl<F: Dataset, S: ExpressionCollection, W: Expression> UpdateQueryBuilder<F, S, W> {
+impl<F, S, W> UpdateQueryBuilder<F, S, W>
+where
+    F: Dataset,
+    S: ExpressionCollection,
+    W: Expression,
+{
     pub const fn get_from(&self) -> &F {
         &self.from
     }
@@ -60,8 +70,11 @@ pub trait UpdateQuery<From: Dataset> {
     fn get_where(&self) -> &Option<impl Expression>;
 }
 
-impl<F: Dataset, S: ExpressionCollection, W: Expression> UpdateQuery<F>
-    for UpdateQueryBuilder<F, S, W>
+impl<F, S, W> UpdateQuery<F> for UpdateQueryBuilder<F, S, W>
+where
+    F: Dataset,
+    S: ExpressionCollection,
+    W: Expression,
 {
     fn get_from(&self) -> &F {
         self.get_from()
@@ -76,7 +89,11 @@ impl<F: Dataset, S: ExpressionCollection, W: Expression> UpdateQuery<F>
     }
 }
 
-impl<'t, From: Dataset + 't, T: UpdateQuery<From>> UpdateQuery<From> for &'t T {
+impl<'t, From, T> UpdateQuery<From> for &'t T
+where
+    From: Dataset + 't,
+    T: UpdateQuery<From>,
+{
     fn get_from(&self) -> &From {
         (*self).get_from()
     }
@@ -90,10 +107,29 @@ impl<'t, From: Dataset + 't, T: UpdateQuery<From>> UpdateQuery<From> for &'t T {
     }
 }
 
-impl<F: Dataset, S: ExpressionCollection, W: Expression> QueryBuilder
-    for UpdateQueryBuilder<F, S, W>
+impl<F, S, W> UpdateQueryBuilder<F, S, W>
+where
+    F: Dataset,
+    S: ExpressionCollection,
+    W: Expression,
 {
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        driver.sql_writer().write_update(out, self);
+    /// Builds the query for `driver`.
+    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
+        let mut query = AnyQuery::default();
+        self.write_into(&driver.sql_writer(), &mut query);
+        query.into()
+    }
+
+    /// Writes the statement into an existing query.
+    pub fn write_into(&self, writer: &impl SqlWriter, out: &mut AnyQuery) {
+        writer.write_update(out, self);
+    }
+
+    /// Erases the builder into a [`BoxQueryBuilder`], to store it and run it later on any executor.
+    pub fn boxed(self) -> BoxQueryBuilder
+    where
+        Self: 'static,
+    {
+        BoxQueryBuilder::new(move |writer, out| self.write_into(writer, out))
     }
 }

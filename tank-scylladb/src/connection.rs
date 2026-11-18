@@ -20,7 +20,7 @@ use std::{
 };
 use tank_core::{
     AsQuery, AsValue, BinaryOp, BinaryOpType, ColumnRef, Connection, Error, ErrorContext, Executor,
-    MAX_BATCH_SIZE, Query, QueryBuilder, QueryResult, RawQuery, Result, Row, Sql, extract_number,
+    MAX_BATCH_SIZE, Query, QueryResult, RawQuery, Result, Row, Sql, extract_number,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
@@ -153,7 +153,7 @@ impl Executor for ScyllaDBConnection {
         &'s mut self,
         query: impl AsQuery<ScyllaDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         stream! {
             let mut paging_state = PagingState::start();
@@ -201,7 +201,7 @@ impl Executor for ScyllaDBConnection {
         &'s mut self,
         query: impl AsQuery<ScyllaDBDriver> + 's,
     ) -> impl Stream<Item = Result<impl Row + 's>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         let context = Arc::new(format!("While fetching the query:\n{}", query.as_mut()));
         stream! {
             let stream = match query.as_mut() {

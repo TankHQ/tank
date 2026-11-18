@@ -1,4 +1,4 @@
-use crate::{AnyQuery, Dataset, Driver, Expression, NA, QueryBuilder, SqlWriter};
+use crate::{AnyQuery, BoxQueryBuilder, Dataset, Driver, Expression, NA, Query, SqlWriter};
 
 pub struct DeleteQueryBuilder<From, Where> {
     pub(crate) from: From,
@@ -14,7 +14,11 @@ impl<F: Dataset> DeleteQueryBuilder<F, NA> {
     }
 }
 
-impl<F: Dataset, W: Expression> DeleteQueryBuilder<F, W> {
+impl<F, W> DeleteQueryBuilder<F, W>
+where
+    F: Dataset,
+    W: Expression,
+{
     pub const fn get_from(&self) -> &F {
         &self.from
     }
@@ -34,7 +38,11 @@ pub trait DeleteQuery<From: Dataset> {
     fn get_where(&self) -> &Option<impl Expression>;
 }
 
-impl<F: Dataset, W: Expression> DeleteQuery<F> for DeleteQueryBuilder<F, W> {
+impl<F, W> DeleteQuery<F> for DeleteQueryBuilder<F, W>
+where
+    F: Dataset,
+    W: Expression,
+{
     fn get_from(&self) -> &F {
         self.get_from()
     }
@@ -44,12 +52,31 @@ impl<F: Dataset, W: Expression> DeleteQuery<F> for DeleteQueryBuilder<F, W> {
     }
 }
 
-impl<F: Dataset, W: Expression> QueryBuilder for DeleteQueryBuilder<F, W> {
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        let writer = driver.sql_writer();
+impl<F, W> DeleteQueryBuilder<F, W>
+where
+    F: Dataset,
+    W: Expression,
+{
+    /// Builds the query for `driver`.
+    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
+        let mut query = AnyQuery::default();
+        self.write_into(&driver.sql_writer(), &mut query);
+        query.into()
+    }
+
+    /// Writes the statement into an existing query.
+    pub fn write_into(&self, writer: &impl SqlWriter, out: &mut AnyQuery) {
         match &self.where_expr {
             Some(condition) => writer.write_delete(out, &self.from, condition),
             None => writer.write_delete(out, &self.from, true),
         }
+    }
+
+    /// Erases the builder into a [`BoxQueryBuilder`], to store it and run it later on any executor.
+    pub fn boxed(self) -> BoxQueryBuilder
+    where
+        Self: 'static,
+    {
+        BoxQueryBuilder::new(move |writer, out| self.write_into(writer, out))
     }
 }

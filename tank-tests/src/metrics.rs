@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use std::{future, sync::LazyLock};
 use tank::{
-    Entity, Executor, QueryBuilder, Result, Sql, cols, expr,
+    Entity, Executor, Result, Sql, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, macros::date};

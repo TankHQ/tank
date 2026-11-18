@@ -11,8 +11,8 @@ mod tests {
     };
     use tank::{
         AnyQuery, CollectionType, ColumnDef, ColumnRef, Connection, ConnectionPool, Context,
-        Driver, Entity, Executor, Fragment, GenericSqlWriter, MapType, QueryBuilder, QueryResult,
-        Row, Sql, SqlCoreWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value,
+        Driver, Entity, Executor, Fragment, GenericSqlWriter, MapType, QueryResult, Row, Sql,
+        SqlCoreWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value,
         stream::{StreamExt, TryStreamExt},
     };
     use tank_sqlite::{SQLiteConnection, SQLiteDriver};

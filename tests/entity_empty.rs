@@ -6,7 +6,7 @@ mod tests {
     use crate::fixtures::DRIVER;
     use indoc::indoc;
     use std::borrow::Cow;
-    use tank::{Entity, QueryBuilder, Sql, TableRef};
+    use tank::{Entity, Sql, TableRef};
 
     #[derive(Entity, Default)]
     #[tank(schema = "the_schema", name = "empty_entity")]
