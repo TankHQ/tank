@@ -1,6 +1,6 @@
 use crate::{
-    AsEntity, AsQuery, Driver, Entity, MAX_BATCH_SIZE, Query, QueryResult, RawQuery, Result, Row,
-    RowsAffected, Sql,
+    AsEntity, AsQuery, Driver, Entity, MAX_BATCH_SIZE, Query, QueryBuilder, QueryResult, RawQuery,
+    Result, Row, RowsAffected, Sql,
     stream::{Stream, StreamExt},
 };
 use anyhow::anyhow;

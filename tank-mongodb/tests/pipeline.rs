@@ -2,7 +2,7 @@
 mod tests {
     use mongodb::bson::{Bson, Regex, doc};
     use std::borrow::Cow;
-    use tank::{Entity, Sql, cols, expr};
+    use tank::{Entity, QueryBuilder, Sql, cols, expr};
     use tank_mongodb::{AggregatePayload, FindManyPayload, MongoDBDriver, Payload};
     use tank_tests::init_logs;
 

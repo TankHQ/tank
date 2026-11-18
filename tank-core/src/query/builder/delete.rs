@@ -1,4 +1,4 @@
-use crate::{AnyQuery, Dataset, Driver, Expression, NA, Query, SqlWriter};
+use crate::{AnyQuery, Dataset, Driver, Expression, NA, QueryBuilder, SqlWriter};
 
 pub struct DeleteQueryBuilder<From, Where> {
     pub(crate) from: From,
@@ -22,20 +22,6 @@ impl<F: Dataset, W: Expression> DeleteQueryBuilder<F, W> {
     pub const fn get_where(&self) -> &Option<W> {
         &self.where_expr
     }
-
-    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
-        let mut query = AnyQuery::default();
-        self.build_into(driver, &mut query);
-        query.into()
-    }
-
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        let writer = driver.sql_writer();
-        match &self.where_expr {
-            Some(condition) => writer.write_delete(out, &self.from, condition),
-            None => writer.write_delete(out, &self.from, true),
-        }
-    }
 }
 
 /// DELETE FROM table [WHERE condition]
@@ -46,10 +32,6 @@ pub trait DeleteQuery<From: Dataset> {
     fn get_from(&self) -> &From;
     /// Get WHERE clause expression.
     fn get_where(&self) -> &Option<impl Expression>;
-    /// Build query.
-    fn build<D: Driver>(&self, driver: &D) -> Query<D>;
-    /// Build query into existing buffer.
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery);
 }
 
 impl<F: Dataset, W: Expression> DeleteQuery<F> for DeleteQueryBuilder<F, W> {
@@ -60,12 +42,14 @@ impl<F: Dataset, W: Expression> DeleteQuery<F> for DeleteQueryBuilder<F, W> {
     fn get_where(&self) -> &Option<impl Expression> {
         self.get_where()
     }
+}
 
-    fn build<D: Driver>(&self, driver: &D) -> Query<D> {
-        self.build(driver)
-    }
-
+impl<F: Dataset, W: Expression> QueryBuilder for DeleteQueryBuilder<F, W> {
     fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        self.build_into(driver, out);
+        let writer = driver.sql_writer();
+        match &self.where_expr {
+            Some(condition) => writer.write_delete(out, &self.from, condition),
+            None => writer.write_delete(out, &self.from, true),
+        }
     }
 }

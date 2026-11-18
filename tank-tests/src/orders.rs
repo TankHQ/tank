@@ -1,6 +1,8 @@
 use rust_decimal::Decimal;
 use std::sync::LazyLock;
-use tank::{Entity, Executor, FixedDecimal, Result, Sql, cols, expr, stream::TryStreamExt};
+use tank::{
+    Entity, Executor, FixedDecimal, QueryBuilder, Result, Sql, cols, expr, stream::TryStreamExt,
+};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 

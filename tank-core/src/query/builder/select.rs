@@ -1,5 +1,5 @@
 use crate::{
-    AnyQuery, Dataset, Driver, EitherIterator, Expression, ExpressionCollection, NA, Query,
+    AnyQuery, Dataset, Driver, EitherIterator, Expression, ExpressionCollection, NA, QueryBuilder,
     SqlWriter,
 };
 use std::{iter, marker::PhantomData};
@@ -216,24 +216,6 @@ where
     }
 }
 
-impl<S, From, W, G, H, O, L> SelectQueryBuilder<S, From, W, G, H, O, L>
-where
-    S: ExpressionCollection,
-    From: Dataset,
-    W: Expression,
-    G: ExpressionCollection,
-    H: Expression,
-    O: ExpressionCollection,
-{
-    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
-        SelectQuery::build(self, driver)
-    }
-
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        SelectQuery::build_into(self, driver, out);
-    }
-}
-
 /// SELECT [DISTINCT] columns [FROM dataset] [WHERE condition] [GROUP BY columns] [HAVING condition] [ORDER BY columns] [LIMIT n] [OFFSET n]
 ///
 /// Use `Sql().select(columns).from(dataset)` to start.
@@ -259,10 +241,6 @@ where
     fn get_offset(&self) -> Option<u32>;
     /// Whether the query selects distinct rows.
     fn is_distinct(&self) -> bool;
-    /// Build query.
-    fn build<D: Driver>(&self, driver: &D) -> Query<D>;
-    /// Build query into existing buffer.
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery);
 }
 
 impl<S, From, W, G, H, O, L, I> SelectQuery<From> for SelectQueryBuilder<S, From, W, G, H, O, L, I>
@@ -309,16 +287,6 @@ where
     fn is_distinct(&self) -> bool {
         self.is_distinct()
     }
-
-    fn build<D: Driver>(&self, driver: &D) -> Query<D> {
-        let mut query = AnyQuery::default();
-        self.build_into(driver, &mut query);
-        query.into()
-    }
-
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        driver.sql_writer().write_select(out, self);
-    }
 }
 
 impl<'t, From: Dataset + 't, T: SelectQuery<From>> SelectQuery<From> for &'t T {
@@ -357,12 +325,18 @@ impl<'t, From: Dataset + 't, T: SelectQuery<From>> SelectQuery<From> for &'t T {
     fn is_distinct(&self) -> bool {
         (**self).is_distinct()
     }
+}
 
-    fn build<D: Driver>(&self, driver: &D) -> Query<D> {
-        (**self).build(driver)
-    }
-
+impl<S, From, W, G, H, O, L> QueryBuilder for SelectQueryBuilder<S, From, W, G, H, O, L>
+where
+    S: ExpressionCollection,
+    From: Dataset,
+    W: Expression,
+    G: ExpressionCollection,
+    H: Expression,
+    O: ExpressionCollection,
+{
     fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        (**self).build_into(driver, out);
+        driver.sql_writer().write_select(out, self);
     }
 }

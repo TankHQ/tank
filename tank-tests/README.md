@@ -47,6 +47,7 @@ The crate exposes opt-out feature flags ("disable-*") that skip entire capabilit
 | `disable-ordering`            | Explicit result ordering                   |
 | `disable-references`          | Referential integrity                      |
 | `disable-transactions`        | Transaction begin/commit/rollback coverage |
+| `disable-updates`             | Plain `UPDATE` statements                  |
 
 Use them from the driver crate's `Cargo.toml`:
 ```toml

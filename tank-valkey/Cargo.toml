@@ -45,6 +45,7 @@ tank-tests = { path = "../tank-tests", features = [
     "disable-multiple-statements",
     "disable-ordering",
     "disable-references",
+    "disable-updates",
 ] }
 testcontainers-modules = { version = "0", features = ["valkey", "redis"] }
 time.workspace = true

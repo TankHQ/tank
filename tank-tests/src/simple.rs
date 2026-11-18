@@ -8,8 +8,8 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use tank::{
-    AnyQuery, Driver, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery, Result,
-    RowsAffected, Sql, expr, stream::TryStreamExt,
+    AnyQuery, Driver, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult, RawQuery,
+    Result, RowsAffected, Sql, expr, stream::TryStreamExt,
 };
 use time::{Date, Time, macros::date};
 use tokio::sync::Mutex;

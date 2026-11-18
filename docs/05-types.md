@@ -23,7 +23,7 @@ Tank maps ordinary Rust types to the closest column types each driver supports, 
 | `u128`, `NonZeroU128`     | `NUMERIC(39)`  | ❌        | `NUMERIC(39) UNSIGNED`    | `NUMERIC(39) UNSIGNED`    | `UHUGEINT`     | ❌           | `VARINT`           | `String`     |
 | `isize`, `NonZeroIsize`   | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`                  | `BIGINT`       | `Int64`      | `BIGINT`           | `String`     |
 | `usize`, `NonZeroUsize`   | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`      | `VARINT`           | `String`     |
-| `f32`                     | `REAL`         | `REAL`    | `FLOAT`                   | `FLOAT`                   | `FLOAT`        | `Double`     | `FLOAT`            | `String`     |
+| `f32`                     | `FLOAT4`       | `REAL`    | `FLOAT`                   | `FLOAT`                   | `FLOAT`        | `Double`     | `FLOAT`            | `String`     |
 | `f64`                     | `FLOAT8`       | `REAL`    | `DOUBLE`                  | `DOUBLE`                  | `DOUBLE`       | `Double`     | `DOUBLE`           | `String`     |
 | `rust_decimal::Decimal`   | `NUMERIC`      | `REAL`    | `DECIMAL`                 | `DECIMAL`                 | `DECIMAL`      | `Decimal128` | `DECIMAL`          | `String`     |
 | `tank::FixedDecimal<W,S>` | `NUMERIC(W,S)` | `REAL`    | `DECIMAL(W,S)`            | `DECIMAL(W,S)`            | `DECIMAL(W,S)` | `Decimal128` | `DECIMAL`          | `String`     |
@@ -52,8 +52,11 @@ Tank maps ordinary Rust types to the closest column types each driver supports, 
 > Fallback encodings such as `TEXT` or `JSON` have predictable encodings. Usually (but not always) equality and ordering comparisons behave as expected. Advanced indexing or operator support may vary by driver.
 >
 > Mappings do not imply the full Rust integer range: PostgreSQL's `NUMERIC(19)` cannot hold `u64::MAX`, SQLite and MongoDB limit `u64` to signed 64-bit values, and decimal-based 128-bit conversions have additional limits. The table assumes 64-bit builds for `isize`/`usize`. Prefer explicit `i64`/`u64` for portable schemas.
+>
+> `tank::Interval` keeps months, days and nanoseconds apart so calendar-aware durations survive a round trip. Build by calling `Interval::new(months, days, nanos)` or helpers such as `from_days`, `from_hours`, `from_months`, `from_years` and `from_duration`. `std::time::Duration` and `time::Duration` convert into it, while `as_duration(days_in_month)` converts back with a caller-supplied month length.
+>
 
-With the optional `chrono` feature enabled, `chrono::NaiveDate`, `chrono::NaiveTime`, `chrono::NaiveDateTime`, `chrono::DateTime<Utc>` and `chrono::DateTime<FixedOffset>` follow the same mappings as their `time` counterparts: `Date`, `Time`, `PrimitiveDateTime` and `OffsetDateTime`.
+With the `chrono` feature of `tank` enabled, `chrono::NaiveDate`, `chrono::NaiveTime`, `chrono::NaiveDateTime`, `chrono::DateTime<Utc>` and `chrono::DateTime<FixedOffset>` follow the same mappings as their `time` counterparts: `Date`, `Time`, `PrimitiveDateTime` and `OffsetDateTime`.
 
 Driver-specific limits:
 - MariaDB's native `UUID` requires MariaDB mode and server 10.7+, MySQL mode uses `CHAR(36)`.

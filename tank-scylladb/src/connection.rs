@@ -20,7 +20,7 @@ use std::{
 };
 use tank_core::{
     AsQuery, AsValue, BinaryOp, BinaryOpType, ColumnRef, Connection, Error, ErrorContext, Executor,
-    MAX_BATCH_SIZE, Query, QueryResult, RawQuery, Result, Row, Sql, extract_number,
+    MAX_BATCH_SIZE, Query, QueryBuilder, QueryResult, RawQuery, Result, Row, Sql, extract_number,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };

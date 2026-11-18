@@ -16,14 +16,14 @@ mod tests {
     };
     use syn::{Path, parse_str};
     use tank::{
-        AnyQuery, CollectionType, Connection, Context, Dataset, Driver, EitherIterator, Entity,
-        Expression, FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType,
-        Operand, Query, QueryResult, References, Row, RowLabels, RowOwned, RowsAffected,
-        SelectQuery, Sql, SqlExpressionWriter, SqlValueWriter, SqlWriter, StructType,
-        TRUNCATE_LONG_LIMIT, TableRef, Value, as_c_string, column_def, consume_while,
-        decimal_from_scaled, error_message_from_ptr, extract_number, matches_path, month_to_number,
-        number_to_month, quote_btree_map, quote_cow, quote_option, separated_by, truncate_bound,
-        truncate_long, value_to_json, write_escaped,
+        AnyQuery, CollectionType, Connection, Context, Dataset, EitherIterator, Entity, Expression,
+        FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType, Operand,
+        QueryBuilder, QueryResult, References, Row, RowLabels, RowOwned, RowsAffected, SelectQuery,
+        Sql, SqlExpressionWriter, SqlValueWriter, SqlWriter, StructType, TRUNCATE_LONG_LIMIT,
+        TableRef, Value, as_c_string, column_def, consume_while, decimal_from_scaled,
+        error_message_from_ptr, extract_number, matches_path, month_to_number, number_to_month,
+        quote_btree_map, quote_cow, quote_option, separated_by, truncate_bound, truncate_long,
+        value_to_json, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
@@ -472,10 +472,6 @@ mod tests {
             fn is_distinct(&self) -> bool {
                 false
             }
-            fn build<D: Driver>(&self, _: &D) -> Query<D> {
-                AnyQuery::default().into()
-            }
-            fn build_into<D: Driver>(&self, _: &D, _: &mut AnyQuery) {}
         }
         let mut out = AnyQuery::default();
         GenericSqlWriter::new().write_select(&mut out, &NoFrom);

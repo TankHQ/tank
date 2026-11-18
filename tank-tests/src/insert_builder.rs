@@ -1,6 +1,8 @@
 #![allow(unused_imports)]
 use std::sync::{Arc, LazyLock};
-use tank::{AsValue, Entity, Executor, Result, Row, RowOwned, Sql, expr, stream::TryStreamExt};
+use tank::{
+    AsValue, Entity, Executor, QueryBuilder, Result, Row, RowOwned, Sql, expr, stream::TryStreamExt,
+};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));

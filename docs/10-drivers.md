@@ -40,10 +40,11 @@ Create `tank-yourdb` in your favorite source repository.
 
 ### 2. Connection + Executor
 Responsibilities:
-- Validate and parse URL (enforce `yourdb://` prefix)
+- Validate and parse URL (enforce `yourdb://` prefix) (`Self::sanitize_url`).
 - Open backend session(s) (pool if applicable)
 - Implement `do_prepare` for raw SQL preparation, if supported, and `run` to stream `QueryResult::{Row,Affected}`
 - Return `false` from `accepts_multiple_statements` on executors that cannot accept statement batches.
+- Override `batch_size` when the server limits a request below `MAX_BATCH_SIZE` (15 MiB). MySQL uses `max_allowed_packet`, ScyllaDB its batch threshold.
 - Optionally implement fast-path bulk `append` (DuckDB style)
 
 Skeleton:
@@ -51,7 +52,7 @@ Skeleton:
 <<< @/../tank-yourdb/src/connection.rs
 
 ### 3. Prepared Statements
-Implement parameter binding according to the backend type system. Convert each Rust value (via `AsValue`) into the native representation.
+Implement parameter binding according to the backend type system. Convert each Rust value (via `AsValue`) into the native representation. The trait covers `bind` (append the next value), `bind_index` (set a 0-based position), `clear_bindings` and `is_empty`.
 
 Keep one doctrine in mind: a `Prepared` value is driver-local executable state, not portable SQL text. Make `Display`/`Debug` useful for diagnostics and errors, but execute prepared handles through the owning driver.
 
@@ -75,13 +76,16 @@ Callers emitting complete statements only need `SqlWriter` in scope, which requi
 Override only differences from the generic fallback:
 - Identifier quoting style
 - Column type mapping
+- `column_type` overrides via `write_column_overridden_type`, keyed by the driver name (`postgres`, `sqlite`, `mysql`, `mariadb`, `duckdb`, `scylladb`, `cassandra`)
 - Literal escaping quirks (BLOB, INTERVAL, UUID, INET, arrays)
 - Parameter placeholder (override `write_question_mark`) if not `?`
 - Schema operations (override as no-ops if the engine lacks schemas, as SQLite does)
 - Pagination syntax via `write_limit_offset` if an offset needs a limit or different keywords
 - Upsert syntax via `write_insert_update_fragment` if divergence
 
-Call writer methods directly. Overrides are dispatched normally. Use `self.as_dyn()` when passing the writer to an expression or dataset interface that requires a trait object, and in a default method that must reach a method declared on a sibling trait.
+Every hook receives a `&mut Context` describing where in the statement it is writing: the current `Fragment` (`SqlSelectWhere`, `SqlJoin`, `Casting`, `Json`, and so on), the table in scope and whether columns are qualified. Use `switch_fragment` when one statement nests another, such as a `SELECT` doing the work of an `INSERT`.
+
+Call writer methods directly. Overrides are dispatched normally. Use `self.as_dyn()` when passing the writer to an expression or dataset interface that requires a trait object, and in a default method that must reach a method declared on a sibling trait. The generic fallback is [`GenericSqlWriter`](https://docs.rs/tank/latest/tank/struct.GenericSqlWriter.html), call it to reuse a default implementation inside an override.
 
 Tip: Check the default methods of the writer traits in `tank-core` when overriding dialect behavior.
 
@@ -124,10 +128,10 @@ Enable feature flags to disable specific functionality until green.
 - `disable-ordering`: ordered result sets unsupported
 - `disable-references`: foreign keys not enforced
 - `disable-transactions`: no transactional support
+- `disable-updates`: plain `UPDATE` statements not supported
 
 ### 7. Tactical Checklist
-- URL prefix enforced (`yourdb://`)
-- `Driver::NAME` correct and used consistently
+- URL prefixes enforced, every alias listed in `Driver::NAME` with the primary name first, as in `&["mysql", "mariadb"]`
 - `prepare` handles multiple statements cleanly, or rejects them with an explicit error
 - Streams drop promptly (no leaked locks or file handles)
 - For SQL-text drivers, `SqlWriter` prints multi-statement sequences with proper separators and terminal `;`

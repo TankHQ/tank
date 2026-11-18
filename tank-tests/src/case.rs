@@ -1,5 +1,7 @@
 use std::{collections::BTreeSet, sync::LazyLock};
-use tank::{AsValue, Entity, Executor, Result, Row, Sql, cols, expr, stream::TryStreamExt};
+use tank::{
+    AsValue, Entity, Executor, QueryBuilder, Result, Row, Sql, cols, expr, stream::TryStreamExt,
+};
 use tokio::sync::Mutex;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));

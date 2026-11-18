@@ -7,8 +7,8 @@ use std::{
     sync::LazyLock,
 };
 use tank::{
-    AnyQuery, Driver, Entity, Executor, FixedDecimal, Interval, QueryResult, RawQuery, Result,
-    RowsAffected, Sql, expr,
+    AnyQuery, Driver, Entity, Executor, FixedDecimal, Interval, QueryBuilder, QueryResult,
+    RawQuery, Result, RowsAffected, Sql, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, Time};

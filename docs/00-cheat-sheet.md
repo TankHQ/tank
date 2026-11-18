@@ -153,7 +153,37 @@ expr!(match EntityExample::region { "North" | "South" => 1, _ => 2 });
 
 ## Query Builder
 
+Call `Sql()` to start a typed builder for the operations that outgrow the entity helpers. Every builder ends with `.build(&driver)`, and the resulting query can be later fired with `run`, `fetch` or `execute` only by the executor of that specific driver. Every builder implements [`QueryBuilder`](https://docs.rs/tank/latest/tank/trait.QueryBuilder.html), so a `Box<dyn QueryBuilder>` can hold any statement in a list.
+
+### Select
+
 <<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-query-builder [Rust]
+
+Also available: `.distinct()`, `.group_by(...)`, `.having(...)` and `.offset(...)`. See [Advanced operations](08-advanced-operations.md#selecting-ordering).
+
+### Insert
+
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-builder-insert [Rust]
+
+Use `.columns([...]).values([cols!(?, ?)])` for explicit rows and `.select(...)` to insert the rows of a query.
+
+### Update
+
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-builder-update [Rust]
+
+Each `cols!` item written with `==` becomes a `SET` assignment. `entity.primary_key_expr()` targets the row; without `where_expr`, every row is updated. MongoDB and Valkey do not support plain `UPDATE`. Use `save()` there.
+
+### Delete
+
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-builder-delete [Rust]
+
+### Create table
+
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-builder-create-table [Rust]
+
+### Drop table
+
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-builder-drop-table [Rust]
 
 ## Joins
 

@@ -11,7 +11,7 @@ use std::{
 };
 use tank_core::{
     AnyQuery, AppendDefault, AsEntity, AsQuery, ColumnDef, Connection, Entity, Error, ErrorContext,
-    Executor, Operand, Prepared, QueryResult, Result, RowsAffected, Sql, Transaction,
+    Executor, Operand, Prepared, QueryBuilder, QueryResult, Result, RowsAffected, Sql, Transaction,
     char_ptr_to_string, describe_path, error_message_from_ptr, future::Either, truncate_long,
 };
 use tokio::task;

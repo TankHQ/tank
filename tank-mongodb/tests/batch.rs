@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use tank::{AnyQuery, AsValue, Entity, Sql, Value, cols, expr};
+    use tank::{AnyQuery, AsValue, Entity, QueryBuilder, Sql, Value, cols, expr};
     use tank_mongodb::{BatchPayload, InsertManyPayload, MongoDBDriver, Payload};
     use tank_tests::{init_logs, silent_logs};
 

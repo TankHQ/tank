@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use std::sync::LazyLock;
-use tank::{AnyQuery, AsQuery, AsValue, Result, Row, Sql, expr};
+use tank::{AnyQuery, AsQuery, AsValue, QueryBuilder, Result, Row, Sql, expr};
 use tank::{
     Entity, Executor, QueryResult,
     stream::{StreamExt, TryStreamExt},

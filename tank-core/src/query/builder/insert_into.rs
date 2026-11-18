@@ -1,6 +1,6 @@
 use crate::{
-    AnyQuery, ColumnDef, Dataset, Driver, Entity, Expression, ExpressionCollection, NA, Query,
-    SelectQuery, SelectQueryBuilder, SqlWriter, TableRef, Value, future::Either,
+    AnyQuery, ColumnDef, Dataset, Driver, Entity, Expression, ExpressionCollection, NA,
+    QueryBuilder, SelectQuery, SelectQueryBuilder, SqlWriter, TableRef, Value, future::Either,
 };
 use std::{borrow::Cow, iter, marker::PhantomData};
 
@@ -114,19 +114,6 @@ where
     }
 }
 
-impl<V, U> InsertIntoQueryBuilder<V, U>
-where
-    Self: InsertIntoQuery,
-{
-    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
-        InsertIntoQuery::build(self, driver)
-    }
-
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        InsertIntoQuery::build_into(self, driver, out);
-    }
-}
-
 impl<R, U> InsertIntoQuery for InsertIntoQueryBuilder<R, U>
 where
     R: IntoIterator + Clone,
@@ -157,7 +144,7 @@ where
     }
 }
 
-impl<S, F, W, G, H, O, L> InsertSelectQueryBuilder<S, F, W, G, H, O, L>
+impl<S, F, W, G, H, O, L> QueryBuilder for InsertSelectQueryBuilder<S, F, W, G, H, O, L>
 where
     S: ExpressionCollection,
     F: Dataset,
@@ -166,12 +153,8 @@ where
     H: Expression,
     O: ExpressionCollection,
 {
-    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
-        InsertIntoQuery::build(self, driver)
-    }
-
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        InsertIntoQuery::build_into(self, driver, out);
+    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
+        driver.sql_writer().write_insert(out, self);
     }
 }
 
@@ -228,22 +211,6 @@ pub trait InsertIntoQuery {
     >;
     /// Whether existing rows are updated on a primary key conflict.
     fn get_update(&self) -> bool;
-    /// Build query.
-    fn build<D: Driver>(&self, driver: &D) -> Query<D>
-    where
-        Self: Sized,
-    {
-        let mut query = AnyQuery::default();
-        self.build_into(driver, &mut query);
-        query.into()
-    }
-    /// Build query into existing buffer.
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery)
-    where
-        Self: Sized,
-    {
-        driver.sql_writer().write_insert(out, self);
-    }
 }
 
 impl<T: InsertIntoQuery> InsertIntoQuery for &T {
@@ -268,5 +235,14 @@ impl<T: InsertIntoQuery> InsertIntoQuery for &T {
 
     fn get_update(&self) -> bool {
         (**self).get_update()
+    }
+}
+
+impl<V, U> QueryBuilder for InsertIntoQueryBuilder<V, U>
+where
+    Self: InsertIntoQuery,
+{
+    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
+        driver.sql_writer().write_insert(out, self);
     }
 }

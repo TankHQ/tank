@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    AnyQuery, Driver, Entity, Executor, QueryResult, Result, RowsAffected, Sql, anyhow, cols, expr,
-    join,
+    AnyQuery, Driver, Entity, Executor, QueryBuilder, QueryResult, Result, RowsAffected, anyhow,
+    cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, OffsetDateTime, Time, UtcOffset, macros::date};
@@ -138,6 +138,8 @@ pub async fn operations(executor: &mut impl Executor) -> Result<()> {
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
         // #region operations-batch
+        use tank::{QueryBuilder, Sql};
+
         let driver = executor.driver();
         let mut query = AnyQuery::default();
         Sql()
@@ -294,6 +296,8 @@ pub async fn advanced_operations(executor: &mut impl Executor) -> Result<()> {
     #[cfg(not(feature = "disable-joins"))]
     {
         // #region operations-select-order
+        use tank::{QueryBuilder, Sql};
+
         let messages = executor
             .fetch(
                 Sql()

@@ -3,8 +3,8 @@
 use crate::silent_logs;
 use std::{pin::pin, sync::LazyLock, time::Duration};
 use tank::{
-    AnyQuery, Context, Driver, Entity, Executor, Fragment, Interval, QueryResult, RawQuery, Result,
-    RowsAffected, Sql, SqlValueWriter, SqlWriter, Value, expr,
+    AnyQuery, Context, Driver, Entity, Executor, Fragment, Interval, QueryBuilder, QueryResult,
+    RawQuery, Result, RowsAffected, Sql, SqlValueWriter, SqlWriter, Value, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;

@@ -6,8 +6,8 @@ mod select;
 mod update;
 
 use crate::{
-    AnyQuery, ColumnDef, ColumnRef, Context, Dataset, Expression, ExpressionVisitor, OpPrecedence,
-    SqlWriter, TableRef,
+    AnyQuery, ColumnDef, ColumnRef, Context, Dataset, Driver, Expression, ExpressionVisitor,
+    OpPrecedence, Query, SqlWriter, TableRef,
 };
 pub use create_table::*;
 pub use delete::*;
@@ -16,6 +16,24 @@ pub use insert_into::*;
 pub use select::*;
 use std::{borrow::Cow, iter};
 pub use update::*;
+
+/// Common interface of every builder created by [`Sql`].
+pub trait QueryBuilder {
+    /// Builds the query for `driver`.
+    fn build<D: Driver>(&self, driver: &D) -> Query<D>
+    where
+        Self: Sized,
+    {
+        let mut query = AnyQuery::default();
+        self.build_into(driver, &mut query);
+        query.into()
+    }
+
+    /// Writes the query for `driver` into an existing buffer.
+    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery)
+    where
+        Self: Sized;
+}
 
 /// Entry point of the query builders, as in `Sql().select(columns).from(table)`.
 #[derive(Default, Debug)]

@@ -5,8 +5,8 @@ use std::{
     task::{Context, Waker},
 };
 use tank::{
-    AnyQuery, AsValue, ColumnDef, Connection, Entity, Executor, QueryResult, Row, Sql, Transaction,
-    Value, cols,
+    AnyQuery, AsValue, ColumnDef, Connection, Entity, Executor, QueryBuilder, QueryResult, Row,
+    Sql, Transaction, Value, cols,
     stream::{StreamExt, TryStreamExt},
 };
 use tank_sqlite::{SQLiteConnection, SQLiteDriver};

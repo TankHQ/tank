@@ -9,8 +9,8 @@ mod tests {
     use std::{collections::BTreeMap, str::FromStr};
     use tank::{
         AnyQuery, BinaryOp, BinaryOpType, ColumnDef, Context, Entity, Expression, Fragment,
-        GenericSqlWriter, Operand, Sql, SqlCoreWriter, SqlExpressionWriter, SqlValueWriter, Value,
-        expr,
+        GenericSqlWriter, Operand, QueryBuilder, Sql, SqlCoreWriter, SqlExpressionWriter,
+        SqlValueWriter, Value, expr,
     };
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;

@@ -17,7 +17,10 @@ Before you can unleash Tank's firepower, secure your supply lines. Open a **Conn
   Aggregates all `QueryResult::Affected` counts into one [`RowsAffected`](https://docs.rs/tank/latest/tank/struct.RowsAffected.html). Rows are ignored.
 
 - [`append(entities)`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.append):
-  Bulk insert entities, using a driver fast-path when available.
+  Bulk insert entities, using a driver fast-path when available. Without one, the default implementation batches the rows through regular `INSERT` statements.
+
+- [`batch_size()`](https://docs.rs/tank/latest/tank/trait.Executor.html#method.batch_size):
+  Preferred size in bytes of a single request, used by the generic bulk insert to size each batch. It defaults to [`MAX_BATCH_SIZE`](https://docs.rs/tank/latest/tank/constant.MAX_BATCH_SIZE.html) (15 MiB). Drivers may lower it to the server limit, as MySQL does with `max_allowed_packet` and ScyllaDB with its batch threshold.
 
 - [`begin()`](https://docs.rs/tank/latest/tank/trait.Connection.html#tymethod.begin):
   Borrow the connection and start a transaction. Issue supported operations against the transactional executor, then await `commit()` or `rollback()`. Rollback on drop is driver-specific, so do not rely on it.
@@ -34,7 +37,7 @@ Before you can unleash Tank's firepower, secure your supply lines. Open a **Conn
 ## Connect
 Every database connection abstraction implements the [`Connection`](https://docs.rs/tank/latest/tank/trait.Connection.html) trait. This is your communication link to the database server. Call [`driver.connect_pool("dbms://...", PoolConfig::new())`](https://docs.rs/tank/latest/tank/trait.Driver.html#method.connect_pool) with a URL to create a connection pool, then call `.get().await?` to obtain a [`PooledConnection`](https://docs.rs/tank/latest/tank/struct.PooledConnection.html) from it. Every driver is its own crate. Load only what you need for the operation. Check the [drivers](01-introduction.md#drivers) to see the available connections.
 
-Once the line is open, the connection exposes both the [`Connection`](https://docs.rs/tank/latest/tank/trait.Connection.html) and [`Executor`](https://docs.rs/tank/latest/tank/trait.Executor.html) interfaces. Supported operations depend on the driver: MongoDB and Valkey use native query representations rather than raw SQL or SQL preparation. Check the [capability matrix](04-capabilities.md) before deploying.
+Once the line is open, the connection exposes both the [`Connection`](https://docs.rs/tank/latest/tank/trait.Connection.html) and [`Executor`](https://docs.rs/tank/latest/tank/trait.Executor.html) interfaces. A [`PooledConnection`](https://docs.rs/tank/latest/tank/struct.PooledConnection.html) also derefs to the driver's connection type, so driver-specific methods stay reachable through the pool. Supported operations depend on the driver: MongoDB and Valkey use native query representations rather than raw SQL or SQL preparation. Check the [capability matrix](04-capabilities.md) before deploying.
 
 The helpers below take a caller-owned driver and return opaque pools without boxing. Create the driver in the caller (e.g. `PostgresDriver::new()`) and pass it by reference. The pool keeps its own clone, so it can outlive the driver. See [Dynamic Pool](#dynamic-pool) when you need type erasure or a shared handle.
 
@@ -100,6 +103,9 @@ Modes:
 
 Additional URL parameters are passed directly to the SQLite API. See the full list of supported options on the [SQLite website](https://sqlite.org/uri.html#recognized_query_parameters).
 
+> [!NOTE]
+> Bulk inserts (`append` and `insert_many`) open a transaction when not already inside one so a batch either lands completely or rolls back.
+
 ### MySQL/MariaDB
 MySQL is the battle-hardened workhorse of the digital front: widely deployed, solid transactional engine, broad tooling ecosystem.
 
@@ -163,9 +169,6 @@ Modes:
 
 The `mode` parameter provides a common syntax for specifying connection access, similar to SQLite. The values map respectively to `access_mode=READ_ONLY`, `access_mode=READ_WRITE`, `access_mode=READ_WRITE` and the special `duckdb://:memory:` path. Additional URL parameters are passed directly to the DuckDB C API. See the full list of supported options on the [DuckDB website](https://duckdb.org/docs/stable/configuration/overview#global-configuration-options).
 
-> [!NOTE]
-> `std::net::IpAddr` columns use DuckDB's `INET` type from the `inet` core extension. DuckDB autoloads it on first use.
-
 ### MongoDB
 MongoDB is your guerrilla special forces unit operating in the "fog of war", gathering intel in whatever format it arrives.
 
@@ -216,9 +219,11 @@ async fn establish_valkey_connection(driver: &ValkeyDriver) -> Result<impl Conne
 Use `valkeys://` or `rediss://` for TLS. The `sslmode` query parameter does not enable TLS for this driver.
 
 Parameters:
-- `sslrootcert`: CA certificate path.
-- `sslcert`: Client certificate path.
-- `sslkey`: Client private key path.
+- `sslrootcert` (or `ssl_ca`): CA certificate path.
+- `sslcert` (or `ssl_cert`): Client certificate path.
+- `sslkey` (or `ssl_key`): Client private key path.
+
+Both the certificate and the private key are required together when either is given.
 
 ### ScyllaDB/Cassandra
 ScyllaDB is the rapid-response strike force: distributed, built to swarm data with relentless, low-latency fire.
@@ -275,6 +280,9 @@ Parameters:
 
 The parameters are used to create an object of type [`SessionBuilder`](https://docs.rs/scylla/latest/scylla/client/session_builder/type.SessionBuilder.html). Please check the Scylla documentation for more detailed information.
 
+> [!NOTE]
+> **Cassandra support**: both `scylladb://` and `cassandra://` URLs are accepted. On connect the driver inspects the cluster metadata and switches to the Cassandra dialect when it reaches an Apache Cassandra node, which changes the `column_type` override key and the batch-size setting it reads from the server.
+
 ## Dynamic Pool
 
 `driver.connect_pool(...)` returns an opaque `impl ConnectionPool<Driver>` type. The compiler knows its concrete type, but you cannot name that return type directly in a struct field.
@@ -310,5 +318,18 @@ async fn run(state: &AppState) -> Result<()> {
     Ok(())
 }
 ```
+
+## Pool Control
+Every [`ConnectionPool`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html) exposes the same controls:
+- [`get()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.get): Borrow a connection, waiting for one to be returned if the pool is exhausted.
+- [`timeout_get(duration)`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.timeout_get): Borrow a connection with a deadline that overrides the configured wait timeout.
+- [`detach()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.detach): Take a connection out of pool management. It closes instead of returning to the pool when dropped.
+- [`resize(max_size)`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.resize): Change the maximum number of live connections.
+- [`close()`](https://docs.rs/tank/latest/tank/trait.ConnectionPool.html#tymethod.close): Close the pool and its managed connections.
+
+[`PoolConfig`](https://docs.rs/tank/latest/tank/struct.PoolConfig.html) fields tune the pool before it is created:
+- `max_size`: Maximum live connections.
+- `wait_timeout`, `create_timeout`, `recycle_timeout`: `Option<Duration>` deadlines for borrowing, opening and recycling a connection.
+- `queue_mode`: `QueueMode::Fifo` or `QueueMode::Lifo`, the order in which waiters receive returned connections.
 
 *Lock, commit, advance. Dismissed.*

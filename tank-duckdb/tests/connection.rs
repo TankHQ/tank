@@ -3,7 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::{path::Path, pin::pin, sync::Mutex};
     use tank::{
-        AnyQuery, AsValue, Connection, Entity, Executor, QueryResult, Row, Sql, Value, cols, expr,
+        AnyQuery, AsValue, Connection, Entity, Executor, QueryBuilder, QueryResult, Row, Sql,
+        Value, cols, expr,
         stream::{StreamExt, TryStreamExt},
     };
     use tank_duckdb::{DuckDBConnection, DuckDBDriver};

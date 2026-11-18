@@ -6,7 +6,9 @@ mod tests {
     use crate::fixtures::DRIVER;
     use indoc::indoc;
     use std::{borrow::Cow, collections::HashMap};
-    use tank::{DefaultValueType, Entity, PrimaryKeyType, Sql, TableRef, Value, expr};
+    use tank::{
+        DefaultValueType, Entity, PrimaryKeyType, QueryBuilder, Sql, TableRef, Value, expr,
+    };
     use time::{Date, Month, Time};
     use uuid::Uuid;
 

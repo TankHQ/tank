@@ -1,4 +1,6 @@
-use crate::{AnyQuery, Dataset, Driver, Expression, ExpressionCollection, NA, Query, SqlWriter};
+use crate::{
+    AnyQuery, Dataset, Driver, Expression, ExpressionCollection, NA, QueryBuilder, SqlWriter,
+};
 
 pub struct UpdateQueryBuilder<From, Set, Where> {
     pub(crate) from: From,
@@ -44,16 +46,6 @@ impl<F: Dataset, S: ExpressionCollection, W: Expression> UpdateQueryBuilder<F, S
     pub const fn get_where(&self) -> &Option<W> {
         &self.where_expr
     }
-
-    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
-        let mut query = AnyQuery::default();
-        self.build_into(driver, &mut query);
-        query.into()
-    }
-
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        driver.sql_writer().write_update(out, self);
-    }
 }
 
 /// UPDATE table SET column = value, ... [WHERE condition]
@@ -66,10 +58,6 @@ pub trait UpdateQuery<From: Dataset> {
     fn get_set(&self) -> impl Iterator<Item = impl Expression> + Clone;
     /// Get WHERE clause expression.
     fn get_where(&self) -> &Option<impl Expression>;
-    /// Build query.
-    fn build<D: Driver>(&self, driver: &D) -> Query<D>;
-    /// Build query into existing buffer.
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery);
 }
 
 impl<F: Dataset, S: ExpressionCollection, W: Expression> UpdateQuery<F>
@@ -86,14 +74,6 @@ impl<F: Dataset, S: ExpressionCollection, W: Expression> UpdateQuery<F>
     fn get_where(&self) -> &Option<impl Expression> {
         self.get_where()
     }
-
-    fn build<D: Driver>(&self, driver: &D) -> Query<D> {
-        self.build(driver)
-    }
-
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        self.build_into(driver, out);
-    }
 }
 
 impl<'t, From: Dataset + 't, T: UpdateQuery<From>> UpdateQuery<From> for &'t T {
@@ -108,12 +88,12 @@ impl<'t, From: Dataset + 't, T: UpdateQuery<From>> UpdateQuery<From> for &'t T {
     fn get_where(&self) -> &Option<impl Expression> {
         (*self).get_where()
     }
+}
 
-    fn build<D: Driver>(&self, driver: &D) -> Query<D> {
-        (*self).build(driver)
-    }
-
+impl<F: Dataset, S: ExpressionCollection, W: Expression> QueryBuilder
+    for UpdateQueryBuilder<F, S, W>
+{
     fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        (*self).build_into(driver, out);
+        driver.sql_writer().write_update(out, self);
     }
 }

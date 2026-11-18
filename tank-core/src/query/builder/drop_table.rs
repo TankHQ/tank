@@ -1,4 +1,4 @@
-use crate::{AnyQuery, Driver, NA, Query, SqlWriter, TableRef};
+use crate::{AnyQuery, Driver, NA, QueryBuilder, SqlWriter, TableRef};
 use std::marker::PhantomData;
 
 pub struct DropTableQueryBuilder<Exists> {
@@ -25,17 +25,6 @@ impl<E> DropTableQueryBuilder<E> {
     pub const fn get_exists(&self) -> bool {
         self.if_exists
     }
-
-    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
-        let mut query = AnyQuery::default();
-        self.build_into(driver, &mut query);
-        query.into()
-    }
-
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        let writer = driver.sql_writer();
-        writer.write_drop_table(out, &self.table, self.if_exists);
-    }
 }
 
 /// DROP TABLE [IF EXISTS] table
@@ -46,10 +35,6 @@ pub trait DropTableQuery {
     fn get_table(&self) -> &TableRef;
     /// SQL Fragment `IF EXISTS` is present.
     fn get_exists(&self) -> bool;
-    /// Build query.
-    fn build<D: Driver>(&self, driver: &D) -> Query<D>;
-    /// Build query into existing buffer.
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery);
 }
 
 impl<E> DropTableQuery for DropTableQueryBuilder<E> {
@@ -60,12 +45,12 @@ impl<E> DropTableQuery for DropTableQueryBuilder<E> {
     fn get_exists(&self) -> bool {
         self.get_exists()
     }
+}
 
-    fn build<D: Driver>(&self, driver: &D) -> Query<D> {
-        self.build(driver)
-    }
-
+impl<E> QueryBuilder for DropTableQueryBuilder<E> {
     fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        self.build_into(driver, out);
+        driver
+            .sql_writer()
+            .write_drop_table(out, &self.table, self.if_exists);
     }
 }

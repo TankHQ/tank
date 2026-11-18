@@ -2,8 +2,8 @@
 use rust_decimal::Decimal;
 use std::{collections::BTreeMap, pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
-    AnyQuery, AsValue, Driver, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery,
-    Result, RowsAffected, Sql, Value,
+    AnyQuery, AsValue, Driver, Entity, Executor, FixedDecimal, Query, QueryBuilder, QueryResult,
+    RawQuery, Result, RowsAffected, Sql, Value,
     stream::{StreamExt, TryStreamExt},
 };
 use time::macros::datetime;

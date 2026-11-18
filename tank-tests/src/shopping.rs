@@ -5,7 +5,7 @@ use std::pin::pin;
 use std::{str::FromStr, sync::Arc, sync::LazyLock};
 use tank::Sql;
 use tank::{
-    AsValue, Dataset, Entity, Executor, FixedDecimal, Result, Row, cols, expr, join,
+    AsValue, Dataset, Entity, Executor, FixedDecimal, QueryBuilder, Result, Row, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, Month, PrimitiveDateTime, Time};

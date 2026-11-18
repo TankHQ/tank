@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use std::{path::Path, sync::Mutex};
-    use tank_core::{ColumnDef, Connection, Executor, Sql, describe_path};
+    use tank_core::{ColumnDef, Connection, Executor, QueryBuilder, Sql, describe_path};
     use tank_sqlite::{SQLiteConnection, SQLiteDriver};
     use tank_tests::{init_logs, silent_logs};
     use tokio::fs;

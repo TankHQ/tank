@@ -8,8 +8,8 @@ use std::{
     sync::LazyLock,
 };
 use tank::{
-    AnyQuery, Driver, Entity, Executor, Interval, Query, QueryResult, RawQuery, Result, Sql,
-    SqlWriter,
+    AnyQuery, Driver, Entity, Executor, Interval, Query, QueryBuilder, QueryResult, RawQuery,
+    Result, Sql, SqlWriter,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;

@@ -11,7 +11,7 @@ mod tests {
         time::{Duration, Instant},
     };
     use tank::{
-        AsValue, Connection, Entity, Executor, Row, Sql, Transaction, cols, expr,
+        AsValue, Connection, Entity, Executor, QueryBuilder, Row, Sql, Transaction, cols, expr,
         stream::TryStreamExt,
     };
     use tank_duckdb::{DuckDBConnection, DuckDBDriver};

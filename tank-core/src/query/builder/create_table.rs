@@ -1,4 +1,4 @@
-use crate::{AnyQuery, ColumnDef, Driver, NA, PrimaryKeyType, Query, SqlWriter, TableRef};
+use crate::{AnyQuery, ColumnDef, Driver, NA, PrimaryKeyType, QueryBuilder, SqlWriter, TableRef};
 use std::{borrow::Cow, marker::PhantomData};
 
 pub struct CreateTableQueryBuilder<Exists, Columns = NA, PrimaryKey = NA> {
@@ -76,17 +76,6 @@ impl<E, C, P> CreateTableQueryBuilder<E, C, P> {
         self.if_not_exists
     }
 
-    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
-        let mut query = AnyQuery::default();
-        self.build_into(driver, &mut query);
-        query.into()
-    }
-
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        let writer = driver.sql_writer();
-        writer.write_create_table(out, &self.table, self.if_not_exists);
-    }
-
     /// Set the key indices and give the PK columns the matching role.
     fn update_primary_key(&mut self, indices: Vec<usize>) {
         let role = if indices.len() == 1 {
@@ -127,10 +116,6 @@ pub trait CreateTableQuery {
     fn get_table(&self) -> &TableRef;
     /// SQL Fragment `IF NOT EXISTS` is present.
     fn get_not_exists(&self) -> bool;
-    /// Build query.
-    fn build<D: Driver>(&self, driver: &D) -> Query<D>;
-    /// Build query into existing buffer.
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery);
 }
 
 impl<E, C, P> CreateTableQuery for CreateTableQueryBuilder<E, C, P> {
@@ -141,12 +126,12 @@ impl<E, C, P> CreateTableQuery for CreateTableQueryBuilder<E, C, P> {
     fn get_not_exists(&self) -> bool {
         self.get_not_exists()
     }
+}
 
-    fn build<D: Driver>(&self, driver: &D) -> Query<D> {
-        self.build(driver)
-    }
-
+impl<E, C, P> QueryBuilder for CreateTableQueryBuilder<E, C, P> {
     fn build_into<D: Driver>(&self, driver: &D, out: &mut AnyQuery) {
-        self.build_into(driver, out);
+        driver
+            .sql_writer()
+            .write_create_table(out, &self.table, self.if_not_exists);
     }
 }

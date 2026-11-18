@@ -12,8 +12,8 @@ mod tests {
         collections::{BTreeMap, HashMap},
     };
     use tank::{
-        Action, AnyQuery, ColumnRef, DefaultValueType, Driver, Entity, PrimaryKeyType, Sql,
-        SqlWriter, TableRef, Value, expr,
+        Action, AnyQuery, ColumnRef, DefaultValueType, Driver, Entity, PrimaryKeyType,
+        QueryBuilder, Sql, SqlWriter, TableRef, Value, expr,
     };
     use time::macros::datetime;
     use uuid::Uuid;

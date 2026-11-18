@@ -1,6 +1,7 @@
 use std::{pin::pin, sync::LazyLock};
 use tank::{
-    AnyQuery, AsValue, Entity, Executor, Result, Row, Sql, cols, expr, stream::TryStreamExt,
+    AnyQuery, AsValue, Entity, Executor, QueryBuilder, Result, Row, Sql, cols, expr,
+    stream::TryStreamExt,
 };
 use tokio::sync::Mutex;
 

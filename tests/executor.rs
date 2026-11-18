@@ -17,8 +17,8 @@ mod tests {
         AnyQuery, AsQuery, AsValue, Connection, ConnectionPool, Context, Dataset, Driver, Entity,
         Error, Executor, Expression, ExpressionCollection, ExpressionVisitor, Fragment,
         GenericSqlWriter, InsertIntoQuery, MAX_BATCH_SIZE, NA, OpPrecedence, PoolConfig,
-        PooledConnection, Prepared, Query, QueryResult, RawQuery, Result, Row, RowOwned,
-        RowsAffected, Sql, Transaction, anyhow, cols, describe_path, describe_url, expr,
+        PooledConnection, Prepared, Query, QueryBuilder, QueryResult, RawQuery, Result, Row,
+        RowOwned, RowsAffected, Sql, Transaction, anyhow, cols, describe_path, describe_url, expr,
         future::Either,
         stream::{self, Stream, StreamExt, TryStreamExt},
     };

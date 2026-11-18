@@ -203,7 +203,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     {
         // #region cheat-sheet-query-builder
         use tank::{
-            Sql, cols, expr,
+            QueryBuilder, Sql, cols, expr,
             stream::{StreamExt, TryStreamExt},
         };
 
@@ -238,7 +238,9 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     {
         use crate::{Author, AuthorColumnTrait, Book, BookColumnTrait};
         // #region cheat-sheet-joins
-        use tank::{Entity, Sql, cols, expr, join, stream::StreamExt, stream::TryStreamExt};
+        use tank::{
+            Entity, QueryBuilder, Sql, cols, expr, join, stream::StreamExt, stream::TryStreamExt,
+        };
 
         #[derive(Entity)]
         struct BookWithAuthor {
@@ -296,7 +298,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
 
         // #region cheat-sheet-streams
         use std::{future::ready, pin::pin};
-        use tank::{Entity, QueryResult, Row, Sql, cols, stream::TryStreamExt};
+        use tank::{Entity, QueryBuilder, QueryResult, Row, Sql, cols, stream::TryStreamExt};
 
         // You can filter inside rust instead of the database
         let casualties: Vec<EntityExample> = connection
@@ -361,6 +363,88 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         assert_eq!(total, 8);
         assert_eq!(rows.len(), 3);
         assert!(rows.iter().all(|row| row.get_column("callsign").is_some()));
+    }
+
+    {
+        // #region cheat-sheet-builder-insert
+        use tank::{QueryBuilder, Sql};
+
+        connection
+            .execute(
+                Sql()
+                    .insert_into(EntityExample::table())
+                    .values([&entity])
+                    .update() // Upsert on the primary key
+                    .build(&connection.driver()),
+            )
+            .await?;
+        // #endregion cheat-sheet-builder-insert
+    }
+
+    #[cfg(not(feature = "disable-updates"))]
+    {
+        // #region cheat-sheet-builder-update
+        use tank::{QueryBuilder, Sql, cols};
+
+        connection
+            .execute(
+                Sql()
+                    .update(EntityExample::table())
+                    .set(cols!(EntityExample::casualties == 1))
+                    .where_expr(entity.primary_key_expr())
+                    .build(&connection.driver()),
+            )
+            .await?;
+        // #endregion cheat-sheet-builder-update
+    }
+
+    {
+        // #region cheat-sheet-builder-delete
+        use tank::{QueryBuilder, Sql};
+
+        connection
+            .execute(
+                Sql()
+                    .delete_from(EntityExample::table())
+                    .where_expr(entity3.primary_key_expr())
+                    .build(&connection.driver()),
+            )
+            .await?;
+        // #endregion cheat-sheet-builder-delete
+    }
+
+    {
+        // #region cheat-sheet-builder-create-table
+        use tank::{ColumnDef, QueryBuilder, Sql};
+
+        connection
+            .execute(
+                Sql()
+                    .create_table(("army", "outposts"))
+                    .if_not_exists()
+                    .columns([
+                        ColumnDef::from_type::<i32>("id").primary_key(),
+                        ColumnDef::from_type::<String>("sector").nullable(true),
+                    ])
+                    .build(&connection.driver()),
+            )
+            .await?;
+        // #endregion cheat-sheet-builder-create-table
+    }
+
+    {
+        // #region cheat-sheet-builder-drop-table
+        use tank::{QueryBuilder, Sql};
+
+        connection
+            .execute(
+                Sql()
+                    .drop_table(("army", "outposts"))
+                    .if_exists()
+                    .build(&connection.driver()),
+            )
+            .await?;
+        // #endregion cheat-sheet-builder-drop-table
     }
 
     Ok(())

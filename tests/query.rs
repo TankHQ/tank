@@ -8,8 +8,8 @@ mod tests {
     use std::{cell::Cell, fmt::Write, iter};
     use tank::{
         Action, AnyQuery, AsValue, ColumnDef, ColumnRef, Context, Entity, Expression, Fragment,
-        InsertIntoQuery, Operand, QueryResult, QueryResultOwned, RawQuery, RowOwned, RowsAffected,
-        Sql, cols, expr,
+        InsertIntoQuery, Operand, QueryBuilder, QueryResult, QueryResultOwned, RawQuery, RowOwned,
+        RowsAffected, Sql, cols, expr,
     };
 
     const WRITER: tank::GenericSqlWriter = tank::GenericSqlWriter;
@@ -38,7 +38,7 @@ mod tests {
         .trim();
         assert_eq!(query.build(&DRIVER).as_str(), expected);
         let mut out = AnyQuery::default();
-        InsertIntoQuery::build_into(&&query, &DRIVER, &mut out);
+        query.build_into(&DRIVER, &mut out);
         assert_eq!(out.as_str(), expected);
 
         // Iterator closures are not evaluated or collected by the builder.
@@ -629,6 +629,36 @@ mod tests {
             "#}
             .trim()
         );
+    }
+
+    #[test]
+    fn boxed_query_builders() {
+        #[derive(Entity)]
+        struct Item {
+            #[tank(primary_key)]
+            id: i32,
+            label: String,
+        }
+        let item = Item {
+            id: 1,
+            label: "a".into(),
+        };
+        let queries: Vec<Box<dyn QueryBuilder + '_>> = vec![
+            Box::new(Sql().create_table(Item::table())),
+            Box::new(Sql().insert_into(Item::table()).values([&item])),
+            Box::new(
+                Sql()
+                    .select(Item::columns())
+                    .from(Item::table())
+                    .where_expr(true),
+            ),
+            Box::new(
+                Sql()
+                    .delete_from(Item::table())
+                    .where_expr(expr!(Item::id == 1)),
+            ),
+        ];
+        assert_eq!(queries.len(), 4);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use indoc::indoc;
 use tank::{
-    ConnectionPool, Driver, Entity, Executor, Sql, cols, expr,
+    ConnectionPool, Driver, Entity, Executor, QueryBuilder, Sql, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
 
