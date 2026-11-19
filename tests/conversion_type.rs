@@ -45,8 +45,8 @@ mod tests {
             self.0.into().map(|method| method.to_string()).as_value()
         }
 
-        fn try_from_value(value: impl AsValue) -> Result<Self> {
-            let method = Option::<String>::try_from_value(value)?
+        fn decode_value(value: impl AsValue) -> Result<Self> {
+            let method = Option::<String>::decode_value(value)?
                 .map(|text| {
                     text.parse::<Method>()
                         .with_context(|| format!("Could not parse HTTP method {text:?}"))
@@ -86,11 +86,11 @@ mod tests {
     #[test]
     fn method_round_trips() -> Result<()> {
         for text in ["GET", "POST", "CUSTOM"] {
-            let method: Method = <MethodWrap as AsValue>::try_from_value(text)?.into();
+            let method: Method = <MethodWrap as AsValue>::decode_value(text)?.into();
             assert_eq!(method.as_str(), text);
             assert_eq!(MethodWrap::from(method).as_value(), text.as_value());
 
-            let method: Option<Method> = MethodWrap::<Option<Method>>::try_from_value(text)?.into();
+            let method: Option<Method> = MethodWrap::<Option<Method>>::decode_value(text)?.into();
             assert_eq!(method.as_ref().map(Method::as_str), Some(text));
             assert_eq!(MethodWrap::from(method).as_value(), text.as_value());
         }
@@ -104,13 +104,12 @@ mod tests {
     #[test]
     fn invalid_methods_nulls() -> Result<()> {
         for text in ["", "not a method", "GET\n"] {
-            assert!(<MethodWrap as AsValue>::try_from_value(text).is_err());
-            assert!(MethodWrap::<Option<Method>>::try_from_value(text).is_err());
+            assert!(<MethodWrap as AsValue>::decode_value(text).is_err());
+            assert!(MethodWrap::<Option<Method>>::decode_value(text).is_err());
         }
         for value in [Value::Null, Value::Varchar(None), Value::Int64(None)] {
-            assert!(<MethodWrap as AsValue>::try_from_value(value.clone()).is_err());
-            let method: Option<Method> =
-                MethodWrap::<Option<Method>>::try_from_value(value)?.into();
+            assert!(<MethodWrap as AsValue>::decode_value(value.clone()).is_err());
+            let method: Option<Method> = MethodWrap::<Option<Method>>::decode_value(value)?.into();
             assert_eq!(method, None);
         }
         Ok(())

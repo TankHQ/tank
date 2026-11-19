@@ -205,9 +205,9 @@ mod tests {
                 .fetch(sql.as_str())
                 .try_fold(0, |groups, row| {
                     ready(
-                        String::try_from_value(row.value(0).unwrap())
-                            .and_then(|_| i64::try_from_value(row.value(1).unwrap()))
-                            .and_then(|_| f64::try_from_value(row.value(3).unwrap()))
+                        String::decode_value(row.value(0).unwrap())
+                            .and_then(|_| i64::decode_value(row.value(1).unwrap()))
+                            .and_then(|_| f64::decode_value(row.value(3).unwrap()))
                             .map(|_| groups + 1),
                     )
                 })

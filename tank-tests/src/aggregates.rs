@@ -64,8 +64,8 @@ pub async fn aggregates(executor: &mut impl Executor) -> Result<()> {
         );
         let expected = (COUNT as i128, EXPECTED_SUM as i128);
         let actual = (
-            i128::try_from_value(row.value(0).unwrap())?,
-            i128::try_from_value(row.value(1).unwrap())?,
+            i128::decode_value(row.value(0).unwrap())?,
+            i128::decode_value(row.value(1).unwrap())?,
         );
         assert_eq!(
             actual, expected,
@@ -84,7 +84,7 @@ pub async fn aggregates(executor: &mut impl Executor) -> Result<()> {
                     .build(&executor.driver()),
             )
             .map(|row| {
-                u32::try_from_value(
+                u32::decode_value(
                     row?.get_column("value")
                         .expect("Column `value` is not present"),
                 )

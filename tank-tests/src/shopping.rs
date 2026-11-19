@@ -181,7 +181,7 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
         .try_next()
         .await?
         .expect("Did not return some value");
-        i64::try_from_value(row.value(0).unwrap())?
+        i64::decode_value(row.value(0).unwrap())?
     };
     assert_eq!(count, 2);
 

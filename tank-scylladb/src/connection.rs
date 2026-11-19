@@ -66,7 +66,7 @@ impl ScyllaDBConnection {
             .next()
             .await
             .and_then(Result::ok)
-            .and_then(|r| r.value(0).and_then(|v| String::try_from_value(v).ok()))
+            .and_then(|r| r.value(0).and_then(|v| String::decode_value(v).ok()))
             .unwrap_or_default();
         // Leave headroom for row-size variance and cap giant batches.
         min(Self::parse_size(&raw) / 4 * 3, MAX_BATCH_SIZE)

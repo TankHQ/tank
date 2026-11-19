@@ -322,7 +322,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
     write_value_fn!(write_value_f64, f64, Bson::Double);
 
     fn write_value_i128(&self, context: &mut Context, out: &mut AnyQuery, value: i128) {
-        match i64::try_from_value(value.as_value()) {
+        match i64::decode_value(value.as_value()) {
             Ok(v) => self.write_value_i64(context, out, v),
             Err(e) => {
                 log::error!("{e:#}");
@@ -332,7 +332,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
     }
 
     fn write_value_u64(&self, context: &mut Context, out: &mut AnyQuery, value: u64) {
-        match i64::try_from_value(value.as_value()) {
+        match i64::decode_value(value.as_value()) {
             Ok(v) => self.write_value_i64(context, out, v),
             Err(e) => {
                 log::error!("{e:#}");
@@ -342,7 +342,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
     }
 
     fn write_value_u128(&self, context: &mut Context, out: &mut AnyQuery, value: u128) {
-        match i64::try_from_value(value.as_value()) {
+        match i64::decode_value(value.as_value()) {
             Ok(v) => self.write_value_i64(context, out, v),
             Err(e) => {
                 log::error!("{e:#}");
@@ -538,7 +538,7 @@ impl SqlValueWriter for MongoDBSqlWriter {
         };
         let mut doc = Document::new();
         for (k, v) in value.iter() {
-            let Ok(k) = String::try_from_value(k.clone()) else {
+            let Ok(k) = String::decode_value(k.clone()) else {
                 log::error!("Unexpected tank::Value key: {k:?}, it is not convertible to String");
                 return;
             };

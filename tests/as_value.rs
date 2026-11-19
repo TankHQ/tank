@@ -23,8 +23,8 @@ mod tests {
     fn borrowed_integer_conversions() {
         fn check<T: AsValue + Debug + PartialEq>(values: &[Value<'_>]) {
             for value in values {
-                let owned = T::try_from_value(value.clone());
-                let borrowed = T::try_from_value(value);
+                let owned = T::decode_value(value.clone());
+                let borrowed = T::decode_value(value);
                 match (owned, borrowed) {
                     (Ok(owned), Ok(borrowed)) => assert_eq!(owned, borrowed),
                     (Err(owned), Err(borrowed)) => {
@@ -85,7 +85,7 @@ mod tests {
         assert_borrowed_string((&cow).as_value(), &text);
         let owned_cow: Cow<'_, str> = Cow::Owned(text.clone());
         assert_borrowed_string((&owned_cow).as_value(), &owned_cow);
-        let decoded: Cow<'_, str> = Cow::try_from_value(&text).unwrap();
+        let decoded: Cow<'_, str> = Cow::decode_value(&text).unwrap();
         assert!(matches!(decoded, Cow::Owned(_)));
         assert_eq!(decoded, text);
         let parsed: Cow<'_, str> = <Cow<'_, str> as AsValue>::parse(&text).unwrap();
@@ -101,13 +101,13 @@ mod tests {
             panic!("Expected owned varchar");
         };
         assert_eq!(text.as_ptr(), pointer);
-        let decoded = String::try_from_value(value).unwrap();
+        let decoded = String::decode_value(value).unwrap();
         assert_eq!(decoded.as_ptr(), pointer);
-        let decoded = String::try_from_value(decoded).unwrap();
+        let decoded = String::decode_value(decoded).unwrap();
         assert_eq!(decoded.as_ptr(), pointer);
 
         let value: Cow<'_, Value<'_>> = Cow::Owned(decoded.as_value());
-        let decoded = String::try_from_value(value).unwrap();
+        let decoded = String::decode_value(value).unwrap();
         assert_eq!(decoded.as_ptr(), pointer);
         let value = decoded.as_value();
         let borrowed: Cow<'_, Value<'_>> = Cow::Borrowed(&value);
@@ -115,11 +115,11 @@ mod tests {
             panic!("Expected varchar");
         };
         assert_borrowed_string(borrowed.as_value(), text);
-        let decoded: ValueOwned = Value::try_from_value(&value).unwrap();
+        let decoded: ValueOwned = Value::decode_value(&value).unwrap();
         assert!(matches!(decoded, Value::Varchar(Some(Cow::Owned(_)))));
         assert_eq!(decoded, value);
         assert_eq!(
-            String::try_from_value(Cow::Borrowed(&value)).unwrap(),
+            String::decode_value(Cow::Borrowed(&value)).unwrap(),
             "move encoding and decoding without reallocating"
         );
     }
@@ -150,10 +150,10 @@ mod tests {
         assert_borrowed_string(encoded.into_vec().pop().unwrap(), &values[0]);
         let nested = vec![vec![&text]];
         assert_eq!(
-            Vec::<Vec<String>>::try_from_value(&nested).unwrap(),
+            Vec::<Vec<String>>::decode_value(&nested).unwrap(),
             vec![vec![text.clone()]]
         );
-        assert_eq!(<[String; 1]>::try_from_value(&values).unwrap(), values);
+        assert_eq!(<[String; 1]>::decode_value(&values).unwrap(), values);
 
         let map = HashMap::from([(text.clone(), text.clone())]);
         let Value::Map(Some(encoded), _) = (&map).as_value() else {
@@ -165,14 +165,14 @@ mod tests {
         assert_borrowed_string(encoded_value, value);
         let tree = BTreeMap::from([(text.clone(), text.clone())]);
         assert_eq!(
-            BTreeMap::<String, String>::try_from_value(&tree).unwrap(),
+            BTreeMap::<String, String>::decode_value(&tree).unwrap(),
             tree
         );
         let deque = VecDeque::from([text.clone()]);
-        assert_eq!(VecDeque::<String>::try_from_value(&deque).unwrap(), deque);
+        assert_eq!(VecDeque::<String>::decode_value(&deque).unwrap(), deque);
         let list = LinkedList::from([text.clone()]);
-        assert_eq!(LinkedList::<String>::try_from_value(&list).unwrap(), list);
-        assert_eq!(Vec::<String>::try_from_value(&values[..]).unwrap(), values);
+        assert_eq!(LinkedList::<String>::decode_value(&list).unwrap(), list);
+        assert_eq!(Vec::<String>::decode_value(&values[..]).unwrap(), values);
     }
 
     #[test]
@@ -186,12 +186,12 @@ mod tests {
         let value = (&cell).as_value();
         assert!(matches!(value, Value::Varchar(Some(Cow::Owned(_)))));
         cell.replace("changed");
-        assert_eq!(String::try_from_value(value).unwrap(), text);
+        assert_eq!(String::decode_value(value).unwrap(), text);
         let lock = RwLock::new(text.as_str());
         let value = (&lock).as_value();
         assert!(matches!(value, Value::Varchar(Some(Cow::Owned(_)))));
         *lock.write().unwrap() = "changed";
-        assert_eq!(String::try_from_value(value).unwrap(), text);
+        assert_eq!(String::decode_value(value).unwrap(), text);
     }
 
     #[test]
@@ -210,12 +210,12 @@ mod tests {
     #[test]
     fn owned_decode_borrowed() {
         let text = String::from("borrowed source");
-        let decoded = String::try_from_value(&text).unwrap();
+        let decoded = String::decode_value(&text).unwrap();
         assert_eq!(decoded, text);
         assert_ne!(decoded.as_ptr(), text.as_ptr());
         drop(text);
         let value = decoded.as_value();
-        let decoded = String::try_from_value(&value).unwrap();
+        let decoded = String::decode_value(&value).unwrap();
         assert_eq!(decoded, "borrowed source");
         let Value::Varchar(Some(text)) = &value else {
             panic!("Expected varchar");
@@ -225,13 +225,13 @@ mod tests {
         assert_eq!(decoded, "borrowed source");
 
         let number = 42_i32;
-        assert_eq!(i32::try_from_value(&number).unwrap(), number);
+        assert_eq!(i32::decode_value(&number).unwrap(), number);
     }
 
     #[test]
     fn reference_decode_errors() {
         fn check<T: AsValue>() {
-            let error = T::try_from_value("temporary".to_string()).err().unwrap();
+            let error = T::decode_value("temporary".to_string()).err().unwrap();
             assert_eq!(
                 error.to_string(),
                 format!(
@@ -275,8 +275,8 @@ mod tests {
             }
         }
 
-        assert_eq!(i32::try_from_value(InputOnly(42)).unwrap(), 42);
-        let error = InputOnly::try_from_value(42).err().unwrap();
+        assert_eq!(i32::decode_value(InputOnly(42)).unwrap(), 42);
+        let error = InputOnly::decode_value(42).err().unwrap();
         assert_eq!(
             error.to_string(),
             format!(
@@ -422,33 +422,33 @@ mod tests {
     fn nonzero_conversions() {
         let v = NonZeroI32::new(42).unwrap().as_value();
         assert_eq!(v, Value::Int32(Some(42)));
-        let back = NonZeroI32::try_from_value(v).unwrap();
+        let back = NonZeroI32::decode_value(v).unwrap();
         assert_eq!(back.get(), 42);
         assert_eq!(NonZeroI32::as_empty_value(), Value::Int32(None));
 
         let v = NonZeroU64::new(100).unwrap().as_value();
         assert_eq!(v, Value::UInt64(Some(100)));
-        let back = NonZeroU64::try_from_value(v).unwrap();
+        let back = NonZeroU64::decode_value(v).unwrap();
         assert_eq!(back.get(), 100);
 
-        assert!(NonZeroI32::try_from_value(Value::Int32(Some(0))).is_err());
+        assert!(NonZeroI32::decode_value(Value::Int32(Some(0))).is_err());
     }
 
     #[test]
     fn bool_from_types() {
-        assert_eq!(bool::try_from_value(Value::Int8(Some(1))).unwrap(), true);
-        assert_eq!(bool::try_from_value(Value::Int8(Some(0))).unwrap(), false);
-        assert_eq!(bool::try_from_value(Value::Int16(Some(1))).unwrap(), true);
-        assert_eq!(bool::try_from_value(Value::UInt8(Some(1))).unwrap(), true);
-        assert_eq!(bool::try_from_value(Value::UInt16(Some(0))).unwrap(), false);
-        assert_eq!(bool::try_from_value(Value::UInt32(Some(1))).unwrap(), true);
-        assert_eq!(bool::try_from_value(Value::UInt64(Some(0))).unwrap(), false);
+        assert_eq!(bool::decode_value(Value::Int8(Some(1))).unwrap(), true);
+        assert_eq!(bool::decode_value(Value::Int8(Some(0))).unwrap(), false);
+        assert_eq!(bool::decode_value(Value::Int16(Some(1))).unwrap(), true);
+        assert_eq!(bool::decode_value(Value::UInt8(Some(1))).unwrap(), true);
+        assert_eq!(bool::decode_value(Value::UInt16(Some(0))).unwrap(), false);
+        assert_eq!(bool::decode_value(Value::UInt32(Some(1))).unwrap(), true);
+        assert_eq!(bool::decode_value(Value::UInt64(Some(0))).unwrap(), false);
         assert_eq!(
-            bool::try_from_value(Value::UInt128(Some(Box::new(1)))).unwrap(),
+            bool::decode_value(Value::UInt128(Some(Box::new(1)))).unwrap(),
             true
         );
         assert_eq!(
-            bool::try_from_value(Value::Int128(Some(Box::new(0)))).unwrap(),
+            bool::decode_value(Value::Int128(Some(Box::new(0)))).unwrap(),
             false
         );
 
@@ -461,93 +461,93 @@ mod tests {
         assert!(bool::parse("maybe").is_err());
 
         assert_eq!(
-            bool::try_from_value(Value::Json(Some(serde_json::json!(true)))).unwrap(),
+            bool::decode_value(Value::Json(Some(serde_json::json!(true)))).unwrap(),
             true
         );
         assert_eq!(
-            bool::try_from_value(Value::Json(Some(serde_json::json!(0)))).unwrap(),
+            bool::decode_value(Value::Json(Some(serde_json::json!(0)))).unwrap(),
             false
         );
         assert_eq!(
-            bool::try_from_value(Value::Json(Some(serde_json::json!(1)))).unwrap(),
+            bool::decode_value(Value::Json(Some(serde_json::json!(1)))).unwrap(),
             true
         );
-        assert!(bool::try_from_value(Value::Json(Some(serde_json::json!(2)))).is_err());
+        assert!(bool::decode_value(Value::Json(Some(serde_json::json!(2)))).is_err());
     }
 
     #[test]
     fn decimal_from_types() {
         assert_eq!(
-            Decimal::try_from_value(Value::Int8(Some(5))).unwrap(),
+            Decimal::decode_value(Value::Int8(Some(5))).unwrap(),
             Decimal::new(5, 0)
         );
         assert_eq!(
-            Decimal::try_from_value(Value::UInt8(Some(10))).unwrap(),
+            Decimal::decode_value(Value::UInt8(Some(10))).unwrap(),
             Decimal::new(10, 0)
         );
         assert_eq!(
-            Decimal::try_from_value(Value::UInt16(Some(20))).unwrap(),
+            Decimal::decode_value(Value::UInt16(Some(20))).unwrap(),
             Decimal::new(20, 0)
         );
         assert_eq!(
-            Decimal::try_from_value(Value::UInt32(Some(30))).unwrap(),
+            Decimal::decode_value(Value::UInt32(Some(30))).unwrap(),
             Decimal::new(30, 0)
         );
         assert_eq!(
-            Decimal::try_from_value(Value::UInt64(Some(40))).unwrap(),
+            Decimal::decode_value(Value::UInt64(Some(40))).unwrap(),
             Decimal::new(40, 0)
         );
         let large_u64: u64 = 10_000_000_000_000_000_000;
-        let dec = Decimal::try_from_value(Value::UInt64(Some(large_u64))).unwrap();
+        let dec = Decimal::decode_value(Value::UInt64(Some(large_u64))).unwrap();
         assert!(
             dec > Decimal::ZERO,
             "Decimal from large u64 should be positive, got: {dec}"
         );
         assert_eq!(dec.to_string(), large_u64.to_string());
-        assert!(Decimal::try_from_value(Value::Float32(Some(1.5))).is_ok());
-        assert!(Decimal::try_from_value(Value::Float64(Some(2.5))).is_ok());
-        assert!(Decimal::try_from_value(Value::Varchar(Some("3.14".into()))).is_ok());
-        assert!(Decimal::try_from_value(Value::Unknown(Some("1.23".into()))).is_ok());
+        assert!(Decimal::decode_value(Value::Float32(Some(1.5))).is_ok());
+        assert!(Decimal::decode_value(Value::Float64(Some(2.5))).is_ok());
+        assert!(Decimal::decode_value(Value::Varchar(Some("3.14".into()))).is_ok());
+        assert!(Decimal::decode_value(Value::Unknown(Some("1.23".into()))).is_ok());
 
-        assert!(Decimal::try_from_value(Value::Json(Some(serde_json::json!(42.5)))).is_ok());
+        assert!(Decimal::decode_value(Value::Json(Some(serde_json::json!(42.5)))).is_ok());
     }
 
     #[test]
     fn integer_from_json() {
         assert_eq!(
-            i32::try_from_value(Value::Json(Some(serde_json::json!(42)))).unwrap(),
+            i32::decode_value(Value::Json(Some(serde_json::json!(42)))).unwrap(),
             42
         );
         assert_eq!(
-            i32::try_from_value(Value::Json(Some(serde_json::json!("99")))).unwrap(),
+            i32::decode_value(Value::Json(Some(serde_json::json!("99")))).unwrap(),
             99
         );
         assert_eq!(
-            i32::try_from_value(Value::Json(Some(serde_json::json!(5.0)))).unwrap(),
+            i32::decode_value(Value::Json(Some(serde_json::json!(5.0)))).unwrap(),
             5
         );
-        assert!(i8::try_from_value(Value::Json(Some(serde_json::json!(1000)))).is_err());
+        assert!(i8::decode_value(Value::Json(Some(serde_json::json!(1000)))).is_err());
         assert_eq!(
-            i8::try_from_value(Value::Json(Some(serde_json::json!(-128)))).unwrap(),
+            i8::decode_value(Value::Json(Some(serde_json::json!(-128)))).unwrap(),
             -128
         );
         assert_eq!(
-            i16::try_from_value(Value::Json(Some(serde_json::json!("300")))).unwrap(),
+            i16::decode_value(Value::Json(Some(serde_json::json!("300")))).unwrap(),
             300
         );
         let json =
             |f: f64| serde_json::Value::Number(serde_json::Number::from_f64(f).unwrap()).as_value();
-        assert!(i64::try_from_value(json(9_223_372_036_854_775_808.0)).is_err());
-        assert!(i32::try_from_value(json(2_147_483_648.0)).is_err());
-        assert!(i8::try_from_value(json(128.0)).is_err());
-        assert!(u64::try_from_value(json(18_446_744_073_709_551_616.0)).is_err());
-        assert!(u8::try_from_value(json(256.0)).is_err());
+        assert!(i64::decode_value(json(9_223_372_036_854_775_808.0)).is_err());
+        assert!(i32::decode_value(json(2_147_483_648.0)).is_err());
+        assert!(i8::decode_value(json(128.0)).is_err());
+        assert!(u64::decode_value(json(18_446_744_073_709_551_616.0)).is_err());
+        assert!(u8::decode_value(json(256.0)).is_err());
         assert!(
-            i128::try_from_value(json(170_141_183_460_469_231_731_687_303_715_884_105_728.0))
+            i128::decode_value(json(170_141_183_460_469_231_731_687_303_715_884_105_728.0))
                 .is_err()
         );
         assert!(
-            u128::try_from_value(json(340_282_366_920_938_463_463_374_607_431_768_211_456.0))
+            u128::decode_value(json(340_282_366_920_938_463_463_374_607_431_768_211_456.0))
                 .is_err()
         );
     }
@@ -555,68 +555,68 @@ mod tests {
     #[test]
     fn integer_text_float() {
         assert_eq!(
-            i32::try_from_value(Value::Varchar(Some("42".into()))).unwrap(),
+            i32::decode_value(Value::Varchar(Some("42".into()))).unwrap(),
             42
         );
         assert_eq!(
-            i32::try_from_value(Value::Unknown(Some("99".into()))).unwrap(),
+            i32::decode_value(Value::Unknown(Some("99".into()))).unwrap(),
             99
         );
-        assert_eq!(i32::try_from_value(Value::Float64(Some(10.0))).unwrap(), 10);
-        assert!(i32::try_from_value(Value::Float64(Some(10.5))).is_err());
+        assert_eq!(i32::decode_value(Value::Float64(Some(10.0))).unwrap(), 10);
+        assert!(i32::decode_value(Value::Float64(Some(10.5))).is_err());
     }
 
     #[test]
     fn integer_cross_conversions() {
-        assert_eq!(i16::try_from_value(Value::Int8(Some(5))).unwrap(), 5);
-        assert_eq!(i16::try_from_value(Value::UInt8(Some(200))).unwrap(), 200);
-        assert_eq!(i16::try_from_value(Value::UInt16(Some(100))).unwrap(), 100);
-        assert_eq!(i64::try_from_value(Value::UInt8(Some(1))).unwrap(), 1);
-        assert_eq!(i64::try_from_value(Value::UInt16(Some(2))).unwrap(), 2);
-        assert_eq!(i64::try_from_value(Value::UInt32(Some(3))).unwrap(), 3);
-        assert_eq!(i64::try_from_value(Value::UInt64(Some(4))).unwrap(), 4);
-        assert_eq!(i128::try_from_value(Value::UInt8(Some(1))).unwrap(), 1);
+        assert_eq!(i16::decode_value(Value::Int8(Some(5))).unwrap(), 5);
+        assert_eq!(i16::decode_value(Value::UInt8(Some(200))).unwrap(), 200);
+        assert_eq!(i16::decode_value(Value::UInt16(Some(100))).unwrap(), 100);
+        assert_eq!(i64::decode_value(Value::UInt8(Some(1))).unwrap(), 1);
+        assert_eq!(i64::decode_value(Value::UInt16(Some(2))).unwrap(), 2);
+        assert_eq!(i64::decode_value(Value::UInt32(Some(3))).unwrap(), 3);
+        assert_eq!(i64::decode_value(Value::UInt64(Some(4))).unwrap(), 4);
+        assert_eq!(i128::decode_value(Value::UInt8(Some(1))).unwrap(), 1);
         assert_eq!(
-            i128::try_from_value(Value::UInt128(Some(Box::new(999)))).unwrap(),
+            i128::decode_value(Value::UInt128(Some(Box::new(999)))).unwrap(),
             999
         );
-        assert_eq!(u64::try_from_value(Value::UInt8(Some(1))).unwrap(), 1);
-        assert_eq!(u64::try_from_value(Value::UInt16(Some(2))).unwrap(), 2);
-        assert_eq!(u64::try_from_value(Value::UInt32(Some(3))).unwrap(), 3);
-        assert_eq!(u128::try_from_value(Value::UInt8(Some(1))).unwrap(), 1);
-        assert_eq!(u128::try_from_value(Value::UInt64(Some(9))).unwrap(), 9);
+        assert_eq!(u64::decode_value(Value::UInt8(Some(1))).unwrap(), 1);
+        assert_eq!(u64::decode_value(Value::UInt16(Some(2))).unwrap(), 2);
+        assert_eq!(u64::decode_value(Value::UInt32(Some(3))).unwrap(), 3);
+        assert_eq!(u128::decode_value(Value::UInt8(Some(1))).unwrap(), 1);
+        assert_eq!(u128::decode_value(Value::UInt64(Some(9))).unwrap(), 9);
 
-        assert!(i8::try_from_value(Value::Int16(Some(200))).is_err());
-        assert_eq!(i8::try_from_value(Value::Int16(Some(-128))).unwrap(), -128);
-        assert_eq!(i8::try_from_value(Value::Int16(Some(127))).unwrap(), 127);
-        assert!(i8::try_from_value(Value::Int16(Some(128))).is_err());
-        assert!(i8::try_from_value(Value::Int16(Some(-129))).is_err());
+        assert!(i8::decode_value(Value::Int16(Some(200))).is_err());
+        assert_eq!(i8::decode_value(Value::Int16(Some(-128))).unwrap(), -128);
+        assert_eq!(i8::decode_value(Value::Int16(Some(127))).unwrap(), 127);
+        assert!(i8::decode_value(Value::Int16(Some(128))).is_err());
+        assert!(i8::decode_value(Value::Int16(Some(-129))).is_err());
 
-        assert!(u16::try_from_value(Value::Int32(Some(70_000))).is_err());
+        assert!(u16::decode_value(Value::Int32(Some(70_000))).is_err());
         assert_eq!(
-            u16::try_from_value(Value::Int32(Some(65_535))).unwrap(),
+            u16::decode_value(Value::Int32(Some(65_535))).unwrap(),
             65_535
         );
-        assert!(u16::try_from_value(Value::Int32(Some(-1))).is_err());
+        assert!(u16::decode_value(Value::Int32(Some(-1))).is_err());
 
-        assert!(u8::try_from_value(Value::Int16(Some(256))).is_err());
-        assert_eq!(u8::try_from_value(Value::Int16(Some(255))).unwrap(), 255);
+        assert!(u8::decode_value(Value::Int16(Some(256))).is_err());
+        assert_eq!(u8::decode_value(Value::Int16(Some(255))).unwrap(), 255);
 
-        assert!(i64::try_from_value(Value::UInt64(Some(u64::MAX))).is_err());
+        assert!(i64::decode_value(Value::UInt64(Some(u64::MAX))).is_err());
         assert_eq!(
-            i64::try_from_value(Value::UInt64(Some(i64::MAX as u64))).unwrap(),
+            i64::decode_value(Value::UInt64(Some(i64::MAX as u64))).unwrap(),
             i64::MAX
         );
 
-        assert!(i128::try_from_value(Value::UInt128(Some(Box::new(u128::MAX)))).is_err());
+        assert!(i128::decode_value(Value::UInt128(Some(Box::new(u128::MAX)))).is_err());
         assert_eq!(
-            i128::try_from_value(Value::UInt128(Some(Box::new(i128::MAX as u128)))).unwrap(),
+            i128::decode_value(Value::UInt128(Some(Box::new(i128::MAX as u128)))).unwrap(),
             i128::MAX
         );
 
-        assert_eq!(i128::try_from_value(Value::UInt8(Some(255))).unwrap(), 255);
-        assert_eq!(u8::try_from_value(Value::Int8(Some(42))).unwrap(), 42);
-        assert!(u8::try_from_value(Value::Int8(Some(-1))).is_err());
+        assert_eq!(i128::decode_value(Value::UInt8(Some(255))).unwrap(), 255);
+        assert_eq!(u8::decode_value(Value::Int8(Some(42))).unwrap(), 42);
+        assert!(u8::decode_value(Value::Int8(Some(-1))).is_err());
     }
 
     #[test]
@@ -643,7 +643,7 @@ mod tests {
                     }
                     _ => unreachable!(),
                 });
-                let got = <$target as AsValue>::try_from_value(value);
+                let got = <$target as AsValue>::decode_value(value);
                 match (expected, got) {
                     (Ok(e), Ok(g)) => assert_eq!(e, g),
                     (Err(_), Err(_)) => {}
@@ -667,16 +667,16 @@ mod tests {
     #[test]
     fn integer_decimal_conversions() {
         assert_eq!(
-            i32::try_from_value(Value::Decimal(Some(Decimal::new(42, 0)), 0, 0)).unwrap(),
+            i32::decode_value(Value::Decimal(Some(Decimal::new(42, 0)), 0, 0)).unwrap(),
             42
         );
-        assert!(i32::try_from_value(Value::Decimal(Some(Decimal::new(155, 1)), 0, 0)).is_err());
+        assert!(i32::decode_value(Value::Decimal(Some(Decimal::new(155, 1)), 0, 0)).is_err());
         assert_eq!(
-            i64::try_from_value(Value::Decimal(Some(Decimal::new(100, 0)), 0, 0)).unwrap(),
+            i64::decode_value(Value::Decimal(Some(Decimal::new(100, 0)), 0, 0)).unwrap(),
             100
         );
         assert_eq!(
-            u64::try_from_value(Value::Decimal(Some(Decimal::new(50, 0)), 0, 0)).unwrap(),
+            u64::decode_value(Value::Decimal(Some(Decimal::new(50, 0)), 0, 0)).unwrap(),
             50
         );
     }
@@ -684,43 +684,40 @@ mod tests {
     #[test]
     fn float_conversions() {
         assert!(
-            f32::try_from_value(Value::Decimal(
+            f32::decode_value(Value::Decimal(
                 Some(rust_decimal::Decimal::new(15, 1)),
                 0,
                 0
             ))
             .is_ok()
         );
-        assert_eq!(f32::try_from_value(Value::Float64(Some(2.5))).unwrap(), 2.5);
-        assert_eq!(f64::try_from_value(Value::Float32(Some(1.5))).unwrap(), 1.5);
+        assert_eq!(f32::decode_value(Value::Float64(Some(2.5))).unwrap(), 2.5);
+        assert_eq!(f64::decode_value(Value::Float32(Some(1.5))).unwrap(), 1.5);
         assert!(
-            f64::try_from_value(Value::Decimal(
+            f64::decode_value(Value::Decimal(
                 Some(rust_decimal::Decimal::new(25, 1)),
                 0,
                 0
             ))
             .is_ok()
         );
-        assert!(f32::try_from_value(Value::Json(Some(serde_json::json!(1.5)))).is_ok());
-        assert!(f64::try_from_value(Value::Json(Some(serde_json::json!(2.5)))).is_ok());
-        assert!(f32::try_from_value(Value::Json(Some(serde_json::json!("x")))).is_err());
-        assert!(f64::try_from_value(Value::Json(Some(serde_json::json!("x")))).is_err());
+        assert!(f32::decode_value(Value::Json(Some(serde_json::json!(1.5)))).is_ok());
+        assert!(f64::decode_value(Value::Json(Some(serde_json::json!(2.5)))).is_ok());
+        assert!(f32::decode_value(Value::Json(Some(serde_json::json!("x")))).is_err());
+        assert!(f64::decode_value(Value::Json(Some(serde_json::json!("x")))).is_err());
     }
 
     #[test]
     fn string_from_types() {
+        assert_eq!(String::decode_value(Value::Int32(Some(42))).unwrap(), "42");
         assert_eq!(
-            String::try_from_value(Value::Int32(Some(42))).unwrap(),
-            "42"
-        );
-        assert_eq!(
-            String::try_from_value(Value::Float64(Some(3.14))).unwrap(),
+            String::decode_value(Value::Float64(Some(3.14))).unwrap(),
             "3.14"
         );
-        assert_eq!(String::try_from_value(Value::Char(Some('x'))).unwrap(), "x");
-        assert!(String::try_from_value(Value::Uuid(Some(uuid::Uuid::nil()))).is_ok());
+        assert_eq!(String::decode_value(Value::Char(Some('x'))).unwrap(), "x");
+        assert!(String::decode_value(Value::Uuid(Some(uuid::Uuid::nil()))).is_ok());
         assert_eq!(
-            String::try_from_value(Value::Json(Some(serde_json::json!("hi")))).unwrap(),
+            String::decode_value(Value::Json(Some(serde_json::json!("hi")))).unwrap(),
             "hi"
         );
     }
@@ -728,46 +725,45 @@ mod tests {
     #[test]
     fn char_conversions() {
         assert_eq!(
-            char::try_from_value(Value::Varchar(Some("a".into()))).unwrap(),
+            char::decode_value(Value::Varchar(Some("a".into()))).unwrap(),
             'a'
         );
-        assert!(char::try_from_value(Value::Varchar(Some("ab".into()))).is_err());
+        assert!(char::decode_value(Value::Varchar(Some("ab".into()))).is_err());
         assert_eq!(
-            char::try_from_value(Value::Json(Some(serde_json::json!("z")))).unwrap(),
+            char::decode_value(Value::Json(Some(serde_json::json!("z")))).unwrap(),
             'z'
         );
         assert_eq!(
-            char::try_from_value(Value::Varchar(Some("é".into()))).unwrap(),
+            char::decode_value(Value::Varchar(Some("é".into()))).unwrap(),
             'é'
         );
         assert_eq!(
-            char::try_from_value(Value::Varchar(Some("€".into()))).unwrap(),
+            char::decode_value(Value::Varchar(Some("€".into()))).unwrap(),
             '€'
         );
         assert_eq!(
-            char::try_from_value(Value::Json(Some(serde_json::json!("é")))).unwrap(),
+            char::decode_value(Value::Json(Some(serde_json::json!("é")))).unwrap(),
             'é'
         );
         assert_eq!(char::parse("é").unwrap(), 'é');
-        assert_eq!(char::try_from_value(Value::Int32(Some(0x41))).unwrap(), 'A');
-        assert!(char::try_from_value(Value::Int32(Some(0x11_0000))).is_err());
-        assert!(char::try_from_value(Value::Int32(Some(-1))).is_err());
-        let error = char::try_from_value(Value::Json(Some(serde_json::json!("ab")))).unwrap_err();
+        assert_eq!(char::decode_value(Value::Int32(Some(0x41))).unwrap(), 'A');
+        assert!(char::decode_value(Value::Int32(Some(0x11_0000))).is_err());
+        assert!(char::decode_value(Value::Int32(Some(-1))).is_err());
+        let error = char::decode_value(Value::Json(Some(serde_json::json!("ab")))).unwrap_err();
         assert!(error.to_string().contains("more than one character"));
-        assert!(char::try_from_value(Value::Json(Some(serde_json::json!(1)))).is_err());
+        assert!(char::decode_value(Value::Json(Some(serde_json::json!(1)))).is_err());
     }
 
     #[test]
     fn blob_parse() {
-        let v = Box::<[u8]>::try_from_value(Value::Unknown(Some(r"\x41".into()))).unwrap();
+        let v = Box::<[u8]>::decode_value(Value::Unknown(Some(r"\x41".into()))).unwrap();
         assert_eq!(v.as_ref(), [0x41]);
-        assert!(Box::<[u8]>::try_from_value(Value::Int32(Some(1))).is_err());
-        let v = Box::<[u8]>::try_from_value(Value::Varchar(Some("deadbeef".into()))).unwrap();
+        assert!(Box::<[u8]>::decode_value(Value::Int32(Some(1))).is_err());
+        let v = Box::<[u8]>::decode_value(Value::Varchar(Some("deadbeef".into()))).unwrap();
         assert_eq!(v.as_ref(), &[0xde, 0xad, 0xbe, 0xef]);
         let v2 = Box::<[u8]>::parse("\\xCAFE").unwrap();
         assert_eq!(v2.as_ref(), &[0xCA, 0xFE]);
-        let blob: Box<[u8]> =
-            Box::<[u8]>::try_from_value(Value::Blob(Some(vec![9].into()))).unwrap();
+        let blob: Box<[u8]> = Box::<[u8]>::decode_value(Value::Blob(Some(vec![9].into()))).unwrap();
         assert_eq!(blob.as_ref(), [9]);
         let error = Box::<[u8]>::parse("zz").unwrap_err();
         assert!(format!("{error:#}").contains("While decoding"));
@@ -786,11 +782,11 @@ mod tests {
         assert!(!i3.is_zero());
 
         assert_eq!(
-            Duration::try_from_value(Value::Varchar(Some("2 hours".into()))).unwrap(),
+            Duration::decode_value(Value::Varchar(Some("2 hours".into()))).unwrap(),
             Duration::from_secs(7200)
         );
         assert_eq!(
-            time::Duration::try_from_value(Value::Varchar(Some("30 minutes".into()))).unwrap(),
+            time::Duration::decode_value(Value::Varchar(Some("30 minutes".into()))).unwrap(),
             time::Duration::minutes(30)
         );
         assert!(Duration::parse("nonsense").is_err());
@@ -864,7 +860,7 @@ mod tests {
 
     #[test]
     fn uuid_from_varchar() {
-        let u = uuid::Uuid::try_from_value(Value::Varchar(Some(
+        let u = uuid::Uuid::decode_value(Value::Varchar(Some(
             "550e8400-e29b-41d4-a716-446655440000".into(),
         )))
         .unwrap();
@@ -873,42 +869,40 @@ mod tests {
 
     #[test]
     fn temporal_from_value() {
-        let t = time::Time::try_from_value(Value::Interval(Some(
+        let t = time::Time::decode_value(Value::Interval(Some(
             Interval::from_hours(2) + Interval::from_mins(30),
         )))
         .unwrap();
         assert_eq!(t, time::Time::from_hms(2, 30, 0).unwrap());
-        assert!(
-            time::Time::try_from_value(Value::Interval(Some(Interval::from_mins(-30)))).is_err()
-        );
+        assert!(time::Time::decode_value(Value::Interval(Some(Interval::from_mins(-30)))).is_err());
 
         let d = time::Date::from_calendar_date(2024, time::Month::January, 1).unwrap();
         let ts = time::PrimitiveDateTime::new(d, time::Time::MIDNIGHT);
         assert_eq!(
-            time::Date::try_from_value(Value::Timestamp(Some(ts))).unwrap(),
+            time::Date::decode_value(Value::Timestamp(Some(ts))).unwrap(),
             d
         );
         let ts = time::PrimitiveDateTime::new(d, time::Time::from_hms(12, 0, 0).unwrap());
-        assert!(time::Date::try_from_value(Value::Timestamp(Some(ts))).is_err());
-        let odt = time::OffsetDateTime::try_from_value(Value::Timestamp(Some(ts))).unwrap();
+        assert!(time::Date::decode_value(Value::Timestamp(Some(ts))).is_err());
+        let odt = time::OffsetDateTime::decode_value(Value::Timestamp(Some(ts))).unwrap();
         assert_eq!(odt.date(), d);
     }
 
     #[test]
     fn vec_list_conversions() {
         let v = vec![1_i32, 2, 3].as_value();
-        let back: Vec<i32> = Vec::try_from_value(v).unwrap();
+        let back: Vec<i32> = Vec::decode_value(v).unwrap();
         assert_eq!(back, vec![1, 2, 3]);
 
         let v = Value::Json(Some(serde_json::json!([1, 2, 3])));
-        let back: Vec<i32> = Vec::try_from_value(v).unwrap();
+        let back: Vec<i32> = Vec::decode_value(v).unwrap();
         assert_eq!(back, vec![1, 2, 3]);
     }
 
     #[test]
     fn array_conversions() {
         let v = [10_i32, 20, 30].as_value();
-        let back: [i32; 3] = <[i32; 3]>::try_from_value(v).unwrap();
+        let back: [i32; 3] = <[i32; 3]>::decode_value(v).unwrap();
         assert_eq!(back, [10, 20, 30]);
     }
 
@@ -917,10 +911,10 @@ mod tests {
         let mut m = HashMap::new();
         m.insert("key".to_string(), 42_i32);
         let v = m.clone().as_value();
-        let back: HashMap<String, i32> = HashMap::try_from_value(v).unwrap();
+        let back: HashMap<String, i32> = HashMap::decode_value(v).unwrap();
         assert_eq!(back, m);
         assert!(
-            HashMap::<String, i32>::try_from_value(m.as_value().as_null())
+            HashMap::<String, i32>::decode_value(m.as_value().as_null())
                 .unwrap()
                 .is_empty()
         );
@@ -929,30 +923,33 @@ mod tests {
     #[test]
     fn optional_owned_metadata() {
         assert_eq!(
-            Option::<[i32; 2]>::try_from_value(<[i32; 2]>::as_empty_value()).unwrap(),
+            Option::<[i32; 2]>::decode_value(<[i32; 2]>::as_empty_value()).unwrap(),
             None
         );
         assert_eq!(
-            Option::<Vec<i32>>::try_from_value(Vec::<i32>::as_empty_value()).unwrap(),
+            Option::<Vec<i32>>::decode_value(Vec::<i32>::as_empty_value()).unwrap(),
             None
         );
-        assert_eq!(Option::<HashMap<i32, String>>::try_from_value(HashMap::<i32, String>::as_empty_value()).unwrap(), None);
         assert_eq!(
-            Option::<serde_json::Value>::try_from_value(serde_json::Value::as_empty_value())
+            Option::<HashMap<i32, String>>::decode_value(HashMap::<i32, String>::as_empty_value())
                 .unwrap(),
             None
         );
         assert_eq!(
-            Option::<[i32; 2]>::try_from_value([1, 2].as_value()).unwrap(),
+            Option::<serde_json::Value>::decode_value(serde_json::Value::as_empty_value()).unwrap(),
+            None
+        );
+        assert_eq!(
+            Option::<[i32; 2]>::decode_value([1, 2].as_value()).unwrap(),
             Some([1, 2])
         );
         assert_eq!(
-            Option::<[i32; 2]>::try_from_value(Vec::<i32>::as_empty_value()).unwrap(),
+            Option::<[i32; 2]>::decode_value(Vec::<i32>::as_empty_value()).unwrap(),
             None
         );
         let text = String::from("keep the owned string buffer");
         let pointer = text.as_ptr();
-        let text = Option::<String>::try_from_value(text).unwrap().unwrap();
+        let text = Option::<String>::decode_value(text).unwrap().unwrap();
         assert_eq!(text.as_ptr(), pointer);
     }
 
@@ -963,13 +960,13 @@ mod tests {
         assert_eq!((&None::<i32>).as_value(), Value::Int32(None));
         assert_eq!(Option::<i32>::parse("null").unwrap(), None);
         assert_eq!(Option::<i32>::parse("42").unwrap(), Some(42));
-        let back: Option<i32> = Option::try_from_value(Value::Int32(Some(42))).unwrap();
+        let back: Option<i32> = Option::decode_value(Value::Int32(Some(42))).unwrap();
         assert_eq!(back, Some(42));
-        let none: Option<i32> = Option::try_from_value(Value::Int32(None)).unwrap();
+        let none: Option<i32> = Option::decode_value(Value::Int32(None)).unwrap();
         assert_eq!(none, None);
 
         assert_eq!(Box::new(42_i32).as_value(), Value::Int32(Some(42)));
-        let back: Box<i32> = Box::try_from_value(Value::Int32(Some(42))).unwrap();
+        let back: Box<i32> = Box::decode_value(Value::Int32(Some(42))).unwrap();
         assert_eq!(*back, 42);
         assert_eq!(*Box::<i32>::parse("7").unwrap(), 7);
         assert_eq!(Arc::new(42_i32).as_value(), Value::Int32(Some(42)));
@@ -980,18 +977,18 @@ mod tests {
     fn fixed_decimal_roundtrip() {
         let fd: FixedDecimal<10, 2> = Decimal::new(1234, 2).into();
         let v = fd.as_value();
-        let back: FixedDecimal<10, 2> = FixedDecimal::try_from_value(v).unwrap();
+        let back: FixedDecimal<10, 2> = FixedDecimal::decode_value(v).unwrap();
         assert_eq!(back.0, Decimal::new(1234, 2));
     }
 
     #[test]
     fn isize_usize_conversions() {
         assert_eq!(42_isize.as_value(), Value::Int64(Some(42)));
-        let back: isize = isize::try_from_value(Value::Int64(Some(42))).unwrap();
+        let back: isize = isize::decode_value(Value::Int64(Some(42))).unwrap();
         assert_eq!(back, 42);
 
         assert_eq!(42_usize.as_value(), Value::UInt64(Some(42)));
-        let back: usize = usize::try_from_value(Value::UInt64(Some(42))).unwrap();
+        let back: usize = usize::decode_value(Value::UInt64(Some(42))).unwrap();
         assert_eq!(back, 42);
 
         // Unsigned sources wider than isize::MAX must not silently wrap around.
@@ -999,31 +996,31 @@ mod tests {
         // above i32::MAX are out of range, so this asserts the checked path is
         // taken rather than an unchecked `as` cast.
         let over_isize = (isize::MAX as u128 + 1) as u64;
-        assert!(isize::try_from_value(over_isize.as_value()).is_err());
-        assert!(isize::try_from_value(u64::MAX.as_value()).is_err());
+        assert!(isize::decode_value(over_isize.as_value()).is_err());
+        assert!(isize::decode_value(u64::MAX.as_value()).is_err());
         assert_eq!(
-            isize::try_from_value((isize::MAX as u64).as_value()).unwrap(),
+            isize::decode_value((isize::MAX as u64).as_value()).unwrap(),
             isize::MAX
         );
         // u16/u8 sources always fit into isize on supported targets.
-        assert_eq!(isize::try_from_value(65535_u16.as_value()).unwrap(), 65535);
-        assert_eq!(isize::try_from_value(255_u8.as_value()).unwrap(), 255);
+        assert_eq!(isize::decode_value(65535_u16.as_value()).unwrap(), 65535);
+        assert_eq!(isize::decode_value(255_u8.as_value()).unwrap(), 255);
 
         // usize is checked against u64 on 64-bit targets.
         assert_eq!(
-            usize::try_from_value(u64::MAX.as_value()).unwrap(),
+            usize::decode_value(u64::MAX.as_value()).unwrap(),
             usize::MAX
         );
-        assert_eq!(usize::try_from_value(255_u8.as_value()).unwrap(), 255);
-        assert_eq!(usize::try_from_value(65535_u16.as_value()).unwrap(), 65535);
+        assert_eq!(usize::decode_value(255_u8.as_value()).unwrap(), 255);
+        assert_eq!(usize::decode_value(65535_u16.as_value()).unwrap(), 65535);
     }
 
     #[test]
     fn array_varchar_chars() {
-        let v = <[char; 3]>::try_from_value(Value::Varchar(Some("abc".into()))).unwrap();
+        let v = <[char; 3]>::decode_value(Value::Varchar(Some("abc".into()))).unwrap();
         assert_eq!(v, ['a', 'b', 'c']);
-        assert!(<[char; 2]>::try_from_value(Value::Varchar(Some("abc".into()))).is_err());
-        let list = <[i32; 2]>::try_from_value(Value::List(
+        assert!(<[char; 2]>::decode_value(Value::Varchar(Some("abc".into()))).is_err());
+        let list = <[i32; 2]>::decode_value(Value::List(
             Some(vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into()),
             Box::new(CollectionType {
                 element: Value::Int32(None),
@@ -1032,7 +1029,7 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(list, [1, 2]);
-        let arr = <[i32; 2]>::try_from_value(Value::Array(
+        let arr = <[i32; 2]>::decode_value(Value::Array(
             Some(vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into()),
             Box::new(CollectionType {
                 element: Value::Int32(None),
@@ -1042,7 +1039,7 @@ mod tests {
         .unwrap();
         assert_eq!(arr, [1, 2]);
         assert!(
-            <[i32; 3]>::try_from_value(Value::List(
+            <[i32; 3]>::decode_value(Value::List(
                 Some(vec![Value::Int32(Some(1))].into()),
                 Box::new(CollectionType {
                     element: Value::Int32(None),
@@ -1051,40 +1048,40 @@ mod tests {
             ))
             .is_err()
         );
-        assert!(<[i32; 2]>::try_from_value(Value::Json(Some(serde_json::json!([6])))).is_err());
-        assert!(<[i32; 2]>::try_from_value(Value::Int32(Some(1))).is_err());
+        assert!(<[i32; 2]>::decode_value(Value::Json(Some(serde_json::json!([6])))).is_err());
+        assert!(<[i32; 2]>::decode_value(Value::Int32(Some(1))).is_err());
         assert_eq!(
-            <[i32; 2]>::try_from_value(Value::Json(Some(serde_json::json!([6, 7])))).unwrap(),
+            <[i32; 2]>::decode_value(Value::Json(Some(serde_json::json!([6, 7])))).unwrap(),
             [6, 7]
         );
-        assert!(<[i32; 2]>::try_from_value(Value::Unknown(Some("[8,9]".into()))).is_err());
+        assert!(<[i32; 2]>::decode_value(Value::Unknown(Some("[8,9]".into()))).is_err());
     }
 
     #[test]
     fn unknown_parse_paths() {
         assert_eq!(
-            i32::try_from_value(Value::Unknown(Some("42".into()))).unwrap(),
+            i32::decode_value(Value::Unknown(Some("42".into()))).unwrap(),
             42
         );
-        assert!(i32::try_from_value(Value::Unknown(Some("x".into()))).is_err());
+        assert!(i32::decode_value(Value::Unknown(Some("x".into()))).is_err());
         assert_eq!(
-            bool::try_from_value(Value::Unknown(Some("true".into()))).unwrap(),
+            bool::decode_value(Value::Unknown(Some("true".into()))).unwrap(),
             true
         );
     }
 
     #[test]
     fn decimal_conversions() {
-        let d = Decimal::try_from_value(Value::Json(Some(serde_json::json!(12.5)))).unwrap();
+        let d = Decimal::decode_value(Value::Json(Some(serde_json::json!(12.5)))).unwrap();
         assert_eq!(d, Decimal::new(125, 1));
-        assert!(Decimal::try_from_value(Value::Json(Some(serde_json::json!("x")))).is_err());
-        assert!(Decimal::try_from_value(Value::Boolean(Some(true))).is_err());
+        assert!(Decimal::decode_value(Value::Json(Some(serde_json::json!("x")))).is_err());
+        assert!(Decimal::decode_value(Value::Boolean(Some(true))).is_err());
         assert_eq!(
-            Decimal::try_from_value(Value::Unknown(Some("3.14".into()))).unwrap(),
+            Decimal::decode_value(Value::Unknown(Some("3.14".into()))).unwrap(),
             Decimal::new(314, 2)
         );
         assert_eq!(
-            Decimal::try_from_value(Value::Varchar(Some("2.5".into()))).unwrap(),
+            Decimal::decode_value(Value::Varchar(Some("2.5".into()))).unwrap(),
             Decimal::new(25, 1)
         );
         assert_eq!(Decimal::parse("7.25").unwrap(), Decimal::new(725, 2));
@@ -1095,80 +1092,81 @@ mod tests {
             Value::Decimal(None, 0, 0)
         );
 
-        assert!(Decimal::try_from_value(Value::Float64(Some(f64::NAN))).is_err());
-        assert!(Decimal::try_from_value(Value::Float64(Some(f64::INFINITY))).is_err());
+        assert!(Decimal::decode_value(Value::Float64(Some(f64::NAN))).is_err());
+        assert!(Decimal::decode_value(Value::Float64(Some(f64::INFINITY))).is_err());
         assert_eq!(
-            Decimal::try_from_value(Value::Float64(Some(2.0))).unwrap(),
+            Decimal::decode_value(Value::Float64(Some(2.0))).unwrap(),
             Decimal::new(2, 0)
         );
 
         assert_eq!(
-            u128::try_from_value(Value::Decimal(Some(Decimal::new(7, 0)), 0, 0)).unwrap(),
+            u128::decode_value(Value::Decimal(Some(Decimal::new(7, 0)), 0, 0)).unwrap(),
             7
         );
-        assert!(u128::try_from_value(Value::Decimal(Some(Decimal::new(15, 1)), 0, 0)).is_err());
+        assert!(u128::decode_value(Value::Decimal(Some(Decimal::new(15, 1)), 0, 0)).is_err());
         assert_eq!(
-            i128::try_from_value(Value::Decimal(Some(Decimal::new(9, 0)), 0, 0)).unwrap(),
+            i128::decode_value(Value::Decimal(Some(Decimal::new(9, 0)), 0, 0)).unwrap(),
             9
         );
-        assert!(isize::try_from_value(Value::Decimal(Some(Decimal::new(1, 1)), 0, 0)).is_err());
+        assert!(isize::decode_value(Value::Decimal(Some(Decimal::new(1, 1)), 0, 0)).is_err());
         assert_eq!(
-            isize::try_from_value(Value::Decimal(Some(Decimal::new(11, 0)), 0, 0)).unwrap(),
+            isize::decode_value(Value::Decimal(Some(Decimal::new(11, 0)), 0, 0)).unwrap(),
             11
         );
         assert_eq!(
-            usize::try_from_value(Value::Decimal(Some(Decimal::new(13, 0)), 0, 0)).unwrap(),
+            usize::decode_value(Value::Decimal(Some(Decimal::new(13, 0)), 0, 0)).unwrap(),
             13
         );
-        assert!(u64::try_from_value(Value::Decimal(Some(Decimal::new(1, 1)), 0, 0)).is_err());
+        assert!(u64::decode_value(Value::Decimal(Some(Decimal::new(1, 1)), 0, 0)).is_err());
     }
 
     #[test]
     fn blob_hex_errors() {
         assert!(Box::<[u8]>::parse("not-hex").is_err());
-        assert!(Box::<[u8]>::try_from_value(Value::Int32(Some(1))).is_err());
+        assert!(Box::<[u8]>::decode_value(Value::Int32(Some(1))).is_err());
     }
 
     #[test]
     fn map_from_json() {
         let json = serde_json::json!({"1": 10, "2": 20});
-        let map: HashMap<i32, i32> = HashMap::try_from_value(Value::Json(Some(json))).unwrap();
+        let map: HashMap<i32, i32> = HashMap::decode_value(Value::Json(Some(json))).unwrap();
         assert_eq!(map.get(&1), Some(&10));
-        assert!(HashMap::<i32, i32>::try_from_value(Value::Int32(Some(1))).is_err());
+        assert!(HashMap::<i32, i32>::decode_value(Value::Int32(Some(1))).is_err());
     }
 
     #[test]
     fn json_value_conversion() {
         assert_eq!(
-            serde_json::Value::try_from_value(Value::Json(None)).unwrap(),
+            serde_json::Value::decode_value(Value::Json(None)).unwrap(),
             serde_json::Value::Null
         );
         assert_eq!(
-            serde_json::Value::try_from_value(Value::Json(Some(serde_json::json!(1)))).unwrap(),
+            serde_json::Value::decode_value(Value::Json(Some(serde_json::json!(1)))).unwrap(),
             serde_json::json!(1)
         );
         assert_eq!(
-            serde_json::Value::try_from_value(Value::Int32(Some(1))).unwrap(),
+            serde_json::Value::decode_value(Value::Int32(Some(1))).unwrap(),
             serde_json::json!(1)
         );
         let map = HashMap::from([("a".to_string(), 1_i32)]).as_value();
         assert_eq!(
-            serde_json::Value::try_from_value(map).unwrap(),
+            serde_json::Value::decode_value(map).unwrap(),
             serde_json::json!({"a": 1})
         );
         assert_eq!(
-            serde_json::Value::try_from_value(Value::Varchar(Some(Cow::Borrowed(r#"{"a": 1}"#))))
+            serde_json::Value::decode_value(Value::Varchar(Some(Cow::Borrowed(r#"{"a": 1}"#))))
                 .unwrap(),
             serde_json::json!({"a": 1})
         );
         assert!(
-            serde_json::Value::try_from_value(Value::Varchar(Some(Cow::Owned("tank".into()))))
+            serde_json::Value::decode_value(Value::Varchar(Some(Cow::Owned("tank".into()))))
                 .is_err()
         );
         assert_eq!(Value::from(serde_json::json!(1)), Value::Int64(Some(1)));
+        // Exceeds i64, so it lands in the wider signed variant.
         assert_eq!(
             Value::from(serde_json::json!(u64::MAX)),
-            Value::UInt64(Some(u64::MAX))
+            Value::Int128(Some(Box::new(u64::MAX as i128)))
         );
         assert_eq!(
             Value::from(serde_json::json!("tank")),
@@ -1191,11 +1189,11 @@ mod tests {
         assert_eq!(Cell::new(5_i32).as_value(), Value::Int32(Some(5)));
         assert_eq!(RefCell::new(6_i32).as_value(), Value::Int32(Some(6)));
         assert_eq!(RwLock::new(7_i32).as_value(), Value::Int32(Some(7)));
-        let back: Cell<i32> = Cell::try_from_value(Value::Int32(Some(8))).unwrap();
+        let back: Cell<i32> = Cell::decode_value(Value::Int32(Some(8))).unwrap();
         assert_eq!(back.get(), 8);
-        let back: RefCell<i32> = RefCell::try_from_value(Value::Int32(Some(9))).unwrap();
+        let back: RefCell<i32> = RefCell::decode_value(Value::Int32(Some(9))).unwrap();
         assert_eq!(*back.borrow(), 9);
-        let back: RwLock<i32> = RwLock::try_from_value(Value::Int32(Some(10))).unwrap();
+        let back: RwLock<i32> = RwLock::decode_value(Value::Int32(Some(10))).unwrap();
         assert_eq!(*back.read().unwrap(), 10);
         assert_eq!(*RwLock::<i32>::parse("12").unwrap().read().unwrap(), 12);
     }
@@ -1206,9 +1204,9 @@ mod tests {
         // `&'static str` can never be decoded from a database value.
         // The payload would have to borrow from the row buffer, whose lifetime is not `'static`.
         assert!(
-            <&'static str>::try_from_value(Value::Varchar(Some(Cow::Owned("x".into())))).is_err()
+            <&'static str>::decode_value(Value::Varchar(Some(Cow::Owned("x".into())))).is_err()
         );
-        assert!(<&'static str>::try_from_value(Value::Varchar(Some(Cow::Borrowed("x")))).is_err());
+        assert!(<&'static str>::decode_value(Value::Varchar(Some(Cow::Borrowed("x")))).is_err());
     }
 
     #[test]

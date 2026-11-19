@@ -51,7 +51,7 @@ pub async fn select_options(executor: &mut impl Executor) -> Result<()> {
                 .order_by(bucket_order)
                 .build(&executor.driver()),
         )
-        .map(|row| u32::try_from_value(row?.value(0).unwrap()))
+        .map(|row| u32::decode_value(row?.value(0).unwrap()))
         .try_collect::<Vec<_>>()
         .await?;
     assert_eq!(buckets, vec![10, 20, 30, 40]);
@@ -68,7 +68,7 @@ pub async fn select_options(executor: &mut impl Executor) -> Result<()> {
                 .offset(Some(1))
                 .build(&executor.driver()),
         )
-        .map(|row| u32::try_from_value(row?.value(0).unwrap()))
+        .map(|row| u32::decode_value(row?.value(0).unwrap()))
         .try_collect::<Vec<_>>()
         .await?;
     assert_eq!(buckets, vec![20, 30]);
@@ -84,7 +84,7 @@ pub async fn select_options(executor: &mut impl Executor) -> Result<()> {
                 .offset(Some(2))
                 .build(&executor.driver()),
         )
-        .map(|row| u32::try_from_value(row?.value(0).unwrap()))
+        .map(|row| u32::decode_value(row?.value(0).unwrap()))
         .try_collect::<Vec<_>>()
         .await?;
     assert_eq!(buckets, vec![30, 40]);
@@ -100,7 +100,7 @@ pub async fn select_options(executor: &mut impl Executor) -> Result<()> {
                 .offset(Some(2))
                 .build(&executor.driver()),
         )
-        .map(|row| u32::try_from_value(row?.value(0).unwrap()))
+        .map(|row| u32::decode_value(row?.value(0).unwrap()))
         .try_collect::<Vec<_>>()
         .await?;
     assert_eq!(seqs, vec![3, 4]);
@@ -116,7 +116,7 @@ pub async fn select_options(executor: &mut impl Executor) -> Result<()> {
                 .offset(Some(3))
                 .build(&executor.driver()),
         )
-        .map(|row| u32::try_from_value(row?.value(0).unwrap()))
+        .map(|row| u32::decode_value(row?.value(0).unwrap()))
         .try_collect::<Vec<_>>()
         .await?;
     assert_eq!(seqs, vec![4]);
@@ -131,7 +131,7 @@ pub async fn select_options(executor: &mut impl Executor) -> Result<()> {
                 .offset(Some(4))
                 .build(&executor.driver()),
         )
-        .map(|row| u32::try_from_value(row?.value(0).unwrap()))
+        .map(|row| u32::decode_value(row?.value(0).unwrap()))
         .try_collect::<Vec<_>>()
         .await?;
     assert_eq!(seqs, vec![5, 6]);

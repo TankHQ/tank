@@ -1052,7 +1052,7 @@ mod tests {
     #[test]
     fn value_value() {
         assert_eq!(
-            Value::try_from_value("hello".as_value()).expect("Could not get a value from a value"),
+            Value::decode_value("hello".as_value()).expect("Could not get a value from a value"),
             Cow::Borrowed("hello").as_value()
         );
         assert_ne!("2hello".as_value(), Cow::Borrowed("1hello").as_value());

@@ -137,7 +137,7 @@ async fn borrowed_owned_parameters() {
                 .unwrap()
                 .unwrap();
             assert_eq!(
-                String::try_from_value(row.value(0).unwrap()).unwrap(),
+                String::decode_value(row.value(0).unwrap()).unwrap(),
                 expected_text
             );
             assert_eq!(
@@ -558,12 +558,9 @@ async fn retained_snapshot_types() {
             &Value::Blob(Some((&b""[..]).into()))
         );
         let third = rows.try_next().await.unwrap().unwrap();
-        assert_eq!(
-            String::try_from_value(third.value(0).unwrap()).unwrap(),
-            "�a"
-        );
+        assert_eq!(String::decode_value(third.value(0).unwrap()).unwrap(), "�a");
         assert!(rows.try_next().await.unwrap().is_none());
-        assert_eq!(f64::try_from_value(second.value(3).unwrap()).unwrap(), -2.5);
+        assert_eq!(f64::decode_value(second.value(3).unwrap()).unwrap(), -2.5);
     }
     let retained = retained.into_owned();
     drop(connection);
@@ -626,13 +623,13 @@ async fn snapshots_survive_schema() {
             .unwrap();
         assert_eq!(row.labels(), ["new_name"]);
         assert_eq!(
-            String::try_from_value(row.value(0).unwrap()).unwrap(),
+            String::decode_value(row.value(0).unwrap()).unwrap(),
             "second"
         );
     }
     assert_eq!(first.labels(), ["old_name"]);
     assert_eq!(
-        String::try_from_value(first.value(0).unwrap()).unwrap(),
+        String::decode_value(first.value(0).unwrap()).unwrap(),
         "first"
     );
 }
@@ -651,13 +648,13 @@ async fn streamed_scan_yields() {
              SELECT x, CASE x % 3 WHEN 0 THEN NULL WHEN 1 THEN 'héllo world' ELSE '' END, CAST(x AS BLOB) FROM n",
         ).try_for_each(|row| {
             seen += 1;
-            assert_eq!(i64::try_from_value(row.value(0).unwrap()).unwrap(), seen);
+            assert_eq!(i64::decode_value(row.value(0).unwrap()).unwrap(), seen);
             let expected = match seen % 3 {
                 0 => None,
                 1 => Some("héllo world"),
                 _ => Some(""),
             };
-            assert_eq!(Option::<String>::try_from_value(row.value(1).unwrap()).unwrap().as_deref(), expected);
+            assert_eq!(Option::<String>::decode_value(row.value(1).unwrap()).unwrap().as_deref(), expected);
             assert_eq!(row.value(2).unwrap().as_ref(), &Value::Blob(Some(seen.to_string().as_bytes().into())));
             std::future::ready(Ok(()))
         });

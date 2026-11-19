@@ -508,7 +508,7 @@ mod tests {
             .await
             .unwrap();
         assert!(!parameters.is_empty());
-        let threads = String::try_from_value(
+        let threads = String::decode_value(
             parameters
                 .iter()
                 .find_map(|row| {
@@ -525,7 +525,7 @@ mod tests {
         )
         .expect("Could not extract string");
         assert_eq!(threads, "6");
-        let max_memory = String::try_from_value(
+        let max_memory = String::decode_value(
             parameters
                 .iter()
                 .find_map(|row| {

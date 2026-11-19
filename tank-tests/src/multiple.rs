@@ -172,11 +172,11 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
         .collect::<Vec<_>>();
     let expected = result
         .iter()
-        .map(|row| String::try_from_value(row.get_column("string").unwrap().clone()))
+        .map(|row| String::decode_value(row.get_column("string").unwrap().clone()))
         .collect::<Result<Vec<_>>>()?;
     let projected = executor
         .fetch(&mut query)
-        .map(|row| String::try_from_value(row?.get_column("string").unwrap().clone()))
+        .map(|row| String::decode_value(row?.get_column("string").unwrap().clone()))
         .try_collect::<Vec<_>>()
         .await?;
     assert_eq!(
@@ -187,12 +187,12 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     result.sort_by(|a, b| {
         let a = a
             .get_column("string")
-            .map(|v| String::try_from_value(v.clone()))
+            .map(|v| String::decode_value(v.clone()))
             .expect("Does not have column \"string\"")
             .expect("The column called `string` is not a VARCHAR");
         let b = b
             .get_column("string")
-            .map(|v| String::try_from_value(v.clone()))
+            .map(|v| String::decode_value(v.clone()))
             .expect("Does not have column \"string\"")
             .expect("The column called `string` is not a VARCHAR");
         a.cmp(&b)

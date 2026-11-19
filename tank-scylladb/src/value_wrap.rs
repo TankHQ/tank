@@ -54,7 +54,7 @@ impl AsValue for ValueWrap {
         self.0
     }
 
-    fn try_from_value(value: impl AsValue) -> tank_core::Result<Self> {
+    fn decode_value(value: impl AsValue) -> tank_core::Result<Self> {
         Ok(Self(value.as_value().into_owned()))
     }
 }
@@ -75,7 +75,7 @@ impl SerializeValue for ValueWrap {
             ty: &ColumnType,
             writer: CellWriter<'b>,
         ) -> Result<WrittenCellProof<'b>, SerializationError> {
-            Option::<V>::try_from_value(value)
+            Option::<V>::decode_value(value)
                 .map_err(|e| {
                     SerializationError::new(Error::new(ErrorKind::InvalidData, format!("{}", e)))
                 })?
@@ -101,7 +101,7 @@ impl SerializeValue for ValueWrap {
                     if self.0.is_null() {
                         return Ok(writer.set_null());
                     }
-                    let v = Decimal::try_from_value(value).map_err(|e| {
+                    let v = Decimal::decode_value(value).map_err(|e| {
                         SerializationError::new(Error::new(
                             ErrorKind::InvalidData,
                             format!("{}", e),
@@ -114,7 +114,7 @@ impl SerializeValue for ValueWrap {
                     .serialize(ty, writer)
                 }
                 NativeType::Double => do_serialize::<f64>(value, ty, writer),
-                NativeType::Duration => Option::<Interval>::try_from_value(value)
+                NativeType::Duration => Option::<Interval>::decode_value(value)
                     .map_err(conversion_error)?
                     .map(|v| CqlDuration {
                         months: v.months,
@@ -126,11 +126,11 @@ impl SerializeValue for ValueWrap {
                 NativeType::Int => do_serialize::<i32>(value, ty, writer),
                 NativeType::BigInt => do_serialize::<i64>(value, ty, writer),
                 NativeType::Text => do_serialize::<String>(value, ty, writer),
-                NativeType::Timestamp => Option::<PrimitiveDateTime>::try_from_value(value)
+                NativeType::Timestamp => Option::<PrimitiveDateTime>::decode_value(value)
                     .map_err(conversion_error)?
                     .map(|v| CqlTimestamp::from(v.assume_utc()))
                     .serialize(ty, writer),
-                NativeType::Inet => Option::<IpAddr>::try_from_value(value)
+                NativeType::Inet => Option::<IpAddr>::decode_value(value)
                     .map_err(conversion_error)?
                     .serialize(ty, writer),
                 NativeType::SmallInt => do_serialize::<i16>(value, ty, writer),

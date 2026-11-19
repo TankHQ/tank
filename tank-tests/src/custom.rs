@@ -27,7 +27,7 @@ impl AsValue for FpCategoryWrap {
         format!("{:?}", self.0).as_value()
     }
 
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {

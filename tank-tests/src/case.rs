@@ -143,8 +143,8 @@ pub async fn case(executor: &mut impl Executor) -> Result<()> {
         )
         .and_then(|row| async move {
             Ok((
-                i32::try_from_value(row.value(0).unwrap())?,
-                String::try_from_value(row.value(1).unwrap())?,
+                i32::decode_value(row.value(0).unwrap())?,
+                String::decode_value(row.value(1).unwrap())?,
             ))
         })
         .try_collect::<Vec<_>>()

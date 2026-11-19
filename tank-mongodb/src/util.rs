@@ -15,7 +15,7 @@ pub fn value_to_bson(v: &Value<'_>) -> Result<Bson> {
         Value::UInt8(Some(v), ..) => Bson::Int32(*v as i32),
         Value::UInt16(Some(v), ..) => Bson::Int32(*v as i32),
         Value::UInt32(Some(v), ..) => Bson::Int64(*v as i64),
-        Value::UInt64(Some(..), ..) => Bson::Int64(i64::try_from_value(v.clone())?),
+        Value::UInt64(Some(..), ..) => Bson::Int64(i64::decode_value(v.clone())?),
         Value::Float32(Some(v), ..) => Bson::Double(*v as f64),
         Value::Float64(Some(v), ..) => Bson::Double(*v),
         Value::Decimal(Some(v), ..) => Bson::Decimal128(
@@ -59,7 +59,7 @@ pub fn value_to_bson(v: &Value<'_>) -> Result<Bson> {
         Value::Map(Some(v), ..) => {
             let mut doc = Document::new();
             for (k, v) in v.iter() {
-                let Ok(k) = String::try_from_value(k.clone()) else {
+                let Ok(k) = String::decode_value(k.clone()) else {
                     return Err(anyhow!(
                         "Unexpected tank::Value key: {k:?}, it is not convertible to String"
                     ));

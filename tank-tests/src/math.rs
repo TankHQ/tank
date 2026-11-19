@@ -72,7 +72,7 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
-        .map_ok(|v| bool::try_from_value(v.value(1).unwrap()))
+        .map_ok(|v| bool::decode_value(v.value(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await?;
@@ -86,7 +86,7 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
                 .where_expr(expr!(MathTable::id == 0))
                 .build(&executor.driver()),
         )
-        .map_ok(|v| bool::try_from_value(v.value(1).unwrap()))
+        .map_ok(|v| bool::decode_value(v.value(1).unwrap()))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await?;

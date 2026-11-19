@@ -21,7 +21,7 @@ impl AsValue for NotesWrap {
     {
         Value::Varchar(Some(self.0.0.into()))
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
+    fn decode_value(value: impl AsValue) -> Result<Self> {
         match value.as_value().try_as(&Value::Varchar(None)) {
             Ok(Value::Varchar(Some(s))) => Ok(NotesWrap(Notes(s.to_string()))),
             _ => Err(anyhow!("Expected Varchar for Notes")),
@@ -327,7 +327,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                         .group_by(EntityExample::region)
                         .build(&connection.driver()),
                 )
-                .map_ok(|row| i32::try_from_value(row.get_column("total")))
+                .map_ok(|row| i32::decode_value(row.get_column("total")))
                 .map(Result::flatten)
                 .try_fold(0, |total, casualties| ready(Ok(total + casualties)))
                 .await?

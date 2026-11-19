@@ -492,14 +492,14 @@ mod tests {
     fn long_fraction_parse() {
         for digits in 1..=40 {
             let input = format!("12:30:00.{}", "9".repeat(digits));
-            let result = Interval::try_from_value(Value::Varchar(Some(input.into())));
+            let result = Interval::decode_value(Value::Varchar(Some(input.into())));
             if digits <= 9 {
                 assert!(result.is_ok(), "{digits} digits should parse");
             } else {
                 assert!(result.is_err(), "{digits} digits should be rejected");
             }
         }
-        let parsed = Interval::try_from_value(Value::Varchar(Some("00:00:00.5".into()))).unwrap();
+        let parsed = Interval::decode_value(Value::Varchar(Some("00:00:00.5".into()))).unwrap();
         assert_eq!(parsed, Interval::from_millis(500));
     }
 
@@ -521,11 +521,11 @@ mod tests {
     #[test]
     fn parse_huge_interval() {
         let parsed =
-            Interval::try_from_value(Value::Varchar(Some("1000000000000000000 years".into())));
+            Interval::decode_value(Value::Varchar(Some("1000000000000000000 years".into())));
         if let Ok(v) = parsed {
             assert!(v.months >= 0);
         }
-        let parsed = Interval::try_from_value(Value::Varchar(Some(
+        let parsed = Interval::decode_value(Value::Varchar(Some(
             "1000000000000000000 years 1000000000000000000 years".into(),
         )));
         if let Ok(v) = parsed {
@@ -619,7 +619,7 @@ mod tests {
                 .strip_prefix("INTERVAL ")
                 .unwrap_or(&rendered)
                 .to_string();
-            let parsed = Interval::try_from_value(Value::Varchar(Some(body.into())))
+            let parsed = Interval::decode_value(Value::Varchar(Some(body.into())))
                 .unwrap_or_else(|e| panic!("Could not parse `{rendered}`: {e:#}"));
             assert_eq!(parsed, interval, "Round-trip failed for `{rendered}`");
         }

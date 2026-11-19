@@ -99,14 +99,14 @@ mod tests {
             self.0.as_value()
         }
 
-        fn try_from_value(value: impl AsValue) -> Result<Self> {
+        fn decode_value(value: impl AsValue) -> Result<Self> {
             HOOK_CALLS.set(HOOK_CALLS.get() + 1);
             LABEL_COUNT.with_borrow(|expected| {
                 if let Some((labels, count)) = expected {
                     assert_eq!(labels.strong_count(), *count);
                 }
             });
-            String::try_from_value(value).map(Self)
+            String::decode_value(value).map(Self)
         }
     }
 

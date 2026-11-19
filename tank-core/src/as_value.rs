@@ -36,7 +36,7 @@ pub trait AsValue {
     where
         Self: 'a;
     /// Decode into `Self`; input-only implementations can use the default.
-    fn try_from_value(_value: impl AsValue) -> Result<Self>
+    fn decode_value(_value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -70,7 +70,7 @@ impl AsValue for Value<'_> {
         self
     }
     #[inline(always)]
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -185,7 +185,7 @@ macro_rules! impl_as_value {
                 $destination(Some($wrap))
             }
             #[inline(always)]
-            fn try_from_value(value: impl AsValue) -> Result<Self> {
+            fn decode_value(value: impl AsValue) -> Result<Self> {
                 #[cold]
                 #[inline(never)]
                 // Pass `&mut` + `mem::take` instead of by-value `Value` so LLVM does not
@@ -239,7 +239,7 @@ macro_rules! impl_as_value {
                             ))
                         }
                         Value::Float32(Some(v), ..) => {
-                            <$source>::try_from_value(Value::Float64(Some(v as f64)))
+                            <$source>::decode_value(Value::Float64(Some(v as f64)))
                         }
                         Value::Varchar(Some(ref v), ..) => <$source as AsValue>::parse(v).with_context(|| {
                             format!("While parsing a {} from `{}`", any::type_name::<$source>(), v)
@@ -338,11 +338,11 @@ macro_rules! impl_as_value {
             {
                 AsValue::as_value(Into::<$helper>::into(self))
             }
-            fn try_from_value(value: impl AsValue) -> Result<Self>
+            fn decode_value(value: impl AsValue) -> Result<Self>
             where
                 Self: Sized,
             {
-                Ok(<$helper as AsValue>::try_from_value(value)?.try_into()?)
+                Ok(<$helper as AsValue>::decode_value(value)?.try_into()?)
             }
         }
         impl AsValue for &$source {
@@ -424,7 +424,7 @@ macro_rules! impl_as_value {
                 $destination(Some(self.into()))
             }
             #[inline(always)]
-            fn try_from_value(value: impl AsValue) -> Result<Self> {
+            fn decode_value(value: impl AsValue) -> Result<Self> {
                 #[cold]
                 #[inline(never)]
                 // Pass `&mut` + `mem::take` instead of by-value `Value` so LLVM does not
@@ -578,7 +578,7 @@ impl_as_value!(
         | Value::UInt64(Some(..), ..)
         | Value::UInt128(Some(..), ..)
     ) => {
-        let code = u32::try_from_value(value.clone()).map_err(|_| {
+        let code = u32::decode_value(value.clone()).map_err(|_| {
             anyhow!("Cannot convert {value:?} to char because it is not a valid unicode scalar value")
         })?;
         char::from_u32(code).ok_or_else(|| {
@@ -642,7 +642,7 @@ impl AsValue for Box<[u8]> {
     {
         Value::Blob(Some(Cow::Owned(self.into_vec())))
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -974,11 +974,11 @@ impl_as_value! { @copy UtcDateTime {
     {
         PrimitiveDateTime::new(self.date(), self.time()).as_value()
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        PrimitiveDateTime::try_from_value(value).map(|v| Self::new(v.date(), v.time()))
+        PrimitiveDateTime::decode_value(value).map(|v| Self::new(v.date(), v.time()))
     }
 } }
 
@@ -1047,11 +1047,11 @@ impl_as_value! { @copy chrono::NaiveDate {
             .ok(),
         )
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        let value = <time::Date as AsValue>::try_from_value(value)
+        let value = <time::Date as AsValue>::decode_value(value)
             .context("Could not create a chrono::NaiveDate")?;
         chrono::NaiveDate::from_ymd_opt(
             value.year(),
@@ -1084,11 +1084,11 @@ impl_as_value! { @copy chrono::NaiveTime {
             .ok(),
         )
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        let value = <time::Time as AsValue>::try_from_value(value)
+        let value = <time::Time as AsValue>::decode_value(value)
             .context("Could not create a chrono::NaiveTime")?;
         Self::from_hms_nano_opt(
             value.hour() as _,
@@ -1111,12 +1111,12 @@ impl_as_value! { @copy chrono::NaiveDateTime {
     {
         Value::Timestamp(
             'value: {
-                let Ok(date) = AsValue::try_from_value(self.date().as_value()) else {
+                let Ok(date) = AsValue::decode_value(self.date().as_value()) else {
                     break 'value Err(anyhow!(
                         "Failed to convert the date part from chrono::NaiveDate to time::Date",
                     ));
                 };
-                let Ok(time) = AsValue::try_from_value(self.time().as_value()) else {
+                let Ok(time) = AsValue::decode_value(self.time().as_value()) else {
                     break 'value Err(anyhow!(
                         "Failed to convert the time part from chrono::NaiveTime to time::Time",
                     ));
@@ -1131,15 +1131,15 @@ impl_as_value! { @copy chrono::NaiveDateTime {
             .ok(),
         )
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        let value = <time::PrimitiveDateTime as AsValue>::try_from_value(value)
+        let value = <time::PrimitiveDateTime as AsValue>::decode_value(value)
             .context("Could not create a chrono::NaiveDateTime")?;
-        let date = AsValue::try_from_value(value.date().as_value())
+        let date = AsValue::decode_value(value.date().as_value())
             .context("Could not convert date part of chrono::NaiveDateTime")?;
-        let time = AsValue::try_from_value(value.time().as_value())
+        let time = AsValue::decode_value(value.time().as_value())
             .context("Could not convert time part of chrono::NaiveDateTime")?;
         Ok(Self::new(date, time))
     }
@@ -1156,12 +1156,12 @@ impl_as_value! { @copy chrono::DateTime<chrono::FixedOffset> {
     {
         Value::TimestampWithTimezone(
             'value: {
-                let Ok(date) = AsValue::try_from_value(self.date_naive().as_value()) else {
+                let Ok(date) = AsValue::decode_value(self.date_naive().as_value()) else {
                     break 'value Err(anyhow!(
                         "Failed to convert the date part from chrono::NaiveDate to time::Date",
                     ));
                 };
-                let Ok(time) = AsValue::try_from_value(self.time().as_value()) else {
+                let Ok(time) = AsValue::decode_value(self.time().as_value()) else {
                     break 'value Err(anyhow!(
                         "Failed to convert the time part from chrono::NaiveTime to time::Time",
                     ));
@@ -1181,16 +1181,16 @@ impl_as_value! { @copy chrono::DateTime<chrono::FixedOffset> {
             .ok(),
         )
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        let value = <time::OffsetDateTime as AsValue>::try_from_value(value)
+        let value = <time::OffsetDateTime as AsValue>::decode_value(value)
             .context("Could not create a chrono::DateTime")?;
         let utc = value.to_offset(time::UtcOffset::UTC);
-        let date = AsValue::try_from_value(utc.date().as_value())
+        let date = AsValue::decode_value(utc.date().as_value())
             .context("Could not convert date part of chrono::DateTime")?;
-        let time = AsValue::try_from_value(utc.time().as_value())
+        let time = AsValue::decode_value(utc.time().as_value())
             .context("Could not convert time part of chrono::DateTime")?;
         let date_time = chrono::NaiveDateTime::new(date, time);
         let offset = chrono::FixedOffset::east_opt(value.offset().whole_seconds())
@@ -1218,8 +1218,8 @@ impl_as_value! { @copy chrono::DateTime<chrono::Utc> {
         }
         Value::TimestampWithTimezone(odt)
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
-        let odt = <time::OffsetDateTime as AsValue>::try_from_value(value)?;
+    fn decode_value(value: impl AsValue) -> Result<Self> {
+        let odt = <time::OffsetDateTime as AsValue>::decode_value(value)?;
         let utc_odt = odt.to_offset(time::UtcOffset::UTC);
         let secs = utc_odt.unix_timestamp();
         let nanos = utc_odt.nanosecond();
@@ -1240,7 +1240,7 @@ impl_as_value! { @copy Decimal {
         Value::Decimal(Some(self), 0, self.scale() as _)
     }
     #[inline]
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
+    fn decode_value(value: impl AsValue) -> Result<Self> {
         let value = value.as_value();
         if let Value::Decimal(Some(v), ..) = value {
             return Ok(v);
@@ -1301,11 +1301,11 @@ impl<const W: u8, const S: u8> AsValue for FixedDecimal<W, S> {
         Value::Decimal(Some(self.0), W, S)
     }
     #[inline(always)]
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        Ok(Self(Decimal::try_from_value(value)?))
+        Ok(Self(Decimal::decode_value(value)?))
     }
     fn parse(input: impl AsRef<str>) -> Result<Self> {
         <Decimal as AsValue>::parse(input).map(Into::into)
@@ -1346,13 +1346,13 @@ impl<T: AsValue, const N: usize> AsValue for [T; N] {
             }),
         )
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
+    fn decode_value(value: impl AsValue) -> Result<Self> {
         let value = value.as_value();
         fn convert_iter<T: AsValue, const N: usize>(
             iter: impl IntoIterator<Item: AsValue>,
         ) -> Result<[T; N]> {
             iter.into_iter()
-                .map(|v| T::try_from_value(v.as_value()))
+                .map(|v| T::decode_value(v.as_value()))
                 .collect::<Result<Vec<_>>>()?
                 .try_into()
                 .map_err(|v: Vec<T>| {
@@ -1441,15 +1441,15 @@ macro_rules! impl_as_value {
                     Box::new(CollectionType { element: T::as_empty_value(), len: 0 }),
                 )
             }
-            fn try_from_value(value: impl AsValue) -> Result<Self> {
+            fn decode_value(value: impl AsValue) -> Result<Self> {
                 let value = value.as_value();
                 match value {
                     Value::List(None, ..) => Ok(Default::default()),
                     Value::List(Some(v), ..) | Value::Array(Some(v), ..) => {
-                        v.into_iter().map(T::try_from_value).collect()
+                        v.into_iter().map(T::decode_value).collect()
                     }
                     Value::Json(Some(serde_json::Value::Array(v)), ..) => {
-                        v.into_iter().map(T::try_from_value).collect()
+                        v.into_iter().map(T::decode_value).collect()
                     }
                     _ => Err(anyhow!(
                         "Cannot convert {value:?} to {}",
@@ -1491,17 +1491,17 @@ macro_rules! impl_as_value {
                     }),
                 )
             }
-            fn try_from_value(value: impl AsValue) -> Result<Self> {
+            fn decode_value(value: impl AsValue) -> Result<Self> {
                 let value = value.as_value();
                 match value {
                     Value::Map(None, ..) => Ok(Default::default()),
                     Value::Map(Some(v), ..) => v
                         .into_iter()
-                        .map(|(k, v)| Ok((K::try_from_value(k)?, V::try_from_value(v)?)))
+                        .map(|(k, v)| Ok((K::decode_value(k)?, V::decode_value(v)?)))
                         .collect(),
                     Value::Json(Some(serde_json::Value::Object(v)), ..) => v
                         .into_iter()
-                        .map(|(k, v)| Ok((K::try_from_value(k)?, V::try_from_value(v)?)))
+                        .map(|(k, v)| Ok((K::decode_value(k)?, V::decode_value(v)?)))
                         .collect(),
                     _ => Err(anyhow!(
                         "Cannot convert {value:?} to {}",
@@ -1554,11 +1554,11 @@ impl AsValue for Cow<'_, str> {
         Value::Varchar(Some(self))
     }
     #[inline(always)]
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        String::try_from_value(value).map(Into::into)
+        String::decode_value(value).map(Into::into)
     }
     fn parse(input: impl AsRef<str>) -> Result<Self>
     where
@@ -1596,7 +1596,7 @@ impl AsValue for Cow<'_, Value<'_>> {
         }
     }
     #[inline(always)]
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
+    fn decode_value(value: impl AsValue) -> Result<Self> {
         Ok(Cow::Owned(value.as_value().into_owned()))
     }
 }
@@ -1630,14 +1630,14 @@ impl<T: AsValue> AsValue for Option<T> {
         }
     }
     #[inline(always)]
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
+    fn decode_value(value: impl AsValue) -> Result<Self> {
         #[cold]
         #[inline(never)]
         // Return `Option<Result<T>>` instead of `Result<Option<T>>` so the cold call does not
-        // share `try_from_value`'s `sret` slot, and take `&mut Value` so `val` stays in registers.
+        // share `decode_value`'s `sret` slot, and take `&mut Value` so `val` stays in registers.
         fn fallback<T: AsValue>(value: &mut Value<'_>) -> Option<Result<T>> {
             let value = mem::take(value);
-            (!value.is_null()).then(|| <T as AsValue>::try_from_value(value))
+            (!value.is_null()).then(|| <T as AsValue>::decode_value(value))
         }
         match value.as_value() {
             v @ Value::Null => {
@@ -1670,7 +1670,7 @@ impl<T: AsValue> AsValue for Option<T> {
                         }
                         Ok(None)
                     } else {
-                        <T as AsValue>::try_from_value(v).map(Some)
+                        <T as AsValue>::decode_value(v).map(Some)
                     }
                 } else {
                     let mut other = v;
@@ -1723,8 +1723,8 @@ impl<T: AsValue> AsValue for Box<T> {
     {
         (*self).as_value()
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
-        Ok(Self::new(<T as AsValue>::try_from_value(value)?))
+    fn decode_value(value: impl AsValue) -> Result<Self> {
+        Ok(Self::new(<T as AsValue>::decode_value(value)?))
     }
     fn parse(input: impl AsRef<str>) -> Result<Self>
     where
@@ -1761,8 +1761,8 @@ macro_rules! impl_as_value {
             {
                 $source::<T>::into_inner(self).as_value()
             }
-            fn try_from_value(value: impl AsValue) -> Result<Self> {
-                Ok($source::new(<T as AsValue>::try_from_value(value)?))
+            fn decode_value(value: impl AsValue) -> Result<Self> {
+                Ok($source::new(<T as AsValue>::decode_value(value)?))
             }
         }
     };
@@ -1818,8 +1818,8 @@ impl<T: AsValue> AsValue for RwLock<T> {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .as_value()
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
-        Ok(RwLock::new(<T as AsValue>::try_from_value(value)?))
+    fn decode_value(value: impl AsValue) -> Result<Self> {
+        Ok(RwLock::new(<T as AsValue>::decode_value(value)?))
     }
     fn parse(input: impl AsRef<str>) -> Result<Self>
     where
@@ -1860,8 +1860,8 @@ macro_rules! impl_as_value {
                     .map(|v| v.as_value())
                     .unwrap_or_else(|v| v.as_ref().to_owned().as_value().into_owned())
             }
-            fn try_from_value(value: impl AsValue) -> Result<Self> {
-                Ok($source::new(<T as AsValue>::try_from_value(value)?))
+            fn decode_value(value: impl AsValue) -> Result<Self> {
+                Ok($source::new(<T as AsValue>::decode_value(value)?))
             }
             fn parse(input: impl AsRef<str>) -> Result<Self>
             where
@@ -1899,7 +1899,7 @@ impl AsValue for serde_json::Value {
     {
         Value::Json(Some(self))
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {

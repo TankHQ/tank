@@ -331,7 +331,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
                     .order_by(cols!(Author::name ASC))
                     .build(&executor.driver()),
             )
-            .and_then(|row| async move { AsValue::try_from_value(row.value(0).unwrap()) })
+            .and_then(|row| async move { AsValue::decode_value(row.value(0).unwrap()) })
             .try_collect::<Vec<String>>()
             .await?;
         assert_eq!(

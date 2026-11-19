@@ -225,37 +225,37 @@ impl<'a> Value<'a> {
             return Ok(self);
         }
         match target_type {
-            Value::Boolean(..) => bool::try_from_value(self).map(AsValue::as_value),
-            Value::Int8(..) => i8::try_from_value(self).map(AsValue::as_value),
-            Value::Int16(..) => i16::try_from_value(self).map(AsValue::as_value),
-            Value::Int32(..) => i32::try_from_value(self).map(AsValue::as_value),
-            Value::Int64(..) => i64::try_from_value(self).map(AsValue::as_value),
-            Value::Int128(..) => i128::try_from_value(self).map(AsValue::as_value),
-            Value::UInt8(..) => u8::try_from_value(self).map(AsValue::as_value),
-            Value::UInt16(..) => u16::try_from_value(self).map(AsValue::as_value),
-            Value::UInt32(..) => u32::try_from_value(self).map(AsValue::as_value),
-            Value::UInt64(..) => u64::try_from_value(self).map(AsValue::as_value),
-            Value::UInt128(..) => u128::try_from_value(self).map(AsValue::as_value),
-            Value::Float32(..) => f32::try_from_value(self).map(AsValue::as_value),
-            Value::Float64(..) => f64::try_from_value(self).map(AsValue::as_value),
-            Value::Decimal(..) => Decimal::try_from_value(self).map(AsValue::as_value),
-            Value::Char(..) => char::try_from_value(self).map(AsValue::as_value),
-            Value::Varchar(..) => String::try_from_value(self).map(AsValue::as_value),
-            Value::Blob(..) => Box::<[u8]>::try_from_value(self).map(AsValue::as_value),
-            Value::Date(..) => Date::try_from_value(self).map(AsValue::as_value),
-            Value::Time(..) => Time::try_from_value(self).map(AsValue::as_value),
-            Value::Timestamp(..) => PrimitiveDateTime::try_from_value(self).map(AsValue::as_value),
+            Value::Boolean(..) => bool::decode_value(self).map(AsValue::as_value),
+            Value::Int8(..) => i8::decode_value(self).map(AsValue::as_value),
+            Value::Int16(..) => i16::decode_value(self).map(AsValue::as_value),
+            Value::Int32(..) => i32::decode_value(self).map(AsValue::as_value),
+            Value::Int64(..) => i64::decode_value(self).map(AsValue::as_value),
+            Value::Int128(..) => i128::decode_value(self).map(AsValue::as_value),
+            Value::UInt8(..) => u8::decode_value(self).map(AsValue::as_value),
+            Value::UInt16(..) => u16::decode_value(self).map(AsValue::as_value),
+            Value::UInt32(..) => u32::decode_value(self).map(AsValue::as_value),
+            Value::UInt64(..) => u64::decode_value(self).map(AsValue::as_value),
+            Value::UInt128(..) => u128::decode_value(self).map(AsValue::as_value),
+            Value::Float32(..) => f32::decode_value(self).map(AsValue::as_value),
+            Value::Float64(..) => f64::decode_value(self).map(AsValue::as_value),
+            Value::Decimal(..) => Decimal::decode_value(self).map(AsValue::as_value),
+            Value::Char(..) => char::decode_value(self).map(AsValue::as_value),
+            Value::Varchar(..) => String::decode_value(self).map(AsValue::as_value),
+            Value::Blob(..) => Box::<[u8]>::decode_value(self).map(AsValue::as_value),
+            Value::Date(..) => Date::decode_value(self).map(AsValue::as_value),
+            Value::Time(..) => Time::decode_value(self).map(AsValue::as_value),
+            Value::Timestamp(..) => PrimitiveDateTime::decode_value(self).map(AsValue::as_value),
             Value::TimestampWithTimezone(..) => {
-                OffsetDateTime::try_from_value(self).map(AsValue::as_value)
+                OffsetDateTime::decode_value(self).map(AsValue::as_value)
             }
-            Value::Interval(..) => Interval::try_from_value(self).map(AsValue::as_value),
-            Value::Uuid(..) => Uuid::try_from_value(self).map(AsValue::as_value),
-            Value::IpAddr(..) => IpAddr::try_from_value(self).map(AsValue::as_value),
+            Value::Interval(..) => Interval::decode_value(self).map(AsValue::as_value),
+            Value::Uuid(..) => Uuid::decode_value(self).map(AsValue::as_value),
+            Value::IpAddr(..) => IpAddr::decode_value(self).map(AsValue::as_value),
             // Value::Array(_, ty, len, ..) => {
-            //     Box::<[Value]>::try_from_value(self).map(AsValue::as_value)
+            //     Box::<[Value]>::decode_value(self).map(AsValue::as_value)
             // }
-            // Value::List(..) => Box::<[Value]>::try_from_value(self).map(AsValue::as_value),
-            // Value::Map(..) => Date::try_from_value(self).map(AsValue::as_value),
+            // Value::List(..) => Box::<[Value]>::decode_value(self).map(AsValue::as_value),
+            // Value::Map(..) => Date::decode_value(self).map(AsValue::as_value),
             _ => {
                 return Err(anyhow!(
                     "Cannot convert value {:?} to {:?}",
@@ -478,7 +478,7 @@ impl<'a> TryFrom<Value<'a>> for JsonValue {
             ),
             Value::Map(Some(v), ..) => Self::Object(
                 v.into_iter()
-                    .map(|(k, v)| Ok((String::try_from_value(k)?, Self::try_from(v)?)))
+                    .map(|(k, v)| Ok((String::decode_value(k)?, Self::try_from(v)?)))
                     .collect::<Result<_>>()?,
             ),
             Value::Struct(Some(v), ..) => Self::Object(

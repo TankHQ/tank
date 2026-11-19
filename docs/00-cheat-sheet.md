@@ -63,7 +63,7 @@ use tank::{AsValue, Entity, Result, Value, ValueOwned, anyhow};
 <!--@include: @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-conversion-->
 ```
 
-Tank calls `NotesWrap::from(field_value)` when writing and reconstructs the field via `Notes::from(NotesWrap::try_from_value(db_value)?)` when reading. See [Types](05-types.md) for full `AsValue` documentation and the built-in type table.
+Tank calls `NotesWrap::from(field_value)` when writing and reconstructs the field via `Notes::from(NotesWrap::decode_value(db_value)?)` when reading. See [Types](05-types.md) for full `AsValue` documentation and the built-in type table.
 
 ## Table setup
 

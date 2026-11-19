@@ -271,9 +271,9 @@ mod tests {
                 .fetch(sql.as_str())
                 .try_fold(0, |groups, row| {
                     ready(
-                        String::try_from_value(row.value(0).unwrap())
-                            .and_then(|_| i64::try_from_value(row.value(1).unwrap()))
-                            .and_then(|_| f64::try_from_value(row.value(3).unwrap()))
+                        String::decode_value(row.value(0).unwrap())
+                            .and_then(|_| i64::decode_value(row.value(1).unwrap()))
+                            .and_then(|_| f64::decode_value(row.value(3).unwrap()))
                             .map(|_| groups + 1),
                     )
                 })
@@ -414,7 +414,7 @@ mod tests {
             let sum = connection
                 .fetch("SELECT * FROM bench_trades")
                 .try_fold(0i64, |sum, row| {
-                    ready(i64::try_from_value(row.value(0).unwrap()).map(|id| sum + id))
+                    ready(i64::decode_value(row.value(0).unwrap()).map(|id| sum + id))
                 })
                 .await
                 .unwrap();
@@ -445,7 +445,7 @@ mod tests {
         ] {
             let plan = connection
                 .fetch(format!("EXPLAIN QUERY PLAN {sql}"))
-                .map_ok(|row| String::try_from_value(row.value(3).unwrap()).unwrap())
+                .map_ok(|row| String::decode_value(row.value(3).unwrap()).unwrap())
                 .try_collect::<Vec<_>>()
                 .await
                 .unwrap();

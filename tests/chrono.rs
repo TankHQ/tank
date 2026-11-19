@@ -12,7 +12,7 @@ mod tests {
             let fixed = chrono::FixedOffset::east_opt(offset_secs).unwrap();
             let original: chrono::DateTime<chrono::FixedOffset> =
                 chrono::DateTime::from_naive_utc_and_offset(date_time, fixed);
-            let back = chrono::DateTime::<chrono::FixedOffset>::try_from_value(original.as_value())
+            let back = chrono::DateTime::<chrono::FixedOffset>::decode_value(original.as_value())
                 .expect("Could not convert back to chrono::DateTime<FixedOffset>");
             assert_eq!(
                 original.with_timezone(&chrono::Utc),
@@ -26,26 +26,26 @@ mod tests {
     fn chrono_naive_roundtrips() {
         let date = chrono::NaiveDate::from_ymd_opt(2025, 6, 15).unwrap();
         assert_eq!(
-            chrono::NaiveDate::try_from_value(date.as_value()).unwrap(),
+            chrono::NaiveDate::decode_value(date.as_value()).unwrap(),
             date
         );
 
         let time = chrono::NaiveTime::from_hms_nano_opt(14, 30, 0, 500).unwrap();
         assert_eq!(
-            chrono::NaiveTime::try_from_value(time.as_value()).unwrap(),
+            chrono::NaiveTime::decode_value(time.as_value()).unwrap(),
             time
         );
 
         let date_time = date.and_hms_nano_opt(14, 30, 0, 500).unwrap();
         assert_eq!(
-            chrono::NaiveDateTime::try_from_value(date_time.as_value()).unwrap(),
+            chrono::NaiveDateTime::decode_value(date_time.as_value()).unwrap(),
             date_time
         );
 
         let utc =
             chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(date_time, chrono::Utc);
         assert_eq!(
-            chrono::DateTime::<chrono::Utc>::try_from_value(utc.as_value()).unwrap(),
+            chrono::DateTime::<chrono::Utc>::decode_value(utc.as_value()).unwrap(),
             utc
         );
     }
