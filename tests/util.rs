@@ -22,7 +22,7 @@ mod tests {
         SqlExpressionWriter, SqlValueWriter, SqlWriter, StructType, TRUNCATE_LONG_LIMIT, TableRef,
         Value, as_c_string, column_def, consume_while, decimal_from_scaled, error_message_from_ptr,
         extract_number, matches_path, month_to_number, number_to_month, quote_btree_map, quote_cow,
-        quote_option, separated_by, truncate_bound, truncate_long, value_to_json, write_escaped,
+        quote_option, separated_by, truncate_bound, truncate_long, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
@@ -231,69 +231,72 @@ mod tests {
 
     #[test]
     fn value_json_scalars() {
-        assert_eq!(value_to_json(&Value::Null), Some(serde_json::Value::Null));
         assert_eq!(
-            value_to_json(&Value::Boolean(Some(true))),
+            serde_json::Value::try_from(Value::Null).ok(),
+            Some(serde_json::Value::Null)
+        );
+        assert_eq!(
+            serde_json::Value::try_from(Value::Boolean(Some(true))).ok(),
             Some(serde_json::Value::Bool(true))
         );
         assert_eq!(
-            value_to_json(&Value::Int8(Some(42))),
+            serde_json::Value::try_from(Value::Int8(Some(42))).ok(),
             Some(serde_json::json!(42))
         );
         assert_eq!(
-            value_to_json(&Value::Int16(Some(-100))),
+            serde_json::Value::try_from(Value::Int16(Some(-100))).ok(),
             Some(serde_json::json!(-100))
         );
         assert_eq!(
-            value_to_json(&Value::Int32(Some(1000))),
+            serde_json::Value::try_from(Value::Int32(Some(1000))).ok(),
             Some(serde_json::json!(1000))
         );
         assert_eq!(
-            value_to_json(&Value::Int64(Some(123456789))),
+            serde_json::Value::try_from(Value::Int64(Some(123456789))).ok(),
             Some(serde_json::json!(123456789))
         );
         assert_eq!(
-            value_to_json(&Value::Int128(Some(999.into()))),
+            serde_json::Value::try_from(Value::Int128(Some(999.into()))).ok(),
             Some(serde_json::json!(999))
         );
         assert_eq!(
-            value_to_json(&Value::UInt8(Some(255))),
+            serde_json::Value::try_from(Value::UInt8(Some(255))).ok(),
             Some(serde_json::json!(255))
         );
         assert_eq!(
-            value_to_json(&Value::UInt16(Some(65535))),
+            serde_json::Value::try_from(Value::UInt16(Some(65535))).ok(),
             Some(serde_json::json!(65535))
         );
         assert_eq!(
-            value_to_json(&Value::UInt32(Some(100))),
+            serde_json::Value::try_from(Value::UInt32(Some(100))).ok(),
             Some(serde_json::json!(100))
         );
         assert_eq!(
-            value_to_json(&Value::UInt64(Some(200))),
+            serde_json::Value::try_from(Value::UInt64(Some(200))).ok(),
             Some(serde_json::json!(200))
         );
         assert_eq!(
-            value_to_json(&Value::UInt128(Some(300.into()))),
+            serde_json::Value::try_from(Value::UInt128(Some(300.into()))).ok(),
             Some(serde_json::json!(300))
         );
         assert_eq!(
-            value_to_json(&Value::Float32(Some(1.5))),
+            serde_json::Value::try_from(Value::Float32(Some(1.5))).ok(),
             Some(serde_json::json!(1.5))
         );
         assert_eq!(
-            value_to_json(&Value::Float64(Some(2.5))),
+            serde_json::Value::try_from(Value::Float64(Some(2.5))).ok(),
             Some(serde_json::json!(2.5))
         );
         assert_eq!(
-            value_to_json(&Value::Char(Some('x'))),
+            serde_json::Value::try_from(Value::Char(Some('x'))).ok(),
             Some(serde_json::json!("x"))
         );
         assert_eq!(
-            value_to_json(&Value::Varchar(Some("hello".into()))),
+            serde_json::Value::try_from(Value::Varchar(Some("hello".into()))).ok(),
             Some(serde_json::json!("hello"))
         );
         assert_eq!(
-            value_to_json(&Value::Unknown(Some("raw".into()))),
+            serde_json::Value::try_from(Value::Unknown(Some("raw".into()))).ok(),
             Some(serde_json::json!("raw"))
         );
     }
@@ -301,23 +304,27 @@ mod tests {
     #[test]
     fn value_json_conversion() {
         assert_eq!(
-            value_to_json(&Value::Boolean(None)),
+            serde_json::Value::try_from(Value::Boolean(None)).ok(),
             Some(serde_json::Value::Null)
         );
         assert_eq!(
-            value_to_json(&Value::Int32(None)),
+            serde_json::Value::try_from(Value::Int32(None)).ok(),
             Some(serde_json::Value::Null)
         );
 
-        let arr = value_to_json(&Value::Blob(Some(vec![0xDE, 0xAD].into()))).unwrap();
+        let arr = serde_json::Value::try_from(Value::Blob(Some(vec![0xDE, 0xAD].into()))).unwrap();
         assert_eq!(arr, serde_json::json!([222, 173]));
 
         assert_eq!(
-            value_to_json(&Value::Uuid(Some(uuid::Uuid::nil()))),
+            serde_json::Value::try_from(Value::Uuid(Some(uuid::Uuid::nil()))).ok(),
             Some(serde_json::json!("00000000-0000-0000-0000-000000000000"))
         );
         let date = Date::from_calendar_date(2025, Month::March, 15).unwrap();
-        assert!(value_to_json(&Value::Date(Some(date))).unwrap().is_string());
+        assert!(
+            serde_json::Value::try_from(Value::Date(Some(date)))
+                .unwrap()
+                .is_string()
+        );
 
         let arr = Value::Array(
             Some(vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into()),
@@ -326,7 +333,10 @@ mod tests {
                 len: 2,
             }),
         );
-        assert_eq!(value_to_json(&arr), Some(serde_json::json!([1, 2])));
+        assert_eq!(
+            serde_json::Value::try_from(arr).ok(),
+            Some(serde_json::json!([1, 2]))
+        );
         let list = Value::List(
             Some(
                 vec![
@@ -340,7 +350,10 @@ mod tests {
                 len: 0,
             }),
         );
-        assert_eq!(value_to_json(&list), Some(serde_json::json!(["a", "b"])));
+        assert_eq!(
+            serde_json::Value::try_from(list).ok(),
+            Some(serde_json::json!(["a", "b"]))
+        );
 
         let mut map = HashMap::new();
         map.insert(Value::Int32(Some(1)), Value::Int32(Some(42)));
@@ -351,7 +364,10 @@ mod tests {
                 value: Value::Int32(None),
             }),
         );
-        assert_eq!(value_to_json(&v), Some(serde_json::json!({"1": 42})));
+        assert_eq!(
+            serde_json::Value::try_from(v).ok(),
+            Some(serde_json::json!({"1": 42}))
+        );
         let v = Value::Map(
             Some(Box::new(HashMap::new())),
             Box::new(MapType {
@@ -359,10 +375,13 @@ mod tests {
                 value: Value::Int32(None),
             }),
         );
-        assert!(value_to_json(&v).unwrap().is_object());
+        assert!(serde_json::Value::try_from(v).unwrap().is_object());
 
         let j = serde_json::json!({"nested": true});
-        assert_eq!(value_to_json(&Value::Json(Some(j.clone()))), Some(j));
+        assert_eq!(
+            serde_json::Value::try_from(Value::Json(Some(j.clone()))).ok(),
+            Some(j)
+        );
 
         let s = Value::Struct(
             Some(vec![].into()),
@@ -371,14 +390,19 @@ mod tests {
                 name: TableRef::new("my_type".into()),
             }),
         );
-        assert!(value_to_json(&s).unwrap().is_object());
+        assert!(serde_json::Value::try_from(s).unwrap().is_object());
 
-        assert!(value_to_json(&Value::Decimal(Some(Decimal::new(1234, 2)), 0, 0)).is_some());
+        assert!(
+            serde_json::Value::try_from(Value::Decimal(Some(Decimal::new(1234, 2)), 0, 0)).is_ok()
+        );
         assert_eq!(
-            value_to_json(&Value::Interval(Some(Interval::from_days(1)))),
+            serde_json::Value::try_from(Value::Interval(Some(Interval::from_days(1)))).ok(),
             None
         );
-        assert_eq!(value_to_json(&Value::Float64(Some(f64::NAN))), None);
+        assert_eq!(
+            serde_json::Value::try_from(Value::Float64(Some(f64::NAN))).ok(),
+            None
+        );
     }
 
     #[test]
@@ -980,13 +1004,14 @@ mod tests {
             Value::Interval(Some(Interval::from_days(1))),
         );
         assert_eq!(
-            value_to_json(&Value::Map(
+            serde_json::Value::try_from(Value::Map(
                 Some(map.into()),
                 Box::new(MapType {
                     key: Value::Int32(None),
                     value: Value::Interval(None)
                 })
-            )),
+            ))
+            .ok(),
             None
         );
 
@@ -996,28 +1021,30 @@ mod tests {
             Value::Int32(Some(1)),
         );
         assert_eq!(
-            value_to_json(&Value::Map(
+            serde_json::Value::try_from(Value::Map(
                 Some(map.into()),
                 Box::new(MapType {
                     key: Value::Interval(None),
                     value: Value::Int32(None)
                 })
-            )),
+            ))
+            .ok(),
             None
         );
 
         assert_eq!(
-            value_to_json(&Value::Struct(
+            serde_json::Value::try_from(Value::Struct(
                 Some(vec![("k".into(), Value::Interval(Some(Interval::from_days(1))))].into()),
                 Box::new(StructType {
                     fields: vec![],
                     name: TableRef::new("t".into())
                 })
-            )),
+            ))
+            .ok(),
             None
         );
         assert_eq!(
-            value_to_json(&Value::Decimal(None, 0, 0)),
+            serde_json::Value::try_from(Value::Decimal(None, 0, 0)).ok(),
             Some(serde_json::Value::Null)
         );
     }

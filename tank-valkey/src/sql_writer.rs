@@ -20,6 +20,11 @@ impl ValkeySqlWriter {
         }
     }
 
+    /// Values stored in the entity hash itself, unlike nested collections kept in child keys.
+    const fn is_hash_field(value: &Value<'_>) -> bool {
+        value.is_scalar() || matches!(value, Value::Json(..))
+    }
+
     pub fn make_prepared() -> AnyQuery {
         AnyQuery::Prepared(Box::new(ValkeyPrepared::default()))
     }
@@ -185,7 +190,7 @@ impl SqlWriter for ValkeySqlWriter {
             };
             let ty = &column_def.value;
             match ty {
-                v if v.is_scalar() => prepared.commands.push(Cmd::hget(key, id)),
+                v if Self::is_hash_field(v) => prepared.commands.push(Cmd::hget(key, id)),
                 Value::Array(_, t, ..) | Value::List(_, t, ..) => {
                     if !t.element.is_scalar() {
                         log::error!(
@@ -270,7 +275,7 @@ impl SqlWriter for ValkeySqlWriter {
                 &key,
                 fields()
                     .filter_map(|(k, v)| {
-                        if v.is_scalar() && !v.is_null() {
+                        if Self::is_hash_field(v) && !v.is_null() {
                             (k, ValueWrap(v.as_value())).into()
                         } else {
                             None
@@ -280,7 +285,7 @@ impl SqlWriter for ValkeySqlWriter {
                     .as_slice(),
             ));
             for (k, v) in fields().filter_map(|(k, v)| {
-                if !v.is_scalar() || v.same_type(&Value::Json(None)) {
+                if !Self::is_hash_field(v) {
                     (k, ValueWrap(v.as_value())).into()
                 } else {
                     None
@@ -347,7 +352,11 @@ impl SqlWriter for ValkeySqlWriter {
         let prepared = Self::prepare_query(out, &mut context);
         let key = is_pk_condition.key;
         prepared.commands.push(Cmd::del(&key));
-        for column in table.columns.iter().filter(|c| !c.value.is_scalar()) {
+        for column in table
+            .columns
+            .iter()
+            .filter(|c| !Self::is_hash_field(&c.value))
+        {
             let child_key = format!("{key}{}{}", self.separator(), column.name());
             prepared.commands.push(Cmd::del(child_key));
         }

@@ -1903,17 +1903,15 @@ impl AsValue for serde_json::Value {
     where
         Self: Sized,
     {
-        let value = value.as_value();
-        Ok(if let Value::Json(v) = value {
-            match v {
-                Some(v) => v,
-                None => Self::Null,
+        match value.as_value() {
+            Value::Varchar(Some(v)) => {
+                serde_json::from_str(&v).context("While parsing JSON from Value::Varchar")
             }
-        } else {
-            return Err(anyhow!(
-                "Cannot convert non json tank::Value to serde_json::Value",
-            ));
-        })
+            Value::Blob(Some(v)) => {
+                serde_json::from_slice(&v).context("While parsing JSON from Value::Blob")
+            }
+            value => Self::try_from(value),
+        }
     }
 }
 

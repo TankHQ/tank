@@ -17,6 +17,7 @@ mod identifiers;
 mod insane;
 mod insert_builder;
 mod interval;
+mod json_blob;
 mod keywords;
 mod kv_storage;
 mod limits;
@@ -60,6 +61,7 @@ pub use identifiers::*;
 pub use insane::*;
 pub use insert_builder::*;
 pub use interval::*;
+pub use json_blob::*;
 pub use keywords::*;
 pub use kv_storage::*;
 pub use limits::*;
@@ -199,6 +201,7 @@ pub async fn execute_tests<D: Driver + 'static>(pool: &mut impl ConnectionPool<D
         boxed(simple),
         boxed(kv_storage),
         boxed(binary),
+        boxed(json_blob),
         boxed(trade_simple),
         boxed(trade_multiple),
         boxed(insert_builder),

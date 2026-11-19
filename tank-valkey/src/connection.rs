@@ -210,7 +210,7 @@ impl Executor for ValkeyConnection {
                         }
                         redis_val = redis::Value::Map(map)
                     }
-                    let converted: ValueWrap = redis_val.try_into().with_context(context)?;
+                    let converted = ValueWrap::decode(redis_val, &col.value).with_context(context)?;
                     values.push(converted.0.into_owned());
                 }
             }

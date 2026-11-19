@@ -18,6 +18,25 @@ impl<'a> From<tank_core::Value<'a>> for ValueWrap<'a> {
     }
 }
 
+impl<'a> ValueWrap<'a> {
+    /// Decodes a reply using the declared column type. Bulk strings carry raw bytes, so binary and JSON columns keep their shape.
+    pub(crate) fn decode(
+        value: redis::Value,
+        expected: &tank_core::Value<'_>,
+    ) -> Result<Self, tank_core::Error> {
+        Ok(match (expected, value) {
+            (tank_core::Value::Blob(..), redis::Value::BulkString(v)) => {
+                tank_core::Value::Blob(Some(v.into()))
+            }
+            (tank_core::Value::Json(..), redis::Value::BulkString(v)) => tank_core::Value::Json(
+                Some(serde_json::from_slice(&v).map_err(tank_core::Error::new)?),
+            ),
+            (_, value) => Self::try_from(value)?.0,
+        }
+        .into())
+    }
+}
+
 impl TryFrom<redis::Value> for ValueWrap<'_> {
     type Error = tank_core::Error;
 

@@ -1147,7 +1147,43 @@ mod tests {
             serde_json::Value::try_from_value(Value::Json(Some(serde_json::json!(1)))).unwrap(),
             serde_json::json!(1)
         );
-        assert!(serde_json::Value::try_from_value(Value::Int32(Some(1))).is_err());
+        assert_eq!(
+            serde_json::Value::try_from_value(Value::Int32(Some(1))).unwrap(),
+            serde_json::json!(1)
+        );
+        let map = HashMap::from([("a".to_string(), 1_i32)]).as_value();
+        assert_eq!(
+            serde_json::Value::try_from_value(map).unwrap(),
+            serde_json::json!({"a": 1})
+        );
+        assert_eq!(
+            serde_json::Value::try_from_value(Value::Varchar(Some(Cow::Borrowed(r#"{"a": 1}"#))))
+                .unwrap(),
+            serde_json::json!({"a": 1})
+        );
+        assert!(
+            serde_json::Value::try_from_value(Value::Varchar(Some(Cow::Owned("tank".into()))))
+                .is_err()
+        );
+        assert_eq!(Value::from(serde_json::json!(1)), Value::Int64(Some(1)));
+        assert_eq!(
+            Value::from(serde_json::json!(u64::MAX)),
+            Value::UInt64(Some(u64::MAX))
+        );
+        assert_eq!(
+            Value::from(serde_json::json!("tank")),
+            Value::Varchar(Some("tank".into()))
+        );
+        assert_eq!(
+            Value::from(serde_json::json!(true)),
+            Value::Boolean(Some(true))
+        );
+        assert_eq!(Value::from(serde_json::json!(null)), Value::Null);
+        let json = serde_json::json!({"a": 1, "b": [true, null]});
+        assert_eq!(
+            serde_json::Value::try_from(Value::from(json.clone())).unwrap(),
+            json
+        );
     }
 
     #[test]

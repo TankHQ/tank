@@ -94,7 +94,8 @@ impl SqlCoreWriter for SQLiteSqlWriter {
             | Value::Timestamp(..)
             | Value::TimestampWithTimezone(..)
             | Value::Uuid(..)
-            | Value::IpAddr(..) => out.push_str("TEXT"),
+            | Value::IpAddr(..)
+            | Value::Json(..) => out.push_str("TEXT"),
             Value::Blob(..) => out.push_str("BLOB"),
             _ => log::error!("Unexpected tank::Value, SQLite does not support {value:?}"),
         };

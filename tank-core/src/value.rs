@@ -1,11 +1,11 @@
 use self::Value::*;
 use crate::{
-    AnyQuery, AsValue, Expression, GenericSqlWriter, Result, TableRef, interval::Interval,
+    AnyQuery, AsValue, Error, Expression, GenericSqlWriter, Result, TableRef, interval::Interval,
 };
 use anyhow::anyhow;
 use quote::{ToTokens, quote};
-use rust_decimal::Decimal;
-use serde_json::Value as JsonValue;
+use rust_decimal::{Decimal, prelude::ToPrimitive};
+use serde_json::{Number, Value as JsonValue};
 use std::{
     borrow::Cow,
     collections::{HashMap, hash_map::DefaultHasher},
@@ -377,6 +377,124 @@ impl<'a> Value<'a> {
             mem::forget(self);
             owned
         }
+    }
+}
+
+impl<'a> From<JsonValue> for Value<'a> {
+    fn from(value: JsonValue) -> Self {
+        match value {
+            JsonValue::Null => Value::Null,
+            JsonValue::Bool(v) => Value::Boolean(Some(v)),
+            JsonValue::Number(v) => {
+                if let Some(v) = v.as_i64() {
+                    Value::Int64(Some(v))
+                } else if let Some(v) = v.as_i128() {
+                    Value::Int128(Some(Box::new(v)))
+                } else if let Some(v) = v.as_u128() {
+                    Value::UInt128(Some(Box::new(v)))
+                } else if let Some(v) = v.as_f64() {
+                    Value::Float64(Some(v))
+                } else {
+                    // Stays a JSON number because no tank numeric variant can hold it.
+                    Value::Json(Some(JsonValue::Number(v)))
+                }
+            }
+            JsonValue::String(v) => Value::Varchar(Some(v.into())),
+            JsonValue::Array(v) => {
+                let values: Vec<Value<'a>> = v.into_iter().map(Value::from).collect();
+                let element = values
+                    .first()
+                    .map(Value::as_null)
+                    .unwrap_or(Value::Unknown(None));
+                Value::List(
+                    Some(values.into_boxed_slice()),
+                    Box::new(CollectionType { element, len: 0 }),
+                )
+            }
+            JsonValue::Object(v) => {
+                let mut entries = HashMap::with_capacity(v.len());
+                let mut value_type = None;
+                for (k, v) in v {
+                    let v = Value::from(v);
+                    value_type.get_or_insert_with(|| v.as_null());
+                    entries.insert(Value::Varchar(Some(k.into())), v);
+                }
+                Value::Map(
+                    Some(Box::new(entries)),
+                    Box::new(MapType {
+                        key: Value::Varchar(None),
+                        value: value_type.unwrap_or(Value::Unknown(None)),
+                    }),
+                )
+            }
+        }
+    }
+}
+
+impl<'a> TryFrom<Value<'a>> for JsonValue {
+    type Error = Error;
+
+    fn try_from(value: Value<'a>) -> Result<Self> {
+        Ok(match value {
+            Value::Json(Some(v)) => v,
+            value if value.is_null() => Self::Null,
+            Value::Boolean(Some(v)) => Self::Bool(v),
+            Value::Int8(Some(v)) => Self::from(v),
+            Value::Int16(Some(v)) => Self::from(v),
+            Value::Int32(Some(v)) => Self::from(v),
+            Value::Int64(Some(v)) => Self::from(v),
+            Value::Int128(Some(v)) => Self::Number(
+                Number::from_i128(*v)
+                    .ok_or_else(|| anyhow!("Value {v}: i128 does not fit into a JSON number"))?,
+            ),
+            Value::UInt8(Some(v)) => Self::from(v),
+            Value::UInt16(Some(v)) => Self::from(v),
+            Value::UInt32(Some(v)) => Self::from(v),
+            Value::UInt64(Some(v)) => Self::from(v),
+            Value::UInt128(Some(v)) => Self::Number(
+                Number::from_u128(*v)
+                    .ok_or_else(|| anyhow!("Value {v}: u128 does not fit into a JSON number"))?,
+            ),
+            Value::Float32(Some(v)) => Self::Number(
+                Number::from_f64(v as f64)
+                    .ok_or_else(|| anyhow!("Value {v}: f32 does not fit into a JSON number"))?,
+            ),
+            Value::Float64(Some(v)) => Self::Number(
+                Number::from_f64(v)
+                    .ok_or_else(|| anyhow!("Value {v}: f64 does not fit into a JSON number"))?,
+            ),
+            Value::Decimal(Some(v), ..) => Self::Number(
+                v.to_f64()
+                    .and_then(Number::from_f64)
+                    .ok_or_else(|| anyhow!("Value {v}: Decimal does not fit into a JSON number"))?,
+            ),
+            Value::Char(Some(v)) => Self::String(v.to_string()),
+            Value::Varchar(Some(v)) => Self::String(v.into_owned()),
+            Value::Blob(Some(v)) => Self::Array(v.iter().map(|v| Self::from(*v)).collect()),
+            Value::Array(Some(v), ..) | Value::List(Some(v), ..) => Self::Array(
+                v.into_iter()
+                    .map(|v| Self::try_from(v))
+                    .collect::<Result<_>>()?,
+            ),
+            Value::Map(Some(v), ..) => Self::Object(
+                v.into_iter()
+                    .map(|(k, v)| Ok((String::try_from_value(k)?, Self::try_from(v)?)))
+                    .collect::<Result<_>>()?,
+            ),
+            Value::Struct(Some(v), ..) => Self::Object(
+                v.into_iter()
+                    .map(|(k, v)| Ok((k, Self::try_from(v)?)))
+                    .collect::<Result<_>>()?,
+            ),
+            Value::Unknown(Some(v)) => Self::String(v.into_owned()),
+            v @ (Value::Date(Some(..))
+            | Value::Time(Some(..))
+            | Value::Timestamp(Some(..))
+            | Value::TimestampWithTimezone(Some(..))
+            | Value::Uuid(Some(..))
+            | Value::IpAddr(Some(..))) => Self::String(v.to_string()),
+            v => return Err(anyhow!("Cannot convert {v:?} to serde_json::Value")),
+        })
     }
 }
 

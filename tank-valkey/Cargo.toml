@@ -30,6 +30,7 @@ redis = { version = "1.0.4", features = [
     "tokio-rustls-comp",
 ] }
 rustls.workspace = true
+serde_json.workspace = true
 tank-core.workspace = true
 url.workspace = true
 

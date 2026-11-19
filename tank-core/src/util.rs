@@ -1,8 +1,7 @@
-use crate::{AnyQuery, AsValue, ColumnDef, Driver, Result, TableRef, Value, anyhow};
+use crate::{AnyQuery, ColumnDef, Driver, Result, TableRef, anyhow};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
-use rust_decimal::{Decimal, prelude::ToPrimitive};
-use serde_json::{Map, Number, Value as JsonValue};
+use rust_decimal::Decimal;
 use std::{
     borrow::Cow,
     cmp::min,
@@ -39,72 +38,6 @@ where
             Self::Right(b) => b.next(),
         }
     }
-}
-
-pub fn value_to_json(v: &Value<'_>) -> Option<JsonValue> {
-    Some(match v {
-        _ if v.is_null() => JsonValue::Null,
-        Value::Boolean(Some(v), ..) => JsonValue::Bool(*v),
-        Value::Int8(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
-        Value::Int16(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
-        Value::Int32(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
-        Value::Int64(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
-        Value::Int128(Some(v), ..) => JsonValue::Number(Number::from_i128(**v)?),
-        Value::UInt8(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
-        Value::UInt16(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
-        Value::UInt32(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
-        Value::UInt64(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
-        Value::UInt128(Some(v), ..) => JsonValue::Number(Number::from_u128(**v)?),
-        Value::Float32(Some(v), ..) => JsonValue::Number(Number::from_f64(*v as _)?),
-        Value::Float64(Some(v), ..) => JsonValue::Number(Number::from_f64(*v as _)?),
-        Value::Decimal(Some(v), ..) => JsonValue::Number(Number::from_f64(v.to_f64()?)?),
-        Value::Char(Some(v), ..) => JsonValue::String(v.to_string()),
-        Value::Varchar(Some(v), ..) => JsonValue::String(v.to_string()),
-        Value::Blob(Some(v), ..) => JsonValue::Array(
-            v.iter()
-                .map(|v| Number::from_u128(*v as _).map(JsonValue::Number))
-                .collect::<Option<_>>()?,
-        ),
-        v @ (Value::Date(Some(..), ..)
-        | Value::Time(Some(..), ..)
-        | Value::Timestamp(Some(..), ..)
-        | Value::TimestampWithTimezone(Some(..), ..)) => JsonValue::String(v.to_string()),
-        Value::Interval(Some(_v), ..) => {
-            return None;
-        }
-        Value::Uuid(Some(v), ..) => JsonValue::String(v.to_string()),
-        Value::Array(Some(v), ..) | Value::List(Some(v), ..) => {
-            JsonValue::Array(v.iter().map(value_to_json).collect::<Option<_>>()?)
-        }
-        Value::Map(Some(v), ..) => {
-            let mut map = Map::new();
-            for (k, v) in v.iter() {
-                let Ok(k) = String::try_from_value(k.clone()) else {
-                    return None;
-                };
-                let Some(v) = value_to_json(v) else {
-                    return None;
-                };
-                map.insert(k, v);
-            }
-            JsonValue::Object(map)
-        }
-        Value::Json(Some(v), ..) => v.clone(),
-        Value::Struct(Some(v), ..) => {
-            let mut map = Map::new();
-            for (k, v) in v.iter() {
-                let Some(v) = value_to_json(v) else {
-                    return None;
-                };
-                map.insert(k.clone(), v);
-            }
-            JsonValue::Object(map)
-        }
-        Value::Unknown(Some(v), ..) => JsonValue::String(v.to_string()),
-        _ => {
-            return None;
-        }
-    })
 }
 
 /// Quote a `BTreeMap<K, V>` into tokens.

@@ -21,6 +21,7 @@ Use it with the main [`tank`](https://crates.io/crates/tank) crate, which provid
 - TLS support via `rustls`
 - Key-Value mapping for Tank entities
 - Support for nested types such as `Vec` and `HashMap`, stored in auxiliary keys
+- JSON and binary values stored as raw hash field payloads
 
 ## Install
 ```sh
