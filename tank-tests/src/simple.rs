@@ -44,7 +44,6 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
 
     // Setup
     silent_logs! {
-        // Silent logs for Valkey/Redis
         SimpleFields::drop_table(executor, true, false).await?;
     }
     SimpleFields::create_table(executor, true, true).await?;

@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use std::sync::LazyLock;
 use tank::{Entity, Executor, Result, expr, stream::StreamExt};
 use tokio::sync::Mutex;
@@ -18,7 +19,9 @@ pub async fn conditions(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    ConditionEntry::drop_table(executor, true, false).await?;
+    silent_logs! {
+        ConditionEntry::drop_table(executor, true, false).await?;
+    }
     ConditionEntry::create_table(executor, true, true).await?;
 
     // Operations

@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use std::pin::pin;
 use tank::{
     Entity, Executor, Query, Result, Sql, cols, expr,
@@ -15,7 +16,9 @@ pub struct PreparedBinding {
 
 pub async fn prepared(executor: &mut impl Executor) -> Result<()> {
     // Setup
-    PreparedBinding::drop_table(executor, true, false).await?;
+    silent_logs! {
+        PreparedBinding::drop_table(executor, true, false).await?;
+    }
     PreparedBinding::create_table(executor, true, false).await?;
 
     // Insert PreparedBinding then fire a prepared query
@@ -104,7 +107,9 @@ pub async fn prepared(executor: &mut impl Executor) -> Result<()> {
 
 /// A query handed to `run` must survive the stream being dropped before it ends.
 pub async fn prepared_abandoned_stream(executor: &mut impl Executor) -> Result<()> {
-    PreparedBinding::drop_table(executor, true, false).await?;
+    silent_logs! {
+        PreparedBinding::drop_table(executor, true, false).await?;
+    }
     PreparedBinding::create_table(executor, true, false).await?;
     let entities = [
         PreparedBinding { id: 1, value: 2 },
@@ -149,7 +154,9 @@ pub async fn prepared_abandoned_stream(executor: &mut impl Executor) -> Result<(
 /// A query built by hand, prepared once and re-bound, must run as often as it is bound.
 pub async fn prepared_builder_reuse(executor: &mut impl Executor) -> Result<()> {
     // Setup
-    PreparedBinding::drop_table(executor, true, false).await?;
+    silent_logs! {
+        PreparedBinding::drop_table(executor, true, false).await?;
+    }
     PreparedBinding::create_table(executor, true, false).await?;
     let entities = [
         PreparedBinding { id: 1, value: 2 },

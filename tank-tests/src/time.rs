@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use std::{
     sync::LazyLock,
@@ -26,7 +27,9 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Times::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Times::drop_table(executor, true, false).await?;
+    }
     Times::create_table(executor, false, true).await?;
 
     // Insert times
@@ -342,7 +345,9 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
             ts: OffsetDateTime,
         }
 
-        TzOffsets::drop_table(executor, true, false).await?;
+        silent_logs! {
+            TzOffsets::drop_table(executor, true, false).await?;
+        }
         TzOffsets::create_table(executor, true, true).await?;
 
         // UTC-05:30

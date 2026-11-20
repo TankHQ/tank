@@ -177,12 +177,12 @@ mod tests {
             ip_address: String,
         }
 
-        let test_user_id = Uuid::from_str("12345678-1234-1234-1234-123456789abc").unwrap();
+        let test_id = Uuid::from_str("12345678-1234-1234-1234-123456789abc").unwrap();
         let test_date = Date::from_calendar_date(2026, Month::April, 1).unwrap();
 
         {
             let mut is_pk_condition = IsPKCondition::new(true, "".into(), UserSession::table());
-            let is_valid_pk = expr!(UserSession::user_id == #test_user_id).accept_visitor(
+            let is_valid_pk = expr!(UserSession::user_id == #test_id).accept_visitor(
                 &mut is_pk_condition,
                 &DRIVER.sql_writer(),
                 &mut ValkeySqlWriter::make_context(Fragment::None),
@@ -196,7 +196,7 @@ mod tests {
 
         {
             let mut is_pk_condition = IsPKCondition::new(false, "".into(), UserSession::table());
-            let is_valid_pk = expr!((UserSession::user_id == #test_user_id && token_type == "refresh_token") && expires_at == #test_date)
+            let is_valid_pk = expr!((UserSession::user_id == #test_id && token_type == "refresh_token") && expires_at == #test_date)
                 .accept_visitor(
                     &mut is_pk_condition,
                     &DRIVER.sql_writer(),
@@ -211,14 +211,13 @@ mod tests {
 
         {
             let mut is_pk_condition = IsPKCondition::new(true, "".into(), UserSession::table());
-            let is_valid_pk =
-                expr!(UserSession::user_id == #test_user_id && expires_at == #test_date)
-                    .accept_visitor(
-                        &mut is_pk_condition,
-                        &DRIVER.sql_writer(),
-                        &mut ValkeySqlWriter::make_context(Fragment::None),
-                        &mut Default::default(),
-                    );
+            let is_valid_pk = expr!(UserSession::user_id == #test_id && expires_at == #test_date)
+                .accept_visitor(
+                    &mut is_pk_condition,
+                    &DRIVER.sql_writer(),
+                    &mut ValkeySqlWriter::make_context(Fragment::None),
+                    &mut Default::default(),
+                );
             assert!(
                 !is_valid_pk,
                 "Condition should fail: misses token_type and includes expires_at"
@@ -228,7 +227,7 @@ mod tests {
         {
             let mut is_pk_condition = IsPKCondition::new(false, "".into(), UserSession::table());
             let is_valid_pk =
-                expr!(UserSession::user_id == #test_user_id && token_type != "refresh_token")
+                expr!(UserSession::user_id == #test_id && token_type != "refresh_token")
                     .accept_visitor(
                         &mut is_pk_condition,
                         &DRIVER.sql_writer(),
@@ -238,6 +237,26 @@ mod tests {
             assert!(
                 !is_valid_pk,
                 "Condition should fail: PK lookups require equality (==)"
+            );
+        }
+
+        {
+            let other_id = Uuid::from_str("87654321-4321-4321-4321-cba987654321").unwrap();
+            let mut is_pk_condition = IsPKCondition::new(true, "".into(), UserSession::table());
+            let is_valid_pk = expr!(
+                UserSession::user_id == #test_id
+                    && token_type == "refresh_token"
+                    && user_id == #other_id
+            )
+            .accept_visitor(
+                &mut is_pk_condition,
+                &DRIVER.sql_writer(),
+                &mut ValkeySqlWriter::make_context(Fragment::None),
+                &mut Default::default(),
+            );
+            assert!(
+                !is_valid_pk,
+                "Condition should fail: a primary key column appears twice with different values"
             );
         }
     }

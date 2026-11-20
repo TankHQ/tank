@@ -601,7 +601,7 @@ mod tests {
             (
                 Fragment::Json,
                 Value::Blob(Some(vec![1, 2].into())),
-                "\"\\x01\\x02\"",
+                "\"0102\"",
             ),
             (
                 Fragment::Json,

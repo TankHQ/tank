@@ -1,4 +1,5 @@
 #![allow(unused_variables)]
+use crate::silent_logs;
 use std::{collections::HashMap, sync::LazyLock};
 use tank::{AsValue, Entity, Result, Value, ValueOwned, anyhow, expr};
 use tokio::sync::Mutex;
@@ -430,7 +431,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         // #endregion cheat-sheet-builder-create-table
     }
 
-    {
+    silent_logs! {
         // #region cheat-sheet-builder-drop-table
         use tank::Sql;
 

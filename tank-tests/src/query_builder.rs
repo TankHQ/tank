@@ -1,4 +1,4 @@
-use crate::{CREW, Crew, crew_queries};
+use crate::{CREW, Crew, crew_queries, silent_logs};
 use std::sync::LazyLock;
 use tank::{BoxQueryBuilder, Entity, Executor, Result, stream::TryStreamExt};
 
@@ -33,7 +33,9 @@ pub async fn query_builder(executor: &mut impl Executor<Driver: 'static>) -> Res
         delete,
     ] = crew_queries();
 
-    executor.execute(&drop_table).await?;
+    silent_logs! {
+        executor.execute(&drop_table).await?;
+    }
     executor.execute(&create_table).await?;
 
     let result = executor.execute(&insert).await?;

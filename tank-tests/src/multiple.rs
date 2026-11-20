@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use crate::silent_logs;
 use std::sync::LazyLock;
 use tank::{AnyQuery, AsQuery, AsValue, Driver, Result, Row, Sql, expr};
 use tank::{
@@ -33,22 +34,24 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     let driver = executor.driver();
     let mut query = AnyQuery::default();
     query.push_str("    \n\n  \n \n\t\t\n   \n    ");
-    // 1
-    Sql()
-        .drop_table(One::table())
-        .if_exists()
-        .write_into(&driver.sql_writer(), &mut query);
+    silent_logs! {
+        // 1
+        Sql()
+            .drop_table(One::table())
+            .if_exists()
+            .write_into(&driver.sql_writer(), &mut query);
+        // 2
+        Sql()
+            .drop_table(Two::table())
+            .if_exists()
+            .write_into(&driver.sql_writer(), &mut query);
+        // 3
+        Sql()
+            .drop_table(Three::table())
+            .if_exists()
+            .write_into(&driver.sql_writer(), &mut query);
+    }
     query.push_str("\t\t");
-    // 2
-    Sql()
-        .drop_table(Two::table())
-        .if_exists()
-        .write_into(&driver.sql_writer(), &mut query);
-    // 3
-    Sql()
-        .drop_table(Three::table())
-        .if_exists()
-        .write_into(&driver.sql_writer(), &mut query);
     // 4
     Sql()
         .create_table(One::table())

@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use std::sync::{Arc, LazyLock};
 use tank::{AsValue, Entity, Executor, Result, Row, RowOwned, Sql, expr, stream::TryStreamExt};
 use tokio::sync::Mutex;
@@ -36,8 +37,10 @@ pub async fn insert_builder(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    InsertSource::drop_table(executor, true, false).await?;
-    InsertTarget::drop_table(executor, true, false).await?;
+    silent_logs! {
+        InsertSource::drop_table(executor, true, false).await?;
+        InsertTarget::drop_table(executor, true, false).await?;
+    }
     InsertSource::create_table(executor, true, false).await?;
     InsertTarget::create_table(executor, true, false).await?;
     let sources = [
@@ -136,7 +139,9 @@ pub async fn insert_builder(executor: &mut impl Executor) -> Result<()> {
     // Rows returned by a query
     #[cfg(not(feature = "disable-insert-select"))]
     {
-        InsertTarget::drop_table(executor, true, false).await?;
+        silent_logs! {
+            InsertTarget::drop_table(executor, true, false).await?;
+        }
         InsertTarget::create_table(executor, true, false).await?;
         executor
             .execute(

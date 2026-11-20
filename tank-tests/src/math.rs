@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use std::sync::LazyLock;
 use tank::{
     AsValue, Entity, Executor, Result, Row, Sql, cols, expr,
@@ -18,7 +19,9 @@ pub async fn math(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    MathTable::drop_table(executor, true, false).await?;
+    silent_logs! {
+        MathTable::drop_table(executor, true, false).await?;
+    }
     MathTable::create_table(executor, false, false).await?;
     MathTable { id: 0, read: 0 }.save(executor).await?;
 

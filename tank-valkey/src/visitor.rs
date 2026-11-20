@@ -1,4 +1,4 @@
-use std::{borrow::Cow, mem};
+use std::borrow::Cow;
 use tank_core::{
     AnyQuery, BinaryOp, BinaryOpType, ColumnRef, Context, Expression, ExpressionVisitor,
     IsConstant, Operand, Ordered, SqlWriter, TableRef,
@@ -62,6 +62,8 @@ pub struct IsPKCondition<'a> {
     table: &'a TableRef,
     /// Primary key columns already matched, in key order.
     matched: usize,
+    /// Rendered value of each matched column, used to accept retries.
+    values: Vec<(Cow<'static, str>, String)>,
     retry: bool,
 }
 impl<'a> IsPKCondition<'a> {
@@ -72,6 +74,7 @@ impl<'a> IsPKCondition<'a> {
             started: false,
             table,
             matched: 0,
+            values: Vec::new(),
             retry: false,
         }
     }
@@ -87,33 +90,30 @@ impl ExpressionVisitor for IsPKCondition<'_> {
         out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
-        let top = !self.started;
+        let is_tree_root = !self.started;
         self.started = true;
         match value.op {
             BinaryOpType::And => {
-                let mut lhs_done = false;
-                let mut rhs_done = false;
+                let mut lhs_is_pk_condition = false;
+                let mut rhs_is_pk_condition = false;
                 loop {
                     let matched_before = self.matched;
-                    if !lhs_done {
+                    if !lhs_is_pk_condition {
                         self.retry = false;
-                        lhs_done = value.lhs.accept_visitor(self, writer, context, out);
-                        if !lhs_done && !self.retry {
+                        lhs_is_pk_condition = value.lhs.accept_visitor(self, writer, context, out);
+                        if !lhs_is_pk_condition && !self.retry {
                             return false;
                         }
                     }
-                    if !rhs_done {
+                    if !rhs_is_pk_condition {
                         self.retry = false;
-                        rhs_done = value.rhs.accept_visitor(self, writer, context, out);
-                        if !rhs_done && !self.retry {
+                        rhs_is_pk_condition = value.rhs.accept_visitor(self, writer, context, out);
+                        if !rhs_is_pk_condition && !self.retry {
                             return false;
                         }
                     }
-                    if lhs_done && rhs_done {
-                        if top && !self.is_complete() {
-                            return false;
-                        }
-                        return true;
+                    if lhs_is_pk_condition && rhs_is_pk_condition {
+                        return !is_tree_root || self.is_complete();
                     }
                     if self.matched == matched_before {
                         self.retry = true;
@@ -144,12 +144,18 @@ impl ExpressionVisitor for IsPKCondition<'_> {
                     return false;
                 };
                 let mut primary_key = self.table.primary_key();
+                let mut rendered = AnyQuery::default();
+                value.write_query(writer, context, &mut rendered);
                 if primary_key
                     .by_ref()
                     .take(self.matched)
                     .any(|c| c.name() == is_column.field)
                 {
-                    return true;
+                    // Retries revisit matched columns, so an identical value is accepted
+                    return self
+                        .values
+                        .iter()
+                        .any(|(name, v)| name == &is_column.field && v == rendered.buffer());
                 }
                 let Some(next) = primary_key.next() else {
                     return false;
@@ -165,14 +171,11 @@ impl ExpressionVisitor for IsPKCondition<'_> {
                     self.key.push_str(&is_column.field);
                     self.key.push_str(writer.separator());
                 }
-                let mut out = AnyQuery::new(mem::take(&mut self.key));
-                value.write_query(writer, context, &mut out);
-                self.key = mem::take(out.buffer());
+                self.key.push_str(rendered.buffer());
+                self.values
+                    .push((is_column.field.clone(), rendered.buffer().clone()));
                 self.matched += 1;
-                if top && !self.is_complete() {
-                    return false;
-                }
-                true
+                !is_tree_root || self.is_complete()
             }
             _ => false,
         }

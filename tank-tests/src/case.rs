@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use std::{collections::BTreeSet, sync::LazyLock};
 use tank::{AsValue, Entity, Executor, Result, Row, Sql, cols, expr, stream::TryStreamExt};
 use tokio::sync::Mutex;
@@ -17,7 +18,9 @@ pub async fn case(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    CaseOrder::drop_table(executor, true, false).await?;
+    silent_logs! {
+        CaseOrder::drop_table(executor, true, false).await?;
+    }
     CaseOrder::create_table(executor, true, false).await?;
     CaseOrder::insert_many(
         executor,

@@ -59,7 +59,6 @@ pub async fn limits(executor: &mut impl Executor) -> Result<()> {
 
     // Setup
     silent_logs! {
-        // Silent logs for Valkey/Redis
         Limits::drop_table(executor, true, false).await?;
     }
     Limits::create_table(executor, true, true).await?;

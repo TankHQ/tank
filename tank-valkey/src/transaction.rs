@@ -31,6 +31,14 @@ impl Executor for ValkeyTransaction<'_> {
                 "Query is not the expected tank::Query::Prepared variant (Valkey/Redis driver uses prepared)",
             )))));
         };
+        if let Some(error) = prepared.error.take() {
+            return Either::Left(stream::once(future::ready(Err(error))));
+        }
+        if !prepared.columns.is_empty() {
+            return Either::Left(stream::once(future::ready(Err(anyhow!(
+                "Valkey/Redis transactions cannot return rows, reads must run outside the transaction"
+            )))));
+        }
         self.commands.extend(prepared.commands.iter().cloned());
         Either::Right(stream::empty::<Result<QueryResult>>())
     }

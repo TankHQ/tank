@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
+use crate::silent_logs;
 use std::{borrow::Cow, pin::pin, sync::LazyLock};
 use tank::{
     AnyQuery, Driver, Entity, Executor, Query, QueryResult, RawQuery, Result, Sql, SqlWriter, cols,
@@ -31,8 +32,10 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
     let _ = MUTEX.lock().await;
 
     // Setup
-    Arrays1::drop_table(executor, true, false).await?;
-    Arrays2::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Arrays1::drop_table(executor, true, false).await?;
+        Arrays2::drop_table(executor, true, false).await?;
+    }
     Arrays1::create_table(executor, false, true).await?;
     Arrays2::create_table(executor, false, true).await?;
 
@@ -107,9 +110,11 @@ pub async fn arrays1(executor: &mut impl Executor) -> Result<()> {
         let mut query = AnyQuery::default();
         let driver = executor.driver();
         let writer = driver.sql_writer();
-        writer.write_drop_table(&mut query, Arrays1::table(), true);
+        silent_logs! {
+            writer.write_drop_table(&mut query, Arrays1::table(), true);
+            writer.write_drop_table(&mut query, Arrays2::table(), true);
+        }
         writer.write_create_table(&mut query, Arrays1::table(), true);
-        writer.write_drop_table(&mut query, Arrays2::table(), true);
         writer.write_create_table(&mut query, Arrays2::table(), true);
         let value = Arrays1 {
             #[cfg(not(feature = "disable-intervals"))]

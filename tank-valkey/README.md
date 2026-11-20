@@ -56,7 +56,7 @@ Due to the key-value nature of Valkey and Redis, this driver has stricter limita
 - **Primary key access only**: `SELECT` and `DELETE` operations must provide a `WHERE` clause that matches the entity primary key exactly, for example `WHERE first_name == "Linus" && last_name == "Torvalds"`. Other expressions are not supported.
 - **No joins or aggregations**: `JOIN` clauses and `GROUP BY` aggregations are not supported.
 - **No ordering**: `ORDER BY` clauses are not supported.
-- **No table or schema DDL**: `create_table` and `create_schema` are effectively no-ops. `drop_table` logs an error. Data must be cleared by deleting keys or through expiration.
+- **No table or schema DDL**: `create_table` and `create_schema` are effectively no-ops. `drop_table` logs a warning. Data must be cleared by deleting keys or through expiration.
 - **Data modeling is key-based**: Each entity is stored under one root key as a Redis hash. Nested collections use additional child keys derived from the root key, such as `<root>:<field>`.
 - **No reliable rows affected**: Valkey and Redis do not provide affected-row counts in the SQL sense. Tank returns `rows_affected: None`.
 - **Transactions use pipelines**: Tank queues commands and executes them through a Redis pipeline on `commit()`. `rollback()` is a no-op. Commands are not automatically wrapped in `MULTI/EXEC`.

@@ -219,7 +219,16 @@ impl SqlValueWriter for MySQLSqlWriter {
         out.push('\'');
     }
 
-    fn write_blob(&self, _context: &mut Context, out: &mut AnyQuery, value: &[u8]) {
+    fn write_blob(&self, context: &mut Context, out: &mut AnyQuery, value: &[u8]) {
+        if matches!(context.fragment, Fragment::Json | Fragment::JsonKey) {
+            // JSON has no binary type, a hex string round-trips through `Box<[u8]>`.
+            out.push('"');
+            for b in value {
+                let _ = write!(out, "{b:02X}");
+            }
+            out.push('"');
+            return;
+        }
         out.push_str("X'");
         for b in value {
             let _ = write!(out, "{b:02X}");

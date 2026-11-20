@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use tank::{Entity, Executor, FixedDecimal, Result, expr, stream::TryStreamExt};
 
 #[derive(Entity, Debug, PartialEq)]
@@ -10,9 +11,10 @@ pub struct HighScaleDecimal {
 }
 
 pub async fn decimals(executor: &mut impl Executor) -> Result<()> {
-    HighScaleDecimal::drop_table(executor, true, false).await?;
+    silent_logs! {
+        HighScaleDecimal::drop_table(executor, true, false).await?;
+    }
     HighScaleDecimal::create_table(executor, true, false).await?;
-
     let entity = HighScaleDecimal {
         id: 1,
         value: FixedDecimal::from("1.23".parse::<rust_decimal::Decimal>().unwrap()),

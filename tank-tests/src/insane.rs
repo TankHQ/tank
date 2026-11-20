@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
@@ -59,7 +60,9 @@ pub async fn insane(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    InsaneNullFields::drop_table(executor, true, false).await?;
+    silent_logs! {
+        InsaneNullFields::drop_table(executor, true, false).await?;
+    }
     InsaneNullFields::create_table(executor, true, true).await?;
 
     // Insane 1

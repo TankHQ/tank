@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]
+use crate::silent_logs;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     pin::pin,
@@ -28,7 +29,9 @@ struct Container {
 pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
     let _ = MUTEX.lock().await;
 
-    Container::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Container::drop_table(executor, true, false).await?;
+    }
     Container::create_table(executor, true, true).await?;
 
     #[cfg(not(feature = "disable-intervals"))]
@@ -96,7 +99,9 @@ pub async fn arrays2(executor: &mut impl Executor) -> Result<()> {
         let mut query = AnyQuery::default();
         let driver = executor.driver();
         let writer = driver.sql_writer();
-        writer.write_drop_table(&mut query, Container::table(), true);
+        silent_logs! {
+            writer.write_drop_table(&mut query, Container::table(), true);
+        }
         writer.write_create_table(&mut query, Container::table(), true);
         let value = Container {
             #[cfg(not(feature = "disable-intervals"))]

@@ -31,6 +31,46 @@ impl<'a> ValueWrap<'a> {
             (tank_core::Value::Json(..), redis::Value::BulkString(v)) => tank_core::Value::Json(
                 Some(serde_json::from_slice(&v).map_err(tank_core::Error::new)?),
             ),
+            (
+                tank_core::Value::Array(_, t, ..) | tank_core::Value::List(_, t, ..),
+                redis::Value::Array(v) | redis::Value::Set(v),
+            ) => {
+                let values = v
+                    .into_iter()
+                    .map(|v| Self::decode(v, &t.element).map(|v| v.0))
+                    .collect::<Result<Vec<_>, tank_core::Error>>()?;
+                tank_core::Value::List(
+                    if values.is_empty() {
+                        None
+                    } else {
+                        Some(values.into_boxed_slice())
+                    },
+                    Box::new(tank_core::CollectionType {
+                        element: t.element.as_null().into_owned(),
+                        len: 0,
+                    }),
+                )
+            }
+            (tank_core::Value::Map(_, t, ..), redis::Value::Map(v)) => {
+                let mut entries = HashMap::with_capacity(v.len());
+                for (k, v) in v {
+                    entries.insert(
+                        Self::decode(k, &t.key)?.0.into_owned(),
+                        Self::decode(v, &t.value)?.0.into_owned(),
+                    );
+                }
+                tank_core::Value::Map(
+                    if entries.is_empty() {
+                        None
+                    } else {
+                        Some(Box::new(entries))
+                    },
+                    Box::new(tank_core::MapType {
+                        key: t.key.as_null().into_owned(),
+                        value: t.value.as_null().into_owned(),
+                    }),
+                )
+            }
             (_, value) => Self::try_from(value)?.0,
         }
         .into())

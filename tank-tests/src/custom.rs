@@ -63,7 +63,6 @@ pub async fn custom(executor: &mut impl Executor) -> Result<()> {
 
     // Setup
     silent_logs! {
-        // Silent logs for Valkey/Redis
         CustomValues::drop_table(executor, true, false).await?;
     }
     CustomValues::create_table(executor, true, true).await?;

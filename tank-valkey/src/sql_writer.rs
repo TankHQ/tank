@@ -1,4 +1,5 @@
 use crate::{IsField, IsPKCondition, ValkeyDriver, ValkeyPrepared, ValueWrap};
+use anyhow::anyhow;
 use redis::Cmd;
 use std::{borrow::Cow, fmt::Write, hint, mem};
 use tank_core::{
@@ -23,6 +24,58 @@ impl ValkeySqlWriter {
     /// Values stored in the entity hash itself, unlike nested collections kept in child keys.
     const fn is_hash_field(value: &Value<'_>) -> bool {
         value.is_scalar() || matches!(value, Value::Json(..))
+    }
+
+    /// Queues the command that reads one column, and registers it for decoding.
+    fn push_column(
+        &self,
+        prepared: &mut ValkeyPrepared,
+        key: &str,
+        column: &ColumnDef,
+    ) -> Result<()> {
+        let id = column.name();
+        let ty = &column.value;
+        let child_key = || format!("{key}{}{id}", self.separator());
+        match ty {
+            v if Self::is_hash_field(v) => prepared.commands.push(Cmd::hget(key, id)),
+            Value::Array(_, t, ..) | Value::List(_, t, ..) => {
+                if !Self::is_hash_field(&t.element) {
+                    let error = anyhow!(
+                        "Valkey/Redis can only query lists with scalar values, found: {ty:?}"
+                    );
+                    log::error!("{error:#}");
+                    return Err(error);
+                }
+                prepared.commands.push(Cmd::lrange(child_key(), 0, -1));
+            }
+            Value::Map(_, t, ..) => {
+                if !Self::is_hash_field(&t.key) || !Self::is_hash_field(&t.value) {
+                    let error = anyhow!(
+                        "Valkey/Redis can only query maps with scalar key and value (they are encoded as HSET), found: {ty:?}"
+                    );
+                    log::error!("{error:#}");
+                    return Err(error);
+                }
+                prepared.commands.push(Cmd::hgetall(child_key()));
+            }
+            Value::Struct(_, t, ..) => {
+                if !t.fields.iter().all(|(_, v)| Self::is_hash_field(v)) {
+                    let error = anyhow!(
+                        "Valkey/Redis can only query structs with scalar fields (they are encoded as HSET), found: {ty:?}"
+                    );
+                    log::error!("{error:#}");
+                    return Err(error);
+                }
+                prepared.commands.push(Cmd::hgetall(child_key()));
+            }
+            _ => {
+                let error = anyhow!("Valkey/Redis cannot query columns of type {ty:?}");
+                log::error!("{error:#}");
+                return Err(error);
+            }
+        };
+        prepared.columns.push(Cow::Owned(column.clone()));
+        Ok(())
     }
 
     pub fn make_prepared() -> AnyQuery {
@@ -123,7 +176,7 @@ impl SqlWriter for ValkeySqlWriter {
     where
         Self: Sized,
     {
-        log::error!("Valkey/Redis does not implement drop table, it must be done separately");
+        log::warn!("Valkey/Redis does not implement drop table, it must be done separately");
         Self::prepare_query(out, &mut Default::default());
     }
 
@@ -132,18 +185,23 @@ impl SqlWriter for ValkeySqlWriter {
         Self: Sized,
         Data: Dataset + 'a,
     {
+        let mut context = Self::make_context(Fragment::SqlSelect);
+        let prepared = Self::prepare_query(out, &mut context);
         let (Some(table), Some(where_expr)) = (query.get_from(), query.get_where()) else {
-            log::error!("The query does not have the FROM or WHERE clause");
+            let error = anyhow!("Valkey/Redis needs both the FROM and WHERE clauses to query");
+            log::error!("{error:#}");
+            prepared.error = Some(error);
             return;
         };
         let table = table.table_ref();
         if table.name.is_empty() {
-            log::error!(
-                "The table is not specified in the dataset (if it is a JOIN, Valkey/Redis does not support it)"
+            let error = anyhow!(
+                "The table is not specified in the dataset (if it's a JOIN, Valkey/Redis does not support it)"
             );
+            log::error!("{error:#}");
+            prepared.error = Some(error);
             return;
         }
-        let mut context = Self::make_context(Fragment::SqlSelect);
         let mut is_pk_condition = IsPKCondition::new(
             self.keys_with_names,
             table.full_name(self.separator()).into_owned(),
@@ -155,26 +213,51 @@ impl SqlWriter for ValkeySqlWriter {
             &mut context.switch_fragment(Fragment::SqlSelectWhere).current,
             &mut Default::default(),
         ) {
-            log::error!("Valkey/Redis can only query using the primary key expression of a table");
+            let error = anyhow!(
+                "Valkey/Redis can only query using the primary key expression of a table, found: `{}`",
+                where_expr.as_identifier(&mut Default::default())
+            );
+            log::error!("{error:#}");
+            prepared.error = Some(error);
             return;
         }
-        let prepared = Self::prepare_query(out, &mut context);
-        let mut columns = query.get_select();
+        let columns = query.get_select();
         let columns_count = columns.clone().into_iter().count();
         let key = is_pk_condition.key.as_str();
         let single_asterisk = columns_count == 1
-            && columns.next().is_some_and(|column| {
+            && columns.clone().next().is_some_and(|column| {
                 column.accept_visitor(&mut IsAsterisk, self, &mut context, &mut Default::default())
             });
-        if columns_count == 0 || single_asterisk {
-            prepared.commands.push(Cmd::hgetall(key));
+        if single_asterisk {
+            if table.columns.is_empty() {
+                let error = anyhow!(
+                    "Valkey/Redis cannot expand `*` because the table has no column definitions"
+                );
+                log::error!("{error:#}");
+                prepared.error = Some(error);
+                return;
+            }
+            for column in table.columns.iter() {
+                if let Err(error) = self.push_column(prepared, key, column) {
+                    prepared.error = Some(error);
+                    return;
+                }
+            }
+            return;
+        }
+        if columns_count == 0 {
+            let error = anyhow!("Valkey/Redis cannot run a SELECT without columns");
+            log::error!("{error:#}");
+            prepared.error = Some(error);
             return;
         }
         let mut is_field = IsField::default();
         for column in columns {
             let id = column.as_identifier(&mut context);
             if !column.accept_visitor(&mut is_field, self, &mut context, &mut Default::default()) {
-                log::error!("Valkey/Redis can only query columns, found: {id}",);
+                let error = anyhow!("Valkey/Redis can only query columns, found: {id}");
+                log::error!("{error:#}");
+                prepared.error = Some(error);
                 return;
             }
             let is_column = |c: &&ColumnDef| c.name() == is_field.field;
@@ -183,44 +266,17 @@ impl SqlWriter for ValkeySqlWriter {
                 Cow::Owned(defined) => defined.iter().find(is_column).cloned().map(Cow::Owned),
             };
             let Some(column_def) = found else {
-                log::error!(
-                    "Valkey/Redis can only query known columns, {id} was not defined in the entity",
+                let error = anyhow!(
+                    "Valkey/Redis can only query known columns, {id} was not defined in the entity"
                 );
+                log::error!("{error:#}");
+                prepared.error = Some(error);
                 return;
             };
-            let ty = &column_def.value;
-            match ty {
-                v if Self::is_hash_field(v) => prepared.commands.push(Cmd::hget(key, id)),
-                Value::Array(_, t, ..) | Value::List(_, t, ..) => {
-                    if !t.element.is_scalar() {
-                        log::error!(
-                            "Valkey/Redis can only query lists with scalar values, found: {ty:?}"
-                        );
-                        return;
-                    }
-                    prepared.commands.push(Cmd::lrange(
-                        format!("{key}{}{id}", self.separator),
-                        0,
-                        -1,
-                    ));
-                }
-                Value::Map(_, t, ..) => {
-                    if !t.key.is_scalar() || !t.value.is_scalar() {
-                        log::error!(
-                            "Valkey/Redis can only query maps with scalar key and value (they are encoded as HSET), found: {ty:?}"
-                        );
-                        return;
-                    }
-                    prepared
-                        .commands
-                        .push(Cmd::hgetall(format!("{key}{}{id}", self.separator())));
-                }
-                _ => {
-                    log::error!("Valkey/Redis cannot query columns of type {ty:?}");
-                    return;
-                }
-            };
-            prepared.columns.push(column_def);
+            if let Err(error) = self.push_column(prepared, key, &column_def) {
+                prepared.error = Some(error);
+                return;
+            }
         }
     }
 
@@ -230,25 +286,32 @@ impl SqlWriter for ValkeySqlWriter {
     {
         let table = query.get_table();
         let columns = query.get_columns();
+        let update = query.get_update();
+        let mut context = Self::make_context(Fragment::SqlInsertInto);
+        let prepared = Self::prepare_query(out, &mut context);
         let Either::Left(rows) = query.get_values() else {
-            log::error!("Valkey/Redis does not support INSERT ... SELECT");
+            let error = anyhow!("Valkey/Redis does not support INSERT ... SELECT");
+            log::error!("{error:#}");
+            prepared.error = Some(error);
             return;
         };
         if table.primary_key().next().is_none() {
-            log::error!(
+            let error = anyhow!(
                 "Valkey/Redis needs the primary key of {} to build the keys, use the `Entity::table()` as target",
                 table.full_name(self.separator())
             );
+            log::error!("{error:#}");
+            prepared.error = Some(error);
             return;
         }
-        let mut context = Self::make_context(Fragment::SqlInsertInto);
-        let prepared = Self::prepare_query(out, &mut context);
         for row in rows {
             let values = match row.map(LiteralValue::new).collect::<Result<Vec<_>>>() {
                 Ok(values) => values,
                 Err(error) => {
                     hint::cold_path();
-                    log::error!("Cannot insert into Valkey/Redis: {error:#}");
+                    let error = error.context("Cannot insert into Valkey/Redis");
+                    log::error!("{error:#}");
+                    prepared.error = Some(error);
                     return;
                 }
             };
@@ -257,7 +320,11 @@ impl SqlWriter for ValkeySqlWriter {
             let mut key = table.full_name(self.separator()).into_owned();
             for name in table.primary_key().map(ColumnDef::name) {
                 let Some((_, value)) = fields().find(|(field, _)| *field == name) else {
-                    log::error!("The row has no value for the primary key column `{name}`");
+                    let error = anyhow!(
+                        "Cannot insert into Valkey/Redis: the row has no value for the primary key column `{name}`"
+                    );
+                    log::error!("{error:#}");
+                    prepared.error = Some(error);
                     return;
                 };
                 if !key.is_empty() {
@@ -270,6 +337,21 @@ impl SqlWriter for ValkeySqlWriter {
                 let mut rendered = AnyQuery::new(key);
                 self.write_value(&mut context, &mut rendered, value);
                 key = mem::take(rendered.buffer());
+            }
+            if update {
+                // Saving over an existing entity must replace it (delete it first)
+                prepared.commands.push(Cmd::del(&key));
+                for column in table
+                    .columns
+                    .iter()
+                    .filter(|c| !Self::is_hash_field(&c.value))
+                {
+                    prepared.commands.push(Cmd::del(format!(
+                        "{key}{}{}",
+                        self.separator(),
+                        column.name()
+                    )));
+                }
             }
             prepared.commands.push(Cmd::hset_multiple(
                 &key,
@@ -284,39 +366,68 @@ impl SqlWriter for ValkeySqlWriter {
                     .collect::<Vec<_>>()
                     .as_slice(),
             ));
-            for (k, v) in fields().filter_map(|(k, v)| {
-                if !Self::is_hash_field(v) {
-                    (k, ValueWrap(v.as_value())).into()
-                } else {
-                    None
-                }
-            }) {
+            for (k, value) in fields().filter(|(_, v)| !Self::is_hash_field(v)) {
                 let key = format!("{key}{}{k}", self.separator);
-                let value = v.0;
+                let valid = |values: &[Value<'_>]| {
+                    values
+                        .iter()
+                        .all(|v| Self::is_hash_field(v) && !v.is_null())
+                };
                 match value {
-                    Value::Array(Some(ref v), ..) if !v.is_empty() => {
-                        prepared.commands.push(Cmd::rpush(key, ValueWrap(value)))
-                    }
-                    Value::List(Some(ref v), ..) if !v.is_empty() => {
-                        prepared.commands.push(Cmd::rpush(key, ValueWrap(value)))
+                    Value::Array(Some(v), ..) | Value::List(Some(v), ..) if !v.is_empty() => {
+                        if !valid(v) {
+                            let error = anyhow!(
+                                "Valkey/Redis cannot store `{k}`: collections cannot contain null or nested values"
+                            );
+                            log::error!("{error:#}");
+                            prepared.error = Some(error);
+                            return;
+                        }
+                        prepared
+                            .commands
+                            .push(Cmd::rpush(key, ValueWrap(value.as_value())));
                     }
                     Value::Map(Some(v), ..) if !v.is_empty() => {
+                        if !v.iter().all(|(k, v)| {
+                            Self::is_hash_field(k)
+                                && !k.is_null()
+                                && Self::is_hash_field(v)
+                                && !v.is_null()
+                        }) {
+                            let error = anyhow!(
+                                "Valkey/Redis cannot store `{k}`: maps cannot contain null or nested keys or values"
+                            );
+                            log::error!("{error:#}");
+                            prepared.error = Some(error);
+                            return;
+                        }
                         prepared.commands.push(Cmd::hset_multiple(
                             key,
                             v.iter()
                                 .map(|(k, v)| (ValueWrap(k.as_value()), ValueWrap(v.as_value())))
                                 .collect::<Vec<_>>()
                                 .as_slice(),
-                        ))
+                        ));
                     }
                     Value::Struct(Some(v), ..) if !v.is_empty() => {
+                        if !v
+                            .iter()
+                            .all(|(_, v)| Self::is_hash_field(v) && !v.is_null())
+                        {
+                            let error = anyhow!(
+                                "Valkey/Redis cannot store `{k}`: structs cannot contain null or nested values"
+                            );
+                            log::error!("{error:#}");
+                            prepared.error = Some(error);
+                            return;
+                        }
                         prepared.commands.push(Cmd::hset_multiple(
                             key,
                             v.iter()
                                 .map(|(k, v)| (k, ValueWrap(v.as_value())))
                                 .collect::<Vec<_>>()
                                 .as_slice(),
-                        ))
+                        ));
                     }
                     _ => {}
                 };
@@ -330,6 +441,7 @@ impl SqlWriter for ValkeySqlWriter {
     {
         let table = from.table_ref();
         let mut context = Self::make_context(Fragment::SqlDeleteFrom);
+        let prepared = Self::prepare_query(out, &mut context);
         let mut is_pk_condition = IsPKCondition::new(
             self.keys_with_names,
             table.full_name(self.separator()).into_owned(),
@@ -343,13 +455,14 @@ impl SqlWriter for ValkeySqlWriter {
                 .current,
             &mut Default::default(),
         ) {
-            log::error!(
-                "Valkey/Redis can only delete using the primary key conditions, found: {}",
+            let error = anyhow!(
+                "Valkey/Redis can only delete using the primary key conditions, found: `{}`",
                 condition.as_identifier(&mut Default::default())
             );
+            log::error!("{error:#}");
+            prepared.error = Some(error);
             return;
         }
-        let prepared = Self::prepare_query(out, &mut context);
         let key = is_pk_condition.key;
         prepared.commands.push(Cmd::del(&key));
         for column in table

@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use std::{pin::pin, sync::LazyLock};
 use tank::{
     AnyQuery, AsValue, Driver, Entity, Executor, Result, Row, Sql, cols, expr, stream::TryStreamExt,
@@ -23,7 +24,9 @@ pub async fn other(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    ATable::drop_table(executor, true, false).await?;
+    silent_logs! {
+        ATable::drop_table(executor, true, false).await?;
+    }
     ATable::create_table(executor, true, true).await?;
     ATable::insert_one(
         executor,
@@ -64,7 +67,9 @@ pub async fn other(executor: &mut impl Executor) -> Result<()> {
     );
 
     // Multi byte char
-    CharTable::drop_table(executor, true, false).await?;
+    silent_logs! {
+        CharTable::drop_table(executor, true, false).await?;
+    }
     CharTable::create_table(executor, true, true).await?;
     CharTable::insert_one(
         executor,

@@ -10,8 +10,8 @@ use tank_core::{
 use tank_scylladb::{CassandraConnection, CassandraDriver, ScyllaDBConnection, ScyllaDBDriver};
 use tank_tests::{
     ambiguity, cheat_sheet, custom, enums, generate_ssl_files, identifiers, interval, json_blob,
-    kv_storage, limits, metrics, other_types, service, simple, trade_multiple, trade_simple,
-    transaction1,
+    kv_storage, limits, metrics, nested, other_types, projections, save, service, simple,
+    trade_multiple, trade_simple, transaction1,
 };
 use testcontainers_modules::{
     scylladb::ScyllaDB,
@@ -42,6 +42,9 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
     do_test!(simple);
     do_test!(kv_storage);
     do_test!(json_blob);
+    do_test!(projections);
+    do_test!(save);
+    do_test!(nested);
     do_test!(trade_simple);
     do_test!(trade_multiple);
     do_test!(enums);

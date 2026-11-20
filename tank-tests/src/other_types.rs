@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 #[cfg(not(feature = "disable-intervals"))]
 use tank::Interval;
@@ -19,7 +20,9 @@ pub struct OtherTypes {
 }
 
 pub async fn other_types(executor: &mut impl Executor) -> Result<()> {
-    OtherTypes::drop_table(executor, true, false).await?;
+    silent_logs! {
+        OtherTypes::drop_table(executor, true, false).await?;
+    }
     OtherTypes::create_table(executor, true, true).await?;
 
     let ipv4 = OtherTypes {

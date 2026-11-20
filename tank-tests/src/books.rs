@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
 use tank::{
     AnyQuery, AsValue, Dataset, Driver, Entity, Executor, Query, QueryResult, Result, Row, Sql,
@@ -39,8 +40,10 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Book::drop_table(executor, true, false).await?;
-    Author::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Book::drop_table(executor, true, false).await?;
+        Author::drop_table(executor, true, false).await?;
+    }
     Author::create_table(executor, false, true).await?;
     Book::create_table(executor, false, true).await?;
 
@@ -302,7 +305,6 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
     #[cfg(not(feature = "disable-references"))]
     {
         // Insert book violating referential integrity
-        use crate::silent_logs;
         let book = Book {
             #[cfg(not(feature = "disable-arrays"))]
             isbn: [9, 7, 8, 1, 7, 3, 3, 5, 6, 1, 0, 8, 0],

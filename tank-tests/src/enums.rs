@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use rust_decimal::{Decimal, prelude::FromPrimitive};
 use std::{
     borrow::Cow,
@@ -103,7 +104,9 @@ pub async fn enums(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Entry::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Entry::drop_table(executor, true, false).await?;
+    }
     Entry::create_table(executor, true, true).await?;
 
     // Operations
@@ -174,5 +177,6 @@ pub async fn enums(executor: &mut impl Executor) -> Result<()> {
             },
         ]
     );
+
     Ok(())
 }

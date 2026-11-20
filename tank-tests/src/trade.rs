@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use rust_decimal::Decimal;
 use std::{collections::BTreeMap, pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
@@ -41,7 +42,9 @@ pub async fn trade_simple(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Trade::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Trade::drop_table(executor, true, false).await?;
+    }
     Trade::create_table(executor, false, true).await?;
 
     // Trade object
@@ -146,7 +149,9 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Trade::drop_table(executor, false, false).await?;
+    silent_logs! {
+        Trade::drop_table(executor, false, false).await?;
+    }
     Trade::create_table(executor, false, true).await?;
 
     // Trade objects

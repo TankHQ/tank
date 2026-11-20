@@ -7,7 +7,7 @@ Read before modifying `tank-core`, `tank-macros`, or database drivers.
 - `tank`: Public facade re-exporting `tank-core` and `tank-macros`.
 - `tank-core`: Traits (`Driver`, `Executor`, `Connection`, `Transaction`, `Entity`, `Row`, `AsValue`, `SqlWriter`), `Value<'a>`, and query builders.
 - `tank-macros`: `#[derive(Entity)]`, `expr!`, `cols!`, and `join!` proc-macros.
-- `tank-tests`: Shared integration suite run by every driver's `tests/` against `tank-core`.
+- `tank-tests`: Shared integration suite run by every driver's `tests/` against `tank-core`. It is driver-agnostic: no file in `tank-tests/` or `tests/` may import a driver crate or name a driver-specific Rust type. Those assertions belong in that driver's `tests/`.
 - Drivers: `tank-postgres`, `tank-sqlite`, `tank-duckdb`, `tank-chdb`, `tank-clickhouse`, `tank-mysql`, `tank-mongodb`, `tank-scylladb`, `tank-valkey`. Template: `tank-yourdb`.
 
 ## Validation

@@ -12,7 +12,6 @@ struct JsonBlob {
 
 pub async fn json_blob(executor: &mut impl Executor) -> Result<()> {
     silent_logs! {
-        // Valkey and Redis have no table DDL.
         JsonBlob::drop_table(executor, true, false).await?;
     }
     JsonBlob::create_table(executor, true, true).await?;

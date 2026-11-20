@@ -24,14 +24,17 @@ mod limits;
 mod math;
 mod metrics;
 mod multiple;
+mod nested;
 mod operations;
 mod orders;
 mod other;
 mod other_types;
 mod prepared;
+mod projections;
 mod query_builder;
 mod readme;
 mod requests;
+mod save;
 mod select_options;
 mod service;
 mod shopping;
@@ -69,11 +72,13 @@ use log::LevelFilter;
 pub use math::*;
 pub use metrics::*;
 pub use multiple::*;
+pub use nested::*;
 pub use operations::*;
 pub use orders::*;
 pub use other::*;
 pub use other_types::*;
 pub use prepared::*;
+pub use projections::*;
 pub use query_builder::*;
 use rcgen::{
     BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair,
@@ -81,6 +86,7 @@ use rcgen::{
 };
 pub use readme::*;
 pub use requests::*;
+pub use save::*;
 pub use select_options::*;
 pub use service::*;
 pub use shopping::*;
@@ -216,6 +222,9 @@ pub async fn execute_tests<D: Driver + 'static>(pool: &mut impl ConnectionPool<D
         #[cfg(not(feature = "disable-ordering"))]
         boxed(select_options),
         boxed(prepared),
+        boxed(projections),
+        boxed(save),
+        boxed(nested),
         boxed(prepared_abandoned_stream),
         boxed(prepared_builder_reuse),
         boxed(bindings),

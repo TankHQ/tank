@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use std::{
     collections::{BTreeMap, HashSet},
     sync::LazyLock,
@@ -36,7 +37,9 @@ pub async fn users(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    UserProfile::drop_table(executor, true, false).await?;
+    silent_logs! {
+        UserProfile::drop_table(executor, true, false).await?;
+    }
     UserProfile::create_table(executor, false, true).await?;
 
     // Insert

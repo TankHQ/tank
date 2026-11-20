@@ -136,6 +136,10 @@ impl Executor for ValkeyConnection {
                 ))?;
                 return;
             };
+            if let Some(error) = prepared.error.take() {
+                Err(error)?;
+                return;
+            }
             if prepared.is_empty() {
                 return;
             }

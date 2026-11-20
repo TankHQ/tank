@@ -24,7 +24,9 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Intervals::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Intervals::drop_table(executor, true, false).await?;
+    }
     Intervals::create_table(executor, true, true).await?;
 
     Intervals::insert_one(

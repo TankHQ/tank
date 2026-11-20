@@ -179,12 +179,21 @@ pub trait SqlValueWriter: SqlCoreWriter {
     }
 
     fn write_blob(&self, context: &mut Context, out: &mut AnyQuery, value: &[u8]) {
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+        if matches!(context.fragment, Fragment::Json | Fragment::JsonKey) {
+            // JSON has no binary type, a hex string round-trips through `Box<[u8]>`.
+            out.push('"');
+            for &v in value {
+                out.push(HEX[(v >> 4) as usize] as char);
+                out.push(HEX[(v & 0xF) as usize] as char);
+            }
+            out.push('"');
+            return;
+        }
         let b = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => "",
-            Fragment::Json | Fragment::JsonKey => "\"",
             _ => "'",
         };
-        const HEX: &[u8; 16] = b"0123456789ABCDEF";
         out.buffer().reserve(4 * value.len() + 2 * b.len());
         out.push_str(b);
         for &v in value {

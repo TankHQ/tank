@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use std::sync::LazyLock;
 use tank::{
     AsValue, Entity, Error, Executor, Result, Sql, Value, ValueOwned, anyhow, cols, expr,
@@ -75,7 +76,9 @@ pub async fn service(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Service::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Service::drop_table(executor, true, false).await?;
+    }
     Service::create_table(executor, false, true).await?;
 
     // Query

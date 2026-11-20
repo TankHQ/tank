@@ -651,6 +651,7 @@ impl AsValue for Box<[u8]> {
             Value::Blob(Some(v), ..) => Ok(v.into_owned().into_boxed_slice()),
             Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
             Value::Unknown(Some(v), ..) => <Self as AsValue>::parse(v),
+            Value::Json(Some(serde_json::Value::String(v)), ..) => <Self as AsValue>::parse(v),
             other => Err(anyhow!(
                 "Cannot convert {other:?} to {}",
                 any::type_name::<Self>()

@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use std::pin::pin;
 use std::sync::LazyLock;
 use tank::stream::TryStreamExt;
@@ -27,7 +28,9 @@ pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    ReservedWords::drop_table(executor, true, false).await?;
+    silent_logs! {
+        ReservedWords::drop_table(executor, true, false).await?;
+    }
     ReservedWords::create_table(executor, true, true).await?;
 
     // Query

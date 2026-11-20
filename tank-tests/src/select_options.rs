@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use std::sync::LazyLock;
 use tank::{
     AsValue, Entity, Executor, Result, Row, Sql, cols,
@@ -28,8 +29,10 @@ pub async fn select_options(executor: &mut impl Executor) -> Result<()> {
     let bucket_order = cols!(OptionRow::bucket ASC);
     let seq_order = cols!(OptionRow::seq ASC);
 
-    OptionTarget::drop_table(executor, true, false).await?;
-    OptionRow::drop_table(executor, true, false).await?;
+    silent_logs! {
+        OptionTarget::drop_table(executor, true, false).await?;
+        OptionRow::drop_table(executor, true, false).await?;
+    }
     OptionRow::create_table(executor, false, true).await?;
     let rows = [
         OptionRow { seq: 1, bucket: 10 },
