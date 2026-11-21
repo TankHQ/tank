@@ -272,11 +272,11 @@ impl Interval {
         } else if unit == IntervalUnit::Month {
             self.months as i128
         } else {
-            let factor = *self
+            let factor = self
                 .units_and_factors()
                 .iter()
-                .find_map(|(u, k)| if *u == unit { Some(k) } else { None })
-                .expect("The unit must be present");
+                .find_map(|(u, k)| if *u == unit { Some(*k) } else { None })
+                .unwrap_or(1);
             self.days_nanos() / factor
         }
     }

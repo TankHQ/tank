@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use rust_decimal::Decimal;
 use std::sync::LazyLock;
 use tank::{Entity, Executor, FixedDecimal, Result, Sql, cols, expr, stream::TryStreamExt};
@@ -22,7 +23,9 @@ pub async fn orders(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Order::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Order::drop_table(executor, true, false).await?;
+    }
     Order::create_table(executor, false, true).await?;
 
     // Data

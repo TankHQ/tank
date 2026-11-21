@@ -74,7 +74,7 @@ mod tests {
     }
 
     #[test]
-    fn temporal_and_other_paths() {
+    fn temporal_other_paths() {
         for (src, expected) in [
             ("rust_decimal::Decimal", Value::Decimal(None, 0, 0)),
             ("time::Time", Value::Time(None)),
@@ -95,7 +95,7 @@ mod tests {
     }
 
     #[test]
-    fn fixed_decimal_uses_generic_constants() {
+    fn decimal_generic_constants() {
         assert_eq!(
             value("tank::FixedDecimal<18, 4>"),
             Value::Decimal(None, 18, 4)
@@ -221,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_paths_fall_back_to_unknown() {
+    fn unknown_paths_fallback() {
         assert_eq!(value("some::CustomType"), Value::Unknown(None));
         assert_eq!(value("MyStruct"), Value::Unknown(None));
     }

@@ -14,7 +14,7 @@ use std::{
 };
 use tank_core::{
     Error, ErrorContext, Query, QueryResult, Result, RowsAffected, error_message_from_ptr,
-    log_error, stream::Stream,
+    stream::Stream,
 };
 
 /// Lazily runs each statement of a query, yielding its rows or affected-row count.
@@ -32,7 +32,7 @@ pub struct DuckDBStream<'s, Q: AsMut<Query<DuckDBDriver>>> {
 
 impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
     #[inline(always)]
-    pub(crate) fn new(connection: &'s mut DuckDBConnection, query: Q) -> Self {
+    pub(crate) const fn new(connection: &'s mut DuckDBConnection, query: Q) -> Self {
         Self {
             batch: None,
             row: 0,
@@ -67,7 +67,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
         let _ = self
             .finish()
             .context("While cleaning up DuckDB execution")
-            .inspect_err(log_error);
+            .inspect_err(|e| log::error!("{e:#}"));
         error.context(context)
     }
 
@@ -82,9 +82,10 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                         let error = duckdb_result_error(result.deref_mut());
                         if !error.is_null() {
                             hint::cold_path();
-                            return Err(Error::msg(
-                                CStr::from_ptr(error).to_string_lossy().into_owned(),
-                            ));
+                            let error =
+                                Error::msg(CStr::from_ptr(error).to_string_lossy().into_owned());
+                            log::error!("{error:#}");
+                            return Err(error);
                         }
                         self.row = 0;
                         self.size = 0;
@@ -119,9 +120,10 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                     let error = duckdb_extract_statements_error(*extracted);
                     if !error.is_null() {
                         hint::cold_path();
-                        return Err(Error::msg(
-                            CStr::from_ptr(error).to_string_lossy().into_owned(),
-                        ));
+                        let error =
+                            Error::msg(CStr::from_ptr(error).to_string_lossy().into_owned());
+                        log::error!("{error:#}");
+                        return Err(error);
                     }
                     self.extracted = Some(extracted);
                 }
@@ -139,7 +141,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                             &mut *extracted_stmt,
                         ),
                         Error::msg(
-                            error_message_from_ptr(duckdb_prepare_error(*extracted_stmt))
+                            error_message_from_ptr(&duckdb_prepare_error(*extracted_stmt))
                                 .into_owned(),
                         )
                     );
@@ -147,7 +149,13 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                 } else {
                     match self.query.as_mut() {
                         Query::Prepared(query) => *query.statement,
-                        Query::Raw(_) => unreachable!(),
+                        Query::Raw(_) => {
+                            let error = Error::msg(
+                                "A raw query reached the prepared statement execution path",
+                            );
+                            log::error!("{error:#}");
+                            return Err(error);
+                        }
                     }
                 };
                 self.index += 1;
@@ -155,7 +163,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                 ensure_rc!(
                     duckdb_execute_prepared_streaming(statement, &mut *result),
                     Error::msg(
-                        error_message_from_ptr(duckdb_result_error(&mut *result)).into_owned(),
+                        error_message_from_ptr(&duckdb_result_error(&mut *result)).into_owned(),
                     )
                 );
                 if duckdb_result_return_type(*result)
@@ -210,6 +218,6 @@ impl<Q: AsMut<Query<DuckDBDriver>>> Drop for DuckDBStream<'_, Q> {
         let _ = self
             .finish()
             .context("While dropping DuckDB execution")
-            .inspect_err(log_error);
+            .inspect_err(|e| log::error!("{e:#}"));
     }
 }

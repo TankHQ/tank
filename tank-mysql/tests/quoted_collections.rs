@@ -1,14 +1,15 @@
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use tank_core::{
-        CollectionType, Context, Driver, DynQuery, Fragment, MapType, SqlWriter, Value,
+    use tank::{
+        AnyQuery, CollectionType, Context, Driver, Fragment, MapType, SqlValueWriter, Value,
     };
     use tank_mysql::MySQLDriver;
+    use tank_tests::init_logs;
 
     fn render(v: &Value) -> String {
         let writer = MySQLDriver::default().sql_writer();
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_value(
             &mut Context::new(Fragment::SqlInsertIntoValues, false),
             &mut out,
@@ -18,7 +19,8 @@ mod tests {
     }
 
     #[test]
-    fn list_with_quote_is_escaped() {
+    fn list_quote_escaped() {
+        init_logs();
         let v = Value::List(
             Some(
                 vec![
@@ -36,7 +38,8 @@ mod tests {
     }
 
     #[test]
-    fn map_with_quote_is_escaped() {
+    fn map_quote_escaped() {
+        init_logs();
         let mut m = HashMap::new();
         m.insert(
             Value::Varchar(Some("a'b".into())),

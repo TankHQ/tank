@@ -1,10 +1,10 @@
 use crate::{
     DuckDBPrepared, DuckDBTransaction, ValueWrap,
-    column::DuckdbAppender,
+    appender::{DuckdbAppender, appender_error},
     driver::DuckDBDriver,
     ensure_rc,
     stream::DuckDBStream,
-    util::{CBox, appender_error},
+    util::CBox,
 };
 use anyhow::anyhow;
 use libduckdb_sys::*;
@@ -17,9 +17,9 @@ use std::{
     sync::LazyLock,
 };
 use tank_core::{
-    AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, Result, Row, RowsAffected, SqlWriter, as_c_string, describe_path,
-    error_message_from_ptr, log_error, log_warn, stream::Stream, truncate_long,
+    AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, QueryResult,
+    Result, Row, RowsAffected, SqlCoreWriter, as_c_string, describe_path, error_message_from_ptr,
+    stream::Stream, truncate_long,
 };
 
 /// Wrapper around a DuckDB `duckdb_connection` pointer used by the DuckDB driver.
@@ -35,7 +35,7 @@ impl Connection for DuckDBConnection {
         static DATABASE_CACHE: LazyLock<CBox<duckdb_instance_cache>> =
             LazyLock::new(|| CBox(unsafe { duckdb_create_instance_cache() }));
         let url = Self::sanitize_url(driver, url)?;
-        let make_context = || format!("While trying to connect to DuckDB {}", describe_path(&url));
+        let make_context = || format!(r#"Connecting to DuckDB "{}""#, describe_path(&url));
         let mut config = CBox::<duckdb_config>::null();
         ensure_rc!(
             unsafe { duckdb_create_config(&mut *config) },
@@ -66,7 +66,8 @@ impl Connection for DuckDBConnection {
                                     let error = anyhow!(
                                         "Unknown value {v:?} for `mode`, expected one of: `ro`, `rw`, `rwc`, `memory`"
                                     );
-                                    return Err(error).inspect_err(log_warn);
+                                    log::error!("{error:#}");
+                                    return Err(error);
                                 }
                             }
                             .as_ptr(),
@@ -115,10 +116,7 @@ impl Connection for DuckDBConnection {
 impl Executor for DuckDBConnection {
     type Driver = DuckDBDriver;
 
-    fn do_prepare(
-        &mut self,
-        sql: String,
-    ) -> impl Future<Output = Result<Query<DuckDBDriver>>> + Send {
+    fn do_prepare(&mut self, sql: &str) -> impl Future<Output = Result<DuckDBPrepared>> + Send {
         future::ready(
             (|| unsafe {
                 let c_sql = CString::new(sql.as_bytes())
@@ -127,13 +125,13 @@ impl Executor for DuckDBConnection {
                 ensure_rc!(
                     duckdb_prepare(*self.connection, c_sql.as_ptr(), &mut *prepared),
                     Error::msg(
-                        error_message_from_ptr(duckdb_prepare_error(*prepared)).into_owned(),
+                        error_message_from_ptr(&duckdb_prepare_error(*prepared)).into_owned(),
                     )
                 );
-                Ok(DuckDBPrepared::new(prepared).into())
+                Ok(DuckDBPrepared::new(prepared))
             })()
-            .with_context(|| format!("While preparing the query:\n{}", truncate_long!(sql)))
-            .inspect_err(log_error),
+            .with_context(|| format!("While preparing the query:\n{}", truncate_long(sql)))
+            .inspect_err(|error| log::error!("{error:#}")),
         )
     }
 
@@ -141,7 +139,7 @@ impl Executor for DuckDBConnection {
         &'s mut self,
         query: impl AsQuery<DuckDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        DuckDBStream::new(self, query.as_query())
+        DuckDBStream::new(self, query.as_query(&self.driver()))
     }
 
     fn append<It>(&mut self, rows: It) -> impl Future<Output = Result<RowsAffected>> + Send

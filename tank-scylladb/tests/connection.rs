@@ -134,13 +134,11 @@ mod tests {
 
         // Unencrypted
         let (url, container) = init_scylladb(false).await;
-        let container = container.expect("Could not launch container");
         check_url_parameters(&url).await;
         drop(container);
 
         // SSL
         let (ssl_url, container) = init_scylladb(true).await;
-        let container = container.expect("Could not launch the SSL container");
         check_url_parameters(&ssl_url).await;
         drop(container);
     }

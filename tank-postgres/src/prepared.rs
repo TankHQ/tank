@@ -43,8 +43,13 @@ impl PostgresPrepared {
             .into_iter()
             .enumerate()
             .map(|(i, param)| {
+                let Some(t) = types.get(i) else {
+                    return Err(anyhow!(
+                        "Parameter {i} has no corresponding PostgreSQL type"
+                    ));
+                };
                 Ok(ValueWrap(Cow::Owned(
-                    param.try_as(&postgres_type_to_value(&types[i]))?,
+                    param.try_as(&postgres_type_to_value(t))?,
                 )))
             })
             .collect()
@@ -52,20 +57,24 @@ impl PostgresPrepared {
 }
 
 impl Prepared for PostgresPrepared {
+    #[inline(always)]
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 
+    #[inline(always)]
     fn is_empty(&self) -> bool {
         false
     }
 
+    #[inline(always)]
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         self.params.clear();
         self.index = 0;
         Ok(self)
     }
 
+    #[inline(always)]
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         self.bind_index(value, self.index)
     }

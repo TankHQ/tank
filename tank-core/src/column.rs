@@ -1,6 +1,6 @@
 use crate::{
-    DefaultValueType, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, TableRef,
-    ValueOwned, writer::Context,
+    AnyQuery, AsValue, DefaultValueType, Expression, ExpressionVisitor, OpPrecedence, SqlWriter,
+    TableRef, ValueOwned, cow_str, writer::Context,
 };
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
@@ -27,9 +27,9 @@ pub struct ColumnRef {
 
 impl ColumnRef {
     /// Create a column reference from just a name.
-    pub fn new(name: Cow<'static, str>) -> Self {
+    pub fn new(name: impl Into<Cow<'static, str>>) -> Self {
         Self {
-            name,
+            name: name.into(),
             ..Default::default()
         }
     }
@@ -57,11 +57,10 @@ pub enum PrimaryKeyType {
 
 impl ToTokens for PrimaryKeyType {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        use PrimaryKeyType::*;
         tokens.append_all(match self {
-            PrimaryKey => quote!(::tank::PrimaryKeyType::PrimaryKey),
-            PartOfPrimaryKey => quote!(::tank::PrimaryKeyType::PartOfPrimaryKey),
-            None => quote!(::tank::PrimaryKeyType::None),
+            PrimaryKeyType::PrimaryKey => quote!(::tank::PrimaryKeyType::PrimaryKey),
+            PrimaryKeyType::PartOfPrimaryKey => quote!(::tank::PrimaryKeyType::PartOfPrimaryKey),
+            PrimaryKeyType::None => quote!(::tank::PrimaryKeyType::None),
         });
     }
 }
@@ -127,21 +126,63 @@ impl ColumnDef {
     /// Column known only by its name.
     pub fn new(name: impl Into<Cow<'static, str>>) -> Self {
         Self {
-            column_ref: ColumnRef::new(name.into()),
+            column_ref: ColumnRef::new(name),
             ..Default::default()
         }
     }
+    /// Column with the empty value of a Rust type, e.g. `ColumnDef::from_type::<i32>("id")`.
+    pub fn from_type<T: AsValue>(name: impl Into<Cow<'static, str>>) -> Self {
+        Self {
+            value: T::as_empty_value(),
+            ..Self::new(name)
+        }
+    }
+    /// Sets whether the column accepts `NULL`.
+    pub const fn nullable(mut self, nullable: bool) -> Self {
+        self.nullable = nullable;
+        self
+    }
+    /// Marks the column as primary key, several marked columns form a composite key in the table builder.
+    pub const fn primary_key(mut self) -> Self {
+        self.primary_key = PrimaryKeyType::PrimaryKey;
+        self
+    }
+    /// Marks the column as unique.
+    pub const fn unique(mut self) -> Self {
+        self.unique = true;
+        self
+    }
+    /// Sets the column default value or expression.
+    pub fn default_value(mut self, default: impl Into<DefaultValueType>) -> Self {
+        self.default = default.into();
+        self
+    }
+    /// Sets the foreign key target.
+    pub fn references(mut self, references: ColumnRef) -> Self {
+        self.references = Some(references);
+        self
+    }
+    /// Sets the action performed when the referenced row is deleted.
+    pub const fn on_delete(mut self, action: Action) -> Self {
+        self.on_delete = Some(action);
+        self
+    }
+    /// Sets the action performed when the referenced row is updated.
+    pub const fn on_update(mut self, action: Action) -> Self {
+        self.on_update = Some(action);
+        self
+    }
     /// Column name.
-    pub fn name(&self) -> &str {
-        &self.column_ref.name
+    pub const fn name(&self) -> &str {
+        cow_str(&self.column_ref.name)
     }
     /// Table name.
-    pub fn table(&self) -> &str {
-        &self.column_ref.table
+    pub const fn table(&self) -> &str {
+        cow_str(&self.column_ref.table)
     }
     /// Schema name.
-    pub fn schema(&self) -> &str {
-        &self.column_ref.schema
+    pub const fn schema(&self) -> &str {
+        cow_str(&self.column_ref.schema)
     }
 }
 
@@ -172,7 +213,7 @@ impl OpPrecedence for ColumnRef {
 }
 
 impl Expression for ColumnRef {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         writer.write_column_ref(context, out, self);
     }
     fn accept_visitor(
@@ -180,7 +221,7 @@ impl Expression for ColumnRef {
         matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
     ) -> bool {
         matcher.visit_column(writer, context, out, self)
     }
@@ -193,7 +234,7 @@ impl OpPrecedence for ColumnDef {
 }
 
 impl Expression for ColumnDef {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         writer.write_column_ref(context, out, &self.column_ref);
     }
 
@@ -202,7 +243,7 @@ impl Expression for ColumnDef {
         matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
     ) -> bool {
         matcher.visit_column(writer, context, out, &self.column_ref)
     }

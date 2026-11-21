@@ -4,7 +4,7 @@ mod tests {
     use std::borrow::Cow;
     use syn::parse_str;
     use tank::{
-        BinaryOp, BinaryOpType, ColumnRef, Dataset, DynQuery, Entity, GenericSqlWriter, Join,
+        AnyQuery, BinaryOp, BinaryOpType, ColumnRef, Dataset, Entity, GenericSqlWriter, Join,
         JoinType, Operand, TableRef, join,
     };
 
@@ -50,7 +50,7 @@ mod tests {
                 ..
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
@@ -67,7 +67,7 @@ mod tests {
                 ..
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
@@ -82,7 +82,7 @@ mod tests {
                 ..
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
@@ -97,7 +97,7 @@ mod tests {
                 ..
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
@@ -112,7 +112,7 @@ mod tests {
                 ..
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
@@ -127,7 +127,7 @@ mod tests {
                 ..
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
@@ -142,7 +142,7 @@ mod tests {
                 ..
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
@@ -157,7 +157,7 @@ mod tests {
                 ..
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
@@ -173,7 +173,7 @@ mod tests {
                 ..
             },
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(query.as_str(), r#""my_data"."alpha" CROSS JOIN "bravo""#);
 
@@ -186,7 +186,7 @@ mod tests {
                 ..
             },
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(query.as_str(), r#""my_data"."alpha" NATURAL JOIN "bravo""#);
     }
@@ -249,7 +249,7 @@ mod tests {
                 ..
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
@@ -328,7 +328,7 @@ mod tests {
                 ..
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
@@ -398,7 +398,7 @@ mod tests {
                 ..
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
@@ -473,7 +473,7 @@ mod tests {
                 ..
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
@@ -482,7 +482,7 @@ mod tests {
     }
 
     #[test]
-    fn join_with_many_parentheses() {
+    fn join_many_parentheses() {
         let join = join!(
             ((((((Alpha RIGHT JOIN Bravo ON (((((((((((((Alpha::_a)) <= (((((((Bravo::_first))))))))))))))))))))))))
         );
@@ -519,7 +519,7 @@ mod tests {
                 ..
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
         assert_eq!(
             query.as_str(),
@@ -543,7 +543,7 @@ mod tests {
 
         let join = join!(LeftAlias L JOIN RightAlias R ON L.id == R.id);
         let table_ref = join.table_ref();
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         join.write_table_name(&WRITER, &mut Default::default(), &mut query);
 
         assert_eq!(table_ref.name.as_ref(), "");

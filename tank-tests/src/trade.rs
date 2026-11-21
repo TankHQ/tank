@@ -1,9 +1,10 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use rust_decimal::Decimal;
 use std::{collections::BTreeMap, pin::pin, str::FromStr, sync::LazyLock};
 use tank::{
-    AsValue, Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery,
-    Result, RowsAffected, Sql, SqlWriter, Value,
+    AnyQuery, AsValue, Driver, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery,
+    Result, RowsAffected, Sql, Value,
     stream::{StreamExt, TryStreamExt},
 };
 use time::macros::datetime;
@@ -41,7 +42,9 @@ pub async fn trade_simple(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Trade::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Trade::drop_table(executor, true, false).await?;
+    }
     Trade::create_table(executor, false, true).await?;
 
     // Trade object
@@ -146,7 +149,9 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Trade::drop_table(executor, false, false).await?;
+    silent_logs! {
+        Trade::drop_table(executor, false, false).await?;
+    }
     Trade::create_table(executor, false, true).await?;
 
     // Trade objects
@@ -322,12 +327,14 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
-        let writer = executor.driver().sql_writer();
-        let mut query = DynQuery::default();
-        writer.write_delete(&mut query, Trade::table(), true);
-        writer.write_insert(
-            &mut query,
-            Sql().insert_into(Trade::table()).values(&[Trade {
+        let driver = executor.driver();
+        let mut query = AnyQuery::default();
+        Sql()
+            .delete_from(Trade::table())
+            .write_into(&driver.sql_writer(), &mut query);
+        Sql()
+            .insert_into(Trade::table())
+            .values(&[Trade {
                 trade: 10002,
                 order: Uuid::parse_str("895dc048-be92-4a55-afbf-38a60936e844").unwrap(),
                 symbol: "RIVN".to_string(),
@@ -352,15 +359,13 @@ pub async fn trade_multiple(executor: &mut impl Executor) -> Result<()> {
                     ("strategy".into(), "arbitrage".into()),
                     ("risk_limit".into(), "high".into()),
                 ])),
-            }]),
-        );
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select(Trade::columns())
-                .from(Trade::table())
-                .where_expr(true),
-        );
+            }])
+            .write_into(&driver.sql_writer(), &mut query);
+        Sql()
+            .select(Trade::columns())
+            .from(Trade::table())
+            .where_expr(true)
+            .write_into(&driver.sql_writer(), &mut query);
         let mut stream = pin!(executor.run(query));
         let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) =
             stream.try_next().await?

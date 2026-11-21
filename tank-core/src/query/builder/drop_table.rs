@@ -1,4 +1,4 @@
-use crate::{Driver, DynQuery, NA, SqlWriter, TableRef};
+use crate::{AnyQuery, BoxQueryBuilder, Driver, NA, Query, SqlWriter, TableRef};
 use std::marker::PhantomData;
 
 pub struct DropTableQueryBuilder<Exists> {
@@ -18,27 +18,16 @@ impl DropTableQueryBuilder<NA> {
 }
 
 impl<E> DropTableQueryBuilder<E> {
-    pub fn get_table(&self) -> &TableRef {
+    pub const fn get_table(&self) -> &TableRef {
         &self.table
     }
 
-    pub fn get_exists(&self) -> bool {
+    pub const fn get_exists(&self) -> bool {
         self.if_exists
-    }
-
-    pub fn build<D: Driver>(&self, driver: &D) -> DynQuery {
-        let mut query = DynQuery::default();
-        self.build_into(driver, &mut query);
-        query
-    }
-
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
-        let writer = driver.sql_writer();
-        writer.write_drop_table(out, &self.table, self.if_exists);
     }
 }
 
-/// DROP TABLE query builder.
+/// DROP TABLE [IF EXISTS] table
 ///
 /// Use `Sql().drop_table(table)` to start.
 pub trait DropTableQuery {
@@ -46,10 +35,6 @@ pub trait DropTableQuery {
     fn get_table(&self) -> &TableRef;
     /// SQL Fragment `IF EXISTS` is present.
     fn get_exists(&self) -> bool;
-    /// Build query.
-    fn build<D: Driver>(&self, driver: &D) -> DynQuery;
-    /// Build query into existing buffer.
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery);
 }
 
 impl<E> DropTableQuery for DropTableQueryBuilder<E> {
@@ -60,12 +45,26 @@ impl<E> DropTableQuery for DropTableQueryBuilder<E> {
     fn get_exists(&self) -> bool {
         self.get_exists()
     }
+}
 
-    fn build<D: Driver>(&self, driver: &D) -> DynQuery {
-        self.build(driver)
+impl<E> DropTableQueryBuilder<E> {
+    /// Builds the query for `driver`.
+    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
+        let mut query = AnyQuery::default();
+        self.write_into(&driver.sql_writer(), &mut query);
+        query.into()
     }
 
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
-        self.build_into(driver, out);
+    /// Writes the statement into an existing query.
+    pub fn write_into(&self, writer: &impl SqlWriter, out: &mut AnyQuery) {
+        writer.write_drop_table(out, &self.table, self.if_exists);
+    }
+
+    /// Erases the builder into a [`BoxQueryBuilder`], to store it and run it later on any executor.
+    pub fn boxed(self) -> BoxQueryBuilder
+    where
+        Self: 'static,
+    {
+        BoxQueryBuilder::new(move |writer, out| self.write_into(writer, out))
     }
 }

@@ -17,7 +17,6 @@ mod tests {
 
         // Unencrypted
         let (url, container) = init_redis(false).await;
-        let container = container.expect("Could not launch the container");
         {
             let driver = RedisDriver::default();
             let mut pool = driver
@@ -42,7 +41,6 @@ mod tests {
 
         // SSL
         let (ssl_url, container) = init_redis(true).await;
-        let container = container.expect("Could not launch the SSL container");
         {
             let driver = RedisDriver::default();
             let mut pool = driver

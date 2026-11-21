@@ -1,4 +1,4 @@
-use tank_core::{Context, DynQuery, ExpressionVisitor, Operand, SqlWriter, Value};
+use tank_core::{AnyQuery, Context, ExpressionVisitor, Operand, SqlWriter, Value};
 
 #[derive(Default)]
 pub(crate) struct IsChar {
@@ -10,7 +10,7 @@ impl ExpressionVisitor for IsChar {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {

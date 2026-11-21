@@ -1,6 +1,7 @@
 // Shared by the `mysql` and `mariadb` test binaries, so each sees the other's
 // helpers as dead code.
 #![allow(dead_code)]
+use indoc::indoc;
 use std::{env, future, path::PathBuf, process::Command, time::Duration};
 use tank_core::future::{BoxFuture, FutureExt};
 use tank_tests::generate_ssl_files;
@@ -32,7 +33,7 @@ impl LogConsumer for TestcontainersLogConsumer {
 
 fn init_sql(db: &str, user: &str, password: &str, ssl: bool) -> Vec<u8> {
     format!(
-        r#"
+        indoc! {r#"
             CREATE DATABASE {db};
             CREATE USER '{user}'@'%' {};
             GRANT ALL PRIVILEGES ON *.* TO '{user}'@'%';
@@ -40,12 +41,14 @@ fn init_sql(db: &str, user: &str, password: &str, ssl: bool) -> Vec<u8> {
             DROP USER IF EXISTS 'root'@'127.0.0.1';
             DROP USER IF EXISTS 'root'@'::1';
             FLUSH PRIVILEGES;
-        "#,
+        "#},
         if ssl {
             "REQUIRE X509".to_string()
         } else {
             format!("IDENTIFIED BY '{password}'")
-        }
+        },
+        db = db,
+        user = user,
     )
     .into_bytes()
 }

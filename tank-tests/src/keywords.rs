@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use std::pin::pin;
 use std::sync::LazyLock;
 use tank::stream::TryStreamExt;
@@ -27,7 +28,9 @@ pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    ReservedWords::drop_table(executor, true, false).await?;
+    silent_logs! {
+        ReservedWords::drop_table(executor, true, false).await?;
+    }
     ReservedWords::create_table(executor, true, true).await?;
 
     // Query
@@ -62,8 +65,8 @@ pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
             )
         );
         let row = stream.try_next().await?.expect("Expected a row");
-        let group_val = bool::try_from_value(row.value(0).unwrap())?;
-        let count_val = i64::try_from_value(row.value(1).unwrap())?;
+        let group_val = bool::decode_value(row.value(0).unwrap())?;
+        let count_val = i64::decode_value(row.value(1).unwrap())?;
         assert_eq!(group_val, true);
         assert_eq!(count_val, 1);
     }
@@ -110,11 +113,11 @@ pub async fn keywords(executor: &mut impl Executor) -> Result<()> {
         );
 
         let row1 = stream_group.try_next().await?.unwrap();
-        let g = bool::try_from_value(row1.value(0).unwrap())?;
+        let g = bool::decode_value(row1.value(0).unwrap())?;
         assert_eq!(g, false);
 
         let row2 = stream_group.try_next().await?.unwrap();
-        let g = bool::try_from_value(row2.value(0).unwrap())?;
+        let g = bool::decode_value(row2.value(0).unwrap())?;
         assert_eq!(g, true);
     }
 

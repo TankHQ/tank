@@ -6,7 +6,7 @@ use rustls::crypto::{CryptoProvider, aws_lc_rs::default_provider};
 use std::{borrow::Cow, fs, future, iter, mem, sync::Arc};
 use tank_core::{
     AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Row, RowOwned,
-    RowsAffected, stream::Stream, truncate_long,
+    RowsAffected, describe_url, stream::Stream, stream::TryStreamExt, truncate_long,
 };
 
 #[derive(Debug)]
@@ -25,8 +25,13 @@ impl Connection for ValkeyConnection {
         if CryptoProvider::get_default().is_none() {
             let _ = default_provider().install_default();
         }
-        let context = "While trying to connect to Valkey";
-        let url = Self::sanitize_url(driver, url).context(context)?;
+        let url = Self::sanitize_url(driver, url)?;
+        let make_context = || {
+            format!(
+                r#"Connecting to Valkey "{}""#,
+                describe_url::<ValkeyDriver>(&url)
+            )
+        };
         let mut root_cert = None;
         let mut client_cert = None;
         let mut client_key = None;
@@ -36,21 +41,21 @@ impl Connection for ValkeyConnection {
                     root_cert = Some(
                         fs::read(v.as_ref())
                             .with_context(|| format!("Failed to read SSL CA file `{v}`"))
-                            .context(context)?,
+                            .with_context(make_context)?,
                     );
                 }
                 "sslcert" | "ssl_cert" => {
                     client_cert = Some(
                         fs::read(v.as_ref())
                             .with_context(|| format!("Failed to read SSL certificate file `{v}`"))
-                            .context(context)?,
+                            .with_context(make_context)?,
                     );
                 }
                 "sslkey" | "ssl_key" => {
                     client_key = Some(
                         fs::read(v.as_ref())
                             .with_context(|| format!("Failed to read SSL private key file `{v}`"))
-                            .context(context)?,
+                            .with_context(make_context)?,
                     );
                 }
                 _ => {}
@@ -64,14 +69,14 @@ impl Connection for ValkeyConnection {
             (Some(_), None) => {
                 let error =
                     anyhow!("SSL private key must be provided when SSL certificate is specified")
-                        .context(context);
+                        .context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
             }
             (None, Some(_)) => {
                 let error =
                     anyhow!("SSL certificate must be provided when SSL private key is specified")
-                        .context(context);
+                        .context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
             }
@@ -86,7 +91,7 @@ impl Connection for ValkeyConnection {
                 },
             )
             .map_err(Error::new)
-            .context(context)?
+            .with_context(make_context)?
         } else {
             Client::open(url.as_str()).map_err(Error::new)?
         };
@@ -94,7 +99,7 @@ impl Connection for ValkeyConnection {
             .get_multiplexed_async_connection()
             .await
             .map_err(Error::new)
-            .context(context)?;
+            .with_context(make_context)?;
         Ok(Self {
             driver: *driver,
             connection,
@@ -123,7 +128,7 @@ impl Executor for ValkeyConnection {
         &'s mut self,
         query: impl AsQuery<ValkeyDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         try_stream! {
             let Query::Prepared(prepared) = query.as_mut() else {
                 Err(anyhow!(
@@ -131,6 +136,10 @@ impl Executor for ValkeyConnection {
                 ))?;
                 return;
             };
+            if let Some(error) = prepared.error.take() {
+                Err(error)?;
+                return;
+            }
             if prepared.is_empty() {
                 return;
             }
@@ -138,7 +147,7 @@ impl Executor for ValkeyConnection {
             let context = || {
                 format!(
                     "While executing the query: {}",
-                    truncate_long!(format!("{pipeline:?}"))
+                    truncate_long(&format!("{pipeline:?}"))
                 )
             };
             let raw_result = pipeline
@@ -185,21 +194,27 @@ impl Executor for ValkeyConnection {
             let mut labels = Arc::new_zeroed_slice(prepared.columns.len());
             let mut values = Vec::with_capacity(prepared.columns.len());
             {
-                let labels_mut = Arc::get_mut(&mut labels).unwrap();
+                let Some(labels_mut) = Arc::get_mut(&mut labels) else {
+                    log::error!("Failed to get mutable access to the row labels");
+                    return;
+                };
                 for (i, (col, mut redis_val)) in iter::zip(prepared.columns.iter(),results.into_iter()).enumerate()
                 {
                     labels_mut[i].write(col.name().into());
                     if let (tank_core::Value::Map(..), redis::Value::Array(array)) =
                         (&col.value, &mut redis_val)
                     {
-                        redis_val = redis::Value::Map(
-                            array
-                                .chunks_mut(2)
-                                .map(|v| (mem::take(&mut v[0]), mem::take(&mut v[1])))
-                                .collect(),
-                        )
+                        let mut pairs = array.chunks_exact_mut(2);
+                        let map = pairs
+                            .by_ref()
+                            .map(|v| (mem::take(&mut v[0]), mem::take(&mut v[1])))
+                            .collect();
+                        if !pairs.into_remainder().is_empty() {
+                            log::error!("Received an odd number of elements for a map value");
+                        }
+                        redis_val = redis::Value::Map(map)
                     }
-                    let converted: ValueWrap = redis_val.try_into().with_context(context)?;
+                    let converted = ValueWrap::decode(redis_val, &col.value).with_context(context)?;
                     values.push(converted.0.into_owned());
                 }
             }
@@ -209,5 +224,6 @@ impl Executor for ValkeyConnection {
             });
             yield row;
         }
+        .inspect_err(|e| log::error!("{e:#}"))
     }
 }

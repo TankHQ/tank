@@ -51,7 +51,6 @@ pub async fn kv_storage(executor: &mut impl Executor) -> Result<()> {
 
     // Setup
     silent_logs! {
-        // Silent logs for Valkey/Redis
         KV::drop_table(executor, true, false).await?;
     }
     KV::create_table(executor, false, true).await?;

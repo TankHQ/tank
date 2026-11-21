@@ -27,7 +27,7 @@ pub struct DBConnectionManager<D: Driver> {
 }
 
 impl<D: Driver> DBConnectionManager<D> {
-    pub fn new(driver: D, url: Cow<'static, str>) -> Self {
+    pub const fn new(driver: D, url: Cow<'static, str>) -> Self {
         Self { driver, url }
     }
 }
@@ -185,6 +185,10 @@ impl<D: Driver> Executor for PooledConnection<D> {
         self.object.accepts_multiple_statements()
     }
 
+    fn batch_size(&self) -> usize {
+        self.object.batch_size()
+    }
+
     fn driver(&self) -> D {
         self.object.driver()
     }
@@ -196,7 +200,7 @@ impl<D: Driver> Executor for PooledConnection<D> {
         self.object.prepare(query)
     }
 
-    fn do_prepare(&mut self, sql: String) -> impl Future<Output = Result<Query<D>>> + Send {
+    fn do_prepare(&mut self, sql: &str) -> impl Future<Output = Result<D::Prepared>> + Send {
         self.object.do_prepare(sql)
     }
 

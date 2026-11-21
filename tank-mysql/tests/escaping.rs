@@ -1,12 +1,14 @@
 #[cfg(test)]
 mod tests {
-    use tank_core::{Context, DynQuery, Fragment, SqlWriter};
+    use tank::{AnyQuery, Context, Fragment, SqlFragmentWriter, SqlValueWriter};
     use tank_mysql::MySQLSqlWriter;
+    use tank_tests::init_logs;
 
     #[test]
-    fn backslash_is_escaped_in_strings() {
+    fn backslash_escaped_strings() {
+        init_logs();
         let writer = MySQLSqlWriter::default();
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelectWhere, false);
         // A backslash followed by a single quote: in MySQL default mode,
         // \' is interpreted as an escaped quote, so \ must be doubled.
@@ -23,13 +25,37 @@ mod tests {
     }
 
     #[test]
-    fn binary_is_written_as_hex_literal() {
+    fn binary_hex_literal() {
+        init_logs();
         let writer = MySQLSqlWriter::default();
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         let mut ctx = Context::new(Fragment::SqlInsertIntoValues, false);
         // MySQL binary literals are `X'..'`; the generic `'\x..'` form is read as a
         // string and loses the raw bytes.
         writer.write_blob(&mut ctx, &mut out, &[0x00, 0xFF, 0xDE, 0xAD]);
         assert_eq!(out.as_str(), "X'00FFDEAD'");
+    }
+
+    #[test]
+    fn mysql_limit_offset() {
+        init_logs();
+        let writer = MySQLSqlWriter::default();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+
+        let mut out = AnyQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, None, None);
+        assert_eq!(out.as_str(), "");
+
+        let mut out = AnyQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, Some(10), None);
+        assert_eq!(out.as_str(), "\nLIMIT 10");
+
+        let mut out = AnyQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, Some(10), Some(5));
+        assert_eq!(out.as_str(), "\nLIMIT 10\nOFFSET 5");
+
+        let mut out = AnyQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, None, Some(5));
+        assert_eq!(out.as_str(), "\nLIMIT 18446744073709551615\nOFFSET 5");
     }
 }

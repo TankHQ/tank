@@ -15,11 +15,12 @@ use scylla::{
     },
 };
 use std::{
-    borrow::Cow, net::IpAddr, num::NonZeroU64, ops::ControlFlow, pin::pin, str::FromStr, sync::Arc,
-    time::Duration,
+    borrow::Cow, cmp::min, net::IpAddr, num::NonZeroU64, ops::ControlFlow, pin::pin, str::FromStr,
+    sync::Arc, time::Duration,
 };
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, RawQuery, Result, Row,
+    AsQuery, AsValue, BinaryOp, BinaryOpType, ColumnRef, Connection, Error, ErrorContext, Executor,
+    MAX_BATCH_SIZE, Query, QueryResult, RawQuery, Result, Row, Sql, extract_number,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
@@ -30,11 +31,68 @@ use tank_core::{
 #[derive(Debug)]
 pub struct ScyllaDBConnection {
     pub(crate) session: Session,
+    pub(crate) driver: ScyllaDBDriver,
+    pub(crate) batch_size: usize,
 }
 
 pub type CassandraConnection = ScyllaDBConnection;
 
 impl ScyllaDBConnection {
+    /// Used when the server setting cannot be read.
+    const DEFAULT_BATCH_SIZE: usize = 50 << 10;
+
+    /// True when connected to Apache Cassandra rather than ScyllaDB.
+    pub const fn is_cassandra(&self) -> bool {
+        self.driver.is_cassandra
+    }
+
+    /// Reads the batch size limit from the server.
+    async fn fetch_batch_size(&mut self) -> usize {
+        let (schema, table, setting) = if self.is_cassandra() {
+            ("system_views", "settings", "batch_size_fail_threshold")
+        } else {
+            ("system", "config", "batch_size_fail_threshold_in_kb")
+        };
+        let query = Sql()
+            .select([ColumnRef::new("value")])
+            .from((schema, table))
+            .where_expr(BinaryOp {
+                op: BinaryOpType::Equal,
+                lhs: ColumnRef::new("name"),
+                rhs: setting,
+            })
+            .build(&self.driver());
+        let raw = pin!(self.fetch(query))
+            .next()
+            .await
+            .and_then(Result::ok)
+            .and_then(|r| r.value(0).and_then(|v| String::decode_value(v).ok()))
+            .unwrap_or_default();
+        // Leave headroom for row-size variance and cap giant batches.
+        min(Self::parse_size(&raw) / 4 * 3, MAX_BATCH_SIZE)
+    }
+
+    /// Parses possibly quoted, value with memory unit
+    fn parse_size(value: &str) -> usize {
+        let mut value = value.trim().trim_matches('"');
+        let number = extract_number::<false>(&mut value).parse::<usize>().ok();
+        let unit = match value.trim() {
+            "B" => Some(1),
+            "" | "KiB" => Some(1 << 10),
+            "MiB" => Some(1 << 20),
+            "GiB" => Some(1 << 30),
+            _ => None,
+        };
+        number
+            .zip(unit)
+            .and_then(|(n, u)| n.checked_mul(u))
+            .unwrap_or_else(|| {
+                let default = Self::DEFAULT_BATCH_SIZE;
+                log::warn!("Could not read the server batch size limit, will use {default} bytes");
+                default
+            })
+    }
+
     pub fn begin_logged_batch<'c>(&'c mut self) -> ScyllaDBTransaction<'c> {
         ScyllaDBTransaction {
             connection: self,
@@ -60,12 +118,12 @@ impl ScyllaDBConnection {
     }
 
     /// Access the underlying session object from `scylla` crate
-    pub fn session_ref(&self) -> &Session {
+    pub const fn session_ref(&self) -> &Session {
         &self.session
     }
 
     /// Access the underlying session object from `scylla` crate
-    pub fn session_mut(&mut self) -> &mut Session {
+    pub const fn session_mut(&mut self) -> &mut Session {
         &mut self.session
     }
 }
@@ -73,21 +131,29 @@ impl ScyllaDBConnection {
 impl Executor for ScyllaDBConnection {
     type Driver = ScyllaDBDriver;
 
+    fn driver(&self) -> Self::Driver {
+        self.driver
+    }
+
     fn accepts_multiple_statements(&self) -> bool {
         false
     }
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<ScyllaDBDriver>> {
-        let context = format!("While preparing the query:\n{}", truncate_long!(sql));
+    fn batch_size(&self) -> usize {
+        self.batch_size
+    }
+
+    async fn do_prepare(&mut self, sql: &str) -> Result<ScyllaDBPrepared> {
+        let context = format!("While preparing the query:\n{}", truncate_long(sql));
         let statement = self.session.prepare(sql).await.with_context(|| context)?;
-        Ok(Query::Prepared(ScyllaDBPrepared::new(statement)))
+        Ok(ScyllaDBPrepared::new(statement))
     }
 
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<ScyllaDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         stream! {
             let mut paging_state = PagingState::start();
@@ -135,7 +201,7 @@ impl Executor for ScyllaDBConnection {
         &'s mut self,
         query: impl AsQuery<ScyllaDBDriver> + 's,
     ) -> impl Stream<Item = Result<impl Row + 's>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         let context = Arc::new(format!("While fetching the query:\n{}", query.as_mut()));
         stream! {
             let stream = match query.as_mut() {
@@ -383,7 +449,20 @@ impl Connection for ScyllaDBConnection {
             .await
             .map_err(|e| anyhow!("ScyllaDB session build panicked: {e}"))?
             .map_err(Error::new)?;
-        Ok(ScyllaDBConnection { session })
+        let mut connection = ScyllaDBConnection {
+            session,
+            driver: *driver,
+            batch_size: 0,
+        };
+        // ScyllaDB nodes advertise shard metadata during the CQL handshake, Cassandra nodes do not.
+        connection.driver.is_cassandra = !connection
+            .session
+            .get_cluster_state()
+            .get_nodes_info()
+            .iter()
+            .any(|n| n.sharder().is_some());
+        connection.batch_size = connection.fetch_batch_size().await;
+        Ok(connection)
     }
 
     async fn begin<'c>(&'c mut self) -> Result<ScyllaDBTransaction<'c>> {

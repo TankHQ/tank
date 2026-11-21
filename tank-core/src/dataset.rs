@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, TableRef,
+    AnyQuery, TableRef,
     writer::{Context, SqlWriter},
 };
 
@@ -10,7 +10,7 @@ pub trait Dataset {
     /// Should columns be qualified (`schema.table.col`)?
     fn qualified_columns(&self) -> bool;
     /// Generates the SQL representation of this dataset for use in a query.
-    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery);
+    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery);
     /// Returns the primary table reference for this dataset.
     fn table_ref(&self) -> TableRef;
 }
@@ -19,7 +19,7 @@ impl Dataset for &dyn Dataset {
     fn qualified_columns(&self) -> bool {
         (*self).qualified_columns()
     }
-    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         (*self).write_table_name(writer, context, out)
     }
     fn table_ref(&self) -> TableRef {
@@ -35,7 +35,7 @@ where
         false
     }
 
-    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         writer.write_table_ref(context, out, &self.into())
     }
 

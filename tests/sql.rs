@@ -1,11 +1,16 @@
 #[cfg(test)]
+mod fixtures;
+
+#[cfg(test)]
 mod tests {
+    use crate::fixtures::DRIVER;
     use indoc::indoc;
     use rust_decimal::Decimal;
     use std::{collections::BTreeMap, str::FromStr};
     use tank::{
-        BinaryOp, BinaryOpType, ColumnDef, Context, DynQuery, Entity, Expression, Fragment,
-        GenericSqlWriter, Operand, Sql, SqlWriter, Value, expr,
+        AnyQuery, BinaryOp, BinaryOpType, ColumnDef, Context, Entity, Expression, Fragment,
+        GenericSqlWriter, Operand, Sql, SqlCoreWriter, SqlExpressionWriter, SqlValueWriter, Value,
+        expr,
     };
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
@@ -25,8 +30,7 @@ mod tests {
         }
         // CREATE TABLE
         {
-            let mut query = DynQuery::default();
-            WRITER.write_create_table(&mut query, Table::table(), false);
+            let query = Sql().create_table(Table::table()).build(&DRIVER);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -40,22 +44,18 @@ mod tests {
         }
         // DROP TABLE IF EXISTS
         {
-            let mut query = DynQuery::default();
-            WRITER.write_drop_table(&mut query, Table::table(), true);
+            let query = Sql().drop_table(Table::table()).if_exists().build(&DRIVER);
             assert_eq!(query.as_str(), r#"DROP TABLE IF EXISTS "my_table";"#);
         }
         // SELECT
         {
-            let mut query = DynQuery::default();
-            WRITER.write_select(
-                &mut query,
-                Sql()
-                    .select(Table::columns())
-                    .from(Table::table())
-                    .where_expr(expr!(
-                        Table::_second_column < 100 && Table::_first_column == "OK"
-                    )),
-            );
+            let query = Sql()
+                .select(Table::columns())
+                .from(Table::table())
+                .where_expr(expr!(
+                    Table::_second_column < 100 && Table::_first_column == "OK"
+                ))
+                .build(&DRIVER);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -68,12 +68,11 @@ mod tests {
         }
         // INSERT single
         {
-            let mut query = DynQuery::default();
             let table = Table::default();
-            WRITER.write_insert(
-                &mut query,
-                Sql().insert_into(Table::table()).values(&[table]),
-            );
+            let query = Sql()
+                .insert_into(Table::table())
+                .values(&[table])
+                .build(&DRIVER);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -84,16 +83,16 @@ mod tests {
         }
         // INSERT single with upsert
         {
-            let mut query = DynQuery::default();
             let table = Table {
                 _first_column: Some("hello".into()),
                 _second_column: 512.5.into(),
                 _third_column: 478,
             };
-            WRITER.write_insert(
-                &mut query,
-                Sql().insert_into(Table::table()).values(&[table]).update(),
-            );
+            let query = Sql()
+                .insert_into(Table::table())
+                .values(&[table])
+                .update()
+                .build(&DRIVER);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -122,8 +121,10 @@ mod tests {
         }
         // CREATE TABLE IF NOT EXISTS
         {
-            let mut query = DynQuery::default();
-            WRITER.write_create_table(&mut query, Cart::table(), true);
+            let query = Sql()
+                .create_table(Cart::table())
+                .if_not_exists()
+                .build(&DRIVER);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -140,21 +141,17 @@ mod tests {
         }
         // DROP TABLE
         {
-            let mut query = DynQuery::default();
-            WRITER.write_drop_table(&mut query, Cart::table(), false);
+            let query = Sql().drop_table(Cart::table()).build(&DRIVER);
             assert_eq!(query.as_str(), r#"DROP TABLE "cart";"#);
         }
         // SELECT with LIMIT
         {
-            let mut query = DynQuery::default();
-            WRITER.write_select(
-                &mut query,
-                Sql()
-                    .select(Cart::columns())
-                    .from(Cart::table())
-                    .where_expr(expr!(Cart::is_active == true && Cart::total_price > 100))
-                    .limit(Some(1000)),
-            );
+            let query = Sql()
+                .select(Cart::columns())
+                .from(Cart::table())
+                .where_expr(expr!(Cart::is_active == true && Cart::total_price > 100))
+                .limit(Some(1000))
+                .build(&DRIVER);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -168,7 +165,6 @@ mod tests {
         }
         // INSERT single
         {
-            let mut query = DynQuery::default();
             let cart = Cart {
                 id: Default::default(),
                 user_id: Uuid::from_str("b0fa843f-6ae4-4a16-a13c-ddf5512f3bb2").unwrap(),
@@ -180,7 +176,10 @@ mod tests {
                 is_active: Default::default(),
                 total_price: Default::default(),
             };
-            WRITER.write_insert(&mut query, Sql().insert_into(Cart::table()).values(&[cart]));
+            let query = Sql()
+                .insert_into(Cart::table())
+                .values(&[cart])
+                .build(&DRIVER);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -191,7 +190,6 @@ mod tests {
         }
         // INSERT single with upsert
         {
-            let mut query = DynQuery::default();
             let cart = Cart {
                 id: Default::default(),
                 user_id: Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
@@ -207,10 +205,11 @@ mod tests {
                 is_active: true,
                 total_price: Decimal::new(2599, 2), // 25.99
             };
-            WRITER.write_insert(
-                &mut query,
-                Sql().insert_into(Cart::table()).values(&[cart]).update(),
-            );
+            let query = Sql()
+                .insert_into(Cart::table())
+                .values(&[cart])
+                .update()
+                .build(&DRIVER);
             assert_eq!(
                 query.as_str(),
                 indoc! {r#"
@@ -271,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_types_operators() {
+    fn writer_types_operators() {
         let mut ctx = Context::new(Fragment::SqlCreateTable, false);
         for (value, expected) in [
             (Value::Int128(None), "HUGEINT"),
@@ -281,12 +280,12 @@ mod tests {
             (Value::Json(None), "JSON"),
             (Value::Null, ""),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             WRITER.write_column_type(&mut ctx, &mut out, &value);
             assert_eq!(out.as_str(), expected);
         }
 
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         WRITER.write_column_overridden_type(
             &mut ctx,
             &mut out,
@@ -299,17 +298,17 @@ mod tests {
             (Value::UInt8(Some(1)), "1"),
             (Value::UInt128(Some(Box::new(5))), "5"),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             WRITER.write_value(&mut Context::empty(), &mut out, &value);
             assert_eq!(out.as_str(), expected);
         }
 
-        let tuple = [Operand::LitInt(1), Operand::LitInt(2)];
+        let tuple: [&dyn Expression; 2] = [&Operand::LitInt(1), &Operand::LitInt(2)];
         for (operand, expected) in [
             (Operand::LitTuple(&tuple), "(1,2)"),
             (Operand::Value(&Value::Int32(Some(9))), "9"),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             WRITER.write_operand(&mut ctx, &mut out, &operand);
             assert_eq!(out.as_str(), expected);
         }
@@ -321,7 +320,7 @@ mod tests {
                 len: 2,
             }),
         );
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         WRITER.write_value(&mut Context::empty(), &mut out, &arr);
         assert_eq!(out.as_str(), "[1,2]");
 
@@ -332,7 +331,7 @@ mod tests {
                 len: 0,
             }),
         );
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         WRITER.write_value(&mut Context::empty(), &mut out, &list);
         assert_eq!(out.as_str(), "[a]");
 
@@ -345,7 +344,7 @@ mod tests {
                 value: Value::Int32(None),
             }),
         );
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         WRITER.write_value(&mut Context::empty(), &mut out, &map);
         assert_eq!(out.as_str(), "{k:1}");
 
@@ -356,24 +355,24 @@ mod tests {
                 name: tank::TableRef::new("t".into()),
             }),
         );
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         WRITER.write_value(&mut Context::empty(), &mut out, &strukt);
         assert_eq!(out.as_str(), "{f:1}");
 
         let args: &[&dyn Expression] = &[];
-        let lit_list = [Operand::LitInt(1), Operand::LitInt(2)];
+        let lit_list: [&dyn Expression; 2] = [&Operand::LitInt(1), &Operand::LitInt(2)];
         for (operand, expected) in [
             (Operand::Call("NOW", args), "NOW()"),
             (Operand::LitList(&lit_list), "[1,2]"),
             (Operand::LitIdent("ident"), "ident"),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             WRITER.write_operand(&mut Context::empty(), &mut out, &operand);
             assert_eq!(out.as_str(), expected);
         }
 
         // CAST goes through the dedicated cast fragment.
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         BinaryOp {
             op: BinaryOpType::Cast,
             lhs: Operand::LitInt(1),
@@ -393,7 +392,7 @@ mod tests {
             (BinaryOpType::Glob, "a GLOB 'x'"),
             (BinaryOpType::ShiftLeft, "a << 'x'"),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             (BinaryOp {
                 op,
                 lhs: Operand::LitIdent("a"),

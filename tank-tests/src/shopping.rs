@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::pin::pin;
@@ -54,7 +55,9 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Product
-    Product::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Product::drop_table(executor, true, false).await?;
+    }
     Product::create_table(executor, false, true).await?;
     let products = [
         Product {
@@ -138,7 +141,9 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
     assert_eq!(prod4_after.stock, Some(old_stock - 1));
 
     // User
-    User::drop_table(executor, true, false).await?;
+    silent_logs! {
+        User::drop_table(executor, true, false).await?;
+    }
     User::create_table(executor, false, false).await?;
     let users = vec![
         User {
@@ -181,12 +186,14 @@ pub async fn shopping(executor: &mut impl Executor) -> Result<()> {
         .try_next()
         .await?
         .expect("Did not return some value");
-        i64::try_from_value(row.value(0).unwrap())?
+        i64::decode_value(row.value(0).unwrap())?
     };
     assert_eq!(count, 2);
 
     // Cart
-    Cart::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Cart::drop_table(executor, true, false).await?;
+    }
     Cart::create_table(executor, false, false).await?;
     let carts = vec![
         Cart {

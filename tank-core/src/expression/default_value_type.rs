@@ -1,5 +1,5 @@
 use crate::{
-    Context, DynQuery, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, Value, ValueOwned,
+    AnyQuery, Context, Expression, ExpressionVisitor, OpPrecedence, SqlWriter, Value, ValueOwned,
 };
 use std::{fmt, sync::Arc};
 
@@ -12,7 +12,7 @@ pub enum DefaultValueType {
 }
 
 impl DefaultValueType {
-    pub fn is_set(&self) -> bool {
+    pub const fn is_set(&self) -> bool {
         matches!(
             self,
             DefaultValueType::Value(..) | DefaultValueType::Expression(..)
@@ -31,7 +31,7 @@ impl OpPrecedence for DefaultValueType {
 }
 
 impl Expression for DefaultValueType {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         match self {
             DefaultValueType::None => ().write_query(writer, context, out),
             DefaultValueType::Value(v) => v.write_query(writer, context, out),
@@ -43,7 +43,7 @@ impl Expression for DefaultValueType {
         matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
     ) -> bool {
         match self {
             DefaultValueType::None => ().accept_visitor(matcher, writer, context, out),

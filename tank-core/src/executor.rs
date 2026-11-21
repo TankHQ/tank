@@ -1,12 +1,12 @@
 use crate::{
-    AsEntity, AsQuery, Driver, DynQuery, Entity, Query, QueryResult, RawQuery, Result, Row,
+    AsEntity, AsQuery, Driver, Entity, MAX_BATCH_SIZE, Query, QueryResult, RawQuery, Result, Row,
     RowsAffected, Sql,
     stream::{Stream, StreamExt},
-    writer::SqlWriter,
 };
 use anyhow::anyhow;
 use convert_case::{Case, Casing};
 use std::{
+    cmp::max,
     future::{self, Future},
     mem,
     pin::{Pin, pin},
@@ -42,9 +42,7 @@ where
     }
 }
 
-/// Async query execution.
-///
-/// Implemented by connections.
+/// Async query execution. Implemented by connections.
 pub trait Executor: Send {
     /// Associated driver.
     type Driver: Driver;
@@ -54,22 +52,29 @@ pub trait Executor: Send {
         true
     }
 
+    /// Optimal size in bytes of a single request.
+    fn batch_size(&self) -> usize {
+        MAX_BATCH_SIZE
+    }
+
     /// Returns the driver instance associated with this executor.
     fn driver(&self) -> Self::Driver {
         Default::default()
     }
 
     /// Prepares a query for execution, returning a handle to the prepared statement.
+    ///
+    /// A raw query is borrowed so the caller can keep it.
+    /// A prepared query is taken and returned back as it is.
     fn prepare<'s>(
         &'s mut self,
         query: impl AsQuery<Self::Driver> + 's,
     ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
-        let mut query = query.as_query();
-        let query = mem::take(query.as_mut());
-        async {
-            match query {
-                Query::Raw(RawQuery(sql)) => self.do_prepare(sql).await,
-                Query::Prepared(..) => Ok(query),
+        let mut query = query.as_query(&self.driver());
+        async move {
+            match query.as_mut() {
+                Query::Raw(RawQuery(sql)) => self.do_prepare(sql).await.map(Query::Prepared),
+                query => Ok(mem::take(query)),
             }
         }
     }
@@ -77,8 +82,8 @@ pub trait Executor: Send {
     /// Internal hook for implementing prepared statement support.
     fn do_prepare(
         &mut self,
-        _sql: String,
-    ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
+        _sql: &str,
+    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Prepared>> + Send {
         future::ready(Err(anyhow!(
             "{} does not support prepare",
             self.driver().name().to_case(Case::Pascal)
@@ -124,23 +129,84 @@ pub trait Executor: Send {
         It::IntoIter: Send,
         It::Item: AsEntity,
     {
-        let entities = entities.into_iter().collect::<Vec<_>>();
-        let mut query = DynQuery::default();
-        self.driver().sql_writer().write_insert(
-            &mut query,
-            Sql()
-                .insert_into(<It::Item as AsEntity>::Entity::table())
-                .values(entities.iter().map(AsEntity::as_entity)),
-        );
-        self.execute(query)
+        self.append_default(entities)
     }
 }
+
+/// Generic batch insert through regular SQL, for drivers that don't support actual append.
+#[doc(hidden)]
+pub trait AppendDefault: Executor {
+    fn append_default<It>(
+        &mut self,
+        entities: It,
+    ) -> impl Future<Output = Result<RowsAffected>> + Send
+    where
+        It: IntoIterator + Send,
+        It::IntoIter: Send,
+        It::Item: AsEntity,
+    {
+        const DEFAULT_ROWS: usize = 1024;
+        let mut entities = entities.into_iter();
+        async move {
+            // Reuses the allocated SQL buffer across batches.
+            let mut query = Query::<Self::Driver>::default();
+            let mut rows = 0;
+            let mut affected = RowsAffected::default();
+            let batch_size = self.batch_size();
+            let driver = self.driver();
+            let table = <It::Item as AsEntity>::Entity::table();
+            loop {
+                // Scoped so `Peekable` and `batch` never live across `.await`, keeping the future `Send`.
+                {
+                    let mut batch = entities.by_ref().peekable();
+                    let Some(first) = batch.peek() else {
+                        break;
+                    };
+                    let mut out = mem::take(&mut query).into_any(); // Take the buffer
+                    out.clear(); // Clear the content, keep the allocated memory
+                    if rows == 0 {
+                        // Probe the first entity to get the actual SQL size.
+                        Sql()
+                            .insert_into(table)
+                            .values([first.as_entity()])
+                            .write_into(&driver.sql_writer(), &mut out);
+                        rows = max(batch_size.checked_div(out.len()).unwrap_or(DEFAULT_ROWS), 1);
+                    }
+                    let batch = batch.take(rows).collect::<Vec<_>>();
+                    if out.is_empty() || batch.len() > 1 {
+                        out.clear();
+                        Sql()
+                            .insert_into(table)
+                            .values(batch.iter().map(AsEntity::as_entity))
+                            .write_into(&driver.sql_writer(), &mut out);
+                    }
+                    rows = max(
+                        batch_size
+                            .saturating_mul(batch.len())
+                            .checked_div(out.len())
+                            .unwrap_or(DEFAULT_ROWS),
+                        1,
+                    );
+                    query = out.into(); // Give the buffer back
+                }
+                affected.extend([self.execute(&mut query).await?]);
+            }
+            Ok(affected)
+        }
+    }
+}
+
+impl<E: Executor + ?Sized> AppendDefault for E {}
 
 impl<S: Executor + ?Sized> Executor for &mut S {
     type Driver = S::Driver;
 
     fn accepts_multiple_statements(&self) -> bool {
         (**self).accepts_multiple_statements()
+    }
+
+    fn batch_size(&self) -> usize {
+        (**self).batch_size()
     }
 
     fn driver(&self) -> Self::Driver {
@@ -156,8 +222,8 @@ impl<S: Executor + ?Sized> Executor for &mut S {
 
     fn do_prepare(
         &mut self,
-        sql: String,
-    ) -> impl Future<Output = Result<Query<Self::Driver>>> + Send {
+        sql: &str,
+    ) -> impl Future<Output = Result<<Self::Driver as Driver>::Prepared>> + Send {
         (**self).do_prepare(sql)
     }
 

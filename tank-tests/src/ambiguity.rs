@@ -2,6 +2,7 @@ use crate::ambiguity::{
     first_schema::FirstTableColumnTrait as _, first_schema::SecondTableColumnTrait as _,
     second_schema::SecondTableColumnTrait as _,
 };
+use crate::silent_logs;
 use std::sync::{Arc, LazyLock};
 use tank::{
     Entity, Executor, Result, expr,
@@ -60,14 +61,15 @@ pub async fn ambiguity(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    first_schema::FirstTable::drop_table(executor, true, false).await?;
+    silent_logs! {
+        first_schema::FirstTable::drop_table(executor, true, false).await?;
+        first_schema::SecondTable::drop_table(executor, true, false).await?;
+        second_schema::FirstTable::drop_table(executor, true, false).await?;
+        second_schema::SecondTable::drop_table(executor, true, false).await?;
+    }
     first_schema::FirstTable::create_table(executor, false, true).await?;
-    first_schema::SecondTable::drop_table(executor, true, false).await?;
     first_schema::SecondTable::create_table(executor, false, true).await?;
-
-    second_schema::FirstTable::drop_table(executor, true, false).await?;
     second_schema::FirstTable::create_table(executor, false, true).await?;
-    second_schema::SecondTable::drop_table(executor, true, false).await?;
     second_schema::SecondTable::create_table(executor, false, true).await?;
 
     // Insert one value in first_schema::FirstTable

@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::{
     BinOp, Block, Expr, ExprGroup, ExprLit, ExprMacro, ExprPath, LitStr, Macro, Member, Pat, Path,
-    Stmt, Type, TypePath, punctuated::Punctuated, spanned::Spanned, token::Comma,
+    Stmt, Type, TypePath, spanned::Spanned,
 };
 use tank_core::{decode_type, matches_path};
 
@@ -376,20 +376,12 @@ pub fn decode_expression(expr: &Expr) -> TokenStream {
             quote! { ::tank::Operand::LitField(&[#(#segments),*]) }
         }
         Expr::Array(v) => {
-            let v = v
-                .elems
-                .iter()
-                .map(|v| decode_expression(v))
-                .collect::<Punctuated<_, Comma>>();
-            quote! { ::tank::Operand::LitList(&[#v]) }
+            let cells = v.elems.iter().map(decode_expression);
+            quote! { ::tank::Operand::LitList(&[#(&#cells as &dyn ::tank::Expression),*]) }
         }
         Expr::Tuple(v) => {
-            let v = v
-                .elems
-                .iter()
-                .map(|v| decode_expression(v))
-                .collect::<Punctuated<_, Comma>>();
-            quote! { ::tank::Operand::LitTuple(&[#v]) }
+            let cells = v.elems.iter().map(decode_expression);
+            quote! { ::tank::Operand::LitTuple(&[#(&#cells as &dyn ::tank::Expression),*]) }
         }
         Expr::Group(ExprGroup { expr, .. }) => decode_expression(&expr),
         _ => panic!(

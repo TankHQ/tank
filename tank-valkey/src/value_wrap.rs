@@ -18,7 +18,66 @@ impl<'a> From<tank_core::Value<'a>> for ValueWrap<'a> {
     }
 }
 
-impl<'a> TryFrom<redis::Value> for ValueWrap<'a> {
+impl<'a> ValueWrap<'a> {
+    /// Decodes a reply using the declared column type. Bulk strings carry raw bytes, so binary and JSON columns keep their shape.
+    pub(crate) fn decode(
+        value: redis::Value,
+        expected: &tank_core::Value<'_>,
+    ) -> Result<Self, tank_core::Error> {
+        Ok(match (expected, value) {
+            (tank_core::Value::Blob(..), redis::Value::BulkString(v)) => {
+                tank_core::Value::Blob(Some(v.into()))
+            }
+            (tank_core::Value::Json(..), redis::Value::BulkString(v)) => tank_core::Value::Json(
+                Some(serde_json::from_slice(&v).map_err(tank_core::Error::new)?),
+            ),
+            (
+                tank_core::Value::Array(_, t, ..) | tank_core::Value::List(_, t, ..),
+                redis::Value::Array(v) | redis::Value::Set(v),
+            ) => {
+                let values = v
+                    .into_iter()
+                    .map(|v| Self::decode(v, &t.element).map(|v| v.0))
+                    .collect::<Result<Vec<_>, tank_core::Error>>()?;
+                tank_core::Value::List(
+                    if values.is_empty() {
+                        None
+                    } else {
+                        Some(values.into_boxed_slice())
+                    },
+                    Box::new(tank_core::CollectionType {
+                        element: t.element.as_null().into_owned(),
+                        len: 0,
+                    }),
+                )
+            }
+            (tank_core::Value::Map(_, t, ..), redis::Value::Map(v)) => {
+                let mut entries = HashMap::with_capacity(v.len());
+                for (k, v) in v {
+                    entries.insert(
+                        Self::decode(k, &t.key)?.0.into_owned(),
+                        Self::decode(v, &t.value)?.0.into_owned(),
+                    );
+                }
+                tank_core::Value::Map(
+                    if entries.is_empty() {
+                        None
+                    } else {
+                        Some(Box::new(entries))
+                    },
+                    Box::new(tank_core::MapType {
+                        key: t.key.as_null().into_owned(),
+                        value: t.value.as_null().into_owned(),
+                    }),
+                )
+            }
+            (_, value) => Self::try_from(value)?.0,
+        }
+        .into())
+    }
+}
+
+impl TryFrom<redis::Value> for ValueWrap<'_> {
     type Error = tank_core::Error;
 
     fn try_from(value: redis::Value) -> Result<Self, Self::Error> {
@@ -88,7 +147,7 @@ impl<'a> TryFrom<redis::Value> for ValueWrap<'a> {
     }
 }
 
-impl<'a> TryFrom<ValueWrap<'a>> for redis::Value {
+impl TryFrom<ValueWrap<'_>> for redis::Value {
     type Error = tank_core::Error;
 
     fn try_from(value: ValueWrap) -> Result<Self, Self::Error> {
@@ -109,7 +168,9 @@ impl<'a> TryFrom<ValueWrap<'a>> for redis::Value {
                 let tank_core::Value::Int64(Some(v)) =
                     value.try_as(&tank_core::Value::Int64(None))?
                 else {
-                    unreachable!("Unexpected error, it should be Int64 here");
+                    return Err(anyhow!(
+                        "Expected an Int64 value while converting to redis::Value"
+                    ));
                 };
                 redis::Value::Int(v)
             }
@@ -119,7 +180,9 @@ impl<'a> TryFrom<ValueWrap<'a>> for redis::Value {
                 let tank_core::Value::Float64(Some(v)) =
                     value.try_as(&tank_core::Value::Float64(None))?
                 else {
-                    unreachable!("Unexpected error, it should be Float64 here");
+                    return Err(anyhow!(
+                        "Expected a Float64 value while converting to redis::Value"
+                    ));
                 };
                 redis::Value::Double(v)
             }
@@ -131,12 +194,15 @@ impl<'a> TryFrom<ValueWrap<'a>> for redis::Value {
             | tank_core::Value::TimestampWithTimezone(..)
             | tank_core::Value::Interval(..)
             | tank_core::Value::Uuid(..)
+            | tank_core::Value::IpAddr(..)
             | tank_core::Value::Json(..)
             | tank_core::Value::Unknown(..) => {
                 let tank_core::Value::Varchar(Some(v)) =
                     value.try_as(&tank_core::Value::Varchar(None))?
                 else {
-                    unreachable!("Unexpected error, it should be Varchar here");
+                    return Err(anyhow!(
+                        "Expected a Varchar value while converting to redis::Value"
+                    ));
                 };
                 redis::Value::BulkString(v.as_bytes().into())
             }
@@ -190,13 +256,13 @@ impl<'a> TryFrom<ValueWrap<'a>> for redis::Value {
     }
 }
 
-impl<'a> FromRedisValue for ValueWrap<'a> {
+impl FromRedisValue for ValueWrap<'_> {
     fn from_redis_value(value: redis::Value) -> Result<Self, redis::ParsingError> {
         Self::try_from(value).map_err(|e| format!("{e}").into())
     }
 }
 
-impl<'a> ToRedisArgs for ValueWrap<'a> {
+impl ToRedisArgs for ValueWrap<'_> {
     fn write_redis_args<W>(&self, out: &mut W)
     where
         W: ?Sized + RedisWrite,
@@ -222,7 +288,8 @@ impl<'a> ToRedisArgs for ValueWrap<'a> {
             | tank_core::Value::Timestamp(Some(..), ..)
             | tank_core::Value::TimestampWithTimezone(Some(..), ..)
             | tank_core::Value::Interval(Some(..), ..)
-            | tank_core::Value::Uuid(Some(..), ..) => {
+            | tank_core::Value::Uuid(Some(..), ..)
+            | tank_core::Value::IpAddr(Some(..), ..) => {
                 if let Ok(v) = self
                     .0
                     .clone()

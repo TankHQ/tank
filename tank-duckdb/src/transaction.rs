@@ -1,7 +1,7 @@
 use crate::{DuckDBConnection, DuckDBDriver};
 use std::future::Future;
 use tank_core::{
-    Driver, DynQuery, Executor, Result, SqlWriter, Transaction, future::TryFutureExt,
+    AnyQuery, Driver, Executor, Result, SqlWriter, Transaction, future::TryFutureExt,
     impl_executor_transaction,
 };
 
@@ -13,7 +13,7 @@ pub struct DuckDBTransaction<'c> {
 impl<'c> DuckDBTransaction<'c> {
     pub async fn new(connection: &'c mut DuckDBConnection) -> Result<Self> {
         let result = Self { connection };
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         result
             .connection
             .driver()
@@ -27,7 +27,7 @@ impl<'c> DuckDBTransaction<'c> {
 impl_executor_transaction!(DuckDBDriver, DuckDBTransaction<'c>, connection);
 impl<'c> Transaction<'c> for DuckDBTransaction<'c> {
     fn commit(self) -> impl Future<Output = Result<()>> + Send {
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         self.driver()
             .sql_writer()
             .write_transaction_commit(&mut query);
@@ -35,7 +35,7 @@ impl<'c> Transaction<'c> for DuckDBTransaction<'c> {
     }
 
     fn rollback(self) -> impl Future<Output = Result<()>> + Send {
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         self.driver()
             .sql_writer()
             .write_transaction_rollback(&mut query);

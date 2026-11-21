@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use std::{
     collections::{BTreeMap, LinkedList, VecDeque},
     sync::LazyLock,
@@ -76,7 +77,9 @@ pub async fn complex(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    ComplexNullFields::drop_table(executor, true, false).await?;
+    silent_logs! {
+        ComplexNullFields::drop_table(executor, true, false).await?;
+    }
     ComplexNullFields::create_table(executor, true, true).await?;
 
     // Complex 1

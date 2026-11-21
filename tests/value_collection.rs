@@ -12,16 +12,16 @@ mod tests {
     fn value_array() {
         let var = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as [i8; 10];
         let val: Value = var.as_value();
-        let var = <[i8; 10]>::try_from_value(val).unwrap();
+        let var = <[i8; 10]>::decode_value(val).unwrap();
         assert_eq!(var, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
         assert_ne!(var, [0, 1, 2, 3, 4, 5, 6, 7, 7, 9]);
         assert_eq!(
-            <[String; 2]>::try_from_value(["Hello".to_string(), "world".to_string()].as_value())
+            <[String; 2]>::decode_value(["Hello".to_string(), "world".to_string()].as_value())
                 .expect("Cannot convert the Value to array of 2 String"),
             ["Hello", "world"]
         );
         assert_eq!(
-            <[Decimal; 5]>::try_from_value([12.50, 13.3, -6.1, 0.0, -3.34].as_value())
+            <[Decimal; 5]>::decode_value([12.50, 13.3, -6.1, 0.0, -3.34].as_value())
                 .expect("Cannot convert the Value to array of 5 Decimal"),
             [
                 Decimal::from_f32(12.50).unwrap(),
@@ -32,7 +32,7 @@ mod tests {
             ]
         );
         assert_ne!(
-            <[Decimal; 5]>::try_from_value([12.50, 13.3, -6.1, 0.0, -3.34].as_value())
+            <[Decimal; 5]>::decode_value([12.50, 13.3, -6.1, 0.0, -3.34].as_value())
                 .expect("Cannot convert the Value to array of 5 Decimal"),
             [
                 Decimal::from_f32(12.50).unwrap(),
@@ -42,25 +42,25 @@ mod tests {
                 Decimal::from_f32(-3.34).unwrap(),
             ]
         );
-        assert!(<[i32; 2]>::try_from_value(vec![1, 2, 3].as_value()).is_err()); // More elements than expected
-        assert!(<[i32; 2]>::try_from_value(vec![1].as_value()).is_err()); // Less elements than expected
-        assert!(<[char; 3]>::try_from_value(['x', 'y'].as_value()).is_err()); // Less elements than expected
+        assert!(<[i32; 2]>::decode_value(vec![1, 2, 3].as_value()).is_err()); // More elements than expected
+        assert!(<[i32; 2]>::decode_value(vec![1].as_value()).is_err()); // Less elements than expected
+        assert!(<[char; 3]>::decode_value(['x', 'y'].as_value()).is_err()); // Less elements than expected
         assert_ne!(
-            <[char; 3]>::try_from_value(['x', 'y', 'z'].as_value())
+            <[char; 3]>::decode_value(['x', 'y', 'z'].as_value())
                 .expect("Cannot convert the Value to array of 3 chars"),
             ['x', 'y', 'a']
         );
 
-        assert_eq!(<[char; 1]>::try_from_value("é".as_value()).unwrap(), ['é']);
+        assert_eq!(<[char; 1]>::decode_value("é".as_value()).unwrap(), ['é']);
         assert_eq!(
-            <[char; 2]>::try_from_value("a€".as_value()).unwrap(),
+            <[char; 2]>::decode_value("a€".as_value()).unwrap(),
             ['a', '€']
         );
         assert_eq!(
-            <[char; 2]>::try_from_value("日本".as_value()).unwrap(),
+            <[char; 2]>::decode_value("日本".as_value()).unwrap(),
             ['日', '本']
         );
-        assert!(<[char; 2]>::try_from_value("a€b".as_value()).is_err());
+        assert!(<[char; 2]>::decode_value("a€b".as_value()).is_err());
     }
 
     #[test]
@@ -73,7 +73,7 @@ mod tests {
         ]
         .into();
         let val: Value = var.as_value();
-        let var = VecDeque::<Uuid>::try_from_value(val).unwrap();
+        let var = VecDeque::<Uuid>::decode_value(val).unwrap();
         assert_eq!(
             var,
             vec![
@@ -84,7 +84,7 @@ mod tests {
             ]
         );
         let val: Value = var.as_value();
-        let var = LinkedList::<Uuid>::try_from_value(val).unwrap();
+        let var = LinkedList::<Uuid>::decode_value(val).unwrap();
         assert_eq!(
             var,
             LinkedList::from_iter([
@@ -94,19 +94,19 @@ mod tests {
                 Uuid::from_str("ed31d4ef-82ea-442e-b273-5f5006e55ab1").unwrap(),
             ])
         );
-        assert!(Vec::<String>::try_from_value("hello").is_err());
+        assert!(Vec::<String>::decode_value("hello").is_err());
         assert_eq!(
-            Vec::<char>::try_from_value(['a', 'b', 'c'].as_value())
+            Vec::<char>::decode_value(['a', 'b', 'c'].as_value())
                 .expect("Cannot convert array to Vec"),
             vec!['a', 'b', 'c']
         );
         assert_eq!(
-            LinkedList::try_from_value(Vec::<bool>::new().as_value())
+            LinkedList::decode_value(Vec::<bool>::new().as_value())
                 .expect("Cannot convert Value to LinkedList"),
             LinkedList::<bool>::new()
         );
         assert_eq!(
-            VecDeque::<bool>::try_from_value(Value::List(
+            VecDeque::<bool>::decode_value(Value::List(
                 None,
                 Box::new(CollectionType {
                     element: Value::Boolean(None),
@@ -117,7 +117,7 @@ mod tests {
             VecDeque::<bool>::new()
         );
         assert_eq!(
-            Vec::<bool>::try_from_value(Value::List(
+            Vec::<bool>::decode_value(Value::List(
                 None,
                 Box::new(CollectionType {
                     element: Value::Boolean(None),
@@ -140,14 +140,14 @@ mod tests {
         assert_ne!(v1, v2, "Map Value equality must depend on the entries");
         let empty_map_v = HashMap::<String, i32>::new().as_value();
         assert_ne!(v1, empty_map_v);
-        let round1: HashMap<String, i32> = HashMap::try_from_value(v1).unwrap();
+        let round1: HashMap<String, i32> = HashMap::decode_value(v1).unwrap();
         assert_eq!(round1.len(), 1);
-        let round_empty: HashMap<String, i32> = HashMap::try_from_value(empty_map_v).unwrap();
+        let round_empty: HashMap<String, i32> = HashMap::decode_value(empty_map_v).unwrap();
         assert!(round_empty.is_empty());
         let mut bt: BTreeMap<String, bool> = BTreeMap::new();
         bt.insert("x".into(), true);
         let bt_v = bt.clone().as_value();
-        let bt_rt: BTreeMap<String, bool> = BTreeMap::try_from_value(bt_v).unwrap();
+        let bt_rt: BTreeMap<String, bool> = BTreeMap::decode_value(bt_v).unwrap();
         assert_eq!(bt_rt.get("x"), Some(&true));
     }
 

@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use std::{
     sync::LazyLock,
@@ -26,7 +27,9 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Times::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Times::drop_table(executor, true, false).await?;
+    }
     Times::create_table(executor, false, true).await?;
 
     // Insert times
@@ -200,7 +203,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     let values = executor
         .fetch(&mut query_timestamp_1)
         .and_then(|v| async move {
-            PrimitiveDateTime::try_from_value(v.value(0).expect("Could not get the first column"))
+            PrimitiveDateTime::decode_value(v.value(0).expect("Could not get the first column"))
                 .map(|v| v.to_string())
         })
         .try_collect::<Vec<_>>()
@@ -223,7 +226,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     let values = executor
         .fetch(&mut query_timestamp_1)
         .and_then(|v| async move {
-            NaiveDateTime::try_from_value(v.value(0).expect("Could not get the first column"))
+            NaiveDateTime::decode_value(v.value(0).expect("Could not get the first column"))
                 .map(|v| v.to_string())
         })
         .try_collect::<Vec<_>>()
@@ -261,7 +264,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     let values = executor
         .fetch(&mut query_timestamp_2)
         .and_then(|v| async move {
-            NaiveDateTime::try_from_value(v.value(0).expect("Could not get the first column"))
+            NaiveDateTime::decode_value(v.value(0).expect("Could not get the first column"))
                 .map(|v| v.to_string())
         })
         .try_collect::<Vec<_>>()
@@ -291,7 +294,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
     let values = executor
         .fetch(&mut query_time_1)
         .and_then(|v| async move {
-            NaiveTime::try_from_value(v.value(0).expect("Could not get the first column"))
+            NaiveTime::decode_value(v.value(0).expect("Could not get the first column"))
                 .map(|v| v.to_string())
         })
         .try_collect::<Vec<_>>()
@@ -319,7 +322,7 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
                 .limit(Some(1))
                 .build(&executor.driver()),
         )
-        .map_ok(|v| u128::try_from_value(v.value(0).expect("There is no column")))
+        .map_ok(|v| u128::decode_value(v.value(0).expect("There is no column")))
         .map(Result::flatten)
         .try_collect::<Vec<_>>()
         .await?;
@@ -342,7 +345,9 @@ pub async fn times(executor: &mut impl Executor) -> Result<()> {
             ts: OffsetDateTime,
         }
 
-        TzOffsets::drop_table(executor, true, false).await?;
+        silent_logs! {
+            TzOffsets::drop_table(executor, true, false).await?;
+        }
         TzOffsets::create_table(executor, true, true).await?;
 
         // UTC-05:30

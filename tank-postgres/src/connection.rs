@@ -10,15 +10,15 @@ use std::{
     borrow::Cow,
     env,
     iter::zip,
-    mem,
     path::PathBuf,
     pin::{Pin, pin},
     str::FromStr,
     sync::Arc,
 };
 use tank_core::{
-    AsEntity, AsQuery, Connection, Driver, DynQuery, Entity, Error, ErrorContext, Executor, Query,
-    QueryResult, RawQuery, Result, Row, RowLabels, RowOwned, RowsAffected, SqlWriter, Transaction,
+    AnyQuery, AsEntity, AsQuery, Connection, Driver, Entity, Error, ErrorContext, Executor, Query,
+    QueryResult, RawQuery, Result, Row, RowLabels, RowOwned, RowsAffected, SqlCoreWriter,
+    Transaction, describe_url,
     stream::{Stream, StreamExt, TryStreamExt},
     truncate_long,
 };
@@ -108,61 +108,50 @@ impl PostgresConnection {
 impl Executor for PostgresConnection {
     type Driver = PostgresDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<PostgresDriver>> {
-        let sql = sql.as_str().trim_end().trim_end_matches(';');
-        Ok(
-            PostgresPrepared::new(self.client.prepare(&sql).await.map_err(|e| {
-                let error = Error::new(e).context(format!(
-                    "While preparing the query:\n{}",
-                    truncate_long!(sql)
-                ));
-                log::error!("{error:#}");
-                error
-            })?)
-            .into(),
-        )
+    async fn do_prepare(&mut self, sql: &str) -> Result<PostgresPrepared> {
+        let sql = sql.trim_end().trim_end_matches(';');
+        let statement = self
+            .client
+            .prepare(&sql)
+            .await
+            .with_context(|| format!("While preparing the query:\n{}", truncate_long(sql)))
+            .inspect_err(|e| log::error!("{e:#}"))?;
+        Ok(PostgresPrepared::new(statement))
     }
 
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<PostgresDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         let context = format!("While running the query:\n{}", query.as_mut());
-        let mut owned = mem::take(query.as_mut());
         try_stream! {
-            match owned {
-                Query::Raw(raw) => {
-                    let sql = &raw.0;
-                    {
-                        let stream = stream_postgres_simple_query_message_to_tank_query_result(
-                            async move || self.client.simple_query_raw(sql).await.map_err(Into::into),
-                        );
-                        let mut stream = pin!(stream);
-                        while let Some(value) = stream.next().await.transpose()? {
-                            yield value;
-                        }
-                    }
-                    *query.as_mut() = Query::Raw(raw);
+            // The raw variant streams without a transaction, borrow the caller's SQL so an
+            // abandoned stream leaves the query intact.
+            if let Query::Raw(RawQuery(sql)) = query.as_mut() {
+                let stream = stream_postgres_simple_query_message_to_tank_query_result(
+                    async move || self.client.simple_query_raw(sql.as_str()).await.map_err(Into::into),
+                );
+                let mut stream = pin!(stream);
+                while let Some(value) = stream.next().await.transpose()? {
+                    yield value;
                 }
-                Query::Prepared(..) => {
-                    let mut transaction = self.begin().await?;
-                    {
-                        let mut stream = pin!(transaction.run(&mut owned));
-                        while let Some(value) = stream.next().await.transpose()? {
-                            yield match value {
-                                QueryResult::Row(r) => QueryResult::Row(RowOwned::new(
-                                    r.labels().into(),
-                                    r.into_values().collect(),
-                                )),
-                                QueryResult::Affected(a) => QueryResult::Affected(a),
-                            };
-                        }
-                    }
-                    transaction.commit().await?;
-                    *query.as_mut() = mem::take(&mut owned);
+                return;
+            }
+            let mut transaction = self.begin().await?;
+            {
+                let mut stream = pin!(transaction.run(&mut *query.as_mut()));
+                while let Some(value) = stream.next().await.transpose()? {
+                    yield match value {
+                        QueryResult::Row(r) => QueryResult::Row(RowOwned::new(
+                            r.labels().into(),
+                            r.into_values().collect(),
+                        )),
+                        QueryResult::Affected(a) => QueryResult::Affected(a),
+                    };
                 }
             }
+            transaction.commit().await?;
         }
         .map_err(move |e: Error| {
             let error = e.context(context.clone());
@@ -175,7 +164,7 @@ impl Executor for PostgresConnection {
         &'s mut self,
         query: impl AsQuery<PostgresDriver> + 's,
     ) -> impl Stream<Item = Result<impl Row + 's>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         PostgresStream::new(async move { self.fetch_inner(query.as_mut()).await })
     }
 
@@ -194,7 +183,7 @@ impl Executor for PostgresConnection {
                 E::<It>::table().full_name(writer.separator())
             )
         };
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         writer.write_copy(&mut query, E::<It>::table());
         let sink = match self
             .client
@@ -264,8 +253,9 @@ impl Executor for PostgresConnection {
 
 impl Connection for PostgresConnection {
     async fn connect(driver: &PostgresDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = "While trying to connect to Postgres";
-        let mut url = Self::sanitize_url(driver, url).context(context)?;
+        let mut url = Self::sanitize_url(driver, url)?;
+        let target = describe_url::<PostgresDriver>(&url);
+        let make_context = || format!(r#"Connecting to Postgres "{target}""#);
         let mut take_url_param = |key: &str, env_var: &str, remove: bool| {
             let value = url
                 .query_pairs()
@@ -288,7 +278,7 @@ impl Connection for PostgresConnection {
                 if let Err(error) = connection.await
                     && !error.is_closed()
                 {
-                    log::error!("Postgres connection error: {:#?}", error);
+                    log::error!("Postgres connection error: {error:#?}");
                 }
             });
             (client, handle)
@@ -299,7 +289,7 @@ impl Connection for PostgresConnection {
                     .as_deref()
                     .unwrap_or("~/.postgresql/root.crt"),
             )
-            .context(context)?;
+            .context(make_context())?;
             if path.exists() {
                 builder.set_ca_file(path)?;
             }
@@ -308,7 +298,7 @@ impl Connection for PostgresConnection {
                     .as_deref()
                     .unwrap_or("~/.postgresql/postgresql.crt"),
             )
-            .context(context)?;
+            .context(make_context())?;
             if path.exists() {
                 builder.set_certificate_chain_file(path)?;
             }
@@ -317,7 +307,7 @@ impl Connection for PostgresConnection {
                     .as_deref()
                     .unwrap_or("~/.postgresql/postgresql.key"),
             )
-            .context(context)?;
+            .context(make_context())?;
             if path.exists() {
                 builder.set_private_key_file(path, SslFiletype::PEM)?;
             }

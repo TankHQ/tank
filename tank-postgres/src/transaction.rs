@@ -13,31 +13,32 @@ pub struct PostgresTransaction<'c>(pub(crate) tokio_postgres::Transaction<'c>);
 
 impl<'c> PostgresTransaction<'c> {
     pub async fn new(client: &'c mut PostgresConnection) -> Result<Self> {
-        Ok(Self(client.client.transaction().await.map_err(|e| {
-            log::error!("{e:#}");
-            e
-        })?))
+        Ok(Self(
+            client
+                .client
+                .transaction()
+                .await
+                .inspect_err(|e| log::error!("{e:#}"))?,
+        ))
     }
 }
 
-impl<'c> Executor for PostgresTransaction<'c> {
+impl Executor for PostgresTransaction<'_> {
     type Driver = PostgresDriver;
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<PostgresDriver>> {
-        Ok(
-            PostgresPrepared::new(self.0.prepare(&sql).await.map_err(|e| {
-                let error = Error::new(e);
-                log::error!("{error:#}");
-                error
-            })?)
-            .into(),
-        )
+    async fn do_prepare(&mut self, sql: &str) -> Result<PostgresPrepared> {
+        Ok(PostgresPrepared::new(
+            self.0
+                .prepare(sql)
+                .await
+                .inspect_err(|e| log::error!("{e:#}"))?,
+        ))
     }
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<PostgresDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         stream_postgres_row_to_tank_row(async move || match query.as_mut() {
             Query::Raw(RawQuery(sql)) => {
                 let stream = self
@@ -55,10 +56,7 @@ impl<'c> Executor for PostgresTransaction<'c> {
                 Ok(Either::Right(self.0.query_portal_raw(&portal, 0).await?))
             }
         })
-        .map_err(|e| {
-            log::error!("{e:#}");
-            e
-        })
+        .inspect_err(|e| log::error!("{e:#}"))
     }
 }
 

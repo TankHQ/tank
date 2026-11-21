@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use rust_decimal::Decimal;
 use std::sync::LazyLock;
 use tank::{Connection, Entity, FixedDecimal, Result, Transaction, expr};
@@ -30,9 +31,11 @@ pub async fn transaction2(connection: &mut impl Connection) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Account::drop_table(connection, true, false).await?;
+    silent_logs! {
+        Account::drop_table(connection, true, false).await?;
+        Transfer::drop_table(connection, true, false).await?;
+    }
     Account::create_table(connection, true, true).await?;
-    Transfer::drop_table(connection, true, false).await?;
     Transfer::create_table(connection, true, true).await?;
 
     // Insert initial accounts

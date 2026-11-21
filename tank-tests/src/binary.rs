@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use std::sync::LazyLock;
 use tank::{Entity, Executor, Result, expr, stream::TryStreamExt};
 use tokio::sync::Mutex;
@@ -20,7 +21,9 @@ pub async fn binary(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    BinaryFields::drop_table(executor, true, false).await?;
+    silent_logs! {
+        BinaryFields::drop_table(executor, true, false).await?;
+    }
     BinaryFields::create_table(executor, true, true).await?;
 
     // Literal insert must preserve every byte.

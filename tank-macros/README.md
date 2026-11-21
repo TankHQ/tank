@@ -12,4 +12,4 @@ This crate defines procedural macros used for code generation purposes. It exist
 
 🖥️ https://github.com/TankHQ/tank
 
-📦 https://crates.io/crates/tank
+📦 https://crates.io/crates/tank-macros

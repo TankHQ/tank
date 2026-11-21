@@ -144,7 +144,7 @@ pub struct RowOwned {
 }
 
 impl RowOwned {
-    pub fn new(labels: RowLabels, values: Vec<ValueOwned>) -> Self {
+    pub const fn new(labels: RowLabels, values: Vec<ValueOwned>) -> Self {
         Self { labels, values }
     }
 }

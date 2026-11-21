@@ -1,14 +1,16 @@
 use crate::{
-    BinaryOp, BinaryOpType, Case, ColumnRef, Context, DynQuery, Expression, Operand, Order,
-    Ordered, SqlWriter, UnaryOp, Value,
+    AnyQuery, BinaryOp, BinaryOpType, Case, ColumnRef, Context, Expression, GenericSqlWriter,
+    Operand, Order, Ordered, Result, SqlWriter, UnaryOp, Value, ValueOwned,
 };
+use anyhow::anyhow;
+use std::borrow::Cow;
 
 pub trait ExpressionVisitor {
     fn visit_column(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &ColumnRef,
     ) -> bool {
         false
@@ -17,7 +19,7 @@ pub trait ExpressionVisitor {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &Operand,
     ) -> bool {
         false
@@ -26,7 +28,7 @@ pub trait ExpressionVisitor {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &UnaryOp<&dyn Expression>,
     ) -> bool {
         false
@@ -35,7 +37,7 @@ pub trait ExpressionVisitor {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         false
@@ -44,7 +46,7 @@ pub trait ExpressionVisitor {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &Ordered<&dyn Expression>,
     ) -> bool {
         false
@@ -53,7 +55,7 @@ pub trait ExpressionVisitor {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &Case,
     ) -> bool {
         false
@@ -67,7 +69,7 @@ impl ExpressionVisitor for IsTrue {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {
@@ -86,7 +88,7 @@ impl ExpressionVisitor for IsFalse {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {
@@ -98,6 +100,47 @@ impl ExpressionVisitor for IsFalse {
     }
 }
 
+/// Value of a literal expression, for drivers that store native values instead of SQL text.
+#[derive(Default)]
+pub struct LiteralValue(Option<ValueOwned>);
+
+impl LiteralValue {
+    pub fn new(expression: impl Expression) -> Result<ValueOwned> {
+        let mut literal = Self::default();
+        expression.accept_visitor(
+            &mut literal,
+            &GenericSqlWriter,
+            &mut Context::empty(),
+            &mut AnyQuery::default(),
+        );
+        literal
+            .0
+            .ok_or_else(|| anyhow!("Expected a literal value, found a SQL expression"))
+    }
+}
+
+impl ExpressionVisitor for LiteralValue {
+    fn visit_operand(
+        &mut self,
+        _writer: &dyn SqlWriter,
+        _context: &mut Context,
+        _out: &mut AnyQuery,
+        value: &Operand,
+    ) -> bool {
+        self.0 = Some(match value {
+            Operand::Null => Value::Null,
+            Operand::LitBool(v) => Value::Boolean(Some(*v)),
+            Operand::LitInt(v) => Value::Int128(Some(Box::new(*v))),
+            Operand::LitFloat(v) => Value::Float64(Some(*v)),
+            Operand::LitStr(v) => Value::Varchar(Some(Cow::Owned((*v).into()))),
+            Operand::Variable(v) => v.clone().into_owned(),
+            Operand::Value(v) => (*v).clone().into_owned(),
+            _ => return false,
+        });
+        true
+    }
+}
+
 #[derive(Default, Debug)]
 pub struct IsConstant;
 impl ExpressionVisitor for IsConstant {
@@ -105,7 +148,7 @@ impl ExpressionVisitor for IsConstant {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {
@@ -127,7 +170,7 @@ impl ExpressionVisitor for IsConstant {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         if value.op == BinaryOpType::Alias {
@@ -145,7 +188,7 @@ impl ExpressionVisitor for IsAggregateFunction {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {
@@ -164,7 +207,7 @@ impl ExpressionVisitor for IsAggregateFunction {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         if value.op == BinaryOpType::Alias {
@@ -182,7 +225,7 @@ impl ExpressionVisitor for IsAsterisk {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         matches!(value, Operand::Asterisk)
@@ -196,7 +239,7 @@ impl ExpressionVisitor for IsQuestionMark {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         matches!(value, Operand::QuestionMark)
@@ -212,7 +255,7 @@ impl ExpressionVisitor for IsAlias {
         &mut self,
         _writer: &dyn SqlWriter,
         context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         if value.op != BinaryOpType::Alias {
@@ -232,7 +275,7 @@ impl ExpressionVisitor for FindOrder {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &ColumnRef,
     ) -> bool {
         true
@@ -241,7 +284,7 @@ impl ExpressionVisitor for FindOrder {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &Operand,
     ) -> bool {
         true
@@ -250,7 +293,7 @@ impl ExpressionVisitor for FindOrder {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &UnaryOp<&dyn Expression>,
     ) -> bool {
         true
@@ -259,7 +302,7 @@ impl ExpressionVisitor for FindOrder {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         true
@@ -268,7 +311,7 @@ impl ExpressionVisitor for FindOrder {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Ordered<&dyn Expression>,
     ) -> bool {
         self.order = value.order;
@@ -284,12 +327,12 @@ impl ExpressionVisitor for WriteInList {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {
             Operand::LitList(v) | Operand::LitTuple(v) => {
-                writer.write_tuple(context, out, &mut v.iter().map(|v| v as _))
+                writer.write_tuple(context, out, &mut v.iter().copied())
             }
             Operand::Variable(Value::Array(Some(v), ..) | Value::List(Some(v), ..))
             | Operand::Value(Value::Array(Some(v), ..) | Value::List(Some(v), ..)) => {

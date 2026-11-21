@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use std::sync::LazyLock;
 use tank::{Entity, Executor, Result, expr};
 use tokio::sync::Mutex;
@@ -20,24 +21,24 @@ pub struct SpecialIdentifiers {
 pub async fn identifiers(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
-    SpecialIdentifiers::drop_table(executor, true, false).await?;
+    silent_logs! {
+        SpecialIdentifiers::drop_table(executor, true, false).await?;
+    }
     SpecialIdentifiers::create_table(executor, true, true).await?;
-
     let entity = SpecialIdentifiers {
         id: 1,
         backtick_col: "hello".to_string(),
         double_quote_col: 42,
     };
     entity.save(executor).await?;
-
     let found = SpecialIdentifiers::find_one(executor, expr!(SpecialIdentifiers::id == 1))
         .await?
         .expect("Entity not found");
     assert_eq!(found, entity);
 
     SpecialIdentifiers::delete_many(executor, expr!(SpecialIdentifiers::id == 1)).await?;
-
     let gone = SpecialIdentifiers::find_one(executor, expr!(SpecialIdentifiers::id == 1)).await?;
     assert!(gone.is_none());
+
     Ok(())
 }

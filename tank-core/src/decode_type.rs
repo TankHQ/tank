@@ -140,6 +140,8 @@ pub fn decode_type(ty: &Type) -> TypeDecoded {
                 break 'data_type Value::Interval(None);
             } else if matches_path(path, &["uuid", "Uuid"]) {
                 break 'data_type Value::Uuid(None);
+            } else if matches_path(path, &["std", "net", "IpAddr"]) {
+                break 'data_type Value::IpAddr(None);
             } else {
                 let is_option = matches_path(path, &["std", "option", "Option"]);
                 let is_cow = matches_path(path, &["std", "borrow", "Cow"]);

@@ -30,6 +30,7 @@ redis = { version = "1.0.4", features = [
     "tokio-rustls-comp",
 ] }
 rustls.workspace = true
+serde_json.workspace = true
 tank-core.workspace = true
 url.workspace = true
 
@@ -45,6 +46,7 @@ tank-tests = { path = "../tank-tests", features = [
     "disable-multiple-statements",
     "disable-ordering",
     "disable-references",
+    "disable-updates",
 ] }
 testcontainers-modules = { version = "0", features = ["valkey", "redis"] }
 time.workspace = true

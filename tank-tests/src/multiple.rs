@@ -1,8 +1,9 @@
 #![allow(dead_code)]
+use crate::silent_logs;
 use std::sync::LazyLock;
-use tank::{AsValue, DynQuery, Result, Row, Sql, expr};
+use tank::{AnyQuery, AsQuery, AsValue, Driver, Result, Row, Sql, expr};
 use tank::{
-    Driver, Entity, Executor, QueryResult, SqlWriter,
+    Entity, Executor, QueryResult,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -30,28 +31,48 @@ struct Three {
 pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
-    let mut query = DynQuery::default();
-    let writer = executor.driver().sql_writer();
+    let driver = executor.driver();
+    let mut query = AnyQuery::default();
     query.push_str("    \n\n  \n \n\t\t\n   \n    ");
-    // 1
-    writer.write_drop_table(&mut query, One::table(), true);
+    silent_logs! {
+        // 1
+        Sql()
+            .drop_table(One::table())
+            .if_exists()
+            .write_into(&driver.sql_writer(), &mut query);
+        // 2
+        Sql()
+            .drop_table(Two::table())
+            .if_exists()
+            .write_into(&driver.sql_writer(), &mut query);
+        // 3
+        Sql()
+            .drop_table(Three::table())
+            .if_exists()
+            .write_into(&driver.sql_writer(), &mut query);
+    }
     query.push_str("\t\t");
-    // 2
-    writer.write_drop_table(&mut query, Two::table(), true);
-    // 3
-    writer.write_drop_table(&mut query, Three::table(), true);
     // 4
-    writer.write_create_table(&mut query, One::table(), true);
+    Sql()
+        .create_table(One::table())
+        .if_not_exists()
+        .write_into(&driver.sql_writer(), &mut query);
     query.push('\n');
     // 5
-    writer.write_create_table(&mut query, Two::table(), true);
+    Sql()
+        .create_table(Two::table())
+        .if_not_exists()
+        .write_into(&driver.sql_writer(), &mut query);
     // 6
-    writer.write_create_table(&mut query, Three::table(), true);
+    Sql()
+        .create_table(Three::table())
+        .if_not_exists()
+        .write_into(&driver.sql_writer(), &mut query);
     query.push_str(" ");
     // 7
-    writer.write_insert(
-        &mut query,
-        Sql().insert_into(Two::table()).values(&[
+    Sql()
+        .insert_into(Two::table())
+        .values(&[
             Two {
                 a2: 21,
                 string: "aaa".into(),
@@ -64,66 +85,61 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
                 a2: 23,
                 string: "eee".into(),
             },
-        ]),
-    );
+        ])
+        .write_into(&driver.sql_writer(), &mut query);
     query.push_str("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
     // 8
-    writer.write_insert(
-        &mut query,
-        Sql().insert_into(Three::table()).values(&[
+    Sql()
+        .insert_into(Three::table())
+        .values(&[
             Three {
                 string: "ddd".into(),
             },
             Three {
                 string: "ccc".into(),
             },
-        ]),
-    );
+        ])
+        .write_into(&driver.sql_writer(), &mut query);
     // 9
-    writer.write_select(
-        &mut query,
-        Sql()
-            .select([Three::string])
-            .from(Three::table())
-            .where_expr(true),
-    );
+    Sql()
+        .select([Three::string])
+        .from(Three::table())
+        .where_expr(true)
+        .write_into(&driver.sql_writer(), &mut query);
     // 10
-    writer.write_insert(
-        &mut query,
-        Sql().insert_into(One::table()).values(&[One {
+    Sql()
+        .insert_into(One::table())
+        .values(&[One {
             a1: 11,
             string: "zzz".into(),
             c1: 512,
-        }]),
-    );
+        }])
+        .write_into(&driver.sql_writer(), &mut query);
     // 11
-    writer.write_select(
-        &mut query,
-        Sql()
-            .select([One::a1, One::string, One::c1])
-            .from(One::table())
-            .where_expr(true),
-    );
+    Sql()
+        .select([One::a1, One::string, One::c1])
+        .from(One::table())
+        .where_expr(true)
+        .write_into(&driver.sql_writer(), &mut query);
     // 12
-    writer.write_select(
-        &mut query,
-        Sql()
-            .select([Two::a2, Two::string])
-            .from(Two::table())
-            .where_expr(true),
-    );
+    Sql()
+        .select([Two::a2, Two::string])
+        .from(Two::table())
+        .where_expr(true)
+        .write_into(&driver.sql_writer(), &mut query);
     // 13: An empty SELECT still contributes a statement result.
-    writer.write_select(
-        &mut query,
-        Sql()
-            .select([Two::a2, Two::string])
-            .from(Two::table())
-            .where_expr(false),
-    );
+    Sql()
+        .select([Two::a2, Two::string])
+        .from(Two::table())
+        .where_expr(false)
+        .write_into(&driver.sql_writer(), &mut query);
     // 14: A write that affects no rows must not disappear either.
-    writer.write_delete(&mut query, Two::table(), expr!(Two::a2 == 0));
+    Sql()
+        .delete_from(Two::table())
+        .where_expr(expr!(Two::a2 == 0))
+        .write_into(&driver.sql_writer(), &mut query);
     query.push_str("            \t    \t\t  \n \n \n \t    \n\n\n ");
-    let mut query = <DynQuery as tank::AsQuery<_>>::as_query(query);
+    let mut query = query.as_query(&driver);
     let result = executor
         .run(&mut query)
         .map_ok(|result| match result {
@@ -159,11 +175,11 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
         .collect::<Vec<_>>();
     let expected = result
         .iter()
-        .map(|row| String::try_from_value(row.get_column("string").unwrap().clone()))
+        .map(|row| String::decode_value(row.get_column("string").unwrap().clone()))
         .collect::<Result<Vec<_>>>()?;
     let projected = executor
         .fetch(&mut query)
-        .map(|row| String::try_from_value(row?.get_column("string").unwrap().clone()))
+        .map(|row| String::decode_value(row?.get_column("string").unwrap().clone()))
         .try_collect::<Vec<_>>()
         .await?;
     assert_eq!(
@@ -174,12 +190,12 @@ pub async fn multiple(executor: &mut impl Executor) -> Result<()> {
     result.sort_by(|a, b| {
         let a = a
             .get_column("string")
-            .map(|v| String::try_from_value(v.clone()))
+            .map(|v| String::decode_value(v.clone()))
             .expect("Does not have column \"string\"")
             .expect("The column called `string` is not a VARCHAR");
         let b = b
             .get_column("string")
-            .map(|v| String::try_from_value(v.clone()))
+            .map(|v| String::decode_value(v.clone()))
             .expect("Does not have column \"string\"")
             .expect("The column called `string` is not a VARCHAR");
         a.cmp(&b)

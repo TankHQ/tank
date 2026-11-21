@@ -16,6 +16,7 @@ use std::{
     collections::{BTreeMap, HashMap, LinkedList, VecDeque},
     hash::Hash,
     hint, mem,
+    net::IpAddr,
     num::{
         NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI128, NonZeroIsize, NonZeroU8,
         NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128, NonZeroUsize,
@@ -23,7 +24,7 @@ use std::{
     rc::Rc,
     sync::{Arc, RwLock},
 };
-use time::{PrimitiveDateTime, UtcDateTime, format_description::parse_borrowed};
+use time::{PrimitiveDateTime, UtcDateTime};
 use uuid::Uuid;
 
 /// Converts Rust inputs to values and decodes supported destination types.
@@ -35,7 +36,7 @@ pub trait AsValue {
     where
         Self: 'a;
     /// Decode into `Self`; input-only implementations can use the default.
-    fn try_from_value(_value: impl AsValue) -> Result<Self>
+    fn decode_value(_value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -51,7 +52,7 @@ pub trait AsValue {
     {
         Err(anyhow!(
             "Cannot parse '{}' as {} (the parse method is not implemented)",
-            truncate_long!(input.as_ref()),
+            truncate_long(input.as_ref()),
             any::type_name::<Self>()
         ))
     }
@@ -69,7 +70,7 @@ impl AsValue for Value<'_> {
         self
     }
     #[inline(always)]
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -110,6 +111,7 @@ impl AsValue for &Value<'_> {
             Value::TimestampWithTimezone(v) => Value::TimestampWithTimezone(*v),
             Value::Interval(v) => Value::Interval(*v),
             Value::Uuid(v) => Value::Uuid(*v),
+            Value::IpAddr(v) => Value::IpAddr(*v),
             Value::Array(v, t) => Value::Array(
                 v.as_ref()
                     .map(|v| v.iter().map(AsValue::as_value).collect()),
@@ -183,7 +185,7 @@ macro_rules! impl_as_value {
                 $destination(Some($wrap))
             }
             #[inline(always)]
-            fn try_from_value(value: impl AsValue) -> Result<Self> {
+            fn decode_value(value: impl AsValue) -> Result<Self> {
                 #[cold]
                 #[inline(never)]
                 // Pass `&mut` + `mem::take` instead of by-value `Value` so LLVM does not
@@ -237,7 +239,7 @@ macro_rules! impl_as_value {
                             ))
                         }
                         Value::Float32(Some(v), ..) => {
-                            <$source>::try_from_value(Value::Float64(Some(v as f64)))
+                            <$source>::decode_value(Value::Float64(Some(v as f64)))
                         }
                         Value::Varchar(Some(ref v), ..) => <$source as AsValue>::parse(v).with_context(|| {
                             format!("While parsing a {} from `{}`", any::type_name::<$source>(), v)
@@ -336,11 +338,11 @@ macro_rules! impl_as_value {
             {
                 AsValue::as_value(Into::<$helper>::into(self))
             }
-            fn try_from_value(value: impl AsValue) -> Result<Self>
+            fn decode_value(value: impl AsValue) -> Result<Self>
             where
                 Self: Sized,
             {
-                Ok(<$helper as AsValue>::try_from_value(value)?.try_into()?)
+                Ok(<$helper as AsValue>::decode_value(value)?.try_into()?)
             }
         }
         impl AsValue for &$source {
@@ -422,7 +424,7 @@ macro_rules! impl_as_value {
                 $destination(Some(self.into()))
             }
             #[inline(always)]
-            fn try_from_value(value: impl AsValue) -> Result<Self> {
+            fn decode_value(value: impl AsValue) -> Result<Self> {
                 #[cold]
                 #[inline(never)]
                 // Pass `&mut` + `mem::take` instead of by-value `Value` so LLVM does not
@@ -537,25 +539,32 @@ impl_as_value!(
         if input.chars().count() != 1 {
             return Err(anyhow!("Cannot convert `{input:?}` to char"))
         }
-        Ok(input.chars().next().expect("Should have one character"))
+        input
+            .chars()
+            .next()
+            .ok_or_else(|| anyhow!("Cannot convert `{input:?}` to char"))
     },
     Value::Varchar(Some(v), ..) => {
         if v.chars().count() != 1 {
             return Err(anyhow!(
                 "Cannot convert varchar `{}` to char because it has more than one character",
-                truncate_long!(v)
+                truncate_long(&v)
             ))
         }
-        Ok(v.chars().next().unwrap())
+        v.chars()
+            .next()
+            .ok_or_else(|| anyhow!("Cannot convert varchar `{}` to char", truncate_long(&v)))
     },
     Value::Json(Some(serde_json::Value::String(v)), ..) => {
         if v.chars().count() != 1 {
             return Err(anyhow!(
                 "Cannot convert json `{}` to char because it has more than one character",
-                truncate_long!(v)
+                truncate_long(&v)
             ))
         }
-        Ok(v.chars().next().unwrap())
+        v.chars()
+            .next()
+            .ok_or_else(|| anyhow!("Cannot convert json `{}` to char", truncate_long(&v)))
     },
     value @ (
         Value::Int8(Some(..), ..)
@@ -569,7 +578,7 @@ impl_as_value!(
         | Value::UInt64(Some(..), ..)
         | Value::UInt128(Some(..), ..)
     ) => {
-        let code = u32::try_from_value(value.clone()).map_err(|_| {
+        let code = u32::decode_value(value.clone()).map_err(|_| {
             anyhow!("Cannot convert {value:?} to char because it is not a valid unicode scalar value")
         })?;
         char::from_u32(code).ok_or_else(|| {
@@ -604,6 +613,7 @@ impl_as_value!(
         | Value::Timestamp(Some(..), ..)
         | Value::TimestampWithTimezone(Some(..), ..)
         | Value::Uuid(Some(..), ..)
+        | Value::IpAddr(Some(..), ..)
     ) => Ok(v.to_string()),
     Value::Json(Some(serde_json::Value::String(v)), ..) => Ok(v),
 );
@@ -632,7 +642,7 @@ impl AsValue for Box<[u8]> {
     {
         Value::Blob(Some(Cow::Owned(self.into_vec())))
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -641,6 +651,7 @@ impl AsValue for Box<[u8]> {
             Value::Blob(Some(v), ..) => Ok(v.into_owned().into_boxed_slice()),
             Value::Varchar(Some(v), ..) => <Self as AsValue>::parse(v),
             Value::Unknown(Some(v), ..) => <Self as AsValue>::parse(v),
+            Value::Json(Some(serde_json::Value::String(v)), ..) => <Self as AsValue>::parse(v),
             other => Err(anyhow!(
                 "Cannot convert {other:?} to {}",
                 any::type_name::<Self>()
@@ -661,7 +672,7 @@ impl AsValue for Box<[u8]> {
         .map(Into::into)
         .context(format!(
             "While decoding `{}` as {}",
-            truncate_long!(input),
+            truncate_long(input),
             any::type_name::<Self>()
         ))?;
         Ok(result)
@@ -681,7 +692,7 @@ impl AsValue for &Box<[u8]> {
 }
 
 impl_as_value!(Interval, Value::Interval, |mut input: &str| {
-    let make_context = || anyhow!("Cannot parse interval from `{}`", truncate_long!(input));
+    let make_context = || anyhow!("Cannot parse interval from `{}`", truncate_long(input));
     match input.chars().peekable().peek() {
         Some(v) if *v == '"' || *v == '\'' => {
             input = &input[1..];
@@ -814,35 +825,42 @@ impl_as_value!(Interval, Value::Interval, |mut input: &str| {
         return Err(make_context());
     }
     Ok(interval)
-},);
+});
 
 impl_as_value!(std::time::Duration, Value::Interval, |v| {
     <Interval as AsValue>::parse(v).map(Into::into)
-},);
+});
 
 impl_as_value!(time::Duration, Value::Interval, |v| {
     <Interval as AsValue>::parse(v).map(Into::into)
-},);
+});
 
 impl_as_value!(Uuid, Value::Uuid, |input: &str| {
     let uuid = Uuid::parse_str(input)
-        .with_context(|| format!("Cannot parse a uuid value from `{}`", truncate_long!(input)))?;
+        .with_context(|| format!("Cannot parse a uuid value from `{}`", truncate_long(input)))?;
     Ok(uuid)
-},);
+});
+
+impl_as_value!(IpAddr, Value::IpAddr, |input: &str| {
+    let address = input.parse::<IpAddr>()?;
+    Ok(match address {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map(IpAddr::V4).unwrap_or(address),
+        IpAddr::V4(..) => address,
+    })
+});
 
 /// Parses `$value` against each of the given formats, returning the first
 /// successful parse and advancing `$value` past the consumed input.
 ///
 /// Yields `None` when no format matches, and deliberately never builds an `anyhow::Error`.
 macro_rules! parse_time {
-    ($value: ident, $($formats:literal),+ $(,)?) => {
+    ($value: ident, $($formats:tt),+ $(,)?) => {
         'value: {
-            for format in [$($formats,)+] {
-                let Ok(format) = parse_borrowed::<2>(format) else {
-                    break 'value None;
-                };
-                let mut parsed = time::parsing::Parsed::new();
-                let remaining = parsed.parse_items($value.as_bytes(), &format);
+            const FORMATS: &[&[::time::format_description::BorrowedFormatItem<'static>]] =
+                &[$(::time::macros::format_description!($formats)),+];
+            for format in FORMATS {
+                let mut parsed = ::time::parsing::Parsed::new();
+                let remaining = parsed.parse_items($value.as_bytes(), format);
                 if let Ok(remaining) = remaining {
                     if let Ok(result) = parsed.try_into() {
                         $value = &$value[($value.len() - remaining.len())..];
@@ -861,7 +879,7 @@ impl_as_value!(
     |input: &str| {
         let mut value = input;
         let mut result: time::Date = parse_time!(value, "[year]-[month]-[day]")
-            .ok_or_else(|| anyhow!("Cannot parse `{}` as time::Date", truncate_long!(input)))?;
+            .ok_or_else(|| anyhow!("Cannot parse `{}` as time::Date", truncate_long(input)))?;
         {
             let mut attempt = value.trim_start();
             let suffix = consume_while(&mut attempt, char::is_ascii_alphabetic);
@@ -875,7 +893,7 @@ impl_as_value!(
             }
         }
         if !value.is_empty() {
-            return Err(anyhow!("Cannot parse `{}` as time::Date", truncate_long!(input)))
+            return Err(anyhow!("Cannot parse `{}` as time::Date", truncate_long(input)))
         }
         Ok(result)
     },
@@ -897,9 +915,9 @@ impl_as_value!(
             "[hour]:[minute]:[second]",
             "[hour]:[minute]",
         )
-        .ok_or_else(|| anyhow!("Cannot parse `{}` as time::Time", truncate_long!(input)))?;
+        .ok_or_else(|| anyhow!("Cannot parse `{}` as time::Time", truncate_long(input)))?;
         if !input.is_empty() {
-            return Err(anyhow!("Cannot parse `{}` as time::Time", truncate_long!(input)))
+            return Err(anyhow!("Cannot parse `{}` as time::Time", truncate_long(input)))
         }
         Ok(result)
     },
@@ -923,23 +941,23 @@ impl_as_value!(
     |mut input: &str| {
         let result: time::PrimitiveDateTime = parse_time!(
             input,
-            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond]",
-            "[year]-[month]-[day]T[hour]:[minute]:[second]",
-            "[year]-[month]-[day]T[hour]:[minute]",
             "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond]",
             "[year]-[month]-[day] [hour]:[minute]:[second]",
             "[year]-[month]-[day] [hour]:[minute]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second]",
+            "[year]-[month]-[day]T[hour]:[minute]",
         )
         .ok_or_else(|| {
             anyhow!(
                 "Cannot parse `{}` as time::PrimitiveDateTime",
-                truncate_long!(input)
+                truncate_long(input)
             )
         })?;
         if !input.is_empty() {
             return Err(anyhow!(
                 "Cannot parse `{}` as time::PrimitiveDateTime",
-                truncate_long!(input)
+                truncate_long(input)
             ));
         }
         Ok(result)
@@ -957,11 +975,11 @@ impl_as_value! { @copy UtcDateTime {
     {
         PrimitiveDateTime::new(self.date(), self.time()).as_value()
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        PrimitiveDateTime::try_from_value(value).map(|v| Self::new(v.date(), v.time()))
+        PrimitiveDateTime::decode_value(value).map(|v| Self::new(v.date(), v.time()))
     }
 } }
 
@@ -972,24 +990,24 @@ impl_as_value!(
         let original = input;
         if let Some(result) = parse_time!(
             input,
-            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
-            "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
-            "[year]-[month]-[day]T[hour]:[minute][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
             "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
             "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
             "[year]-[month]-[day] [hour]:[minute][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
-            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]",
-            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]",
-            "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]",
-            "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]",
-            "[year]-[month]-[day]T[hour]:[minute][offset_hour sign:mandatory]:[offset_minute]",
-            "[year]-[month]-[day]T[hour]:[minute][offset_hour sign:mandatory]",
             "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]",
             "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]",
             "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]",
             "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour sign:mandatory]",
             "[year]-[month]-[day] [hour]:[minute][offset_hour sign:mandatory]:[offset_minute]",
             "[year]-[month]-[day] [hour]:[minute][offset_hour sign:mandatory]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
+            "[year]-[month]-[day]T[hour]:[minute][offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]:[offset_minute]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond][offset_hour sign:mandatory]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]",
+            "[year]-[month]-[day]T[hour]:[minute]:[second][offset_hour sign:mandatory]",
+            "[year]-[month]-[day]T[hour]:[minute][offset_hour sign:mandatory]:[offset_minute]",
+            "[year]-[month]-[day]T[hour]:[minute][offset_hour sign:mandatory]",
         ) {
             if input.is_empty() {
                 return Ok(result);
@@ -998,7 +1016,7 @@ impl_as_value!(
         if let Ok(result) = <PrimitiveDateTime as AsValue>::parse(original) {
             return Ok(result.assume_utc());
         }
-        Err(anyhow!("Cannot parse `{}` as time::OffsetDateTime", truncate_long!(original)))
+        Err(anyhow!("Cannot parse `{}` as time::OffsetDateTime", truncate_long(original)))
     },
     Value::Timestamp(Some(timestamp), ..) => Ok(timestamp.assume_utc()),
 );
@@ -1030,11 +1048,11 @@ impl_as_value! { @copy chrono::NaiveDate {
             .ok(),
         )
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        let value = <time::Date as AsValue>::try_from_value(value)
+        let value = <time::Date as AsValue>::decode_value(value)
             .context("Could not create a chrono::NaiveDate")?;
         chrono::NaiveDate::from_ymd_opt(
             value.year(),
@@ -1067,11 +1085,11 @@ impl_as_value! { @copy chrono::NaiveTime {
             .ok(),
         )
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        let value = <time::Time as AsValue>::try_from_value(value)
+        let value = <time::Time as AsValue>::decode_value(value)
             .context("Could not create a chrono::NaiveTime")?;
         Self::from_hms_nano_opt(
             value.hour() as _,
@@ -1094,12 +1112,12 @@ impl_as_value! { @copy chrono::NaiveDateTime {
     {
         Value::Timestamp(
             'value: {
-                let Ok(date) = AsValue::try_from_value(self.date().as_value()) else {
+                let Ok(date) = AsValue::decode_value(self.date().as_value()) else {
                     break 'value Err(anyhow!(
                         "Failed to convert the date part from chrono::NaiveDate to time::Date",
                     ));
                 };
-                let Ok(time) = AsValue::try_from_value(self.time().as_value()) else {
+                let Ok(time) = AsValue::decode_value(self.time().as_value()) else {
                     break 'value Err(anyhow!(
                         "Failed to convert the time part from chrono::NaiveTime to time::Time",
                     ));
@@ -1114,15 +1132,15 @@ impl_as_value! { @copy chrono::NaiveDateTime {
             .ok(),
         )
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        let value = <time::PrimitiveDateTime as AsValue>::try_from_value(value)
+        let value = <time::PrimitiveDateTime as AsValue>::decode_value(value)
             .context("Could not create a chrono::NaiveDateTime")?;
-        let date = AsValue::try_from_value(value.date().as_value())
+        let date = AsValue::decode_value(value.date().as_value())
             .context("Could not convert date part of chrono::NaiveDateTime")?;
-        let time = AsValue::try_from_value(value.time().as_value())
+        let time = AsValue::decode_value(value.time().as_value())
             .context("Could not convert time part of chrono::NaiveDateTime")?;
         Ok(Self::new(date, time))
     }
@@ -1139,12 +1157,12 @@ impl_as_value! { @copy chrono::DateTime<chrono::FixedOffset> {
     {
         Value::TimestampWithTimezone(
             'value: {
-                let Ok(date) = AsValue::try_from_value(self.date_naive().as_value()) else {
+                let Ok(date) = AsValue::decode_value(self.date_naive().as_value()) else {
                     break 'value Err(anyhow!(
                         "Failed to convert the date part from chrono::NaiveDate to time::Date",
                     ));
                 };
-                let Ok(time) = AsValue::try_from_value(self.time().as_value()) else {
+                let Ok(time) = AsValue::decode_value(self.time().as_value()) else {
                     break 'value Err(anyhow!(
                         "Failed to convert the time part from chrono::NaiveTime to time::Time",
                     ));
@@ -1164,16 +1182,16 @@ impl_as_value! { @copy chrono::DateTime<chrono::FixedOffset> {
             .ok(),
         )
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        let value = <time::OffsetDateTime as AsValue>::try_from_value(value)
+        let value = <time::OffsetDateTime as AsValue>::decode_value(value)
             .context("Could not create a chrono::DateTime")?;
         let utc = value.to_offset(time::UtcOffset::UTC);
-        let date = AsValue::try_from_value(utc.date().as_value())
+        let date = AsValue::decode_value(utc.date().as_value())
             .context("Could not convert date part of chrono::DateTime")?;
-        let time = AsValue::try_from_value(utc.time().as_value())
+        let time = AsValue::decode_value(utc.time().as_value())
             .context("Could not convert time part of chrono::DateTime")?;
         let date_time = chrono::NaiveDateTime::new(date, time);
         let offset = chrono::FixedOffset::east_opt(value.offset().whole_seconds())
@@ -1201,8 +1219,8 @@ impl_as_value! { @copy chrono::DateTime<chrono::Utc> {
         }
         Value::TimestampWithTimezone(odt)
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
-        let odt = <time::OffsetDateTime as AsValue>::try_from_value(value)?;
+    fn decode_value(value: impl AsValue) -> Result<Self> {
+        let odt = <time::OffsetDateTime as AsValue>::decode_value(value)?;
         let utc_odt = odt.to_offset(time::UtcOffset::UTC);
         let secs = utc_odt.unix_timestamp();
         let nanos = utc_odt.nanosecond();
@@ -1223,7 +1241,7 @@ impl_as_value! { @copy Decimal {
         Value::Decimal(Some(self), 0, self.scale() as _)
     }
     #[inline]
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
+    fn decode_value(value: impl AsValue) -> Result<Self> {
         let value = value.as_value();
         if let Value::Decimal(Some(v), ..) = value {
             return Ok(v);
@@ -1266,7 +1284,7 @@ impl_as_value! { @copy Decimal {
         Ok(input.parse::<Decimal>().with_context(|| {
             anyhow!(
                 "Cannot parse a decimal value from `{}`",
-                truncate_long!(input)
+                truncate_long(input)
             )
         })?)
     }
@@ -1284,11 +1302,11 @@ impl<const W: u8, const S: u8> AsValue for FixedDecimal<W, S> {
         Value::Decimal(Some(self.0), W, S)
     }
     #[inline(always)]
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        Ok(Self(Decimal::try_from_value(value)?))
+        Ok(Self(Decimal::decode_value(value)?))
     }
     fn parse(input: impl AsRef<str>) -> Result<Self> {
         <Decimal as AsValue>::parse(input).map(Into::into)
@@ -1329,13 +1347,13 @@ impl<T: AsValue, const N: usize> AsValue for [T; N] {
             }),
         )
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
+    fn decode_value(value: impl AsValue) -> Result<Self> {
         let value = value.as_value();
         fn convert_iter<T: AsValue, const N: usize>(
             iter: impl IntoIterator<Item: AsValue>,
         ) -> Result<[T; N]> {
             iter.into_iter()
-                .map(|v| T::try_from_value(v.as_value()))
+                .map(|v| T::decode_value(v.as_value()))
                 .collect::<Result<Vec<_>>>()?
                 .try_into()
                 .map_err(|v: Vec<T>| {
@@ -1424,15 +1442,15 @@ macro_rules! impl_as_value {
                     Box::new(CollectionType { element: T::as_empty_value(), len: 0 }),
                 )
             }
-            fn try_from_value(value: impl AsValue) -> Result<Self> {
+            fn decode_value(value: impl AsValue) -> Result<Self> {
                 let value = value.as_value();
                 match value {
                     Value::List(None, ..) => Ok(Default::default()),
                     Value::List(Some(v), ..) | Value::Array(Some(v), ..) => {
-                        v.into_iter().map(T::try_from_value).collect()
+                        v.into_iter().map(T::decode_value).collect()
                     }
                     Value::Json(Some(serde_json::Value::Array(v)), ..) => {
-                        v.into_iter().map(T::try_from_value).collect()
+                        v.into_iter().map(T::decode_value).collect()
                     }
                     _ => Err(anyhow!(
                         "Cannot convert {value:?} to {}",
@@ -1474,17 +1492,17 @@ macro_rules! impl_as_value {
                     }),
                 )
             }
-            fn try_from_value(value: impl AsValue) -> Result<Self> {
+            fn decode_value(value: impl AsValue) -> Result<Self> {
                 let value = value.as_value();
                 match value {
                     Value::Map(None, ..) => Ok(Default::default()),
                     Value::Map(Some(v), ..) => v
                         .into_iter()
-                        .map(|(k, v)| Ok((K::try_from_value(k)?, V::try_from_value(v)?)))
+                        .map(|(k, v)| Ok((K::decode_value(k)?, V::decode_value(v)?)))
                         .collect(),
                     Value::Json(Some(serde_json::Value::Object(v)), ..) => v
                         .into_iter()
-                        .map(|(k, v)| Ok((K::try_from_value(k)?, V::try_from_value(v)?)))
+                        .map(|(k, v)| Ok((K::decode_value(k)?, V::decode_value(v)?)))
                         .collect(),
                     _ => Err(anyhow!(
                         "Cannot convert {value:?} to {}",
@@ -1537,11 +1555,11 @@ impl AsValue for Cow<'_, str> {
         Value::Varchar(Some(self))
     }
     #[inline(always)]
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        String::try_from_value(value).map(Into::into)
+        String::decode_value(value).map(Into::into)
     }
     fn parse(input: impl AsRef<str>) -> Result<Self>
     where
@@ -1579,7 +1597,7 @@ impl AsValue for Cow<'_, Value<'_>> {
         }
     }
     #[inline(always)]
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
+    fn decode_value(value: impl AsValue) -> Result<Self> {
         Ok(Cow::Owned(value.as_value().into_owned()))
     }
 }
@@ -1613,27 +1631,27 @@ impl<T: AsValue> AsValue for Option<T> {
         }
     }
     #[inline(always)]
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
+    fn decode_value(value: impl AsValue) -> Result<Self> {
         #[cold]
         #[inline(never)]
         // Return `Option<Result<T>>` instead of `Result<Option<T>>` so the cold call does not
-        // share `try_from_value`'s `sret` slot, and take `&mut Value` so `val` stays in registers.
+        // share `decode_value`'s `sret` slot, and take `&mut Value` so `val` stays in registers.
         fn fallback<T: AsValue>(value: &mut Value<'_>) -> Option<Result<T>> {
             let value = mem::take(value);
-            (!value.is_null()).then(|| <T as AsValue>::try_from_value(value))
+            (!value.is_null()).then(|| <T as AsValue>::decode_value(value))
         }
         match value.as_value() {
-            val @ Value::Null => {
-                // Suppress `Value` drop glue once `val` is known to be `Value::Null`.
-                mem::forget(val);
+            v @ Value::Null => {
+                // Avoid an opaque Value::drop call for simple values that don't allocate memory.
+                mem::forget(v);
                 Ok(None)
             }
-            val => {
+            v => {
                 // Compare against `T::as_empty_value()`'s constant discriminant so LLVM
                 // constant-folds `val.is_null()` to `T`'s single variant instead of a
                 // 28-entry jump table, materializing `other` only on the cold path.
                 let empty = T::as_empty_value();
-                let same = mem::discriminant(&val) == mem::discriminant(&empty);
+                let same = mem::discriminant(&v) == mem::discriminant(&empty);
                 let drop_empty = matches!(
                     empty,
                     Value::Array(..)
@@ -1647,16 +1665,16 @@ impl<T: AsValue> AsValue for Option<T> {
                     mem::forget(empty);
                 }
                 if same {
-                    if val.is_null() {
+                    if v.is_null() {
                         if !drop_empty {
-                            mem::forget(val);
+                            mem::forget(v);
                         }
                         Ok(None)
                     } else {
-                        <T as AsValue>::try_from_value(val).map(Some)
+                        <T as AsValue>::decode_value(v).map(Some)
                     }
                 } else {
-                    let mut other = val;
+                    let mut other = v;
                     let res = fallback(&mut other).transpose();
                     mem::forget(other);
                     res
@@ -1706,8 +1724,8 @@ impl<T: AsValue> AsValue for Box<T> {
     {
         (*self).as_value()
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
-        Ok(Self::new(<T as AsValue>::try_from_value(value)?))
+    fn decode_value(value: impl AsValue) -> Result<Self> {
+        Ok(Self::new(<T as AsValue>::decode_value(value)?))
     }
     fn parse(input: impl AsRef<str>) -> Result<Self>
     where
@@ -1744,8 +1762,8 @@ macro_rules! impl_as_value {
             {
                 $source::<T>::into_inner(self).as_value()
             }
-            fn try_from_value(value: impl AsValue) -> Result<Self> {
-                Ok($source::new(<T as AsValue>::try_from_value(value)?))
+            fn decode_value(value: impl AsValue) -> Result<Self> {
+                Ok($source::new(<T as AsValue>::decode_value(value)?))
             }
         }
     };
@@ -1778,8 +1796,14 @@ where
     where
         Self: 'a,
     {
-        // A borrow of the guarded data must not escape the guard.
-        (&*self.borrow()).as_value().into_owned()
+        match self.try_borrow() {
+            // A borrow of the guarded data must not escape the guard.
+            Ok(borrowed) => (&*borrowed).as_value().into_owned(),
+            Err(_) => {
+                log::error!("RefCell is already mutably borrowed while converting to a Value");
+                Value::Null
+            }
+        }
     }
 }
 
@@ -1792,11 +1816,11 @@ impl<T: AsValue> AsValue for RwLock<T> {
         Self: 'a,
     {
         self.into_inner()
-            .expect("Error occurred while trying to take the content of the RwLock")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .as_value()
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
-        Ok(RwLock::new(<T as AsValue>::try_from_value(value)?))
+    fn decode_value(value: impl AsValue) -> Result<Self> {
+        Ok(RwLock::new(<T as AsValue>::decode_value(value)?))
     }
     fn parse(input: impl AsRef<str>) -> Result<Self>
     where
@@ -1817,9 +1841,7 @@ where
     where
         Self: 'a,
     {
-        (&*self
-            .read()
-            .expect("Error occurred while trying to read the RwLock"))
+        (&*self.read().unwrap_or_else(|poisoned| poisoned.into_inner()))
             .as_value()
             .into_owned()
     }
@@ -1839,8 +1861,8 @@ macro_rules! impl_as_value {
                     .map(|v| v.as_value())
                     .unwrap_or_else(|v| v.as_ref().to_owned().as_value().into_owned())
             }
-            fn try_from_value(value: impl AsValue) -> Result<Self> {
-                Ok($source::new(<T as AsValue>::try_from_value(value)?))
+            fn decode_value(value: impl AsValue) -> Result<Self> {
+                Ok($source::new(<T as AsValue>::decode_value(value)?))
             }
             fn parse(input: impl AsRef<str>) -> Result<Self>
             where
@@ -1878,21 +1900,19 @@ impl AsValue for serde_json::Value {
     {
         Value::Json(Some(self))
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
-        let value = value.as_value();
-        Ok(if let Value::Json(v) = value {
-            match v {
-                Some(v) => v,
-                None => Self::Null,
+        match value.as_value() {
+            Value::Varchar(Some(v)) => {
+                serde_json::from_str(&v).context("While parsing JSON from Value::Varchar")
             }
-        } else {
-            return Err(anyhow!(
-                "Cannot convert non json tank::Value to serde_json::Value",
-            ));
-        })
+            Value::Blob(Some(v)) => {
+                serde_json::from_slice(&v).context("While parsing JSON from Value::Blob")
+            }
+            value => Self::try_from(value),
+        }
     }
 }
 

@@ -9,8 +9,9 @@ use tank_core::{
 };
 use tank_scylladb::{CassandraConnection, CassandraDriver, ScyllaDBConnection, ScyllaDBDriver};
 use tank_tests::{
-    ambiguity, cheat_sheet, custom, enums, generate_ssl_files, identifiers, interval, kv_storage,
-    limits, metrics, service, simple, trade_multiple, trade_simple, transaction1,
+    ambiguity, cheat_sheet, custom, enums, generate_ssl_files, identifiers, interval, json_blob,
+    kv_storage, limits, metrics, nested, other_types, projections, save, service, simple,
+    trade_multiple, trade_simple, transaction1,
 };
 use testcontainers_modules::{
     scylladb::ScyllaDB,
@@ -37,20 +38,26 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) {
                 .expect("A tank-tests test failed")
         };
     }
+    // Baseline CRUD and simple values.
     do_test!(simple);
     do_test!(kv_storage);
+    do_test!(json_blob);
+    do_test!(projections);
+    do_test!(save);
+    do_test!(nested);
     do_test!(trade_simple);
     do_test!(trade_multiple);
-    do_test!(limits);
-    do_test!(interval);
+    do_test!(enums);
+    do_test!(custom);
+    do_test!(service);
+    do_test!(other_types);
+    do_test!(identifiers);
     do_test!(transaction1);
     do_test!(metrics);
     do_test!(ambiguity);
-    do_test!(service);
-    do_test!(enums);
-    do_test!(custom);
-    do_test!(identifiers);
+    do_test!(interval);
     do_test!(cheat_sheet);
+    do_test!(limits);
 }
 
 struct TestcontainersLogConsumer;

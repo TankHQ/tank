@@ -12,22 +12,30 @@ mod conditions;
 mod custom;
 mod decimals;
 mod enums;
+mod fixtures;
 mod identifiers;
 mod insane;
 mod insert_builder;
 mod interval;
+mod json_blob;
 mod keywords;
 mod kv_storage;
 mod limits;
 mod math;
 mod metrics;
 mod multiple;
+mod nested;
 mod operations;
 mod orders;
 mod other;
+mod other_types;
 mod prepared;
+mod projections;
+mod query_builder;
 mod readme;
 mod requests;
+mod save;
+mod select_options;
 mod service;
 mod shopping;
 mod simple;
@@ -51,10 +59,12 @@ pub use conditions::*;
 pub use custom::*;
 pub use decimals::*;
 pub use enums::*;
+pub use fixtures::*;
 pub use identifiers::*;
 pub use insane::*;
 pub use insert_builder::*;
 pub use interval::*;
+pub use json_blob::*;
 pub use keywords::*;
 pub use kv_storage::*;
 pub use limits::*;
@@ -62,16 +72,22 @@ use log::LevelFilter;
 pub use math::*;
 pub use metrics::*;
 pub use multiple::*;
+pub use nested::*;
 pub use operations::*;
 pub use orders::*;
 pub use other::*;
+pub use other_types::*;
 pub use prepared::*;
+pub use projections::*;
+pub use query_builder::*;
 use rcgen::{
     BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair,
     KeyUsagePurpose, SanType,
 };
 pub use readme::*;
 pub use requests::*;
+pub use save::*;
+pub use select_options::*;
 pub use service::*;
 pub use shopping::*;
 pub use simple::*;
@@ -190,51 +206,61 @@ pub async fn execute_tests<D: Driver + 'static>(pool: &mut impl ConnectionPool<D
     let tests: Vec<TestFn<D>> = vec![
         boxed(simple),
         boxed(kv_storage),
+        boxed(binary),
+        boxed(json_blob),
         boxed(trade_simple),
         boxed(trade_multiple),
+        boxed(insert_builder),
+        boxed(query_builder),
+        boxed(conditions),
+        boxed(other),
+        boxed(orders),
         boxed(users),
+        boxed(readme),
         boxed(aggregates),
-        boxed(binary),
-        boxed(books),
-        boxed(complex),
-        boxed(insane),
-        boxed(limits),
+        boxed(decimals),
+        #[cfg(not(feature = "disable-ordering"))]
+        boxed(select_options),
+        boxed(prepared),
+        boxed(projections),
+        boxed(save),
+        boxed(nested),
+        boxed(prepared_abandoned_stream),
+        boxed(prepared_builder_reuse),
+        boxed(bindings),
+        boxed(times),
+        #[cfg(not(feature = "disable-case"))]
+        boxed(case),
+        boxed(math),
+        boxed(metrics),
+        boxed(other_types),
+        boxed(enums),
+        boxed(custom),
+        boxed(service),
+        boxed(identifiers),
+        boxed(keywords),
+        boxed(ambiguity),
+        #[cfg(not(feature = "disable-transactions"))]
+        boxed(transaction1),
+        #[cfg(not(feature = "disable-transactions"))]
+        boxed(transaction2),
         #[cfg(not(feature = "disable-multiple-statements"))]
         boxed(multiple),
+        boxed(books),
+        boxed(shopping),
+        boxed(operations),
         #[cfg(not(feature = "disable-intervals"))]
         boxed(interval),
         #[cfg(not(feature = "disable-arrays"))]
         boxed(arrays1),
         #[cfg(not(feature = "disable-arrays"))]
         boxed(arrays2),
-        #[cfg(not(feature = "disable-transactions"))]
-        boxed(transaction1),
-        #[cfg(not(feature = "disable-transactions"))]
-        boxed(transaction2),
-        boxed(shopping),
-        boxed(orders),
-        boxed(times),
-        boxed(conditions),
-        #[cfg(not(feature = "disable-case"))]
-        boxed(case),
-        boxed(metrics),
-        boxed(math),
-        boxed(ambiguity),
-        boxed(other),
-        boxed(service),
-        boxed(enums),
-        boxed(custom),
-        boxed(decimals),
-        boxed(prepared),
-        boxed(bindings),
+        boxed(complex),
         boxed(requests),
-        boxed(keywords),
-        boxed(identifiers),
-        boxed(readme),
-        boxed(operations),
         boxed(advanced_operations),
         boxed(cheat_sheet),
-        boxed(insert_builder),
+        boxed(limits),
+        boxed(insane),
     ];
     for test in tests {
         test(&mut connection)

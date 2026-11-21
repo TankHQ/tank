@@ -4,19 +4,33 @@ use indoc::indoc;
 use std::fmt::Write;
 use std::{collections::BTreeMap, iter};
 use tank_core::{
-    ColumnDef, Context, Dataset, DynQuery, Expression, Fragment, GenericSqlWriter, InsertIntoQuery,
-    Interval, IsTrue, PrimaryKeyType, Result, SqlWriter, TableRef, Value, future::Either,
-    separated_by,
+    AnyQuery, ColumnDef, Context, Dataset, Expression, Fragment, GenericSqlWriter, InsertIntoQuery,
+    Interval, IsTrue, PrimaryKeyType, Result, SqlCoreWriter, SqlExpressionWriter,
+    SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value, future::Either, separated_by,
 };
 use uuid::Uuid;
 
 /// SQL writer for ScyllaDB/Cassandra dialect.
-///
-/// Emits ScyllaDB/Cassandra specific SQL syntax to mantain compatibility with tank operations.
 #[derive(Default)]
-pub struct ScyllaDBSqlWriter {}
+pub struct ScyllaDBSqlWriter {
+    is_cassandra: bool,
+}
 
-impl SqlWriter for ScyllaDBSqlWriter {
+pub type CassandraSqlWriter = ScyllaDBSqlWriter;
+
+impl ScyllaDBSqlWriter {
+    pub(crate) const fn scylladb() -> Self {
+        Self {
+            is_cassandra: false,
+        }
+    }
+
+    pub(crate) const fn cassandra() -> Self {
+        Self { is_cassandra: true }
+    }
+}
+
+impl SqlCoreWriter for ScyllaDBSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -24,19 +38,20 @@ impl SqlWriter for ScyllaDBSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
-        if let Some(t) = types
-            .iter()
-            .find_map(|(k, v)| if *k == "scylladb" { Some(v) } else { None })
-        {
+        if let Some(t) = if self.is_cassandra {
+            types.get("cassandra").or_else(|| types.get("scylladb"))
+        } else {
+            types.get("scylladb")
+        } {
             out.push_str(t);
         }
     }
 
-    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
+    fn write_column_type(&self, context: &mut Context, out: &mut AnyQuery, value: &Value<'_>) {
         match value {
             Value::Boolean(..) => out.push_str("BOOLEAN"),
             Value::Int8(..) => out.push_str("TINYINT"),
@@ -61,6 +76,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
             Value::TimestampWithTimezone(..) => out.push_str("TIMESTAMP"),
             Value::Interval(..) => out.push_str("DURATION"),
             Value::Uuid(..) => out.push_str("UUID"),
+            Value::IpAddr(..) => out.push_str("INET"),
             Value::Array(_, t, ..) => {
                 if matches!(t.element, Value::Char(..)) {
                     out.push_str("ASCII");
@@ -89,8 +105,10 @@ impl SqlWriter for ScyllaDBSqlWriter {
             ),
         };
     }
+}
 
-    fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
+impl SqlValueWriter for ScyllaDBSqlWriter {
+    fn write_value_f32(&self, context: &mut Context, out: &mut AnyQuery, value: f32) {
         if value.is_infinite() {
             if value.is_sign_negative() {
                 out.push('-');
@@ -101,7 +119,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         GenericSqlWriter::new().write_value_f32(context, out, value);
     }
 
-    fn write_value_f64(&self, context: &mut Context, out: &mut DynQuery, value: f64) {
+    fn write_value_f64(&self, context: &mut Context, out: &mut AnyQuery, value: f64) {
         if value.is_infinite() {
             if value.is_sign_negative() {
                 out.push('-');
@@ -112,7 +130,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         GenericSqlWriter::new().write_value_f64(context, out, value);
     }
 
-    fn write_blob(&self, context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, context: &mut Context, out: &mut AnyQuery, value: &[u8]) {
         let delimiter = if context.fragment == Fragment::Json {
             "\""
         } else {
@@ -137,7 +155,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         UNITS
     }
 
-    fn write_interval(&self, _context: &mut Context, out: &mut DynQuery, value: &Interval) {
+    fn write_interval(&self, _context: &mut Context, out: &mut AnyQuery, value: &Interval) {
         if value.is_zero() {
             out.push_str("0s");
         }
@@ -167,7 +185,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         }
     }
 
-    fn write_uuid(&self, context: &mut Context, out: &mut DynQuery, value: &Uuid) {
+    fn write_uuid(&self, context: &mut Context, out: &mut AnyQuery, value: &Uuid) {
         let _ = match context.fragment {
             Fragment::Json | Fragment::JsonKey => write!(out, "\"{value}\""),
             _ => write!(out, "{value}"),
@@ -177,7 +195,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
     fn write_list(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
         ty: Option<&Value<'_>>,
         is_array: bool,
@@ -217,82 +235,28 @@ impl SqlWriter for ScyllaDBSqlWriter {
         );
         out.push(']');
     }
+}
 
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+impl SqlExpressionWriter for ScyllaDBSqlWriter {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut AnyQuery) {
         out.push_str("toUnixTimestamp(currentTimestamp())");
     }
+}
 
-    fn write_transaction_begin(&self, out: &mut DynQuery) {
-        if !out.is_empty() {
-            out.push('\n');
-        }
-        out.push_str("BEGIN BATCH");
-    }
-
-    fn write_transaction_commit(&self, out: &mut DynQuery) {
-        if !out.is_empty() {
-            out.push('\n');
-        }
-        out.push_str("APPLY BATCH;");
-    }
-
-    fn write_transaction_rollback(&self, _out: &mut DynQuery) {}
-
-    fn write_create_schema(&self, out: &mut DynQuery, table: &TableRef, if_not_exists: bool)
-    where
-        Self: Sized,
-    {
-        out.buffer().reserve(128 + table.schema.len());
-        if !out.is_empty() {
-            out.push('\n');
-        }
-        out.push_str("CREATE KEYSPACE ");
-        let mut context = Context::new(Fragment::SqlCreateSchema, table.qualified_columns());
-        if if_not_exists {
-            out.push_str("IF NOT EXISTS ");
-        }
-        self.write_identifier(&mut context, out, &table.schema, true);
-        out.push('\n');
-        out.push_str(indoc! {r#"
-            WITH replication = {
-                'class': 'SimpleStrategy',
-                'replication_factor': 1
-            };
-        "#});
-    }
-
-    fn write_drop_schema(&self, out: &mut DynQuery, table: &TableRef, if_exists: bool)
-    where
-        Self: Sized,
-    {
-        let mut context = Context::new(Fragment::SqlDropSchema, table.qualified_columns());
-        out.buffer().reserve(32 + table.schema.len());
-        if !out.is_empty() {
-            out.push('\n');
-        }
-        out.push_str("DROP KEYSPACE ");
-        if if_exists {
-            out.push_str("IF EXISTS ");
-        }
-        self.write_identifier(&mut context, out, &table.schema, true);
-        out.push(';');
-    }
-
+impl SqlFragmentWriter for ScyllaDBSqlWriter {
     fn write_create_table_column_fragment(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         column: &ColumnDef,
-    ) where
-        Self: Sized,
-    {
+    ) {
         self.write_identifier(context, out, &column.name(), true);
         out.push(' ');
         let len = out.len();
         self.write_column_overridden_type(context, out, column, &column.column_type);
         let didnt_write_type = out.len() == len;
         if didnt_write_type {
-            SqlWriter::write_column_type(self, context, out, &column.value);
+            SqlCoreWriter::write_column_type(self, context, out, &column.value);
         }
         if column.primary_key == PrimaryKeyType::PrimaryKey {
             // Composite primary key will be printed elsewhere
@@ -303,7 +267,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
     fn write_create_table_primary_key_fragment<'a, It>(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         primary_key: It,
     ) where
         Self: Sized,
@@ -340,16 +304,74 @@ impl SqlWriter for ScyllaDBSqlWriter {
         }
         out.push(')');
     }
+}
+
+impl SqlWriter for ScyllaDBSqlWriter {
+    fn write_transaction_begin(&self, out: &mut AnyQuery) {
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("BEGIN BATCH");
+    }
+
+    fn write_transaction_commit(&self, out: &mut AnyQuery) {
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("APPLY BATCH;");
+    }
+
+    fn write_transaction_rollback(&self, _out: &mut AnyQuery) {}
+
+    fn write_create_schema(&self, out: &mut AnyQuery, table: &TableRef, if_not_exists: bool)
+    where
+        Self: Sized,
+    {
+        out.buffer().reserve(128 + table.schema.len());
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("CREATE KEYSPACE ");
+        let mut context = Context::new(Fragment::SqlCreateSchema, table.qualified_columns());
+        if if_not_exists {
+            out.push_str("IF NOT EXISTS ");
+        }
+        self.write_identifier(&mut context, out, &table.schema, true);
+        out.push('\n');
+        out.push_str(indoc! {r#"
+            WITH replication = {
+                'class': 'SimpleStrategy',
+                'replication_factor': 1
+            };
+        "#});
+    }
+
+    fn write_drop_schema(&self, out: &mut AnyQuery, table: &TableRef, if_exists: bool)
+    where
+        Self: Sized,
+    {
+        let mut context = Context::new(Fragment::SqlDropSchema, table.qualified_columns());
+        out.buffer().reserve(32 + table.schema.len());
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("DROP KEYSPACE ");
+        if if_exists {
+            out.push_str("IF EXISTS ");
+        }
+        self.write_identifier(&mut context, out, &table.schema, true);
+        out.push(';');
+    }
 
     fn write_column_comment(
         &self,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _column: &ColumnDef,
     ) {
     }
 
-    fn write_insert(&self, out: &mut DynQuery, query: impl InsertIntoQuery)
+    fn write_insert(&self, out: &mut AnyQuery, query: impl InsertIntoQuery)
     where
         Self: Sized,
     {
@@ -388,7 +410,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
             separated_by(
                 out,
                 row,
-                |out, value| self.write_value(&mut context.current, out, &value),
+                |out, expr| expr.write_query(self, &mut context.current, out),
                 ", ",
             );
             out.push_str(");");
@@ -398,7 +420,7 @@ impl SqlWriter for ScyllaDBSqlWriter {
         }
     }
 
-    fn write_delete(&self, out: &mut DynQuery, from: &dyn Dataset, condition: impl Expression)
+    fn write_delete(&self, out: &mut AnyQuery, from: &dyn Dataset, condition: impl Expression)
     where
         Self: Sized,
     {

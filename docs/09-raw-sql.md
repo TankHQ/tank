@@ -9,16 +9,16 @@ Three firing modes:
 - `executor.fetch(query)`: Yields only rows. The default implementation calls `Executor::run` and discards `QueryResult::Affected`. Drivers may override it.
 - `executor.execute(query)`: Damage report only. Aggregates all `RowsAffected` across the batch and returns a single total. Internally calls `Executor::run` and discards rows (if any).
 
-Anything implementing [`AsQuery`](https://docs.rs/tank/latest/tank/trait.AsQuery.html) works: `String`, `&str`, `DynQuery`, `Query<D>`, or `&mut Query<D>`.
+Anything implementing [`AsQuery`](https://docs.rs/tank/latest/tank/trait.AsQuery.html) works: `&str`, `String`, `Query<D>`, `&mut Query<D>` or `AnyQuery`. The conversion receives the executor's driver instance, so a query can be rendered with the exact dialect of that connection. Custom implementations follow `fn as_query(self, driver: &D) -> Self::Output`.
 
 ## Composing SQL With `SqlWriter`
-SQL drivers expose a `SqlWriter` for dialect-correct SQL fragments. Use the writer to buffer multiple statements into one `DynQuery`. MongoDB and Valkey use native query representations and do not accept raw SQL.
+SQL drivers expose a `SqlWriter` that knows DB-specific SQL fragments. The writer writes into an `AnyQuery`: SQL drivers append text to the `AnyQuery::Raw` variant containing a string buffer, while NoSQL drivers (like MongoDB and Valkey) switch to `AnyQuery::Prepared` and construct their native payload.
 
-`DynQuery` is the raw-query staging area. Use it while composing executable SQL text. Once you call `prepare(...)`, execution moves to a driver-specific prepared handle rather than an extendable SQL buffer.
+`AnyQuery` is a type erased representation of a query. Hand it to an executor as it is and the call consumes it or turn it into a driver specific `Query<D>` by calling `into_query(executor.driver())` and hand it as `&mut query` to fire it as many times as needed.
 
 Example building 9 statements (3 *CREATE TABLE*, 3 *INSERT INTO* and 3 *SELECT*):
 ```rust
-use tank::{Driver, DynQuery, Entity, Sql, SqlWriter, stream::TryStreamExt};
+use tank::{AnyQuery, Driver, Entity, Sql, SqlWriter, stream::TryStreamExt};
 
 #[derive(Entity)]
 struct One { a1: u32, string: String, c1: u64 }
@@ -28,7 +28,7 @@ struct Two { a2: u32, string: String }
 struct Three { string: String }
 
 let writer = executor.driver().sql_writer();
-let mut query = DynQuery::default();
+let mut query = AnyQuery::default();
 writer.write_create_table(&mut query, One::table(), true);
 writer.write_create_table(&mut query, Two::table(), true);
 writer.write_create_table(&mut query, Three::table(), true);
@@ -70,8 +70,40 @@ let rows = results
     .collect::<Vec<_>>();
 ```
 
+## Tables Without an Entity
+The create table query builder can be used stand alone. Tables that have no Rust struct can still be created and dropped. `ColumnDef::from_type::<T>("name")` takes the column type from `T`, then the builder methods add the constraints:
+
+```rust
+use tank::{Action, ColumnDef, ColumnRef, Sql};
+use uuid::Uuid;
+
+let query = Sql()
+    .create_table(("operations", "radio_gear"))
+    .if_not_exists()
+    .columns([
+        ColumnDef::from_type::<Uuid>("id").primary_key(),
+        ColumnDef::from_type::<String>("callsign").nullable(true),
+        ColumnDef::from_type::<i32>("priority").default_value(3_i64),
+        ColumnDef::from_type::<Uuid>("operator_id")
+            .references(ColumnRef {
+                name: "id".into(),
+                table: "radio_operator".into(),
+                schema: "operations".into(),
+            })
+            .on_delete(Action::Cascade),
+    ])
+    .unique(["callsign"])
+    .build(&executor.driver());
+
+executor.execute(query).await?;
+```
+
+`columns(...)` collects the primary key from the marked columns. Call `primary_key([...])` to name it explicitly, in key order, which also replaces the marked keys. `unique([...])` adds one unique constraint per call, and `ColumnDef` also offers `default_value`, `references`, `on_delete` and `on_update`. `Sql().drop_table(("operations", "radio_gear")).if_exists()` drops the same table.
+
 ## Decoding Rows Into Entities
-`QueryResult::Row` carries labeled columns. Any type with `#[derive(Entity)]` can be reconstructed using `Entity::from_row(row)` provided by the derive. Labels must match the field mapping (custom column names via `#[tank(name = "...")]` are respected). Missing columns retain the entity's `Default` values when it implements that trait; otherwise an error is returned.
+`QueryResult::Row` carries labeled columns. Any type with `#[derive(Entity)]` can be reconstructed using `Entity::from_row(row)` provided by the derive. Labels must match the field mapping (custom column names via `#[tank(name = "...")]` are respected). Missing columns retain the entity's `Default` values when it implements that trait. Otherwise an error is returned.
+
+A [`Row`](https://docs.rs/tank/latest/tank/trait.Row.html) reads by index or by name: `value(index)` returns `None` past the last column and `Value::Null` for SQL `NULL`, `get_column(name)` accepts a label or a column such as `Entity::field`.
 ```rust
 #[derive(Entity)]
 struct Two { a2: u32, string: String }
@@ -89,7 +121,7 @@ let (callsign, strength) = Projection::from_row(row).map(|p| (p.callsign, p.stre
 ## Prepared Statements
 When the objective is fixed and only the parameters change, prepare the firing solution once, then reload with new values. Use `executor.prepare("...")` with parameter placeholders, bind values, and then fire again. Bind untrusted values rather than concatenating them into SQL.
 
-Using the operations schema (`Operator`, `RadioLog`) from Section 7, with PostgreSQL's `$n` placeholders. DuckDB and MySQL use `?`; raw SQL is not rewritten into another dialect.
+Using the operations schema (`Operator`, `RadioLog`) from Section 7, with PostgreSQL's `$n` placeholders. DuckDB and MySQL use `?`.
 ```rust
 use tank::{Entity, stream::{StreamExt, TryStreamExt}};
 
@@ -136,10 +168,10 @@ Prepared statements reuse backend preparation state when available. Parameter co
 
 ### Notes & Driver Support
 - `SqlWriter::write_create_table(&mut sql, T::table(), if_not_exists)` emits only table DDL. Use `write_create_schema` separately, or `Entity::create_table` to coordinate schema and table creation.
-- Streams returned by `executor.run(...)` are ordered by statement execution; interleave `Affected` and `Row` accordingly.
+- Streams returned by `executor.run(...)` are ordered by statement execution. Interleave `Affected` and `Row` accordingly.
 - `executor.fetch(...)` is convenient for row-only workloads, but it discards `Affected` results from mixed batches. Use `run(...)` when you need both result types.
 - When selecting a subset of columns, ensure the labels match the entity fields present. Missing labels require `Default` on the entity, not just on the omitted field types.
-- Prepared queries use positional parameters across drivers.
+- Prepared queries use positional parameters across drivers. `bind` sets the next placeholder, while `bind_index(value, index)` targets a position explicitly with a 0-based index.
 - Reuse prepared queries across multiple executions: call `clear_bindings()` to reset parameters and `bind(...)` again before the next shot.
 - Prepared queries are backend-owned state. Treat their string formatting as diagnostic output, not as executable SQL.
 

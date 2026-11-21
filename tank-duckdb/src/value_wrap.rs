@@ -9,7 +9,7 @@ use std::{
 };
 use tank_core::{
     CollectionType, Error, ErrorContext, Interval, MapType, Result, StructType, TableRef, Value,
-    ValueOwned, as_c_string, char_ptr_to_string, decimal_from_scaled, log_error,
+    ValueOwned, as_c_string, char_ptr_to_string, decimal_from_scaled,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time, macros::date};
 use uuid::Uuid;
@@ -20,7 +20,7 @@ impl ValueWrap<'_> {
     const EPOCH_JULIAN_DAY: i32 = date!(1970 - 01 - 01).to_julian_day();
 
     #[inline(always)]
-    pub(crate) fn from_i128(v: i128) -> duckdb_hugeint {
+    pub(crate) const fn from_i128(v: i128) -> duckdb_hugeint {
         duckdb_hugeint {
             lower: v as _,
             upper: (v >> 64) as _,
@@ -28,12 +28,12 @@ impl ValueWrap<'_> {
     }
 
     #[inline(always)]
-    pub(crate) fn to_i128(v: &duckdb_hugeint) -> i128 {
+    pub(crate) const fn to_i128(v: &duckdb_hugeint) -> i128 {
         (v.upper as i128) << 64 | v.lower as i128
     }
 
     #[inline(always)]
-    pub(crate) fn from_u128(v: u128) -> duckdb_uhugeint {
+    pub(crate) const fn from_u128(v: u128) -> duckdb_uhugeint {
         duckdb_uhugeint {
             lower: v as _,
             upper: (v >> 64) as _,
@@ -74,7 +74,7 @@ impl ValueWrap<'_> {
     }
 
     #[inline(always)]
-    pub(crate) fn from_date(v: &Date) -> duckdb_date {
+    pub(crate) const fn from_date(v: &Date) -> duckdb_date {
         duckdb_date {
             days: v.to_julian_day() - Self::EPOCH_JULIAN_DAY,
         }
@@ -85,7 +85,7 @@ impl ValueWrap<'_> {
     }
 
     #[inline(always)]
-    pub(crate) fn from_time(v: &Time) -> duckdb_time {
+    pub(crate) const fn from_time(v: &Time) -> duckdb_time {
         let (h, m, s, us) = v.as_hms_micro();
         duckdb_time {
             micros: (h as i64 * 3_600 + m as i64 * 60 + s as i64) * 1_000_000 + us as i64,
@@ -110,7 +110,7 @@ impl ValueWrap<'_> {
     }
 
     #[inline(always)]
-    pub(crate) fn from_timestamp(v: &PrimitiveDateTime) -> duckdb_timestamp {
+    pub(crate) const fn from_timestamp(v: &PrimitiveDateTime) -> duckdb_timestamp {
         duckdb_timestamp {
             micros: Self::from_date(&v.date()).days as i64 * 86_400_000_000
                 + Self::from_time(&v.time()).micros,
@@ -134,14 +134,14 @@ impl ValueWrap<'_> {
     }
 
     #[inline(always)]
-    pub(crate) fn from_timestamptz(v: &OffsetDateTime) -> duckdb_timestamp {
+    pub(crate) const fn from_timestamptz(v: &OffsetDateTime) -> duckdb_timestamp {
         duckdb_timestamp {
             micros: (v.unix_timestamp_nanos() / 1_000) as _,
         }
     }
 
     #[inline(always)]
-    pub(crate) fn from_interval(v: &Interval) -> duckdb_interval {
+    pub(crate) const fn from_interval(v: &Interval) -> duckdb_interval {
         duckdb_interval {
             months: v.months,
             days: v.days,
@@ -151,7 +151,7 @@ impl ValueWrap<'_> {
 
     /// DuckDB stores a UUID as a `HUGEINT` with the sign bit flipped, so they sort as unsigned.
     #[inline(always)]
-    pub(crate) fn from_uuid(v: &Uuid) -> duckdb_hugeint {
+    pub(crate) const fn from_uuid(v: &Uuid) -> duckdb_hugeint {
         let (upper, lower) = v.as_u64_pair();
         duckdb_hugeint {
             lower,
@@ -160,12 +160,12 @@ impl ValueWrap<'_> {
     }
 
     #[inline(always)]
-    pub(crate) fn to_uuid(v: &duckdb_hugeint) -> Uuid {
+    pub(crate) const fn to_uuid(v: &duckdb_hugeint) -> Uuid {
         Uuid::from_u64_pair(v.upper as u64 ^ (1 << 63), v.lower)
     }
 
     #[inline(always)]
-    pub(crate) fn bytes_slice(b: &duckdb_string_t) -> &[u8] {
+    pub(crate) const fn bytes_slice(b: &duckdb_string_t) -> &[u8] {
         unsafe {
             let len = b.value.inlined.length as usize;
             let ptr = [
@@ -359,7 +359,9 @@ impl From<ValueWrap<'_>> for CBox<duckdb_logical_type> {
                     Value::UInt128(..) => DUCKDB_TYPE_DUCKDB_TYPE_UHUGEINT,
                     Value::Float32(..) => DUCKDB_TYPE_DUCKDB_TYPE_FLOAT,
                     Value::Float64(..) => DUCKDB_TYPE_DUCKDB_TYPE_DOUBLE,
-                    Value::Char(..) | Value::Varchar(..) => DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR,
+                    Value::Char(..) | Value::Varchar(..) | Value::IpAddr(..) => {
+                        DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR
+                    }
                     Value::Blob(..) => DUCKDB_TYPE_DUCKDB_TYPE_BLOB,
                     Value::Date(..) => DUCKDB_TYPE_DUCKDB_TYPE_DATE,
                     Value::Time(..) => DUCKDB_TYPE_DUCKDB_TYPE_TIME,
@@ -417,6 +419,10 @@ impl TryFrom<ValueWrap<'_>> for CBox<duckdb_value> {
                 }
                 Value::Interval(Some(v)) => duckdb_create_interval(ValueWrap::from_interval(v)),
                 Value::Uuid(Some(v)) => duckdb_create_uuid(ValueWrap::from_u128(v.as_u128())),
+                Value::IpAddr(Some(v)) => {
+                    let address = v.to_string();
+                    duckdb_create_varchar_length(address.as_ptr() as _, address.len() as _)
+                }
                 Value::Array(Some(v), t) | Value::List(Some(v), t) => {
                     let mut values = v
                         .iter()
@@ -465,8 +471,9 @@ impl TryFrom<ValueWrap<'_>> for CBox<duckdb_value> {
         });
         if result.is_null() {
             hint::cold_path();
-            return Err(anyhow!("Could not create a DuckDB value for {value:?}"))
-                .inspect_err(log_error);
+            let error = anyhow!("Could not create a DuckDB value for {value:?}");
+            log::error!("{error:#}");
+            return Err(error);
         }
         Ok(result)
     }

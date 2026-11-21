@@ -12,7 +12,7 @@ Instead of duplicating many nearly identical tests inside every driver crate, `t
 
 🖥️ https://github.com/TankHQ/tank
 
-📦 https://crates.io/crates/tank
+📦 https://crates.io/crates/tank-tests
 
 ## Purpose
 - Ensures consistency: all drivers pass the same baseline CRUD, query, join, multi-statement and type coverage.
@@ -27,14 +27,16 @@ The crate exposes opt-out feature flags ("disable-*") that skip entire capabilit
 | Flag                          | Skips tests that use                       |
 | ----------------------------- | ------------------------------------------ |
 | `disable-arrays`              | Fixed-size arrays (e.g. `[u8; 13]`)        |
+| `disable-case`                | `if` / `match` / `CASE` expressions        |
 | `disable-glob`                | `GLOB` pattern matching                    |
 | `disable-groups`              | `GROUP BY` aggregations                    |
 | `disable-infinity`            | Infinite floating point values             |
+| `disable-insert-select`       | `INSERT ... SELECT` statements             |
 | `disable-intervals`           | Interval / duration value types            |
 | `disable-joins`               | SQL join semantics                         |
 | `disable-large-dates`         | Very large dates                           |
 | `disable-large-decimals`      | Decimals beyond IEEE-754 double precision  |
-| `disable-large-integers`      | `i128` and `u128` columns                  |
+| `disable-large-integers`      | `i128`, `u128` and full-range `u64` values |
 | `disable-large-intervals`     | Very large interval values                 |
 | `disable-lists`               | List/array-like dynamic collection types   |
 | `disable-log10`               | `LOG10` math function                      |
@@ -45,6 +47,7 @@ The crate exposes opt-out feature flags ("disable-*") that skip entire capabilit
 | `disable-ordering`            | Explicit result ordering                   |
 | `disable-references`          | Referential integrity                      |
 | `disable-transactions`        | Transaction begin/commit/rollback coverage |
+| `disable-updates`             | Plain `UPDATE` statements                  |
 
 Use them from the driver crate's `Cargo.toml`:
 ```toml

@@ -3,15 +3,16 @@ use std::{
     fmt::Write,
 };
 use tank_core::{
-    ColumnDef, Context, DynQuery, EitherIterator, Error, Expression, Fragment, GenericSqlWriter,
-    Interval, PrimaryKeyType, SqlWriter, Value, separated_by, write_escaped,
+    AnyQuery, ColumnDef, Context, EitherIterator, Error, Expression, Fragment, GenericSqlWriter,
+    Interval, PrimaryKeyType, SqlCoreWriter, SqlExpressionWriter, SqlFragmentWriter,
+    SqlValueWriter, SqlWriter, Value, separated_by, write_escaped,
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
 
 /// SQL writer for the MySQL dialect.
 #[derive(Default)]
 pub struct MySQLSqlWriter {
-    mariadb: bool,
+    is_mariadb: bool,
 }
 
 /// SQL writer for the MariaDB dialect.
@@ -22,17 +23,17 @@ pub type MariaDBSqlWriter = MySQLSqlWriter;
 impl MySQLSqlWriter {
     const DEFAULT_PK_VARCHAR_TYPE: &'static str = "VARCHAR(60)";
 
-    pub(crate) fn mysql() -> Self {
-        Self { mariadb: false }
+    pub(crate) const fn mysql() -> Self {
+        Self { is_mariadb: false }
     }
 
-    pub(crate) fn mariadb() -> Self {
-        Self { mariadb: true }
+    pub(crate) const fn mariadb() -> Self {
+        Self { is_mariadb: true }
     }
 
     /// Wrap the JSON emitted at `start` in a SQL string literal, escaping the
     /// characters that would otherwise terminate or alter it.
-    fn quote_json_literal(out: &mut DynQuery, start: usize) {
+    fn quote_json_literal(out: &mut AnyQuery, start: usize) {
         let body = out.buffer().split_off(start);
         out.push('\'');
         for c in body.chars() {
@@ -46,7 +47,7 @@ impl MySQLSqlWriter {
     }
 }
 
-impl SqlWriter for MySQLSqlWriter {
+impl SqlCoreWriter for MySQLSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -54,7 +55,7 @@ impl SqlWriter for MySQLSqlWriter {
     fn write_identifier(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &str,
         quoted: bool,
     ) {
@@ -70,11 +71,11 @@ impl SqlWriter for MySQLSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
-        if let Some(t) = if self.mariadb {
+        if let Some(t) = if self.is_mariadb {
             types.get("mariadb").or_else(|| types.get("mysql"))
         } else {
             types.get("mysql")
@@ -93,7 +94,7 @@ impl SqlWriter for MySQLSqlWriter {
         }
     }
 
-    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value) {
+    fn write_column_type(&self, context: &mut Context, out: &mut AnyQuery, value: &Value) {
         if context.fragment == Fragment::Casting {
             match value {
                 Value::Int8(..)
@@ -143,7 +144,12 @@ impl SqlWriter for MySQLSqlWriter {
             Value::Timestamp(..) => out.push_str("DATETIME"),
             Value::TimestampWithTimezone(..) => out.push_str("DATETIME"),
             Value::Interval(..) => out.push_str("TIME(6)"),
-            Value::Uuid(..) => out.push_str(if self.mariadb { "UUID" } else { "CHAR(36)" }),
+            Value::Uuid(..) => out.push_str(if self.is_mariadb { "UUID" } else { "CHAR(36)" }),
+            Value::IpAddr(..) => out.push_str(if self.is_mariadb {
+                "INET6"
+            } else {
+                "VARCHAR(45)"
+            }),
             Value::Array(..) => out.push_str("JSON"),
             Value::List(..) => out.push_str("JSON"),
             Value::Map(..) => out.push_str("JSON"),
@@ -151,8 +157,10 @@ impl SqlWriter for MySQLSqlWriter {
             _ => log::error!("Unexpected tank::Value, MySQL does not support {value:?}"),
         };
     }
+}
 
-    fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
+impl SqlValueWriter for MySQLSqlWriter {
+    fn write_value_f32(&self, context: &mut Context, out: &mut AnyQuery, value: f32) {
         if value.is_infinite() || value.is_nan() {
             if value.is_infinite() {
                 log::error!(
@@ -167,7 +175,7 @@ impl SqlWriter for MySQLSqlWriter {
         GenericSqlWriter::new().write_value_f32(context, out, value);
     }
 
-    fn write_value_f64(&self, context: &mut Context, out: &mut DynQuery, value: f64) {
+    fn write_value_f64(&self, context: &mut Context, out: &mut AnyQuery, value: f64) {
         if value.is_infinite() || value.is_nan() {
             if value.is_infinite() {
                 log::error!(
@@ -182,7 +190,7 @@ impl SqlWriter for MySQLSqlWriter {
         GenericSqlWriter::new().write_value_f64(context, out, value);
     }
 
-    fn write_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
+    fn write_string(&self, context: &mut Context, out: &mut AnyQuery, value: &str) {
         if matches!(
             context.fragment,
             Fragment::None | Fragment::ParameterBinding
@@ -211,7 +219,16 @@ impl SqlWriter for MySQLSqlWriter {
         out.push('\'');
     }
 
-    fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, context: &mut Context, out: &mut AnyQuery, value: &[u8]) {
+        if matches!(context.fragment, Fragment::Json | Fragment::JsonKey) {
+            // JSON has no binary type, a hex string round-trips through `Box<[u8]>`.
+            out.push('"');
+            for b in value {
+                let _ = write!(out, "{b:02X}");
+            }
+            out.push('"');
+            return;
+        }
         out.push_str("X'");
         for b in value {
             let _ = write!(out, "{b:02X}");
@@ -219,7 +236,7 @@ impl SqlWriter for MySQLSqlWriter {
         out.push('\'');
     }
 
-    fn write_timestamptz(&self, context: &mut Context, out: &mut DynQuery, value: &OffsetDateTime) {
+    fn write_timestamptz(&self, context: &mut Context, out: &mut AnyQuery, value: &OffsetDateTime) {
         let d = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -236,7 +253,7 @@ impl SqlWriter for MySQLSqlWriter {
         out.push_str(d);
     }
 
-    fn write_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {
+    fn write_interval(&self, context: &mut Context, out: &mut AnyQuery, value: &Interval) {
         let d = match context.fragment {
             Fragment::None | Fragment::ParameterBinding | Fragment::Timestamp => "",
             Fragment::Json | Fragment::JsonKey => "\"",
@@ -266,7 +283,7 @@ impl SqlWriter for MySQLSqlWriter {
     fn write_list(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &mut dyn Iterator<Item = &dyn Expression>,
         _t: Option<&Value>,
         _is_array: bool,
@@ -289,7 +306,7 @@ impl SqlWriter for MySQLSqlWriter {
         }
     }
 
-    fn write_map(&self, context: &mut Context, out: &mut DynQuery, value: &HashMap<Value, Value>) {
+    fn write_map(&self, context: &mut Context, out: &mut AnyQuery, value: &HashMap<Value, Value>) {
         let inside_string = context.fragment == Fragment::Json;
         let mut context = context.switch_fragment(Fragment::Json);
         let start = out.len();
@@ -312,35 +329,29 @@ impl SqlWriter for MySQLSqlWriter {
             Self::quote_json_literal(out, start);
         }
     }
+}
 
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+impl SqlExpressionWriter for MySQLSqlWriter {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut AnyQuery) {
         out.push_str("CAST(UNIX_TIMESTAMP(NOW(3)) * 1000 AS UNSIGNED)");
     }
+}
 
+impl SqlFragmentWriter for MySQLSqlWriter {
     fn write_column_comment_inline(
         &self,
         mut context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         column: &ColumnDef,
-    ) where
-        Self: Sized,
-    {
+    ) {
         out.push_str(" COMMENT ");
         self.write_string(&mut context, out, column.comment);
-    }
-
-    fn write_column_comment(
-        &self,
-        _context: &mut Context,
-        _out: &mut DynQuery,
-        _column: &ColumnDef,
-    ) {
     }
 
     fn write_insert_update_fragment<'a>(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         primary_key: impl Iterator<Item = &'a ColumnDef> + Clone,
         columns: impl Iterator<Item = &'a ColumnDef> + Clone,
     ) where
@@ -373,5 +384,29 @@ impl SqlWriter for MySQLSqlWriter {
             },
             ",\n",
         );
+    }
+
+    fn write_limit_offset(
+        &self,
+        context: &mut Context,
+        out: &mut AnyQuery,
+        limit: Option<u32>,
+        offset: Option<u32>,
+    ) {
+        // MySQL requires LIMIT before OFFSET; u64::MAX is its documented unbounded count.
+        if limit.is_none() && offset.is_some() {
+            let _ = write!(out, "\nLIMIT {}", u64::MAX);
+        }
+        GenericSqlWriter.write_limit_offset(context, out, limit, offset);
+    }
+}
+
+impl SqlWriter for MySQLSqlWriter {
+    fn write_column_comment(
+        &self,
+        _context: &mut Context,
+        _out: &mut AnyQuery,
+        _column: &ColumnDef,
+    ) {
     }
 }

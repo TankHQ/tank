@@ -1,19 +1,16 @@
 #[cfg(test)]
 mod tests {
     use std::{collections::HashSet, time::Duration};
-    use tank::{AsValue, Context, DynQuery, Fragment, Interval, IntervalUnit, SqlWriter, Value};
+    use tank::{
+        AnyQuery, AsValue, Context, Fragment, GenericSqlWriter, Interval, IntervalUnit,
+        SqlValueWriter, Value,
+    };
 
-    struct Writer;
-    impl SqlWriter for Writer {
-        fn as_dyn(&self) -> &dyn SqlWriter {
-            self
-        }
-    }
-    const WRITER: Writer = Writer {};
+    const WRITER: GenericSqlWriter = GenericSqlWriter {};
 
     macro_rules! test_interval {
         ($interval:expr, $expected:literal) => {{
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             WRITER.write_value(
                 &mut Context::new(Fragment::SqlSelect, false),
                 &mut out,
@@ -337,7 +334,7 @@ mod tests {
     }
 
     #[test]
-    fn units_mask_and_unit_value() {
+    fn units_mask_value() {
         let interval = Interval::from_years(2);
         let mask = interval.units_mask();
         assert_eq!(mask, 1 << 7); // Year bit
@@ -392,7 +389,7 @@ mod tests {
     }
 
     #[test]
-    fn add_assign_sub_assign() {
+    fn add_assign_sub() {
         let mut interval = Interval::from_days(5);
         interval += Interval::from_days(3);
         assert_eq!(interval, Interval::from_days(8));
@@ -444,7 +441,7 @@ mod tests {
     }
 
     #[test]
-    fn large_i128_constructors_keep_sign() {
+    fn i128_constructors_sign() {
         for v in [i128::MAX, i128::MIN] {
             let n = Interval::from_nanos(v);
             assert_eq!(
@@ -468,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    fn large_interval_do_not_overflow() {
+    fn large_interval_bounds() {
         let extremes = [
             Interval::new(i32::MIN, 0, 0),
             Interval::new(i32::MAX, 0, 0),
@@ -492,17 +489,17 @@ mod tests {
     }
 
     #[test]
-    fn long_fraction_does_not_panic() {
+    fn long_fraction_parse() {
         for digits in 1..=40 {
             let input = format!("12:30:00.{}", "9".repeat(digits));
-            let result = Interval::try_from_value(Value::Varchar(Some(input.into())));
+            let result = Interval::decode_value(Value::Varchar(Some(input.into())));
             if digits <= 9 {
                 assert!(result.is_ok(), "{digits} digits should parse");
             } else {
                 assert!(result.is_err(), "{digits} digits should be rejected");
             }
         }
-        let parsed = Interval::try_from_value(Value::Varchar(Some("00:00:00.5".into()))).unwrap();
+        let parsed = Interval::decode_value(Value::Varchar(Some("00:00:00.5".into()))).unwrap();
         assert_eq!(parsed, Interval::from_millis(500));
     }
 
@@ -524,11 +521,11 @@ mod tests {
     #[test]
     fn parse_huge_interval() {
         let parsed =
-            Interval::try_from_value(Value::Varchar(Some("1000000000000000000 years".into())));
+            Interval::decode_value(Value::Varchar(Some("1000000000000000000 years".into())));
         if let Ok(v) = parsed {
             assert!(v.months >= 0);
         }
-        let parsed = Interval::try_from_value(Value::Varchar(Some(
+        let parsed = Interval::decode_value(Value::Varchar(Some(
             "1000000000000000000 years 1000000000000000000 years".into(),
         )));
         if let Ok(v) = parsed {
@@ -603,7 +600,7 @@ mod tests {
     }
 
     #[test]
-    fn write_then_parse_round_trip() {
+    fn write_parse_roundtrip() {
         for interval in [
             Interval::from_years(20_000) + Interval::from_millis(300),
             Interval::from_months(5) + Interval::from_days(-2) + Interval::from_secs(1),
@@ -611,7 +608,7 @@ mod tests {
             Interval::from_days(-11),
             Interval::from_micros(999_999_999),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             WRITER.write_value(
                 &mut Context::new(Fragment::None, false),
                 &mut out,
@@ -622,7 +619,7 @@ mod tests {
                 .strip_prefix("INTERVAL ")
                 .unwrap_or(&rendered)
                 .to_string();
-            let parsed = Interval::try_from_value(Value::Varchar(Some(body.into())))
+            let parsed = Interval::decode_value(Value::Varchar(Some(body.into())))
                 .unwrap_or_else(|e| panic!("Could not parse `{rendered}`: {e:#}"));
             assert_eq!(parsed, interval, "Round-trip failed for `{rendered}`");
         }

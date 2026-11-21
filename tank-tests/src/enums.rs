@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use rust_decimal::{Decimal, prelude::FromPrimitive};
 use std::{
     borrow::Cow,
@@ -8,7 +9,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use tank::{
-    AsValue, Driver, DynQuery, Entity, Error, Executor, FixedDecimal, Query, QueryResult, RawQuery,
+    AnyQuery, AsValue, Driver, Entity, Error, Executor, FixedDecimal, Query, QueryResult, RawQuery,
     Result, RowsAffected, Sql, SqlWriter, Value, ValueOwned, anyhow, cols, expr,
     stream::{StreamExt, TryStreamExt},
 };
@@ -36,7 +37,7 @@ impl AsValue for SomeEnum {
             Self::SecondValue => Value::Varchar(Some("second".into())),
         }
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -73,7 +74,7 @@ impl AsValue for AnotherEnum {
             Self::Delta => Value::Int8(Some(3)),
         }
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -103,7 +104,9 @@ pub async fn enums(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Entry::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Entry::drop_table(executor, true, false).await?;
+    }
     Entry::create_table(executor, true, true).await?;
 
     // Operations
@@ -174,5 +177,6 @@ pub async fn enums(executor: &mut impl Executor) -> Result<()> {
             },
         ]
     );
+
     Ok(())
 }

@@ -27,7 +27,7 @@ impl AsValue for FpCategoryWrap {
         format!("{:?}", self.0).as_value()
     }
 
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -63,7 +63,6 @@ pub async fn custom(executor: &mut impl Executor) -> Result<()> {
 
     // Setup
     silent_logs! {
-        // Silent logs for Valkey/Redis
         CustomValues::drop_table(executor, true, false).await?;
     }
     CustomValues::create_table(executor, true, true).await?;

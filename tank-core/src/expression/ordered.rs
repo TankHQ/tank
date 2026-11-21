@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, Expression, ExpressionVisitor, OpPrecedence,
+    AnyQuery, Expression, ExpressionVisitor, OpPrecedence,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::TokenStream;
@@ -34,7 +34,7 @@ impl<E: Expression> OpPrecedence for Ordered<E> {
 }
 
 impl<E: Expression> Expression for Ordered<E> {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         writer.write_ordered(
             context,
             out,
@@ -50,7 +50,7 @@ impl<E: Expression> Expression for Ordered<E> {
         matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
     ) -> bool {
         matcher.visit_ordered(
             writer,

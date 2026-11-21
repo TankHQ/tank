@@ -123,7 +123,7 @@ pub struct Operator {
 ###### 02 · Live Fire
 ## Every maneuver, one typed API
 
-Below are sample Rust operations and representative SQL or native query output for each backend. Each card defines its own entities and uses illustrative UUIDs; bulk-insert SQL may represent a native ingestion path. Swipe through the deck to cycle maneuvers and inspect the live fire across backends.
+Below are sample Rust operations and representative SQL or native query output for each backend. Each card defines its own entities and uses illustrative UUIDs. Bulk-insert SQL may represent a native ingestion path. Swipe through the deck to cycle maneuvers and inspect the live fire across backends.
 
 <SwipeDeck>
 
@@ -136,7 +136,7 @@ Below are sample Rust operations and representative SQL or native query output f
 Not all tanks are built for every terrain, and a lone-wolf SQLite operative has very different mechanical limits from a Postgres artillery battery or a Valkey ammo depot. Every driver implements the same core traits and reports what its engine can pull off: transactions, joins, high-caliber bulk appends, filtering, and aggregations. Consult the [capability matrix](/04-capabilities) before rolling out.
 
 > [!WARNING]
-> **No-Fly Zone.** Tank deliberately ships no schema migrations (only table creation and drop for rapid deployment) and no implicit joins. Every alliance is signed in full view — bring a dedicated migration tool for schema evolution and write your joins explicitly.
+> **No-Fly Zone.** Tank deliberately ships no schema migrations (only table creation and drop for rapid deployment) and no implicit joins. Every alliance is signed in full view. Bring a dedicated migration tool for schema evolution and write your joins explicitly.
 
 ###### 04 · Deployment
 ## Skip training, go straight to live fire

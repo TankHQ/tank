@@ -1,8 +1,9 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use std::{collections::HashSet, pin::pin, sync::LazyLock};
 use tank::{
-    AsValue, Dataset, Driver, DynQuery, Entity, Executor, Query, QueryResult, Result, Row, Sql,
-    SqlWriter, Value, cols, expr, join,
+    AnyQuery, AsValue, Dataset, Driver, Entity, Executor, Query, QueryResult, Result, Row, Sql,
+    Value, cols, expr, join,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -39,8 +40,10 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Book::drop_table(executor, true, false).await?;
-    Author::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Book::drop_table(executor, true, false).await?;
+        Author::drop_table(executor, true, false).await?;
+    }
     Author::create_table(executor, false, true).await?;
     Book::create_table(executor, false, true).await?;
 
@@ -302,7 +305,6 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
     #[cfg(not(feature = "disable-references"))]
     {
         // Insert book violating referential integrity
-        use crate::silent_logs;
         let book = Book {
             #[cfg(not(feature = "disable-arrays"))]
             isbn: [9, 7, 8, 1, 7, 3, 3, 5, 6, 1, 0, 8, 0],
@@ -331,7 +333,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
                     .order_by(cols!(Author::name ASC))
                     .build(&executor.driver()),
             )
-            .and_then(|row| async move { AsValue::try_from_value(row.value(0).unwrap()) })
+            .and_then(|row| async move { AsValue::decode_value(row.value(0).unwrap()) })
             .try_collect::<Vec<String>>()
             .await?;
         assert_eq!(
@@ -348,24 +350,20 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
-        let mut query = DynQuery::default();
-        let writer = executor.driver().sql_writer();
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select(Book::columns())
-                .from(Book::table())
-                .where_expr(expr!(Book::title == "Metro 2033"))
-                .limit(Some(1)),
-        );
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select(Book::columns())
-                .from(Book::table())
-                .where_expr(expr!(Book::title == "Harry Potter and the Deathly Hallows"))
-                .limit(Some(1)),
-        );
+        let driver = executor.driver();
+        let mut query = AnyQuery::default();
+        Sql()
+            .select(Book::columns())
+            .from(Book::table())
+            .where_expr(expr!(Book::title == "Metro 2033"))
+            .limit(Some(1))
+            .write_into(&driver.sql_writer(), &mut query);
+        Sql()
+            .select(Book::columns())
+            .from(Book::table())
+            .where_expr(expr!(Book::title == "Harry Potter and the Deathly Hallows"))
+            .limit(Some(1))
+            .write_into(&driver.sql_writer(), &mut query);
         let mut stream = pin!(executor.run(query));
         let Some(QueryResult::Row(row)) = stream.try_next().await? else {
             panic!("Could not get the first row")

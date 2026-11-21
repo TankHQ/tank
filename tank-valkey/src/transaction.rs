@@ -14,7 +14,7 @@ pub struct ValkeyTransaction<'c> {
     pub(crate) commands: Vec<Cmd>,
 }
 
-impl<'c> Executor for ValkeyTransaction<'c> {
+impl Executor for ValkeyTransaction<'_> {
     type Driver = ValkeyDriver;
 
     fn accepts_multiple_statements(&self) -> bool {
@@ -25,12 +25,20 @@ impl<'c> Executor for ValkeyTransaction<'c> {
         &'s mut self,
         query: impl AsQuery<ValkeyDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         let Query::Prepared(prepared) = query.as_mut() else {
             return Either::Left(stream::once(future::ready(Err(anyhow!(
                 "Query is not the expected tank::Query::Prepared variant (Valkey/Redis driver uses prepared)",
             )))));
         };
+        if let Some(error) = prepared.error.take() {
+            return Either::Left(stream::once(future::ready(Err(error))));
+        }
+        if !prepared.columns.is_empty() {
+            return Either::Left(stream::once(future::ready(Err(anyhow!(
+                "Valkey/Redis transactions cannot return rows, reads must run outside the transaction"
+            )))));
+        }
         self.commands.extend(prepared.commands.iter().cloned());
         Either::Right(stream::empty::<Result<QueryResult>>())
     }

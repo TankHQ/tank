@@ -1,5 +1,9 @@
 #[cfg(test)]
+mod fixtures;
+
+#[cfg(test)]
 mod tests {
+    use crate::fixtures::{DRIVER, GenericDriver};
     use quote::ToTokens;
     use rust_decimal::Decimal;
     use std::{
@@ -7,43 +11,34 @@ mod tests {
         collections::{BTreeMap, HashMap},
         ffi::{CString, c_char},
         fmt::Write,
-        ptr,
+        iter, ptr,
         vec::IntoIter,
     };
     use syn::{Path, parse_str};
     use tank::{
-        CollectionType, Context, Dataset, DynQuery, EitherIterator, Entity, Expression,
-        FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType, QueryResult,
-        References, Row, RowLabels, RowOwned, RowsAffected, Sql, SqlWriter, StructType,
-        TRUNCATE_LONG_LIMIT, TableRef, Value, as_c_string, column_def, consume_while,
-        decimal_from_scaled, error_message_from_ptr, extract_number, matches_path, month_to_number,
-        number_to_month, quote_btree_map, quote_cow, quote_option, separated_by, truncate_bound,
-        truncate_long, value_to_json, write_escaped,
+        AnyQuery, CollectionType, Connection, Context, Dataset, Driver, EitherIterator, Entity,
+        Expression, FixedDecimal, Fragment, GenericSqlWriter, Interval, Join, JoinType, MapType,
+        Operand, QueryResult, References, Row, RowLabels, RowOwned, RowsAffected, SelectQuery, Sql,
+        SqlExpressionWriter, SqlValueWriter, SqlWriter, StructType, TRUNCATE_LONG_LIMIT, TableRef,
+        Value, as_c_string, column_def, consume_while, decimal_from_scaled, error_message_from_ptr,
+        extract_number, matches_path, month_to_number, number_to_month, quote_btree_map, quote_cow,
+        quote_option, separated_by, truncate_bound, truncate_long, write_escaped,
     };
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
 
     #[test]
-    fn table_ref_full_name() {
+    fn table_ref_name() {
         assert_eq!(TableRef::new("users".into()).full_name("."), "users");
-        let t = TableRef {
-            name: "users".into(),
-            schema: "public".into(),
-            ..Default::default()
-        };
+        let t = TableRef::from(("public", "users"));
         assert_eq!(t.full_name("."), "public.users");
         assert_eq!(t.full_name("_"), "public_users");
-        let t = TableRef {
-            name: "users".into(),
-            schema: "public".into(),
-            alias: "u".into(),
-            ..Default::default()
-        };
+        let t = TableRef::from(("public", "users")).with_alias("u".into());
         assert_eq!(t.full_name("."), "u");
     }
 
     #[test]
-    fn table_ref_with_alias() {
+    fn table_ref_alias() {
         let t = TableRef::new("users".into());
         let aliased = t.with_alias("u".into());
         assert_eq!(aliased.name, "users");
@@ -51,23 +46,18 @@ mod tests {
     }
 
     #[test]
-    fn table_ref_is_empty() {
+    fn table_ref_empty() {
         assert!(TableRef::default().is_empty());
         assert!(!TableRef::new("t".into()).is_empty());
-        let schema_only = TableRef {
-            schema: "s".into(),
-            ..Default::default()
-        };
+        let mut schema_only = TableRef::default();
+        schema_only.schema = "s".into();
         assert!(!schema_only.is_empty());
-        let alias_only = TableRef {
-            alias: "a".into(),
-            ..Default::default()
-        };
+        let alias_only = TableRef::default().with_alias("a".into());
         assert!(!alias_only.is_empty());
     }
 
     #[test]
-    fn table_ref_from_str() {
+    fn table_ref_parse() {
         let t: TableRef = "my_table".into();
         assert_eq!(t.name, "my_table");
         assert_eq!(t.schema, "");
@@ -76,22 +66,17 @@ mod tests {
     #[test]
     fn table_ref_write() {
         let writer = GenericSqlWriter::new();
-        let table = TableRef {
-            name: "events".into(),
-            schema: "analytics".into(),
-            alias: "e".into(),
-            ..Default::default()
-        };
+        let table = TableRef::from(("analytics", "events")).with_alias("e".into());
 
         let mut from_context = Context::fragment(Fragment::SqlSelectFrom);
-        let mut rendered = DynQuery::default();
+        let mut rendered = AnyQuery::default();
         table.write_table_name(&writer, &mut from_context, &mut rendered);
         assert_eq!(rendered.as_str().as_ref(), r#""analytics"."events" e"#);
         assert_eq!(table.table_ref(), table);
         assert!(!table.qualified_columns());
 
         let mut join_context = Context::fragment(Fragment::SqlJoin);
-        let mut rendered_borrowed = DynQuery::default();
+        let mut rendered_borrowed = AnyQuery::default();
         (&table).write_table_name(&writer, &mut join_context, &mut rendered_borrowed);
         assert_eq!(
             rendered_borrowed.as_str().as_ref(),
@@ -102,7 +87,7 @@ mod tests {
 
         let dynamic: &dyn Dataset = &table;
         assert!(!dynamic.qualified_columns());
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         (&dynamic).write_table_name(
             &writer,
             &mut Context::fragment(Fragment::SqlSelectFrom),
@@ -113,28 +98,18 @@ mod tests {
     }
 
     #[test]
-    fn table_ref_write_alias_reference() {
+    fn alias_reference_write() {
         let writer = GenericSqlWriter::new();
-        let table = TableRef {
-            name: "events".into(),
-            schema: "analytics".into(),
-            alias: "e".into(),
-            ..Default::default()
-        };
+        let table = TableRef::from(("analytics", "events")).with_alias("e".into());
 
-        let mut rendered = DynQuery::default();
+        let mut rendered = AnyQuery::default();
         table.write_table_name(&writer, &mut Context::empty(), &mut rendered);
         assert_eq!(rendered.as_str().as_ref(), "e");
     }
 
     #[test]
-    fn table_ref_to_tokens() {
-        let table = TableRef {
-            name: "events".into(),
-            schema: "analytics".into(),
-            alias: "e".into(),
-            ..Default::default()
-        };
+    fn table_ref_tokens() {
+        let table = TableRef::from(("analytics", "events")).with_alias("e".into());
 
         let tokens = table.to_token_stream().to_string();
         assert!(tokens.contains(":: tank :: TableRef"));
@@ -144,7 +119,7 @@ mod tests {
     }
 
     #[test]
-    fn util_quote_cow_owned() {
+    fn quote_cow_owned() {
         let value: Cow<'static, str> = Cow::Owned(String::from("events"));
         let tokens = quote_cow(&value).to_string();
         assert_eq!(tokens, ":: std :: borrow :: Cow :: Owned (\"events\")");
@@ -209,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn rows_affected_to_query_result() {
+    fn rows_affected_result() {
         let r = RowsAffected {
             rows_affected: Some(1),
             last_affected_id: None,
@@ -219,106 +194,109 @@ mod tests {
     }
 
     #[test]
-    fn dyn_query_operations() {
-        let mut q = DynQuery::default();
-        assert!(q.is_empty());
-        assert_eq!(q.len(), 0);
-        q.push_str("SELECT ");
-        assert!(!q.is_empty());
-        assert_eq!(q.len(), 7);
-        q.push('*');
-        assert_eq!(q.len(), 8);
-        assert_eq!(q.as_str().as_ref(), "SELECT *");
+    fn any_query_operations() {
+        let mut query = AnyQuery::default();
+        assert!(query.is_empty());
+        assert_eq!(query.len(), 0);
+        query.push_str("SELECT ");
+        assert!(!query.is_empty());
+        assert_eq!(query.len(), 7);
+        query.push('*');
+        assert_eq!(query.len(), 8);
+        assert_eq!(query.as_str().as_ref(), "SELECT *");
 
-        let mut q = DynQuery::with_capacity(1024);
-        assert!(q.is_empty());
-        q.push_str("hello");
-        assert_eq!(q.as_str().as_ref(), "hello");
+        let mut query = AnyQuery::with_capacity(1024);
+        assert!(query.is_empty());
+        query.push_str("hello");
+        assert_eq!(query.as_str().as_ref(), "hello");
 
-        let q = DynQuery::new("SELECT 1".into());
-        assert_eq!(q.as_str().as_ref(), "SELECT 1");
-        assert_eq!(q.len(), 8);
-        assert!(!q.is_empty());
+        let query = AnyQuery::new("SELECT 1".into());
+        assert_eq!(query.as_str().as_ref(), "SELECT 1");
+        assert_eq!(query.len(), 8);
+        assert!(!query.is_empty());
 
-        let mut q = DynQuery::default();
-        write!(q, "INSERT INTO {} VALUES ({})", "t", 42).unwrap();
-        assert_eq!(q.as_str().as_ref(), "INSERT INTO t VALUES (42)");
+        let mut query = AnyQuery::default();
+        write!(query, "INSERT INTO {} VALUES ({})", "t", 42).unwrap();
+        assert_eq!(query.as_str().as_ref(), "INSERT INTO t VALUES (42)");
 
-        let s: String = DynQuery::new("hello world".into()).into();
-        assert_eq!(s, "hello world");
+        let string: String = AnyQuery::new("hello world".into()).into();
+        assert_eq!(string, "hello world");
 
-        let mut q = DynQuery::new("initial".into());
-        q.buffer().clear();
-        assert!(q.is_empty());
-        q.buffer().push_str("new content");
-        assert_eq!(q.as_str().as_ref(), "new content");
+        let mut query = AnyQuery::new("initial".into());
+        query.buffer().clear();
+        assert!(query.is_empty());
+        query.buffer().push_str("new content");
+        assert_eq!(query.as_str().as_ref(), "new content");
     }
 
     #[test]
-    fn util_value_to_json_scalars() {
-        assert_eq!(value_to_json(&Value::Null), Some(serde_json::Value::Null));
+    fn value_json_scalars() {
         assert_eq!(
-            value_to_json(&Value::Boolean(Some(true))),
+            serde_json::Value::try_from(Value::Null).ok(),
+            Some(serde_json::Value::Null)
+        );
+        assert_eq!(
+            serde_json::Value::try_from(Value::Boolean(Some(true))).ok(),
             Some(serde_json::Value::Bool(true))
         );
         assert_eq!(
-            value_to_json(&Value::Int8(Some(42))),
+            serde_json::Value::try_from(Value::Int8(Some(42))).ok(),
             Some(serde_json::json!(42))
         );
         assert_eq!(
-            value_to_json(&Value::Int16(Some(-100))),
+            serde_json::Value::try_from(Value::Int16(Some(-100))).ok(),
             Some(serde_json::json!(-100))
         );
         assert_eq!(
-            value_to_json(&Value::Int32(Some(1000))),
+            serde_json::Value::try_from(Value::Int32(Some(1000))).ok(),
             Some(serde_json::json!(1000))
         );
         assert_eq!(
-            value_to_json(&Value::Int64(Some(123456789))),
+            serde_json::Value::try_from(Value::Int64(Some(123456789))).ok(),
             Some(serde_json::json!(123456789))
         );
         assert_eq!(
-            value_to_json(&Value::Int128(Some(999.into()))),
+            serde_json::Value::try_from(Value::Int128(Some(999.into()))).ok(),
             Some(serde_json::json!(999))
         );
         assert_eq!(
-            value_to_json(&Value::UInt8(Some(255))),
+            serde_json::Value::try_from(Value::UInt8(Some(255))).ok(),
             Some(serde_json::json!(255))
         );
         assert_eq!(
-            value_to_json(&Value::UInt16(Some(65535))),
+            serde_json::Value::try_from(Value::UInt16(Some(65535))).ok(),
             Some(serde_json::json!(65535))
         );
         assert_eq!(
-            value_to_json(&Value::UInt32(Some(100))),
+            serde_json::Value::try_from(Value::UInt32(Some(100))).ok(),
             Some(serde_json::json!(100))
         );
         assert_eq!(
-            value_to_json(&Value::UInt64(Some(200))),
+            serde_json::Value::try_from(Value::UInt64(Some(200))).ok(),
             Some(serde_json::json!(200))
         );
         assert_eq!(
-            value_to_json(&Value::UInt128(Some(300.into()))),
+            serde_json::Value::try_from(Value::UInt128(Some(300.into()))).ok(),
             Some(serde_json::json!(300))
         );
         assert_eq!(
-            value_to_json(&Value::Float32(Some(1.5))),
+            serde_json::Value::try_from(Value::Float32(Some(1.5))).ok(),
             Some(serde_json::json!(1.5))
         );
         assert_eq!(
-            value_to_json(&Value::Float64(Some(2.5))),
+            serde_json::Value::try_from(Value::Float64(Some(2.5))).ok(),
             Some(serde_json::json!(2.5))
         );
         assert_eq!(
-            value_to_json(&Value::Char(Some('x'))),
+            serde_json::Value::try_from(Value::Char(Some('x'))).ok(),
             Some(serde_json::json!("x"))
         );
         assert_eq!(
-            value_to_json(&Value::Varchar(Some("hello".into()))),
+            serde_json::Value::try_from(Value::Varchar(Some("hello".into()))).ok(),
             Some(serde_json::json!("hello"))
         );
         assert_eq!(
-            value_to_json(&Value::Unknown(Some("raw".into()))),
+            serde_json::Value::try_from(Value::Unknown(Some("raw".into()))).ok(),
             Some(serde_json::json!("raw"))
         );
     }
@@ -326,23 +304,27 @@ mod tests {
     #[test]
     fn value_json_conversion() {
         assert_eq!(
-            value_to_json(&Value::Boolean(None)),
+            serde_json::Value::try_from(Value::Boolean(None)).ok(),
             Some(serde_json::Value::Null)
         );
         assert_eq!(
-            value_to_json(&Value::Int32(None)),
+            serde_json::Value::try_from(Value::Int32(None)).ok(),
             Some(serde_json::Value::Null)
         );
 
-        let arr = value_to_json(&Value::Blob(Some(vec![0xDE, 0xAD].into()))).unwrap();
+        let arr = serde_json::Value::try_from(Value::Blob(Some(vec![0xDE, 0xAD].into()))).unwrap();
         assert_eq!(arr, serde_json::json!([222, 173]));
 
         assert_eq!(
-            value_to_json(&Value::Uuid(Some(uuid::Uuid::nil()))),
+            serde_json::Value::try_from(Value::Uuid(Some(uuid::Uuid::nil()))).ok(),
             Some(serde_json::json!("00000000-0000-0000-0000-000000000000"))
         );
         let date = Date::from_calendar_date(2025, Month::March, 15).unwrap();
-        assert!(value_to_json(&Value::Date(Some(date))).unwrap().is_string());
+        assert!(
+            serde_json::Value::try_from(Value::Date(Some(date)))
+                .unwrap()
+                .is_string()
+        );
 
         let arr = Value::Array(
             Some(vec![Value::Int32(Some(1)), Value::Int32(Some(2))].into()),
@@ -351,7 +333,10 @@ mod tests {
                 len: 2,
             }),
         );
-        assert_eq!(value_to_json(&arr), Some(serde_json::json!([1, 2])));
+        assert_eq!(
+            serde_json::Value::try_from(arr).ok(),
+            Some(serde_json::json!([1, 2]))
+        );
         let list = Value::List(
             Some(
                 vec![
@@ -365,7 +350,10 @@ mod tests {
                 len: 0,
             }),
         );
-        assert_eq!(value_to_json(&list), Some(serde_json::json!(["a", "b"])));
+        assert_eq!(
+            serde_json::Value::try_from(list).ok(),
+            Some(serde_json::json!(["a", "b"]))
+        );
 
         let mut map = HashMap::new();
         map.insert(Value::Int32(Some(1)), Value::Int32(Some(42)));
@@ -376,7 +364,10 @@ mod tests {
                 value: Value::Int32(None),
             }),
         );
-        assert_eq!(value_to_json(&v), Some(serde_json::json!({"1": 42})));
+        assert_eq!(
+            serde_json::Value::try_from(v).ok(),
+            Some(serde_json::json!({"1": 42}))
+        );
         let v = Value::Map(
             Some(Box::new(HashMap::new())),
             Box::new(MapType {
@@ -384,10 +375,13 @@ mod tests {
                 value: Value::Int32(None),
             }),
         );
-        assert!(value_to_json(&v).unwrap().is_object());
+        assert!(serde_json::Value::try_from(v).unwrap().is_object());
 
         let j = serde_json::json!({"nested": true});
-        assert_eq!(value_to_json(&Value::Json(Some(j.clone()))), Some(j));
+        assert_eq!(
+            serde_json::Value::try_from(Value::Json(Some(j.clone()))).ok(),
+            Some(j)
+        );
 
         let s = Value::Struct(
             Some(vec![].into()),
@@ -396,82 +390,86 @@ mod tests {
                 name: TableRef::new("my_type".into()),
             }),
         );
-        assert!(value_to_json(&s).unwrap().is_object());
+        assert!(serde_json::Value::try_from(s).unwrap().is_object());
 
-        assert!(value_to_json(&Value::Decimal(Some(Decimal::new(1234, 2)), 0, 0)).is_some());
+        assert!(
+            serde_json::Value::try_from(Value::Decimal(Some(Decimal::new(1234, 2)), 0, 0)).is_ok()
+        );
         assert_eq!(
-            value_to_json(&Value::Interval(Some(Interval::from_days(1)))),
+            serde_json::Value::try_from(Value::Interval(Some(Interval::from_days(1)))).ok(),
             None
         );
-        assert_eq!(value_to_json(&Value::Float64(Some(f64::NAN))), None);
+        assert_eq!(
+            serde_json::Value::try_from(Value::Float64(Some(f64::NAN))).ok(),
+            None
+        );
     }
 
     #[test]
     fn util_write_escaped() {
-        let mut q = DynQuery::default();
-        write_escaped(&mut q, "hello", '\'', "''");
-        assert_eq!(q.as_str().as_ref(), "hello");
+        let mut v = AnyQuery::default();
+        write_escaped(&mut v, "hello", '\'', "''");
+        assert_eq!(v.as_str().as_ref(), "hello");
 
-        let mut q2 = DynQuery::default();
-        write_escaped(&mut q2, "it's a test", '\'', "''");
-        assert_eq!(q2.as_str().as_ref(), "it''s a test");
+        let mut v = AnyQuery::default();
+        write_escaped(&mut v, "it's a test", '\'', "''");
+        assert_eq!(v.as_str().as_ref(), "it''s a test");
 
-        let mut q3 = DynQuery::default();
-        write_escaped(&mut q3, "a\"b\"c", '"', "\"\"");
-        assert_eq!(q3.as_str().as_ref(), "a\"\"b\"\"c");
+        let mut v = AnyQuery::default();
+        write_escaped(&mut v, "a\"b\"c", '"', "\"\"");
+        assert_eq!(v.as_str().as_ref(), "a\"\"b\"\"c");
 
-        let mut q4 = DynQuery::default();
-        write_escaped(&mut q4, "a😀b😀c", '😀', "[]");
-        assert_eq!(q4.as_str().as_ref(), "a[]b[]c");
+        let mut v = AnyQuery::default();
+        write_escaped(&mut v, "a😀b😀c", '😀', "[]");
+        assert_eq!(v.as_str().as_ref(), "a[]b[]c");
     }
 
     #[test]
-    fn sql_writer_schema_create_drop() {
+    fn schema_create_drop() {
         #[derive(Entity)]
         #[tank(schema = "analytics", name = "events")]
         struct SchemaEntity {
             id: i32,
         }
         let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
+        let mut q = AnyQuery::default();
         writer.write_create_schema(&mut q, SchemaEntity::table(), true);
         assert_eq!(
             q.as_str().as_ref(),
             "CREATE SCHEMA IF NOT EXISTS \"analytics\";"
         );
 
-        let mut q2 = DynQuery::default();
+        let mut q2 = AnyQuery::default();
         writer.write_create_schema(&mut q2, SchemaEntity::table(), false);
         assert_eq!(q2.as_str().as_ref(), "CREATE SCHEMA \"analytics\";");
 
-        let mut q3 = DynQuery::default();
+        let mut q3 = AnyQuery::default();
         writer.write_drop_schema(&mut q3, SchemaEntity::table(), true);
         assert_eq!(q3.as_str().as_ref(), "DROP SCHEMA IF EXISTS \"analytics\";");
-        let mut q4 = DynQuery::default();
+        let mut q4 = AnyQuery::default();
         writer.write_drop_schema(&mut q4, SchemaEntity::table(), false);
         assert_eq!(q4.as_str().as_ref(), "DROP SCHEMA \"analytics\";");
 
-        let mut q5 = DynQuery::new("-- c".into());
+        let mut q5 = AnyQuery::new("-- c".into());
         writer.write_create_schema(&mut q5, SchemaEntity::table(), false);
         assert!(q5.as_str().starts_with("-- c\nCREATE SCHEMA"));
 
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_cast(
             &mut Context::empty(),
             &mut out,
-            &tank::Operand::LitInt(1),
-            &tank::Operand::Type(Value::Int64(None)),
+            &Operand::LitInt(1),
+            &Operand::Type(Value::Int64(None)),
         );
         assert_eq!(out.as_str(), "CAST(1 AS BIGINT)");
     }
 
     #[test]
-    fn sql_writer_select_without_from() {
-        use tank::SelectQuery;
+    fn select_without_from() {
         struct NoFrom;
         impl SelectQuery<TableRef> for NoFrom {
             fn get_select(&self) -> impl Iterator<Item = impl Expression> + Clone {
-                std::iter::empty::<tank::Operand<'_>>()
+                iter::empty::<Operand<'_>>()
             }
             fn get_from(&self) -> &Option<TableRef> {
                 &None
@@ -480,50 +478,52 @@ mod tests {
                 &None::<bool>
             }
             fn get_group_by(&self) -> impl Iterator<Item = impl Expression> + Clone {
-                std::iter::empty::<tank::Operand<'_>>()
+                iter::empty::<Operand<'_>>()
             }
             fn get_having(&self) -> &Option<impl Expression> {
                 &None::<bool>
             }
             fn get_order_by(&self) -> impl Iterator<Item = impl Expression> + Clone {
-                std::iter::empty::<tank::Operand<'_>>()
+                iter::empty::<Operand<'_>>()
             }
             fn get_limit(&self) -> Option<u32> {
                 None
             }
-            fn build<D: tank::Driver>(&self, _: &D) -> DynQuery {
-                DynQuery::default()
+            fn get_offset(&self) -> Option<u32> {
+                None
             }
-            fn build_into<D: tank::Driver>(&self, _: &D, _: &mut DynQuery) {}
+            fn is_distinct(&self) -> bool {
+                false
+            }
         }
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         GenericSqlWriter::new().write_select(&mut out, &NoFrom);
         assert_eq!(out.as_str(), "SELECT *;");
     }
 
     #[test]
-    fn sql_writer_select_star() {
+    fn writer_select_star() {
         #[derive(Entity)]
         struct StarTable {
             id: i32,
         }
-        let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
-
         let empty_cols: &[&dyn Expression] = &[];
-        writer.write_select(&mut q, Sql().select(empty_cols).from(StarTable::table()));
-        assert!(q.as_str().contains("SELECT *"));
+        let query = Sql()
+            .select(empty_cols)
+            .from(StarTable::table())
+            .build(&DRIVER);
+        assert!(query.as_str().contains("SELECT *"));
     }
 
     #[test]
-    fn sql_writer_composite_values() {
+    fn writer_composite_values() {
         let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
+        let mut value = AnyQuery::default();
         let mut map = HashMap::new();
         map.insert(Value::Varchar(Some("key1".into())), Value::Int32(Some(100)));
         writer.write_value(
             &mut Default::default(),
-            &mut q,
+            &mut value,
             &Value::Map(
                 Some(Box::new(map)),
                 Box::new(MapType {
@@ -532,13 +532,13 @@ mod tests {
                 }),
             ),
         );
-        assert!(q.as_str().contains("key1"));
-        assert!(q.as_str().contains("100"));
+        assert!(value.as_str().contains("key1"));
+        assert!(value.as_str().contains("100"));
 
-        let mut q = DynQuery::default();
+        let mut value = AnyQuery::default();
         writer.write_value(
             &mut Default::default(),
-            &mut q,
+            &mut value,
             &Value::Struct(
                 Some(
                     vec![
@@ -553,31 +553,31 @@ mod tests {
                 }),
             ),
         );
-        assert!(q.as_str().contains("Alice"));
-        assert!(q.as_str().contains("30"));
+        assert!(value.as_str().contains("Alice"));
+        assert!(value.as_str().contains("30"));
 
-        let mut q = DynQuery::default();
+        let mut value = AnyQuery::default();
         writer.write_value(
             &mut Default::default(),
-            &mut q,
+            &mut value,
             &Value::Json(Some(serde_json::json!({"active": true}))),
         );
-        assert!(q.as_str().contains("active"));
+        assert!(value.as_str().contains("active"));
     }
 
     #[test]
-    fn sql_writer_write_json_string() {
+    fn write_json_string() {
         let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
+        let mut value = AnyQuery::default();
         let mut context = Context::fragment(Fragment::Json);
         writer.write_value(
             &mut context,
-            &mut q,
+            &mut value,
             &Value::Varchar(Some(r#"folder\queue"#.into())),
         );
-        assert_eq!(q.as_str().as_ref(), r#""folder\\queue""#);
+        assert_eq!(value.as_str().as_ref(), r#""folder\\queue""#);
         assert_eq!(
-            serde_json::from_str::<String>(q.as_str().as_ref()).unwrap(),
+            serde_json::from_str::<String>(value.as_str().as_ref()).unwrap(),
             r#"folder\queue"#
         );
 
@@ -601,7 +601,7 @@ mod tests {
             (
                 Fragment::Json,
                 Value::Blob(Some(vec![1, 2].into())),
-                "\"\\x01\\x02\"",
+                "\"0102\"",
             ),
             (
                 Fragment::Json,
@@ -618,7 +618,7 @@ mod tests {
             (Fragment::JsonKey, Value::Int32(Some(3)), "\"3\""),
             (Fragment::JsonKey, Value::Float64(Some(1.5)), "\"1.5\""),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             writer.write_value(&mut Context::new(fragment, false), &mut out, &value);
             assert_eq!(out.as_str(), expected);
         }
@@ -627,20 +627,20 @@ mod tests {
     #[test]
     fn sql_writer_blob() {
         let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
+        let mut value = AnyQuery::default();
         writer.write_value(
             &mut Default::default(),
-            &mut q,
+            &mut value,
             &Value::Blob(Some(vec![0xCA, 0xFE].into())),
         );
-        assert!(q.as_str().contains("CA"));
-        assert!(q.as_str().contains("FE"));
+        assert!(value.as_str().contains("CA"));
+        assert!(value.as_str().contains("FE"));
     }
 
     #[test]
-    fn sql_writer_write_timestamptz() {
+    fn write_timestamptz_value() {
         let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
+        let mut value = AnyQuery::default();
         let dt = OffsetDateTime::new_in_offset(
             Date::from_calendar_date(2025, Month::June, 15).unwrap(),
             Time::from_hms(10, 30, 0).unwrap(),
@@ -648,20 +648,24 @@ mod tests {
         );
         writer.write_value(
             &mut Default::default(),
-            &mut q,
+            &mut value,
             &Value::TimestampWithTimezone(Some(dt)),
         );
-        assert!(q.as_str().contains("2025"));
-        assert!(q.as_str().contains("+05:30:15"));
+        assert!(value.as_str().contains("2025"));
+        assert!(value.as_str().contains("+05:30:15"));
     }
 
     #[test]
-    fn sql_writer_special_floats() {
+    fn sql_writer_floats() {
         let writer = GenericSqlWriter::new();
         for f in [f64::INFINITY, f64::NEG_INFINITY] {
-            let mut q = DynQuery::default();
-            writer.write_value(&mut Default::default(), &mut q, &Value::Float64(Some(f)));
-            let s = q.as_str();
+            let mut value = AnyQuery::default();
+            writer.write_value(
+                &mut Default::default(),
+                &mut value,
+                &Value::Float64(Some(f)),
+            );
+            let s = value.as_str();
             assert!(s.contains("CAST"));
             assert!(s.contains("inf"));
         }
@@ -669,9 +673,9 @@ mod tests {
             Value::Float32(Some(f32::INFINITY)),
             Value::Float32(Some(f32::NAN)),
         ] {
-            let mut q = DynQuery::default();
-            writer.write_value(&mut Default::default(), &mut q, &value);
-            let s = q.as_str();
+            let mut query = AnyQuery::default();
+            writer.write_value(&mut Default::default(), &mut query, &value);
+            let s = query.as_str();
             assert!(s.contains("CAST"));
             assert!(s.contains("FLOAT"));
             assert!(!s.contains("DOUBLE"));
@@ -679,109 +683,102 @@ mod tests {
     }
 
     #[test]
-    fn sql_writer_transaction_statements() {
+    fn sql_writer_transactions() {
         let writer = GenericSqlWriter::new();
-        let mut q1 = DynQuery::default();
+        let mut q1 = AnyQuery::default();
         writer.write_transaction_begin(&mut q1);
         assert_eq!(q1.as_str().as_ref(), "BEGIN;");
         writer.write_transaction_commit(&mut q1);
         assert_eq!(q1.as_str().as_ref(), "BEGIN;\nCOMMIT;");
         writer.write_transaction_rollback(&mut q1);
         assert_eq!(q1.as_str().as_ref(), "BEGIN;\nCOMMIT;\nROLLBACK;");
-        let mut q2 = DynQuery::new("SELECT 1".into());
+        let mut q2 = AnyQuery::new("SELECT 1".into());
         writer.write_transaction_begin(&mut q2);
         assert_eq!(q2.as_str(), "SELECT 1\nBEGIN;");
     }
 
     #[test]
-    fn sql_writer_insert_empty_entities() {
+    fn empty_entities_insert() {
         #[derive(Entity)]
         struct EmptyInsert {
             id: i32,
         }
-        let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
+        let mut q = AnyQuery::default();
         let entities: Vec<&EmptyInsert> = vec![];
-        writer.write_insert(
-            &mut q,
-            Sql().insert_into(EmptyInsert::table()).values(entities),
-        );
+        Sql()
+            .insert_into(EmptyInsert::table())
+            .values(entities)
+            .write_into(&DRIVER.sql_writer(), &mut q);
         assert!(q.is_empty());
     }
 
     #[test]
-    fn sql_writer_append_to_existing() {
+    fn sql_writer_append() {
         #[derive(Entity)]
         struct AppendTable {
             id: i32,
         }
-        let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::new("-- comment".into());
-        writer.write_select(
-            &mut q,
-            Sql()
-                .select(AppendTable::columns())
-                .from(AppendTable::table()),
-        );
-        let mut q = DynQuery::new("-- comment".into());
-        writer.write_select(
-            &mut q,
-            Sql()
-                .select(AppendTable::columns())
-                .from(AppendTable::table()),
-        );
+        let mut q = AnyQuery::new("-- comment".into());
+        Sql()
+            .select(AppendTable::columns())
+            .from(AppendTable::table())
+            .write_into(&DRIVER.sql_writer(), &mut q);
+        let mut q = AnyQuery::new("-- comment".into());
+        Sql()
+            .select(AppendTable::columns())
+            .from(AppendTable::table())
+            .write_into(&DRIVER.sql_writer(), &mut q);
         assert!(q.as_str().starts_with("-- comment\nSELECT"));
 
-        let mut q = DynQuery::new("-- c".into());
-        writer.write_create_table(&mut q, AppendTable::table(), false);
+        let mut q = AnyQuery::new("-- c".into());
+        Sql()
+            .create_table(AppendTable::table())
+            .write_into(&DRIVER.sql_writer(), &mut q);
         assert!(q.as_str().starts_with("-- c\nCREATE TABLE"));
-        let mut q = DynQuery::new("-- c".into());
-        writer.write_drop_table(&mut q, AppendTable::table(), false);
+        let mut q = AnyQuery::new("-- c".into());
+        Sql()
+            .drop_table(AppendTable::table())
+            .write_into(&DRIVER.sql_writer(), &mut q);
         assert!(q.as_str().starts_with("-- c\nDROP TABLE"));
-        let mut q = DynQuery::new("-- c".into());
-        writer.write_delete(&mut q, AppendTable::table(), true);
+        let mut q = AnyQuery::new("-- c".into());
+        Sql()
+            .delete_from(AppendTable::table())
+            .write_into(&DRIVER.sql_writer(), &mut q);
         assert!(q.as_str().starts_with("-- c\nDELETE FROM"));
-        let mut q = DynQuery::new("-- c".into());
-        writer.write_insert(
-            &mut q,
-            Sql()
-                .insert_into(AppendTable::table())
-                .values(&[AppendTable { id: 1 }]),
-        );
+        let mut q = AnyQuery::new("-- c".into());
+        Sql()
+            .insert_into(AppendTable::table())
+            .values(&[AppendTable { id: 1 }])
+            .write_into(&DRIVER.sql_writer(), &mut q);
         assert!(q.as_str().starts_with("-- c\nINSERT INTO"));
     }
 
     #[test]
-    fn do_nothing_pk_only() {
+    fn nothing_pk_only() {
         #[derive(Entity)]
         struct PkOnly {
             #[tank(primary_key)]
             id: i32,
         }
-        let writer = GenericSqlWriter::new();
-        let mut q = DynQuery::default();
-        writer.write_insert(
-            &mut q,
-            Sql()
-                .insert_into(PkOnly::table())
-                .values(&[PkOnly { id: 1 }])
-                .update(),
-        );
-        assert!(q.as_str().contains("DO NOTHING"));
+        let mut query = AnyQuery::default();
+        Sql()
+            .insert_into(PkOnly::table())
+            .values(&[PkOnly { id: 1 }])
+            .update()
+            .write_into(&DRIVER.sql_writer(), &mut query);
+        assert!(query.as_str().contains("DO NOTHING"));
 
         #[derive(Entity)]
         struct NoPk {
             value: i32,
         }
-        let mut q = DynQuery::default();
-        writer.write_insert(
-            &mut q,
-            Sql()
-                .insert_into(NoPk::table())
-                .values(&[NoPk { value: 1 }])
-                .update(),
-        );
-        assert!(!q.as_str().contains("ON CONFLICT"));
+        let mut query = AnyQuery::default();
+        Sql()
+            .insert_into(NoPk::table())
+            .values(&[NoPk { value: 1 }])
+            .update()
+            .write_into(&DRIVER.sql_writer(), &mut query);
+        assert!(!query.as_str().contains("ON CONFLICT"));
     }
 
     #[test]
@@ -836,7 +833,7 @@ mod tests {
     }
 
     #[test]
-    fn util_as_c_string() {
+    fn c_string_conversion() {
         let cs = as_c_string("hello");
         assert_eq!(cs.to_str().unwrap(), "hello");
 
@@ -846,7 +843,7 @@ mod tests {
 
     #[test]
     fn util_separated_by() {
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         separated_by(
             &mut out,
             [1, 2, 3],
@@ -857,7 +854,7 @@ mod tests {
         );
         assert_eq!(out.as_str(), "1, 2, 3");
 
-        let mut out2 = DynQuery::default();
+        let mut out2 = AnyQuery::default();
         separated_by(
             &mut out2,
             [42],
@@ -947,7 +944,7 @@ mod tests {
     }
 
     #[test]
-    fn join_table_ref_same_schema() {
+    fn join_same_schema() {
         #[derive(Entity)]
         #[tank(schema = "common")]
         struct Left1 {
@@ -1000,20 +997,21 @@ mod tests {
     }
 
     #[test]
-    fn value_to_json_unrepresentable() {
+    fn json_unrepresentable() {
         let mut map = HashMap::new();
         map.insert(
             Value::Int32(Some(1)),
             Value::Interval(Some(Interval::from_days(1))),
         );
         assert_eq!(
-            value_to_json(&Value::Map(
+            serde_json::Value::try_from(Value::Map(
                 Some(map.into()),
                 Box::new(MapType {
                     key: Value::Int32(None),
                     value: Value::Interval(None)
                 })
-            )),
+            ))
+            .ok(),
             None
         );
 
@@ -1023,34 +1021,36 @@ mod tests {
             Value::Int32(Some(1)),
         );
         assert_eq!(
-            value_to_json(&Value::Map(
+            serde_json::Value::try_from(Value::Map(
                 Some(map.into()),
                 Box::new(MapType {
                     key: Value::Interval(None),
                     value: Value::Int32(None)
                 })
-            )),
+            ))
+            .ok(),
             None
         );
 
         assert_eq!(
-            value_to_json(&Value::Struct(
+            serde_json::Value::try_from(Value::Struct(
                 Some(vec![("k".into(), Value::Interval(Some(Interval::from_days(1))))].into()),
                 Box::new(StructType {
                     fields: vec![],
                     name: TableRef::new("t".into())
                 })
-            )),
+            ))
+            .ok(),
             None
         );
         assert_eq!(
-            value_to_json(&Value::Decimal(None, 0, 0)),
+            serde_json::Value::try_from(Value::Decimal(None, 0, 0)).ok(),
             Some(serde_json::Value::Null)
         );
     }
 
     #[test]
-    fn util_decimal_from_scaled() {
+    fn decimal_scaled_conversion() {
         assert_eq!(decimal_from_scaled(1234, 2).unwrap(), Decimal::new(1234, 2));
         assert_eq!(
             decimal_from_scaled(200_i128, 29).unwrap(),
@@ -1082,11 +1082,11 @@ mod tests {
     }
 
     #[test]
-    fn util_truncate_long_multibyte() {
-        assert_eq!(format!("{}", truncate_long!("SELECT 1")), "SELECT 1");
+    fn truncate_multibyte() {
+        assert_eq!(format!("{}", truncate_long("SELECT 1")), "SELECT 1");
 
         let long_ascii = "X".repeat(TRUNCATE_LONG_LIMIT + 100);
-        let truncated = format!("{}", truncate_long!(long_ascii));
+        let truncated = format!("{}", truncate_long(&long_ascii));
         assert!(truncated.ends_with("...\n"));
         assert_eq!(
             truncated.trim_end_matches("...\n").trim().len(),
@@ -1094,15 +1094,22 @@ mod tests {
         );
 
         let long_utf8 = "€".repeat(TRUNCATE_LONG_LIMIT);
-        let truncated = format!("{}", truncate_long!(long_utf8));
+        let truncated = format!("{}", truncate_long(&long_utf8));
         assert!(truncated.ends_with("...\n"));
 
-        let truncated = format!("{}", truncate_long!(long_utf8.clone(), true));
+        // The input expression is evaluated once.
+        fn input<'a>(calls: &mut usize, text: &'a str) -> &'a str {
+            *calls += 1;
+            text
+        }
+        let mut calls = 0;
+        let truncated = format!("{}", truncate_long(input(&mut calls, &long_utf8)));
         assert!(truncated.ends_with("...\n"));
+        assert_eq!(calls, 1);
     }
 
     #[test]
-    fn row_get_column_mismatched_lengths() {
+    fn column_length_mismatch() {
         let labels: RowLabels = RowLabels::from(vec!["a".to_string(), "b".to_string()]);
         let values = vec![Value::Int32(Some(1))];
         let row = RowOwned::new(labels, values);
@@ -1126,14 +1133,24 @@ mod tests {
     fn error_ptr_messages() {
         let text = CString::new("boom").unwrap();
         let raw: *const c_char = text.as_ptr();
-        assert_eq!(error_message_from_ptr(raw), "boom");
+        assert_eq!(error_message_from_ptr(&raw), "boom");
 
         let null: *const c_char = ptr::null();
-        assert!(error_message_from_ptr(null).contains("Unknown error"));
+        assert!(error_message_from_ptr(&null).contains("Unknown error"));
     }
 
     #[test]
-    fn matches_path_matches_trailing_segments() {
+    fn sanitize_url_schemes() {
+        let error = <GenericDriver as Connection>::sanitize_url(&DRIVER, "bogus://host".into())
+            .expect_err("The scheme is not accepted");
+        assert!(
+            format!("{error:#}").contains(r#"Must start with "generic://""#),
+            "{error:#}"
+        );
+    }
+
+    #[test]
+    fn matches_path_segments() {
         let path: Path = parse_str("std::num::NonZeroI32").unwrap();
         assert!(matches_path(&path, &["std", "num", "NonZeroI32"]));
         assert!(matches_path(&path, &["num", "NonZeroI32"]));

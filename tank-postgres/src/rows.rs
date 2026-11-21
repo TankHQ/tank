@@ -125,7 +125,7 @@ pub struct PostgresRows<'s> {
 
 impl<'s> PostgresRows<'s> {
     #[inline(always)]
-    pub(crate) fn new(
+    pub(crate) const fn new(
         first: Option<tokio_postgres::Row>,
         stream: tokio_postgres::RowStream,
         labels: &'s RowLabels,
@@ -139,7 +139,10 @@ impl<'s> PostgresRows<'s> {
     }
 
     #[inline(always)]
-    pub(crate) fn new_drained(stream: tokio_postgres::RowStream, labels: &'s RowLabels) -> Self {
+    pub(crate) const fn new_drained(
+        stream: tokio_postgres::RowStream,
+        labels: &'s RowLabels,
+    ) -> Self {
         Self {
             first: None,
             stream,
@@ -187,7 +190,7 @@ pub(crate) struct PostgresStream<'s, F> {
 
 impl<'s, F> PostgresStream<'s, F> {
     #[inline(always)]
-    pub(crate) fn new(fut: F) -> Self {
+    pub(crate) const fn new(fut: F) -> Self {
         Self {
             fut: Some(fut),
             rows: None,

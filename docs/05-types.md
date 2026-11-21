@@ -3,7 +3,7 @@
 
 Tank brings a full type arsenal to the field. The `Entity` derive macro identifies known types by matching trailing path segments. For example, `std::collections::VecDeque`, `collections::VecDeque`, or simply `VecDeque` all resolve to the same type: `Value::List`.
 
-Tank maps ordinary Rust types to the closest column types each driver supports, falling back to generic representations when appropriate. The table shows column/storage mappings, not a guarantee of every operation or parameter binding. ❌ indicates unsupported mappings; ⚠️ marks fallback encodings or important limitations.
+Tank maps ordinary Rust types to the closest column types each driver supports, falling back to generic representations when appropriate. The table shows column/storage mappings, not a guarantee of every operation or parameter binding. ❌ indicates unsupported mappings. ⚠️ marks fallback encodings or important limitations.
 
 ## Column Types
 <div class="sticky-table">
@@ -23,7 +23,7 @@ Tank maps ordinary Rust types to the closest column types each driver supports, 
 | `u128`, `NonZeroU128`     | `NUMERIC(39)`  | ❌        | `NUMERIC(39) UNSIGNED`    | `NUMERIC(39) UNSIGNED`    | `UHUGEINT`     | ❌           | `VARINT`           | `String`     |
 | `isize`, `NonZeroIsize`   | `BIGINT`       | `INTEGER` | `BIGINT`                  | `BIGINT`                  | `BIGINT`       | `Int64`      | `BIGINT`           | `String`     |
 | `usize`, `NonZeroUsize`   | `NUMERIC(19)`  | `INTEGER` | `BIGINT UNSIGNED`         | `BIGINT UNSIGNED`         | `UBIGINT`      | `Int64`      | `VARINT`           | `String`     |
-| `f32`                     | `REAL`         | `REAL`    | `FLOAT`                   | `FLOAT`                   | `FLOAT`        | `Double`     | `FLOAT`            | `String`     |
+| `f32`                     | `FLOAT4`       | `REAL`    | `FLOAT`                   | `FLOAT`                   | `FLOAT`        | `Double`     | `FLOAT`            | `String`     |
 | `f64`                     | `FLOAT8`       | `REAL`    | `DOUBLE`                  | `DOUBLE`                  | `DOUBLE`       | `Double`     | `DOUBLE`           | `String`     |
 | `rust_decimal::Decimal`   | `NUMERIC`      | `REAL`    | `DECIMAL`                 | `DECIMAL`                 | `DECIMAL`      | `Decimal128` | `DECIMAL`          | `String`     |
 | `tank::FixedDecimal<W,S>` | `NUMERIC(W,S)` | `REAL`    | `DECIMAL(W,S)`            | `DECIMAL(W,S)`            | `DECIMAL(W,S)` | `Decimal128` | `DECIMAL`          | `String`     |
@@ -39,6 +39,7 @@ Tank maps ordinary Rust types to the closest column types each driver supports, 
 | `time::Duration`          | `INTERVAL`     | ❌        | `TIME(6)`                 | `TIME(6)`                 | `INTERVAL`     | ❌           | `DURATION`         | ❌           |
 | `tank::Interval`          | `INTERVAL`     | ❌        | `TIME(6)`                 | `TIME(6)`                 | `INTERVAL`     | ❌           | `DURATION`         | ❌           |
 | `uuid::Uuid`              | `UUID`         | `TEXT`    | `CHAR(36)`                | `UUID`                    | `UUID`         | `Uuid`       | `UUID`             | `String`     |
+| `std::net::IpAddr`        | `INET`         | `TEXT`    | `VARCHAR(45)`             | `INET6`                   | `INET`         | `String`     | `INET`             | `String`     |
 | `[T; N]`                  | `T[N]`         | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[N]`         | `Array`      | `VECTOR<T,N>`      | `List`       |
 | `VecDeque<T>`             | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array`      | `LIST<T>`          | `List`       |
 | `LinkedList<T>`           | `T[]`          | ❌        | `JSON` ⚠️                 | `JSON` ⚠️                 | `T[]`          | `Array`      | `LIST<T>`          | `List`       |
@@ -50,17 +51,26 @@ Tank maps ordinary Rust types to the closest column types each driver supports, 
 > [!WARNING]
 > Fallback encodings such as `TEXT` or `JSON` have predictable encodings. Usually (but not always) equality and ordering comparisons behave as expected. Advanced indexing or operator support may vary by driver.
 >
-> Mappings do not imply the full Rust integer range: PostgreSQL's `NUMERIC(19)` cannot hold `u64::MAX`, SQLite and MongoDB limit `u64` to signed 64-bit values, and decimal-based 128-bit conversions have additional limits. The table assumes 64-bit builds for `isize`/`usize`; prefer explicit `i64`/`u64` for portable schemas.
+> Mappings do not imply the full Rust integer range: PostgreSQL's `NUMERIC(19)` cannot hold `u64::MAX`, SQLite and MongoDB limit `u64` to signed 64-bit values, and decimal-based 128-bit conversions have additional limits. The table assumes 64-bit builds for `isize`/`usize`. Prefer explicit `i64`/`u64` for portable schemas.
+>
+> `tank::Interval` keeps months, days and nanoseconds apart so calendar-aware durations survive a round trip. Build by calling `Interval::new(months, days, nanos)` or helpers such as `from_days`, `from_hours`, `from_months`, `from_years` and `from_duration`. `std::time::Duration` and `time::Duration` convert into it, while `as_duration(days_in_month)` converts back with a caller-supplied month length.
+>
+
+With the `chrono` feature of `tank` enabled, `chrono::NaiveDate`, `chrono::NaiveTime`, `chrono::NaiveDateTime`, `chrono::DateTime<Utc>` and `chrono::DateTime<FixedOffset>` follow the same mappings as their `time` counterparts: `Date`, `Time`, `PrimitiveDateTime` and `OffsetDateTime`.
 
 Driver-specific limits:
 - MariaDB's native `UUID` requires MariaDB mode and server 10.7+, MySQL mode uses `CHAR(36)`.
+- MariaDB `INET6` stores IPv4 addresses in IPv4-mapped IPv6 form. Tank normalizes them back to `IpAddr::V4` when decoding.
+- DuckDB `INET` comes from the `inet` core extension, autoloaded on first use. Plain addresses decode as `Value::IpAddr`. CIDR values decode as text (`address/mask`) because `IpAddr` has no mask.
 - MongoDB stores dates as BSON `DateTime` at UTC midnight. Timestamps use UTC milliseconds, losing original offsets and sub-millisecond precision.
 - ScyllaDB maps `[char; N]` to `ASCII`, not `VECTOR<T,N>`. Collection element/key types depend on the backend: Valkey requires scalar elements and map keys/values, and MongoDB requires string-convertible document keys.
-- Prepared parameters have additional restrictions: MySQL collections and DuckDB arrays/lists/maps are not supported, and ScyllaDB's `DURATION`, `TIMESTAMP`, and `VARINT` bindings are unimplemented. Valkey blob round trips are not supported reliably, despite Redis strings being binary-safe.
+- ScyllaDB has native `DURATION`, `TIMESTAMP`, `INET`, and `VARINT` columns and bindings, decoded as `tank::Value::{Interval, Timestamp, IpAddr, Int128, UInt128}`.
+- Prepared parameters have additional restrictions: MySQL collections and DuckDB arrays/lists/maps are not supported. Valkey blob round trips are not supported reliably, despite Redis strings being binary-safe.
 
 ## Wrapper Types
 Built-in wrappers usable directly in entities infer the SQL type from the inner type. Persisted fields must also be cloneable:
 - `Option<T>`: Nullable column.
+- `Cow<'static, str>`
 - `Box<T>`
 - `Cell<T>`
 - `RefCell<T>`

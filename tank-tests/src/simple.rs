@@ -8,8 +8,8 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use tank::{
-    Driver, DynQuery, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery, Result,
-    RowsAffected, Sql, SqlWriter, expr, stream::TryStreamExt,
+    AnyQuery, Driver, Entity, Executor, FixedDecimal, Query, QueryResult, RawQuery, Result,
+    RowsAffected, Sql, expr, stream::TryStreamExt,
 };
 use time::{Date, Time, macros::date};
 use tokio::sync::Mutex;
@@ -44,7 +44,6 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
 
     // Setup
     silent_logs! {
-        // Silent logs for Valkey/Redis
         SimpleFields::drop_table(executor, true, false).await?;
     }
     SimpleFields::create_table(executor, true, true).await?;
@@ -98,16 +97,17 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
     // Simple 1 - multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
-        let writer = executor.driver().sql_writer();
-        let mut query = DynQuery::default();
-        writer.write_delete(&mut query, SimpleFields::table(), false); // Does not delete anything
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select(SimpleFields::columns())
-                .from(SimpleFields::table())
-                .where_expr(true),
-        );
+        let driver = executor.driver();
+        let mut query = AnyQuery::default();
+        Sql()
+            .delete_from(SimpleFields::table())
+            .where_expr(false)
+            .write_into(&driver.sql_writer(), &mut query); // Does not delete anything
+        Sql()
+            .select(SimpleFields::columns())
+            .from(SimpleFields::table())
+            .where_expr(true)
+            .write_into(&driver.sql_writer(), &mut query);
         {
             let mut stream = pin!(executor.run(query));
             let result = stream.try_next().await?;
@@ -203,20 +203,20 @@ pub async fn simple(executor: &mut impl Executor) -> Result<()> {
     // Simple 2 - multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
-        let writer = executor.driver().sql_writer();
-        let mut query = DynQuery::default();
-        writer.write_delete(&mut query, SimpleFields::table(), true);
-        writer.write_insert(
-            &mut query,
-            Sql().insert_into(SimpleFields::table()).values(&[entity]),
-        );
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select(SimpleFields::columns())
-                .from(SimpleFields::table())
-                .where_expr(true),
-        );
+        let driver = executor.driver();
+        let mut query = AnyQuery::default();
+        Sql()
+            .delete_from(SimpleFields::table())
+            .write_into(&driver.sql_writer(), &mut query);
+        Sql()
+            .insert_into(SimpleFields::table())
+            .values(&[entity])
+            .write_into(&driver.sql_writer(), &mut query);
+        Sql()
+            .select(SimpleFields::columns())
+            .from(SimpleFields::table())
+            .where_expr(true)
+            .write_into(&driver.sql_writer(), &mut query);
         {
             let mut stream = pin!(executor.run(query));
             let Some(QueryResult::Affected(RowsAffected { rows_affected, .. })) =

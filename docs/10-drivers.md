@@ -40,10 +40,11 @@ Create `tank-yourdb` in your favorite source repository.
 
 ### 2. Connection + Executor
 Responsibilities:
-- Validate and parse URL (enforce `yourdb://` prefix)
+- Validate and parse URL (enforce `yourdb://` prefix) (`Self::sanitize_url`).
 - Open backend session(s) (pool if applicable)
 - Implement `do_prepare` for raw SQL preparation, if supported, and `run` to stream `QueryResult::{Row,Affected}`
 - Return `false` from `accepts_multiple_statements` on executors that cannot accept statement batches.
+- Override `batch_size` when the server limits a request below `MAX_BATCH_SIZE` (15 MiB). MySQL uses `max_allowed_packet`, ScyllaDB its batch threshold.
 - Optionally implement fast-path bulk `append` (DuckDB style)
 
 Skeleton:
@@ -51,7 +52,7 @@ Skeleton:
 <<< @/../tank-yourdb/src/connection.rs
 
 ### 3. Prepared Statements
-Implement parameter binding according to the backend type system. Convert each Rust value (via `AsValue`) into the native representation.
+Implement parameter binding according to the backend type system. Convert each Rust value (via `AsValue`) into the native representation. The trait covers `bind` (append the next value), `bind_index` (set a 0-based position), `clear_bindings` and `is_empty`.
 
 Keep one doctrine in mind: a `Prepared` value is driver-local executable state, not portable SQL text. Make `Display`/`Debug` useful for diagnostics and errors, but execute prepared handles through the owning driver.
 
@@ -59,19 +60,34 @@ Keep one doctrine in mind: a `Prepared` value is driver-local executable state, 
 
 ### 4. SQL Writer (`SqlWriter`)
 
-`SqlWriter` owns complete statements (`write_create_table`, `write_select`, `write_insert`, `write_delete`, `write_drop_table`, transactions) and smaller query fragments. Driver authors implement `as_dyn` and override only dialect differences.
+The writer is split by concern across five traits, all in `tank-core`:
+
+| Trait                 | Writes                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| `SqlCoreWriter`       | Identifiers, table and column references, type names. Declares `as_dyn`              |
+| `SqlValueWriter`      | Literals: strings, numbers, date/time, intervals, UUIDs, IPs, lists, maps, JSON      |
+| `SqlExpressionWriter` | Operands, operators and precedence, functions, `CASE`, `CAST`                        |
+| `SqlFragmentWriter`   | Building blocks of statements: joins, column definitions, pagination, upsert clauses |
+| `SqlWriter`           | Complete statements: `write_create_table`, `write_select`, `write_insert`            |
+|                       |`write_update`, `write_delete`, `write_drop_table` and transactions                   |
+
+Callers emitting complete statements only need `SqlWriter` in scope, which requires the other four. A driver implements `SqlCoreWriter` (including `as_dyn`) and the traits it overrides, then opts into the rest with empty `impl` blocks.
 
 Override only differences from the generic fallback:
 - Identifier quoting style
 - Column type mapping
-- Literal escaping quirks (BLOB, INTERVAL, UUID, arrays)
+- `column_type` overrides via `write_column_overridden_type`, keyed by the driver name (`postgres`, `sqlite`, `mysql`, `mariadb`, `duckdb`, `scylladb`, `cassandra`)
+- Literal escaping quirks (BLOB, INTERVAL, UUID, INET, arrays)
 - Parameter placeholder (override `write_question_mark`) if not `?`
 - Schema operations (override as no-ops if the engine lacks schemas, as SQLite does)
+- Pagination syntax via `write_limit_offset` if an offset needs a limit or different keywords
 - Upsert syntax via `write_insert_update_fragment` if divergence
 
-Call writer methods directly; overrides are dispatched normally. Use `self.as_dyn()` when passing the writer to an expression or dataset interface that requires a trait object.
+Every hook receives a `&mut Context` describing where in the statement it is writing: the current `Fragment` (`SqlSelectWhere`, `SqlJoin`, `Casting`, `Json`, and so on), the table in scope and whether columns are qualified. Use `switch_fragment` when one statement nests another, such as a `SELECT` doing the work of an `INSERT`.
 
-Tip: Check `tank-core`'s `SqlWriter` default methods when overriding dialect behavior.
+Call writer methods directly. Overrides are dispatched normally. Use `self.as_dyn()` when passing the writer to an expression or dataset interface that requires a trait object, and in a default method that must reach a method declared on a sibling trait. The generic fallback is [`GenericSqlWriter`](https://docs.rs/tank/latest/tank/struct.GenericSqlWriter.html), call it to reuse a default implementation inside an override.
+
+Tip: Check the default methods of the writer traits in `tank-core` when overriding dialect behavior.
 
 <<< @/../tank-yourdb/src/sql_writer.rs
 
@@ -92,9 +108,11 @@ Enable feature flags to disable specific functionality until green.
 ### Feature Flags
 `tank-tests` exposes opt-out switches to avoid testing the driver on unsupported features:
 - `disable-arrays`: fixed-size arrays (example: `[u8; 13]`)
+- `disable-case`: conditional expressions (`if`, `match`, `CASE`) not supported
 - `disable-glob`: `GLOB` pattern matching not supported
 - `disable-groups`: `GROUP BY` SQL semantic not supported
 - `disable-infinity`: infinite values for floating point numbers
+- `disable-insert-select`: `INSERT ... SELECT` not supported
 - `disable-intervals`: interval / duration value types
 - `disable-joins`: SQL join semantics
 - `disable-large-integers`: `i128`, `u128`, or full-range `u64` values unsupported
@@ -110,14 +128,14 @@ Enable feature flags to disable specific functionality until green.
 - `disable-ordering`: ordered result sets unsupported
 - `disable-references`: foreign keys not enforced
 - `disable-transactions`: no transactional support
+- `disable-updates`: plain `UPDATE` statements not supported
 
 ### 7. Tactical Checklist
-- URL prefix enforced (`yourdb://`)
-- `Driver::NAME` correct and used consistently
+- URL prefixes enforced, every alias listed in `Driver::NAME` with the primary name first, as in `&["mysql", "mariadb"]`
 - `prepare` handles multiple statements cleanly, or rejects them with an explicit error
 - Streams drop promptly (no leaked locks or file handles)
 - For SQL-text drivers, `SqlWriter` prints multi-statement sequences with proper separators and terminal `;`
-- Upsert path (`save()`) works if PK exists; documented fallback if not supported
+- Upsert path (`save()`) works if PK exists, with a documented fallback if not supported
 
 Remove a flag the moment your driver truly supports the capability. Each removed flag unlocks corresponding test sorties.
 
@@ -130,7 +148,7 @@ Remove a flag the moment your driver truly supports the capability. Each removed
 Return early with rich context:
 - Return errors for recoverable failures rather than panicking
 - Wrong URL prefix: immediate `anyhow!("YourDB connection URL must start with yourdb://")`
-- Prepare failure: attach truncated query text (`truncate_long!` style) to context
+- Prepare failure: attach truncated query text (`truncate_long` style) to context
 - Bind failure: specify parameter index and offending value type
 
 *Forge the chassis. Calibrate the barrel. Roll new armor onto the field.*

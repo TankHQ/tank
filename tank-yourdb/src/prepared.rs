@@ -7,7 +7,7 @@ pub struct YourDBPrepared {
 }
 
 impl YourDBPrepared {
-    pub(crate) fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self { index: 0 }
     }
 }

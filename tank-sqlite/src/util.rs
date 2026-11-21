@@ -75,3 +75,17 @@ impl<T: NullCheck> DerefMut for CBox<T> {
 
 unsafe impl<T: NullCheck> Send for CBox<T> {}
 unsafe impl<T: NullCheck> Sync for CBox<T> {}
+
+#[macro_export]
+macro_rules! ensure_rc {
+    ($value:expr, $error:expr $(, $context:expr)? $(,)?) => {{
+        let value = $value;
+        if value != ::libsqlite3_sys::SQLITE_OK {
+            ::std::hint::cold_path();
+            return Err($error)
+                $(.context($context))?
+                .inspect_err(|e| ::log::error!("{e:#}"));
+        }
+        value
+    }};
+}
