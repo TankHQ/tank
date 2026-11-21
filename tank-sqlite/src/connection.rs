@@ -36,8 +36,13 @@ impl SQLiteConnection {
         }
     }
 
-    fn do_prepare<const SINGLE_STATEMENT: bool>(&mut self, sql: &str) -> Result<SQLitePrepared> {
-        let prepared = unsafe {
+    /// Prepares the first statement in `sql`, returning it and the bytes it consumed.
+    /// With `SINGLE_STATEMENT` a statement is required and the rest must hold no other.
+    pub(crate) fn prepare_statement<const SINGLE_STATEMENT: bool>(
+        &mut self,
+        sql: &str,
+    ) -> Result<(SQLitePrepared, usize)> {
+        let (prepared, consumed) = unsafe {
             let make_context = || format!("While preparing the query:\n{}", truncate_long(sql));
             let len = c_int::try_from(sql.len())?;
             let ptr = sql.as_ptr().cast();
@@ -57,54 +62,58 @@ impl SQLiteConnection {
                 Self::last_error(*self.handle),
                 make_context(),
             );
-            if statement.is_null() || tail != ptr.add(sql.len()) {
+            // SQLite stops after the first statement's semicolon or at a NUL byte.
+            let consumed = (tail as usize).wrapping_sub(ptr as usize);
+            // A prepared statement must hold one, unlike the stream walking empty statements.
+            if SINGLE_STATEMENT && statement.is_null() {
                 hint::cold_path();
-                let offset = (tail as usize).wrapping_sub(ptr as usize);
-                // SQLite stops after the first statement's semicolon or at a NUL byte.
-                // The rest must parse whole without a statement: whitespace, comments or empty statements.
-                check_rest(*self.handle, sql, offset, !statement.is_null())?;
-                #[inline(never)]
-                fn check_rest(
-                    handle: *mut sqlite3,
-                    sql: &str,
-                    offset: usize,
-                    has_statement: bool,
-                ) -> Result<()> {
-                    let rest = sql.get(offset..).unwrap_or(sql);
-                    let mut extra = CBox::new(ptr::null_mut(), |p| unsafe {
-                        sqlite3_finalize(p);
-                    });
-                    let mut tail = ptr::null();
-                    if has_statement
-                        && unsafe {
-                            sqlite3_prepare_v2(
-                                handle,
-                                rest.as_ptr().cast(),
-                                rest.len() as _,
-                                &mut *extra,
-                                &mut tail,
-                            )
-                        } == SQLITE_OK
-                        && extra.is_null()
-                        && tail.cast() == rest.as_ptr().wrapping_add(rest.len())
-                    {
-                        return Ok(());
-                    }
-                    let error = anyhow!(
-                        "Expected exactly one statement (remaining: {})",
-                        truncate_long(rest)
-                    )
-                    .context(format!(
-                        "While preparing the query:\n{}",
-                        truncate_long(sql)
-                    ));
-                    log::error!("{error:#}");
-                    Err(error)
-                }
+                let error = anyhow!("No statement to prepare").context(make_context());
+                log::error!("{error:#}");
+                return Err(error);
             }
-            statement
+            // Anything left after the statement must parse as no further statement.
+            if SINGLE_STATEMENT && consumed != sql.len() {
+                hint::cold_path();
+                // The rest must parse as no statement: whitespace, comments or empty statements.
+                check_rest(*self.handle, sql, consumed)?;
+            }
+            (statement, consumed)
         };
-        Ok(SQLitePrepared::new(prepared))
+
+        #[inline(never)]
+        fn check_rest(handle: *mut sqlite3, sql: &str, offset: usize) -> Result<()> {
+            let rest = sql.get(offset..).unwrap_or_default();
+            let mut extra = CBox::new(ptr::null_mut(), |p| unsafe {
+                sqlite3_finalize(p);
+            });
+            let mut tail = ptr::null();
+            if unsafe {
+                sqlite3_prepare_v2(
+                    handle,
+                    rest.as_ptr().cast(),
+                    c_int::try_from(rest.len())?,
+                    &mut *extra,
+                    &mut tail,
+                )
+            } == SQLITE_OK
+                && extra.is_null()
+                && tail.cast() == rest.as_ptr().wrapping_add(rest.len())
+            {
+                return Ok(());
+            }
+            let error = anyhow!(
+                "Expected exactly one statement (remaining: {})",
+                truncate_long(rest)
+            )
+            .context(format!(
+                "While preparing the query:\n{}",
+                truncate_long(sql)
+            ));
+            log::error!("{error:#}");
+            Err(error)
+        }
+
+        Ok((SQLitePrepared::new(prepared), consumed))
     }
 
     #[inline(always)]
@@ -146,7 +155,9 @@ impl SQLiteConnection {
                 .columns(table.columns.iter().map(ColumnDef::name))
                 .values([iter::repeat_n(&Operand::QuestionMark, table.columns.len())])
                 .write_into(&self.driver().sql_writer(), &mut out);
-            let prepared = self.do_prepare::<true>(out.buffer());
+            let prepared = self
+                .prepare_statement::<true>(out.buffer())
+                .map(|(prepared, _)| prepared);
             self.draft = out;
             prepared?
         };
@@ -247,7 +258,8 @@ impl Executor for SQLiteConnection {
     type Driver = SQLiteDriver;
 
     async fn do_prepare(&mut self, sql: &str) -> Result<SQLitePrepared> {
-        self.do_prepare::<true>(sql)
+        self.prepare_statement::<true>(sql)
+            .map(|(prepared, _)| prepared)
     }
 
     fn run<'s>(

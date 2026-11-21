@@ -1,8 +1,6 @@
-use crate::{CBox, SQLiteConnection, SQLiteDriver, SQLitePrepared, SQLiteRow, ensure_rc};
+use crate::{SQLiteConnection, SQLiteDriver, SQLitePrepared, SQLiteRow};
 use libsqlite3_sys::*;
 use std::{
-    ffi::{c_char, c_int},
-    hint,
     pin::Pin,
     ptr,
     task::{Context, Poll},
@@ -111,33 +109,8 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                         self.done = true;
                         return Ok(None);
                     }
-                    let len = c_int::try_from(sql.len() - self.offset)?;
-                    let ptr = sql.as_ptr().add(self.offset) as *const c_char;
-                    let mut statement = SQLitePrepared::new(CBox::new(ptr::null_mut(), |p| {
-                        if sqlite3_finalize(p) != SQLITE_OK {
-                            hint::cold_path();
-                            log::error!(
-                                "{:#}",
-                                SQLiteConnection::last_error(sqlite3_db_handle(p))
-                                    .context("While finalizing a prepared statement")
-                            );
-                        }
-                    }));
-                    let mut tail = ptr::null();
-                    ensure_rc!(
-                        sqlite3_prepare_v2(
-                            *self.connection.handle,
-                            ptr,
-                            len,
-                            &mut *statement.statement,
-                            &mut tail,
-                        ),
-                        {
-                            self.done = true;
-                            SQLiteConnection::last_error(*self.connection.handle)
-                        }
-                    );
-                    let consumed = tail.offset_from(ptr) as usize;
+                    let rest = sql.get(self.offset..).unwrap_or_default();
+                    let (statement, consumed) = self.connection.prepare_statement::<false>(rest)?;
                     if consumed == 0 {
                         self.done = true;
                         return Err(Error::msg(

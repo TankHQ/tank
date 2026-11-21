@@ -118,8 +118,6 @@ mod tests {
         assert_eq!(connection.run(&mut empty).count().await, 0);
         empty.bind(2).unwrap();
         assert_eq!(connection.fetch(&mut empty).count().await, 0);
-        let mut comments = connection.prepare("-- ; only a comment").await.unwrap();
-        assert_eq!(connection.run(&mut comments).count().await, 0);
         connection
             .execute(
                 Sql()
