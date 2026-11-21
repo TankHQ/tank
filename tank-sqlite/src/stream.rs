@@ -15,7 +15,7 @@ pub(crate) struct SQLiteStream<'s, Q: AsMut<Query<SQLiteDriver>>> {
     query: Q,
     statement: Option<SQLitePrepared>,
     offset: usize,
-    generation: usize,
+    stream_started: bool,
     remaining: u16,
     is_initialized: bool,
     active: bool,
@@ -31,7 +31,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
             query,
             statement: None,
             offset: 0,
-            generation: 0,
+            stream_started: false,
             remaining: Self::BATCH_SIZE,
             is_initialized: false,
             active: false,
@@ -130,7 +130,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                 },
                 Query::Prepared(prepared) => {
                     let statement = *prepared.statement;
-                    if self.generation != 0 || statement.is_null() {
+                    if self.stream_started || statement.is_null() {
                         self.done = true;
                         return Ok(None);
                     }
@@ -142,7 +142,8 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                     }
                 }
             }
-            self.generation += 1;
+            // Set before stepping so a finished prepared statement is not started again.
+            self.stream_started = true;
             self.active = true;
             let statement = self.statement();
             if sqlite3_column_count(statement) > 0 {
