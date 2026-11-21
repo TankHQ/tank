@@ -113,9 +113,9 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                             self.done = true;
                             return Ok(None);
                         }
-                        let rest = sql.get(self.offset..).unwrap_or_default();
-                        let (statement, consumed) =
-                            self.connection.prepare_statement::<false>(rest)?;
+                        let (statement, consumed) = self.connection.prepare_statement::<false>(
+                            sql.get(self.offset..).unwrap_or_default(),
+                        )?;
                         if consumed == 0 {
                             hint::cold_path();
                             self.done = true;
@@ -153,25 +153,24 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                 self.active = true;
                 let statement = self.statement();
                 if sqlite3_column_count(statement) > 0 {
-                    if let Some(row) = self.row()? {
-                        return Ok(Some(QueryResult::Row(row)));
-                    }
-                    // An empty result set must not end the stream while statements remain.
-                    continue;
+                    return Ok(None);
                 }
                 let connection = *self.connection.handle;
                 let before = sqlite3_total_changes64(connection);
                 while self.row()?.is_some() {}
                 // changes64 is stale after DDL; total_changes distinguishes it from DML.
                 // Use changes64 rather than the delta to exclude trigger side effects.
-                return Ok(Some(QueryResult::Affected(RowsAffected {
-                    rows_affected: Some(if sqlite3_total_changes64(connection) != before {
-                        sqlite3_changes64(connection) as u64
-                    } else {
-                        0
-                    }),
-                    last_affected_id: Some(sqlite3_last_insert_rowid(connection)),
-                })));
+                return Ok(Some(
+                    RowsAffected {
+                        rows_affected: Some(if sqlite3_total_changes64(connection) != before {
+                            sqlite3_changes64(connection) as u64
+                        } else {
+                            0
+                        }),
+                        last_affected_id: Some(sqlite3_last_insert_rowid(connection)),
+                    }
+                    .into(),
+                ));
             }
         }
     }
