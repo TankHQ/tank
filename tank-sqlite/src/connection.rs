@@ -37,7 +37,6 @@ impl SQLiteConnection {
     }
 
     /// Prepares the first statement in `sql`, returning it and the bytes it consumed.
-    /// With `SINGLE_STATEMENT` a statement is required and the rest must hold no other.
     pub(crate) fn prepare_statement<const SINGLE_STATEMENT: bool>(
         &mut self,
         sql: &str,

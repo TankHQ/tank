@@ -1,6 +1,7 @@
 use crate::{SQLiteConnection, SQLiteDriver, SQLitePrepared, SQLiteRow};
 use libsqlite3_sys::*;
 use std::{
+    hint,
     pin::Pin,
     ptr,
     task::{Context, Poll},
@@ -112,6 +113,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                     let rest = sql.get(self.offset..).unwrap_or_default();
                     let (statement, consumed) = self.connection.prepare_statement::<false>(rest)?;
                     if consumed == 0 {
+                        hint::cold_path();
                         self.done = true;
                         return Err(Error::msg(
                             "SQLite made no progress while preparing the query",
