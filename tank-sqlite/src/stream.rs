@@ -11,16 +11,16 @@ use tank_core::{
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum State {
-    Next,
-    Stepping,
-    Done,
+    Next,     // Advance in the SQL and prepare another statement
+    Stepping, // Do step on the current prepared statemenet
+    Done,     // The stream is done
 }
 
 /// Lazily runs one prepared statement or each statement in raw SQL, yielding rows or effects.
 pub(crate) struct SQLiteStream<'s, Q: AsMut<Query<SQLiteDriver>>> {
     connection: &'s mut SQLiteConnection,
     query: Q,
-    statement: Option<SQLitePrepared>,
+    current_statement: Option<SQLitePrepared>,
     offset: usize,
     remaining: u16,
     state: State,
@@ -34,7 +34,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
         Self {
             connection,
             query,
-            statement: None,
+            current_statement: None,
             offset: 0,
             remaining: Self::BATCH_SIZE,
             state: State::Next,
@@ -44,23 +44,23 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
     #[cold]
     #[inline(never)]
     fn abort(&mut self, error: Error) -> Error {
-        self.statement = None;
+        self.current_statement = None;
         self.state = State::Done;
         error
     }
 
     /// Steps the active row-returning statement whose column labels are already initialized.
     #[inline(always)]
-    fn step_active(&mut self) -> Result<Option<SQLiteRow>> {
+    fn do_step_current_prepared(&mut self) -> Result<Option<SQLiteRow>> {
         let prepared = match self.query.as_mut() {
             Query::Prepared(prepared) => Some(prepared),
-            Query::Raw(_) => self.statement.as_mut(),
+            Query::Raw(_) => self.current_statement.as_mut(),
         };
         let Some(prepared) = prepared else {
             hint::cold_path();
             return Err(anyhow!("Active SQLite stream has no statement"));
         };
-        prepared.step_row(false)
+        prepared.do_step_row(false)
     }
 
     /// Releases the current statement and moves to the next state.
@@ -71,7 +71,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                 self.state = State::Done;
             }
             Query::Raw(_) => {
-                self.statement = None;
+                self.current_statement = None;
                 self.state = State::Next;
             }
         }
@@ -80,7 +80,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
     /// Starts the next statement, yielding its affected count or first row.
     #[cold]
     #[inline(never)]
-    fn advance(&mut self) -> Result<Option<QueryResult<SQLiteRow>>> {
+    fn prepare_next_statement(&mut self) -> Result<Option<QueryResult<SQLiteRow>>> {
         loop {
             if self.state == State::Done {
                 return Ok(None);
@@ -104,7 +104,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                     }
                     self.offset += consumed;
                     if !statement.is_empty() {
-                        break self.statement.insert(statement);
+                        break self.current_statement.insert(statement);
                     }
                 },
                 Query::Prepared(prepared) => {
@@ -150,18 +150,19 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Stream for SQLiteStream<'_, Q> {
         }
         this.remaining -= 1;
         if this.state == State::Stepping {
-            match this.step_active() {
+            match this.do_step_current_prepared() {
                 Ok(Some(row)) => return Poll::Ready(Some(Ok(QueryResult::Row(row)))),
                 Ok(None) => this.finish_statement(),
                 Err(error) => return Poll::Ready(Some(Err(this.abort(error)))),
             }
         }
         if this.state == State::Done {
-            return Poll::Ready(None);
-        }
-        match this.advance() {
-            Ok(item) => Poll::Ready(item.map(Ok)),
-            Err(error) => Poll::Ready(Some(Err(this.abort(error)))),
+            Poll::Ready(None)
+        } else {
+            match this.prepare_next_statement() {
+                Ok(item) => Poll::Ready(item.map(Ok)),
+                Err(error) => Poll::Ready(Some(Err(this.abort(error)))),
+            }
         }
     }
 }
@@ -171,6 +172,5 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Drop for SQLiteStream<'_, Q> {
         if let Query::Prepared(prepared) = self.query.as_mut() {
             let _ = prepared.clear_bindings();
         }
-        // Any active raw `self.statement` is finished and finalized by `SQLitePrepared::drop`.
     }
 }

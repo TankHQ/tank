@@ -65,7 +65,12 @@ impl SQLitePrepared {
         let columns = unsafe { sqlite3_column_count(statement) };
         let recompiled =
             unsafe { sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_REPREPARE, 1) } != 0;
-        if self.row.as_ref().is_none_or(|row| row.len() != columns as usize) || recompiled {
+        if self
+            .row
+            .as_ref()
+            .is_none_or(|row| row.len() != columns as usize)
+            || recompiled
+        {
             let labels = (0..columns)
                 .map(|index| unsafe {
                     let name = sqlite3_column_name(statement, index);
@@ -83,7 +88,7 @@ impl SQLitePrepared {
 
     /// Steps once, returning the next row or `None` at `SQLITE_DONE`.
     #[inline(always)]
-    pub(crate) fn step_row(&mut self, initialize: bool) -> Result<Option<SQLiteRow>> {
+    pub(crate) fn do_step_row(&mut self, initialize: bool) -> Result<Option<SQLiteRow>> {
         let statement = *self.statement;
         match unsafe { sqlite3_step(statement) } {
             SQLITE_ROW => {
@@ -117,7 +122,7 @@ impl SQLitePrepared {
     pub(crate) fn start(&mut self) -> Result<Option<QueryResult<SQLiteRow>>> {
         let statement = *self.statement;
         if unsafe { sqlite3_column_count(statement) } > 0 {
-            return self.step_row(true).map(|row| row.map(QueryResult::Row));
+            return self.do_step_row(true).map(|row| row.map(QueryResult::Row));
         }
         unsafe {
             let handle = sqlite3_db_handle(statement);
