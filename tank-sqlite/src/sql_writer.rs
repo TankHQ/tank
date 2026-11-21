@@ -1,6 +1,5 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    fmt::Write,
     mem,
 };
 use tank_core::{
@@ -61,7 +60,8 @@ impl SqlCoreWriter for SQLiteSqlWriter {
     }
 
     fn write_table_ref(&self, context: &mut Context, out: &mut AnyQuery, value: &TableRef) {
-        if self.is_alias_declaration(context) || value.alias.is_empty() {
+        let alias_declaration = self.is_alias_declaration(context);
+        if alias_declaration || value.alias.is_empty() {
             out.push('"');
             if !value.schema.is_empty() {
                 write_escaped(out, &value.schema, '"', "\"\"");
@@ -71,7 +71,10 @@ impl SqlCoreWriter for SQLiteSqlWriter {
             out.push('"');
         }
         if !value.alias.is_empty() {
-            let _ = write!(out, " {}", value.alias);
+            if alias_declaration {
+                out.push(' ');
+            }
+            out.push_str(&value.alias);
         }
     }
 
@@ -137,7 +140,7 @@ impl SqlValueWriter for SQLiteSqlWriter {
 
     fn write_blob(&self, _context: &mut Context, out: &mut AnyQuery, value: &[u8]) {
         const HEX: &[u8; 16] = b"0123456789ABCDEF";
-        out.buffer().reserve(3 * value.len() + 3);
+        out.buffer().reserve(2 * value.len() + 3);
         out.push_str("X'");
         for &b in value {
             out.push(HEX[(b >> 4) as usize] as char);

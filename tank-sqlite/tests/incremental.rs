@@ -1,6 +1,8 @@
+use serde_json::{Value as JsonValue, json};
 use std::{
     borrow::Cow,
     future::Future,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     pin::pin,
     task::{Context, Waker},
 };
@@ -772,4 +774,122 @@ async fn append_cancellation_rollback() {
             .unwrap()
             .is_none()
     );
+}
+
+#[tokio::test]
+async fn bind_ipaddr_json() {
+    init_logs();
+    #[derive(Entity, Debug, PartialEq)]
+    struct NetDoc {
+        #[tank(primary_key)]
+        id: i64,
+        addr: IpAddr,
+        payload: JsonValue,
+        optional_payload: Option<JsonValue>,
+    }
+
+    let mut connection =
+        SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+            .await
+            .unwrap();
+    NetDoc::create_table(&mut connection, false, false)
+        .await
+        .unwrap();
+
+    let items = vec![
+        NetDoc {
+            id: 1,
+            addr: IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1)),
+            payload: json!({"ok": true, "counts": [1, 2, 3]}),
+            optional_payload: Some(json!("hello")),
+        },
+        NetDoc {
+            id: 2,
+            addr: IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)),
+            payload: json!([1, "two", null]),
+            optional_payload: None,
+        },
+    ];
+    let affected = NetDoc::insert_many(&mut connection, &items).await.unwrap();
+    assert_eq!(affected.rows_affected, Some(2));
+    let loaded = NetDoc::find_many(&mut connection, true, None)
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap();
+    assert_eq!(loaded, items);
+
+    let mut prepared = connection.prepare("SELECT ?, ?, ?").await.unwrap();
+    prepared
+        .bind(IpAddr::V6(Ipv6Addr::LOCALHOST))
+        .unwrap()
+        .bind(json!({"nested": [1, "a"]}))
+        .unwrap()
+        .bind(json!(null))
+        .unwrap();
+    let row = connection
+        .fetch(&mut prepared)
+        .try_next()
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        IpAddr::decode_value(row.value(0).unwrap()).unwrap(),
+        IpAddr::V6(Ipv6Addr::LOCALHOST)
+    );
+    assert_eq!(
+        JsonValue::decode_value(row.value(1).unwrap()).unwrap(),
+        json!({"nested": [1, "a"]})
+    );
+    assert_eq!(row.value(2).unwrap().as_ref(), &Value::Null);
+}
+
+#[tokio::test]
+async fn transaction_manual_end() {
+    init_logs();
+    let mut connection =
+        SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+            .await
+            .unwrap();
+    connection
+        .execute("CREATE TABLE items (id INTEGER PRIMARY KEY)")
+        .await
+        .unwrap();
+    {
+        let mut tx = connection.begin().await.unwrap();
+        tx.execute("INSERT INTO items VALUES (1)").await.unwrap();
+        tx.execute("COMMIT").await.unwrap();
+        // Dropping after manual COMMIT must not attempt a spurious ROLLBACK.
+    }
+    {
+        let mut tx = connection.begin().await.unwrap();
+        tx.execute("INSERT INTO items VALUES (2)").await.unwrap();
+        tx.execute("ROLLBACK").await.unwrap();
+        // Dropping after manual ROLLBACK must not attempt a second ROLLBACK.
+    }
+    let rows = connection
+        .fetch("SELECT id FROM items ORDER BY id")
+        .map_ok(|row| i64::decode_value(row.value(0).unwrap()).unwrap())
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap();
+    assert_eq!(rows, [1]);
+}
+
+#[tokio::test]
+async fn empty_append_noop() {
+    init_logs();
+    #[derive(Entity)]
+    struct MissingTable {
+        id: i64,
+    }
+
+    let mut connection =
+        SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+            .await
+            .unwrap();
+    let affected = MissingTable::insert_many(&mut connection, std::iter::empty::<MissingTable>())
+        .await
+        .unwrap();
+    assert_eq!(affected.rows_affected, None);
+    assert_eq!(affected.last_affected_id, None);
 }

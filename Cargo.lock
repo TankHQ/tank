@@ -330,23 +330,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bindgen"
-version = "0.73.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "787ef8ef523575546b106a58213d6e6b06198a05c2f757258c68a74273670cfa"
-dependencies = [
- "bitflags",
- "cexpr",
- "clang-sys",
- "proc-macro2",
- "quote",
- "regex",
- "rustc-hash",
- "shlex 2.0.1",
- "syn 3.0.10",
-]
-
-[[package]]
 name = "bit-vec"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2065,7 +2048,7 @@ version = "1.20001.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1c27e11ec482b43f1e55c782835ec441b3f188a065bfa0d8962b1ba678711ed"
 dependencies = [
- "bindgen 0.72.1",
+ "bindgen",
  "cc",
  "flate2",
  "pkg-config",
@@ -2101,7 +2084,6 @@ version = "0.40.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b06e69070b7e12262b0cd90832f0a7396f142a2b330181255562decf9f0c6215"
 dependencies = [
- "bindgen 0.73.2",
  "cc",
  "pkg-config",
  "vcpkg",
@@ -4001,6 +3983,7 @@ dependencies = [
  "libsqlite3-sys",
  "log",
  "rust_decimal",
+ "serde_json",
  "tank",
  "tank-core",
  "tank-tests",

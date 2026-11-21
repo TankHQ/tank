@@ -1,7 +1,9 @@
 #[cfg(test)]
 mod tests {
     use std::{path::Path, sync::Mutex};
-    use tank_core::{ColumnDef, Connection, Executor, Sql, describe_path};
+    use tank_core::{
+        AsValue, ColumnDef, Connection, Executor, Row, Sql, describe_path, stream::TryStreamExt,
+    };
     use tank_sqlite::{SQLiteConnection, SQLiteDriver};
     use tank_tests::{init_logs, silent_logs};
     use tokio::fs;
@@ -182,5 +184,34 @@ mod tests {
 
         let bare = Url::parse("sqlite://").unwrap();
         assert_eq!(describe_path(&bare), "N/A");
+    }
+
+    #[tokio::test]
+    async fn busy_timeout_option() {
+        init_logs();
+        for (url, expected) in [
+            ("sqlite://:memory:", 5_000_i64),
+            ("sqlite://:memory:?busy_timeout=250", 250_i64),
+            ("sqlite://:memory:?busy_timeout=0", 0_i64),
+        ] {
+            let mut connection = SQLiteConnection::connect(&DRIVER, url.into())
+                .await
+                .unwrap();
+            let row = connection
+                .fetch("PRAGMA busy_timeout")
+                .try_next()
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(i64::decode_value(row.value(0).unwrap()).unwrap(), expected);
+        }
+        silent_logs! {
+            for invalid in [
+                "sqlite://:memory:?busy_timeout=-1",
+                "sqlite://:memory:?busy_timeout=abc",
+            ] {
+                assert!(SQLiteConnection::connect(&DRIVER, invalid.into()).await.is_err());
+            }
+        }
     }
 }

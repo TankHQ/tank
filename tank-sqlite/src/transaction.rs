@@ -57,6 +57,7 @@ impl<'c> SQLiteTransaction<'c> {
 impl Drop for SQLiteTransaction<'_> {
     fn drop(&mut self) {
         if !self.is_done
+            && !self.connection.is_autocommit()
             && let Err(error) = self.do_rollback()
         {
             log::error!(

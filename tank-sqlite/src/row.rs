@@ -1,7 +1,7 @@
-use crate::SQLiteConnection;
+use crate::RawDb;
 use anyhow::anyhow;
 use libsqlite3_sys::*;
-use std::{borrow::Cow, ffi::c_int, hint, ops::Range, slice, sync::Arc};
+use std::{borrow::Cow, ffi::c_int, hint, ops::Range, slice, str, sync::Arc};
 use tank_core::{Result, Row, RowLabels, RowOwned, Value};
 
 /// A stable row snapshot, independent of SQLite's transient column buffers.
@@ -25,6 +25,21 @@ struct SQLiteRowData {
 }
 
 impl SQLiteRowData {
+    #[cold]
+    #[inline(never)]
+    fn push_lossy(dst: &mut Vec<u8>, raw: &[u8]) {
+        let mut replacement = [0u8; 4];
+        let replacement = char::REPLACEMENT_CHARACTER
+            .encode_utf8(&mut replacement)
+            .as_bytes();
+        for chunk in raw.utf8_chunks() {
+            dst.extend_from_slice(chunk.valid().as_bytes());
+            if !chunk.invalid().is_empty() {
+                dst.extend_from_slice(replacement);
+            }
+        }
+    }
+
     fn new(labels: RowLabels) -> Self {
         Self {
             cells: (0..labels.len()).map(|_| Cell::Null).collect(),
@@ -33,7 +48,7 @@ impl SQLiteRowData {
         }
     }
 
-    fn read(&mut self, statement: *mut sqlite3_stmt) -> Result<()> {
+    fn read(&mut self, db: &RawDb, statement: *mut sqlite3_stmt) -> Result<()> {
         self.bytes.clear();
         for (index, cell) in self.cells.iter_mut().enumerate() {
             let index = index as c_int;
@@ -46,7 +61,7 @@ impl SQLiteRowData {
                         let data = if kind == SQLITE_TEXT {
                             sqlite3_column_text(statement, index)
                         } else {
-                            sqlite3_column_blob(statement, index).cast::<u8>()
+                            sqlite3_column_blob(statement, index) as _
                         };
                         let len = sqlite3_column_bytes(statement, index) as usize;
                         let start = self.bytes.len();
@@ -55,18 +70,19 @@ impl SQLiteRowData {
                             // Empty blobs can have a null pointer; text cannot, even when empty.
                             if kind == SQLITE_TEXT
                                 || len != 0
-                                || sqlite3_errcode(sqlite3_db_handle(statement)) == SQLITE_NOMEM
+                                || sqlite3_errcode(db.as_ptr()) == SQLITE_NOMEM
                             {
-                                return Err(SQLiteConnection::last_error(sqlite3_db_handle(
-                                    statement,
-                                ))
-                                .context(format!(
+                                return Err(db.last_error().context(format!(
                                     "Could not extract the column at index {index}"
                                 )));
                             }
                         } else {
-                            self.bytes
-                                .extend_from_slice(slice::from_raw_parts(data, len));
+                            let raw = slice::from_raw_parts(data, len);
+                            if kind == SQLITE_TEXT && str::from_utf8(raw).is_err() {
+                                Self::push_lossy(&mut self.bytes, raw);
+                            } else {
+                                self.bytes.extend_from_slice(raw);
+                            }
                         }
                         let range = start..self.bytes.len();
                         if kind == SQLITE_TEXT {
@@ -94,14 +110,14 @@ impl SQLiteRow {
     }
 
     #[inline(always)]
-    pub(crate) fn read(&mut self, statement: *mut sqlite3_stmt) -> Result<Self> {
+    pub(crate) fn read(&mut self, db: &RawDb, statement: *mut sqlite3_stmt) -> Result<Self> {
         match Arc::get_mut(&mut self.0) {
-            Some(data) => data.read(statement)?,
+            Some(data) => data.read(db, statement)?,
             None => {
                 hint::cold_path();
                 // A retained row keeps its snapshot. Otherwise subsequent polls reuse both buffers
                 let mut data = SQLiteRowData::new(self.0.labels.clone());
-                data.read(statement)?;
+                data.read(db, statement)?;
                 self.0 = Arc::new(data);
             }
         }
@@ -127,9 +143,15 @@ impl Row for SQLiteRow {
             Cell::Integer(value) => Value::Int64(Some(*value)),
             Cell::Float(value) => Value::Float64(Some(*value)),
             Cell::Text(range) => {
-                Value::Varchar(Some(String::from_utf8_lossy(&self.0.bytes[range.clone()])))
+                // `SQLiteRowData::read` guarantees every `Cell::Text` range is valid UTF-8.
+                let bytes = self.0.bytes.get(range.clone())?;
+                Value::Varchar(Some(Cow::Borrowed(unsafe {
+                    str::from_utf8_unchecked(bytes)
+                })))
             }
-            Cell::Blob(range) => Value::Blob(Some(Cow::Borrowed(&self.0.bytes[range.clone()]))),
+            Cell::Blob(range) => {
+                Value::Blob(Some(Cow::Borrowed(self.0.bytes.get(range.clone())?)))
+            }
         }))
     }
 

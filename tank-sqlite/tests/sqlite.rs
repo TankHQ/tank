@@ -12,7 +12,7 @@ mod tests {
     use tank::{
         AnyQuery, CollectionType, ColumnDef, ColumnRef, Connection, ConnectionPool, Context,
         Driver, Entity, Executor, Fragment, GenericSqlWriter, MapType, QueryResult, Row, Sql,
-        SqlCoreWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value,
+        SqlCoreWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value, cols, expr,
         stream::{StreamExt, TryStreamExt},
     };
     use tank_sqlite::{SQLiteConnection, SQLiteDriver};
@@ -427,6 +427,14 @@ mod tests {
         );
         assert_eq!(out.as_str(), "\"s.the\"\"table\" a");
 
+        let mut out = AnyQuery::default();
+        writer.write_table_ref(
+            &mut Context::fragment(Fragment::SqlSelect),
+            &mut out,
+            &table,
+        );
+        assert_eq!(out.as_str(), "a");
+
         let column = ColumnRef {
             name: "co\"l".into(),
             table: "t".into(),
@@ -510,5 +518,78 @@ mod tests {
         let mut out = AnyQuery::default();
         writer.write_limit_offset(&mut ctx, &mut out, None, Some(5));
         assert_eq!(out.as_str(), "\nLIMIT -1\nOFFSET 5");
+    }
+
+    #[tokio::test]
+    async fn affected_id_dml() {
+        init_logs();
+        let driver = SQLiteDriver::new();
+        let mut connection = SQLiteConnection::connect(&driver, "sqlite://:memory:".into())
+            .await
+            .unwrap();
+        let ddl = connection
+            .execute(
+                Sql()
+                    .create_table("items")
+                    .columns([
+                        ColumnDef::from_type::<i64>("id").primary_key(),
+                        ColumnDef::from_type::<String>("label"),
+                    ])
+                    .build(&driver),
+            )
+            .await
+            .unwrap();
+        assert_eq!(ddl.rows_affected, Some(0));
+        assert_eq!(ddl.last_affected_id, None);
+
+        let inserted = connection
+            .execute(
+                Sql()
+                    .insert_into("items")
+                    .columns(["label"])
+                    .values([["first"]])
+                    .build(&driver),
+            )
+            .await
+            .unwrap();
+        assert_eq!(inserted.rows_affected, Some(1));
+        assert_eq!(inserted.last_affected_id, Some(1));
+
+        let updated = connection
+            .execute(
+                Sql()
+                    .update("items")
+                    .set(cols!(label == "updated"))
+                    .where_expr(expr!(id == 1))
+                    .build(&driver),
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated.rows_affected, Some(1));
+        assert_eq!(updated.last_affected_id, None);
+
+        let deleted = connection
+            .execute(
+                Sql()
+                    .delete_from("items")
+                    .where_expr(expr!(id == 1))
+                    .build(&driver),
+            )
+            .await
+            .unwrap();
+        assert_eq!(deleted.rows_affected, Some(1));
+        assert_eq!(deleted.last_affected_id, None);
+
+        let after_ddl = connection
+            .execute(
+                Sql()
+                    .create_table("other")
+                    .columns([ColumnDef::from_type::<i64>("id")])
+                    .build(&driver),
+            )
+            .await
+            .unwrap();
+        assert_eq!(after_ddl.rows_affected, Some(0));
+        assert_eq!(after_ddl.last_affected_id, None);
     }
 }

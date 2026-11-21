@@ -77,61 +77,95 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
         }
     }
 
+    fn next_prepared(&mut self) -> Result<Option<&mut SQLitePrepared>> {
+        if self.state == State::Done {
+            return Ok(None);
+        }
+        match self.query.as_mut() {
+            Query::Raw(RawQuery(sql)) => loop {
+                let rest = sql.get(self.offset..).unwrap_or_default();
+                if rest.is_empty() {
+                    self.state = State::Done;
+                    return Ok(None);
+                }
+                let (statement, consumed) =
+                    self.connection.prepare_statement::<false, false>(rest)?;
+                if consumed == 0 {
+                    hint::cold_path();
+                    let error = anyhow!("SQLite made no progress while preparing the query")
+                        .context(format!(
+                            "At byte {} of:\n{}",
+                            self.offset,
+                            truncate_long(sql)
+                        ));
+                    log::error!("{error:#}");
+                    return Err(error);
+                }
+                self.offset += consumed;
+                if !statement.is_empty() {
+                    return Ok(Some(self.current_statement.insert(statement)));
+                }
+            },
+            Query::Prepared(prepared) => {
+                if prepared.is_empty() {
+                    self.state = State::Done;
+                    return Ok(None);
+                }
+                if !prepared.belongs_to(self.connection) {
+                    hint::cold_path();
+                    let error = anyhow!("Prepared statement belongs to another SQLite connection");
+                    log::error!("{error:#}");
+                    return Err(error);
+                }
+                Ok(Some(prepared))
+            }
+        }
+    }
+
     /// Starts the next statement, yielding its affected count or first row.
     #[cold]
     #[inline(never)]
     fn prepare_next_statement(&mut self) -> Result<Option<QueryResult<SQLiteRow>>> {
         loop {
-            if self.state == State::Done {
+            let Some(prepared) = self.next_prepared()? else {
                 return Ok(None);
-            }
-            let prepared = match self.query.as_mut() {
-                Query::Raw(RawQuery(sql)) => loop {
-                    let rest = sql.get(self.offset..).unwrap_or_default();
-                    if rest.is_empty() {
-                        self.state = State::Done;
-                        return Ok(None);
-                    }
-                    let (statement, consumed) = self.connection.prepare_statement::<false>(rest)?;
-                    if consumed == 0 {
-                        hint::cold_path();
-                        let error =
-                            anyhow!("SQLite made no progress while preparing the query").context(
-                                format!("At byte {} of:\n{}", self.offset, truncate_long(sql)),
-                            );
-                        log::error!("{error:#}");
-                        return Err(error);
-                    }
-                    self.offset += consumed;
-                    if !statement.is_empty() {
-                        break self.current_statement.insert(statement);
-                    }
-                },
-                Query::Prepared(prepared) => {
-                    if prepared.is_empty() {
-                        self.state = State::Done;
-                        return Ok(None);
-                    }
-                    if !prepared.belongs_to(self.connection) {
-                        hint::cold_path();
-                        let error =
-                            anyhow!("Prepared statement belongs to another SQLite connection");
-                        log::error!("{error:#}");
-                        return Err(error);
-                    }
-                    prepared
-                }
             };
-            match prepared.start()? {
-                Some(QueryResult::Row(row)) => {
+            match prepared.start() {
+                Ok(Some(QueryResult::Row(row))) => {
                     self.state = State::Stepping;
                     return Ok(Some(QueryResult::Row(row)));
                 }
-                Some(result) => {
+                Ok(Some(result)) => {
                     self.finish_statement();
                     return Ok(Some(result));
                 }
-                None => self.finish_statement(),
+                Ok(None) => self.finish_statement(),
+                Err(error) => {
+                    self.finish_statement();
+                    return Err(error);
+                }
+            }
+        }
+    }
+
+    /// Advances to the next row-producing statement, draining any columnless statements.
+    #[cold]
+    #[inline(never)]
+    fn prepare_next_row(&mut self) -> Result<Option<SQLiteRow>> {
+        loop {
+            let Some(prepared) = self.next_prepared()? else {
+                return Ok(None);
+            };
+            match prepared.start_row() {
+                Ok(Some(row)) => {
+                    self.state = State::Stepping;
+                    return Ok(Some(row));
+                }
+                Ok(None) => self.finish_statement(),
+                Err(error) => {
+                    self.finish_statement();
+                    return Err(error);
+                }
             }
         }
     }
@@ -153,7 +187,10 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Stream for SQLiteStream<'_, Q> {
             match this.do_step_current_prepared() {
                 Ok(Some(row)) => return Poll::Ready(Some(Ok(QueryResult::Row(row)))),
                 Ok(None) => this.finish_statement(),
-                Err(error) => return Poll::Ready(Some(Err(this.abort(error)))),
+                Err(error) => {
+                    this.finish_statement();
+                    return Poll::Ready(Some(Err(this.abort(error))));
+                }
             }
         }
         if this.state == State::Done {
@@ -169,8 +206,53 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Stream for SQLiteStream<'_, Q> {
 
 impl<Q: AsMut<Query<SQLiteDriver>>> Drop for SQLiteStream<'_, Q> {
     fn drop(&mut self) {
-        if let Query::Prepared(prepared) = self.query.as_mut() {
+        if self.state == State::Stepping
+            && let Query::Prepared(prepared) = self.query.as_mut()
+        {
             let _ = prepared.clear_bindings();
+        }
+    }
+}
+
+/// Row-only stream returned by `Executor::fetch`, avoiding `QueryResult` wrapping per row.
+pub(crate) struct SQLiteRowStream<'s, Q: AsMut<Query<SQLiteDriver>>>(SQLiteStream<'s, Q>);
+
+impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteRowStream<'s, Q> {
+    #[inline(always)]
+    pub(crate) const fn new(connection: &'s mut SQLiteConnection, query: Q) -> Self {
+        Self(SQLiteStream::new(connection, query))
+    }
+}
+
+impl<Q: AsMut<Query<SQLiteDriver>>> Stream for SQLiteRowStream<'_, Q> {
+    type Item = Result<SQLiteRow>;
+
+    #[inline(always)]
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = &mut unsafe { self.get_unchecked_mut() }.0;
+        if this.remaining == 0 {
+            this.remaining = SQLiteStream::<Q>::BATCH_SIZE;
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
+        this.remaining -= 1;
+        if this.state == State::Stepping {
+            match this.do_step_current_prepared() {
+                Ok(Some(row)) => return Poll::Ready(Some(Ok(row))),
+                Ok(None) => this.finish_statement(),
+                Err(error) => {
+                    this.finish_statement();
+                    return Poll::Ready(Some(Err(this.abort(error))));
+                }
+            }
+        }
+        if this.state == State::Done {
+            Poll::Ready(None)
+        } else {
+            match this.prepare_next_row() {
+                Ok(row) => Poll::Ready(row.map(Ok)),
+                Err(error) => Poll::Ready(Some(Err(this.abort(error)))),
+            }
         }
     }
 }
