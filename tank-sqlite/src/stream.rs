@@ -12,7 +12,7 @@ use tank_core::{
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum State {
+enum Status {
     Next,
     Stepping,
     Done,
@@ -25,7 +25,7 @@ pub(crate) struct SQLiteStream<'s, Q: AsMut<Query<SQLiteDriver>>> {
     statement: Option<SQLitePrepared>,
     offset: usize,
     remaining: u16,
-    state: State,
+    status: Status,
 }
 
 impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
@@ -39,7 +39,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
             statement: None,
             offset: 0,
             remaining: Self::BATCH_SIZE,
-            state: State::Next,
+            status: Status::Next,
         }
     }
 
@@ -66,7 +66,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
     #[inline(never)]
     fn abort(&mut self, error: Error) -> Error {
         self.statement = None;
-        self.state = State::Done;
+        self.status = Status::Done;
         error
     }
 
@@ -127,17 +127,16 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                 if !prepared.is_empty() {
                     unsafe { sqlite3_reset(*prepared.statement) };
                 }
-                self.state = State::Done;
+                self.status = Status::Done;
             }
             Query::Raw(_) => {
                 self.statement = None;
-                self.state = State::Next;
+                self.status = Status::Next;
             }
         }
     }
 
     /// Drives an abandoned write to `SQLITE_DONE` so its changes commit.
-    /// Reads are never walked because they can be unbounded.
     fn finish_write(&mut self) {
         let handle = *self.connection.handle;
         let Some(prepared) = self.active_prepared() else {
@@ -171,18 +170,16 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
             Query::Raw(RawQuery(sql)) => loop {
                 let rest = sql.get(self.offset..).unwrap_or_default();
                 if rest.is_empty() {
-                    self.state = State::Done;
+                    self.status = Status::Done;
                     return Ok(None);
                 }
                 let (statement, consumed) = self.connection.prepare_statement::<false>(rest)?;
                 if consumed == 0 {
                     hint::cold_path();
-                    let error = anyhow!("SQLite made no progress while preparing the query")
-                        .context(format!(
-                            "At byte {} of:\n{}",
-                            self.offset,
-                            truncate_long(sql)
-                        ));
+                    let error =
+                        anyhow!("SQLite made no progress while preparing the query").context(
+                            format!("At byte {} of:\n{}", self.offset, truncate_long(sql)),
+                        );
                     log::error!("{error:#}");
                     return Err(error);
                 }
@@ -193,7 +190,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
             },
             Query::Prepared(prepared) => {
                 if prepared.is_empty() {
-                    self.state = State::Done;
+                    self.status = Status::Done;
                     return Ok(None);
                 }
                 if unsafe { sqlite3_db_handle(*prepared.statement) } != *self.connection.handle {
@@ -213,7 +210,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
     fn advance(&mut self) -> Result<Option<QueryResult<SQLiteRow>>> {
         let handle = *self.connection.handle;
         loop {
-            if self.state == State::Done {
+            if self.status == Status::Done {
                 return Ok(None);
             }
             let Some(prepared) = self.prepare_next()? else {
@@ -225,7 +222,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                 return Ok(Some(affected.into()));
             }
             if let Some(row) = Self::step_row(prepared, handle, true)? {
-                self.state = State::Stepping;
+                self.status = Status::Stepping;
                 return Ok(Some(QueryResult::Row(row)));
             }
             // Statement returned no rows. Release it and continue to the next statement.
@@ -246,14 +243,14 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Stream for SQLiteStream<'_, Q> {
             return Poll::Pending;
         }
         this.remaining -= 1;
-        if this.state == State::Stepping {
+        if this.status == Status::Stepping {
             match this.step_active() {
                 Ok(Some(row)) => return Poll::Ready(Some(Ok(QueryResult::Row(row)))),
                 Ok(None) => this.finish_statement(),
                 Err(error) => return Poll::Ready(Some(Err(this.abort(error)))),
             }
         }
-        if this.state == State::Done {
+        if this.status == Status::Done {
             return Poll::Ready(None);
         }
         match this.advance() {
@@ -265,7 +262,7 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Stream for SQLiteStream<'_, Q> {
 
 impl<Q: AsMut<Query<SQLiteDriver>>> Drop for SQLiteStream<'_, Q> {
     fn drop(&mut self) {
-        if self.state == State::Stepping {
+        if self.status == Status::Stepping {
             self.finish_write();
             self.finish_statement();
         }
