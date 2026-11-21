@@ -75,42 +75,40 @@ impl SQLiteConnection {
             if SINGLE_STATEMENT && consumed != sql.len() {
                 hint::cold_path();
                 // The rest must parse as no statement: whitespace, comments or empty statements.
-                check_rest(*self.handle, sql, consumed)?;
+                check_rest(*self.handle, sql.get(consumed..).unwrap_or_default()).with_context(
+                    || format!("While preparing the query:\n{}", truncate_long(sql)),
+                )?;
             }
             (statement, consumed)
         };
 
         #[inline(never)]
-        fn check_rest(handle: *mut sqlite3, sql: &str, offset: usize) -> Result<()> {
-            let rest = sql.get(offset..).unwrap_or_default();
-            let mut extra = CBox::new(ptr::null_mut(), |p| unsafe {
+        fn check_rest(handle: *mut sqlite3, sql: &str) -> Result<()> {
+            let mut statement = CBox::new(ptr::null_mut(), |p| unsafe {
                 sqlite3_finalize(p);
             });
             let mut tail = ptr::null();
             if unsafe {
                 sqlite3_prepare_v2(
                     handle,
-                    rest.as_ptr().cast(),
-                    c_int::try_from(rest.len())?,
-                    &mut *extra,
+                    sql.as_ptr().cast(),
+                    c_int::try_from(sql.len())?,
+                    &mut *statement,
                     &mut tail,
                 )
             } == SQLITE_OK
-                && extra.is_null()
-                && tail.cast() == rest.as_ptr().wrapping_add(rest.len())
+                && statement.is_null()
+                && tail.cast() == sql.as_ptr().wrapping_add(sql.len())
             {
-                return Ok(());
+                Ok(())
+            } else {
+                let error = anyhow!(
+                    "Expected exactly one statement (remaining: {})",
+                    truncate_long(sql)
+                );
+                log::error!("{error:#}");
+                Err(error)
             }
-            let error = anyhow!(
-                "Expected exactly one statement (remaining: {})",
-                truncate_long(rest)
-            )
-            .context(format!(
-                "While preparing the query:\n{}",
-                truncate_long(sql)
-            ));
-            log::error!("{error:#}");
-            Err(error)
         }
 
         Ok((SQLitePrepared::new(prepared), consumed))
