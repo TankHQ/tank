@@ -1,9 +1,9 @@
 use crate::{SQLiteConnection, SQLiteDriver, SQLitePrepared, SQLiteRow};
+use anyhow::anyhow;
 use libsqlite3_sys::*;
 use std::{
     hint,
     pin::Pin,
-    ptr,
     task::{Context, Poll},
 };
 use tank_core::{
@@ -11,184 +11,225 @@ use tank_core::{
     truncate_long,
 };
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum State {
+    Next,
+    Stepping,
+    Done,
+}
+
+/// Lazily runs one prepared statement or each statement in raw SQL, yielding rows or effects.
 pub(crate) struct SQLiteStream<'s, Q: AsMut<Query<SQLiteDriver>>> {
     connection: &'s mut SQLiteConnection,
     query: Q,
     statement: Option<SQLitePrepared>,
     offset: usize,
-    stream_started: bool,
     remaining: u16,
-    is_initialized: bool,
-    active: bool,
-    done: bool,
+    state: State,
 }
 
 impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
     const BATCH_SIZE: u16 = 256;
 
+    #[inline(always)]
     pub(crate) const fn new(connection: &'s mut SQLiteConnection, query: Q) -> Self {
         Self {
             connection,
             query,
             statement: None,
             offset: 0,
-            stream_started: false,
             remaining: Self::BATCH_SIZE,
-            is_initialized: false,
-            active: false,
-            done: false,
+            state: State::Next,
         }
     }
 
-    /// The statement this stream reads from, owned for raw SQL or borrowed from the query.
     #[inline(always)]
-    fn prepared(&mut self) -> Option<&mut SQLitePrepared> {
+    fn active_prepared(&mut self) -> Option<&mut SQLitePrepared> {
         match self.query.as_mut() {
             Query::Prepared(prepared) => Some(prepared),
             Query::Raw(_) => self.statement.as_mut(),
         }
     }
 
-    #[inline(always)]
-    fn statement(&mut self) -> *mut sqlite3_stmt {
-        self.prepared()
-            .map_or(ptr::null_mut(), |prepared| *prepared.statement)
+    #[cold]
+    #[inline(never)]
+    fn step_error(prepared: &SQLitePrepared, handle: *mut sqlite3) -> Error {
+        let error =
+            SQLiteConnection::last_error(handle).context(format!("While executing {prepared}"));
+        // Reset here so a later reset or finalize does not report the same step error again.
+        unsafe { sqlite3_reset(*prepared.statement) };
+        log::error!("{error:#}");
+        error
     }
 
-    fn reset(&mut self) {
-        if self.active {
-            if let Query::Prepared(prepared) = self.query.as_mut() {
-                // Step errors are already reported. Raw statements are finalized
-                // below; only reusable statements need a separate reset.
-                unsafe { sqlite3_reset(*prepared.statement) };
-            }
-        }
-        self.active = false;
-        self.is_initialized = false;
+    #[cold]
+    #[inline(never)]
+    fn abort(&mut self, error: Error) -> Error {
         self.statement = None;
+        self.state = State::Done;
+        error
     }
 
-    /// Copies the current row out of the statement.
-    #[inline]
-    fn row(&mut self) -> Result<Option<SQLiteRow>> {
-        if !self.active {
-            return Ok(None);
+    /// Steps `prepared` once, returning the next row or `None` at `SQLITE_DONE`.
+    #[inline(always)]
+    fn step_row(
+        prepared: &mut SQLitePrepared,
+        handle: *mut sqlite3,
+        initialize: bool,
+    ) -> Result<Option<SQLiteRow>> {
+        match unsafe { sqlite3_step(*prepared.statement) } {
+            SQLITE_ROW => prepared.read_row(initialize).map(Some),
+            SQLITE_DONE => Ok(None),
+            _ => Err(Self::step_error(prepared, handle)),
         }
-        let statement = self.statement();
-        let result = unsafe {
-            match sqlite3_step(statement) {
-                SQLITE_ROW => {
-                    let initialize = !self.is_initialized;
-                    self.is_initialized = true;
-                    self.prepared()
-                        .map(|prepared| prepared.read_row(initialize))
-                        .transpose()
-                }
-                SQLITE_DONE => Ok(None),
-                _ => Err(SQLiteConnection::last_error(*self.connection.handle)),
-            }
+    }
+
+    /// Steps the active row-returning statement whose column labels are already initialized.
+    #[inline(always)]
+    fn step_active(&mut self) -> Result<Option<SQLiteRow>> {
+        let handle = *self.connection.handle;
+        let Some(prepared) = self.active_prepared() else {
+            hint::cold_path();
+            return Err(anyhow!("Active SQLite stream has no statement"));
         };
-        if !matches!(&result, Ok(Some(_))) {
-            if result.is_err() {
-                self.done = true;
-            }
-            self.reset();
-        }
-        result
+        Self::step_row(prepared, handle, false)
     }
 
-    /// Steps the active statement or starts the next one, returning its next result.
-    /// A statement without columns runs to completion and yields its affected rows.
-    fn advance(&mut self) -> Result<Option<QueryResult<SQLiteRow>>> {
+    /// Runs a statement without result columns to completion and returns its affected rows.
+    fn step_write(prepared: &mut SQLitePrepared, handle: *mut sqlite3) -> Result<RowsAffected> {
+        unsafe {
+            let statement = *prepared.statement;
+            let total_changes_before = sqlite3_total_changes64(handle);
+            loop {
+                match sqlite3_step(statement) {
+                    SQLITE_DONE => break,
+                    SQLITE_ROW => {}
+                    _ => return Err(Self::step_error(prepared, handle)),
+                }
+            }
+            // `changes64` is stale after DDL. `total_changes64` detects DML while `changes64` excludes triggers.
+            let rows_affected = if sqlite3_total_changes64(handle) != total_changes_before {
+                sqlite3_changes64(handle) as u64
+            } else {
+                0
+            };
+            Ok(RowsAffected {
+                rows_affected: Some(rows_affected),
+                last_affected_id: Some(sqlite3_last_insert_rowid(handle)),
+            })
+        }
+    }
+
+    /// Releases the current statement and moves to the next state.
+    fn finish_statement(&mut self) {
+        match self.query.as_mut() {
+            Query::Prepared(prepared) => {
+                if !prepared.is_empty() {
+                    unsafe { sqlite3_reset(*prepared.statement) };
+                }
+                self.state = State::Done;
+            }
+            Query::Raw(_) => {
+                self.statement = None;
+                self.state = State::Next;
+            }
+        }
+    }
+
+    /// Drives an abandoned write to `SQLITE_DONE` so its changes commit.
+    /// Reads are never walked because they can be unbounded.
+    fn finish_write(&mut self) {
+        let handle = *self.connection.handle;
+        let Some(prepared) = self.active_prepared() else {
+            return;
+        };
+        let statement = *prepared.statement;
+        if statement.is_null() || unsafe { sqlite3_stmt_readonly(statement) } != 0 {
+            return;
+        }
         loop {
-            if self.done {
+            match unsafe { sqlite3_step(statement) } {
+                SQLITE_ROW => {}
+                SQLITE_DONE => return,
+                _ => {
+                    hint::cold_path();
+                    log::error!(
+                        "{:#}",
+                        SQLiteConnection::last_error(handle)
+                            .context("While finishing an abandoned SQLite write")
+                    );
+                    unsafe { sqlite3_reset(statement) };
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Prepares the next executable statement, returning `None` when none remain.
+    fn prepare_next(&mut self) -> Result<Option<&mut SQLitePrepared>> {
+        match self.query.as_mut() {
+            Query::Raw(RawQuery(sql)) => loop {
+                let rest = sql.get(self.offset..).unwrap_or_default();
+                if rest.is_empty() {
+                    self.state = State::Done;
+                    return Ok(None);
+                }
+                let (statement, consumed) = self.connection.prepare_statement::<false>(rest)?;
+                if consumed == 0 {
+                    hint::cold_path();
+                    let error = anyhow!("SQLite made no progress while preparing the query")
+                        .context(format!(
+                            "At byte {} of:\n{}",
+                            self.offset,
+                            truncate_long(sql)
+                        ));
+                    log::error!("{error:#}");
+                    return Err(error);
+                }
+                self.offset += consumed;
+                if !statement.is_empty() {
+                    return Ok(Some(self.statement.insert(statement)));
+                }
+            },
+            Query::Prepared(prepared) => {
+                if prepared.is_empty() {
+                    self.state = State::Done;
+                    return Ok(None);
+                }
+                if unsafe { sqlite3_db_handle(*prepared.statement) } != *self.connection.handle {
+                    hint::cold_path();
+                    let error = anyhow!("Prepared statement belongs to another SQLite connection");
+                    log::error!("{error:#}");
+                    return Err(error);
+                }
+                Ok(Some(prepared))
+            }
+        }
+    }
+
+    /// Starts the next statement, yielding its affected count or first row.
+    #[cold]
+    #[inline(never)]
+    fn advance(&mut self) -> Result<Option<QueryResult<SQLiteRow>>> {
+        let handle = *self.connection.handle;
+        loop {
+            if self.state == State::Done {
                 return Ok(None);
             }
-            if self.active {
-                if let Some(row) = self.row()? {
-                    return Ok(Some(QueryResult::Row(row)));
-                }
-                // Finished, or no rows matched: move to the next statement.
-                continue;
+            let Some(prepared) = self.prepare_next()? else {
+                return Ok(None);
+            };
+            if unsafe { sqlite3_column_count(*prepared.statement) } == 0 {
+                let affected = Self::step_write(prepared, handle)?;
+                self.finish_statement();
+                return Ok(Some(affected.into()));
             }
-            unsafe {
-                match self.query.as_mut() {
-                    Query::Raw(RawQuery(sql)) => loop {
-                        if self.offset >= sql.len() {
-                            self.done = true;
-                            return Ok(None);
-                        }
-                        let (statement, consumed) = self.connection.prepare_statement::<false>(
-                            sql.get(self.offset..).unwrap_or_default(),
-                        )?;
-                        if consumed == 0 {
-                            hint::cold_path();
-                            self.done = true;
-                            return Err(Error::msg(
-                                "SQLite made no progress while preparing the query",
-                            )
-                            .context(format!(
-                                "At byte {} of:\n{}",
-                                self.offset,
-                                truncate_long(sql)
-                            )));
-                        }
-                        self.offset += consumed;
-                        if !statement.statement.is_null() {
-                            self.statement = Some(statement);
-                            break;
-                        }
-                    },
-                    Query::Prepared(prepared) => {
-                        let statement = *prepared.statement;
-                        if self.stream_started || statement.is_null() {
-                            self.done = true;
-                            return Ok(None);
-                        }
-                        if sqlite3_db_handle(statement) != *self.connection.handle {
-                            self.done = true;
-                            return Err(Error::msg(
-                                "Prepared statement belongs to another SQLite connection",
-                            ));
-                        }
-                    }
-                }
-                // Set before stepping so a finished prepared statement is not started again.
-                self.stream_started = true;
-                self.active = true;
-                let statement = self.statement();
-                if sqlite3_column_count(statement) > 0 {
-                    // Stepped by the active branch on the next iteration.
-                    continue;
-                }
-                let connection = *self.connection.handle;
-                let before = sqlite3_total_changes64(connection);
-                while self.row()?.is_some() {}
-                // changes64 is stale after DDL; total_changes distinguishes it from DML.
-                // Use changes64 rather than the delta to exclude trigger side effects.
-                return Ok(Some(
-                    RowsAffected {
-                        rows_affected: Some(if sqlite3_total_changes64(connection) != before {
-                            sqlite3_changes64(connection) as u64
-                        } else {
-                            0
-                        }),
-                        last_affected_id: Some(sqlite3_last_insert_rowid(connection)),
-                    }
-                    .into(),
-                ));
+            if let Some(row) = Self::step_row(prepared, handle, true)? {
+                self.state = State::Stepping;
+                return Ok(Some(QueryResult::Row(row)));
             }
-        }
-    }
-
-    #[inline(always)]
-    fn next_result(&mut self) -> Option<Result<QueryResult<SQLiteRow>>> {
-        match self.advance() {
-            Ok(result) => result.map(Ok),
-            Err(error) => {
-                self.done = true;
-                Some(Err(error))
-            }
+            // Statement returned no rows. Release it and continue to the next statement.
+            self.finish_statement();
         }
     }
 }
@@ -205,33 +246,33 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Stream for SQLiteStream<'_, Q> {
             return Poll::Pending;
         }
         this.remaining -= 1;
-        Poll::Ready(this.next_result())
+        if this.state == State::Stepping {
+            match this.step_active() {
+                Ok(Some(row)) => return Poll::Ready(Some(Ok(QueryResult::Row(row)))),
+                Ok(None) => this.finish_statement(),
+                Err(error) => return Poll::Ready(Some(Err(this.abort(error)))),
+            }
+        }
+        if this.state == State::Done {
+            return Poll::Ready(None);
+        }
+        match this.advance() {
+            Ok(item) => Poll::Ready(item.map(Ok)),
+            Err(error) => Poll::Ready(Some(Err(this.abort(error)))),
+        }
     }
 }
 
 impl<Q: AsMut<Query<SQLiteDriver>>> Drop for SQLiteStream<'_, Q> {
     fn drop(&mut self) {
-        let statement = self.statement();
-        if self.active && !statement.is_null() && unsafe { sqlite3_stmt_readonly(statement) == 0 } {
-            // Finish an active RETURNING write, but never walk an abandoned SELECT.
-            loop {
-                match self.row() {
-                    Ok(Some(_)) => {}
-                    Ok(None) => break,
-                    Err(error) => {
-                        // Drop cannot return errors; normal row/outer advancement can.
-                        log::error!("While finishing an abandoned SQLite write: {error:#}");
-                        break;
-                    }
-                }
-            }
+        if self.state == State::Stepping {
+            self.finish_write();
+            self.finish_statement();
         }
-        self.reset();
         if let Query::Prepared(prepared) = self.query.as_mut()
-            && !prepared.statement.is_null()
-            && let Err(error) = prepared.clear_bindings()
+            && !prepared.is_empty()
         {
-            log::error!("{error:#}");
+            let _ = prepared.clear_bindings();
         }
     }
 }
