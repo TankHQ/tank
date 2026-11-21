@@ -12,19 +12,19 @@ use std::{
     sync::Arc,
 };
 use tank_core::{
-    AnyQuery, AsValue, Context, Error, ErrorContext, Fragment, Prepared, Result, SqlValueWriter,
-    Value, truncate_long,
+    AnyQuery, AsValue, Context, Error, ErrorContext, Fragment, Prepared, Result, RowsAffected,
+    SqlValueWriter, Value, truncate_long,
 };
 
 /// Prepared statement wrapper for SQLite.
 #[derive(Debug)]
 pub struct SQLitePrepared {
-    pub(crate) statement: CBox<*mut sqlite3_stmt>,
-    pub(crate) index: u64,
+    statement: CBox<*mut sqlite3_stmt>,
+    index: u64,
     /// Column labels of the last result, reused when the statement returns the same shape.
-    pub(crate) labels: Option<Arc<[String]>>,
-    pub(crate) columns: c_int,
-    pub(crate) row: Option<Arc<SQLiteRowData>>,
+    labels: Option<Arc<[String]>>,
+    columns: c_int,
+    row: Option<Arc<SQLiteRowData>>,
     draft: AnyQuery,
 }
 
@@ -43,8 +43,35 @@ impl SQLitePrepared {
         }
     }
 
+    #[inline(always)]
+    pub(crate) fn belongs_to(&self, connection: &SQLiteConnection) -> bool {
+        unsafe { sqlite3_db_handle(*self.statement) == *connection.handle }
+    }
+
+    #[inline(always)]
+    pub(crate) fn has_columns(&self) -> bool {
+        unsafe { sqlite3_column_count(*self.statement) > 0 }
+    }
+
+    #[inline(always)]
+    pub(crate) fn last_insert_rowid(&self) -> i64 {
+        unsafe { sqlite3_last_insert_rowid(sqlite3_db_handle(*self.statement)) }
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn step_error(&mut self) -> Error {
+        let statement = *self.statement;
+        let error = SQLiteConnection::last_error(unsafe { sqlite3_db_handle(statement) })
+            .context(format!("While executing {self}"));
+        // Reset here so a later reset or finalize does not report the same step error again.
+        unsafe { sqlite3_reset(statement) };
+        log::error!("{error:#}");
+        error
+    }
+
     /// Name of the result column at `index`.
-    pub(crate) fn column_name(&self, index: c_int) -> Result<Cow<'_, str>> {
+    fn column_name(&self, index: c_int) -> Result<Cow<'_, str>> {
         unsafe {
             let name = sqlite3_column_name(*self.statement, index);
             if !name.is_null() {
@@ -74,7 +101,7 @@ impl SQLitePrepared {
     }
 
     #[inline(always)]
-    pub(crate) fn read_row(&mut self, initialize: bool) -> Result<SQLiteRow> {
+    fn read_row(&mut self, initialize: bool) -> Result<SQLiteRow> {
         if initialize {
             self.init_labels()?;
         }
@@ -85,6 +112,83 @@ impl SQLitePrepared {
             ));
         };
         SQLiteRow::read(&mut self.row, labels, statement)
+    }
+
+    /// Steps once, returning the next row or `None` at `SQLITE_DONE`.
+    #[inline(always)]
+    pub(crate) fn step_row(&mut self, initialize: bool) -> Result<Option<SQLiteRow>> {
+        match unsafe { sqlite3_step(*self.statement) } {
+            SQLITE_ROW => self.read_row(initialize).map(Some),
+            SQLITE_DONE => Ok(None),
+            _ => Err(self.step_error()),
+        }
+    }
+
+    /// Steps once and expects immediate completion (`SQLITE_DONE`).
+    #[inline(always)]
+    pub(crate) fn step_done(&mut self) -> Result<()> {
+        if unsafe { sqlite3_step(*self.statement) } != SQLITE_DONE {
+            hint::cold_path();
+            return Err(self.step_error());
+        }
+        Ok(())
+    }
+
+    /// Runs a statement without result columns to completion and returns its affected rows.
+    pub(crate) fn step_write(&mut self) -> Result<RowsAffected> {
+        unsafe {
+            let statement = *self.statement;
+            let handle = sqlite3_db_handle(statement);
+            let total_changes_before = sqlite3_total_changes64(handle);
+            loop {
+                match sqlite3_step(statement) {
+                    SQLITE_DONE => break,
+                    SQLITE_ROW => {}
+                    _ => return Err(self.step_error()),
+                }
+            }
+            // `changes64` is stale after DDL. `total_changes64` detects DML while `changes64` excludes triggers.
+            let rows_affected = if sqlite3_total_changes64(handle) != total_changes_before {
+                sqlite3_changes64(handle) as u64
+            } else {
+                0
+            };
+            Ok(RowsAffected {
+                rows_affected: Some(rows_affected),
+                last_affected_id: Some(sqlite3_last_insert_rowid(handle)),
+            })
+        }
+    }
+
+    /// Completes any started write so its changes commit, then resets the statement.
+    pub(crate) fn finish(&mut self) {
+        let statement = *self.statement;
+        if statement.is_null() {
+            return;
+        }
+        unsafe {
+            // Drive an abandoned write to `SQLITE_DONE` so its changes commit.
+            // Reads are never walked because they can be unbounded.
+            if sqlite3_stmt_busy(statement) != 0 && sqlite3_stmt_readonly(statement) == 0 {
+                loop {
+                    match sqlite3_step(statement) {
+                        SQLITE_ROW => {}
+                        SQLITE_DONE => break,
+                        _ => {
+                            hint::cold_path();
+                            log::error!(
+                                "{:#}",
+                                SQLiteConnection::last_error(sqlite3_db_handle(statement))
+                                    .context("While finishing an abandoned SQLite write")
+                            );
+                            break;
+                        }
+                    }
+                }
+            }
+            // Release locks and clear any prior step error so later reset or finalize succeeds.
+            sqlite3_reset(statement);
+        }
     }
 
     /// Binds a temporal value written by the dialect, whose text only lives for this call.
@@ -129,10 +233,14 @@ impl Prepared for SQLitePrepared {
 
     #[inline(always)]
     fn clear_bindings(&mut self) -> Result<&mut Self> {
+        if self.is_empty() {
+            self.index = 0;
+            return Ok(self);
+        }
         unsafe {
             ensure_rc!(
                 sqlite3_reset(*self.statement),
-                SQLiteConnection::last_error(sqlite3_db_handle(*self.statement,)),
+                SQLiteConnection::last_error(sqlite3_db_handle(*self.statement)),
                 "While resetting SQLite statement"
             );
             ensure_rc!(
@@ -291,6 +399,12 @@ impl Prepared for SQLitePrepared {
         }
         self.index = index as u64;
         Ok(self)
+    }
+}
+
+impl Drop for SQLitePrepared {
+    fn drop(&mut self) {
+        self.finish();
     }
 }
 

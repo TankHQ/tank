@@ -170,15 +170,7 @@ impl SQLiteConnection {
                     for value in entity.as_entity().row_values() {
                         prepared.bind(value)?;
                     }
-                    // `sqlite3_step` reports a finished insert as `SQLITE_DONE`, not `SQLITE_OK`.
-                    if unsafe { sqlite3_step(*prepared.statement) } != SQLITE_DONE {
-                        hint::cold_path();
-                        let db = unsafe { sqlite3_db_handle(*prepared.statement) };
-                        let error = Self::last_error(db)
-                            .context("While executing a step on a prepared statement");
-                        log::error!("{error:#}");
-                        return Err(error);
-                    }
+                    prepared.step_done()?;
                     prepared.clear_bindings()?;
                     count += 1;
                 }
@@ -187,9 +179,7 @@ impl SQLiteConnection {
                 }
                 affected.extend([RowsAffected {
                     rows_affected: Some(count),
-                    last_affected_id: Some(unsafe {
-                        sqlite3_last_insert_rowid(sqlite3_db_handle(*prepared.statement))
-                    }),
+                    last_affected_id: Some(prepared.last_insert_rowid()),
                 }]);
             }
             task::yield_now().await;
