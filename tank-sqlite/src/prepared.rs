@@ -1,6 +1,4 @@
-use crate::{
-    CBox, SQLiteConnection, SQLiteRow, ensure_rc, row::SQLiteRowData, sql_writer::SQLiteSqlWriter,
-};
+use crate::{CBox, SQLiteConnection, SQLiteRow, ensure_rc, sql_writer::SQLiteSqlWriter};
 use anyhow::anyhow;
 use libsqlite3_sys::*;
 use rust_decimal::prelude::ToPrimitive;
@@ -9,10 +7,9 @@ use std::{
     ffi::{CStr, c_int},
     fmt::{self, Display},
     hint, mem,
-    sync::Arc,
 };
 use tank_core::{
-    AnyQuery, AsValue, Context, Error, ErrorContext, Fragment, Prepared, QueryResult, Result,
+    AnyQuery, AsValue, Context, Error, ErrorContext, Fragment, Prepared, QueryResult, Result, Row,
     RowsAffected, SqlValueWriter, Value, truncate_long,
 };
 
@@ -21,10 +18,8 @@ use tank_core::{
 pub struct SQLitePrepared {
     statement: CBox<*mut sqlite3_stmt>,
     index: u64,
-    /// Column labels of the last result, reused when the statement returns the same shape.
-    labels: Option<Arc<[String]>>,
-    columns: c_int,
-    row: Option<Arc<SQLiteRowData>>,
+    /// Reusable row snapshot storage and column labels for the current result shape.
+    row: Option<SQLiteRow>,
     draft: AnyQuery,
 }
 
@@ -36,8 +31,6 @@ impl SQLitePrepared {
         Self {
             statement,
             index: 0,
-            labels: None,
-            columns: 0,
             row: None,
             draft: AnyQuery::new(String::new()),
         }
@@ -67,26 +60,23 @@ impl SQLitePrepared {
 
     #[cold]
     #[inline(never)]
-    fn init_labels(&mut self) -> Result<()> {
+    fn init_row(&mut self) -> Result<()> {
         let statement = *self.statement;
         let columns = unsafe { sqlite3_column_count(statement) };
         let recompiled =
             unsafe { sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_REPREPARE, 1) } != 0;
-        if self.labels.is_none() || self.columns != columns || recompiled {
-            self.labels = Some(
-                (0..columns)
-                    .map(|index| unsafe {
-                        let name = sqlite3_column_name(statement, index);
-                        if !name.is_null() {
-                            Ok(CStr::from_ptr(name).to_string_lossy().into_owned())
-                        } else {
-                            Err(anyhow!("Missing SQLite column name at index {index}"))
-                        }
-                    })
-                    .collect::<Result<_>>()?,
-            );
-            self.columns = columns;
-            self.row = None;
+        if self.row.as_ref().is_none_or(|row| row.len() != columns as usize) || recompiled {
+            let labels = (0..columns)
+                .map(|index| unsafe {
+                    let name = sqlite3_column_name(statement, index);
+                    if !name.is_null() {
+                        Ok(CStr::from_ptr(name).to_string_lossy().into_owned())
+                    } else {
+                        Err(anyhow!("Missing SQLite column name at index {index}"))
+                    }
+                })
+                .collect::<Result<_>>()?;
+            self.row = Some(SQLiteRow::new(labels));
         }
         Ok(())
     }
@@ -98,14 +88,15 @@ impl SQLitePrepared {
         match unsafe { sqlite3_step(statement) } {
             SQLITE_ROW => {
                 if initialize {
-                    self.init_labels()?;
+                    self.init_row()?;
                 }
-                let Some(labels) = self.labels.as_ref() else {
+                let Some(row) = self.row.as_mut() else {
+                    hint::cold_path();
                     return Err(anyhow!(
-                        "Row labels were not initialized before reading a row"
+                        "Row storage was not initialized before reading a row"
                     ));
                 };
-                SQLiteRow::read(&mut self.row, labels, statement).map(Some)
+                row.read(statement).map(Some)
             }
             SQLITE_DONE => Ok(None),
             _ => Err(self.step_error()),

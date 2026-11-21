@@ -18,7 +18,7 @@ enum Cell {
 }
 
 #[derive(Debug)]
-pub(crate) struct SQLiteRowData {
+struct SQLiteRowData {
     labels: RowLabels,
     cells: Vec<Cell>,
     bytes: Vec<u8>,
@@ -89,24 +89,23 @@ impl SQLiteRowData {
 }
 
 impl SQLiteRow {
+    pub(crate) fn new(labels: RowLabels) -> Self {
+        Self(Arc::new(SQLiteRowData::new(labels)))
+    }
+
     #[inline(always)]
-    pub(crate) fn read(
-        storage: &mut Option<Arc<SQLiteRowData>>,
-        labels: &RowLabels,
-        statement: *mut sqlite3_stmt,
-    ) -> Result<Self> {
-        let storage = storage.get_or_insert_with(|| Arc::new(SQLiteRowData::new(labels.clone())));
-        match Arc::get_mut(storage) {
+    pub(crate) fn read(&mut self, statement: *mut sqlite3_stmt) -> Result<Self> {
+        match Arc::get_mut(&mut self.0) {
             Some(data) => data.read(statement)?,
-            _ => {
-                // A retained row keeps its snapshot. Otherwise subsequent polls reuse
-                // both buffers, with no per-cell allocation or shared-label refcounting.
-                let mut data = SQLiteRowData::new(labels.clone());
+            None => {
+                hint::cold_path();
+                // A retained row keeps its snapshot. Otherwise subsequent polls reuse both buffers
+                let mut data = SQLiteRowData::new(self.0.labels.clone());
                 data.read(statement)?;
-                *storage = Arc::new(data);
+                self.0 = Arc::new(data);
             }
         }
-        Ok(Self(storage.clone()))
+        Ok(Self(self.0.clone()))
     }
 }
 
