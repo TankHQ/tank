@@ -47,9 +47,7 @@ pub trait SqlFragmentWriter: SqlValueWriter {
         context: &mut Context,
         out: &mut AnyQuery,
         column: &ColumnDef,
-    ) where
-        Self: Sized,
-    {
+    ) {
         self.write_identifier(context, out, &column.name(), true);
         out.push(' ');
         let len = out.len();
@@ -128,9 +126,7 @@ pub trait SqlFragmentWriter: SqlValueWriter {
         _context: &mut Context,
         _out: &mut AnyQuery,
         _column: &ColumnDef,
-    ) where
-        Self: Sized,
-    {
+    ) {
     }
 
     /// Write ON CONFLICT DO UPDATE fragment for upsert, updating the `columns` not in the `primary_key`.

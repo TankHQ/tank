@@ -12,7 +12,7 @@ use std::{
 use tank_core::{
     AnyQuery, AppendDefault, AsEntity, AsQuery, ColumnDef, Connection, Driver, Entity, Error,
     ErrorContext, Executor, Operand, Prepared, QueryResult, Result, RowsAffected, Sql, Transaction,
-    char_ptr_to_string, describe_path, error_message_from_ptr, future::Either, truncate_long,
+    describe_path, error_message_from_ptr, future::Either, truncate_long,
 };
 use tokio::task;
 
@@ -179,7 +179,7 @@ impl Executor for SQLiteConnection {
         let prepared = unsafe {
             let make_context = || format!("While preparing the query:\n{}", truncate_long(sql));
             let len = c_int::try_from(sql.len())?;
-            let sql: CString = CString::new(sql.as_bytes())?;
+            let ptr = sql.as_ptr().cast();
             let mut statement = CBox::new(ptr::null_mut(), |p: *mut sqlite3_stmt| {
                 let handle = sqlite3_db_handle(p);
                 if sqlite3_finalize(p) != SQLITE_OK {
@@ -192,19 +192,54 @@ impl Executor for SQLiteConnection {
             });
             let mut tail = ptr::null();
             ensure_rc!(
-                sqlite3_prepare_v2(*self.handle, sql.as_ptr(), len, &mut *statement, &mut tail),
+                sqlite3_prepare_v2(*self.handle, ptr, len, &mut *statement, &mut tail),
                 Self::last_error(*self.handle),
                 make_context(),
             );
-            if tail != ptr::null() && *tail != 0 {
+            if statement.is_null() || tail != ptr.add(sql.len()) {
                 hint::cold_path();
-                let error = anyhow!(
-                    "Cannot prepare multiple statements at a time (remaining: {})",
-                    truncate_long(&char_ptr_to_string(tail))
-                )
-                .context(make_context());
-                log::error!("{error:#}");
-                return Err(error);
+                let offset = (tail as usize).wrapping_sub(ptr as usize);
+                // SQLite stops after the first statement's semicolon or at a NUL byte.
+                // The rest must parse whole without a statement: whitespace, comments or empty statements.
+                check_rest(*self.handle, sql, offset, !statement.is_null())?;
+                #[inline(never)]
+                fn check_rest(
+                    handle: *mut sqlite3,
+                    sql: &str,
+                    offset: usize,
+                    has_statement: bool,
+                ) -> Result<()> {
+                    let rest = sql.get(offset..).unwrap_or(sql);
+                    let mut extra = CBox::new(ptr::null_mut(), |p| unsafe {
+                        sqlite3_finalize(p);
+                    });
+                    let mut tail = ptr::null();
+                    if has_statement
+                        && unsafe {
+                            sqlite3_prepare_v2(
+                                handle,
+                                rest.as_ptr().cast(),
+                                rest.len() as _,
+                                &mut *extra,
+                                &mut tail,
+                            )
+                        } == SQLITE_OK
+                        && extra.is_null()
+                        && tail.cast() == rest.as_ptr().wrapping_add(rest.len())
+                    {
+                        return Ok(());
+                    }
+                    let error = anyhow!(
+                        "Expected exactly one statement (remaining: {})",
+                        truncate_long(rest)
+                    )
+                    .context(format!(
+                        "While preparing the query:\n{}",
+                        truncate_long(sql)
+                    ));
+                    log::error!("{error:#}");
+                    Err(error)
+                }
             }
             statement
         };

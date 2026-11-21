@@ -343,9 +343,7 @@ impl SqlFragmentWriter for MySQLSqlWriter {
         mut context: &mut Context,
         out: &mut AnyQuery,
         column: &ColumnDef,
-    ) where
-        Self: Sized,
-    {
+    ) {
         out.push_str(" COMMENT ");
         self.write_string(&mut context, out, column.comment);
     }

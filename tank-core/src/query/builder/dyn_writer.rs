@@ -4,8 +4,24 @@ use crate::{
     SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, UpdateQuery,
 };
 
-/// Writer of a [`BoxQueryBuilder`](crate::BoxQueryBuilder), forwarding each statement to the
-/// writer of the executing driver.
+/// The statement entry points of [`SqlWriter`], callable through `dyn` with concrete arguments.
+pub(crate) trait DynWriter: Send {
+    fn write_transaction_begin(&self, out: &mut AnyQuery);
+    fn write_transaction_commit(&self, out: &mut AnyQuery);
+    fn write_transaction_rollback(&self, out: &mut AnyQuery);
+    fn write_create_schema(&self, out: &mut AnyQuery, table: &TableRef, if_not_exists: bool);
+    fn write_drop_schema(&self, out: &mut AnyQuery, table: &TableRef, if_exists: bool);
+    fn write_create_table(&self, out: &mut AnyQuery, table: &TableRef, if_not_exists: bool);
+    fn write_column_comment(&self, context: &mut Context, out: &mut AnyQuery, column: &ColumnDef);
+    fn write_drop_table(&self, out: &mut AnyQuery, table: &TableRef, if_exists: bool);
+    fn write_select(&self, out: &mut AnyQuery, query: SelectView<'_>);
+    fn write_insert(&self, out: &mut AnyQuery, query: InsertView<'_>);
+    fn write_update(&self, out: &mut AnyQuery, query: UpdateView<'_>);
+    fn write_delete(&self, out: &mut AnyQuery, from: &dyn Dataset, condition: &dyn Expression);
+}
+
+/// Writer of a [`BoxQueryBuilder`](crate::BoxQueryBuilder).
+/// Forwards each statement to the writer of the executing driver.
 pub(crate) struct AnyWriter {
     writer: Box<dyn DynWriter>,
 }
@@ -78,22 +94,6 @@ impl SqlWriter for AnyWriter {
     fn write_delete(&self, out: &mut AnyQuery, from: &dyn Dataset, condition: impl Expression) {
         self.writer.write_delete(out, from, &condition);
     }
-}
-
-/// The statement entry points of [`SqlWriter`], callable through `dyn` with concrete arguments.
-pub(crate) trait DynWriter: Send {
-    fn write_transaction_begin(&self, out: &mut AnyQuery);
-    fn write_transaction_commit(&self, out: &mut AnyQuery);
-    fn write_transaction_rollback(&self, out: &mut AnyQuery);
-    fn write_create_schema(&self, out: &mut AnyQuery, table: &TableRef, if_not_exists: bool);
-    fn write_drop_schema(&self, out: &mut AnyQuery, table: &TableRef, if_exists: bool);
-    fn write_create_table(&self, out: &mut AnyQuery, table: &TableRef, if_not_exists: bool);
-    fn write_column_comment(&self, context: &mut Context, out: &mut AnyQuery, column: &ColumnDef);
-    fn write_drop_table(&self, out: &mut AnyQuery, table: &TableRef, if_exists: bool);
-    fn write_select(&self, out: &mut AnyQuery, query: SelectView<'_>);
-    fn write_insert(&self, out: &mut AnyQuery, query: InsertView<'_>);
-    fn write_update(&self, out: &mut AnyQuery, query: UpdateView<'_>);
-    fn write_delete(&self, out: &mut AnyQuery, from: &dyn Dataset, condition: &dyn Expression);
 }
 
 impl<W: SqlWriter> DynWriter for W {

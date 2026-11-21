@@ -249,9 +249,7 @@ impl SqlFragmentWriter for ScyllaDBSqlWriter {
         context: &mut Context,
         out: &mut AnyQuery,
         column: &ColumnDef,
-    ) where
-        Self: Sized,
-    {
+    ) {
         self.write_identifier(context, out, &column.name(), true);
         out.push(' ');
         let len = out.len();

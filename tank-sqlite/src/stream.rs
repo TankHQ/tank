@@ -1,11 +1,13 @@
-use crate::{CBox, SQLiteConnection, SQLiteDriver, SQLitePrepared, SQLiteRow};
+use crate::{CBox, SQLiteConnection, SQLiteDriver, SQLitePrepared, SQLiteRow, ensure_rc};
 use libsqlite3_sys::*;
 use std::{
     ffi::{c_char, c_int},
+    hint,
     pin::Pin,
     ptr,
     task::{Context, Poll},
 };
+use tank::RawQuery;
 use tank_core::{
     Error, Prepared, Query, QueryResult, Result, RowsAffected, stream::Stream, truncate_long,
 };
@@ -104,6 +106,55 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
         }
         unsafe {
             match self.query.as_mut() {
+                Query::Raw(RawQuery(sql)) => loop {
+                    if self.offset >= sql.len() {
+                        self.done = true;
+                        return Ok(None);
+                    }
+                    let len = c_int::try_from(sql.len() - self.offset)?;
+                    let ptr = sql.as_ptr().add(self.offset) as *const c_char;
+                    let mut statement = SQLitePrepared::new(CBox::new(ptr::null_mut(), |p| {
+                        if sqlite3_finalize(p) != SQLITE_OK {
+                            hint::cold_path();
+                            log::error!(
+                                "{:#}",
+                                SQLiteConnection::last_error(sqlite3_db_handle(p))
+                                    .context("While finalizing a prepared statement")
+                            );
+                        }
+                    }));
+                    let mut tail = ptr::null();
+                    ensure_rc!(
+                        sqlite3_prepare_v2(
+                            *self.connection.handle,
+                            ptr,
+                            len,
+                            &mut *statement.statement,
+                            &mut tail,
+                        ),
+                        {
+                            self.done = true;
+                            SQLiteConnection::last_error(*self.connection.handle)
+                        }
+                    );
+                    let consumed = tail.offset_from(ptr) as usize;
+                    if consumed == 0 {
+                        self.done = true;
+                        return Err(Error::msg(
+                            "SQLite made no progress while preparing the query",
+                        )
+                        .context(format!(
+                            "At byte {} of:\n{}",
+                            self.offset,
+                            truncate_long(sql)
+                        )));
+                    }
+                    self.offset += consumed;
+                    if !statement.statement.is_null() {
+                        self.statement = Some(statement);
+                        break;
+                    }
+                },
                 Query::Prepared(prepared) => {
                     let statement = *prepared.statement;
                     if self.generation != 0 || statement.is_null() {
@@ -117,48 +168,6 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                         ));
                     }
                 }
-                Query::Raw(raw) => loop {
-                    if self.offset == raw.0.len() {
-                        self.done = true;
-                        return Ok(None);
-                    }
-                    let sql = raw.0.as_ptr().add(self.offset) as *const c_char;
-                    let len = c_int::try_from(raw.0.len() - self.offset)?;
-                    let mut statement = SQLitePrepared::new(CBox::new(ptr::null_mut(), |p| {
-                        sqlite3_finalize(p);
-                    }));
-                    let mut tail = ptr::null();
-                    let rc = sqlite3_prepare_v2(
-                        *self.connection.handle,
-                        sql,
-                        len,
-                        &mut *statement.statement,
-                        &mut tail,
-                    );
-                    if rc != SQLITE_OK {
-                        self.done = true;
-                        let error = SQLiteConnection::last_error(*self.connection.handle);
-                        log::error!("error:#");
-                        return Err(error);
-                    }
-                    let consumed = tail.offset_from(sql) as usize;
-                    if consumed == 0 {
-                        self.done = true;
-                        return Err(Error::msg(
-                            "SQLite made no progress while preparing the query",
-                        )
-                        .context(format!(
-                            "At byte {} of:\n{}",
-                            self.offset,
-                            truncate_long(raw.0.get(self.offset..).unwrap_or_default())
-                        )));
-                    }
-                    self.offset += consumed;
-                    if !statement.statement.is_null() {
-                        self.statement = Some(statement);
-                        break;
-                    }
-                },
             }
             self.generation += 1;
             self.active = true;
