@@ -75,9 +75,9 @@ impl SQLiteConnection {
             if SINGLE_STATEMENT && consumed != sql.len() {
                 hint::cold_path();
                 // The rest must parse as no statement: whitespace, comments or empty statements.
-                check_rest(*self.handle, sql.get(consumed..).unwrap_or_default()).with_context(
-                    || format!("While preparing the query:\n{}", truncate_long(sql)),
-                )?;
+                check_rest(*self.handle, sql.get(consumed..).unwrap_or_default())
+                    .with_context(make_context)
+                    .inspect_err(|error| log::error!("{error:#}"))?;
             }
             (statement, consumed)
         };
@@ -102,12 +102,10 @@ impl SQLiteConnection {
             {
                 Ok(())
             } else {
-                let error = anyhow!(
+                Err(anyhow!(
                     "Expected exactly one statement (remaining: {})",
                     truncate_long(sql)
-                );
-                log::error!("{error:#}");
-                Err(error)
+                ))
             }
         }
 
