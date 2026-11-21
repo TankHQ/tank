@@ -196,7 +196,7 @@ impl Executor for SQLiteConnection {
         SQLiteStream::new(self, query.as_query(&self.driver()))
     }
 
-    async fn append<It>(&mut self, rows: It) -> Result<RowsAffected>
+    async fn append<It>(&mut self, entities: It) -> Result<RowsAffected>
     where
         It: IntoIterator + Send,
         It::IntoIter: Send,
@@ -204,7 +204,7 @@ impl Executor for SQLiteConnection {
     {
         const ROWS: usize = 256;
         let table = <It::Item as AsEntity>::Entity::table();
-        let mut rows = rows.into_iter();
+        let mut entities = entities.into_iter();
         let mut affected = RowsAffected::default();
         let mut prepared = {
             let mut out = mem::take(&mut self.draft);
@@ -230,11 +230,11 @@ impl Executor for SQLiteConnection {
             // Scoped so `entity` never lives across `.await`, keeping the future `Send`.
             {
                 let mut count = 0;
-                for entity in rows.by_ref().take(ROWS) {
+                for entity in entities.by_ref().take(ROWS) {
                     for value in entity.as_entity().row_values() {
                         prepared.bind(value)?;
                     }
-                    prepared.step_done()?;
+                    prepared.do_step()?;
                     prepared.clear_bindings()?;
                     count += 1;
                 }
