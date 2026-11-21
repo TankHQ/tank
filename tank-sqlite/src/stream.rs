@@ -41,14 +41,6 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
         }
     }
 
-    #[inline(always)]
-    fn active_prepared(&mut self) -> Option<&mut SQLitePrepared> {
-        match self.query.as_mut() {
-            Query::Prepared(prepared) => Some(prepared),
-            Query::Raw(_) => self.statement.as_mut(),
-        }
-    }
-
     #[cold]
     #[inline(never)]
     fn abort(&mut self, error: Error) -> Error {
@@ -60,7 +52,11 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
     /// Steps the active row-returning statement whose column labels are already initialized.
     #[inline(always)]
     fn step_active(&mut self) -> Result<Option<SQLiteRow>> {
-        let Some(prepared) = self.active_prepared() else {
+        let prepared = match self.query.as_mut() {
+            Query::Prepared(prepared) => Some(prepared),
+            Query::Raw(_) => self.statement.as_mut(),
+        };
+        let Some(prepared) = prepared else {
             hint::cold_path();
             return Err(anyhow!("Active SQLite stream has no statement"));
         };
@@ -71,54 +67,12 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
     fn finish_statement(&mut self) {
         match self.query.as_mut() {
             Query::Prepared(prepared) => {
-                prepared.finish();
+                let _ = prepared.clear_bindings();
                 self.state = State::Done;
             }
             Query::Raw(_) => {
                 self.statement = None;
                 self.state = State::Next;
-            }
-        }
-    }
-
-    /// Prepares the next executable statement, returning `None` when none remain.
-    fn prepare_next(&mut self) -> Result<Option<&mut SQLitePrepared>> {
-        match self.query.as_mut() {
-            Query::Raw(RawQuery(sql)) => loop {
-                let rest = sql.get(self.offset..).unwrap_or_default();
-                if rest.is_empty() {
-                    self.state = State::Done;
-                    return Ok(None);
-                }
-                let (statement, consumed) = self.connection.prepare_statement::<false>(rest)?;
-                if consumed == 0 {
-                    hint::cold_path();
-                    let error = anyhow!("SQLite made no progress while preparing the query")
-                        .context(format!(
-                            "At byte {} of:\n{}",
-                            self.offset,
-                            truncate_long(sql)
-                        ));
-                    log::error!("{error:#}");
-                    return Err(error);
-                }
-                self.offset += consumed;
-                if !statement.is_empty() {
-                    return Ok(Some(self.statement.insert(statement)));
-                }
-            },
-            Query::Prepared(prepared) => {
-                if prepared.is_empty() {
-                    self.state = State::Done;
-                    return Ok(None);
-                }
-                if !prepared.belongs_to(self.connection) {
-                    hint::cold_path();
-                    let error = anyhow!("Prepared statement belongs to another SQLite connection");
-                    log::error!("{error:#}");
-                    return Err(error);
-                }
-                Ok(Some(prepared))
             }
         }
     }
@@ -131,20 +85,56 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
             if self.state == State::Done {
                 return Ok(None);
             }
-            let Some(prepared) = self.prepare_next()? else {
-                return Ok(None);
+            let prepared = match self.query.as_mut() {
+                Query::Raw(RawQuery(sql)) => loop {
+                    let rest = sql.get(self.offset..).unwrap_or_default();
+                    if rest.is_empty() {
+                        self.state = State::Done;
+                        return Ok(None);
+                    }
+                    let (statement, consumed) = self.connection.prepare_statement::<false>(rest)?;
+                    if consumed == 0 {
+                        hint::cold_path();
+                        let error = anyhow!("SQLite made no progress while preparing the query")
+                            .context(format!(
+                                "At byte {} of:\n{}",
+                                self.offset,
+                                truncate_long(sql)
+                            ));
+                        log::error!("{error:#}");
+                        return Err(error);
+                    }
+                    self.offset += consumed;
+                    if !statement.is_empty() {
+                        break self.statement.insert(statement);
+                    }
+                },
+                Query::Prepared(prepared) => {
+                    if prepared.is_empty() {
+                        self.state = State::Done;
+                        return Ok(None);
+                    }
+                    if !prepared.belongs_to(self.connection) {
+                        hint::cold_path();
+                        let error =
+                            anyhow!("Prepared statement belongs to another SQLite connection");
+                        log::error!("{error:#}");
+                        return Err(error);
+                    }
+                    prepared
+                }
             };
-            if !prepared.has_columns() {
-                let affected = prepared.step_write()?;
-                self.finish_statement();
-                return Ok(Some(affected.into()));
+            match prepared.start()? {
+                Some(QueryResult::Row(row)) => {
+                    self.state = State::Stepping;
+                    return Ok(Some(QueryResult::Row(row)));
+                }
+                Some(result) => {
+                    self.finish_statement();
+                    return Ok(Some(result));
+                }
+                None => self.finish_statement(),
             }
-            if let Some(row) = prepared.step_row(true)? {
-                self.state = State::Stepping;
-                return Ok(Some(QueryResult::Row(row)));
-            }
-            // Statement returned no rows. Release it and continue to the next statement.
-            self.finish_statement();
         }
     }
 }
@@ -181,7 +171,6 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Stream for SQLiteStream<'_, Q> {
 impl<Q: AsMut<Query<SQLiteDriver>>> Drop for SQLiteStream<'_, Q> {
     fn drop(&mut self) {
         if let Query::Prepared(prepared) = self.query.as_mut() {
-            prepared.finish();
             let _ = prepared.clear_bindings();
         }
         // Any active raw `self.statement` is finished and finalized by `SQLitePrepared::drop`.

@@ -12,8 +12,8 @@ use std::{
     sync::Arc,
 };
 use tank_core::{
-    AnyQuery, AsValue, Context, Error, ErrorContext, Fragment, Prepared, Result, RowsAffected,
-    SqlValueWriter, Value, truncate_long,
+    AnyQuery, AsValue, Context, Error, ErrorContext, Fragment, Prepared, QueryResult, Result,
+    RowsAffected, SqlValueWriter, Value, truncate_long,
 };
 
 /// Prepared statement wrapper for SQLite.
@@ -49,11 +49,6 @@ impl SQLitePrepared {
     }
 
     #[inline(always)]
-    pub(crate) fn has_columns(&self) -> bool {
-        unsafe { sqlite3_column_count(*self.statement) > 0 }
-    }
-
-    #[inline(always)]
     pub(crate) fn last_insert_rowid(&self) -> i64 {
         unsafe { sqlite3_last_insert_rowid(sqlite3_db_handle(*self.statement)) }
     }
@@ -70,28 +65,24 @@ impl SQLitePrepared {
         error
     }
 
-    /// Name of the result column at `index`.
-    fn column_name(&self, index: c_int) -> Result<Cow<'_, str>> {
-        unsafe {
-            let name = sqlite3_column_name(*self.statement, index);
-            if !name.is_null() {
-                Ok(CStr::from_ptr(name).to_string_lossy())
-            } else {
-                Err(anyhow!("Missing SQLite column name at index {index}"))
-            }
-        }
-    }
-
     #[cold]
     #[inline(never)]
     fn init_labels(&mut self) -> Result<()> {
-        let columns = unsafe { sqlite3_column_count(*self.statement) };
+        let statement = *self.statement;
+        let columns = unsafe { sqlite3_column_count(statement) };
         let recompiled =
-            unsafe { sqlite3_stmt_status(*self.statement, SQLITE_STMTSTATUS_REPREPARE, 1) } != 0;
+            unsafe { sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_REPREPARE, 1) } != 0;
         if self.labels.is_none() || self.columns != columns || recompiled {
             self.labels = Some(
                 (0..columns)
-                    .map(|index| self.column_name(index).map(Into::into))
+                    .map(|index| unsafe {
+                        let name = sqlite3_column_name(statement, index);
+                        if !name.is_null() {
+                            Ok(CStr::from_ptr(name).to_string_lossy().into_owned())
+                        } else {
+                            Err(anyhow!("Missing SQLite column name at index {index}"))
+                        }
+                    })
                     .collect::<Result<_>>()?,
             );
             self.columns = columns;
@@ -100,25 +91,22 @@ impl SQLitePrepared {
         Ok(())
     }
 
-    #[inline(always)]
-    fn read_row(&mut self, initialize: bool) -> Result<SQLiteRow> {
-        if initialize {
-            self.init_labels()?;
-        }
-        let statement = *self.statement;
-        let Some(labels) = self.labels.as_ref() else {
-            return Err(Error::msg(
-                "Row labels were not initialized before reading a row",
-            ));
-        };
-        SQLiteRow::read(&mut self.row, labels, statement)
-    }
-
     /// Steps once, returning the next row or `None` at `SQLITE_DONE`.
     #[inline(always)]
     pub(crate) fn step_row(&mut self, initialize: bool) -> Result<Option<SQLiteRow>> {
-        match unsafe { sqlite3_step(*self.statement) } {
-            SQLITE_ROW => self.read_row(initialize).map(Some),
+        let statement = *self.statement;
+        match unsafe { sqlite3_step(statement) } {
+            SQLITE_ROW => {
+                if initialize {
+                    self.init_labels()?;
+                }
+                let Some(labels) = self.labels.as_ref() else {
+                    return Err(anyhow!(
+                        "Row labels were not initialized before reading a row"
+                    ));
+                };
+                SQLiteRow::read(&mut self.row, labels, statement).map(Some)
+            }
             SQLITE_DONE => Ok(None),
             _ => Err(self.step_error()),
         }
@@ -134,10 +122,13 @@ impl SQLitePrepared {
         Ok(())
     }
 
-    /// Runs a statement without result columns to completion and returns its affected rows.
-    pub(crate) fn step_write(&mut self) -> Result<RowsAffected> {
+    /// Runs a statement's first step, returning its first row or affected rows if columnless.
+    pub(crate) fn start(&mut self) -> Result<Option<QueryResult<SQLiteRow>>> {
+        let statement = *self.statement;
+        if unsafe { sqlite3_column_count(statement) } > 0 {
+            return self.step_row(true).map(|row| row.map(QueryResult::Row));
+        }
         unsafe {
-            let statement = *self.statement;
             let handle = sqlite3_db_handle(statement);
             let total_changes_before = sqlite3_total_changes64(handle);
             loop {
@@ -153,15 +144,18 @@ impl SQLitePrepared {
             } else {
                 0
             };
-            Ok(RowsAffected {
-                rows_affected: Some(rows_affected),
-                last_affected_id: Some(sqlite3_last_insert_rowid(handle)),
-            })
+            Ok(Some(
+                RowsAffected {
+                    rows_affected: Some(rows_affected),
+                    last_affected_id: Some(sqlite3_last_insert_rowid(handle)),
+                }
+                .into(),
+            ))
         }
     }
 
     /// Completes any started write so its changes commit, then resets the statement.
-    pub(crate) fn finish(&mut self) {
+    fn finish(&mut self) {
         let statement = *self.statement;
         if statement.is_null() {
             return;
@@ -170,12 +164,12 @@ impl SQLitePrepared {
             // Drive an abandoned write to `SQLITE_DONE` so its changes commit.
             // Reads are never walked because they can be unbounded.
             if sqlite3_stmt_busy(statement) != 0 && sqlite3_stmt_readonly(statement) == 0 {
+                hint::cold_path();
                 loop {
                     match sqlite3_step(statement) {
                         SQLITE_ROW => {}
                         SQLITE_DONE => break,
                         _ => {
-                            hint::cold_path();
                             log::error!(
                                 "{:#}",
                                 SQLiteConnection::last_error(sqlite3_db_handle(statement))
@@ -233,21 +227,15 @@ impl Prepared for SQLitePrepared {
 
     #[inline(always)]
     fn clear_bindings(&mut self) -> Result<&mut Self> {
-        if self.is_empty() {
-            self.index = 0;
-            return Ok(self);
-        }
-        unsafe {
-            ensure_rc!(
-                sqlite3_reset(*self.statement),
-                SQLiteConnection::last_error(sqlite3_db_handle(*self.statement)),
-                "While resetting SQLite statement"
-            );
-            ensure_rc!(
-                sqlite3_clear_bindings(*self.statement),
-                SQLiteConnection::last_error(sqlite3_db_handle(*self.statement)),
-                "While clearing SQLite statement bindings"
-            );
+        if !self.is_empty() {
+            self.finish();
+            unsafe {
+                ensure_rc!(
+                    sqlite3_clear_bindings(*self.statement),
+                    SQLiteConnection::last_error(sqlite3_db_handle(*self.statement)),
+                    "While clearing SQLite statement bindings"
+                );
+            }
         }
         self.index = 0;
         Ok(self)
