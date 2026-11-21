@@ -114,7 +114,7 @@ impl SQLitePrepared {
 
     /// Steps once and expects immediate completion (`SQLITE_DONE`).
     #[inline(always)]
-    pub(crate) fn step_done(&mut self) -> Result<()> {
+    pub(crate) fn do_step(&mut self) -> Result<()> {
         if unsafe { sqlite3_step(*self.statement) } != SQLITE_DONE {
             hint::cold_path();
             return Err(self.step_error());

@@ -95,12 +95,10 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                     let (statement, consumed) = self.connection.prepare_statement::<false>(rest)?;
                     if consumed == 0 {
                         hint::cold_path();
-                        let error = anyhow!("SQLite made no progress while preparing the query")
-                            .context(format!(
-                                "At byte {} of:\n{}",
-                                self.offset,
-                                truncate_long(sql)
-                            ));
+                        let error =
+                            anyhow!("SQLite made no progress while preparing the query").context(
+                                format!("At byte {} of:\n{}", self.offset, truncate_long(sql)),
+                            );
                         log::error!("{error:#}");
                         return Err(error);
                     }
