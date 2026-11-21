@@ -7,9 +7,9 @@ use std::{
     ptr,
     task::{Context, Poll},
 };
-use tank::RawQuery;
 use tank_core::{
-    Error, Prepared, Query, QueryResult, Result, RowsAffected, stream::Stream, truncate_long,
+    Error, Prepared, Query, QueryResult, RawQuery, Result, RowsAffected, stream::Stream,
+    truncate_long,
 };
 
 pub(crate) struct SQLiteStream<'s, Q: AsMut<Query<SQLiteDriver>>> {

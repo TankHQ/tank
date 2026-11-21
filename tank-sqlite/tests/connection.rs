@@ -8,10 +8,13 @@ mod tests {
     use url::Url;
 
     static MUTEX: Mutex<()> = Mutex::new(());
+    const DRIVER: SQLiteDriver = SQLiteDriver::new();
 
     #[tokio::test]
     async fn create_database() {
         init_logs();
+
+        // Setup
         const DB_PATH: &'static str = "../target/debug/creation.sqlite";
         let _guard = MUTEX.lock().unwrap();
         if Path::new(DB_PATH).exists() {
@@ -23,35 +26,63 @@ mod tests {
             !Path::new(DB_PATH).exists(),
             "Database file should not exist before test"
         );
-        SQLiteConnection::connect(
-            &SQLiteDriver::new(),
-            format!("sqlite://{DB_PATH}?mode=rwc").into(),
-        )
-        .await
-        .expect("Could not open the database");
-        assert!(
-            Path::new(DB_PATH).exists(),
-            "Database file should be created after connection"
-        );
-        SQLiteConnection::connect(
-            &SQLiteDriver::new(),
-            format!("sqlite://{DB_PATH}?mode=ro").into(),
-        )
-        .await
-        .expect("Could not open the database");
-        fs::remove_file(DB_PATH)
-            .await
-            .expect(format!("Failed to remove existing test database file {DB_PATH}").as_str());
-        silent_logs! {
-            assert!(
-                SQLiteConnection::connect(
-                    &SQLiteDriver::new(),
-                    format!("sqlite://{DB_PATH}?mode=ro").into(),
-                )
+
+        // Opening in mode=rwc creates a db file
+        {
+            SQLiteConnection::connect(&DRIVER, format!("sqlite://{DB_PATH}?mode=rwc").into())
                 .await
-                .is_err(),
-                "Should not be able to open in read only unexisting database"
+                .expect("Could not open the database");
+            assert!(
+                Path::new(DB_PATH).exists(),
+                "Database file should be created after connection"
             );
+        }
+
+        // Only mode=ro can open read only file
+        {
+            let mut permissions = fs::metadata(DB_PATH)
+                .await
+                .expect("Failed to get the file metadata")
+                .permissions();
+            permissions.set_readonly(true);
+            fs::set_permissions(DB_PATH, permissions)
+                .await
+                .expect("Failed to set file permissions");
+            SQLiteConnection::connect(&DRIVER, format!("sqlite://{DB_PATH}?mode=ro").into())
+                .await
+                .expect("Could not open the database");
+            if let Ok(mut connection) =
+                SQLiteConnection::connect(&DRIVER, format!("sqlite://{DB_PATH}?mode=rwc").into())
+                    .await
+            {
+                assert!(
+                    connection
+                        .execute(
+                            Sql()
+                                .create_table("this_is_a_test_table")
+                                .columns([ColumnDef::from_type::<i32>("id")])
+                                .build(&DRIVER)
+                        )
+                        .await
+                        .is_err()
+                )
+            }
+        }
+        {
+            fs::remove_file(DB_PATH)
+                .await
+                .expect(format!("Failed to remove existing test database file {DB_PATH}").as_str());
+            silent_logs! {
+                assert!(
+                    SQLiteConnection::connect(
+                        &DRIVER,
+                        format!("sqlite://{DB_PATH}?mode=ro").into(),
+                    )
+                    .await
+                    .is_err(),
+                    "Should not be able to open in read only unexisting database"
+                );
+            }
         }
     }
 
@@ -65,7 +96,7 @@ mod tests {
                 .await
                 .expect("Failed to remove the read-only test database");
         }
-        let driver = SQLiteDriver::new();
+        let driver = DRIVER;
         {
             let mut connection =
                 SQLiteConnection::connect(&driver, format!("sqlite://{DB_PATH}?mode=rwc").into())
@@ -130,7 +161,7 @@ mod tests {
         init_logs();
         silent_logs! {
             assert!(
-                SQLiteConnection::connect(&SQLiteDriver::new(), "duckdb://some_value".into())
+                SQLiteConnection::connect(&DRIVER, "duckdb://some_value".into())
                     .await
                     .is_err()
             );
