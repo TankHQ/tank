@@ -97,14 +97,19 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
         result
     }
 
-    /// Moves to the next statement and returns its first result.
+    /// Steps the active statement or starts the next one, returning its next result.
     /// A statement without columns runs to completion and yields its affected rows.
     fn advance(&mut self) -> Result<Option<QueryResult<SQLiteRow>>> {
-        // Discard one row at a time, including extraction errors, before moving on.
-        while self.row()?.is_some() {}
         loop {
             if self.done {
                 return Ok(None);
+            }
+            if self.active {
+                if let Some(row) = self.row()? {
+                    return Ok(Some(QueryResult::Row(row)));
+                }
+                // Finished, or no rows matched: move to the next statement.
+                continue;
             }
             unsafe {
                 match self.query.as_mut() {
@@ -113,9 +118,9 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                             self.done = true;
                             return Ok(None);
                         }
-                        let rest = sql.get(self.offset..).unwrap_or_default();
-                        let (statement, consumed) =
-                            self.connection.prepare_statement::<false>(rest)?;
+                        let (statement, consumed) = self.connection.prepare_statement::<false>(
+                            sql.get(self.offset..).unwrap_or_default(),
+                        )?;
                         if consumed == 0 {
                             hint::cold_path();
                             self.done = true;
@@ -153,10 +158,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                 self.active = true;
                 let statement = self.statement();
                 if sqlite3_column_count(statement) > 0 {
-                    if let Some(row) = self.row()? {
-                        return Ok(Some(QueryResult::Row(row)));
-                    }
-                    // An empty result set must not end the stream while statements remain.
+                    // Stepped by the active branch on the next iteration.
                     continue;
                 }
                 let connection = *self.connection.handle;
@@ -178,19 +180,6 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
 
     #[inline(always)]
     fn next_result(&mut self) -> Option<Result<QueryResult<SQLiteRow>>> {
-        if self.done {
-            return None;
-        }
-        if self.active {
-            match self.row() {
-                Ok(Some(row)) => return Some(Ok(QueryResult::Row(row))),
-                Ok(None) => {}
-                Err(error) => {
-                    self.done = true;
-                    return Some(Err(error));
-                }
-            }
-        }
         match self.advance() {
             Ok(result) => result.map(Ok),
             Err(error) => {
