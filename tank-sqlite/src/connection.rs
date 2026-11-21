@@ -10,9 +10,9 @@ use std::{
     hint, iter, mem, ptr,
 };
 use tank_core::{
-    AnyQuery, AppendDefault, AsEntity, AsQuery, ColumnDef, Connection, Driver, Entity, Error,
-    ErrorContext, Executor, Operand, Prepared, QueryResult, Result, RowsAffected, Sql, Transaction,
-    describe_path, error_message_from_ptr, future::Either, truncate_long,
+    AnyQuery, AsEntity, AsQuery, ColumnDef, Connection, Driver, Entity, Error, ErrorContext,
+    Executor, Operand, Prepared, QueryResult, Result, Row, RowsAffected, Sql, Transaction,
+    describe_path, error_message_from_ptr, stream::Stream, truncate_long,
 };
 use tokio::task;
 
@@ -131,64 +131,6 @@ impl SQLiteConnection {
         );
         Ok(())
     }
-
-    /// Inserts entities in `rows` through a single prepared statement.
-    async fn do_append<I>(&mut self, rows: I) -> Result<RowsAffected>
-    where
-        I: IntoIterator,
-        I::Item: AsEntity,
-    {
-        const ROWS: usize = 256;
-        let table = <I::Item as AsEntity>::Entity::table();
-        let mut rows = rows.into_iter();
-        let mut affected = RowsAffected::default();
-        let mut prepared = {
-            let mut out = mem::take(&mut self.draft);
-            out.clear(); // Clear the content, keep the allocated memory
-            Sql()
-                .insert_into(table)
-                .columns(table.columns.iter().map(ColumnDef::name))
-                .values([iter::repeat_n(&Operand::QuestionMark, table.columns.len())])
-                .write_into(&self.driver().sql_writer(), &mut out);
-            let prepared = self
-                .prepare_statement::<true>(out.buffer())
-                .map(|(prepared, _)| prepared);
-            self.draft = out;
-            prepared?
-        };
-        let transaction = if unsafe { sqlite3_get_autocommit(*self.handle) } == 0 {
-            None
-        } else {
-            // Start a transaction if not inside one so the append either all succeeds or rolls back.
-            Some(self.begin().await?)
-        };
-        loop {
-            // Scoped so `entity` never lives across `.await`, keeping the future `Send`.
-            {
-                let mut count = 0;
-                for entity in rows.by_ref().take(ROWS) {
-                    for value in entity.as_entity().row_values() {
-                        prepared.bind(value)?;
-                    }
-                    prepared.step_done()?;
-                    prepared.clear_bindings()?;
-                    count += 1;
-                }
-                if count == 0 {
-                    break;
-                }
-                affected.extend([RowsAffected {
-                    rows_affected: Some(count),
-                    last_affected_id: Some(prepared.last_insert_rowid()),
-                }]);
-            }
-            task::yield_now().await;
-        }
-        if let Some(transaction) = transaction {
-            transaction.commit().await?;
-        }
-        Ok(affected)
-    }
 }
 
 impl Connection for SQLiteConnection {
@@ -250,23 +192,65 @@ impl Executor for SQLiteConnection {
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<SQLiteDriver> + 's,
-    ) -> impl tank_core::stream::Stream<Item = Result<QueryResult<impl tank_core::Row + 's>>> + Send
-    {
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
         SQLiteStream::new(self, query.as_query(&self.driver()))
     }
 
-    fn append<It>(&mut self, rows: It) -> impl Future<Output = Result<RowsAffected>> + Send
+    async fn append<It>(&mut self, rows: It) -> Result<RowsAffected>
     where
         It: IntoIterator + Send,
         It::IntoIter: Send,
         It::Item: AsEntity,
     {
-        let rows = rows.into_iter();
-        if <It::Item as AsEntity>::Entity::columns().is_empty() {
-            // Without named columns the batch must go through the generic insert.
-            Either::Right(self.append_default(rows))
+        const ROWS: usize = 256;
+        let table = <It::Item as AsEntity>::Entity::table();
+        let mut rows = rows.into_iter();
+        let mut affected = RowsAffected::default();
+        let mut prepared = {
+            let mut out = mem::take(&mut self.draft);
+            out.clear(); // Clear the content, keep the allocated memory
+            Sql()
+                .insert_into(table)
+                .columns(table.columns.iter().map(ColumnDef::name))
+                .values([iter::repeat_n(&Operand::QuestionMark, table.columns.len())])
+                .write_into(&self.driver().sql_writer(), &mut out);
+            let prepared = self
+                .prepare_statement::<true>(out.buffer())
+                .map(|(prepared, _)| prepared);
+            self.draft = out;
+            prepared?
+        };
+        let transaction = if unsafe { sqlite3_get_autocommit(*self.handle) } == 0 {
+            None
         } else {
-            Either::Left(self.do_append(rows))
+            // Start a transaction if not inside one so the append either all succeeds or rolls back.
+            Some(self.begin().await?)
+        };
+        loop {
+            // Scoped so `entity` never lives across `.await`, keeping the future `Send`.
+            {
+                let mut count = 0;
+                for entity in rows.by_ref().take(ROWS) {
+                    for value in entity.as_entity().row_values() {
+                        prepared.bind(value)?;
+                    }
+                    prepared.step_done()?;
+                    prepared.clear_bindings()?;
+                    count += 1;
+                }
+                if count == 0 {
+                    break;
+                }
+                affected.extend([RowsAffected {
+                    rows_affected: Some(count),
+                    last_affected_id: Some(prepared.last_insert_rowid()),
+                }]);
+            }
+            task::yield_now().await;
         }
+        if let Some(transaction) = transaction {
+            transaction.commit().await?;
+        }
+        Ok(affected)
     }
 }
