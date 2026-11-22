@@ -38,77 +38,76 @@ impl SQLiteConnection {
         &mut self,
         sql: &str,
     ) -> Result<(SQLitePrepared, usize)> {
-        let (prepared, consumed) = {
-            let db = self.db.lock();
-            let make_context = || format!("While preparing the query:\n{}", truncate_long(sql));
-            let len = c_int::try_from(sql.len())?;
-            let ptr = sql.as_ptr() as _;
-            let flags = if PERSISTENT {
-                SQLITE_PREPARE_PERSISTENT
-            } else {
-                0
-            };
-            let mut statement = ScopedStmt::null(&db);
-            let mut tail = ptr::null();
-            ensure_rc!(
-                unsafe {
-                    sqlite3_prepare_v3(
+        let db = self.db.lock();
+        let make_context = || format!("While preparing the query:\n{}", truncate_long(sql));
+        let len = c_int::try_from(sql.len())?;
+        let ptr = sql.as_ptr() as _;
+        let flags = if PERSISTENT {
+            SQLITE_PREPARE_PERSISTENT
+        } else {
+            0
+        };
+        let mut statement = ScopedStmt::null(&db);
+        let mut tail = ptr::null();
+        ensure_rc!(
+            unsafe {
+                sqlite3_prepare_v3(
+                    db.as_ptr(),
+                    ptr,
+                    len,
+                    flags,
+                    statement.as_mut_ptr(),
+                    &mut tail,
+                )
+            },
+            db.last_error(),
+            make_context(),
+        );
+        // SQLite stops after the first statement's semicolon or at a NUL byte.
+        let consumed = (tail as usize).wrapping_sub(ptr as usize);
+        // A prepared statement must hold one, unlike the stream walking empty statements.
+        if SINGLE_STATEMENT && statement.is_null() {
+            hint::cold_path();
+            let error = anyhow!("No statement to prepare").context(make_context());
+            log::error!("{error:#}");
+            return Err(error);
+        }
+        // Anything left after the statement must parse as no further statement.
+        if SINGLE_STATEMENT && consumed != sql.len() {
+            hint::cold_path();
+            // The rest must parse as no statement: whitespace, comments or empty statements.
+            check_rest(&db, sql.get(consumed..).unwrap_or_default())
+                .with_context(make_context)
+                .inspect_err(|error| log::error!("{error:#}"))?;
+            #[inline(never)]
+            fn check_rest(db: &RawDb, sql: &str) -> Result<()> {
+                let mut statement = ScopedStmt::null(db);
+                let mut tail = ptr::null();
+                if unsafe {
+                    sqlite3_prepare_v2(
                         db.as_ptr(),
-                        ptr,
-                        len,
-                        flags,
+                        sql.as_ptr() as _,
+                        c_int::try_from(sql.len())?,
                         statement.as_mut_ptr(),
                         &mut tail,
                     )
-                },
-                db.last_error(),
-                make_context(),
-            );
-            // SQLite stops after the first statement's semicolon or at a NUL byte.
-            let consumed = (tail as usize).wrapping_sub(ptr as usize);
-            // A prepared statement must hold one, unlike the stream walking empty statements.
-            if SINGLE_STATEMENT && statement.is_null() {
-                hint::cold_path();
-                let error = anyhow!("No statement to prepare").context(make_context());
-                log::error!("{error:#}");
-                return Err(error);
-            }
-            // Anything left after the statement must parse as no further statement.
-            if SINGLE_STATEMENT && consumed != sql.len() {
-                hint::cold_path();
-                // The rest must parse as no statement: whitespace, comments or empty statements.
-                check_rest(&db, sql.get(consumed..).unwrap_or_default())
-                    .with_context(make_context)
-                    .inspect_err(|error| log::error!("{error:#}"))?;
-                #[inline(never)]
-                fn check_rest(db: &RawDb, sql: &str) -> Result<()> {
-                    let mut statement = ScopedStmt::null(db);
-                    let mut tail = ptr::null();
-                    if unsafe {
-                        sqlite3_prepare_v2(
-                            db.as_ptr(),
-                            sql.as_ptr() as _,
-                            c_int::try_from(sql.len())?,
-                            statement.as_mut_ptr(),
-                            &mut tail,
-                        )
-                    } == SQLITE_OK
-                        && statement.is_null()
-                        && tail as *const u8 == sql.as_ptr().wrapping_add(sql.len())
-                    {
-                        Ok(())
-                    } else {
-                        Err(anyhow!(
-                            "Expected exactly one statement (remaining: {})",
-                            truncate_long(sql)
-                        ))
-                    }
+                } == SQLITE_OK
+                    && statement.is_null()
+                    && tail as *const u8 == sql.as_ptr().wrapping_add(sql.len())
+                {
+                    Ok(())
+                } else {
+                    Err(anyhow!(
+                        "Expected exactly one statement (remaining: {})",
+                        truncate_long(sql)
+                    ))
                 }
             }
-            (statement.into_owned(self.db.clone()), consumed)
-        };
-
-        Ok((SQLitePrepared::new(prepared), consumed))
+        }
+        Ok((
+            SQLitePrepared::new(statement.into_owned(self.db.clone())),
+            consumed,
+        ))
     }
 
     #[inline(always)]
