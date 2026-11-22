@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use std::sync::LazyLock;
 use tank::{
     Connection, Entity, Result, Sql, Transaction, cols,
@@ -26,9 +27,11 @@ pub async fn transaction1(connection: &mut impl Connection) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    EntityA::drop_table(connection, true, false).await?;
+    silent_logs! {
+        EntityA::drop_table(connection, true, false).await?;
+        EntityB::drop_table(connection, true, false).await?;
+    }
     EntityA::create_table(connection, true, true).await?;
-    EntityB::drop_table(connection, true, false).await?;
     EntityB::create_table(connection, true, true).await?;
 
     // Insert values and rollback

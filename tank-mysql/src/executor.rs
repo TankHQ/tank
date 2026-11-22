@@ -1,14 +1,15 @@
 use crate::{MySQLDriver, MySQLPrepared, RowWrap};
 use async_stream::try_stream;
-use std::sync::Arc;
+use std::{cmp::min, sync::Arc};
 use tank_core::{
-    AsQuery, Error, Executor, Query, RawQuery, Result, Row,
+    AsQuery, Error, Executor, MAX_BATCH_SIZE, Query, RawQuery, Result, Row,
     stream::{Stream, StreamExt, TryStreamExt},
 };
 
 pub(crate) struct MySQLQueryable<T: mysql_async::prelude::Queryable> {
     pub(crate) executor: T,
     pub(crate) driver: MySQLDriver,
+    pub(crate) max_allowed_packet: usize,
 }
 
 impl<T: mysql_async::prelude::Queryable + Send> Executor for MySQLQueryable<T> {
@@ -18,15 +19,19 @@ impl<T: mysql_async::prelude::Queryable + Send> Executor for MySQLQueryable<T> {
         self.driver
     }
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<MySQLDriver>> {
-        Ok(MySQLPrepared::new(self.executor.prep(sql.as_str()).await?).into())
+    fn batch_size(&self) -> usize {
+        min(self.max_allowed_packet / 4 * 3, MAX_BATCH_SIZE)
+    }
+
+    async fn do_prepare(&mut self, sql: &str) -> Result<MySQLPrepared> {
+        Ok(MySQLPrepared::new(self.executor.prep(sql).await?))
     }
 
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<MySQLDriver> + 's,
     ) -> impl Stream<Item = Result<tank_core::QueryResult<impl Row + 's>>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
         try_stream! {
             match query.as_mut() {

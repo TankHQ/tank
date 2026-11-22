@@ -205,9 +205,9 @@ mod tests {
                 .fetch(sql.as_str())
                 .try_fold(0, |groups, row| {
                     ready(
-                        String::try_from_value(row.value(0).unwrap())
-                            .and_then(|_| i64::try_from_value(row.value(1).unwrap()))
-                            .and_then(|_| f64::try_from_value(row.value(3).unwrap()))
+                        String::decode_value(row.value(0).unwrap())
+                            .and_then(|_| i64::decode_value(row.value(1).unwrap()))
+                            .and_then(|_| f64::decode_value(row.value(3).unwrap()))
                             .map(|_| groups + 1),
                     )
                 })
@@ -276,7 +276,13 @@ mod tests {
         let start = Instant::now();
         let mut tx = connection.begin().await.unwrap();
         let updated = tx
-            .execute("UPDATE bench_trades SET price = price * 1.001 WHERE buy = true")
+            .execute(
+                Sql()
+                    .update(Trade::table())
+                    .set(cols!(Trade::price == Trade::price * 1.001))
+                    .where_expr(expr!(Trade::buy == true))
+                    .build(&tx.driver()),
+            )
             .await
             .unwrap();
         let deleted = Trade::delete_many(&mut tx, expr!(Trade::account >= 500))

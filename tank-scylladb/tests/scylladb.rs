@@ -17,7 +17,6 @@ mod tests {
 
         // Unencrypted
         let (url, container) = init_scylladb(false).await;
-        let container = container.expect("Could not launch the container");
         let driver = ScyllaDBDriver::new();
         let mut pool = driver
             .connect_pool(url, PoolConfig::new())
@@ -28,7 +27,6 @@ mod tests {
 
         // SSL
         let (url, container) = init_scylladb(true).await;
-        let container = container.expect("Could not launch the SSL container");
         let driver = ScyllaDBDriver::new();
         let mut pool = driver
             .connect_pool(url, PoolConfig::new())

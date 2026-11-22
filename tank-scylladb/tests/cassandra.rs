@@ -17,7 +17,6 @@ mod tests {
 
         // Unencrypted
         let (url, container) = init_cassandra(false).await;
-        let container = container.expect("Could not launch the container");
         let driver = CassandraDriver::new();
         let mut pool = driver
             .connect_pool(url, PoolConfig::new())
@@ -28,7 +27,6 @@ mod tests {
 
         // SSL
         let (ssl_url, container) = init_cassandra(true).await;
-        let container = container.expect("Could not launch the SSL container");
         let driver = CassandraDriver::new();
         let mut pool = driver
             .connect_pool(ssl_url, PoolConfig::new())

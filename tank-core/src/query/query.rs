@@ -1,13 +1,16 @@
-use crate::{AsValue, Driver, DynQuery, Prepared, Result, RowOwned, RowsAffected, truncate_long};
+use crate::{AnyQuery, AsValue, Driver, Prepared, Result, RowOwned, RowsAffected, truncate_long};
 use anyhow::anyhow;
-use std::fmt::{self, Display};
+use std::{
+    borrow::Cow,
+    fmt::{self, Display},
+};
 
 #[derive(Default, Clone, Debug)]
 pub struct RawQuery(pub String);
 
 impl Display for RawQuery {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", truncate_long!(self.0))
+        write!(f, "{}", truncate_long(&self.0))
     }
 }
 
@@ -22,16 +25,31 @@ pub enum Query<D: Driver> {
 
 impl<D: Driver> Query<D> {
     /// New raw query.
-    pub fn raw(value: String) -> Self {
+    pub const fn raw(value: String) -> Self {
         Query::Raw(RawQuery(value))
     }
     /// New prepared query.
-    pub fn prepared(value: D::Prepared) -> Self {
+    pub const fn prepared(value: D::Prepared) -> Self {
         Query::Prepared(value)
     }
     /// True if it is the prepared variant.
-    pub fn is_prepared(&self) -> bool {
+    pub const fn is_prepared(&self) -> bool {
         matches!(self, Query::Prepared(..))
+    }
+    /// Renders raw SQL as borrowed text, or the prepared statement as debug text.
+    pub fn as_str(&self) -> Cow<'_, str> {
+        match self {
+            Query::Raw(RawQuery(sql)) => Cow::Borrowed(sql),
+            Query::Prepared(prepared) => Cow::Owned(format!("{prepared:?}")),
+        }
+    }
+    /// True when the query holds no SQL text and its prepared statement is empty.
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Query::Raw(RawQuery(sql)) => sql.is_empty(),
+            Query::Prepared(prepared) => prepared.is_empty(),
+        }
     }
     /// Clear bound values.
     pub fn clear_bindings(&mut self) -> Result<&mut Self> {
@@ -60,7 +78,7 @@ impl<D: Driver> Query<D> {
         prepared.bind_index(value, index)?;
         Ok(self)
     }
-    pub fn into_dyn(self) -> DynQuery {
+    pub fn into_any(self) -> AnyQuery {
         self.into()
     }
 }

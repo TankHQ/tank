@@ -1,3 +1,4 @@
+use crate::silent_logs;
 use std::{collections::BTreeSet, sync::LazyLock};
 use tank::{AsValue, Entity, Executor, Result, Row, Sql, cols, expr, stream::TryStreamExt};
 use tokio::sync::Mutex;
@@ -17,7 +18,9 @@ pub async fn case(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    CaseOrder::drop_table(executor, true, false).await?;
+    silent_logs! {
+        CaseOrder::drop_table(executor, true, false).await?;
+    }
     CaseOrder::create_table(executor, true, false).await?;
     CaseOrder::insert_many(
         executor,
@@ -143,8 +146,8 @@ pub async fn case(executor: &mut impl Executor) -> Result<()> {
         )
         .and_then(|row| async move {
             Ok((
-                i32::try_from_value(row.value(0).unwrap())?,
-                String::try_from_value(row.value(1).unwrap())?,
+                i32::decode_value(row.value(0).unwrap())?,
+                String::decode_value(row.value(1).unwrap())?,
             ))
         })
         .try_collect::<Vec<_>>()

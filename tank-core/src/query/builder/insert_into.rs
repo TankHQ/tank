@@ -1,16 +1,15 @@
 use crate::{
-    AsValue, ColumnDef, Dataset, Driver, DynQuery, Entity, Expression, ExpressionCollection, NA,
-    SelectQuery, SelectQueryBuilder, SqlWriter, TableRef, Value, future::Either,
+    AnyQuery, BoxQueryBuilder, ColumnDef, Dataset, Driver, Entity, Expression,
+    ExpressionCollection, NA, Query, SelectQuery, SelectQueryBuilder, SqlWriter, TableRef, Value,
+    future::Either,
 };
 use std::{borrow::Cow, iter, marker::PhantomData};
 
 type NoSelect = SelectQueryBuilder<NA, NA, NA, NA, NA, NA, NA>;
 
-/// INSERT ... SELECT, a SELECT carrying the table and columns its rows are inserted into.
 pub type InsertSelectQueryBuilder<S, F = NA, W = NA, G = NA, H = NA, O = NA, L = NA> =
     SelectQueryBuilder<S, F, W, G, H, O, L, InsertIntoQueryBuilder<NA, NA>>;
 
-/// INSERT query builder, inserting rows of values or the result of a SELECT.
 pub struct InsertIntoQueryBuilder<Values, Update> {
     pub(crate) table: TableRef,
     pub(crate) columns: Cow<'static, [ColumnDef]>,
@@ -48,8 +47,8 @@ impl InsertIntoQueryBuilder<NA, NA> {
     {
         // A table named by hand takes the columns and primary key of the entities.
         if self.table.columns.is_empty() {
-            self.table.columns = E::columns();
-            self.table.primary_key = E::table().primary_key;
+            self.table.columns = E::columns().into();
+            self.table.primary_key = E::table().primary_key.clone();
         }
         self.columns = Cow::Borrowed(E::columns());
         self.with(entities.into_iter().map(E::row_values), false)
@@ -71,14 +70,15 @@ impl InsertIntoQueryBuilder<NA, NA> {
 }
 
 impl InsertIntoQueryBuilder<(), NA> {
-    /// Insert rows of values in the order of the columns, such as `[[1, 2], [3, 4]]` or vectors of [`Value`].
-    pub fn values<Rows>(self, rows: Rows) -> InsertIntoQueryBuilder<Rows, NA>
+    /// Insert rows of expressions following the columns order.
+    pub fn values<Rows>(self, rows: Rows) -> InsertIntoQueryBuilder<Rows::IntoIter, NA>
     where
-        Rows: IntoIterator + Clone,
+        Rows: IntoIterator,
+        Rows::IntoIter: Clone,
         Rows::Item: IntoIterator,
-        <Rows::Item as IntoIterator>::Item: AsValue,
+        <Rows::Item as IntoIterator>::Item: Expression,
     {
-        self.with(rows, false)
+        self.with(rows.into_iter(), false)
     }
 
     /// Insert the rows of a SELECT, continued like any SELECT, into the columns.
@@ -91,6 +91,8 @@ impl InsertIntoQueryBuilder<(), NA> {
             having: None,
             order_by: None,
             limit: None,
+            offset: None,
+            distinct: false,
             _l: PhantomData,
             insert: self.with(NA, false),
         }
@@ -99,9 +101,7 @@ impl InsertIntoQueryBuilder<(), NA> {
 
 impl<R> InsertIntoQueryBuilder<R, NA>
 where
-    R: IntoIterator + Clone,
-    R::Item: IntoIterator,
-    <R::Item as IntoIterator>::Item: AsValue,
+    Self: InsertIntoQuery,
 {
     /// Update the existing rows on a conflict on the table primary key (upsert).
     pub fn update(self) -> InsertIntoQueryBuilder<R, bool> {
@@ -115,24 +115,11 @@ where
     }
 }
 
-impl<V, U> InsertIntoQueryBuilder<V, U>
-where
-    Self: InsertIntoQuery,
-{
-    pub fn build<D: Driver>(&self, driver: &D) -> DynQuery {
-        InsertIntoQuery::build(self, driver)
-    }
-
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
-        InsertIntoQuery::build_into(self, driver, out);
-    }
-}
-
 impl<R, U> InsertIntoQuery for InsertIntoQueryBuilder<R, U>
 where
     R: IntoIterator + Clone,
     R::Item: IntoIterator,
-    <R::Item as IntoIterator>::Item: AsValue,
+    <R::Item as IntoIterator>::Item: Expression,
 {
     type From = NA;
 
@@ -146,14 +133,11 @@ where
 
     fn get_values(
         &self,
-    ) -> Either<impl Iterator<Item = impl Iterator<Item = Value<'_>>>, &impl SelectQuery<Self::From>>
-    {
-        Either::<_, &NoSelect>::Left(
-            self.values
-                .clone()
-                .into_iter()
-                .map(|row| row.into_iter().map(AsValue::as_value)),
-        )
+    ) -> Either<
+        impl Iterator<Item = impl Iterator<Item = impl Expression>>,
+        &impl SelectQuery<Self::From>,
+    > {
+        Either::<_, &NoSelect>::Left(self.values.clone().into_iter().map(IntoIterator::into_iter))
     }
 
     fn get_update(&self) -> bool {
@@ -170,12 +154,24 @@ where
     H: Expression,
     O: ExpressionCollection,
 {
-    pub fn build<D: Driver>(&self, driver: &D) -> DynQuery {
-        InsertIntoQuery::build(self, driver)
+    /// Builds the query for `driver`.
+    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
+        let mut query = AnyQuery::default();
+        self.write_into(&driver.sql_writer(), &mut query);
+        query.into()
     }
 
-    pub fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery) {
-        InsertIntoQuery::build_into(self, driver, out);
+    /// Writes the statement into an existing query.
+    pub fn write_into(&self, writer: &impl SqlWriter, out: &mut AnyQuery) {
+        writer.write_insert(out, self);
+    }
+
+    /// Erases the builder into a [`BoxQueryBuilder`], to store it and run it later on any executor.
+    pub fn boxed(self) -> BoxQueryBuilder
+    where
+        Self: 'static,
+    {
+        BoxQueryBuilder::new(move |writer, out| self.write_into(writer, out))
     }
 }
 
@@ -200,9 +196,11 @@ where
 
     fn get_values(
         &self,
-    ) -> Either<impl Iterator<Item = impl Iterator<Item = Value<'_>>>, &impl SelectQuery<Self::From>>
-    {
-        Either::Right::<iter::Empty<iter::Empty<Value>>, _>(self)
+    ) -> Either<
+        impl Iterator<Item = impl Iterator<Item = impl Expression>>,
+        &impl SelectQuery<Self::From>,
+    > {
+        Either::<iter::Empty<iter::Empty<NA>>, _>::Right(self)
     }
 
     fn get_update(&self) -> bool {
@@ -210,10 +208,10 @@ where
     }
 }
 
-/// INSERT query builder.
+/// INSERT INTO table (columns) VALUES (values), ... [ON CONFLICT (primary key) DO UPDATE SET ...]
 ///
-/// Use `Sql().insert_into(table)` to start, then `values(&entities)`, `columns(names).values(rows)`
-/// or `select(columns).from(dataset)...`, failing on primary key conflicts without `update`.
+/// Use `Sql().insert_into(table)` to start.
+/// Then `values(&entities)`, `columns(names).values(rows)` or `select(columns).from(dataset)...`.
 pub trait InsertIntoQuery {
     /// Dataset of the SELECT producing the rows, unused for rows of values.
     type From: Dataset;
@@ -221,28 +219,15 @@ pub trait InsertIntoQuery {
     fn get_table(&self) -> &TableRef;
     /// Get the columns, empty for all the table columns in order.
     fn get_columns(&self) -> &[ColumnDef];
-    /// Get the rows of values, each in the order of the columns, or the SELECT producing them.
+    /// Get rows of expression cells, or the SELECT producing the inserted rows.
     fn get_values(
         &self,
-    ) -> Either<impl Iterator<Item = impl Iterator<Item = Value<'_>>>, &impl SelectQuery<Self::From>>;
+    ) -> Either<
+        impl Iterator<Item = impl Iterator<Item = impl Expression>>,
+        &impl SelectQuery<Self::From>,
+    >;
     /// Whether existing rows are updated on a primary key conflict.
     fn get_update(&self) -> bool;
-    /// Build query.
-    fn build<D: Driver>(&self, driver: &D) -> DynQuery
-    where
-        Self: Sized,
-    {
-        let mut query = DynQuery::default();
-        self.build_into(driver, &mut query);
-        query
-    }
-    /// Build query into existing buffer.
-    fn build_into<D: Driver>(&self, driver: &D, out: &mut DynQuery)
-    where
-        Self: Sized,
-    {
-        driver.sql_writer().write_insert(out, self);
-    }
 }
 
 impl<T: InsertIntoQuery> InsertIntoQuery for &T {
@@ -258,12 +243,39 @@ impl<T: InsertIntoQuery> InsertIntoQuery for &T {
 
     fn get_values(
         &self,
-    ) -> Either<impl Iterator<Item = impl Iterator<Item = Value<'_>>>, &impl SelectQuery<Self::From>>
-    {
+    ) -> Either<
+        impl Iterator<Item = impl Iterator<Item = impl Expression>>,
+        &impl SelectQuery<Self::From>,
+    > {
         (**self).get_values()
     }
 
     fn get_update(&self) -> bool {
         (**self).get_update()
+    }
+}
+
+impl<V, U> InsertIntoQueryBuilder<V, U>
+where
+    Self: InsertIntoQuery,
+{
+    /// Builds the query for `driver`.
+    pub fn build<D: Driver>(&self, driver: &D) -> Query<D> {
+        let mut query = AnyQuery::default();
+        self.write_into(&driver.sql_writer(), &mut query);
+        query.into()
+    }
+
+    /// Writes the statement into an existing query.
+    pub fn write_into(&self, writer: &impl SqlWriter, out: &mut AnyQuery) {
+        writer.write_insert(out, self);
+    }
+
+    /// Erases the builder into a [`BoxQueryBuilder`], to store it and run it later on any executor.
+    pub fn boxed(self) -> BoxQueryBuilder
+    where
+        Self: 'static,
+    {
+        BoxQueryBuilder::new(move |writer, out| self.write_into(writer, out))
     }
 }

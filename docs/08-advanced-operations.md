@@ -53,11 +53,13 @@ Objective: strongest certified transmissions excluding routine radio checks.
 
 <<< @/../tank-tests/src/operations.rs#operations-select-order
 
+The select builder also supports `distinct()`, `group_by(expressions)`, `having(expression)` and `offset(n)`. An offset works with or without a limit: drivers whose syntax requires one add their own unbounded placeholder (SQLite, MySQL), and drivers that cannot express the clause ignore it.
+
 ## Expr
-[`expr!()`](https://docs.rs/tank/latest/tank/macro.expr.html) parses a Rust-like expression into a typed AST that drivers translate into backend-specific queries. Use it for conditions or default values.
+[`expr!()`](https://docs.rs/tank/latest/tank/macro.expr.html) parses a Rust-like expression into a typed AST that drivers translate into backend-specific queries. Use it for query conditions and, through [`cols!`](#cols), for projections.
 
 It accepts a subset of Rust syntax with additional sentinel tokens for SQL semantics:
-- `42`, `1.2`, `"Alpha"`, `true`, `NULL`, `[1, 2, 3]` literal values
+- `42`, `1.2`, `"Alpha"`, `true`, `NULL`, `[1, 2, 3]`, `(1, 2, 3)` literal values
 - `#value` variable evaluation
 - `RadioLog::signal_strength` column reference
 - `Operator::id == #some_uuid` comparison: `==`, `!=`, `>`, `>=`, `<`, `<=`
@@ -71,7 +73,7 @@ It accepts a subset of Rust syntax with additional sentinel tokens for SQL seman
 - `PI` identifiers
 - `col == NULL`, `col != NULL` null check, becomes `IS NULL`/`IS NOT NULL`
 - `value != "ab%" as LIKE` pattern matching: becomes `value NOT LIKE 'ab%'` in SQL. Also supports `IN`, `REGEXP`, and `GLOB` (actual support depends on the driver)
-- `Operator::callsign == #signs as IN`, becomes: `callsign IN ('Alpha', 'Bravo-2')`
+- `Operator::callsign == #signs as IN`, becomes: `callsign IN ('Alpha', 'Bravo-2')`. Use `!=` for `NOT IN`, `NOT LIKE`, `NOT REGEXP` and `NOT GLOB`.
 - `-(-PI) + 2 * (5 % (2 + 1)) == 7 && !(4 < 2)` combination of the previous
 - `CAST((2 > 1) as i32)` casting expression (mind the parentheses), the type names are automatically converted by the driver
 - `if RadioLog::signal_strength > -20 { "strong" } else { "weak" }` conditional: becomes `CASE WHEN signal_strength > -20 THEN 'strong' ELSE 'weak' END`, `else if`
@@ -106,6 +108,48 @@ Example of valid syntax
 - `operations.radio_log.rssi` raw database identifier
 - `Operator::enlisted DESC` ordering
 - `AVG(ABS(Operator::enlisted - operations.radio_log.tx_time)) as difference DESC` combination of the previous
+
+## Update Queries
+`Sql().update(dataset)` builds an `UPDATE`. Each item of `set` is an assignment, written with `==` and rendered as `=`:
+```rust
+use tank::{Entity, Sql, cols, expr};
+
+let affected = executor
+    .execute(
+        Sql()
+            .update(RadioLog::table())
+            .set(cols!(RadioLog::rssi == -40))
+            .where_expr(expr!(RadioLog::unit_callsign == "Alpha-1"))
+            .build(&executor.driver()),
+    )
+    .await?;
+```
+The value can be a literal, a parameter or an expression where the engine supports it (CQL accepts column arithmetic only for counters). Without `where_expr`, every row is updated, which engines that require a key in the condition (CQL) reject. Targets render unqualified, as SQL requires. MongoDB and Valkey have no plain `UPDATE`. Use `save()` (or `insert_into(...).update()`) there.
+
+`Sql().insert_into(table).select(columns)` copies rows with `INSERT ... SELECT` and continues like any select, so `where_expr`, `group_by`, `having`, `order_by`, `limit`, `offset` and `distinct` all apply. The selected columns match the table columns by position:
+```rust
+executor
+    .execute(
+        Sql()
+            .insert_into(RadioLog::table())
+            .select(RadioLog::columns())
+            .from(RadioLog::table())
+            .where_expr(expr!(RadioLog::rssi > -60))
+            .build(&executor.driver()),
+    )
+    .await?;
+```
+
+Rows can also be written explicitly, without an entity. `columns` names them and `values` takes rows of expressions, such as the placeholders of a prepared statement:
+```rust
+let query = Sql()
+    .insert_into("radio_log")
+    .columns(["id", "message"])
+    .values([cols!(?, ?), cols!(?, ?)])
+    .build(&executor.driver());
+```
+
+Calling `.update()` on an insert turns it into an upsert on the table primary key, which is what `Entity::save` builds.
 
 ## Performance Notes
 - Request only the necessary columns.

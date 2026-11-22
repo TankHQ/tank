@@ -21,6 +21,7 @@ Use it with the main [`tank`](https://crates.io/crates/tank) crate, which provid
 - TLS support via `rustls`
 - Key-Value mapping for Tank entities
 - Support for nested types such as `Vec` and `HashMap`, stored in auxiliary keys
+- JSON and binary values stored as raw hash field payloads
 
 ## Install
 ```sh
@@ -36,7 +37,7 @@ use tank_valkey::ValkeyDriver;
 let driver = ValkeyDriver::default();
 let pool = driver
     .connect_pool(
-        "valkeys://user:password@127.0.0.1:6379/0?sslmode=require&sslrootcert=ca.pem&sslcert=client-cert.pem&sslkey=client-key.pem",
+        "valkeys://user:password@127.0.0.1:6379/0?sslrootcert=ca.pem&sslcert=client-cert.pem&sslkey=client-key.pem",
         PoolConfig::new(),
     )
     .await?;
@@ -55,13 +56,15 @@ Due to the key-value nature of Valkey and Redis, this driver has stricter limita
 - **Primary key access only**: `SELECT` and `DELETE` operations must provide a `WHERE` clause that matches the entity primary key exactly, for example `WHERE first_name == "Linus" && last_name == "Torvalds"`. Other expressions are not supported.
 - **No joins or aggregations**: `JOIN` clauses and `GROUP BY` aggregations are not supported.
 - **No ordering**: `ORDER BY` clauses are not supported.
-- **No table or schema DDL**: `create_table` and `create_schema` are effectively no-ops. `drop_table` logs an error. Data must be cleared by deleting keys or through expiration.
+- **No table or schema DDL**: `create_table` and `create_schema` are effectively no-ops. `drop_table` logs a warning. Data must be cleared by deleting keys or through expiration.
 - **Data modeling is key-based**: Each entity is stored under one root key as a Redis hash. Nested collections use additional child keys derived from the root key, such as `<root>:<field>`.
 - **No reliable rows affected**: Valkey and Redis do not provide affected-row counts in the SQL sense. Tank returns `rows_affected: None`.
 - **Transactions use pipelines**: Tank queues commands and executes them through a Redis pipeline on `commit()`. `rollback()` is a no-op. Commands are not automatically wrapped in `MULTI/EXEC`.
 
 ## Running Tests
-Tests need a Valkey/Redis instance. Provide a connection URL via `TANK_VALKEY_TEST`. If absent, a containerized Valkey will be launched automatically using [testcontainers-modules](https://crates.io/crates/testcontainers-modules).
+The Valkey and Redis suites manage their own throwaway containers via [testcontainers-modules](https://crates.io/crates/testcontainers-modules). No database setup is needed. Set environment variable `TANK_VALKEY_TEST` / `TANK_REDIS_TEST` to use your own servers.
+
+Docker is required:
 
 1. Ensure Docker is running on Linux:
 ```sh

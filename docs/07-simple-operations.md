@@ -5,14 +5,14 @@ An entity maps one-to-one with a database table. This section trains you on the 
 
 ## Available Operations
 Core operations on `Entity`:
-* [`Entity::create_table()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.create_table): create table and optionally schema
-* [`Entity::drop_table()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.drop_table): drop table and optionally schema
-* [`Entity::insert_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.insert_one): insert one row
-* [`Entity::insert_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.insert_many): insert many rows (possibly in an optimized way)
-* [`Entity::prepare_find()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.prepare_find): prepare a SELECT query against this table
+* [`Entity::create_table()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.create_table): create table and optionally schema
+* [`Entity::drop_table()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.drop_table): drop table and optionally schema
+* [`Entity::insert_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.insert_one): insert one row
+* [`Entity::insert_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.insert_many): insert many rows (possibly in an optimized way)
+* [`Entity::prepare_find()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.prepare_find): prepare a SELECT query against this table
 * [`Entity::find_one()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.find_one): first matching row
-* [`Entity::find_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.find_many): stream matching entities
-* [`Entity::delete_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#tymethod.delete_many): delete by condition
+* [`Entity::find_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.find_many): stream matching entities
+* [`Entity::delete_many()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.delete_many): delete by condition
 * [`entity.save()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.save): insert or update (works only for entities with a primary key)
 * [`entity.delete()`](https://docs.rs/tank/latest/tank/trait.Entity.html#method.delete): delete this entity (works only for entities with a primary key)
 
@@ -24,7 +24,7 @@ The SQL below uses PostgreSQL syntax. Other drivers choose their own column type
 ```rust [Rust]
 use std::pin::pin;
 use tank::{
-    Driver, DynQuery, Entity, QueryResult, RowsAffected, Sql, SqlWriter, anyhow, expr,
+    AnyQuery, Driver, Entity, QueryResult, RowsAffected, Sql, SqlWriter, anyhow, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use time::{Date, OffsetDateTime, macros::date};

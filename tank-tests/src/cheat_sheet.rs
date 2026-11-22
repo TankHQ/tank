@@ -1,4 +1,5 @@
 #![allow(unused_variables)]
+use crate::silent_logs;
 use std::{collections::HashMap, sync::LazyLock};
 use tank::{AsValue, Entity, Result, Value, ValueOwned, anyhow, expr};
 use tokio::sync::Mutex;
@@ -21,7 +22,7 @@ impl AsValue for NotesWrap {
     {
         Value::Varchar(Some(self.0.0.into()))
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self> {
+    fn decode_value(value: impl AsValue) -> Result<Self> {
         match value.as_value().try_as(&Value::Varchar(None)) {
             Ok(Value::Varchar(Some(s))) => Ok(NotesWrap(Notes(s.to_string()))),
             _ => Err(anyhow!("Expected Varchar for Notes")),
@@ -132,8 +133,6 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     }
 
     {
-        use tank::{Entity, expr};
-
         let uid = entity2.unit_id;
         EntityExample::delete_many(&mut connection, expr!(EntityExample::unit_id == #uid)).await?;
 
@@ -329,7 +328,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                         .group_by(EntityExample::region)
                         .build(&connection.driver()),
                 )
-                .map_ok(|row| i32::try_from_value(row.get_column("total")))
+                .map_ok(|row| i32::decode_value(row.get_column("total")))
                 .map(Result::flatten)
                 .try_fold(0, |total, casualties| ready(Ok(total + casualties)))
                 .await?
@@ -363,6 +362,88 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         assert_eq!(total, 8);
         assert_eq!(rows.len(), 3);
         assert!(rows.iter().all(|row| row.get_column("callsign").is_some()));
+    }
+
+    {
+        // #region cheat-sheet-builder-insert
+        use tank::Sql;
+
+        connection
+            .execute(
+                Sql()
+                    .insert_into(EntityExample::table())
+                    .values([&entity])
+                    .update() // Upsert on the primary key
+                    .build(&connection.driver()),
+            )
+            .await?;
+        // #endregion cheat-sheet-builder-insert
+    }
+
+    #[cfg(not(feature = "disable-updates"))]
+    {
+        // #region cheat-sheet-builder-update
+        use tank::{Sql, cols};
+
+        connection
+            .execute(
+                Sql()
+                    .update(EntityExample::table())
+                    .set(cols!(EntityExample::casualties == 1))
+                    .where_expr(entity.primary_key_expr())
+                    .build(&connection.driver()),
+            )
+            .await?;
+        // #endregion cheat-sheet-builder-update
+    }
+
+    {
+        // #region cheat-sheet-builder-delete
+        use tank::Sql;
+
+        connection
+            .execute(
+                Sql()
+                    .delete_from(EntityExample::table())
+                    .where_expr(entity3.primary_key_expr())
+                    .build(&connection.driver()),
+            )
+            .await?;
+        // #endregion cheat-sheet-builder-delete
+    }
+
+    {
+        // #region cheat-sheet-builder-create-table
+        use tank::{ColumnDef, Sql};
+
+        connection
+            .execute(
+                Sql()
+                    .create_table(("army", "outposts"))
+                    .if_not_exists()
+                    .columns([
+                        ColumnDef::from_type::<i32>("id").primary_key(),
+                        ColumnDef::from_type::<String>("sector").nullable(true),
+                    ])
+                    .build(&connection.driver()),
+            )
+            .await?;
+        // #endregion cheat-sheet-builder-create-table
+    }
+
+    silent_logs! {
+        // #region cheat-sheet-builder-drop-table
+        use tank::Sql;
+
+        connection
+            .execute(
+                Sql()
+                    .drop_table(("army", "outposts"))
+                    .if_exists()
+                    .build(&connection.driver()),
+            )
+            .await?;
+        // #endregion cheat-sheet-builder-drop-table
     }
 
     Ok(())

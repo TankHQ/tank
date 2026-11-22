@@ -1,8 +1,10 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
     collections::{self, BTreeMap, HashMap, VecDeque},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::Deref,
     rc::Rc,
     sync::{Arc, LazyLock},
@@ -50,13 +52,17 @@ struct InsaneNullFields {
     #[cfg(not(feature = "disable-lists"))]
     blue: Vec<Option<Arc<VecDeque<i32>>>>,
     green: Box<RefCell<Arc<Box<Arc<Arc<Arc<RefCell<time::Time>>>>>>>>,
+    cyan: Option<Box<Rc<RefCell<Arc<Cell<IpAddr>>>>>>,
+    magenta: Option<Arc<Box<RefCell<Rc<Cell<Option<Uuid>>>>>>>,
 }
 
 pub async fn insane(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    InsaneNullFields::drop_table(executor, true, false).await?;
+    silent_logs! {
+        InsaneNullFields::drop_table(executor, true, false).await?;
+    }
     InsaneNullFields::create_table(executor, true, true).await?;
 
     // Insane 1
@@ -113,6 +119,12 @@ pub async fn insane(executor: &mut impl Executor) -> Result<()> {
                 Time::from_hms(14, 25, 59).expect("Correct time"),
             )),
         )))))),
+        cyan: Some(Box::new(Rc::new(RefCell::new(Arc::new(Cell::new(
+            IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1)),
+        )))))),
+        magenta: Some(Arc::new(Box::new(RefCell::new(Rc::new(Cell::new(Some(
+            Uuid::parse_str("cd6c7a05-8b7d-4ee9-8b9c-0e39380b4dac").expect("Correct UUID"),
+        ))))))),
     };
     InsaneNullFields::insert_one(executor, &entity).await?;
     #[allow(unused_variables)]
@@ -134,6 +146,8 @@ pub async fn insane(executor: &mut impl Executor) -> Result<()> {
     #[cfg(not(feature = "disable-lists"))]
     assert_eq!(loaded.blue, entity.blue);
     assert_eq!(loaded.green, entity.green);
+    assert_eq!(loaded.cyan, entity.cyan);
+    assert_eq!(loaded.magenta, entity.magenta);
 
     // Insane 2
     InsaneNullFields::delete_many(executor, true).await?;
@@ -186,6 +200,10 @@ pub async fn insane(executor: &mut impl Executor) -> Result<()> {
                 Time::from_hms(11, 59, 59).expect("Correct time"),
             )),
         )))))),
+        cyan: Some(Box::new(Rc::new(RefCell::new(Arc::new(Cell::new(
+            IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)),
+        )))))),
+        magenta: None,
     };
     InsaneNullFields::insert_one(executor, &entity).await?;
     let loaded = InsaneNullFields::find_one(executor, true)
@@ -226,5 +244,7 @@ pub async fn insane(executor: &mut impl Executor) -> Result<()> {
         "cd6c7a05-8b7d-4ee9-8b9c-0e39380b4dac"
     );
     assert_eq!(loaded.green, entity.green);
+    assert_eq!(loaded.cyan, entity.cyan);
+    assert_eq!(loaded.magenta, entity.magenta);
     Ok(())
 }

@@ -2,7 +2,7 @@ use crate::{MongoDBDriver, MongoDBPrepared, MongoDBSqlWriter, glob_to_regex, lik
 use mongodb::bson::{Bson, Document, Regex, doc};
 use std::{borrow::Cow, iter, mem, sync::Arc};
 use tank_core::{
-    AsValue, BinaryOp, BinaryOpType, Case, ColumnRef, Context, DynQuery, Expression,
+    AnyQuery, AsValue, BinaryOp, BinaryOpType, Case, ColumnRef, Context, Expression,
     ExpressionVisitor, IsConstant, IsFalse, IsTrue, Operand, Ordered, SqlWriter, UnaryOp,
     UnaryOpType, Value, ValueOwned,
 };
@@ -23,12 +23,49 @@ pub struct IsField<'a> {
     pub known_columns: Arc<Vec<&'a String>>,
     pub aggregate_aliases: AggregateAliases,
 }
-impl<'a> ExpressionVisitor for IsField<'a> {
+impl IsField<'_> {
+    fn resolve_expression(
+        &mut self,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        value: &dyn Expression,
+    ) -> bool {
+        if self.known_columns.is_empty() && self.aggregate_aliases.is_empty() {
+            return false;
+        }
+        let mut probe_ctx = context.clone();
+        let identifier = value.as_identifier(&mut probe_ctx.switch_table("".into()).current);
+        if self.known_columns.contains(&&identifier) {
+            self.field = FieldType::Identifier(identifier);
+            return true;
+        }
+        if !self.aggregate_aliases.is_empty() {
+            let mut probe_ctx = context.clone();
+            let mut query = MongoDBSqlWriter::make_prepared();
+            value.write_query(
+                writer,
+                &mut probe_ctx.switch_table("".into()).current,
+                &mut query,
+            );
+            if let Some(bson) = query
+                .as_prepared::<MongoDBDriver>()
+                .and_then(MongoDBPrepared::current_bson)
+                .map(mem::take)
+                && let Some((_, alias)) = self.aggregate_aliases.iter().find(|(b, _)| b == &bson)
+            {
+                self.field = FieldType::Identifier(alias.clone());
+                return true;
+            }
+        }
+        false
+    }
+}
+impl ExpressionVisitor for IsField<'_> {
     fn visit_column(
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &ColumnRef,
     ) -> bool {
         self.field = FieldType::Column(value.clone());
@@ -38,7 +75,7 @@ impl<'a> ExpressionVisitor for IsField<'a> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {
@@ -73,74 +110,41 @@ impl<'a> ExpressionVisitor for IsField<'a> {
                 }
                 true
             }
-            _ => {
-                if self.known_columns.is_empty() && self.aggregate_aliases.is_empty() {
-                    return false;
-                }
-                let identifier = value.as_identifier(&mut context.switch_table("".into()).current);
-                if self.known_columns.contains(&&identifier) {
-                    self.field = FieldType::Identifier(identifier);
-                    return true;
-                }
-                if !self.aggregate_aliases.is_empty() {
-                    let mut query = MongoDBSqlWriter::make_prepared();
-                    value.write_query(writer, context, &mut query);
-                    if let Some(bson) = query
-                        .as_prepared::<MongoDBDriver>()
-                        .and_then(MongoDBPrepared::current_bson)
-                        .map(mem::take)
-                        && let Some((_, alias)) =
-                            self.aggregate_aliases.iter().find(|(b, _)| b == &bson)
-                    {
-                        self.field = FieldType::Identifier(alias.clone());
-                        return true;
-                    }
-                }
-                false
-            }
+            _ => self.resolve_expression(writer, context, value),
         }
     }
     fn visit_unary_op(
         &mut self,
-        _writer: &dyn SqlWriter,
+        writer: &dyn SqlWriter,
         context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &UnaryOp<&dyn Expression>,
     ) -> bool {
-        if self.known_columns.is_empty() {
-            return false;
-        }
-        let identifier = value.as_identifier(&mut context.switch_table("".into()).current);
-        if self.known_columns.contains(&&identifier) {
-            self.field = FieldType::Identifier(identifier);
-            true
-        } else {
-            false
-        }
+        self.resolve_expression(writer, context, value)
     }
     fn visit_binary_op(
         &mut self,
-        _writer: &dyn SqlWriter,
+        writer: &dyn SqlWriter,
         context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
-        if self.known_columns.is_empty() {
-            return false;
-        }
-        let identifier = value.as_identifier(&mut context.switch_table("".into()).current);
-        if self.known_columns.contains(&&identifier) {
-            self.field = FieldType::Identifier(identifier);
-            true
-        } else {
-            false
-        }
+        self.resolve_expression(writer, context, value)
+    }
+    fn visit_case(
+        &mut self,
+        writer: &dyn SqlWriter,
+        context: &mut Context,
+        _out: &mut AnyQuery,
+        value: &Case,
+    ) -> bool {
+        self.resolve_expression(writer, context, value)
     }
     fn visit_ordered(
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Ordered<&dyn Expression>,
     ) -> bool {
         value.expression.accept_visitor(self, writer, context, out)
@@ -153,7 +157,7 @@ pub struct WriteMatchExpression<'a> {
     pub known_columns: Arc<Vec<&'a String>>,
     pub aggregate_aliases: AggregateAliases,
 }
-impl<'a> WriteMatchExpression<'a> {
+impl WriteMatchExpression<'_> {
     pub fn new() -> Self {
         WriteMatchExpression::default()
     }
@@ -163,12 +167,12 @@ impl<'a> WriteMatchExpression<'a> {
         }
     }
 }
-impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
+impl ExpressionVisitor for WriteMatchExpression<'_> {
     fn visit_column(
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &ColumnRef,
     ) -> bool {
         value.write_query(writer, context, out);
@@ -179,7 +183,7 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         let top = !self.started;
@@ -230,7 +234,7 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &UnaryOp<&dyn Expression>,
     ) -> bool {
         let top = !self.started;
@@ -273,7 +277,7 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         let top = !self.started;
@@ -317,7 +321,13 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                     is_expr = true;
                 } else {
                     for (i, _) in arg_is_expr.iter().enumerate().filter(|(_, v)| **v) {
-                        args[i] = doc! { "$expr": mem::take(&mut args[i]) }.into();
+                        if let Some(arg) = args.get_mut(i) {
+                            *arg = doc! { "$expr": mem::take(arg) }.into();
+                        } else {
+                            log::error!(
+                                "Argument {i} is flagged as an expression but is out of bounds"
+                            );
+                        }
                     }
                     is_expr = false;
                 }
@@ -405,11 +415,19 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
                         return false;
                     };
                     let field = match field.field {
-                        FieldType::None => unreachable!(),
+                        FieldType::None => {
+                            log::error!("Unexpected FieldType::None in WriteMatchExpression");
+                            return false;
+                        }
                         FieldType::Identifier(v) => v,
-                        FieldType::Column(v) => v.as_identifier(context),
+                        FieldType::Column(mut v) => {
+                            if !context.table_ref.is_empty() {
+                                v.schema = "".into();
+                            }
+                            v.as_identifier(context)
+                        }
                     };
-                    let mut query: DynQuery = MongoDBSqlWriter::make_prepared();
+                    let mut query: AnyQuery = MongoDBSqlWriter::make_prepared();
                     value.write_query(writer, context, &mut query);
                     let Some(val_bson) = query
                         .as_prepared::<MongoDBDriver>()
@@ -495,7 +513,7 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Ordered<&dyn Expression>,
     ) -> bool {
         value.write_query(writer, context, out);
@@ -506,7 +524,7 @@ impl<'a> ExpressionVisitor for WriteMatchExpression<'a> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Case,
     ) -> bool {
         // `$switch` only exists as an aggregation expression, it is never a field filter.
@@ -531,8 +549,8 @@ struct NotRewriter<'p, 'a, 'h> {
     parent: &'p mut WriteMatchExpression<'a>,
     handled: &'h mut bool,
 }
-impl<'p, 'a, 'h> NotRewriter<'p, 'a, 'h> {
-    fn invert(op: BinaryOpType) -> Option<BinaryOpType> {
+impl NotRewriter<'_, '_, '_> {
+    const fn invert(op: BinaryOpType) -> Option<BinaryOpType> {
         match op {
             BinaryOpType::Equal => Some(BinaryOpType::NotEqual),
             BinaryOpType::NotEqual => Some(BinaryOpType::Equal),
@@ -554,12 +572,12 @@ impl<'p, 'a, 'h> NotRewriter<'p, 'a, 'h> {
         }
     }
 }
-impl<'p, 'a, 'h> ExpressionVisitor for NotRewriter<'p, 'a, 'h> {
+impl ExpressionVisitor for NotRewriter<'_, '_, '_> {
     fn visit_column(
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &ColumnRef,
     ) -> bool {
         let rhs = Operand::LitBool(false);
@@ -576,7 +594,7 @@ impl<'p, 'a, 'h> ExpressionVisitor for NotRewriter<'p, 'a, 'h> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         if matches!(value, Operand::LitIdent(..) | Operand::LitField(..)) {
@@ -597,7 +615,7 @@ impl<'p, 'a, 'h> ExpressionVisitor for NotRewriter<'p, 'a, 'h> {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
         if let Some(op) = Self::invert(value.op) {
@@ -624,7 +642,7 @@ impl ExpressionVisitor for NegateNumber {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {

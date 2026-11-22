@@ -81,7 +81,7 @@ Tank transactions on this driver are implemented as **batches**:
 - `Transaction::rollback()` results in no operation because nothing was sent yet.
 - `SELECT` (or any query that returns rows) is not meaningful inside a transaction and will fail when the batch is committed.
 
-If you need different batch semantics, `ScyllaDBConnection` also exposes `begin_unlogged_batch()` and `begin_counter_batch()`.
+If you need different batch semantics, `ScyllaDBConnection` also exposes `begin_logged_batch()`, `begin_unlogged_batch()` and `begin_counter_batch()`.
 
 ## Limitations
 - **Batches are not ACID transactions**: They do not support interactive reads and atomicity only applies within a partition.
@@ -91,7 +91,9 @@ If you need different batch semantics, `ScyllaDBConnection` also exposes `begin_
 - CQL query rules still apply: For example, `ORDER BY` is only valid on clustering keys and typically requires an equality-restricted partition key.
 
 ## Running Tests
-Tests need a ScyllaDB instance. Provide a connection URL via `TANK_SCYLLADB_TEST`. If absent, a containerized ScyllaDB will be launched automatically using [testcontainers-modules](https://crates.io/crates/testcontainers-modules).
+The ScyllaDB and Cassandra suites manage their own throwaway containers via [testcontainers-modules](https://crates.io/crates/testcontainers-modules). No database setup is needed. Set environment variable `TANK_SCYLLADB_TEST` / `TANK_CASSANDRA_TEST` to use your own servers.
+
+Docker is required:
 
 1. Ensure Docker is running on Linux:
 ```sh

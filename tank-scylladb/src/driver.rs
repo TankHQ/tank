@@ -6,10 +6,25 @@ use tank_core::Driver;
 /// Provides associated types for connection, prepared statements, transactions and SQL writer suitable for ScyllaDB/Cassandra usage.
 /// It uses the `scylla` crate under the hood which is designed to be compatible with both ScyllaDB and Apache Cassandra databases.
 #[derive(Default, Clone, Copy, Debug)]
-pub struct ScyllaDBDriver;
+pub struct ScyllaDBDriver {
+    pub(crate) is_cassandra: bool,
+}
+
 impl ScyllaDBDriver {
     pub const fn new() -> Self {
-        Self
+        Self::scylladb()
+    }
+
+    /// Construct a driver configured for ScyllaDB.
+    pub const fn scylladb() -> Self {
+        Self {
+            is_cassandra: false,
+        }
+    }
+
+    /// Construct a driver configured for Apache Cassandra.
+    pub const fn cassandra() -> Self {
+        Self { is_cassandra: true }
     }
 }
 
@@ -22,7 +37,12 @@ impl Driver for ScyllaDBDriver {
     type Transaction<'c> = ScyllaDBTransaction<'c>;
 
     const NAME: &'static [&'static str] = &["scylladb", "cassandra"];
+
     fn sql_writer(&self) -> Self::SqlWriter {
-        ScyllaDBSqlWriter::default()
+        if self.is_cassandra {
+            ScyllaDBSqlWriter::cassandra()
+        } else {
+            ScyllaDBSqlWriter::scylladb()
+        }
     }
 }

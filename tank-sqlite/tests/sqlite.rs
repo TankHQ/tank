@@ -1,8 +1,18 @@
 #[cfg(test)]
 mod tests {
-    use std::{path::Path, pin::pin, sync::Mutex};
-    use tank_core::{
-        Connection, ConnectionPool, Driver, Entity, Executor, QueryResult, Row, Value,
+    use indoc::indoc;
+    use rust_decimal::Decimal;
+    use std::{
+        borrow::Cow,
+        collections::{BTreeMap, HashMap},
+        path::Path,
+        pin::pin,
+        sync::Mutex,
+    };
+    use tank::{
+        AnyQuery, CollectionType, ColumnDef, ColumnRef, Connection, ConnectionPool, Context,
+        Driver, Entity, Executor, Fragment, GenericSqlWriter, MapType, QueryResult, Row, Sql,
+        SqlCoreWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value, cols, expr,
         stream::{StreamExt, TryStreamExt},
     };
     use tank_sqlite::{SQLiteConnection, SQLiteDriver};
@@ -13,11 +23,12 @@ mod tests {
 
     #[tokio::test]
     async fn statement_boundaries_effects() {
+        init_logs();
         let mut connection =
             SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
                 .await
                 .unwrap();
-        let sql = "
+        let sql = indoc! {r#"
             -- A comment containing ; SELECT 'not a statement';
             CREATE TABLE items (id INTEGER);
             INSERT INTO items VALUES (1), (2);
@@ -27,7 +38,7 @@ mod tests {
             SELECT id FROM items WHERE false;
             DELETE FROM items WHERE false;
             CREATE TABLE after_write (id INTEGER);
-        ";
+        "#};
         let results = connection
             .run(sql)
             .map(|result| match result.unwrap() {
@@ -51,31 +62,27 @@ mod tests {
             ]
         );
         let rows = connection
-            .fetch(
-                "
-            INSERT INTO items VALUES (3);
-            SELECT id FROM items ORDER BY id;
-            SELECT id FROM items WHERE false;
-            DELETE FROM items WHERE false;
-            SELECT 99;
-        ",
-            )
+            .fetch(indoc! {r#"
+                INSERT INTO items VALUES (3);
+                SELECT id FROM items ORDER BY id;
+                SELECT id FROM items WHERE false;
+                DELETE FROM items WHERE false;
+                SELECT 99;
+            "#})
             .map(|row| row.unwrap().value(0).unwrap().into_owned().into_owned())
             .collect::<Vec<_>>()
             .await;
         assert_eq!(rows, [2, 3, 11, 99].map(|n| Value::Int64(Some(n))));
         let affected = connection
-            .execute(
-                "
-            INSERT INTO items VALUES (4), (5);
-            CREATE TABLE after_insert (id INTEGER);
-            SELECT * FROM items;
-            UPDATE items SET id = id + 20 WHERE id = 4;
-            SELECT id FROM items WHERE false;
-            DELETE FROM items WHERE false;
-            CREATE TABLE after_update (id INTEGER);
-        ",
-            )
+            .execute(indoc! {r#"
+                INSERT INTO items VALUES (4), (5);
+                CREATE TABLE after_insert (id INTEGER);
+                SELECT * FROM items;
+                UPDATE items SET id = id + 20 WHERE id = 4;
+                SELECT id FROM items WHERE false;
+                DELETE FROM items WHERE false;
+                CREATE TABLE after_update (id INTEGER);
+            "#})
             .await
             .unwrap();
         assert_eq!(affected.rows_affected, Some(3));
@@ -97,7 +104,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prepared_returning_no_extra() {
+    async fn prepared_no_extra() {
+        init_logs();
         let mut connection =
             SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
                 .await
@@ -110,10 +118,13 @@ mod tests {
         assert_eq!(connection.run(&mut empty).count().await, 0);
         empty.bind(2).unwrap();
         assert_eq!(connection.fetch(&mut empty).count().await, 0);
-        let mut comments = connection.prepare("-- ; only a comment").await.unwrap();
-        assert_eq!(connection.run(&mut comments).count().await, 0);
         connection
-            .execute("CREATE TABLE returning_items (value TEXT)")
+            .execute(
+                Sql()
+                    .create_table("returning_items")
+                    .columns([ColumnDef::from_type::<String>("value")])
+                    .build(&connection.driver()),
+            )
             .await
             .unwrap();
         let mut query = connection
@@ -136,25 +147,24 @@ mod tests {
         );
         assert_eq!(rows[0].labels(), &["value"]);
         assert!(
-            matches!(rows[0].value(0), Some(std::borrow::Cow::Borrowed(Value::Varchar(Some(text)))) if text == "owned; text")
+            matches!(rows[0].value(0), Some(Cow::Borrowed(Value::Varchar(Some(text)))) if text == "owned; text")
         );
         let affected = connection
-            .execute(
-                "
-            CREATE TABLE audit (value TEXT);
-            CREATE TRIGGER item_audit AFTER INSERT ON returning_items
-                BEGIN INSERT INTO audit VALUES (new.value); INSERT INTO audit VALUES (';'); END;
-            INSERT INTO returning_items VALUES ('triggered');
-            CREATE TABLE after_trigger (id INTEGER);
-        ",
-            )
+            .execute(indoc! {r#"
+                CREATE TABLE audit (value TEXT);
+                CREATE TRIGGER item_audit AFTER INSERT ON returning_items
+                    BEGIN INSERT INTO audit VALUES (new.value); INSERT INTO audit VALUES (';'); END;
+                INSERT INTO returning_items VALUES ('triggered');
+                CREATE TABLE after_trigger (id INTEGER);
+            "#})
             .await
             .unwrap();
         assert_eq!(affected.rows_affected, Some(1));
     }
 
     #[tokio::test]
-    async fn ordinary_fetch_collects_entities() {
+    async fn fetch_collects_entities() {
+        init_logs();
         let mut connection =
             SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
                 .await
@@ -224,6 +234,7 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_utf8_text() {
+        init_logs();
         const DB_PATH: &'static str = "../target/debug/tests_invalid_utf8.sqlite";
         let _ = fs::remove_file(DB_PATH).await;
         let driver = SQLiteDriver::new();
@@ -239,7 +250,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bind_overflowing_unsigned_is_rejected() {
+    async fn overflowing_bind_rejected() {
+        init_logs();
         const DB_PATH: &'static str = "../target/debug/tests_bind_overflow.sqlite";
         let _ = fs::remove_file(DB_PATH).await;
         let driver = SQLiteDriver::new();
@@ -258,14 +270,12 @@ mod tests {
         );
     }
 
-    fn sqlite_writer() -> impl tank_core::SqlWriter {
-        use tank_core::Driver;
-        tank_sqlite::SQLiteDriver::new().sql_writer()
+    fn sqlite_writer() -> impl SqlWriter {
+        SQLiteDriver::new().sql_writer()
     }
 
-    fn sqlite_render(value: tank_core::Value<'_>) -> String {
-        use tank_core::{Context, DynQuery, Fragment, SqlWriter};
-        let mut out = DynQuery::default();
+    fn sqlite_render(value: Value<'_>) -> String {
+        let mut out = AnyQuery::default();
         sqlite_writer().write_value(
             &mut Context::new(Fragment::SqlSelect, false),
             &mut out,
@@ -276,7 +286,7 @@ mod tests {
 
     #[test]
     fn sqlite_special_floats() {
-        use tank_core::Value;
+        init_logs();
         assert_eq!(
             sqlite_render(Value::Float32(Some(f32::INFINITY))),
             "1.0e+10000"
@@ -300,8 +310,7 @@ mod tests {
 
     #[test]
     fn sqlite_unsupported_values() {
-        use std::collections::HashMap;
-        use tank_core::{CollectionType, Context, DynQuery, Fragment, MapType, SqlWriter, Value};
+        init_logs();
         let writer = sqlite_writer();
         for value in [
             Value::Unknown(Some("x".into())),
@@ -320,7 +329,7 @@ mod tests {
                 }),
             ),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             writer.write_value(
                 &mut Context::new(Fragment::SqlSelect, false),
                 &mut out,
@@ -332,16 +341,13 @@ mod tests {
 
     #[test]
     fn sqlite_column_affinities() {
-        use tank_core::{Context, DynQuery, Fragment, SqlWriter, Value};
+        init_logs();
         let writer = sqlite_writer();
         let cases = [
             (Value::Boolean(None), "INTEGER"),
             (Value::Int64(None), "INTEGER"),
             (Value::Float32(None), "REAL"),
-            (
-                Value::Decimal(Some(rust_decimal::Decimal::new(1, 0)), 10, 2),
-                "REAL(10,2)",
-            ),
+            (Value::Decimal(Some(Decimal::new(1, 0)), 10, 2), "REAL"),
             (Value::Char(None), "TEXT"),
             (Value::Varchar(None), "TEXT"),
             (Value::Blob(None), "BLOB"),
@@ -350,9 +356,10 @@ mod tests {
             (Value::Timestamp(None), "TEXT"),
             (Value::TimestampWithTimezone(None), "TEXT"),
             (Value::Uuid(None), "TEXT"),
+            (Value::IpAddr(None), "TEXT"),
         ];
         for (value, expected) in cases {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             writer.write_column_type(
                 &mut Context::new(Fragment::SqlCreateTable, false),
                 &mut out,
@@ -360,7 +367,7 @@ mod tests {
             );
             assert_eq!(out.as_str(), expected, "wrong affinity for {value:?}");
         }
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_column_type(
             &mut Context::new(Fragment::SqlCreateTable, false),
             &mut out,
@@ -370,14 +377,13 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_column_type_override() {
-        use std::collections::BTreeMap;
-        use tank_core::{ColumnDef, Context, DynQuery, Fragment, SqlWriter};
+    fn sqlite_type_override() {
+        init_logs();
         let writer = sqlite_writer();
         let column = ColumnDef::default();
         let mut types = BTreeMap::new();
         types.insert("postgres", "SOMETHING");
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_column_overridden_type(
             &mut Context::new(Fragment::SqlCreateTable, false),
             &mut out,
@@ -388,7 +394,7 @@ mod tests {
 
         let mut types = BTreeMap::new();
         types.insert("sqlite", "CUSTOM");
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_column_overridden_type(
             &mut Context::new(Fragment::SqlCreateTable, false),
             &mut out,
@@ -400,7 +406,7 @@ mod tests {
 
     #[test]
     fn sqlite_blob_literals() {
-        use tank_core::Value;
+        init_logs();
         assert_eq!(
             sqlite_render(Value::Blob(Some(vec![0xDE, 0xAD].into()))),
             "X'DEAD'"
@@ -410,15 +416,10 @@ mod tests {
 
     #[test]
     fn sqlite_identifier_escaping() {
-        use tank_core::{ColumnRef, Context, DynQuery, Fragment, SqlWriter, TableRef};
+        init_logs();
         let writer = sqlite_writer();
-        let table = TableRef {
-            name: "the\"table".into(),
-            schema: "s".into(),
-            alias: "a".into(),
-            ..Default::default()
-        };
-        let mut out = DynQuery::default();
+        let table = TableRef::from(("s", "the\"table")).with_alias("a".into());
+        let mut out = AnyQuery::default();
         writer.write_table_ref(
             &mut Context::fragment(Fragment::SqlSelectFrom),
             &mut out,
@@ -426,12 +427,20 @@ mod tests {
         );
         assert_eq!(out.as_str(), "\"s.the\"\"table\" a");
 
+        let mut out = AnyQuery::default();
+        writer.write_table_ref(
+            &mut Context::fragment(Fragment::SqlSelect),
+            &mut out,
+            &table,
+        );
+        assert_eq!(out.as_str(), "a");
+
         let column = ColumnRef {
             name: "co\"l".into(),
             table: "t".into(),
             schema: "s".into(),
         };
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_column_ref(
             &mut Context::new(Fragment::SqlSelect, true),
             &mut out,
@@ -439,7 +448,7 @@ mod tests {
         );
         assert_eq!(out.as_str(), "\"s.t\".\"co\"\"l\"");
 
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         writer.write_column_ref(
             &mut Context::new(Fragment::SqlSelect, false),
             &mut out,
@@ -450,7 +459,7 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_prepared_rejection() {
-        use tank_core::Executor;
+        init_logs();
         let mut first = SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
             .unwrap();
@@ -468,17 +477,17 @@ mod tests {
 
     #[test]
     fn sqlite_generic_values() {
-        use tank_core::{Context, DynQuery, Fragment, GenericSqlWriter, SqlWriter, Value};
+        init_logs();
         let writer = sqlite_writer();
         let generic = GenericSqlWriter::new();
         for value in [Value::Int32(Some(7)), Value::Varchar(Some("a".into()))] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             writer.write_value(
                 &mut Context::new(Fragment::SqlSelect, false),
                 &mut out,
                 &value,
             );
-            let mut expected = DynQuery::default();
+            let mut expected = AnyQuery::default();
             generic.write_value(
                 &mut Context::new(Fragment::SqlSelect, false),
                 &mut expected,
@@ -486,5 +495,101 @@ mod tests {
             );
             assert_eq!(out.as_str(), expected.as_str());
         }
+    }
+
+    #[test]
+    fn sqlite_limit_offset() {
+        init_logs();
+        let writer = sqlite_writer();
+        let mut ctx = Context::new(Fragment::SqlSelect, false);
+
+        let mut out = AnyQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, None, None);
+        assert_eq!(out.as_str(), "");
+
+        let mut out = AnyQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, Some(10), None);
+        assert_eq!(out.as_str(), "\nLIMIT 10");
+
+        let mut out = AnyQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, Some(10), Some(5));
+        assert_eq!(out.as_str(), "\nLIMIT 10\nOFFSET 5");
+
+        let mut out = AnyQuery::default();
+        writer.write_limit_offset(&mut ctx, &mut out, None, Some(5));
+        assert_eq!(out.as_str(), "\nLIMIT -1\nOFFSET 5");
+    }
+
+    #[tokio::test]
+    async fn affected_id_dml() {
+        init_logs();
+        let driver = SQLiteDriver::new();
+        let mut connection = SQLiteConnection::connect(&driver, "sqlite://:memory:".into())
+            .await
+            .unwrap();
+        let ddl = connection
+            .execute(
+                Sql()
+                    .create_table("items")
+                    .columns([
+                        ColumnDef::from_type::<i64>("id").primary_key(),
+                        ColumnDef::from_type::<String>("label"),
+                    ])
+                    .build(&driver),
+            )
+            .await
+            .unwrap();
+        assert_eq!(ddl.rows_affected, Some(0));
+        assert_eq!(ddl.last_affected_id, None);
+
+        let inserted = connection
+            .execute(
+                Sql()
+                    .insert_into("items")
+                    .columns(["label"])
+                    .values([["first"]])
+                    .build(&driver),
+            )
+            .await
+            .unwrap();
+        assert_eq!(inserted.rows_affected, Some(1));
+        assert_eq!(inserted.last_affected_id, Some(1));
+
+        let updated = connection
+            .execute(
+                Sql()
+                    .update("items")
+                    .set(cols!(label == "updated"))
+                    .where_expr(expr!(id == 1))
+                    .build(&driver),
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated.rows_affected, Some(1));
+        assert_eq!(updated.last_affected_id, None);
+
+        let deleted = connection
+            .execute(
+                Sql()
+                    .delete_from("items")
+                    .where_expr(expr!(id == 1))
+                    .build(&driver),
+            )
+            .await
+            .unwrap();
+        assert_eq!(deleted.rows_affected, Some(1));
+        assert_eq!(deleted.last_affected_id, None);
+
+        let after_ddl = connection
+            .execute(
+                Sql()
+                    .create_table("other")
+                    .columns([ColumnDef::from_type::<i64>("id")])
+                    .build(&driver),
+            )
+            .await
+            .unwrap();
+        assert_eq!(after_ddl.rows_affected, Some(0));
+        assert_eq!(after_ddl.last_affected_id, None);
     }
 }

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use tank_core::{
-    BinaryOpType, ColumnDef, Context, DynQuery, GenericSqlWriter, Interval, SqlWriter, Value,
-    separated_by,
+    AnyQuery, BinaryOpType, ColumnDef, Context, GenericSqlWriter, Interval, SqlCoreWriter,
+    SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, Value, separated_by,
 };
 
 /// SQL writer for the DuckDB dialect.
@@ -10,7 +10,7 @@ use tank_core::{
 #[derive(Default)]
 pub struct DuckDBSqlWriter {}
 
-impl SqlWriter for DuckDBSqlWriter {
+impl SqlCoreWriter for DuckDBSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -18,7 +18,7 @@ impl SqlWriter for DuckDBSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
@@ -27,6 +27,16 @@ impl SqlWriter for DuckDBSqlWriter {
         }
     }
 
+    fn write_column_type(&self, context: &mut Context, out: &mut AnyQuery, value: &Value<'_>) {
+        if matches!(value, Value::IpAddr(..)) {
+            out.push_str("INET");
+        } else {
+            GenericSqlWriter.write_column_type(context, out, value);
+        }
+    }
+}
+
+impl SqlValueWriter for DuckDBSqlWriter {
     fn value_interval_units(&self) -> &[(&str, i128)] {
         static UNITS: &[(&str, i128)] = &[
             ("DAY", Interval::NANOS_IN_DAY),
@@ -41,7 +51,7 @@ impl SqlWriter for DuckDBSqlWriter {
     fn write_map(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &HashMap<Value<'_>, Value<'_>>,
     ) {
         out.push_str("MAP{");
@@ -57,7 +67,9 @@ impl SqlWriter for DuckDBSqlWriter {
         );
         out.push('}');
     }
+}
 
+impl SqlExpressionWriter for DuckDBSqlWriter {
     fn expression_binary_op_fragments(
         &self,
         context: &Context,
@@ -69,7 +81,10 @@ impl SqlWriter for DuckDBSqlWriter {
         }
     }
 
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut AnyQuery) {
         out.push_str("epoch_ms(current_timestamp)");
     }
 }
+
+impl SqlFragmentWriter for DuckDBSqlWriter {}
+impl SqlWriter for DuckDBSqlWriter {}

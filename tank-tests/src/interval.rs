@@ -3,8 +3,8 @@
 use crate::silent_logs;
 use std::{pin::pin, sync::LazyLock, time::Duration};
 use tank::{
-    Context, Driver, DynQuery, Entity, Executor, Fragment, Interval, QueryResult, RawQuery, Result,
-    RowsAffected, Sql, SqlWriter, Value, expr,
+    AnyQuery, Context, Driver, Entity, Executor, Fragment, Interval, QueryResult, RawQuery, Result,
+    RowsAffected, Sql, SqlValueWriter, SqlWriter, Value, expr,
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
@@ -24,7 +24,9 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Intervals::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Intervals::drop_table(executor, true, false).await?;
+    }
     Intervals::create_table(executor, true, true).await?;
 
     Intervals::insert_one(
@@ -133,7 +135,7 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
             Interval::new(0, i32::MIN, i64::MIN),
             Interval::new(i32::MIN, i32::MIN, i64::MIN),
         ] {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             writer.write_value(
                 &mut Context::new(Fragment::None, false),
                 &mut out,
@@ -149,12 +151,14 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
     // Multiple statements
     #[cfg(not(feature = "disable-multiple-statements"))]
     {
-        let mut query = DynQuery::default();
-        let writer = executor.driver().sql_writer();
-        writer.write_delete(&mut query, Intervals::table(), true);
-        writer.write_insert(
-            &mut query,
-            Sql().insert_into(Intervals::table()).values(&[
+        let driver = executor.driver();
+        let mut query = AnyQuery::default();
+        Sql()
+            .delete_from(Intervals::table())
+            .write_into(&driver.sql_writer(), &mut query);
+        Sql()
+            .insert_into(Intervals::table())
+            .values(&[
                 Intervals {
                     pk: 4,
                     first: time::Duration::weeks(4) + time::Duration::hours(5),
@@ -170,15 +174,13 @@ pub async fn interval(executor: &mut impl Executor) -> Result<()> {
                     second: Interval::from_months(4) + Interval::from_days(2),
                     third: Duration::from_nanos(5000),
                 },
-            ]),
-        );
-        writer.write_select(
-            &mut query,
-            Sql()
-                .select(Intervals::columns())
-                .from(Intervals::table())
-                .where_expr(true),
-        );
+            ])
+            .write_into(&driver.sql_writer(), &mut query);
+        Sql()
+            .select(Intervals::columns())
+            .from(Intervals::table())
+            .where_expr(true)
+            .write_into(&driver.sql_writer(), &mut query);
         let mut stream = pin!(executor.run(query));
 
         // DELETE

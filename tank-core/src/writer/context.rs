@@ -31,6 +31,9 @@ pub enum Fragment {
     SqlSelectOrderBy,
     Timestamp,
     SqlSelectWhere,
+    SqlUpdate,
+    SqlUpdateSet,
+    SqlUpdateWhere,
 }
 
 /// Holds state during SQL generation, including current fragment, table context, and formatting options.
@@ -115,7 +118,7 @@ impl Context {
         }
     }
 
-    pub fn switch_table<'s>(&'s mut self, table_ref: TableRef) -> ContextUpdater<'s> {
+    pub const fn switch_table<'s>(&'s mut self, table_ref: TableRef) -> ContextUpdater<'s> {
         let is_empty = table_ref.is_empty();
         ContextUpdater {
             current: Context {
@@ -139,7 +142,7 @@ pub struct ContextUpdater<'a> {
     pub previous: &'a mut Context,
 }
 
-impl<'a> Drop for ContextUpdater<'a> {
+impl Drop for ContextUpdater<'_> {
     #[inline]
     fn drop(&mut self) {
         self.previous.counter = self.current.counter;

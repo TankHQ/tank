@@ -1,5 +1,5 @@
 use crate::{
-    Dataset, DynQuery, Expression, ExpressionVisitor, OpPrecedence, TableRef, Value,
+    AnyQuery, Dataset, Expression, ExpressionVisitor, OpPrecedence, TableRef, Value,
     writer::{Context, SqlWriter},
 };
 use std::fmt;
@@ -12,8 +12,8 @@ pub enum Operand<'a> {
     LitStr(&'a str),
     LitIdent(&'a str),
     LitField(&'a [&'a str]),
-    LitList(&'a [Operand<'a>]),
-    LitTuple(&'a [Operand<'a>]),
+    LitList(&'a [&'a dyn Expression]),
+    LitTuple(&'a [&'a dyn Expression]),
     Type(Value<'a>),
     Variable(Value<'a>),
     Value(&'a Value<'a>),
@@ -33,8 +33,8 @@ impl fmt::Debug for Operand<'_> {
             Self::LitStr(v) => f.debug_tuple("LitStr").field(v).finish(),
             Self::LitIdent(v) => f.debug_tuple("LitIdent").field(v).finish(),
             Self::LitField(v) => f.debug_tuple("LitField").field(v).finish(),
-            Self::LitList(v) => f.debug_tuple("LitList").field(v).finish(),
-            Self::LitTuple(v) => f.debug_tuple("LitTuple").field(v).finish(),
+            Self::LitList(v) => f.debug_tuple("LitList").field(&v.len()).finish(),
+            Self::LitTuple(v) => f.debug_tuple("LitTuple").field(&v.len()).finish(),
             Self::Type(v) => f.debug_tuple("Type").field(v).finish(),
             Self::Variable(v) => f.debug_tuple("Variable").field(v).finish(),
             Self::Value(v) => f.debug_tuple("Value").field(v).finish(),
@@ -53,7 +53,7 @@ impl OpPrecedence for Operand<'_> {
 }
 
 impl Expression for Operand<'_> {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         writer.write_operand(context, out, self)
     }
 
@@ -62,7 +62,7 @@ impl Expression for Operand<'_> {
         matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
     ) -> bool {
         matcher.visit_operand(writer, context, out, self)
     }
@@ -73,7 +73,7 @@ impl Dataset for Operand<'_> {
         false
     }
 
-    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         self.write_query(writer, context, out);
     }
 
@@ -91,8 +91,6 @@ impl PartialEq for Operand<'_> {
             (Self::LitField(l), Self::LitField(r)) => l == r,
             (Self::LitInt(l), Self::LitInt(r)) => l == r,
             (Self::LitStr(l), Self::LitStr(r)) => l == r,
-            (Self::LitList(l), Self::LitList(r)) => l == r,
-            (Self::LitTuple(l), Self::LitTuple(r)) => l == r,
             (Self::Type(l), Self::Type(r)) => l.same_type(r),
             (Self::Variable(l), Self::Variable(r)) => l == r,
             (Self::Asterisk, Self::Asterisk) => true,

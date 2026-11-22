@@ -1,4 +1,4 @@
-use crate::{Driver, ErrorContext, Executor, Result, log_error, truncate_long};
+use crate::{Driver, ErrorContext, Executor, Result, truncate_long};
 use anyhow::anyhow;
 use std::{
     borrow::Cow,
@@ -21,15 +21,23 @@ pub trait Connection: Executor {
     where
         Self: Sized,
     {
+        const MEMORY: &str = ":memory:";
         let mut in_memory = false;
         if let Some((scheme, host)) = url.split_once("://")
-            && host.starts_with(":memory:")
+            && host.starts_with(MEMORY)
         {
-            url = format!("{scheme}://localhost{}", &host[8..]).into();
+            url = format!("{scheme}://localhost{}", &host[MEMORY.len()..]).into();
             in_memory = true;
         }
-        let make_context = || format!("While parsing the connection URL:\n{}", truncate_long!(url));
-        let mut result = Url::parse(&url).with_context(make_context)?;
+        let make_context = || {
+            format!(
+                r#"While parsing the connection URL "{}""#,
+                truncate_long(&url)
+            )
+        };
+        let mut result = Url::parse(&url)
+            .with_context(make_context)
+            .inspect_err(|e| log::error!("{e:#}"))?;
         if in_memory {
             result.query_pairs_mut().append_pair("mode", "memory");
         }
@@ -39,11 +47,15 @@ pub trait Connection: Executor {
             .any(|name| url.starts_with(name) && url[name.len()..].starts_with("://"))
         {
             return Err(anyhow!(
-                "Connection URL must start with: {}",
-                names.join(", ")
+                r#"Must start with {}"#,
+                names
+                    .iter()
+                    .map(|name| format!(r#""{name}://""#))
+                    .collect::<Vec<_>>()
+                    .join(" or ")
             ))
             .with_context(make_context)
-            .inspect_err(log_error);
+            .inspect_err(|e| log::error!("{e:#}"));
         }
         Ok(result)
     }

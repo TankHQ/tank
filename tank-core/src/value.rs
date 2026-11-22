@@ -1,10 +1,11 @@
+use self::Value::*;
 use crate::{
-    AsValue, DynQuery, Expression, GenericSqlWriter, Result, TableRef, interval::Interval,
+    AnyQuery, AsValue, Error, Expression, GenericSqlWriter, Result, TableRef, interval::Interval,
 };
 use anyhow::anyhow;
 use quote::{ToTokens, quote};
-use rust_decimal::Decimal;
-use serde_json::Value as JsonValue;
+use rust_decimal::{Decimal, prelude::ToPrimitive};
+use serde_json::{Number, Value as JsonValue};
 use std::{
     borrow::Cow,
     collections::{HashMap, hash_map::DefaultHasher},
@@ -12,6 +13,7 @@ use std::{
     hash::{Hash, Hasher},
     iter,
     mem::{self, discriminant},
+    net::IpAddr,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -70,6 +72,8 @@ pub enum Value<'a> {
     Interval(Option<Interval>),
     /// UUID (Universally Unique Identifier).
     Uuid(Option<Uuid>),
+    /// IPv4 or IPv6 address.
+    IpAddr(Option<IpAddr>),
     /// Homogeneous array (values, element type info).
     Array(Option<Box<[Value<'a>]>>, Box<CollectionType<'a>>),
     /// Variable-length list (values, element type info).
@@ -141,7 +145,7 @@ impl<'a> Value<'a> {
 
     /// Checks if the value is NULL.
     #[inline(always)]
-    pub fn is_null(&self) -> bool {
+    pub const fn is_null(&self) -> bool {
         match self {
             Value::Null
             | Value::Boolean(None, ..)
@@ -167,6 +171,7 @@ impl<'a> Value<'a> {
             | Value::TimestampWithTimezone(None, ..)
             | Value::Interval(None, ..)
             | Value::Uuid(None, ..)
+            | Value::IpAddr(None, ..)
             | Value::Array(None, ..)
             | Value::List(None, ..)
             | Value::Map(None, ..)
@@ -204,6 +209,7 @@ impl<'a> Value<'a> {
             Value::TimestampWithTimezone(..) => Value::TimestampWithTimezone(None),
             Value::Interval(..) => Value::Interval(None),
             Value::Uuid(..) => Value::Uuid(None),
+            Value::IpAddr(..) => Value::IpAddr(None),
             Value::Array(_, t, ..) => Value::Array(None, t.clone()),
             Value::List(_, t, ..) => Value::List(None, t.clone()),
             Value::Map(_, t, ..) => Value::Map(None, t.clone()),
@@ -219,36 +225,37 @@ impl<'a> Value<'a> {
             return Ok(self);
         }
         match target_type {
-            Value::Boolean(..) => bool::try_from_value(self).map(AsValue::as_value),
-            Value::Int8(..) => i8::try_from_value(self).map(AsValue::as_value),
-            Value::Int16(..) => i16::try_from_value(self).map(AsValue::as_value),
-            Value::Int32(..) => i32::try_from_value(self).map(AsValue::as_value),
-            Value::Int64(..) => i64::try_from_value(self).map(AsValue::as_value),
-            Value::Int128(..) => i128::try_from_value(self).map(AsValue::as_value),
-            Value::UInt8(..) => u8::try_from_value(self).map(AsValue::as_value),
-            Value::UInt16(..) => u16::try_from_value(self).map(AsValue::as_value),
-            Value::UInt32(..) => u32::try_from_value(self).map(AsValue::as_value),
-            Value::UInt64(..) => u64::try_from_value(self).map(AsValue::as_value),
-            Value::UInt128(..) => u128::try_from_value(self).map(AsValue::as_value),
-            Value::Float32(..) => f32::try_from_value(self).map(AsValue::as_value),
-            Value::Float64(..) => f64::try_from_value(self).map(AsValue::as_value),
-            Value::Decimal(..) => Decimal::try_from_value(self).map(AsValue::as_value),
-            Value::Char(..) => char::try_from_value(self).map(AsValue::as_value),
-            Value::Varchar(..) => String::try_from_value(self).map(AsValue::as_value),
-            Value::Blob(..) => Box::<[u8]>::try_from_value(self).map(AsValue::as_value),
-            Value::Date(..) => Date::try_from_value(self).map(AsValue::as_value),
-            Value::Time(..) => Time::try_from_value(self).map(AsValue::as_value),
-            Value::Timestamp(..) => PrimitiveDateTime::try_from_value(self).map(AsValue::as_value),
+            Value::Boolean(..) => bool::decode_value(self).map(AsValue::as_value),
+            Value::Int8(..) => i8::decode_value(self).map(AsValue::as_value),
+            Value::Int16(..) => i16::decode_value(self).map(AsValue::as_value),
+            Value::Int32(..) => i32::decode_value(self).map(AsValue::as_value),
+            Value::Int64(..) => i64::decode_value(self).map(AsValue::as_value),
+            Value::Int128(..) => i128::decode_value(self).map(AsValue::as_value),
+            Value::UInt8(..) => u8::decode_value(self).map(AsValue::as_value),
+            Value::UInt16(..) => u16::decode_value(self).map(AsValue::as_value),
+            Value::UInt32(..) => u32::decode_value(self).map(AsValue::as_value),
+            Value::UInt64(..) => u64::decode_value(self).map(AsValue::as_value),
+            Value::UInt128(..) => u128::decode_value(self).map(AsValue::as_value),
+            Value::Float32(..) => f32::decode_value(self).map(AsValue::as_value),
+            Value::Float64(..) => f64::decode_value(self).map(AsValue::as_value),
+            Value::Decimal(..) => Decimal::decode_value(self).map(AsValue::as_value),
+            Value::Char(..) => char::decode_value(self).map(AsValue::as_value),
+            Value::Varchar(..) => String::decode_value(self).map(AsValue::as_value),
+            Value::Blob(..) => Box::<[u8]>::decode_value(self).map(AsValue::as_value),
+            Value::Date(..) => Date::decode_value(self).map(AsValue::as_value),
+            Value::Time(..) => Time::decode_value(self).map(AsValue::as_value),
+            Value::Timestamp(..) => PrimitiveDateTime::decode_value(self).map(AsValue::as_value),
             Value::TimestampWithTimezone(..) => {
-                OffsetDateTime::try_from_value(self).map(AsValue::as_value)
+                OffsetDateTime::decode_value(self).map(AsValue::as_value)
             }
-            Value::Interval(..) => Interval::try_from_value(self).map(AsValue::as_value),
-            Value::Uuid(..) => Uuid::try_from_value(self).map(AsValue::as_value),
+            Value::Interval(..) => Interval::decode_value(self).map(AsValue::as_value),
+            Value::Uuid(..) => Uuid::decode_value(self).map(AsValue::as_value),
+            Value::IpAddr(..) => IpAddr::decode_value(self).map(AsValue::as_value),
             // Value::Array(_, ty, len, ..) => {
-            //     Box::<[Value]>::try_from_value(self).map(AsValue::as_value)
+            //     Box::<[Value]>::decode_value(self).map(AsValue::as_value)
             // }
-            // Value::List(..) => Box::<[Value]>::try_from_value(self).map(AsValue::as_value),
-            // Value::Map(..) => Date::try_from_value(self).map(AsValue::as_value),
+            // Value::List(..) => Box::<[Value]>::decode_value(self).map(AsValue::as_value),
+            // Value::Map(..) => Date::decode_value(self).map(AsValue::as_value),
             _ => {
                 return Err(anyhow!(
                     "Cannot convert value {:?} to {:?}",
@@ -260,7 +267,7 @@ impl<'a> Value<'a> {
     }
 
     /// Checks if the value is a scalar type (not an array, struct, etc.).
-    pub fn is_scalar(&self) -> bool {
+    pub const fn is_scalar(&self) -> bool {
         match self {
             Value::Boolean(..)
             | Value::Int8(..)
@@ -285,6 +292,7 @@ impl<'a> Value<'a> {
             | Value::TimestampWithTimezone(..)
             | Value::Interval(..)
             | Value::Uuid(..)
+            | Value::IpAddr(..)
             | Value::Unknown(..) => true,
             _ => false,
         }
@@ -338,39 +346,159 @@ impl<'a> Value<'a> {
                     name: t.name,
                 }),
             ),
-            _ => unreachable!(),
+            other => {
+                log::error!("Unexpected non composite value value: {other:?}");
+                Value::Null
+            }
         }
     }
 
     /// Converts this value into an owning [`ValueOwned`], cloning any borrowed payload.
     #[inline]
     pub fn into_owned(self) -> ValueOwned {
-        match self {
-            Value::Varchar(Some(Cow::Borrowed(v))) => {
-                let owned = v.to_owned();
-                mem::forget(self);
-                Value::Varchar(Some(Cow::Owned(owned)))
-            }
-            Value::Blob(Some(Cow::Borrowed(v))) => {
-                let owned = v.to_owned();
-                mem::forget(self);
-                Value::Blob(Some(Cow::Owned(owned)))
-            }
-            Value::Unknown(Some(Cow::Borrowed(v))) => {
-                let owned = v.to_owned();
-                mem::forget(self);
-                Value::Unknown(Some(Cow::Owned(owned)))
-            }
-            Value::Array(..) | Value::List(..) | Value::Map(..) | Value::Struct(..) => {
-                self.into_owned_nested()
-            }
-            // All other variants carry no `'a` borrow, and moving `self` avoids `drop_in_place::<Value>`.
-            other => unsafe { mem::transmute::<Value<'a>, ValueOwned>(other) },
+        'simple_value: {
+            let owned = match self {
+                Value::Varchar(Some(Cow::Borrowed(v))) => {
+                    Value::Varchar(Some(Cow::Owned(v.to_owned())))
+                }
+                Value::Blob(Some(Cow::Borrowed(v))) => Value::Blob(Some(Cow::Owned(v.to_owned()))),
+                Value::Unknown(Some(Cow::Borrowed(v))) => {
+                    Value::Unknown(Some(Cow::Owned(v.to_owned())))
+                }
+                Value::Array(..) | Value::List(..) | Value::Map(..) | Value::Struct(..) => {
+                    break 'simple_value self.into_owned_nested();
+                }
+                // All other variants carry no `'a` borrow, and moving `self` avoids `drop_in_place::<Value>`.
+                other => {
+                    break 'simple_value unsafe { mem::transmute::<Value<'a>, ValueOwned>(other) };
+                }
+            };
+            // Avoid an opaque Value::drop call for simple values that don't allocate memory.
+            mem::forget(self);
+            owned
         }
     }
 }
 
-impl<'a> PartialEq for Value<'a> {
+impl<'a> From<JsonValue> for Value<'a> {
+    fn from(value: JsonValue) -> Self {
+        match value {
+            JsonValue::Null => Value::Null,
+            JsonValue::Bool(v) => Value::Boolean(Some(v)),
+            JsonValue::Number(v) => {
+                if let Some(v) = v.as_i64() {
+                    Value::Int64(Some(v))
+                } else if let Some(v) = v.as_i128() {
+                    Value::Int128(Some(Box::new(v)))
+                } else if let Some(v) = v.as_u128() {
+                    Value::UInt128(Some(Box::new(v)))
+                } else if let Some(v) = v.as_f64() {
+                    Value::Float64(Some(v))
+                } else {
+                    // Stays a JSON number because no tank numeric variant can hold it.
+                    Value::Json(Some(JsonValue::Number(v)))
+                }
+            }
+            JsonValue::String(v) => Value::Varchar(Some(v.into())),
+            JsonValue::Array(v) => {
+                let values: Vec<Value<'a>> = v.into_iter().map(Value::from).collect();
+                let element = values
+                    .first()
+                    .map(Value::as_null)
+                    .unwrap_or(Value::Unknown(None));
+                Value::List(
+                    Some(values.into_boxed_slice()),
+                    Box::new(CollectionType { element, len: 0 }),
+                )
+            }
+            JsonValue::Object(v) => {
+                let mut entries = HashMap::with_capacity(v.len());
+                let mut value_type = None;
+                for (k, v) in v {
+                    let v = Value::from(v);
+                    value_type.get_or_insert_with(|| v.as_null());
+                    entries.insert(Value::Varchar(Some(k.into())), v);
+                }
+                Value::Map(
+                    Some(Box::new(entries)),
+                    Box::new(MapType {
+                        key: Value::Varchar(None),
+                        value: value_type.unwrap_or(Value::Unknown(None)),
+                    }),
+                )
+            }
+        }
+    }
+}
+
+impl<'a> TryFrom<Value<'a>> for JsonValue {
+    type Error = Error;
+
+    fn try_from(value: Value<'a>) -> Result<Self> {
+        Ok(match value {
+            Value::Json(Some(v)) => v,
+            value if value.is_null() => Self::Null,
+            Value::Boolean(Some(v)) => Self::Bool(v),
+            Value::Int8(Some(v)) => Self::from(v),
+            Value::Int16(Some(v)) => Self::from(v),
+            Value::Int32(Some(v)) => Self::from(v),
+            Value::Int64(Some(v)) => Self::from(v),
+            Value::Int128(Some(v)) => Self::Number(
+                Number::from_i128(*v)
+                    .ok_or_else(|| anyhow!("Value {v}: i128 does not fit into a JSON number"))?,
+            ),
+            Value::UInt8(Some(v)) => Self::from(v),
+            Value::UInt16(Some(v)) => Self::from(v),
+            Value::UInt32(Some(v)) => Self::from(v),
+            Value::UInt64(Some(v)) => Self::from(v),
+            Value::UInt128(Some(v)) => Self::Number(
+                Number::from_u128(*v)
+                    .ok_or_else(|| anyhow!("Value {v}: u128 does not fit into a JSON number"))?,
+            ),
+            Value::Float32(Some(v)) => Self::Number(
+                Number::from_f64(v as f64)
+                    .ok_or_else(|| anyhow!("Value {v}: f32 does not fit into a JSON number"))?,
+            ),
+            Value::Float64(Some(v)) => Self::Number(
+                Number::from_f64(v)
+                    .ok_or_else(|| anyhow!("Value {v}: f64 does not fit into a JSON number"))?,
+            ),
+            Value::Decimal(Some(v), ..) => Self::Number(
+                v.to_f64()
+                    .and_then(Number::from_f64)
+                    .ok_or_else(|| anyhow!("Value {v}: Decimal does not fit into a JSON number"))?,
+            ),
+            Value::Char(Some(v)) => Self::String(v.to_string()),
+            Value::Varchar(Some(v)) => Self::String(v.into_owned()),
+            Value::Blob(Some(v)) => Self::Array(v.iter().map(|v| Self::from(*v)).collect()),
+            Value::Array(Some(v), ..) | Value::List(Some(v), ..) => Self::Array(
+                v.into_iter()
+                    .map(|v| Self::try_from(v))
+                    .collect::<Result<_>>()?,
+            ),
+            Value::Map(Some(v), ..) => Self::Object(
+                v.into_iter()
+                    .map(|(k, v)| Ok((String::decode_value(k)?, Self::try_from(v)?)))
+                    .collect::<Result<_>>()?,
+            ),
+            Value::Struct(Some(v), ..) => Self::Object(
+                v.into_iter()
+                    .map(|(k, v)| Ok((k, Self::try_from(v)?)))
+                    .collect::<Result<_>>()?,
+            ),
+            Value::Unknown(Some(v)) => Self::String(v.into_owned()),
+            v @ (Value::Date(Some(..))
+            | Value::Time(Some(..))
+            | Value::Timestamp(Some(..))
+            | Value::TimestampWithTimezone(Some(..))
+            | Value::Uuid(Some(..))
+            | Value::IpAddr(Some(..))) => Self::String(v.to_string()),
+            v => return Err(anyhow!("Cannot convert {v:?} to serde_json::Value")),
+        })
+    }
+}
+
+impl PartialEq for Value<'_> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Null, Self::Null) => true,
@@ -407,6 +535,7 @@ impl<'a> PartialEq for Value<'a> {
             (Self::TimestampWithTimezone(l), Self::TimestampWithTimezone(r)) => l == r,
             (Self::Interval(l), Self::Interval(r)) => l == r,
             (Self::Uuid(l), Self::Uuid(r)) => l == r,
+            (Self::IpAddr(l), Self::IpAddr(r)) => l == r,
             (Self::Array(l, lt), Self::Array(r, rt)) | (Self::List(l, lt), Self::List(r, rt)) => {
                 lt.len == rt.len && lt.element == rt.element && l == r
             }
@@ -423,7 +552,7 @@ impl<'a> PartialEq for Value<'a> {
     }
 }
 
-impl<'a> Eq for Value<'a> {}
+impl Eq for Value<'_> {}
 
 fn hash_f32_value<H: std::hash::Hasher>(value: f32, state: &mut H) {
     let bits = if value == 0.0 {
@@ -471,9 +600,8 @@ fn hash_map_value<'a, H: std::hash::Hasher>(
     value_ty.hash(state);
 }
 
-impl<'a> Hash for Value<'a> {
+impl Hash for Value<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        use Value::*;
         discriminant(self).hash(state);
         match self {
             Null => {}
@@ -507,6 +635,7 @@ impl<'a> Hash for Value<'a> {
             TimestampWithTimezone(v) => v.hash(state),
             Interval(v) => v.hash(state),
             Uuid(v) => v.hash(state),
+            IpAddr(v) => v.hash(state),
             Array(v, t) | List(v, t) => {
                 v.hash(state);
                 t.element.hash(state);
@@ -526,9 +655,9 @@ impl<'a> Hash for Value<'a> {
     }
 }
 
-impl<'a> Display for Value<'a> {
+impl Display for Value<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         self.write_query(&GenericSqlWriter::new(), &mut Default::default(), &mut out);
         let _ = f.write_str(out.buffer());
         Ok(())
@@ -544,7 +673,7 @@ pub struct TypeDecoded {
     pub nullable: bool,
 }
 
-impl<'a> ToTokens for Value<'a> {
+impl ToTokens for Value<'_> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let ts = match self {
             Value::Null => quote!(::tank::Value::Null),
@@ -573,6 +702,7 @@ impl<'a> ToTokens for Value<'a> {
             Value::TimestampWithTimezone(..) => quote!(::tank::Value::TimestampWithTimezone(None)),
             Value::Interval(..) => quote!(::tank::Value::Interval(None)),
             Value::Uuid(..) => quote!(::tank::Value::Uuid(None)),
+            Value::IpAddr(..) => quote!(::tank::Value::IpAddr(None)),
             Value::Array(_, t, ..) => {
                 let (element, len) = (&t.element, t.len);
                 quote!(::tank::Value::Array(

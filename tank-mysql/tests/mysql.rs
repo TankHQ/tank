@@ -20,7 +20,6 @@ mod tests {
 
         // Unencrypted
         let (url, container) = init_mysql(false).await;
-        let container = container.expect("Could not launch the container");
         let mut pool = driver
             .connect_pool(url.clone(), PoolConfig::new())
             .await
@@ -31,7 +30,6 @@ mod tests {
 
         // SSL
         let (ssl_url, container) = init_mysql(true).await;
-        let container = container.expect("Could not launch the SSL container");
 
         let url = Url::parse(&ssl_url).expect("Could not parse the url returned from init");
         let mut no_cert_url = url.clone();

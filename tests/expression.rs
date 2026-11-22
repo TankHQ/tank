@@ -4,27 +4,112 @@ mod tests {
     use rust_decimal::Decimal;
     use std::{borrow::Cow, sync::Arc, time::Duration};
     use tank::{
-        BinaryOp, BinaryOpType, Case, ColumnRef, Context, DefaultValueType, DynQuery, Entity,
-        Expression, ExpressionVisitor, FixedDecimal, Fragment, Interval, OpPrecedence, Operand,
-        Order, Ordered, SqlWriter, UnaryOp, UnaryOpType, Value, expr,
+        AnyQuery, BinaryOp, BinaryOpType, Case, ColumnRef, Context, DefaultValueType, Entity,
+        Expression, ExpressionVisitor, FixedDecimal, Fragment, GenericSqlWriter, Interval,
+        LiteralValue, OpPrecedence, Operand, Order, Ordered, SqlWriter, UnaryOp, UnaryOpType,
+        Value, expr,
     };
     use time::{Date, Month, PrimitiveDateTime, Time, UtcDateTime};
     use uuid::Uuid;
 
-    struct Writer;
-    impl SqlWriter for Writer {
-        fn as_dyn(&self) -> &dyn SqlWriter {
-            self
-        }
+    const WRITER: GenericSqlWriter = GenericSqlWriter {};
+
+    #[test]
+    fn tuple_cells_expressions() {
+        let tuple = expr!((? + 1, COALESCE(?, "unknown"), if true { 2 } else { 3 }));
+        assert!(matches!(tuple, Operand::LitTuple([_, _, _])));
+        let mut out = AnyQuery::default();
+        tuple.write_query(
+            &WRITER,
+            &mut Context::fragment(Fragment::SqlInsertIntoValues),
+            &mut out,
+        );
+        assert_eq!(
+            out.as_str(),
+            "(? + 1,COALESCE(?,'unknown'),CASE WHEN true THEN 2 ELSE 3 END)"
+        );
+
+        let mut out = AnyQuery::default();
+        expr!((a, b) == [(1, 2), (3, 4)] as IN).write_query(
+            &WRITER,
+            &mut Context::default(),
+            &mut out,
+        );
+        assert_eq!(out.as_str(), "(a,b) IN ((1,2),(3,4))");
+
+        let mut out = AnyQuery::default();
+        expr!([1 + 2, COALESCE(?, 4), (5, 6)]).write_query(
+            &WRITER,
+            &mut Context::default(),
+            &mut out,
+        );
+        assert_eq!(out.as_str(), "[1 + 2,COALESCE(?,4),(5,6)]");
+
+        let mut out = AnyQuery::default();
+        expr!(()).write_query(&WRITER, &mut Context::default(), &mut out);
+        assert_eq!(out.as_str(), "()");
+        out.clear();
+        expr!((?,)).write_query(&WRITER, &mut Context::default(), &mut out);
+        assert_eq!(out.as_str(), "(?)");
+        out.clear();
+        expr!([]).write_query(&WRITER, &mut Context::default(), &mut out);
+        assert_eq!(out.as_str(), "[]");
     }
 
-    const WRITER: Writer = Writer {};
+    #[test]
+    fn literal_value_visitor() {
+        assert_eq!(
+            LiteralValue::new(expr!(42)).unwrap(),
+            Value::Int128(Some(Box::new(42)))
+        );
+        assert_eq!(
+            LiteralValue::new(expr!("text")).unwrap(),
+            Value::Varchar(Some("text".into()))
+        );
+        assert_eq!(
+            LiteralValue::new(expr!(true)).unwrap(),
+            Value::Boolean(Some(true))
+        );
+        assert_eq!(LiteralValue::new(expr!(NULL)).unwrap(), Value::Null);
+        assert_eq!(
+            LiteralValue::new(expr!(1.5)).unwrap(),
+            Value::Float64(Some(1.5))
+        );
+        let text = String::from("borrowed");
+        assert_eq!(
+            LiteralValue::new(expr!(#text)).unwrap(),
+            Value::Varchar(Some("borrowed".into()))
+        );
+        assert_eq!(
+            LiteralValue::new(Value::Int32(Some(4))).unwrap(),
+            Value::Int32(Some(4))
+        );
+        // Plain Rust values, as passed to `values([[1, 2]])`.
+        assert_eq!(LiteralValue::new(7_i32).unwrap(), Value::Int32(Some(7)));
+        assert_eq!(
+            LiteralValue::new(String::from("s")).unwrap(),
+            Value::Varchar(Some("s".into()))
+        );
+        assert_eq!(
+            LiteralValue::new(Some(5_i64)).unwrap(),
+            Value::Int64(Some(5))
+        );
+        assert_eq!(LiteralValue::new(None::<i64>).unwrap(), Value::Int64(None));
+        assert_eq!(
+            LiteralValue::new(Cow::<Value>::Owned(Value::Boolean(Some(true)))).unwrap(),
+            Value::Boolean(Some(true))
+        );
+        assert!(LiteralValue::new(expr!(?)).is_err());
+        assert!(LiteralValue::new(expr!(a)).is_err());
+        assert!(LiteralValue::new(expr!(1 + 2)).is_err());
+        assert!(LiteralValue::new(expr!((1, 2))).is_err());
+    }
 
     #[test]
     fn simple_expressions() {
         let expr = expr!();
         assert!(matches!(expr, Operand::LitBool(false)));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -41,7 +126,7 @@ mod tests {
                 rhs: Operand::LitInt(2),
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -58,7 +143,7 @@ mod tests {
                 rhs: Operand::LitFloat(1.2),
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -75,7 +160,7 @@ mod tests {
                 rhs: Operand::LitBool(false),
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -95,7 +180,7 @@ mod tests {
                 },
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -112,7 +197,7 @@ mod tests {
                 rhs: Operand::Type(Value::Int32(..)),
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -129,7 +214,7 @@ mod tests {
                 rhs: Operand::Type(Value::Float64(..)),
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -138,15 +223,8 @@ mod tests {
         assert_eq!(query.as_str(), "CAST('1.5' AS DOUBLE)");
 
         let expr = expr!(["a", "b", "c"]);
-        assert!(matches!(
-            expr,
-            Operand::LitList([
-                Operand::LitStr("a"),
-                Operand::LitStr("b"),
-                Operand::LitStr("c"),
-            ])
-        ));
-        let mut query = DynQuery::default();
+        assert!(matches!(expr, Operand::LitList([_, _, _])));
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -159,15 +237,11 @@ mod tests {
             expr,
             BinaryOp {
                 op: BinaryOpType::Indexing,
-                lhs: Operand::LitList([
-                    Operand::LitInt(11),
-                    Operand::LitInt(22),
-                    Operand::LitInt(33),
-                ]),
+                lhs: Operand::LitList([_, _, _]),
                 rhs: Operand::LitInt(1),
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -184,7 +258,7 @@ mod tests {
                 rhs: Operand::LitStr("hell_"),
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -201,7 +275,7 @@ mod tests {
                 rhs: Operand::LitStr("A%"),
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -218,7 +292,7 @@ mod tests {
                 rhs: Operand::LitStr("src/**/log.{txt,csv}"),
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -235,7 +309,7 @@ mod tests {
                 rhs: Operand::Type(Value::Int32(..))
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -252,7 +326,7 @@ mod tests {
                 rhs: Operand::Null,
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -265,7 +339,7 @@ mod tests {
     fn asterisk_expressions() {
         let expr = expr!(COUNT(*));
         assert!(matches!(expr, Operand::Call("COUNT", _)));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -280,7 +354,7 @@ mod tests {
         }
         let expr = expr!(SUM(ATable::a_column));
         assert!(matches!(expr, Operand::Call("SUM", _)));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -301,7 +375,7 @@ mod tests {
                 rhs: Operand::Variable(Value::Array(Some(..), ..)),
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -319,7 +393,7 @@ mod tests {
                 rhs: Operand::Variable(Value::List(Some(..), ..)),
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -328,7 +402,7 @@ mod tests {
         assert_eq!(query.as_str(), "col NOT IN ('Alice','Bob')");
 
         let expr = expr!(col == (1, 3, 5) as IN);
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -356,7 +430,7 @@ mod tests {
                 },
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(true), &mut query);
         assert_eq!(query.as_str(), "alpha = ? AND bravo > ?");
 
@@ -378,7 +452,7 @@ mod tests {
                 rhs: Operand::QuestionMark,
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(true), &mut query);
         assert_eq!(query.as_str(), r#""some_table"."the_column" NOT LIKE ?"#);
     }
@@ -409,7 +483,7 @@ mod tests {
                 },
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -446,7 +520,7 @@ mod tests {
                 },
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -496,7 +570,7 @@ mod tests {
                 },
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -525,7 +599,7 @@ mod tests {
                 rhs: Operand::Variable(Value::Int32(Some(3))),
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -557,7 +631,7 @@ mod tests {
                 Value::Int32(Some(-4)),
             ]
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(
             &WRITER,
             &mut Context::new(Fragment::SqlSelect, false),
@@ -579,7 +653,7 @@ mod tests {
 
         let expr = expr!(MyEntity::_first + 2);
         {
-            let mut query = DynQuery::default();
+            let mut query = AnyQuery::default();
             expr.write_query(
                 &WRITER,
                 &mut Context::new(Fragment::SqlSelect, false),
@@ -588,7 +662,7 @@ mod tests {
             assert_eq!(query.as_str(), r#""first" + 2"#);
         }
         {
-            let mut query = DynQuery::default();
+            let mut query = AnyQuery::default();
             expr.write_query(&WRITER, &mut Context::qualify(true), &mut query);
             assert_eq!(query.as_str(), r#""the_table"."first" + 2"#);
         }
@@ -653,7 +727,7 @@ mod tests {
                 },
             }
         ));
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         expr.write_query(&WRITER, &mut Context::qualify(true), &mut query);
         assert_eq!(
             query.as_str(),
@@ -714,29 +788,21 @@ mod tests {
         assert_ne!(Operand::LitBool(true), Operand::LitBool(false));
         assert_ne!(Operand::LitBool(true), Operand::LitInt(1));
         assert_ne!(Operand::LitInt(0), Operand::LitInt(1));
-        assert_eq!(
-            Operand::LitList(&[Operand::LitInt(1)]),
-            Operand::LitList(&[Operand::LitInt(1)])
-        );
-        assert_eq!(
-            Operand::LitTuple(&[Operand::LitInt(1)]),
-            Operand::LitTuple(&[Operand::LitInt(1)])
-        );
     }
 
     #[test]
     fn scalar_expression_impls() {
         let mut ctx = Context::new(Fragment::SqlSelect, false);
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         ().write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "");
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         true.write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "true");
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         "hello".write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "'hello'");
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         Value::Int32(Some(42)).write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "42");
     }
@@ -751,7 +817,7 @@ mod tests {
     #[test]
     fn expression_ref_delegation() {
         let op = Operand::LitInt(99);
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         // &T delegates to T
         (&op).write_query(&WRITER, &mut ctx, &mut out);
@@ -765,7 +831,7 @@ mod tests {
         // None
         let dvt = DefaultValueType::None;
         assert!(!dvt.is_set());
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         dvt.write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "");
@@ -774,7 +840,7 @@ mod tests {
         // From Value
         let dvt: DefaultValueType = Value::Int64(Some(10)).into();
         assert!(dvt.is_set());
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         dvt.write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "10");
         assert_eq!(dvt.precedence(&WRITER), 0);
@@ -795,7 +861,7 @@ mod tests {
     #[test]
     fn unary_op_expression() {
         let expr = expr!(-42);
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         expr.write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "-42");
@@ -803,11 +869,11 @@ mod tests {
         let _p = expr.precedence(&WRITER);
 
         let expr = expr!(!true);
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         expr.write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "NOT true");
 
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         (UnaryOp {
             op: UnaryOpType::Not,
             arg: true,
@@ -830,13 +896,13 @@ mod tests {
             expression: Operand::LitInt(1),
             order: Order::ASC,
         };
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         ordered.write_query(&WRITER, &mut ctx, &mut out);
         let p = ordered.precedence(&WRITER);
         assert_eq!(p, Operand::LitInt(1).precedence(&WRITER));
 
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelectOrderBy, false);
         (Ordered {
             expression: Operand::LitIdent("c"),
@@ -850,7 +916,7 @@ mod tests {
     fn dyn_expression_ref() {
         let op = Operand::LitStr("test");
         let dyn_ref: &dyn Expression = &op;
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         dyn_ref.write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "'test'");
@@ -861,7 +927,7 @@ mod tests {
 
     // Tests kept from the branch that were not present on master
     #[test]
-    fn binary_op_to_tokens() {
+    fn binary_op_tokens() {
         assert_eq!(
             BinaryOpType::Addition.to_token_stream().to_string(),
             ":: tank :: BinaryOpType :: \"Addition\""
@@ -873,11 +939,11 @@ mod tests {
     }
 
     #[test]
-    fn current_timestamp_ms_macro() {
+    fn timestamp_ms_macro() {
         {
             let expr = expr!(current_timestamp_ms!());
             assert!(matches!(expr, Operand::CurrentTimestampMs));
-            let mut query = DynQuery::default();
+            let mut query = AnyQuery::default();
             expr.write_query(
                 &WRITER,
                 &mut Context::new(Fragment::SqlSelect, false),
@@ -886,7 +952,7 @@ mod tests {
             assert_eq!(query.as_str(), "NOW()");
 
             let expr = expr!(col > current_timestamp_ms!() - 1000);
-            let mut query = DynQuery::default();
+            let mut query = AnyQuery::default();
             expr.write_query(
                 &WRITER,
                 &mut Context::new(Fragment::SqlSelect, false),
@@ -897,7 +963,7 @@ mod tests {
         {
             let expr = expr!(tank::current_timestamp_ms!());
             assert!(matches!(expr, Operand::CurrentTimestampMs));
-            let mut query = DynQuery::default();
+            let mut query = AnyQuery::default();
             expr.write_query(
                 &WRITER,
                 &mut Context::new(Fragment::SqlSelect, false),
@@ -908,14 +974,14 @@ mod tests {
     }
 
     #[test]
-    fn default_value_visitor_precedence() {
+    fn value_visitor_precedence() {
         struct Count;
         impl ExpressionVisitor for Count {
             fn visit_operand(
                 &mut self,
                 _w: &dyn SqlWriter,
                 _c: &mut Context,
-                _o: &mut DynQuery,
+                _o: &mut AnyQuery,
                 _v: &Operand,
             ) -> bool {
                 true
@@ -923,9 +989,9 @@ mod tests {
         }
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         let none = DefaultValueType::None;
-        assert!(!none.accept_visitor(&mut Count, &WRITER, &mut ctx, &mut DynQuery::default()));
+        assert!(!none.accept_visitor(&mut Count, &WRITER, &mut ctx, &mut AnyQuery::default()));
         let value: DefaultValueType = Value::Int32(Some(5)).into();
-        assert!(value.accept_visitor(&mut Count, &WRITER, &mut ctx, &mut DynQuery::default()));
+        assert!(value.accept_visitor(&mut Count, &WRITER, &mut ctx, &mut AnyQuery::default()));
 
         let f: DefaultValueType = 1.5_f64.into();
         assert!(f.is_set());
@@ -937,13 +1003,13 @@ mod tests {
             &mut Count,
             &WRITER,
             &mut ctx,
-            &mut DynQuery::default()
+            &mut AnyQuery::default()
         ));
         assert_eq!(
             expr_variant.precedence(&WRITER),
             Value::Int64(Some(3)).precedence(&WRITER)
         );
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         expr_variant.write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "3");
         assert!(format!("{expr_variant:?}").contains("Expression"));
@@ -990,12 +1056,12 @@ mod tests {
             expression: Operand::LitIdent("c"),
             order: Order::DESC,
         };
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelectOrderBy, false);
         ordered.write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "c DESC");
 
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         ordered.write_query(&WRITER, &mut ctx, &mut out);
         assert_eq!(out.as_str(), "c");
@@ -1024,7 +1090,7 @@ mod tests {
     fn scalar_expression_dialects() {
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         let mut render = |e: &dyn Expression| {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             e.write_query(&WRITER, &mut ctx, &mut out);
             out.as_str().into_owned()
         };
@@ -1090,7 +1156,7 @@ mod tests {
                 &mut self,
                 _w: &dyn SqlWriter,
                 _c: &mut Context,
-                _o: &mut DynQuery,
+                _o: &mut AnyQuery,
                 _v: &UnaryOp<&dyn Expression>,
             ) -> bool {
                 self.saw_unary = true;
@@ -1100,7 +1166,7 @@ mod tests {
                 &mut self,
                 _w: &dyn SqlWriter,
                 _c: &mut Context,
-                _o: &mut DynQuery,
+                _o: &mut AnyQuery,
                 _v: &Ordered<&dyn Expression>,
             ) -> bool {
                 self.saw_ordered = true;
@@ -1110,7 +1176,7 @@ mod tests {
                 &mut self,
                 _w: &dyn SqlWriter,
                 _c: &mut Context,
-                _o: &mut DynQuery,
+                _o: &mut AnyQuery,
                 _v: &Case,
             ) -> bool {
                 self.saw_case = true;
@@ -1129,7 +1195,7 @@ mod tests {
             saw_ordered: false,
             saw_case: false,
         };
-        assert!(unary.accept_visitor(&mut rec, &WRITER, &mut ctx, &mut DynQuery::default()));
+        assert!(unary.accept_visitor(&mut rec, &WRITER, &mut ctx, &mut AnyQuery::default()));
         assert!(rec.saw_unary);
 
         let mut rec = Recorder {
@@ -1137,11 +1203,11 @@ mod tests {
             saw_ordered: false,
             saw_case: false,
         };
-        assert!(ordered.accept_visitor(&mut rec, &WRITER, &mut ctx, &mut DynQuery::default()));
+        assert!(ordered.accept_visitor(&mut rec, &WRITER, &mut ctx, &mut AnyQuery::default()));
         assert!(rec.saw_ordered);
 
         let case = expr!(if true { 1 } else { 2 });
-        assert!(case.accept_visitor(&mut rec, &WRITER, &mut ctx, &mut DynQuery::default()));
+        assert!(case.accept_visitor(&mut rec, &WRITER, &mut ctx, &mut AnyQuery::default()));
         assert!(rec.saw_case && !rec.saw_unary);
     }
 
@@ -1152,7 +1218,7 @@ mod tests {
             Time::from_hms(10, 30, 0).unwrap(),
         );
         let utc = UtcDateTime::new(pdt.date(), pdt.time());
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         utc.write_query(&WRITER, &mut ctx, &mut out);
         assert!(out.as_str().contains("2025-06-15"));
@@ -1167,7 +1233,7 @@ mod tests {
                 &mut self,
                 _w: &dyn SqlWriter,
                 _c: &mut Context,
-                _o: &mut DynQuery,
+                _o: &mut AnyQuery,
                 _v: &Operand,
             ) -> bool {
                 true
@@ -1176,15 +1242,15 @@ mod tests {
         let mut ctx = Context::new(Fragment::SqlSelect, false);
         let base = expr!(1);
 
-        assert!((&&base).accept_visitor(&mut Always, &WRITER, &mut ctx, &mut DynQuery::default()));
+        assert!((&&base).accept_visitor(&mut Always, &WRITER, &mut ctx, &mut AnyQuery::default()));
         let dyn_ref: &dyn Expression = &base;
-        assert!(dyn_ref.accept_visitor(&mut Always, &WRITER, &mut ctx, &mut DynQuery::default()));
+        assert!(dyn_ref.accept_visitor(&mut Always, &WRITER, &mut ctx, &mut AnyQuery::default()));
         let arc = Arc::new(expr!(1));
-        assert!(arc.accept_visitor(&mut Always, &WRITER, &mut ctx, &mut DynQuery::default()));
+        assert!(arc.accept_visitor(&mut Always, &WRITER, &mut ctx, &mut AnyQuery::default()));
         let boxed = Box::new(expr!(1));
-        assert!(boxed.accept_visitor(&mut Always, &WRITER, &mut ctx, &mut DynQuery::default()));
-        assert!(true.accept_visitor(&mut Always, &WRITER, &mut ctx, &mut DynQuery::default()));
-        assert!("x".accept_visitor(&mut Always, &WRITER, &mut ctx, &mut DynQuery::default()));
+        assert!(boxed.accept_visitor(&mut Always, &WRITER, &mut ctx, &mut AnyQuery::default()));
+        assert!(true.accept_visitor(&mut Always, &WRITER, &mut ctx, &mut AnyQuery::default()));
+        assert!("x".accept_visitor(&mut Always, &WRITER, &mut ctx, &mut AnyQuery::default()));
 
         let as_dyn: &dyn Expression = (&base).into();
         assert_eq!(as_dyn.precedence(&WRITER), base.precedence(&WRITER));

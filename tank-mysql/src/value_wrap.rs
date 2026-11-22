@@ -168,7 +168,7 @@ impl<'a> mysql_async::prelude::FromValue for ValueWrap<'a> {
     type Intermediate = ValueWrap<'a>;
 }
 
-impl<'a> TryFrom<mysql_async::Value> for ValueWrap<'a> {
+impl TryFrom<mysql_async::Value> for ValueWrap<'_> {
     type Error = mysql_async::FromValueError;
     fn try_from(value: mysql_async::Value) -> Result<Self, Self::Error> {
         Ok(match value {
@@ -312,6 +312,7 @@ impl<'a> TryFrom<ValueWrap<'a>> for mysql_async::Value {
                 )
             }
             tank_core::Value::Uuid(Some(v), ..) => MySQLValue::from(v.to_string()),
+            tank_core::Value::IpAddr(Some(v), ..) => MySQLValue::from(v.to_string()),
             // tank_core::Value::Array(Some(v), ..) => MySQLValue::from(v),
             // tank_core::Value::List(Some(v), ..) => MySQLValue::from(v),
             // tank_core::Value::Map(Some(v), ..) => MySQLValue::from(v),

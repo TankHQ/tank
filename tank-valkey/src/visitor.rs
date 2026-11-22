@@ -1,7 +1,7 @@
-use std::{borrow::Cow, mem};
+use std::borrow::Cow;
 use tank_core::{
-    BinaryOp, BinaryOpType, ColumnDef, ColumnRef, Context, DynQuery, Expression, ExpressionVisitor,
-    IsConstant, Operand, Ordered, SqlWriter,
+    AnyQuery, BinaryOp, BinaryOpType, ColumnRef, Context, Expression, ExpressionVisitor,
+    IsConstant, Operand, Ordered, SqlWriter, TableRef,
 };
 
 #[derive(Default, Debug)]
@@ -14,7 +14,7 @@ impl ExpressionVisitor for IsField {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &ColumnRef,
     ) -> bool {
         self.field = value.name.clone();
@@ -24,7 +24,7 @@ impl ExpressionVisitor for IsField {
         &mut self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         value: &Operand,
     ) -> bool {
         match value {
@@ -48,70 +48,74 @@ impl ExpressionVisitor for IsField {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Ordered<&dyn Expression>,
     ) -> bool {
         value.expression.accept_visitor(self, writer, context, out)
     }
 }
 
-pub struct IsPKCondition {
+pub struct IsPKCondition<'a> {
     keys_with_names: bool,
     pub key: String,
     started: bool,
-    original_pk: &'static [&'static ColumnDef],
-    pk: &'static [&'static ColumnDef],
+    table: &'a TableRef,
+    /// Primary key columns already matched, in key order.
+    matched: usize,
+    /// Rendered value of each matched column, used to accept retries.
+    values: Vec<(Cow<'static, str>, String)>,
     retry: bool,
 }
-impl IsPKCondition {
-    pub fn new(keys_with_names: bool, prefix: String, pk: &'static [&'static ColumnDef]) -> Self {
+impl<'a> IsPKCondition<'a> {
+    pub const fn new(keys_with_names: bool, prefix: String, table: &'a TableRef) -> Self {
         IsPKCondition {
             keys_with_names,
             key: prefix,
             started: false,
-            original_pk: pk,
-            pk,
+            table,
+            matched: 0,
+            values: Vec::new(),
             retry: false,
         }
     }
+    fn is_complete(&self) -> bool {
+        self.table.primary_key().nth(self.matched).is_none()
+    }
 }
-impl ExpressionVisitor for IsPKCondition {
+impl ExpressionVisitor for IsPKCondition<'_> {
     fn visit_binary_op(
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &BinaryOp<&dyn Expression, &dyn Expression>,
     ) -> bool {
-        let top = !self.started;
+        let is_tree_root = !self.started;
         self.started = true;
         match value.op {
             BinaryOpType::And => {
-                let mut lhs_done = false;
-                let mut rhs_done = false;
+                let mut lhs_is_pk_condition = false;
+                let mut rhs_is_pk_condition = false;
                 loop {
-                    let pk_len_before = self.pk.len();
-                    if !lhs_done {
+                    let matched_before = self.matched;
+                    if !lhs_is_pk_condition {
                         self.retry = false;
-                        lhs_done = value.lhs.accept_visitor(self, writer, context, out);
-                        if !lhs_done && !self.retry {
+                        lhs_is_pk_condition = value.lhs.accept_visitor(self, writer, context, out);
+                        if !lhs_is_pk_condition && !self.retry {
                             return false;
                         }
                     }
-                    if !rhs_done {
+                    if !rhs_is_pk_condition {
                         self.retry = false;
-                        rhs_done = value.rhs.accept_visitor(self, writer, context, out);
-                        if !rhs_done && !self.retry {
+                        rhs_is_pk_condition = value.rhs.accept_visitor(self, writer, context, out);
+                        if !rhs_is_pk_condition && !self.retry {
                             return false;
                         }
                     }
-                    if lhs_done && rhs_done {
-                        if top && !self.pk.is_empty() {
-                            return false;
-                        }
-                        return true;
+                    if lhs_is_pk_condition && rhs_is_pk_condition {
+                        return !is_tree_root || self.is_complete();
                     }
-                    if self.pk.len() == pk_len_before {
+                    if self.matched == matched_before {
                         self.retry = true;
                         return false;
                     }
@@ -139,17 +143,24 @@ impl ExpressionVisitor for IsPKCondition {
                 } else {
                     return false;
                 };
-                let matched_count = self.original_pk.len() - self.pk.len();
-                if self.original_pk[..matched_count]
-                    .iter()
-                    .any(|c| c.column_ref.name == is_column.field)
+                let mut primary_key = self.table.primary_key();
+                let mut rendered = AnyQuery::default();
+                value.write_query(writer, context, &mut rendered);
+                if primary_key
+                    .by_ref()
+                    .take(self.matched)
+                    .any(|c| c.name() == is_column.field)
                 {
-                    return true;
+                    // Retries revisit matched columns, so an identical value is accepted
+                    return self
+                        .values
+                        .iter()
+                        .any(|(name, v)| name == &is_column.field && v == rendered.buffer());
                 }
-                let Some(first) = self.pk.first() else {
+                let Some(next) = primary_key.next() else {
                     return false;
                 };
-                if is_column.field != first.column_ref.name {
+                if next.name() != is_column.field {
                     self.retry = true;
                     return false;
                 }
@@ -160,14 +171,11 @@ impl ExpressionVisitor for IsPKCondition {
                     self.key.push_str(&is_column.field);
                     self.key.push_str(writer.separator());
                 }
-                let mut out = DynQuery::new(mem::take(&mut self.key));
-                value.write_query(writer, context, &mut out);
-                self.key = mem::take(out.buffer());
-                self.pk = &self.pk[1..];
-                if top && !self.pk.is_empty() {
-                    return false;
-                }
-                true
+                self.key.push_str(rendered.buffer());
+                self.values
+                    .push((is_column.field.clone(), rendered.buffer().clone()));
+                self.matched += 1;
+                !is_tree_root || self.is_complete()
             }
             _ => false,
         }
@@ -176,7 +184,7 @@ impl ExpressionVisitor for IsPKCondition {
         &mut self,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &Ordered<&dyn Expression>,
     ) -> bool {
         value.expression.accept_visitor(self, writer, context, out)

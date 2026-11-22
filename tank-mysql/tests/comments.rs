@@ -79,14 +79,12 @@ pub(crate) async fn comments<D: Driver>(pool: &mut impl ConnectionPool<D>) {
                 table_name: "commented_entity".into(),
                 column_name: "notes".into(),
                 ordinal_position: 3,
-                column_comment: indoc!(
-                    r#"
-                        Multi-line comment
-                        It's got a quote and a second line
+                column_comment: indoc! {r#"
+                    Multi-line comment
+                    It's got a quote and a second line
 
-                        And a third after an empty line
-                    "#
-                )
+                    And a third after an empty line
+                "#}
                 .trim()
                 .into(),
             },

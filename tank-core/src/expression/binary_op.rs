@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, Expression, ExpressionVisitor, GenericSqlWriter, OpPrecedence,
+    AnyQuery, Expression, ExpressionVisitor, GenericSqlWriter, OpPrecedence,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::TokenStream;
@@ -60,7 +60,7 @@ impl<L: Expression, R: Expression> OpPrecedence for BinaryOp<L, R> {
 }
 
 impl<L: Expression, R: Expression> Expression for BinaryOp<L, R> {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         writer.write_binary_op(
             context,
             out,
@@ -76,7 +76,7 @@ impl<L: Expression, R: Expression> Expression for BinaryOp<L, R> {
         matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
     ) -> bool {
         matcher.visit_binary_op(
             writer,
@@ -93,7 +93,7 @@ impl<L: Expression, R: Expression> Expression for BinaryOp<L, R> {
         if self.op == BinaryOpType::Alias {
             self.rhs.as_identifier(context)
         } else {
-            let mut out = DynQuery::new(String::new());
+            let mut out = AnyQuery::new(String::new());
             let writer = GenericSqlWriter::new();
             self.write_query(&writer, context, &mut out);
             mem::take(out.buffer())

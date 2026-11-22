@@ -16,6 +16,7 @@ indoc.workspace = true
 log.workspace = true
 rcgen.workspace = true
 rust_decimal.workspace = true
+serde_json.workspace = true
 tank = { workspace = true, features = ["chrono"] }
 time.workspace = true
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
@@ -43,3 +44,4 @@ disable-old-dates = []
 disable-ordering = []
 disable-references = []
 disable-transactions = []
+disable-updates = []

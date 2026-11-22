@@ -30,7 +30,7 @@ cargo add tank-mysql
 use tank::{ConnectionPool, Driver, PoolConfig};
 use tank_mysql::MySQLDriver;
 
-let driver = MySQLDriver::new();
+let driver = MySQLDriver::mysql();
 let pool = driver
     .connect_pool(
         "mysql://user:password@127.0.0.1:3306/database?require_ssl=true&ssl_ca=ca.pem&ssl_cert=client-cert.pem&ssl_key=client-key.pem",
@@ -45,7 +45,9 @@ Run this inside an async function. The returned connection can execute Tank enti
 Certificate filenames are resolved relative to the working directory. Use paths appropriate for your deployment.
 
 ## Running Tests
-Tests cover both MySQL and MariaDB. Provide connection URLs through `TANK_MYSQL_TEST` and `TANK_MARIADB_TEST`. If either variable is absent, the corresponding containerized database will be launched automatically using [testcontainers-modules](https://crates.io/crates/testcontainers-modules).
+The MySQL and MariaDB suites manage their own throwaway containers via [testcontainers-modules](https://crates.io/crates/testcontainers-modules). No database setup is needed. Set environment variable `TANK_MYSQL_TEST` / `TANK_MARIADB_TEST` to use your own servers.
+
+Docker is required:
 
 1. Ensure Docker is running on Linux:
 ```sh

@@ -1,4 +1,5 @@
 //! DuckDB driver for `tank`.
+mod appender;
 mod column;
 mod connection;
 mod driver;

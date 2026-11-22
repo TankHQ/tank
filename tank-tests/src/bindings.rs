@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use anyhow::Context;
 use rust_decimal::Decimal;
 use std::{slice, sync::LazyLock};
@@ -80,7 +81,7 @@ pub async fn bindings(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    crate::silent_logs! {
+    silent_logs! {
         BoundTypes::drop_table(executor, true, false).await?;
     }
     BoundTypes::create_table(executor, true, true).await?;

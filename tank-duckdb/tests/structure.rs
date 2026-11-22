@@ -16,7 +16,7 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         .expect("Failed to start a transaction");
 
     // users
-    tx.execute(indoc! {"
+    tx.execute(indoc! {r#"
                 DROP TABLE IF EXISTS users;
                 CREATE TABLE users (
                     id INTEGER,
@@ -30,18 +30,18 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
                     (1, {name: 'Alice', age: 30, email: 'alice@example.com'}),
                     (2, {name: 'Bob', age: 25, email: 'bob@example.com'}),
                     (3, {name: 'Charlie', age: 35, email: 'charlie@example.com'});
-            "})
+            "#})
         .await
         .expect("Could not start a transaction");
     tx.commit().await.expect("Faield to commit the transaction");
     {
         let users = connection
-            .fetch(indoc! {"
+            .fetch(indoc! {r#"
             SELECT id, info
             FROM users
             WHERE info.age >= 30
             ORDER BY id;
-        "})
+        "#})
             .try_collect::<Vec<_>>()
             .await
             .expect("Failed to query");
@@ -83,7 +83,7 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
 
     // data
     connection
-        .execute(indoc! {"
+        .execute(indoc! {r#"
         CREATE TABLE complex_items (
             id INTEGER,
             data STRUCT(
@@ -96,7 +96,7 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
         );
         INSERT INTO complex_items VALUES
             (100, {tags: ['urgent', 'work'], meta: {priority: 1, label: 'high'}});
-    "})
+    "#})
         .await
         .expect("Failed to create complex table");
 
@@ -139,7 +139,7 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
 
     // null_checks
     connection
-        .execute(indoc! { "
+        .execute(indoc! {r#"
             CREATE TABLE null_checks (
                 id INTEGER,
                 info STRUCT(
@@ -150,7 +150,7 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
             INSERT INTO null_checks VALUES
                 (1, NULL),
                 (2, {'name': NULL, 'score': 3});
-        "})
+        "#})
         .await
         .expect("Failed to create null_checks table");
 
@@ -204,7 +204,7 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
 
     // timestamp_resolution: TIMESTAMP_S, TIMESTAMP_MS, TIMESTAMP_NS must all round-trip correctly
     connection
-        .execute(indoc! {"
+        .execute(indoc! {r#"
             CREATE TABLE ts_resolution (
                 id INTEGER,
                 ts_s TIMESTAMP_S,
@@ -213,7 +213,7 @@ pub(crate) async fn structure<D: Driver>(pool: &mut impl ConnectionPool<D>) {
             );
             INSERT INTO ts_resolution VALUES
                 (1, '2025-06-15 12:30:45', '2025-06-15 12:30:45.123', '2025-06-15 12:30:45.123456789');
-        "})
+        "#})
         .await
         .expect("Failed to create ts_resolution table");
 

@@ -13,12 +13,19 @@ impl mysql_async::prelude::FromRow for RowWrap {
             columns.iter().map(|v| v.name_str().into_owned()).collect();
         let values = (0..row.len())
             .map(|i| {
-                let value = row
-                    .take::<mysql_async::Value, _>(i)
-                    .expect("Unexpected error: the column does not exist");
-                extract_value(&columns[i], value)
+                let Some(value) = row.take::<mysql_async::Value, _>(i) else {
+                    log::error!("Unexpected error, column {i} is not present");
+                    return Err(());
+                };
+                let Some(column) = columns.get(i) else {
+                    log::error!("Unexpected error, column {i} has no matching column metadata");
+                    return Err(());
+                };
+                extract_value(column, value)
                     .map(|v| v.0.into_owned())
-                    .map_err(|_| ())
+                    .map_err(|e| {
+                        log::error!("Could not decode MySQL column `{}`: {e}", column.name_str());
+                    })
             })
             .collect::<Result<Vec<_>, ()>>()
             .map_err(|_| FromRowError(row))?;

@@ -20,7 +20,8 @@ pub struct MySQLPrepared {
 }
 
 impl MySQLPrepared {
-    pub(crate) fn new(statement: Statement) -> Self {
+    #[inline(always)]
+    pub(crate) const fn new(statement: Statement) -> Self {
         Self {
             statement,
             params: Vec::new(),
@@ -28,6 +29,7 @@ impl MySQLPrepared {
         }
     }
 
+    #[inline]
     pub(crate) fn take_params(&mut self) -> Result<mysql_async::Params> {
         self.index = 0;
         Ok(mysql_async::Params::Positional(
@@ -40,20 +42,24 @@ impl MySQLPrepared {
 }
 
 impl Prepared for MySQLPrepared {
+    #[inline(always)]
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
     }
 
+    #[inline(always)]
     fn is_empty(&self) -> bool {
         false
     }
 
+    #[inline(always)]
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         self.params.clear();
         self.index = 0;
         Ok(self)
     }
 
+    #[inline(always)]
     fn bind(&mut self, value: impl AsValue) -> Result<&mut Self> {
         self.bind_index(value, self.index)
     }

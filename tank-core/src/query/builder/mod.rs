@@ -1,19 +1,24 @@
 mod create_table;
 mod delete;
 mod drop_table;
+mod dyn_writer;
 mod insert_into;
 mod select;
+mod update;
+mod view;
 
 use crate::{
-    ColumnDef, ColumnRef, Context, Dataset, DynQuery, Expression, ExpressionVisitor, OpPrecedence,
-    SqlWriter, TableRef,
+    AnyQuery, ColumnDef, ColumnRef, Context, Dataset, Driver, Expression, ExpressionVisitor,
+    OpPrecedence, Query, SqlWriter, TableRef,
 };
 pub use create_table::*;
 pub use delete::*;
 pub use drop_table::*;
+pub(crate) use dyn_writer::*;
 pub use insert_into::*;
 pub use select::*;
 use std::{borrow::Cow, iter};
+pub use update::*;
 
 /// Entry point of the query builders, as in `Sql().select(columns).from(table)`.
 #[derive(Default, Debug)]
@@ -32,6 +37,8 @@ impl Sql {
             having: Default::default(),
             order_by: Default::default(),
             limit: Default::default(),
+            offset: Default::default(),
+            distinct: Default::default(),
             _l: Default::default(),
             insert: NA,
         }
@@ -43,6 +50,13 @@ impl Sql {
             values: NA,
             update: false,
             _update: Default::default(),
+        }
+    }
+    pub fn update<From: Dataset>(self, from: From) -> UpdateQueryBuilder<From, (), NA> {
+        UpdateQueryBuilder {
+            from,
+            set: (),
+            where_expr: Default::default(),
         }
     }
     pub fn delete_from<From: Dataset>(self, from: From) -> DeleteQueryBuilder<From, NA> {
@@ -67,6 +81,29 @@ impl Sql {
     }
 }
 
+/// A builder of any statement kind, erased by calling `.boxed()` before the driver is known.
+///
+/// Store it, then run it on any executor with `execute(&query)`: the executor's driver renders it.
+pub struct BoxQueryBuilder(Box<dyn Fn(&AnyWriter, &mut AnyQuery)>);
+
+impl BoxQueryBuilder {
+    pub(crate) fn new(write: impl Fn(&AnyWriter, &mut AnyQuery) + 'static) -> Self {
+        Self(Box::new(write))
+    }
+
+    /// Builds the query for `driver`.
+    pub fn build<D: Driver + 'static>(&self, driver: &D) -> Query<D> {
+        let mut query = AnyQuery::default();
+        self.build_into(driver, &mut query);
+        query.into()
+    }
+
+    /// Writes the query for `driver` into an existing buffer.
+    pub fn build_into<D: Driver + 'static>(&self, driver: &D, out: &mut AnyQuery) {
+        (self.0)(&AnyWriter::new(Box::new(driver.sql_writer())), out);
+    }
+}
+
 #[derive(Default, Debug)]
 pub struct NA;
 
@@ -78,7 +115,7 @@ impl Dataset for NA {
         &self,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
     ) {
     }
     fn table_ref(&self) -> TableRef {
@@ -93,13 +130,13 @@ impl OpPrecedence for NA {
 }
 
 impl Expression for NA {
-    fn write_query(&self, _writer: &dyn SqlWriter, _context: &mut Context, _out: &mut DynQuery) {}
+    fn write_query(&self, _writer: &dyn SqlWriter, _context: &mut Context, _out: &mut AnyQuery) {}
     fn accept_visitor(
         &self,
         _matcher: &mut dyn ExpressionVisitor,
         _writer: &dyn SqlWriter,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
     ) -> bool {
         false
     }
@@ -128,14 +165,12 @@ impl ExpressionCollection for NA {
     }
 }
 
-/// A single column, as in `.group_by(Entity::field)`.
 impl ExpressionCollection for ColumnRef {
     fn expr_iter(&self) -> impl Iterator<Item = impl Expression> + Clone {
         iter::once(self)
     }
 }
 
-/// A single column, as in `.order_by(Entity::field)`.
 impl ExpressionCollection for ColumnDef {
     fn expr_iter(&self) -> impl Iterator<Item = impl Expression> + Clone {
         iter::once(self)

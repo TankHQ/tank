@@ -3,7 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::{path::Path, pin::pin, sync::Mutex};
     use tank::{
-        AsValue, Connection, DynQuery, Entity, Executor, QueryResult, Row, Sql, Value, cols, expr,
+        AnyQuery, AsValue, Connection, Driver, Entity, Executor, QueryResult, Row, Sql, Value,
+        cols, expr,
         stream::{StreamExt, TryStreamExt},
     };
     use tank_duckdb::{DuckDBConnection, DuckDBDriver};
@@ -41,6 +42,7 @@ mod tests {
 
     #[tokio::test]
     async fn incremental_owned_snapshots() {
+        init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
                 .await
@@ -80,13 +82,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn late_fetch_error_terminal() {
+    async fn late_fetch_error() {
+        init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
                 .await
                 .unwrap();
         {
-            let mut query = DynQuery::default();
+            let mut query = AnyQuery::default();
             Sql()
                 .select(cols!(CAST(if range == 1000000 {
                     "invalid"
@@ -94,10 +97,10 @@ mod tests {
                     range as String
                 } as i64)))
                 .from(expr!(range(1000010)))
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             Sql()
                 .create_table(MustNotRun::table())
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             let mut results = pin!(connection.run(query));
             let mut count = 0;
             let error = loop {
@@ -129,39 +132,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn outer_advance_drains_rows() {
+    async fn advance_drains_rows() {
+        init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())
                 .await
                 .unwrap();
         {
-            let mut query = DynQuery::default();
+            let mut query = AnyQuery::default();
             Sql()
                 .create_table(Ordered::table())
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             Sql()
                 .insert_into(Ordered::table())
                 .values(&[Ordered { id: 1, value: 7 }, Ordered { id: 2, value: 7 }])
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             Sql()
                 .select(cols!(Ordered::value))
                 .from(Ordered::table())
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             Sql()
                 .insert_into(Ordered::table())
                 .values(&[Ordered { id: 1, value: 8 }])
                 .update()
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             Sql()
                 .select(cols!(Ordered::value))
                 .from(Ordered::table())
                 .where_expr(expr!(Ordered::id == 1))
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             Sql()
                 .select(cols!(Ordered::value))
                 .from(Ordered::table())
                 .where_expr(false)
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             let mut results = pin!(connection.run(query));
             assert!(
                 matches!(results.next().await.unwrap().unwrap(), QueryResult::Affected(a) if a.rows_affected == Some(0))
@@ -188,15 +192,15 @@ mod tests {
         }
         // Dropping an unfinished batch does not eagerly execute subsequent statements.
         {
-            let mut query = DynQuery::default();
+            let mut query = AnyQuery::default();
             Sql()
                 .select(cols!(Ordered::value))
                 .from(Ordered::table())
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             Sql()
                 .insert_into(Ordered::table())
                 .values(&[Ordered { id: 3, value: 99 }])
-                .build_into(&DRIVER, &mut query);
+                .write_into(&DRIVER.sql_writer(), &mut query);
             let mut results = pin!(connection.run(query));
             assert!(matches!(
                 results.next().await.unwrap().unwrap(),
@@ -220,12 +224,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn drain_propagates_fetch_error() {
+    async fn drain_fetch_error() {
+        init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
                 .await
                 .unwrap();
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .select(cols!(CAST(if range == 1000000 {
                 "invalid"
@@ -233,11 +238,11 @@ mod tests {
                 CAST(range as String)
             } as i64)))
             .from(expr!(range(1000010)))
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         Sql()
             .select(cols!(42))
             .from(expr!(range(1)))
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         assert!(connection.execute(query).await.is_err());
         assert_eq!(
             connection
@@ -251,7 +256,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prepared_reuse_send_iterators() {
+    async fn prepared_reuse_iterators() {
+        init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())
                 .await
@@ -309,25 +315,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn statement_results_group_rows() {
+    async fn results_group_rows() {
+        init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())
                 .await
                 .unwrap();
         let results = connection
-            .run(
-                "
-            -- ; SELECT 'not a statement';
-            CREATE TABLE items (id INTEGER);
-            INSERT INTO items VALUES (1), (2);
-            /* ; */ SELECT id FROM items ORDER BY id;
-            UPDATE items SET id = id + 10 WHERE id = 1;
-            SELECT id FROM items WHERE false;
-            DELETE FROM items WHERE false;
-            INSERT INTO items VALUES (3) RETURNING id;
-            EXPLAIN SELECT * FROM items;
-        ",
-            )
+            .run(indoc! {r#"
+                -- ; SELECT 'not a statement';
+                CREATE TABLE items (id INTEGER);
+                INSERT INTO items VALUES (1), (2);
+                /* ; */ SELECT id FROM items ORDER BY id;
+                UPDATE items SET id = id + 10 WHERE id = 1;
+                SELECT id FROM items WHERE false;
+                DELETE FROM items WHERE false;
+                INSERT INTO items VALUES (3) RETURNING id;
+                EXPLAIN SELECT * FROM items;
+            "#})
             .map(|result| match result.unwrap() {
                 QueryResult::Row(_) => None,
                 QueryResult::Affected(affected) => Some(affected.rows_affected),
@@ -349,30 +354,26 @@ mod tests {
         assert!(results.len() >= 8);
         assert!(results[7..].iter().all(Option::is_none));
         let values = connection
-            .fetch(
-                "
-            INSERT INTO items VALUES (4);
-            SELECT id FROM items ORDER BY id;
-            SELECT id FROM items WHERE false;
-            DELETE FROM items WHERE false;
-            SELECT 99;
-        ",
-            )
+            .fetch(indoc! {r#"
+                INSERT INTO items VALUES (4);
+                SELECT id FROM items ORDER BY id;
+                SELECT id FROM items WHERE false;
+                DELETE FROM items WHERE false;
+                SELECT 99;
+            "#})
             .map(|row| row.unwrap().value(0).unwrap().into_owned().into_owned())
             .collect::<Vec<_>>()
             .await;
         assert_eq!(values, [2, 3, 4, 11, 99].map(|n| Value::Int32(Some(n))));
         assert_eq!(
             connection
-                .execute(
-                    "
-            INSERT INTO items VALUES (5), (6);
-            SELECT * FROM items;
-            UPDATE items SET id = id + 20 WHERE id = 5;
-            DELETE FROM items WHERE false;
-            CREATE TABLE after_write (id INTEGER);
-        "
-                )
+                .execute(indoc! {r#"
+                    INSERT INTO items VALUES (5), (6);
+                    SELECT * FROM items;
+                    UPDATE items SET id = id + 20 WHERE id = 5;
+                    DELETE FROM items WHERE false;
+                    CREATE TABLE after_write (id INTEGER);
+                "#})
                 .await
                 .unwrap()
                 .rows_affected,
@@ -383,7 +384,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prepared_empty_and_owned_rows() {
+    async fn prepared_owned_rows() {
+        init_logs();
         let mut connection =
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:".into())
                 .await
@@ -442,14 +444,14 @@ mod tests {
         )
         .await
         .expect("Could not open a second connection to the same database");
-        let mut query = DynQuery::default();
+        let mut query = AnyQuery::default();
         Sql()
             .create_table(SharedDb::table())
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         Sql()
             .insert_into(SharedDb::table())
             .values(&[SharedDb { v: 7 }])
-            .build_into(&DRIVER, &mut query);
+            .write_into(&DRIVER.sql_writer(), &mut query);
         c1.execute(query).await.unwrap();
         drop(c1);
         assert_eq!(
@@ -484,6 +486,7 @@ mod tests {
 
     #[tokio::test]
     async fn url_parameters() {
+        init_logs();
         let mut connection = DuckDBConnection::connect(
             &DuckDBDriver::new(),
             "duckdb://:memory:?threads=6&max_memory=800MiB".into(),
@@ -505,7 +508,7 @@ mod tests {
             .await
             .unwrap();
         assert!(!parameters.is_empty());
-        let threads = String::try_from_value(
+        let threads = String::decode_value(
             parameters
                 .iter()
                 .find_map(|row| {
@@ -522,7 +525,7 @@ mod tests {
         )
         .expect("Could not extract string");
         assert_eq!(threads, "6");
-        let max_memory = String::try_from_value(
+        let max_memory = String::decode_value(
             parameters
                 .iter()
                 .find_map(|row| {

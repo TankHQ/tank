@@ -101,7 +101,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_cells_stop_iteration() {
+    fn missing_cells_stop() {
         for gap in [0, 1, 2] {
             let row = GappedRow {
                 names: ["first".to_owned(), "second".to_owned(), "third".to_owned()],

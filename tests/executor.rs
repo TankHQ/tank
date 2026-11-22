@@ -14,11 +14,11 @@ mod tests {
         vec::IntoIter,
     };
     use tank::{
-        AsQuery, AsValue, Connection, ConnectionPool, Context, Dataset, Driver, DynQuery, Entity,
+        AnyQuery, AsQuery, AsValue, Connection, ConnectionPool, Context, Dataset, Driver, Entity,
         Error, Executor, Expression, ExpressionCollection, ExpressionVisitor, Fragment,
-        GenericSqlWriter, InsertIntoQuery, NA, OpPrecedence, PoolConfig, PooledConnection,
-        Prepared, Query, QueryResult, RawQuery, Result, Row, RowOwned, RowsAffected, Sql,
-        Transaction, anyhow, cols, describe_path, describe_url, expr,
+        GenericSqlWriter, InsertIntoQuery, MAX_BATCH_SIZE, NA, OpPrecedence, PoolConfig,
+        PooledConnection, Prepared, Query, QueryResult, RawQuery, Result, Row, RowOwned,
+        RowsAffected, Sql, Transaction, anyhow, cols, describe_path, describe_url, expr,
         future::Either,
         stream::{self, Stream, StreamExt, TryStreamExt},
     };
@@ -117,7 +117,7 @@ mod tests {
             &'s mut self,
             query: impl AsQuery<TestDriver> + 's,
         ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-            let _ = query.as_query();
+            let _ = query.as_query(&self.driver());
             let results = mem::take(&mut self.results);
             let consumed = &self.consumed;
             stream::iter(TestResults {
@@ -126,11 +126,8 @@ mod tests {
             })
         }
 
-        fn do_prepare(
-            &mut self,
-            _: String,
-        ) -> impl Future<Output = Result<Query<TestDriver>>> + Send {
-            async move { Ok(Query::prepared(TestDriver)) }
+        fn do_prepare(&mut self, _: &str) -> impl Future<Output = Result<TestDriver>> + Send {
+            async move { Ok(TestDriver) }
         }
     }
 
@@ -150,6 +147,93 @@ mod tests {
         async fn rollback(self) -> Result<()> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn append_byte_batches() {
+        #[derive(Default)]
+        struct SizedExecutor {
+            limit: usize,
+            sent: Vec<String>,
+        }
+
+        impl Executor for SizedExecutor {
+            type Driver = TestDriver;
+
+            fn batch_size(&self) -> usize {
+                self.limit
+            }
+
+            fn run<'s>(
+                &'s mut self,
+                query: impl AsQuery<TestDriver> + 's,
+            ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
+                let mut query = query.as_query(&self.driver());
+                if let Query::Raw(RawQuery(sql)) = query.as_mut() {
+                    self.sent.push(sql.clone());
+                }
+                stream::empty::<Result<QueryResult<RowOwned>>>()
+            }
+        }
+        block_on(async {
+            let mut empty = SizedExecutor {
+                limit: 4096,
+                ..Default::default()
+            };
+            empty.append(Vec::<ExecutorItem>::new()).await.unwrap();
+            assert!(empty.sent.is_empty());
+
+            // Same width ids, so every row has the same size.
+            let items = (1000..1300)
+                .map(|id| ExecutorItem {
+                    id,
+                    name: format!("item_{id:04}"),
+                })
+                .collect::<Vec<_>>();
+            let mut single = SizedExecutor {
+                limit: 4096,
+                ..Default::default()
+            };
+            single.append(&items[..1]).await.unwrap();
+            assert_eq!(single.sent.len(), 1);
+            assert!(single.sent[0].contains("'item_1000'"));
+
+            for limit in [1, 4096, 1 << 20] {
+                let mut exec = SizedExecutor {
+                    limit,
+                    ..Default::default()
+                };
+                exec.append(&items).await.unwrap();
+                let rows = exec.sent.iter().map(|s| s.matches("'item_").count());
+                assert_eq!(rows.sum::<usize>(), items.len(), "limit {limit}");
+                if limit == 1 {
+                    // A row over the limit is still sent, alone.
+                    assert_eq!(exec.sent.len(), items.len());
+                } else {
+                    // The first batch is probed from one row, the following ones are measured.
+                    assert!(exec.sent.iter().all(|s| s.len() <= limit), "limit {limit}");
+                    let middle = exec.sent.get(1..exec.sent.len() - 1).unwrap_or_default();
+                    assert!(
+                        middle.iter().all(|s| s.len() >= limit / 10 * 8),
+                        "limit {limit}"
+                    );
+                }
+            }
+
+            // Quotes double in SQL literals, probing the dialect writer still stays within `limit`.
+            let quoted = (1000..1100)
+                .map(|id| ExecutorItem {
+                    id,
+                    name: "'".repeat(40),
+                })
+                .collect::<Vec<_>>();
+            let mut exec = SizedExecutor {
+                limit: 512,
+                ..Default::default()
+            };
+            exec.append(&quoted).await.unwrap();
+            assert!(exec.sent.iter().all(|s| s.len() <= 512));
+        });
     }
 
     #[test]
@@ -242,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn stream_try_collect_and_forwarders() {
+    fn stream_try_collect() {
         block_on(async {
             let collected: Vec<i32> = stream::iter(vec![Ok::<_, Error>(1), Ok(2)])
                 .map_ok(|v| v * 2)
@@ -263,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    fn query_and_builder_conversions() {
+    fn query_builder_conversions() {
         let mut raw: Query<TestDriver> = "SELECT 1".into();
         assert!(!raw.is_prepared());
         assert_eq!(raw.to_string(), "SELECT 1");
@@ -280,36 +364,36 @@ mod tests {
         assert_eq!(prepared.to_string(), "test");
 
         assert_eq!(
-            AsQuery::<TestDriver>::as_query(RawQuery("z".into()))
+            AsQuery::<TestDriver>::as_query(RawQuery("z".into()), &TestDriver)
                 .as_mut()
                 .to_string(),
             "z"
         );
         assert_eq!(
-            AsQuery::<TestDriver>::as_query(Query::raw("v".into()))
+            AsQuery::<TestDriver>::as_query(Query::raw("v".into()), &TestDriver)
                 .as_mut()
                 .to_string(),
             "v"
         );
 
-        let matching: DynQuery = Query::<TestDriver>::prepared(TestDriver).into();
-        assert!(AsQuery::<TestDriver>::as_query(matching).is_prepared());
-        let mut dyn_q: DynQuery = prepared.into_dyn();
+        let matching: AnyQuery = Query::<TestDriver>::prepared(TestDriver).into();
+        assert!(AsQuery::<TestDriver>::as_query(matching, &TestDriver).is_prepared());
+        let mut dyn_q: AnyQuery = prepared.into_any();
         assert!(dyn_q.as_str().contains("TestDriver"));
         assert_eq!(dyn_q.len(), 0);
         assert!(!dyn_q.is_empty());
         assert!(dyn_q.as_prepared::<TestDriver>().is_some());
         assert!(
-            String::from(DynQuery::from(Query::<TestDriver>::prepared(TestDriver)))
+            String::from(AnyQuery::from(Query::<TestDriver>::prepared(TestDriver)))
                 .contains("TestDriver")
         );
         let back: Query<TestDriver> = dyn_q.into();
         assert!(back.is_prepared());
 
-        let mut dyn_prep: DynQuery = Query::<TestDriver>::prepared(TestDriver).into();
+        let mut dyn_prep: AnyQuery = Query::<TestDriver>::prepared(TestDriver).into();
         assert_eq!(dyn_prep.buffer().as_str(), "");
         assert!(dyn_prep.as_prepared::<TestDriver>().is_none());
-        let mut dyn_prep: DynQuery = Query::<TestDriver>::prepared(TestDriver).into();
+        let mut dyn_prep: AnyQuery = Query::<TestDriver>::prepared(TestDriver).into();
         dyn_prep.clear();
         assert_eq!(dyn_prep.into_query(TestDriver).to_string(), "");
 
@@ -337,7 +421,7 @@ mod tests {
                 Ok(self)
             }
         }
-        let mut other = DynQuery::Prepared(Box::new(OtherPrepared));
+        let mut other = AnyQuery::Prepared(Box::new(OtherPrepared));
         assert!(other.is_empty());
         assert!(other.as_prepared::<TestDriver>().is_none());
         assert!(!Query::<TestDriver>::from(other).is_prepared());
@@ -346,7 +430,7 @@ mod tests {
         impl ExpressionVisitor for Visitor {}
         let na = NA;
         assert_eq!(na.precedence(&GenericSqlWriter::new()), 0);
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         na.write_query(&GenericSqlWriter::new(), &mut Context::empty(), &mut out);
         assert!(!na.accept_visitor(
             &mut Visitor,
@@ -358,10 +442,10 @@ mod tests {
 
         let create = Sql().create_table(ExecutorItem::table());
         assert!(!create.build(&TestDriver).is_empty());
-        create.build_into(&TestDriver, &mut out);
+        create.write_into(&TestDriver.sql_writer(), &mut out);
         let drop = Sql().drop_table(ExecutorItem::table());
         assert!(!drop.build(&TestDriver).is_empty());
-        drop.build_into(&TestDriver, &mut out);
+        drop.write_into(&TestDriver.sql_writer(), &mut out);
         let rows = [ExecutorItem::default()];
         let insert = Sql().insert_into(ExecutorItem::table()).values(&rows);
         let Either::Left(values) = insert.get_values() else {
@@ -369,7 +453,7 @@ mod tests {
         };
         assert_eq!(values.count(), 1);
         assert!(!insert.build(&TestDriver).is_empty());
-        insert.build_into(&TestDriver, &mut out);
+        insert.write_into(&TestDriver.sql_writer(), &mut out);
         let upsert = Sql()
             .insert_into(ExecutorItem::table())
             .values(&rows)
@@ -390,12 +474,12 @@ mod tests {
                 .as_str()
                 .starts_with("DELETE FROM")
         );
-        delete.build_into(&TestDriver, &mut out);
+        delete.write_into(&TestDriver.sql_writer(), &mut out);
         let select = Sql()
             .select(ExecutorItem::columns())
             .from(ExecutorItem::table());
         assert!(!select.build(&TestDriver).is_empty());
-        select.build_into(&TestDriver, &mut out);
+        select.write_into(&TestDriver.sql_writer(), &mut out);
     }
 
     #[test]
@@ -583,7 +667,7 @@ mod tests {
             }
             assert!(Keyless { value: 1 }.delete(&mut exec).await.is_err());
 
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             item.write_table_name(
                 &GenericSqlWriter::new(),
                 &mut Context::fragment(Fragment::SqlSelectFrom),
@@ -594,7 +678,7 @@ mod tests {
     }
 
     #[test]
-    fn pool_and_connection_helpers() {
+    fn pool_connection_helpers() {
         block_on(async {
             struct NoPrepare(TestExecutor);
             impl Executor for NoPrepare {
@@ -615,12 +699,12 @@ mod tests {
             assert!(exec.prepare(&mut already).await.unwrap().is_prepared());
             let mut exec_ref = &mut exec;
             assert!(Executor::accepts_multiple_statements(&&mut exec_ref));
+            assert_eq!(Executor::batch_size(&&mut exec_ref), MAX_BATCH_SIZE);
             assert_eq!(Executor::driver(&&mut exec_ref).name(), "test");
             assert!(
-                Executor::do_prepare(&mut exec_ref, "SELECT 1".to_string())
+                Executor::do_prepare(&mut exec_ref, "SELECT 1")
                     .await
-                    .unwrap()
-                    .is_prepared()
+                    .is_ok()
             );
             {
                 let mut stream = pin!(Executor::run(&mut exec_ref, ""));
@@ -659,6 +743,7 @@ mod tests {
                 .unwrap();
             let mut conn = pool.get().await.unwrap();
             assert!(conn.accepts_multiple_statements());
+            assert_eq!(conn.batch_size(), MAX_BATCH_SIZE);
             assert_eq!(conn.driver().name(), "test");
             let _ = &*conn;
             let _ = conn.as_ref();

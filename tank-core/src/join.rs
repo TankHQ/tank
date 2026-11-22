@@ -1,5 +1,5 @@
 use crate::{
-    Dataset, DynQuery, Expression, TableRef,
+    AnyQuery, Dataset, Expression, TableRef,
     writer::{Context, SqlWriter},
 };
 use proc_macro2::{TokenStream, TokenTree};
@@ -42,7 +42,7 @@ impl<L: Dataset, R: Dataset, E: Expression> Dataset for Join<L, R, E> {
     fn qualified_columns(&self) -> bool {
         true
     }
-    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_table_name(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         writer.write_join(
             context,
             out,
@@ -89,10 +89,7 @@ impl Parse for JoinType {
             let it = tokens.clone().take(keywords.len());
             if it.eq(keywords.iter().copied()) {
                 for _ in 0..keywords.len() {
-                    input.parse::<Ident>().expect(&format!(
-                        "Unexpected error, the input should contain {:?} as next Ident tokens at this point",
-                        keywords
-                    ));
+                    input.parse::<Ident>()?;
                 }
                 return Ok(*join_type);
             }

@@ -11,7 +11,9 @@ mod tests {
         sync::atomic::{AtomicUsize, Ordering},
         time::Instant,
     };
-    use tank::{DynQuery, Entity, GenericSqlWriter, Interval, Sql, SqlWriter, cols, expr, join};
+    use tank::{
+        AnyQuery, Context, Entity, GenericSqlWriter, Interval, Sql, SqlWriter, cols, expr, join,
+    };
     use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
     use uuid::Uuid;
 
@@ -164,16 +166,16 @@ mod tests {
         (ALLOCATIONS.load(Ordering::Relaxed) - before) as f64 / ITERATIONS as f64
     }
 
-    /// Measures writing into a new `DynQuery` (as `build` does) and into a cleared, reused one.
-    fn measure(name: &'static str, mut write: impl FnMut(&mut DynQuery)) -> Measure {
+    /// Measures writing into a new `AnyQuery` (as `build` does) and into a cleared, reused one.
+    fn measure(name: &'static str, mut write: impl FnMut(&mut AnyQuery)) -> Measure {
         let mut fresh = || {
-            let mut out = DynQuery::default();
+            let mut out = AnyQuery::default();
             write(&mut out);
             black_box(out);
         };
         let fresh_ns = time(&mut fresh);
         let fresh_allocs = allocations(&mut fresh);
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         let mut reused = || {
             out.clear();
             write(black_box(&mut out));
@@ -276,6 +278,14 @@ mod tests {
             }),
             measure("drop_table", |out| {
                 WRITER.write_drop_table(out, Wide::table(), true)
+            }),
+            measure("transaction", |out| {
+                WRITER.write_transaction_begin(out);
+                WRITER.write_transaction_commit(out);
+                WRITER.write_transaction_rollback(out);
+            }),
+            measure("column_comment", |out| {
+                WRITER.write_column_comment(&mut Context::empty(), out, &Wide::table().columns[0])
             }),
         ];
         println!(

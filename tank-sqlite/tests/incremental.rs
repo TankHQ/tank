@@ -1,12 +1,158 @@
-use std::pin::pin;
-use tank_core::{
-    Connection, Executor, QueryResult, Row, Value,
+use serde_json::{Value as JsonValue, json};
+use std::{
+    borrow::Cow,
+    future::Future,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    pin::pin,
+    task::{Context, Waker},
+};
+use tank::{
+    AnyQuery, AsValue, ColumnDef, Connection, Driver, Entity, Executor, QueryResult, Row, Sql,
+    Transaction, Value, cols,
     stream::{StreamExt, TryStreamExt},
 };
 use tank_sqlite::{SQLiteConnection, SQLiteDriver};
+use tank_tests::init_logs;
 
 #[tokio::test]
-async fn late_step_errors_reusable() {
+async fn prepared_expression_upsert() {
+    init_logs();
+    #[derive(Entity, Debug, PartialEq)]
+    struct Item {
+        #[tank(primary_key)]
+        id: i64,
+        label: String,
+    }
+
+    let mut connection =
+        SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+            .await
+            .unwrap();
+    Item::create_table(&mut connection, false, false)
+        .await
+        .unwrap();
+
+    let row = cols!(? + 1, COALESCE(?, "unknown"));
+    let sql = Sql()
+        .insert_into(Item::table())
+        .columns(["id", "label"])
+        .values([row, row])
+        .update()
+        .build(&connection.driver());
+    let mut prepared = connection.prepare(sql).await.unwrap();
+    prepared
+        .bind(0i64)
+        .unwrap()
+        .bind(None::<String>)
+        .unwrap()
+        .bind(1i64)
+        .unwrap()
+        .bind("second")
+        .unwrap();
+    assert_eq!(
+        connection
+            .execute(&mut prepared)
+            .await
+            .unwrap()
+            .rows_affected,
+        Some(2)
+    );
+    prepared
+        .bind(0i64)
+        .unwrap()
+        .bind("updated")
+        .unwrap()
+        .bind(2i64)
+        .unwrap()
+        .bind("third")
+        .unwrap();
+    assert_eq!(
+        connection
+            .execute(&mut prepared)
+            .await
+            .unwrap()
+            .rows_affected,
+        Some(2)
+    );
+    let rows = Item::find_many(&mut connection, true, None)
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap();
+    assert_eq!(
+        rows,
+        vec![
+            Item {
+                id: 1,
+                label: "updated".into()
+            },
+            Item {
+                id: 2,
+                label: "second".into()
+            },
+            Item {
+                id: 3,
+                label: "third".into()
+            },
+        ]
+    );
+}
+
+#[tokio::test]
+async fn borrowed_owned_parameters() {
+    init_logs();
+    let mut connection =
+        SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+            .await
+            .unwrap();
+    let mut prepared = connection.prepare("SELECT ?, ?").await.unwrap();
+    for owned in [false, true] {
+        for empty in [false, true] {
+            let expected_text = if empty {
+                String::new()
+            } else {
+                "héllo\0世界".repeat(32)
+            };
+            let expected_blob = if empty {
+                Vec::new()
+            } else {
+                [0u8, 255, 128, 1].repeat(32)
+            };
+            // Drop the input buffers before executing the statement.
+            {
+                let text = expected_text.clone();
+                let blob = expected_blob.clone();
+                let (text, blob) = if owned {
+                    (Cow::Owned(text), Cow::Owned(blob))
+                } else {
+                    (Cow::Borrowed(text.as_str()), Cow::Borrowed(blob.as_slice()))
+                };
+                prepared
+                    .bind(Value::Varchar(Some(text)))
+                    .unwrap()
+                    .bind(Value::Blob(Some(blob)))
+                    .unwrap();
+            }
+            let row = connection
+                .fetch(&mut prepared)
+                .try_next()
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                String::decode_value(row.value(0).unwrap()).unwrap(),
+                expected_text
+            );
+            assert_eq!(
+                row.value(1).unwrap().as_ref(),
+                &Value::Blob(Some(Cow::Borrowed(&expected_blob)))
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn late_step_reusable() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -30,15 +176,17 @@ async fn late_step_errors_reusable() {
         assert!(rows.next().await.is_none());
     }
     let rows = connection
-        .fetch("SELECT 42")
+        .fetch(Sql().select(cols!(42)).build(&connection.driver()))
+        .map_ok(|v| v.into_values().collect::<Vec<_>>())
         .try_collect::<Vec<_>>()
         .await
         .unwrap();
-    assert_eq!(rows[0].value(0).unwrap().as_ref(), &Value::Int64(Some(42)));
+    assert_eq!(rows, [[Value::Int64(Some(42))]]);
 }
 
 #[tokio::test]
-async fn outer_advance_reports_drain_errors() {
+async fn advance_drain_errors() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -72,18 +220,30 @@ async fn outer_advance_reports_drain_errors() {
     }
     assert!(
         connection
-            .execute("INSERT INTO not_run VALUES (1)")
+            .execute(
+                Sql()
+                    .insert_into("not_run")
+                    .columns(["id"])
+                    .values([[1_i64.as_value()]])
+                    .build(&connection.driver()),
+            )
             .await
             .is_err()
     );
     connection
-        .execute("CREATE TABLE reused (id INT)")
+        .execute(
+            Sql()
+                .create_table("reused")
+                .columns([ColumnDef::from_type::<i32>("id")])
+                .build(&connection.driver()),
+        )
         .await
         .unwrap();
 }
 
 #[tokio::test]
-async fn partial_rows_survive_drop() {
+async fn partial_rows_drop() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
@@ -130,19 +290,30 @@ async fn partial_rows_survive_drop() {
         // Abandon stream before the second row.
     }
     connection
-        .execute("CREATE TABLE reused (id INT)")
+        .execute(
+            Sql()
+                .create_table("reused")
+                .columns([ColumnDef::from_type::<i32>("id")])
+                .build(&connection.driver()),
+        )
         .await
         .unwrap();
 }
 
 #[tokio::test]
-async fn abandoned_returning_finishes_write() {
+async fn abandoned_returning_write() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
             .unwrap();
     connection
-        .execute("CREATE TABLE items (id INT)")
+        .execute(
+            Sql()
+                .create_table("items")
+                .columns([ColumnDef::from_type::<i32>("id")])
+                .build(&connection.driver()),
+        )
         .await
         .unwrap();
     {
@@ -168,7 +339,13 @@ async fn abandoned_returning_finishes_write() {
         ));
     }
     let ids = connection
-        .fetch("SELECT id FROM items ORDER BY id")
+        .fetch(
+            Sql()
+                .select(cols!(id))
+                .from("items")
+                .order_by(cols!(id ASC))
+                .build(&connection.driver()),
+        )
         .map(|row| row.unwrap().value(0).unwrap().into_owned().into_owned())
         .collect::<Vec<_>>()
         .await;
@@ -193,13 +370,22 @@ async fn abandoned_returning_finishes_write() {
 }
 
 #[tokio::test]
-async fn fetch_late_prepare_errors() {
+async fn late_prepare_errors() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
             .unwrap();
     {
-        let mut rows = pin!(connection.fetch("SELECT 1; SELECT * FROM missing_table"));
+        let mut query = AnyQuery::default();
+        Sql()
+            .select(cols!(1))
+            .write_into(&connection.driver().sql_writer(), &mut query);
+        Sql()
+            .select(cols!(*))
+            .from("missing_table")
+            .write_into(&connection.driver().sql_writer(), &mut query);
+        let mut rows = pin!(connection.fetch(query));
         assert!(rows.next().await.unwrap().is_ok());
         assert!(rows.next().await.unwrap().is_err());
         assert!(rows.next().await.is_none());
@@ -213,21 +399,45 @@ async fn fetch_late_prepare_errors() {
     );
     assert!(
         connection
-            .execute("SELECT * FROM missing_table")
+            .execute(
+                Sql()
+                    .select(cols!(*))
+                    .from("missing_table")
+                    .build(&connection.driver()),
+            )
             .await
             .is_err()
     );
-    connection.execute("SELECT 1").await.unwrap();
+    connection
+        .execute(Sql().select(cols!(1)).build(&connection.driver()))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
-async fn skipping_rows_reports_write_errors() {
+async fn skipping_write_errors() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
             .await
             .unwrap();
     connection
-        .execute("CREATE TABLE items (id INT PRIMARY KEY); INSERT INTO items VALUES (1)")
+        .execute(
+            Sql()
+                .create_table("items")
+                .columns([ColumnDef::from_type::<i32>("id").primary_key()])
+                .build(&connection.driver()),
+        )
+        .await
+        .unwrap();
+    connection
+        .execute(
+            Sql()
+                .insert_into("items")
+                .columns(["id"])
+                .values([[1_i32.as_value()]])
+                .build(&connection.driver()),
+        )
         .await
         .unwrap();
     {
@@ -238,7 +448,12 @@ async fn skipping_rows_reports_write_errors() {
         assert!(results.next().await.is_none());
     }
     let rows = connection
-        .fetch("SELECT id FROM items")
+        .fetch(
+            Sql()
+                .select(cols!(id))
+                .from("items")
+                .build(&connection.driver()),
+        )
         .try_collect::<Vec<_>>()
         .await
         .unwrap();
@@ -247,7 +462,8 @@ async fn skipping_rows_reports_write_errors() {
 }
 
 #[tokio::test]
-async fn huge_select_cancels_on_drop() {
+async fn select_cancel_drop() {
+    init_logs();
     let mut connection =
         SQLiteConnection::connect(&SQLiteDriver::default(), "sqlite://:memory:".into())
             .await
@@ -292,17 +508,388 @@ async fn huge_select_cancels_on_drop() {
     }
     // The connection must be reusable once the abandoned statement is released.
     connection
-        .execute("CREATE TABLE reused (id INT)")
+        .execute(
+            Sql()
+                .create_table("reused")
+                .columns([ColumnDef::from_type::<i32>("id")])
+                .build(&connection.driver()),
+        )
         .await
         .unwrap();
     connection
-        .execute("INSERT INTO reused VALUES (7)")
+        .execute(
+            Sql()
+                .insert_into("reused")
+                .columns(["id"])
+                .values([[7_i32.as_value()]])
+                .build(&connection.driver()),
+        )
         .await
         .unwrap();
     let rows = connection
-        .fetch("SELECT id FROM reused")
+        .fetch(
+            Sql()
+                .select(cols!(id))
+                .from("reused")
+                .build(&connection.driver()),
+        )
         .try_collect::<Vec<_>>()
         .await
         .unwrap();
     assert_eq!(rows[0].value(0).unwrap().as_ref(), &Value::Int64(Some(7)));
+}
+
+#[tokio::test]
+async fn retained_snapshot_types() {
+    let mut connection =
+        SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+            .await
+            .unwrap();
+    let retained;
+    {
+        let mut rows = pin!(connection.fetch(
+            "SELECT 'héllo' AS value, X'00FF80' AS data, NULL AS optional, 1.25 AS number \
+             UNION ALL SELECT 42, X'', '', -2.5 \
+             UNION ALL SELECT CAST(X'FF61' AS TEXT), NULL, 'longer string', 0.0",
+        ));
+        retained = rows.try_next().await.unwrap().unwrap();
+        let second = rows.try_next().await.unwrap().unwrap();
+        assert_eq!(second.value(0).unwrap().as_ref(), &Value::Int64(Some(42)));
+        assert_eq!(
+            second.value(1).unwrap().as_ref(),
+            &Value::Blob(Some((&b""[..]).into()))
+        );
+        let third = rows.try_next().await.unwrap().unwrap();
+        assert_eq!(String::decode_value(third.value(0).unwrap()).unwrap(), "�a");
+        assert!(rows.try_next().await.unwrap().is_none());
+        assert_eq!(f64::decode_value(second.value(3).unwrap()).unwrap(), -2.5);
+    }
+    let retained = retained.into_owned();
+    drop(connection);
+    std::thread::spawn(move || {
+        assert_eq!(retained.labels(), ["value", "data", "optional", "number"]);
+        assert!(retained.value(4).is_none());
+        let owned = retained.into_owned();
+        let values = owned.into_values().collect::<Vec<_>>();
+        assert_eq!(values[0], Value::Varchar(Some("héllo".into())));
+        assert_eq!(values[1], Value::Blob(Some((&b"\x00\xff\x80"[..]).into())));
+        assert_eq!(values[2], Value::Null);
+        assert_eq!(values[3], Value::Float64(Some(1.25)));
+    })
+    .join()
+    .unwrap();
+}
+
+#[tokio::test]
+async fn snapshots_survive_schema() {
+    init_logs();
+    let mut connection =
+        SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+            .await
+            .unwrap();
+    connection
+        .execute(
+            Sql()
+                .create_table("items")
+                .columns([ColumnDef::from_type::<String>("old_name")])
+                .build(&connection.driver()),
+        )
+        .await
+        .unwrap();
+    connection
+        .execute(
+            Sql()
+                .insert_into("items")
+                .columns(["old_name"])
+                .values([["first"]])
+                .build(&connection.driver()),
+        )
+        .await
+        .unwrap();
+    let mut prepared = connection.prepare("SELECT * FROM items").await.unwrap();
+    let first = connection
+        .fetch(&mut prepared)
+        .try_next()
+        .await
+        .unwrap()
+        .unwrap()
+        .into_owned();
+    connection.execute("ALTER TABLE items RENAME COLUMN old_name TO new_name; UPDATE items SET new_name = 'second'")
+        .await.unwrap();
+    for _ in 0..3 {
+        let row = connection
+            .fetch(&mut prepared)
+            .try_next()
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.labels(), ["new_name"]);
+        assert_eq!(
+            String::decode_value(row.value(0).unwrap()).unwrap(),
+            "second"
+        );
+    }
+    assert_eq!(first.labels(), ["old_name"]);
+    assert_eq!(
+        String::decode_value(first.value(0).unwrap()).unwrap(),
+        "first"
+    );
+}
+
+#[tokio::test]
+async fn streamed_scan_yields() {
+    init_logs();
+    let mut connection =
+        SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+            .await
+            .unwrap();
+    let mut seen = 0;
+    {
+        let scan = connection.fetch(
+            "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x + 1 FROM n WHERE x < 1000) \
+             SELECT x, CASE x % 3 WHEN 0 THEN NULL WHEN 1 THEN 'héllo world' ELSE '' END, CAST(x AS BLOB) FROM n",
+        ).try_for_each(|row| {
+            seen += 1;
+            assert_eq!(i64::decode_value(row.value(0).unwrap()).unwrap(), seen);
+            let expected = match seen % 3 {
+                0 => None,
+                1 => Some("héllo world"),
+                _ => Some(""),
+            };
+            assert_eq!(Option::<String>::decode_value(row.value(1).unwrap()).unwrap().as_deref(), expected);
+            assert_eq!(row.value(2).unwrap().as_ref(), &Value::Blob(Some(seen.to_string().as_bytes().into())));
+            std::future::ready(Ok(()))
+        });
+        let mut scan = pin!(scan);
+        assert!(
+            scan.as_mut()
+                .poll(&mut Context::from_waker(Waker::noop()))
+                .is_pending()
+        );
+        scan.await.unwrap();
+    }
+    assert_eq!(seen, 1000);
+}
+
+#[tokio::test]
+async fn transaction_drop_rollback() {
+    init_logs();
+    #[derive(Entity)]
+    struct AppendItem {
+        id: i64,
+    }
+
+    let mut connection =
+        SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+            .await
+            .unwrap();
+    AppendItem::create_table(&mut connection, false, false)
+        .await
+        .unwrap();
+    {
+        let mut transaction = connection.begin().await.unwrap();
+        transaction
+            .append((0..3).map(|id| AppendItem { id }))
+            .await
+            .unwrap();
+        assert_eq!(
+            AppendItem::find_many(&mut transaction, true, None)
+                .try_collect::<Vec<_>>()
+                .await
+                .unwrap()
+                .len(),
+            3
+        );
+    }
+    assert!(
+        AppendItem::find_many(&mut connection, true, None)
+            .try_next()
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn append_cancellation_rollback() {
+    init_logs();
+    #[derive(Entity)]
+    struct AppendItem {
+        id: i64,
+    }
+
+    let mut connection =
+        SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+            .await
+            .unwrap();
+    AppendItem::create_table(&mut connection, false, false)
+        .await
+        .unwrap();
+    drop(connection.append((0..600).map(|id| AppendItem { id })));
+    assert!(
+        AppendItem::find_many(&mut connection, true, None)
+            .try_next()
+            .await
+            .unwrap()
+            .is_none()
+    );
+    {
+        let mut append = pin!(connection.append((0..600).map(|id| AppendItem { id })));
+        assert!(
+            append
+                .as_mut()
+                .poll(&mut Context::from_waker(Waker::noop()))
+                .is_pending()
+        );
+    }
+    assert!(
+        AppendItem::find_many(&mut connection, true, None)
+            .try_next()
+            .await
+            .unwrap()
+            .is_none()
+    );
+    {
+        let mut transaction = connection.begin().await.unwrap();
+        {
+            let mut append = pin!(transaction.append((0..600).map(|id| AppendItem { id })));
+            assert!(
+                append
+                    .as_mut()
+                    .poll(&mut Context::from_waker(Waker::noop()))
+                    .is_pending()
+            );
+        }
+        let rows = AppendItem::find_many(&mut transaction, true, None)
+            .try_collect::<Vec<_>>()
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 256);
+        transaction.rollback().await.unwrap();
+    }
+    assert!(
+        AppendItem::find_many(&mut connection, true, None)
+            .try_next()
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn bind_ipaddr_json() {
+    init_logs();
+    #[derive(Entity, Debug, PartialEq)]
+    struct NetDoc {
+        #[tank(primary_key)]
+        id: i64,
+        addr: IpAddr,
+        payload: JsonValue,
+        optional_payload: Option<JsonValue>,
+    }
+
+    let mut connection =
+        SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+            .await
+            .unwrap();
+    NetDoc::create_table(&mut connection, false, false)
+        .await
+        .unwrap();
+
+    let items = vec![
+        NetDoc {
+            id: 1,
+            addr: IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1)),
+            payload: json!({"ok": true, "counts": [1, 2, 3]}),
+            optional_payload: Some(json!("hello")),
+        },
+        NetDoc {
+            id: 2,
+            addr: IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)),
+            payload: json!([1, "two", null]),
+            optional_payload: None,
+        },
+    ];
+    let affected = NetDoc::insert_many(&mut connection, &items).await.unwrap();
+    assert_eq!(affected.rows_affected, Some(2));
+    let loaded = NetDoc::find_many(&mut connection, true, None)
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap();
+    assert_eq!(loaded, items);
+
+    let mut prepared = connection.prepare("SELECT ?, ?, ?").await.unwrap();
+    prepared
+        .bind(IpAddr::V6(Ipv6Addr::LOCALHOST))
+        .unwrap()
+        .bind(json!({"nested": [1, "a"]}))
+        .unwrap()
+        .bind(json!(null))
+        .unwrap();
+    let row = connection
+        .fetch(&mut prepared)
+        .try_next()
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        IpAddr::decode_value(row.value(0).unwrap()).unwrap(),
+        IpAddr::V6(Ipv6Addr::LOCALHOST)
+    );
+    assert_eq!(
+        JsonValue::decode_value(row.value(1).unwrap()).unwrap(),
+        json!({"nested": [1, "a"]})
+    );
+    assert_eq!(row.value(2).unwrap().as_ref(), &Value::Null);
+}
+
+#[tokio::test]
+async fn transaction_manual_end() {
+    init_logs();
+    let mut connection =
+        SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+            .await
+            .unwrap();
+    connection
+        .execute("CREATE TABLE items (id INTEGER PRIMARY KEY)")
+        .await
+        .unwrap();
+    {
+        let mut tx = connection.begin().await.unwrap();
+        tx.execute("INSERT INTO items VALUES (1)").await.unwrap();
+        tx.execute("COMMIT").await.unwrap();
+        // Dropping after manual COMMIT must not attempt a spurious ROLLBACK.
+    }
+    {
+        let mut tx = connection.begin().await.unwrap();
+        tx.execute("INSERT INTO items VALUES (2)").await.unwrap();
+        tx.execute("ROLLBACK").await.unwrap();
+        // Dropping after manual ROLLBACK must not attempt a second ROLLBACK.
+    }
+    let rows = connection
+        .fetch("SELECT id FROM items ORDER BY id")
+        .map_ok(|row| i64::decode_value(row.value(0).unwrap()).unwrap())
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap();
+    assert_eq!(rows, [1]);
+}
+
+#[tokio::test]
+async fn empty_append_noop() {
+    init_logs();
+    #[derive(Entity)]
+    struct MissingTable {
+        id: i64,
+    }
+
+    let mut connection =
+        SQLiteConnection::connect(&SQLiteDriver::new(), "sqlite://:memory:".into())
+            .await
+            .unwrap();
+    let affected = MissingTable::insert_many(&mut connection, std::iter::empty::<MissingTable>())
+        .await
+        .unwrap();
+    assert_eq!(affected.rows_affected, None);
+    assert_eq!(affected.last_affected_id, None);
 }

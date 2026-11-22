@@ -4,7 +4,7 @@ mod tests {
 
     macro_rules! conv {
         ($t:ty, $variant:ident, $v:expr) => {
-            <$t>::try_from_value(Value::$variant(Some($v)))
+            <$t>::decode_value(Value::$variant(Some($v)))
         };
     }
     macro_rules! ok {

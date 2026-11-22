@@ -63,7 +63,7 @@ use tank::{AsValue, Entity, Result, Value, ValueOwned, anyhow};
 <!--@include: @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-conversion-->
 ```
 
-Tank calls `NotesWrap::from(field_value)` when writing and reconstructs the field via `Notes::from(NotesWrap::try_from_value(db_value)?)` when reading. See [Types](05-types.md) for full `AsValue` documentation and the built-in type table.
+Tank calls `NotesWrap::from(field_value)` when writing and reconstructs the field via `Notes::from(NotesWrap::decode_value(db_value)?)` when reading. See [Types](05-types.md) for full `AsValue` documentation and the built-in type table.
 
 ## Table setup
 
@@ -153,7 +153,43 @@ expr!(match EntityExample::region { "North" | "South" => 1, _ => 2 });
 
 ## Query Builder
 
+Call `Sql()` to start a typed builder for the operations that go beyond the entity helpers.
+
+Finish a builder with `.build(&driver)`, which returns a query for that driver, ready for `run`, `fetch` or `execute` on the executor of the same driver.
+
+Call `.boxed()` instead to erase the driver and get a [`BoxQueryBuilder`](https://docs.rs/tank/latest/tank/struct.BoxQueryBuilder.html): store it, then any executor runs it with `execute(&query)`, rendered by its own driver.
+
+To append a statement to an existing [`AnyQuery`](https://docs.rs/tank/latest/tank/enum.AnyQuery.html) buffer, call `.write_into(&driver.sql_writer(), &mut out)`.
+
+### Select
+
 <<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-query-builder [Rust]
+
+Also available: `.distinct()`, `.group_by(...)`, `.having(...)` and `.offset(...)`. See [Advanced operations](08-advanced-operations.md#selecting-ordering).
+
+### Insert
+
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-builder-insert [Rust]
+
+Use `.columns([...]).values([cols!(?, ?)])` for explicit rows and `.select(...)` to insert the rows of a query.
+
+### Update
+
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-builder-update [Rust]
+
+Each `cols!` item written with `==` becomes a `SET` assignment. `entity.primary_key_expr()` targets the row; without `where_expr`, every row is updated. MongoDB and Valkey do not support plain `UPDATE`. Use `save()` there.
+
+### Delete
+
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-builder-delete [Rust]
+
+### Create table
+
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-builder-create-table [Rust]
+
+### Drop table
+
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-builder-drop-table [Rust]
 
 ## Joins
 
@@ -172,11 +208,11 @@ use std::pin::pin;
 use tank::{QueryResult, Row, stream::TryStreamExt};
 
 {
-    let mut stream = pin!(connection.run(indoc! (r#"
+    let mut stream = pin!(connection.run(indoc! {r#"
         SELECT unit_id, callsign
         FROM army.deployments
         WHERE casualties > 0
-    "#)));
+    "#}));
     while let Some(result) = stream.try_next().await? {
         match result {
             QueryResult::Row(row) => {
@@ -209,12 +245,12 @@ This raw SQL uses PostgreSQL's `$1`, `$2` placeholders. Other drivers, such as D
 use indoc::indoc;
 use tank::{Entity, stream::TryStreamExt};
 
-let mut query = connection.prepare(indoc! (r#"
+let mut query = connection.prepare(indoc! {r#"
     SELECT unit_id, region, callsign, casualties, metadata
     FROM army.deployments
     WHERE unit_id = $1
     LIMIT $2
-"#)).await?;
+"#}).await?;
 query.bind(uid)?;
 query.bind(25)?;
 
@@ -232,10 +268,10 @@ query.bind(10)?;
 ### SqlWriter
 
 ```rust
-use tank::{DynQuery, Entity, Sql, SqlWriter, stream::TryStreamExt};
+use tank::{AnyQuery, Entity, Sql, SqlWriter, stream::TryStreamExt};
 
 let writer = connection.driver().sql_writer();
-let mut query = DynQuery::default();
+let mut query = AnyQuery::default();
 
 writer.write_create_table(&mut query, EntityExample::table(), true);
 writer.write_insert(

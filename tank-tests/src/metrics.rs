@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use std::{future, sync::LazyLock};
 use tank::{
     Entity, Executor, Result, Sql, cols, expr,
@@ -30,7 +31,9 @@ pub async fn metrics(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock().await;
 
     // Setup
-    Metric::drop_table(executor, true, false).await?;
+    silent_logs! {
+        Metric::drop_table(executor, true, false).await?;
+    }
     Metric::create_table(executor, true, true).await?;
 
     // Insert

@@ -1,11 +1,11 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    fmt::Write,
     mem,
 };
 use tank_core::{
-    ColumnDef, ColumnRef, Context, DynQuery, Expression, GenericSqlWriter, SqlWriter, TableRef,
-    Value, write_escaped,
+    AnyQuery, ColumnDef, ColumnRef, Context, Expression, GenericSqlWriter, SqlCoreWriter,
+    SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, Value,
+    write_escaped,
 };
 
 /// SQL writer for SQLite dialect.
@@ -13,7 +13,7 @@ use tank_core::{
 /// Emits SQLite specific SQL syntax to mantain compatibility with tank operations.
 pub struct SQLiteSqlWriter {}
 
-impl SqlWriter for SQLiteSqlWriter {
+impl SqlCoreWriter for SQLiteSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -21,19 +21,16 @@ impl SqlWriter for SQLiteSqlWriter {
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
-        if let Some(t) = types
-            .iter()
-            .find_map(|(k, v)| if *k == "sqlite" { Some(v) } else { None })
-        {
+        if let Some(t) = types.get("sqlite") {
             out.push_str(t);
         }
     }
 
-    fn write_column_ref(&self, context: &mut Context, out: &mut DynQuery, value: &ColumnRef) {
+    fn write_column_ref(&self, context: &mut Context, out: &mut AnyQuery, value: &ColumnRef) {
         if context.qualify_columns {
             let table_ref = mem::take(&mut context.table_ref);
             let mut schema = &table_ref.schema;
@@ -62,8 +59,9 @@ impl SqlWriter for SQLiteSqlWriter {
         self.write_identifier(context, out, &value.name, true);
     }
 
-    fn write_table_ref(&self, context: &mut Context, out: &mut DynQuery, value: &TableRef) {
-        if self.is_alias_declaration(context) || value.alias.is_empty() {
+    fn write_table_ref(&self, context: &mut Context, out: &mut AnyQuery, value: &TableRef) {
+        let alias_declaration = self.is_alias_declaration(context);
+        if alias_declaration || value.alias.is_empty() {
             out.push('"');
             if !value.schema.is_empty() {
                 write_escaped(out, &value.schema, '"', "\"\"");
@@ -73,42 +71,42 @@ impl SqlWriter for SQLiteSqlWriter {
             out.push('"');
         }
         if !value.alias.is_empty() {
-            let _ = write!(out, " {}", value.alias);
+            if alias_declaration {
+                out.push(' ');
+            }
+            out.push_str(&value.alias);
         }
     }
 
-    fn write_column_type(&self, _context: &mut Context, out: &mut DynQuery, value: &Value<'_>) {
+    fn write_column_type(&self, _context: &mut Context, out: &mut AnyQuery, value: &Value<'_>) {
         match value {
-            Value::Boolean(..) => out.push_str("INTEGER"),
-            Value::Int8(..) => out.push_str("INTEGER"),
-            Value::Int16(..) => out.push_str("INTEGER"),
-            Value::Int32(..) => out.push_str("INTEGER"),
-            Value::Int64(..) => out.push_str("INTEGER"),
-            Value::UInt8(..) => out.push_str("INTEGER"),
-            Value::UInt16(..) => out.push_str("INTEGER"),
-            Value::UInt32(..) => out.push_str("INTEGER"),
-            Value::UInt64(..) => out.push_str("INTEGER"),
-            Value::Float32(..) => out.push_str("REAL"),
-            Value::Float64(..) => out.push_str("REAL"),
-            Value::Decimal(_, precision, scale, ..) => {
-                out.push_str("REAL");
-                if (precision, scale) != (&0, &0) {
-                    let _ = write!(out, "({precision},{scale})");
-                }
-            }
-            Value::Char(..) => out.push_str("TEXT"),
-            Value::Varchar(..) => out.push_str("TEXT"),
+            Value::Boolean(..)
+            | Value::Int8(..)
+            | Value::Int16(..)
+            | Value::Int32(..)
+            | Value::Int64(..)
+            | Value::UInt8(..)
+            | Value::UInt16(..)
+            | Value::UInt32(..)
+            | Value::UInt64(..) => out.push_str("INTEGER"),
+            Value::Float32(..) | Value::Float64(..) | Value::Decimal(..) => out.push_str("REAL"),
+            Value::Char(..)
+            | Value::Varchar(..)
+            | Value::Date(..)
+            | Value::Time(..)
+            | Value::Timestamp(..)
+            | Value::TimestampWithTimezone(..)
+            | Value::Uuid(..)
+            | Value::IpAddr(..)
+            | Value::Json(..) => out.push_str("TEXT"),
             Value::Blob(..) => out.push_str("BLOB"),
-            Value::Date(..) => out.push_str("TEXT"),
-            Value::Time(..) => out.push_str("TEXT"),
-            Value::Timestamp(..) => out.push_str("TEXT"),
-            Value::TimestampWithTimezone(..) => out.push_str("TEXT"),
-            Value::Uuid(..) => out.push_str("TEXT"),
             _ => log::error!("Unexpected tank::Value, SQLite does not support {value:?}"),
         };
     }
+}
 
-    fn write_value_f32(&self, context: &mut Context, out: &mut DynQuery, value: f32) {
+impl SqlValueWriter for SQLiteSqlWriter {
+    fn write_value_f32(&self, context: &mut Context, out: &mut AnyQuery, value: f32) {
         if value.is_infinite() {
             if value.is_sign_negative() {
                 out.push('-');
@@ -124,7 +122,7 @@ impl SqlWriter for SQLiteSqlWriter {
         GenericSqlWriter::new().write_value_f32(context, out, value);
     }
 
-    fn write_value_f64(&self, context: &mut Context, out: &mut DynQuery, value: f64) {
+    fn write_value_f64(&self, context: &mut Context, out: &mut AnyQuery, value: f64) {
         if value.is_infinite() {
             if value.is_sign_negative() {
                 out.push('-');
@@ -140,22 +138,21 @@ impl SqlWriter for SQLiteSqlWriter {
         GenericSqlWriter::new().write_value_f64(context, out, value);
     }
 
-    fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, _context: &mut Context, out: &mut AnyQuery, value: &[u8]) {
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+        out.buffer().reserve(2 * value.len() + 3);
         out.push_str("X'");
-        for b in value {
-            let _ = write!(out, "{:02X}", b);
+        for &b in value {
+            out.push(HEX[(b >> 4) as usize] as char);
+            out.push(HEX[(b & 0xF) as usize] as char);
         }
         out.push('\'');
-    }
-
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
-        out.push_str("(unixepoch('subsec') * 1000)");
     }
 
     fn write_list(
         &self,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &mut dyn Iterator<Item = &dyn Expression>,
         _t: Option<&Value<'_>>,
         _is_array: bool,
@@ -166,20 +163,44 @@ impl SqlWriter for SQLiteSqlWriter {
     fn write_map(
         &self,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _value: &HashMap<Value<'_>, Value<'_>>,
     ) {
         log::error!("SQLite does not support maps");
     }
+}
 
-    fn write_create_schema(&self, _out: &mut DynQuery, _table: &TableRef, _if_not_exists: bool)
+impl SqlExpressionWriter for SQLiteSqlWriter {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut AnyQuery) {
+        out.push_str("(unixepoch('subsec') * 1000)");
+    }
+}
+
+impl SqlFragmentWriter for SQLiteSqlWriter {
+    fn write_limit_offset(
+        &self,
+        context: &mut Context,
+        out: &mut AnyQuery,
+        limit: Option<u32>,
+        offset: Option<u32>,
+    ) {
+        // SQLite only accepts OFFSET after a LIMIT; -1 means unlimited.
+        if limit.is_none() && offset.is_some() {
+            out.push_str("\nLIMIT -1");
+        }
+        GenericSqlWriter.write_limit_offset(context, out, limit, offset);
+    }
+}
+
+impl SqlWriter for SQLiteSqlWriter {
+    fn write_create_schema(&self, _out: &mut AnyQuery, _table: &TableRef, _if_not_exists: bool)
     where
         Self: Sized,
     {
         // SQLite does not support schema
     }
 
-    fn write_drop_schema(&self, _out: &mut DynQuery, _table: &TableRef, _if_exists: bool)
+    fn write_drop_schema(&self, _out: &mut AnyQuery, _table: &TableRef, _if_exists: bool)
     where
         Self: Sized,
     {
@@ -189,7 +210,7 @@ impl SqlWriter for SQLiteSqlWriter {
     fn write_column_comment(
         &self,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _column: &ColumnDef,
     ) {
     }

@@ -1,14 +1,89 @@
 #[cfg(test)]
+mod fixtures;
+
+#[cfg(test)]
 mod tests {
+    use crate::fixtures::{DRIVER, GenericDriver};
     use indoc::indoc;
-    use std::fmt::Write;
+    use std::{cell::Cell, fmt::Write, iter, sync::LazyLock};
     use tank::{
-        AsValue, Context, DynQuery, Entity, Expression, Fragment, GenericSqlWriter,
-        InsertIntoQuery, QueryResult, QueryResultOwned, RawQuery, RowOwned, RowsAffected, Sql,
-        SqlWriter, TableRef, cols, expr,
+        Action, AnyQuery, AsQuery, AsValue, BoxQueryBuilder, ColumnDef, ColumnRef, Context, Driver,
+        Entity, Expression, Fragment, InsertIntoQuery, Operand, QueryResult, QueryResultOwned,
+        RawQuery, RowOwned, RowsAffected, Sql, cols, expr,
     };
 
-    const WRITER: GenericSqlWriter = GenericSqlWriter {};
+    const WRITER: tank::GenericSqlWriter = tank::GenericSqlWriter;
+
+    #[test]
+    fn expression_insert_upsert() {
+        #[derive(Entity)]
+        struct Item {
+            #[tank(primary_key)]
+            id: i32,
+            label: String,
+        }
+
+        let row = cols!(? + 1, COALESCE(?, "unknown"));
+        let query = Sql()
+            .insert_into(Item::table())
+            .columns(["id", "label"])
+            .values([row])
+            .update();
+        let expected = indoc! {r#"
+            INSERT INTO "item" ("id", "label") VALUES
+            (? + 1, COALESCE(?,'unknown'))
+            ON CONFLICT ("id") DO UPDATE SET
+            "label" = EXCLUDED."label";
+        "#}
+        .trim();
+        assert_eq!(query.build(&DRIVER).as_str(), expected);
+        let mut out = AnyQuery::default();
+        query.write_into(&DRIVER.sql_writer(), &mut out);
+        assert_eq!(out.as_str(), expected);
+
+        // Iterator closures are not evaluated or collected by the builder.
+        let visited = Cell::new(0);
+        let row = cols!(?, ?);
+        let rows = (0..2).map(|_| {
+            visited.set(visited.get() + 1);
+            row
+        });
+        let query = Sql()
+            .insert_into(Item::table())
+            .columns(["id", "label"])
+            .values(rows);
+        assert_eq!(visited.get(), 0);
+        assert_eq!(
+            query.build(&DRIVER).as_str(),
+            "INSERT INTO \"item\" (\"id\", \"label\") VALUES\n(?, ?),\n(?, ?);"
+        );
+        assert_eq!(visited.get(), 2);
+        assert_eq!(
+            query.build(&DRIVER).as_str(),
+            "INSERT INTO \"item\" (\"id\", \"label\") VALUES\n(?, ?),\n(?, ?);"
+        );
+        assert_eq!(visited.get(), 4);
+
+        // A runtime-width parameter row is a lazy iterator, no placeholder Vec.
+        let sql = Sql()
+            .insert_into(Item::table())
+            .columns(["id", "label"])
+            .values([iter::repeat_n(&Operand::QuestionMark, 2)])
+            .build(&DRIVER);
+        assert_eq!(
+            sql.as_str(),
+            "INSERT INTO \"item\" (\"id\", \"label\") VALUES\n(?, ?);"
+        );
+
+        let mut out = AnyQuery::new("existing".into());
+        Sql()
+            .insert_into("item")
+            .columns(["id"])
+            .values(iter::empty::<[Operand<'_>; 1]>())
+            .update()
+            .write_into(&DRIVER.sql_writer(), &mut out);
+        assert_eq!(out.as_str(), "existing");
+    }
 
     #[test]
     fn query_1() {
@@ -18,11 +93,10 @@ mod tests {
             b: i8,
             c: String,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql().select(MyTable::columns()).from(MyTable::table()),
-        );
+        let sql = Sql()
+            .select(MyTable::columns())
+            .from(MyTable::table())
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -42,7 +116,7 @@ mod tests {
             note: Option<String>,
         }
         let render = |expression: &dyn Expression| {
-            let mut sql = DynQuery::default();
+            let mut sql = AnyQuery::default();
             expression.write_query(
                 &WRITER,
                 &mut Context::new(Fragment::SqlSelect, false),
@@ -91,14 +165,11 @@ mod tests {
 
     #[test]
     fn query_table_function() {
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(cols!(range))
-                .from(expr!(range(3)))
-                .where_expr(expr!(range > 0)),
-        );
+        let sql = Sql()
+            .select(cols!(range))
+            .from(expr!(range(3)))
+            .where_expr(expr!(range > 0))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -119,17 +190,14 @@ mod tests {
             some_col: i128,
             second_column: Box<String>,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select([TheTable::second_column, TheTable::some_col])
-                .from(TheTable::table())
-                .where_expr(expr!(
-                    TheTable::second_column == "So%" as LIKE
-                        || TheTable::some_col >= 0 && TheTable::some_col < 10
-                )),
-        );
+        let sql = Sql()
+            .select([TheTable::second_column, TheTable::some_col])
+            .from(TheTable::table())
+            .where_expr(expr!(
+                TheTable::second_column == "So%" as LIKE
+                    || TheTable::some_col >= 0 && TheTable::some_col < 10
+            ))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -149,15 +217,12 @@ mod tests {
             amount: f64,
             status: String,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(cols!(Orders::customer_id, SUM(Orders::amount)))
-                .from(Orders::table())
-                .where_expr(expr!(Orders::status == "completed"))
-                .group_by([Orders::customer_id]),
-        );
+        let sql = Sql()
+            .select(cols!(Orders::customer_id, SUM(Orders::amount)))
+            .from(Orders::table())
+            .where_expr(expr!(Orders::status == "completed"))
+            .group_by([Orders::customer_id])
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -169,14 +234,11 @@ mod tests {
             .trim()
         );
 
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(cols!(Orders::customer_id as cid, SUM(Orders::amount)))
-                .from(Orders::table())
-                .group_by(cols!(Orders::customer_id as cid)),
-        );
+        let sql = Sql()
+            .select(cols!(Orders::customer_id as cid, SUM(Orders::amount)))
+            .from(Orders::table())
+            .group_by(cols!(Orders::customer_id as cid))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -196,16 +258,13 @@ mod tests {
             product: String,
             revenue: f64,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(cols!(Sales::region, SUM(Sales::revenue)))
-                .from(Sales::table())
-                .where_expr(expr!(Sales::revenue > 0))
-                .group_by([Sales::region])
-                .having(expr!(SUM(Sales::revenue) > 1000)),
-        );
+        let sql = Sql()
+            .select(cols!(Sales::region, SUM(Sales::revenue)))
+            .from(Sales::table())
+            .where_expr(expr!(Sales::revenue > 0))
+            .group_by([Sales::region])
+            .having(expr!(SUM(Sales::revenue) > 1000))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -227,15 +286,12 @@ mod tests {
             price: f64,
             category: String,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(Products::columns())
-                .from(Products::table())
-                .where_expr(expr!(Products::category == "electronics"))
-                .order_by(cols!(Products::price ASC)),
-        );
+        let sql = Sql()
+            .select(Products::columns())
+            .from(Products::table())
+            .where_expr(expr!(Products::category == "electronics"))
+            .order_by(cols!(Products::price ASC))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -256,15 +312,12 @@ mod tests {
             timestamp: i64,
             level: String,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(Events::columns())
-                .from(Events::table())
-                .order_by(cols!(Events::timestamp DESC))
-                .limit(Some(50)),
-        );
+        let sql = Sql()
+            .select(Events::columns())
+            .from(Events::table())
+            .order_by(cols!(Events::timestamp DESC))
+            .limit(Some(50))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -285,14 +338,11 @@ mod tests {
             name: String,
             salary: f64,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(Employees::columns())
-                .from(Employees::table())
-                .order_by(cols!(Employees::department ASC, Employees::salary DESC)),
-        );
+        let sql = Sql()
+            .select(Employees::columns())
+            .from(Employees::table())
+            .order_by(cols!(Employees::department ASC, Employees::salary DESC))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -313,23 +363,20 @@ mod tests {
             amount: f64,
             created_at: i64,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(cols!(
-                    Transactions::account_id,
-                    Transactions::category,
-                    SUM(Transactions::amount),
-                    COUNT(*)
-                ))
-                .from(Transactions::table())
-                .where_expr(expr!(Transactions::created_at > 1700000000))
-                .group_by(cols!(Transactions::account_id, Transactions::category))
-                .having(expr!(COUNT(*) > 5))
-                .order_by(cols!(SUM(Transactions::amount) DESC))
-                .limit(Some(100)),
-        );
+        let sql = Sql()
+            .select(cols!(
+                Transactions::account_id,
+                Transactions::category,
+                SUM(Transactions::amount),
+                COUNT(*)
+            ))
+            .from(Transactions::table())
+            .where_expr(expr!(Transactions::created_at > 1700000000))
+            .group_by(cols!(Transactions::account_id, Transactions::category))
+            .having(expr!(COUNT(*) > 5))
+            .order_by(cols!(SUM(Transactions::amount) DESC))
+            .limit(Some(100))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -353,18 +400,15 @@ mod tests {
             service: String,
             latency_ms: f64,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(cols!(
-                    Metrics::region,
-                    Metrics::service,
-                    AVG(Metrics::latency_ms)
-                ))
-                .from(Metrics::table())
-                .group_by([Metrics::region, Metrics::service]),
-        );
+        let sql = Sql()
+            .select(cols!(
+                Metrics::region,
+                Metrics::service,
+                AVG(Metrics::latency_ms)
+            ))
+            .from(Metrics::table())
+            .group_by([Metrics::region, Metrics::service])
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -383,14 +427,146 @@ mod tests {
             id: u32,
             name: String,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_create_table(&mut sql, Widget::table(), false);
+        let sql = Sql().create_table(Widget::table()).build(&DRIVER);
         let result = sql.as_str();
         assert!(result.contains("CREATE TABLE"));
         assert!(result.contains("\"widget\""));
-        let mut sql = DynQuery::default();
-        WRITER.write_create_table(&mut sql, Widget::table(), true);
+        let sql = Sql()
+            .create_table(Widget::table())
+            .if_not_exists()
+            .build(&DRIVER);
         assert!(sql.as_str().contains("IF NOT EXISTS"));
+
+        // Entity columns name the constraints.
+        let sql = Sql()
+            .create_table("widget_copy")
+            .columns(Widget::columns().iter().cloned())
+            .primary_key([Widget::id])
+            .unique([Widget::name])
+            .build(&DRIVER);
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                CREATE TABLE "widget_copy" (
+                "id" UINTEGER PRIMARY KEY,
+                "name" TEXT NOT NULL,
+                UNIQUE ("name"));
+            "#}
+            .trim()
+        );
+
+        // Runtime columns, without an entity.
+        let builder = Sql().create_table("runtime").if_not_exists().columns([
+            ColumnDef::from_type::<i32>("id").primary_key(),
+            ColumnDef::from_type::<String>("name").nullable(true),
+        ]);
+        assert_eq!(builder.get_table().columns.len(), 2);
+        assert_eq!(builder.get_table().columns[0].name(), "id");
+        assert_eq!(builder.get_table().columns[1].name(), "name");
+        assert_eq!(
+            builder.build(&DRIVER).as_str(),
+            indoc! {r#"
+                CREATE TABLE IF NOT EXISTS "runtime" (
+                "id" INTEGER PRIMARY KEY,
+                "name" TEXT);
+            "#}
+            .trim()
+        );
+
+        // Composite keys, grouped unique constraints, foreign keys and defaults.
+        let sql = Sql()
+            .create_table("child")
+            .columns([
+                ColumnDef::from_type::<i32>("a"),
+                ColumnDef::from_type::<i32>("b"),
+                ColumnDef::from_type::<String>("c").nullable(true),
+                ColumnDef::from_type::<i32>("parent_id")
+                    .references(ColumnRef {
+                        name: "id".into(),
+                        table: "parent".into(),
+                        schema: "lookup".into(),
+                    })
+                    .on_delete(Action::Cascade)
+                    .default_value(0_i64),
+            ])
+            .primary_key(["a", "b"])
+            .unique(["a", "c"])
+            .unique(["b"])
+            .build(&DRIVER);
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                CREATE TABLE "child" (
+                "a" INTEGER,
+                "b" INTEGER,
+                "c" TEXT,
+                "parent_id" INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY ("a", "b"),
+                UNIQUE ("a", "c"),
+                UNIQUE ("b"),
+                FOREIGN KEY ("parent_id") REFERENCES "lookup"."parent"("id") ON DELETE CASCADE);
+            "#}
+            .trim()
+        );
+
+        // A single column key named by the table replaces the one of the columns.
+        let builder = Sql()
+            .create_table("keyed")
+            .columns([
+                ColumnDef::from_type::<i32>("id"),
+                ColumnDef::from_type::<i32>("other").primary_key(),
+            ])
+            .primary_key(["id"]);
+        let primary_key = builder.get_table().primary_key().map(ColumnDef::name);
+        assert!(primary_key.eq(["id"]));
+        assert_eq!(
+            builder.build(&DRIVER).as_str(),
+            indoc! {r#"
+                CREATE TABLE "keyed" (
+                "id" INTEGER PRIMARY KEY,
+                "other" INTEGER NOT NULL);
+            "#}
+            .trim()
+        );
+
+        // The key order is its own, not the columns one.
+        let builder = Sql()
+            .create_table("pair")
+            .columns([
+                ColumnDef::from_type::<i32>("a"),
+                ColumnDef::from_type::<i32>("b"),
+            ])
+            .primary_key(["b", "a"]);
+        let primary_key = builder.get_table().primary_key().map(ColumnDef::name);
+        assert!(primary_key.eq(["b", "a"]));
+        assert_eq!(
+            builder.build(&DRIVER).as_str(),
+            indoc! {r#"
+                CREATE TABLE "pair" (
+                "a" INTEGER,
+                "b" INTEGER,
+                PRIMARY KEY ("b", "a"));
+            "#}
+            .trim()
+        );
+
+        // Several marked columns form a composite key, in declaration order.
+        let builder = Sql().create_table("marked").columns([
+            ColumnDef::from_type::<i32>("a").primary_key(),
+            ColumnDef::from_type::<i32>("b").primary_key(),
+        ]);
+        let primary_key = builder.get_table().primary_key().map(ColumnDef::name);
+        assert!(primary_key.eq(["a", "b"]));
+        assert_eq!(
+            builder.build(&DRIVER).as_str(),
+            indoc! {r#"
+                CREATE TABLE "marked" (
+                "a" INTEGER,
+                "b" INTEGER,
+                PRIMARY KEY ("a", "b"));
+            "#}
+            .trim()
+        );
     }
 
     #[test]
@@ -399,12 +575,109 @@ mod tests {
         struct Widget {
             id: u32,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_drop_table(&mut sql, Widget::table(), false);
+        let sql = Sql().drop_table(Widget::table()).build(&DRIVER);
         assert!(sql.as_str().contains("DROP TABLE"));
-        let mut sql = DynQuery::default();
-        WRITER.write_drop_table(&mut sql, Widget::table(), true);
+        let sql = Sql().drop_table(Widget::table()).if_exists().build(&DRIVER);
         assert!(sql.as_str().contains("IF EXISTS"));
+    }
+
+    #[test]
+    fn query_update() {
+        #[derive(Entity)]
+        struct Item {
+            id: u32,
+            price: f64,
+            note: String,
+        }
+        let sql = Sql()
+            .update(Item::table())
+            .set(cols!(Item::price == Item::price * 1.001))
+            .where_expr(expr!(Item::id == 7))
+            .build(&DRIVER);
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                UPDATE "item"
+                SET "price" = "price" * 1.001
+                WHERE "id" = 7;
+            "#}
+            .trim()
+        );
+        let sql = Sql()
+            .update(Item::table())
+            .set(cols!(Item::price == 0.0, Item::note == "none"))
+            .build(&DRIVER);
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                UPDATE "item"
+                SET "price" = 0.0,
+                "note" = 'none';
+            "#}
+            .trim()
+        );
+        let sql = Sql()
+            .update(Item::table())
+            .set(cols!(Item::note == "none"))
+            .where_expr(true)
+            .build(&DRIVER);
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                UPDATE "item"
+                SET "note" = 'none';
+            "#}
+            .trim()
+        );
+    }
+
+    #[test]
+    fn boxed_query_builders() {
+        #[derive(Entity)]
+        struct Item {
+            #[tank(primary_key)]
+            id: i32,
+            label: String,
+        }
+        static ITEM: LazyLock<Item> = LazyLock::new(|| Item {
+            id: 1,
+            label: "a".into(),
+        });
+        let item = &*ITEM;
+        // Built without a driver, rendered later by whichever driver executes it.
+        let queries: Vec<BoxQueryBuilder> = vec![
+            Sql().create_table(Item::table()).boxed(),
+            Sql().insert_into(Item::table()).values([item]).boxed(),
+            Sql()
+                .select(Item::columns())
+                .from(Item::table())
+                .where_expr(true)
+                .boxed(),
+            Sql()
+                .delete_from(Item::table())
+                .where_expr(expr!(Item::id == 1))
+                .boxed(),
+        ];
+        let direct = [
+            Sql().create_table(Item::table()).build(&DRIVER),
+            Sql()
+                .insert_into(Item::table())
+                .values([item])
+                .build(&DRIVER),
+            Sql()
+                .select(Item::columns())
+                .from(Item::table())
+                .where_expr(true)
+                .build(&DRIVER),
+            Sql()
+                .delete_from(Item::table())
+                .where_expr(expr!(Item::id == 1))
+                .build(&DRIVER),
+        ];
+        for (query, direct) in queries.iter().zip(direct) {
+            let mut rendered = AsQuery::<GenericDriver>::as_query(query, &DRIVER);
+            assert_eq!(rendered.as_mut().as_str(), direct.as_str());
+        }
     }
 
     #[test]
@@ -424,19 +697,18 @@ mod tests {
                 label: "b".into(),
             },
         ];
-        let mut sql = DynQuery::default();
-        WRITER.write_insert(
-            &mut sql,
-            Sql().insert_into(Item::table()).values(items.iter()),
-        );
+        let sql = Sql()
+            .insert_into(Item::table())
+            .values(items.iter())
+            .build(&DRIVER);
         let result = sql.as_str();
         assert!(result.contains("INSERT INTO"));
         assert!(result.contains("\"item\""));
-        let mut sql = DynQuery::default();
-        WRITER.write_insert(
-            &mut sql,
-            Sql().insert_into(Item::table()).values(&items).update(),
-        );
+        let sql = Sql()
+            .insert_into(Item::table())
+            .values(&items)
+            .update()
+            .build(&DRIVER);
         assert!(sql.as_str().contains("INSERT INTO"));
     }
 
@@ -453,12 +725,13 @@ mod tests {
             label: "a".into(),
         }];
 
-        let archive = TableRef {
-            name: "archive".into(),
-            ..Item::table().clone()
-        };
-        let mut sql = DynQuery::default();
-        WRITER.write_insert(&mut sql, Sql().insert_into(archive).values(&items).update());
+        let mut archive = Item::table().clone();
+        archive.name = "archive".into();
+        let sql = Sql()
+            .insert_into(archive)
+            .values(&items)
+            .update()
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -472,15 +745,12 @@ mod tests {
 
         // Rows of values, the upsert uses the primary key of the target table
         let rows = [[2_u32.as_value(), "b".as_value()]];
-        let mut sql = DynQuery::default();
-        WRITER.write_insert(
-            &mut sql,
-            Sql()
-                .insert_into(Item::table())
-                .columns(["id", "label"])
-                .values(&rows)
-                .update(),
-        );
+        let sql = Sql()
+            .insert_into(Item::table())
+            .columns(["id", "label"])
+            .values(&rows)
+            .update()
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -491,16 +761,13 @@ mod tests {
             "#}
             .trim()
         );
-        let mut sql = DynQuery::default();
         // Without a primary key there is nothing to upsert on
-        WRITER.write_insert(
-            &mut sql,
-            Sql()
-                .insert_into("logs")
-                .columns(["id", "label"])
-                .values(&rows)
-                .update(),
-        );
+        let sql = Sql()
+            .insert_into("logs")
+            .columns(["id", "label"])
+            .values(&rows)
+            .update()
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -510,16 +777,43 @@ mod tests {
             .trim()
         );
 
-        // Rows of a query
-        let mut sql = DynQuery::default();
-        WRITER.write_insert(
-            &mut sql,
-            Sql()
-                .insert_into("archive")
-                .select(Item::columns())
-                .from(Item::table())
-                .where_expr(expr!(Item::id > 10)),
+        // Rows of expressions, such as the parameters bound by a prepared statement
+        let sql = Sql()
+            .insert_into(Item::table())
+            .columns(["id", "label"])
+            .values([cols!(?, ?)])
+            .build(&DRIVER);
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                INSERT INTO "item" ("id", "label") VALUES
+                (?, ?);
+            "#}
+            .trim()
         );
+        let placeholders = [cols!(?, ?), cols!(?, ?)];
+        let sql = Sql()
+            .insert_into(Item::table())
+            .columns(["id", "label"])
+            .values(placeholders)
+            .build(&DRIVER);
+        assert_eq!(
+            sql.as_str(),
+            indoc! {r#"
+                INSERT INTO "item" ("id", "label") VALUES
+                (?, ?),
+                (?, ?);
+            "#}
+            .trim()
+        );
+
+        // Rows of a query
+        let sql = Sql()
+            .insert_into("archive")
+            .select(Item::columns())
+            .from(Item::table())
+            .where_expr(expr!(Item::id > 10))
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -532,15 +826,12 @@ mod tests {
         );
 
         // Rows of a query into named columns
-        let mut sql = DynQuery::default();
-        WRITER.write_insert(
-            &mut sql,
-            Sql()
-                .insert_into(("backup", "archive"))
-                .columns(["id", "label"])
-                .select(Item::columns())
-                .from(Item::table()),
-        );
+        let sql = Sql()
+            .insert_into(("backup", "archive"))
+            .columns(["id", "label"])
+            .select(Item::columns())
+            .from(Item::table())
+            .build(&DRIVER);
         assert_eq!(
             sql.as_str(),
             indoc! {r#"
@@ -558,26 +849,87 @@ mod tests {
         struct Limitable {
             x: u32,
         }
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(Limitable::columns())
-                .from(Limitable::table())
-                .order_by(cols!(Limitable::x ASC))
-                .limit(Some(10)),
-        );
+        let sql = Sql()
+            .select(Limitable::columns())
+            .from(Limitable::table())
+            .order_by(cols!(Limitable::x ASC))
+            .limit(Some(10))
+            .build(&DRIVER);
         assert!(sql.as_str().contains("LIMIT 10"));
-        let mut sql = DynQuery::default();
-        WRITER.write_select(
-            &mut sql,
-            Sql()
-                .select(Limitable::columns())
-                .from(Limitable::table())
-                .order_by(cols!(Limitable::x ASC))
-                .limit(None),
-        );
+        let sql = Sql()
+            .select(Limitable::columns())
+            .from(Limitable::table())
+            .order_by(cols!(Limitable::x ASC))
+            .limit(None)
+            .build(&DRIVER);
         assert!(!sql.as_str().contains("LIMIT"));
+    }
+
+    #[test]
+    fn query_distinct() {
+        #[derive(Entity)]
+        struct Distinctable {
+            x: u32,
+        }
+        let query = Sql()
+            .select(Distinctable::columns())
+            .distinct()
+            .from(Distinctable::table())
+            .limit(Some(10));
+        assert!(query.is_distinct());
+        let sql = query.build(&DRIVER);
+        assert!(
+            sql.as_str().starts_with("SELECT DISTINCT "),
+            "{}",
+            sql.as_str()
+        );
+
+        let query = Sql()
+            .select(Distinctable::columns())
+            .from(Distinctable::table())
+            .distinct()
+            .limit(Some(10));
+        assert!(query.is_distinct());
+        let sql = query.build(&DRIVER);
+        assert!(
+            sql.as_str().starts_with("SELECT DISTINCT "),
+            "{}",
+            sql.as_str()
+        );
+    }
+
+    #[test]
+    fn query_offset() {
+        #[derive(Entity)]
+        struct Offsettable {
+            x: u32,
+        }
+        let order = cols!(Offsettable::x ASC);
+        let query = Sql()
+            .select(Offsettable::columns())
+            .from(Offsettable::table())
+            .order_by(order)
+            .limit(Some(10))
+            .offset(Some(5));
+        assert_eq!(query.get_offset(), Some(5));
+        let sql = query.build(&DRIVER);
+        assert!(sql.as_str().contains("LIMIT 10"), "{}", sql.as_str());
+        assert!(sql.as_str().contains("OFFSET 5"), "{}", sql.as_str());
+    }
+
+    #[test]
+    fn offset_without_limit() {
+        #[derive(Entity)]
+        struct OffsetOnly {
+            x: u32,
+        }
+        let query = Sql()
+            .select(OffsetOnly::columns())
+            .from(OffsetOnly::table())
+            .offset(Some(5));
+        let sql = query.build(&DRIVER);
+        assert!(!sql.as_str().contains("LIMIT"), "{}", sql.as_str());
+        assert!(sql.as_str().contains("OFFSET 5"), "{}", sql.as_str());
     }
 
     #[test]
@@ -606,6 +958,8 @@ mod tests {
         assert!(q.get_having().is_some());
         let _ob: Vec<_> = q.get_order_by().collect();
         assert_eq!(q.get_limit(), Some(5));
+        assert_eq!(q.get_offset(), None);
+        assert!(!q.is_distinct());
     }
 
     #[test]
@@ -632,6 +986,14 @@ mod tests {
                 .update()
                 .get_update()
         );
+        let assignments = [&expr!(Foo::id == 1) as &dyn Expression];
+        let update = Sql().update(Foo::table()).set(assignments.as_slice());
+        assert_eq!(update.get_from().name, "foo");
+        assert_eq!(update.get_set().count(), 1);
+        assert!(update.get_where().is_none());
+        let update = update.where_expr(expr!(Foo::id == 2));
+        assert!(update.get_where().is_some());
+        assert_eq!(update.get_set().count(), 1);
         assert!(Sql().delete_from(Foo::table()).get_where().is_none());
         assert!(
             Sql()
@@ -654,7 +1016,7 @@ mod tests {
         let rq = RawQuery("hello".to_string());
         assert_eq!(rq.0, "hello");
 
-        let mut q = DynQuery::default();
+        let mut q = AnyQuery::default();
         let _ = q.write_str("SELECT 1");
         let s: String = q.into();
         assert_eq!(s, "SELECT 1");

@@ -10,7 +10,7 @@ use tank_core::{Row, RowOwned};
 
 pub(crate) struct RowWrap<'a>(pub(crate) Cow<'a, RowOwned>);
 
-impl<'a> TryFrom<Document> for RowWrap<'a> {
+impl TryFrom<Document> for RowWrap<'_> {
     type Error = tank_core::Error;
     fn try_from(value: Document) -> tank_core::Result<Self> {
         let mut pairs = Vec::with_capacity(value.len());
@@ -42,7 +42,7 @@ impl<'a> TryFrom<RowWrap<'a>> for Document {
     }
 }
 
-impl<'a> Serialize for RowWrap<'a> {
+impl Serialize for RowWrap<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -58,7 +58,7 @@ impl<'a> Serialize for RowWrap<'a> {
     }
 }
 
-impl<'a, 'd> Deserialize<'d> for RowWrap<'a> {
+impl<'d> Deserialize<'d> for RowWrap<'_> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'d>,

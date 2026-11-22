@@ -17,7 +17,7 @@ It maps Tank operations and queries to native DuckDB commands. Use it with the m
 ## Features
 - DuckDB C API (FFI) using [libduckdb-sys](https://crates.io/crates/libduckdb-sys)
 - Bulk inserts use DuckDB's appender API
-- Queries execute through the [Tokio](https://crates.io/crates/tokio) runtime, with results streamed through a [Flume](https://crates.io/crates/flume) channel
+- Queries stream rows chunk by chunk straight from the C API, without a worker thread or channel. DuckDB calls themselves are synchronous: an expensive query or disk I/O can still block the executor thread.
 
 ## Install
 ```sh

@@ -24,7 +24,7 @@ impl MongoDBPrepared {
             index: Default::default(),
         }
     }
-    pub fn get_payload(&self) -> &Payload {
+    pub const fn get_payload(&self) -> &Payload {
         &self.payload
     }
     pub(crate) fn take_payload(&mut self) -> Payload {
@@ -38,13 +38,12 @@ impl MongoDBPrepared {
     }
     pub fn switch_to_document(&mut self) -> Option<&mut Document> {
         self.current_bson().map(|v| {
-            if !matches!(v, Bson::Document(..)) {
+            loop {
+                if let Bson::Document(document) = v {
+                    return document;
+                }
                 *v = Bson::Document(Document::default());
             }
-            let Bson::Document(document) = v else {
-                unreachable!();
-            };
-            document
         })
     }
     pub(crate) fn take_params(&mut self) -> Result<Option<Document>> {

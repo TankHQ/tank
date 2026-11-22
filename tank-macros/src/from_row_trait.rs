@@ -34,7 +34,7 @@ pub(crate) fn from_row_trait(table: &TableMetadata) -> (Ident, TokenStream) {
         .map(|c| {
             let (ty, conv) = (&c.ty, c.conversion_type.as_ref().unwrap_or(&c.ty));
             quote!(::std::convert::Into::<#ty>::into(
-                <#conv as ::tank::AsValue>::try_from_value(__v__)?
+                <#conv as ::tank::AsValue>::decode_value(__v__)?
             ))
         })
         .collect::<Vec<_>>();

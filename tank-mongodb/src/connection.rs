@@ -1,15 +1,15 @@
 use crate::{
     AggregatePayload, BatchPayload, CreateCollectionPayload, DeletePayload, DropCollectionPayload,
     DropDatabasePayload, FindManyPayload, FindOnePayload, InsertManyPayload, InsertOnePayload,
-    MongoDBDriver, MongoDBTransaction, Payload, RowWrap, UpsertPayload,
+    MongoDBDriver, MongoDBPrepared, MongoDBTransaction, Payload, RowWrap, UpsertPayload,
 };
 use anyhow::anyhow;
 use async_stream::try_stream;
 use mongodb::{Client, ClientSession, Collection, Database, bson::Bson};
-use std::{borrow::Cow, future};
+use std::{borrow::Cow, future, hint};
 use tank_core::{
-    AsQuery, Connection, Error, ErrorContext, Executor, Query, QueryResult, Result, Row,
-    RowsAffected, TableRef,
+    AsQuery, Connection, ErrorContext, Executor, Query, QueryResult, Result, Row, RowsAffected,
+    TableRef, describe_path,
     stream::{Stream, TryStreamExt},
     truncate_long,
 };
@@ -23,14 +23,14 @@ pub struct MongoDBConnection {
 }
 
 impl MongoDBConnection {
-    pub(crate) fn new(client: Client, default_database: Database) -> Self {
+    pub(crate) const fn new(client: Client, default_database: Database) -> Self {
         MongoDBConnection {
             client,
             session: None,
             default_database,
         }
     }
-    pub fn is_session(&self) -> bool {
+    pub const fn is_session(&self) -> bool {
         self.session.is_some()
     }
     pub async fn start_session(&mut self) -> Result<&mut Self> {
@@ -59,13 +59,16 @@ impl MongoDBConnection {
 
 impl Connection for MongoDBConnection {
     async fn connect(driver: &MongoDBDriver, url: Cow<'static, str>) -> Result<Self> {
-        let context = "While trying to connect to MongoDB";
-        let url = Self::sanitize_url(driver, url).context(context)?;
-        let client = Client::with_uri_str(&url).await.context(context)?;
+        let url = Self::sanitize_url(driver, url)?;
+        let make_context = || format!(r#"Connecting to MongoDB "{}""#, describe_path(&url));
+        let client = Client::with_uri_str(&url)
+            .await
+            .with_context(make_context)?;
         let database = client.database(match url.path_segments().and_then(|mut v| v.next()) {
             Some(v) if !v.is_empty() => v,
             _ => {
-                let error = anyhow!("Empty database name").context(context);
+                hint::cold_path();
+                let error = anyhow!("Empty database name").context(make_context());
                 log::error!("{error:#}");
                 return Err(error);
             }
@@ -90,10 +93,7 @@ impl Connection for MongoDBConnection {
 impl Executor for MongoDBConnection {
     type Driver = MongoDBDriver;
 
-    fn do_prepare(
-        &mut self,
-        _query: String,
-    ) -> impl Future<Output = Result<Query<MongoDBDriver>>> + Send {
+    fn do_prepare(&mut self, _query: &str) -> impl Future<Output = Result<MongoDBPrepared>> + Send {
         future::ready(Err(anyhow!("MongoDB does not support prepare")))
     }
 
@@ -105,11 +105,11 @@ impl Executor for MongoDBConnection {
             ($query:expr) => {
                 format!(
                     "While running the query:\n{}",
-                    truncate_long!(format!("{:?}", $query), true)
+                    truncate_long(&format!("{:?}", $query))
                 )
             };
         }
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         try_stream! {
             let Query::Prepared(prepared) = query.as_mut() else {
                 Err(anyhow!(
@@ -159,7 +159,10 @@ impl Executor for MongoDBConnection {
                     let collection = self.collection(table);
                     let mut options = options.clone();
                     options.let_vars = params;
-                    let session = self.session.as_mut().unwrap();
+                    let Some(session) = self.session.as_mut() else {
+                        log::error!("MongoDB session is unexpectedly missing");
+                        return;
+                    };
                     let mut stream = collection
                         .find(filter.clone())
                         .session(&mut *session)
@@ -344,7 +347,10 @@ impl Executor for MongoDBConnection {
                     let collection = self.collection(table);
                     let mut options = options.clone();
                     options.let_vars = params;
-                    let session = self.session.as_mut().unwrap();
+                    let Some(session) = self.session.as_mut() else {
+                        log::error!("MongoDB session is unexpectedly missing");
+                        return;
+                    };
                     let mut stream = collection
                         .aggregate(pipeline.iter().cloned())
                         .session(&mut *session)
@@ -418,9 +424,6 @@ impl Executor for MongoDBConnection {
                 }
             }
         }
-        .map_err(move |e: Error| {
-            log::error!("{e:#}");
-            e
-        })
+        .inspect_err(|e| log::error!("{e:#}"))
     }
 }

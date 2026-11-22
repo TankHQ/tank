@@ -13,7 +13,7 @@ use tank_core::Value;
 #[derive(Clone, Debug)]
 pub(crate) struct ValueWrap<'a>(pub(crate) Cow<'a, Value<'a>>);
 
-impl<'a> Default for ValueWrap<'a> {
+impl Default for ValueWrap<'_> {
     fn default() -> Self {
         Self(Cow::Borrowed(&Value::Null))
     }
@@ -50,39 +50,41 @@ impl<'a> FromSql<'a> for ValueWrap<'a> {
     }
 }
 
-impl<'a> ToSql for ValueWrap<'a> {
-    fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>>
+impl ToSql for ValueWrap<'_> {
+    fn to_sql(&self, t: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>>
     where
         Self: Sized,
     {
         match &self.0.as_ref() {
-            Value::Null => None::<String>.to_sql(ty, out),
-            Value::Boolean(v) => v.to_sql(ty, out),
-            Value::Int8(v) => v.map(|v| v as i16).to_sql(ty, out),
-            Value::Int16(v) => v.to_sql(ty, out),
-            Value::Int32(v) => v.to_sql(ty, out),
-            Value::Int64(v) => v.to_sql(ty, out),
-            Value::Int128(v) => v.as_deref().map(|v| Decimal::from_i128(*v)).to_sql(ty, out),
-            Value::UInt8(v) => v.map(|v| v as i16).to_sql(ty, out),
-            Value::UInt16(v) => v.map(|v| v as i32).to_sql(ty, out),
-            Value::UInt32(v) => v.map(|v| v as i64).to_sql(ty, out),
-            Value::UInt64(v) => v.map(|v| Decimal::from_u64(v)).to_sql(ty, out),
-            Value::UInt128(v) => v.as_deref().map(|v| Decimal::from_u128(*v)).to_sql(ty, out),
-            Value::Float32(v) => v.to_sql(ty, out),
-            Value::Float64(v) => v.to_sql(ty, out),
-            Value::Decimal(v, _, _) => v.to_sql(ty, out),
-            Value::Char(v) => v.map(|v| v.to_string()).to_sql(ty, out),
-            Value::Varchar(v) => v.to_sql(ty, out),
-            Value::Blob(v) => v.as_deref().to_sql(ty, out),
-            Value::Date(v) => v.to_sql(ty, out),
-            Value::Time(v) => v.to_sql(ty, out),
-            Value::Timestamp(v) => v.to_sql(ty, out),
-            Value::TimestampWithTimezone(v) => v.to_sql(ty, out),
-            Value::Interval(v) => v.map(IntervalWrap).to_sql(ty, out),
-            Value::Uuid(v) => v.to_sql(ty, out),
-            Value::Array(v, t) | Value::List(v, t) => match v {
+            Value::Null => None::<String>.to_sql(t, out),
+            Value::Boolean(v) => v.to_sql(t, out),
+            Value::Int8(v) => v.map(|v| v as i16).to_sql(t, out),
+            Value::Int16(v) => v.to_sql(t, out),
+            Value::Int32(v) => v.to_sql(t, out),
+            Value::Int64(v) => v.to_sql(t, out),
+            Value::Int128(v) => v.as_deref().map(|v| Decimal::from_i128(*v)).to_sql(t, out),
+            Value::UInt8(v) => v.map(|v| v as i16).to_sql(t, out),
+            Value::UInt16(v) => v.map(|v| v as i32).to_sql(t, out),
+            Value::UInt32(v) => v.map(|v| v as i64).to_sql(t, out),
+            Value::UInt64(v) => v.map(|v| Decimal::from_u64(v)).to_sql(t, out),
+            Value::UInt128(v) => v.as_deref().map(|v| Decimal::from_u128(*v)).to_sql(t, out),
+            Value::Float32(v) => v.to_sql(t, out),
+            Value::Float64(v) => v.to_sql(t, out),
+            Value::Decimal(v, _, _) => v.to_sql(t, out),
+            Value::Char(v) => v.map(|v| v.to_string()).to_sql(t, out),
+            Value::Varchar(v) => v.to_sql(t, out),
+            Value::Blob(v) => v.as_deref().to_sql(t, out),
+            Value::Date(v) => v.to_sql(t, out),
+            Value::Time(v) => v.to_sql(t, out),
+            Value::Timestamp(v) => v.to_sql(t, out),
+            Value::TimestampWithTimezone(v) => v.to_sql(t, out),
+            Value::Interval(v) => v.map(IntervalWrap).to_sql(t, out),
+            Value::Uuid(v) => v.to_sql(t, out),
+            Value::IpAddr(v) => v.to_sql(t, out),
+            Value::Array(v, collection_t) | Value::List(v, collection_t) => match v {
                 Some(v) => {
-                    let (vector, dimensions, element_type) = flatten_array(v, &t.element);
+                    let (vector, dimensions, element_type) =
+                        flatten_array(v, &collection_t.element);
                     array_to_sql(
                         dimensions,
                         element_type.oid(),
@@ -95,7 +97,7 @@ impl<'a> ToSql for ValueWrap<'a> {
                     )?;
                     Ok(IsNull::No)
                 }
-                None => None::<Vec<ValueWrap>>.to_sql(ty, out),
+                None => None::<Vec<ValueWrap>>.to_sql(t, out),
             },
             _ => {
                 return Err(anyhow!(

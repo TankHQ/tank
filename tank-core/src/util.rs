@@ -1,18 +1,19 @@
-use crate::{AsValue, ColumnDef, Driver, DynQuery, Result, TableRef, Value, anyhow};
+use crate::{AnyQuery, ColumnDef, Driver, Result, TableRef, anyhow};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote};
-use rust_decimal::{Decimal, prelude::ToPrimitive};
-use serde_json::{Map, Number, Value as JsonValue};
+use rust_decimal::Decimal;
 use std::{
     borrow::Cow,
     cmp::min,
     collections::BTreeMap,
     ffi::{CStr, CString, c_char},
-    fmt::{self, Write},
+    fmt::{self, Display, Write},
     hint, iter, ptr,
 };
 use syn::Path;
 use url::Url;
+
+pub const MAX_BATCH_SIZE: usize = 15 << 20; // 15 MiB
 
 #[derive(Clone)]
 /// Iterator adapter for two types.
@@ -37,72 +38,6 @@ where
             Self::Right(b) => b.next(),
         }
     }
-}
-
-pub fn value_to_json(v: &Value<'_>) -> Option<JsonValue> {
-    Some(match v {
-        _ if v.is_null() => JsonValue::Null,
-        Value::Boolean(Some(v), ..) => JsonValue::Bool(*v),
-        Value::Int8(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
-        Value::Int16(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
-        Value::Int32(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
-        Value::Int64(Some(v), ..) => JsonValue::Number(Number::from_i128(*v as _)?),
-        Value::Int128(Some(v), ..) => JsonValue::Number(Number::from_i128(**v)?),
-        Value::UInt8(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
-        Value::UInt16(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
-        Value::UInt32(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
-        Value::UInt64(Some(v), ..) => JsonValue::Number(Number::from_u128(*v as _)?),
-        Value::UInt128(Some(v), ..) => JsonValue::Number(Number::from_u128(**v)?),
-        Value::Float32(Some(v), ..) => JsonValue::Number(Number::from_f64(*v as _)?),
-        Value::Float64(Some(v), ..) => JsonValue::Number(Number::from_f64(*v as _)?),
-        Value::Decimal(Some(v), ..) => JsonValue::Number(Number::from_f64(v.to_f64()?)?),
-        Value::Char(Some(v), ..) => JsonValue::String(v.to_string()),
-        Value::Varchar(Some(v), ..) => JsonValue::String(v.to_string()),
-        Value::Blob(Some(v), ..) => JsonValue::Array(
-            v.iter()
-                .map(|v| Number::from_u128(*v as _).map(JsonValue::Number))
-                .collect::<Option<_>>()?,
-        ),
-        v @ (Value::Date(Some(..), ..)
-        | Value::Time(Some(..), ..)
-        | Value::Timestamp(Some(..), ..)
-        | Value::TimestampWithTimezone(Some(..), ..)) => JsonValue::String(v.to_string()),
-        Value::Interval(Some(_v), ..) => {
-            return None;
-        }
-        Value::Uuid(Some(v), ..) => JsonValue::String(v.to_string()),
-        Value::Array(Some(v), ..) | Value::List(Some(v), ..) => {
-            JsonValue::Array(v.iter().map(value_to_json).collect::<Option<_>>()?)
-        }
-        Value::Map(Some(v), ..) => {
-            let mut map = Map::new();
-            for (k, v) in v.iter() {
-                let Ok(k) = String::try_from_value(k.clone()) else {
-                    return None;
-                };
-                let Some(v) = value_to_json(v) else {
-                    return None;
-                };
-                map.insert(k, v);
-            }
-            JsonValue::Object(map)
-        }
-        Value::Json(Some(v), ..) => v.clone(),
-        Value::Struct(Some(v), ..) => {
-            let mut map = Map::new();
-            for (k, v) in v.iter() {
-                let Some(v) = value_to_json(v) else {
-                    return None;
-                };
-                map.insert(k.clone(), v);
-            }
-            JsonValue::Object(map)
-        }
-        Value::Unknown(Some(v), ..) => JsonValue::String(v.to_string()),
-        _ => {
-            return None;
-        }
-    })
 }
 
 /// Quote a `BTreeMap<K, V>` into tokens.
@@ -133,6 +68,14 @@ where
     }
 }
 
+/// Borrows a `Cow<'_, str>` as `&str`, usable in constant functions.
+pub(crate) const fn cow_str<'a, 'b: 'a>(value: &'a Cow<'b, str>) -> &'a str {
+    match value {
+        Cow::Borrowed(value) => value,
+        Cow::Owned(value) => value.as_str(),
+    }
+}
+
 /// Quote an `Option<T>` into tokens.
 pub fn quote_option<T: ToTokens>(value: &Option<T>) -> TokenStream {
     match value {
@@ -154,12 +97,12 @@ pub fn matches_path(path: &Path, expect: &[&str]) -> bool {
 
 /// Write an iterator of items separated by a delimiter into a string.
 pub fn separated_by<T, F>(
-    out: &mut DynQuery,
+    out: &mut AnyQuery,
     values: impl IntoIterator<Item = T>,
     mut f: F,
     separator: &str,
 ) where
-    F: FnMut(&mut DynQuery, T),
+    F: FnMut(&mut AnyQuery, T),
 {
     let mut len = out.len();
     for v in values {
@@ -173,7 +116,7 @@ pub fn separated_by<T, F>(
 
 /// Write, escaping occurrences of `search` char with `replace` while copying into buffer.
 #[inline]
-pub fn write_escaped(out: &mut DynQuery, value: &str, search: char, replace: &str) {
+pub fn write_escaped(out: &mut AnyQuery, value: &str, search: char, replace: &str) {
     let mut rest = value;
     let char_len = search.len_utf8();
     while let Some(i) = rest.find(search) {
@@ -186,7 +129,7 @@ pub fn write_escaped(out: &mut DynQuery, value: &str, search: char, replace: &st
 
 /// Write `value` left padded with zeros to at least `width` digits, without going through `fmt`.
 #[inline]
-pub fn write_zero_padded(out: &mut DynQuery, value: u32, width: usize) {
+pub fn write_zero_padded(out: &mut AnyQuery, value: u32, width: usize) {
     let mut buffer = itoa::Buffer::new();
     let digits = buffer.format(value);
     let zeros = min(width.saturating_sub(digits.len()), 9);
@@ -208,18 +151,8 @@ pub fn as_c_string(str: impl AsRef<[u8]>) -> CString {
     }
 }
 
-#[cold]
-pub fn log_error<E: fmt::Display>(error: &E) {
-    log::error!("{error:#}");
-}
-
-#[cold]
-pub fn log_warn<E: fmt::Display>(error: &E) {
-    log::warn!("{error:#}");
-}
-
 #[inline(always)]
-pub fn char_ptr_to_string(ptr: *mut c_char) -> String {
+pub fn char_ptr_to_string(ptr: *const c_char) -> String {
     if ptr.is_null() {
         String::new()
     } else {
@@ -228,12 +161,12 @@ pub fn char_ptr_to_string(ptr: *mut c_char) -> String {
 }
 
 #[inline(always)]
-pub fn error_message_from_ptr<'a>(ptr: *const c_char) -> Cow<'a, str> {
+pub fn error_message_from_ptr<'a>(ptr: &'a *const c_char) -> Cow<'a, str> {
     unsafe {
-        if ptr != ptr::null() {
-            CStr::from_ptr(ptr).to_string_lossy()
+        if *ptr != ptr::null() {
+            CStr::from_ptr(*ptr).to_string_lossy()
         } else {
-            Cow::Borrowed("Unknown error: could not extract the error message")
+            Cow::Borrowed("Unknown error (could not extract the message)")
         }
     }
 }
@@ -268,7 +201,7 @@ pub fn extract_number<'s, const SIGNED: bool>(input: &mut &'s str) -> &'s str {
     result
 }
 
-pub fn column_def(name: &str, table: &TableRef) -> Option<&'static ColumnDef> {
+pub fn column_def<'a>(name: &str, table: &'a TableRef) -> Option<&'a ColumnDef> {
     table.columns.iter().find(|v| v.name() == name)
 }
 
@@ -360,7 +293,7 @@ pub fn decimal_from_scaled(mut mantissa: i128, mut scale: u32) -> Result<Decimal
 /// Largest byte offset `<= limit` that is a valid UTF-8 character boundary in `value`
 #[doc(hidden)]
 #[inline]
-pub fn truncate_bound(value: &str, limit: usize) -> usize {
+pub const fn truncate_bound(value: &str, limit: usize) -> usize {
     if value.len() <= limit {
         return value.len();
     }
@@ -371,49 +304,31 @@ pub fn truncate_bound(value: &str, limit: usize) -> usize {
     end
 }
 
-#[macro_export]
-/// Truncate long strings for logging and error messages purpose.
+/// Shortens long strings for logging and error messages.
 ///
-/// Returns a `format_args!` that yields at most `TRUNCATE_LONG_LIMIT` bytes from
-/// the start of the input followed by `...` when truncation occurred. Minimal
-/// overhead. Multi-byte characters are not split.
-///
-/// If true is the second argument, it evaluates the first argument just once.
-///
-/// # Examples
-/// ```ignore
-/// use tank_core::truncate_long;
-/// let short = "SELECT 1";
-/// assert_eq!(format!("{}", truncate_long!(short)), "SELECT 1\n");
-/// let long = format!("SELECT {}", "X".repeat(600));
-/// let logged = format!("{}", truncate_long!(long));
-/// assert!(logged.starts_with("SELECT XXXXXX"));
-/// assert!(logged.ends_with("...\n"));
-/// ```
-macro_rules! truncate_long {
-    ($query:expr) => {
-        format_args!(
-            "{}{}",
-            $query[..$crate::truncate_bound(&*$query, $crate::TRUNCATE_LONG_LIMIT)].trim(),
-            if $query.len() > $crate::TRUNCATE_LONG_LIMIT {
-                "...\n"
-            } else {
-                ""
-            },
-        )
-    };
-    ($query:expr,true) => {{
-        let query = $query;
-        format!(
-            "{}{}",
-            query[..$crate::truncate_bound(&*query, $crate::TRUNCATE_LONG_LIMIT)].trim(),
-            if query.len() > $crate::TRUNCATE_LONG_LIMIT {
-                "...\n"
-            } else {
-                ""
-            },
-        )
-    }};
+/// Yields at most [`TRUNCATE_LONG_LIMIT`] bytes from the start of the input,
+/// followed by `...` when truncation occurred. Multi-byte characters are not split.
+pub fn truncate_long(text: &str) -> impl Display + '_ {
+    struct Truncated<'a> {
+        prefix: &'a str,
+        suffix: &'a str,
+    }
+
+    impl Display for Truncated<'_> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str(self.prefix)?;
+            f.write_str(self.suffix)
+        }
+    }
+
+    Truncated {
+        prefix: text[..truncate_bound(text, TRUNCATE_LONG_LIMIT)].trim(),
+        suffix: if text.len() > TRUNCATE_LONG_LIMIT {
+            "...\n"
+        } else {
+            ""
+        },
+    }
 }
 
 /// Builds a short, log friendly description of a networked connection target:
@@ -432,7 +347,7 @@ pub fn describe_url<D: Driver>(url: &Url) -> String {
         .path_segments()
         .and_then(|mut v| v.find(|s| !s.is_empty()))
     {
-        let _ = write!(&mut target, "/{}", truncate_long!(database));
+        let _ = write!(&mut target, "/{}", truncate_long(database));
     }
     target
 }
@@ -447,31 +362,13 @@ pub fn describe_path(url: &Url) -> String {
         .or_else(|| {
             url.query_pairs()
                 .find(|(k, _)| k.eq_ignore_ascii_case("path"))
-                .map(|(_, v)| format!("{}", truncate_long!(v)))
+                .map(|(_, v)| format!("{}", truncate_long(&v)))
         })
         .unwrap_or_else(|| match (url.host_str().unwrap_or_default(), url.path()) {
             ("", "" | "/") => "N/A".into(),
             (host, "") => host.into(),
-            (host, path) => format!("{host}{}", truncate_long!(path)),
+            (host, path) => format!("{host}{}", truncate_long(path)),
         })
-}
-
-/// Sends the value through the channel and logs in case of error.
-///
-/// Parameters:
-/// * `$tx`: sender channel
-/// * `$value`: value to be sent
-///
-/// *Example*:
-/// ```ignore
-/// send_value!(tx, Ok(QueryResult::Row(row)));
-/// ```
-
-#[macro_export]
-macro_rules! send_value {
-    ($tx:ident, $value:expr) => {{
-        let _ = $tx.send($value).inspect_err($crate::log_error);
-    }};
 }
 
 /// Incrementally accumulates tokens from a speculative parse stream until one
@@ -557,10 +454,14 @@ macro_rules! impl_executor_transaction {
                 self.$connection.accepts_multiple_statements()
             }
 
+            fn batch_size(&self) -> usize {
+                self.$connection.batch_size()
+            }
+
             fn do_prepare(
                 &mut self,
-                sql: String,
-            ) -> impl Future<Output = ::tank_core::Result<::tank_core::Query<Self::Driver>>> + Send
+                sql: &str,
+            ) -> impl Future<Output = ::tank_core::Result<<Self::Driver as ::tank_core::Driver>::Prepared>> + Send
             {
                 self.$connection.do_prepare(sql)
             }

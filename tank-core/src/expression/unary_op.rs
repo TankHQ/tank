@@ -1,5 +1,5 @@
 use crate::{
-    DynQuery, Expression, ExpressionVisitor, OpPrecedence,
+    AnyQuery, Expression, ExpressionVisitor, OpPrecedence,
     writer::{Context, SqlWriter},
 };
 
@@ -27,7 +27,7 @@ impl<E: Expression> OpPrecedence for UnaryOp<E> {
 }
 
 impl<E: Expression> Expression for UnaryOp<E> {
-    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut DynQuery) {
+    fn write_query(&self, writer: &dyn SqlWriter, context: &mut Context, out: &mut AnyQuery) {
         writer.write_unary_op(
             context,
             out,
@@ -43,7 +43,7 @@ impl<E: Expression> Expression for UnaryOp<E> {
         matcher: &mut dyn ExpressionVisitor,
         writer: &dyn SqlWriter,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
     ) -> bool {
         matcher.visit_unary_op(
             writer,

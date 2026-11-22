@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use crate::silent_logs;
 use std::{
     borrow::Cow,
     sync::{
@@ -41,7 +42,7 @@ impl AsValue for Method {
             .into(),
         ))
     }
-    fn try_from_value(value: impl AsValue) -> Result<Self>
+    fn decode_value(value: impl AsValue) -> Result<Self>
     where
         Self: Sized,
     {
@@ -131,8 +132,10 @@ pub async fn requests(executor: &mut impl Executor) -> Result<()> {
     let _lock = MUTEX.lock();
 
     // Setup
-    RequestLimit::drop_table(executor, true, false).await?;
-    Request::drop_table(executor, true, false).await?;
+    silent_logs! {
+        RequestLimit::drop_table(executor, true, false).await?;
+        Request::drop_table(executor, true, false).await?;
+    }
 
     RequestLimit::create_table(executor, false, true).await?;
     Request::create_table(executor, false, true).await?;

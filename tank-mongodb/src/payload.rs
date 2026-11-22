@@ -196,7 +196,7 @@ impl Payload {
                 _ => {
                     return Err(anyhow!(
                         "Batches can only contain write operations, cannot add {}",
-                        truncate_long!(format!("{payload:?}"), true)
+                        truncate_long(&format!("{payload:?}"))
                     ));
                 }
             },

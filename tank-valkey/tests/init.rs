@@ -3,7 +3,10 @@
 #![allow(dead_code)]
 use std::{borrow::Cow, env, path::PathBuf, process::Command, time::Duration};
 use tank_core::{ConnectionPool, Driver, Result};
-use tank_tests::{custom, generate_ssl_files, kv_storage, limits, simple};
+use tank_tests::{
+    custom, generate_ssl_files, json_blob, kv_storage, limits, nested, other_types, projections,
+    save, simple,
+};
 use testcontainers_modules::{
     testcontainers::{
         ContainerAsync, GenericImage, Image, ImageExt,
@@ -20,9 +23,14 @@ pub async fn execute_tests<D: Driver>(pool: &mut impl ConnectionPool<D>) -> Resu
         .expect("Could not get a connection from the pool");
     let connection = connection.as_mut();
     simple(connection).await?;
-    limits(connection).await?;
     kv_storage(connection).await?;
+    json_blob(connection).await?;
+    projections(connection).await?;
+    save(connection).await?;
+    nested(connection).await?;
     custom(connection).await?;
+    other_types(connection).await?;
+    limits(connection).await?;
     Ok(())
 }
 
