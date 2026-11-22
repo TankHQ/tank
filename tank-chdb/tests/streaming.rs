@@ -54,7 +54,7 @@ async fn streaming_public_execution_and_reuse() {
         let QueryResult::Row(row) = results.next().await.unwrap().unwrap() else {
             panic!("Prepared SET leaked as a statement")
         };
-        assert_eq!(i64::try_from_value(row.value(0).unwrap()).unwrap(), value);
+        assert_eq!(i64::decode_value(row.value(0).unwrap()).unwrap(), value);
         // Drop early, rebind and reuse the same prepared statement.
     }
     // #endregion clickhouse-prepared

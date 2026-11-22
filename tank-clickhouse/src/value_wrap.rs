@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use klickhouse::{Type, Value as KlValue};
-use std::{borrow::Cow, collections::HashMap, fmt::Write as _};
+use std::{borrow::Cow, collections::HashMap, fmt::Write as _, net::IpAddr};
 use tank_core::{CollectionType, MapType, Result, Value, ValueOwned, decimal_from_scaled};
 use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
 use uuid::Uuid;
@@ -141,6 +141,11 @@ pub(crate) fn extract_value(ty: &Type, val: KlValue) -> Result<ValueOwned> {
 
         KlValue::Uuid(u) => Ok(Value::Uuid(Some(Uuid::from_bytes(*u.as_bytes())))),
 
+        KlValue::Ipv4(v) => Ok(Value::IpAddr(Some(IpAddr::V4(v.0)))),
+        KlValue::Ipv6(v) => Ok(Value::IpAddr(Some(
+            v.0.to_ipv4_mapped().map(IpAddr::V4).unwrap_or(IpAddr::V6(v.0)),
+        ))),
+
         KlValue::Array(elements) => {
             let Type::Array(inner_ty) = ty else {
                 return Err(anyhow!("Expected Array type, got {ty:?}"));
@@ -203,6 +208,7 @@ pub(crate) fn clickhouse_type_to_value(ty: &Type) -> ValueOwned {
         }
         Type::String | Type::FixedString(_) => Value::Varchar(None),
         Type::Uuid => Value::Uuid(None),
+        Type::Ipv4 | Type::Ipv6 => Value::IpAddr(None),
         Type::Date => Value::Date(None),
         Type::DateTime(tz) => {
             if tz.name() == "UTC" {

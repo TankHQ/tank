@@ -23,7 +23,7 @@ impl Connection for ChDBConnection {
         let make_context = || {
             format!(
                 "While trying to connect to chDB {}",
-                describe_path::<ChDBDriver>(&url)
+                describe_path(&url)
             )
         };
         let path: Option<Cow<'static, str>> = url
@@ -70,15 +70,15 @@ impl Executor for ChDBConnection {
         false
     }
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<ChDBDriver>> {
-        Ok(Query::Prepared(ChDBPrepared::new(sql)))
+    async fn do_prepare(&mut self, sql: &str) -> Result<ChDBPrepared> {
+        Ok(ChDBPrepared::new(sql.to_string()))
     }
 
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<ChDBDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         stream::once(async move {
             let context = format!("While running the query:\n{}", query.as_mut());
             let connection = Arc::clone(&self.connection);

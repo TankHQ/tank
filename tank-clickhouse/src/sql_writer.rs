@@ -1,15 +1,16 @@
+use crate::ClickHousePrepared;
 use anyhow::anyhow;
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
 };
 use tank_core::{
-    BinaryOpType, ColumnDef, Context, Dataset, DynQuery, Entity, Fragment, GenericSqlWriter,
-    Interval, PrimaryKeyType, Result, SqlWriter, TableRef, Value, separated_by, write_escaped,
+    AnyQuery, BinaryOpType, Case, ColumnDef, Context, Dataset, Expression, Fragment,
+    GenericSqlWriter, Interval, IsTrue, PrimaryKeyType, Result, SqlCoreWriter,
+    SqlExpressionWriter, SqlFragmentWriter, SqlValueWriter, SqlWriter, TableRef, UpdateQuery,
+    Value, separated_by, write_escaped,
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
-
-use crate::ClickHousePrepared;
 
 /// ClickHouse SQL writer.
 #[derive(Clone, Copy, Debug)]
@@ -66,7 +67,7 @@ impl ClickHouseSqlWriter {
                 // ClickHouse represents a NULL query parameter as `'\\N'`.
                 line.push_str("'\\\\N'");
             } else {
-                let mut out = DynQuery::with_capacity(16);
+                let mut out = AnyQuery::with_capacity(16);
                 self.write_value(&mut Context::fragment(Fragment::SqlSelect), &mut out, value);
                 line.push_str(out.as_str().as_ref());
             }
@@ -87,7 +88,7 @@ impl ClickHouseSqlWriter {
             let _ = write!(out, "{{p{i}:");
             match params.get(i) {
                 Some(value) if !value.is_null() => {
-                    let mut ty = DynQuery::with_capacity(16);
+                    let mut ty = AnyQuery::with_capacity(16);
                     self.write_column_type(
                         &mut Context::fragment(Fragment::SqlCreateTable),
                         &mut ty,
@@ -106,33 +107,33 @@ impl ClickHouseSqlWriter {
         out.push_str(&sql[cursor..]);
         Ok((directive, out))
     }
-}
 
-fn write_datetime_literal(out: &mut DynQuery, quote: &str, value: &PrimitiveDateTime) {
-    out.push_str(quote);
-    let _ = write!(
-        out,
-        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-        value.year(),
-        value.month() as u8,
-        value.day(),
-        value.hour(),
-        value.minute(),
-        value.second(),
-    );
-    let nanos = value.nanosecond();
-    if nanos != 0 {
-        let mut frac = format!("{nanos:09}");
-        while frac.ends_with('0') {
-            frac.pop();
+    fn write_datetime_literal(out: &mut AnyQuery, quote: &str, value: &PrimitiveDateTime) {
+        out.push_str(quote);
+        let _ = write!(
+            out,
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+            value.year(),
+            value.month() as u8,
+            value.day(),
+            value.hour(),
+            value.minute(),
+            value.second(),
+        );
+        let nanos = value.nanosecond();
+        if nanos != 0 {
+            let mut frac = format!("{nanos:09}");
+            while frac.ends_with('0') {
+                frac.pop();
+            }
+            out.push('.');
+            out.push_str(&frac);
         }
-        out.push('.');
-        out.push_str(&frac);
+        out.push_str(quote);
     }
-    out.push_str(quote);
 }
 
-impl SqlWriter for ClickHouseSqlWriter {
+impl SqlCoreWriter for ClickHouseSqlWriter {
     fn as_dyn(&self) -> &dyn SqlWriter {
         self
     }
@@ -140,7 +141,7 @@ impl SqlWriter for ClickHouseSqlWriter {
     fn write_identifier(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &str,
         quoted: bool,
     ) {
@@ -153,28 +154,10 @@ impl SqlWriter for ClickHouseSqlWriter {
         }
     }
 
-    fn write_table_ref(&self, context: &mut Context, out: &mut DynQuery, value: &TableRef) {
-        let alias_declaration = self.is_alias_declaration(context);
-        if alias_declaration || value.alias.is_empty() {
-            if !value.schema.is_empty() {
-                self.write_identifier(context, out, &value.schema, context.quote_identifiers);
-                out.push_str(self.separator());
-            }
-            self.write_identifier(context, out, &value.name, context.quote_identifiers);
-        }
-        if !value.alias.is_empty() {
-            if alias_declaration {
-                let _ = write!(out, " {}", value.alias);
-            } else {
-                out.push_str(&value.alias);
-            }
-        }
-    }
-
     fn write_column_overridden_type(
         &self,
         _context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         _column: &ColumnDef,
         types: &BTreeMap<&'static str, &'static str>,
     ) {
@@ -183,7 +166,7 @@ impl SqlWriter for ClickHouseSqlWriter {
         }
     }
 
-    fn write_column_type(&self, context: &mut Context, out: &mut DynQuery, value: &Value) {
+    fn write_column_type(&self, context: &mut Context, out: &mut AnyQuery, value: &Value) {
         match value {
             Value::Boolean(..) => out.push_str("Bool"),
             Value::Int8(..) => out.push_str("Int8"),
@@ -216,6 +199,7 @@ impl SqlWriter for ClickHouseSqlWriter {
                 out.push_str("DateTime64(9,'UTC')")
             }
             Value::Uuid(..) => out.push_str("UUID"),
+            Value::IpAddr(..) => out.push_str("IPv6"),
             Value::Array(_, t) | Value::List(_, t) => {
                 out.push_str("Array(");
                 self.write_column_type(context, out, &t.element);
@@ -231,8 +215,10 @@ impl SqlWriter for ClickHouseSqlWriter {
             _ => log::error!("Unexpected tank::Value, ClickHouse does not support {value:?}"),
         }
     }
+}
 
-    fn write_null(&self, context: &mut Context, out: &mut DynQuery) {
+impl SqlValueWriter for ClickHouseSqlWriter {
+    fn write_null(&self, context: &mut Context, out: &mut AnyQuery) {
         match context.fragment {
             Fragment::Json | Fragment::JsonKey => out.push_str("null"),
             Fragment::SqlSelect => out.push_str("CAST(NULL AS Nullable(String))"),
@@ -240,7 +226,7 @@ impl SqlWriter for ClickHouseSqlWriter {
         }
     }
 
-    fn write_string(&self, context: &mut Context, out: &mut DynQuery, value: &str) {
+    fn write_string(&self, context: &mut Context, out: &mut AnyQuery, value: &str) {
         let quote = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => {
                 out.push_str(value);
@@ -266,7 +252,7 @@ impl SqlWriter for ClickHouseSqlWriter {
         out.push(quote);
     }
 
-    fn write_blob(&self, _context: &mut Context, out: &mut DynQuery, value: &[u8]) {
+    fn write_blob(&self, _context: &mut Context, out: &mut AnyQuery, value: &[u8]) {
         out.push('\'');
         for b in value {
             let _ = write!(out, "{:02X}", b);
@@ -274,7 +260,7 @@ impl SqlWriter for ClickHouseSqlWriter {
         out.push('\'');
     }
 
-    fn write_date(&self, context: &mut Context, out: &mut DynQuery, value: &time::Date) {
+    fn write_date(&self, context: &mut Context, out: &mut AnyQuery, value: &time::Date) {
         let year = value.year();
         let formatted = format!(
             "{}{:04}-{:02}-{:02}",
@@ -286,14 +272,14 @@ impl SqlWriter for ClickHouseSqlWriter {
         self.write_string(context, out, &formatted);
     }
 
-    fn write_interval(&self, context: &mut Context, out: &mut DynQuery, value: &Interval) {
+    fn write_interval(&self, context: &mut Context, out: &mut AnyQuery, value: &Interval) {
         self.write_string(context, out, &format!("{}ns", value.as_ns()));
     }
 
     fn write_timestamp(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         value: &PrimitiveDateTime,
     ) {
         let quote = match context.fragment {
@@ -301,20 +287,20 @@ impl SqlWriter for ClickHouseSqlWriter {
             Fragment::Json | Fragment::JsonKey => "\"",
             _ => "'",
         };
-        write_datetime_literal(out, quote, value);
+        Self::write_datetime_literal(out, quote, value);
     }
 
-    fn write_timestamptz(&self, context: &mut Context, out: &mut DynQuery, value: &OffsetDateTime) {
+    fn write_timestamptz(&self, context: &mut Context, out: &mut AnyQuery, value: &OffsetDateTime) {
         let utc = value.to_offset(time::UtcOffset::UTC);
         let quote = match context.fragment {
             Fragment::None | Fragment::ParameterBinding => "",
             Fragment::Json | Fragment::JsonKey => "\"",
             _ => "'",
         };
-        write_datetime_literal(out, quote, &PrimitiveDateTime::new(utc.date(), utc.time()));
+        Self::write_datetime_literal(out, quote, &PrimitiveDateTime::new(utc.date(), utc.time()));
     }
 
-    fn write_map(&self, context: &mut Context, out: &mut DynQuery, value: &HashMap<Value, Value>) {
+    fn write_map(&self, context: &mut Context, out: &mut AnyQuery, value: &HashMap<Value, Value>) {
         out.push_str("map(");
         separated_by(
             out,
@@ -328,8 +314,10 @@ impl SqlWriter for ClickHouseSqlWriter {
         );
         out.push(')');
     }
+}
 
-    fn write_question_mark(&self, context: &mut Context, out: &mut DynQuery) {
+impl SqlExpressionWriter for ClickHouseSqlWriter {
+    fn write_question_mark(&self, context: &mut Context, out: &mut AnyQuery) {
         let id = context.counter;
         context.counter += 1;
         out.push_str("{p");
@@ -354,18 +342,43 @@ impl SqlWriter for ClickHouseSqlWriter {
         }
     }
 
-    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut DynQuery) {
+    fn write_current_timestamp_ms(&self, _context: &mut Context, out: &mut AnyQuery) {
         out.push_str("toUnixTimestamp64Milli(now64())");
     }
 
+    fn write_case(&self, context: &mut Context, out: &mut AnyQuery, value: &Case) {
+        // ClickHouse's `caseWithExpression` (simple CASE) mis-evaluates NULL defaults in older
+        // versions. Searched CASE compiles to `multiIf` and preserves SQL NULL semantics.
+        out.push_str("CASE");
+        for (when, then) in value.when {
+            out.push_str(" WHEN ");
+            if let Some(subject) = value.value {
+                out.push('(');
+                subject.write_query(self, context, out);
+                out.push_str(") = (");
+                when.write_query(self, context, out);
+                out.push(')');
+            } else {
+                when.write_query(self, context, out);
+            }
+            out.push_str(" THEN ");
+            then.write_query(self, context, out);
+        }
+        if let Some(otherwise) = value.otherwise {
+            out.push_str(" ELSE ");
+            otherwise.write_query(self, context, out);
+        }
+        out.push_str(" END");
+    }
+}
+
+impl SqlFragmentWriter for ClickHouseSqlWriter {
     fn write_create_table_column_fragment(
         &self,
         context: &mut Context,
-        out: &mut DynQuery,
+        out: &mut AnyQuery,
         column: &ColumnDef,
-    ) where
-        Self: Sized,
-    {
+    ) {
         self.write_identifier(context, out, column.name(), true);
         out.push(' ');
 
@@ -388,33 +401,34 @@ impl SqlWriter for ClickHouseSqlWriter {
         }
     }
 
-    fn write_insert_update_fragment<'a, E>(
+    fn write_insert_update_fragment<'a>(
         &self,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
+        _primary_key: impl Iterator<Item = &'a ColumnDef> + Clone,
         _columns: impl Iterator<Item = &'a ColumnDef> + Clone,
     ) where
         Self: Sized,
-        E: Entity,
     {
     }
+}
 
+impl SqlWriter for ClickHouseSqlWriter {
     fn write_column_comment(
         &self,
         _context: &mut Context,
-        _out: &mut DynQuery,
+        _out: &mut AnyQuery,
         _column: &ColumnDef,
     ) {
     }
 
-    fn write_create_table<E>(&self, out: &mut DynQuery, if_not_exists: bool)
+    fn write_create_table(&self, out: &mut AnyQuery, table: &TableRef, if_not_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
-        let mut context = Context::new(Fragment::SqlCreateTable, E::qualified_columns());
-        let table = E::table();
-        let estimated = 128 + E::columns().len() * 64 + E::primary_key_def().len() * 24;
+        let mut context = Context::new(Fragment::SqlCreateTable, table.qualified_columns());
+        let pk: Vec<&ColumnDef> = table.primary_key().collect();
+        let estimated = 128 + table.columns.len() * 64 + pk.len() * 24;
         out.buffer().reserve(estimated);
         if !out.is_empty() {
             out.push('\n');
@@ -427,7 +441,7 @@ impl SqlWriter for ClickHouseSqlWriter {
         out.push_str(" (\n");
         separated_by(
             out,
-            E::columns(),
+            table.columns.iter(),
             |out, col| {
                 self.write_create_table_column_fragment(&mut context, out, col);
             },
@@ -435,14 +449,14 @@ impl SqlWriter for ClickHouseSqlWriter {
         );
         out.push_str("\n)");
 
-        let pk = E::primary_key_def();
         out.push_str(if self.replacing_merge_tree || !pk.is_empty() {
             "\nENGINE = ReplacingMergeTree()"
         } else {
             "\nENGINE = MergeTree()"
         });
         let order_cols: Vec<&ColumnDef> = if pk.is_empty() {
-            E::columns()
+            table
+                .columns
                 .iter()
                 .filter(|c| {
                     !c.nullable
@@ -450,7 +464,7 @@ impl SqlWriter for ClickHouseSqlWriter {
                 })
                 .collect()
         } else {
-            pk.to_vec()
+            pk
         };
         if order_cols.is_empty() {
             out.push_str("\nORDER BY tuple()");
@@ -469,16 +483,14 @@ impl SqlWriter for ClickHouseSqlWriter {
         out.push(';');
     }
 
-    fn write_create_schema<E>(&self, out: &mut DynQuery, if_not_exists: bool)
+    fn write_create_schema(&self, out: &mut AnyQuery, table: &TableRef, if_not_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table();
         if table.schema.is_empty() {
             return;
         }
-        let mut context = Context::new(Fragment::SqlCreateSchema, E::qualified_columns());
+        let mut context = Context::new(Fragment::SqlCreateSchema, table.qualified_columns());
         out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
@@ -491,16 +503,14 @@ impl SqlWriter for ClickHouseSqlWriter {
         out.push(';');
     }
 
-    fn write_drop_schema<E>(&self, out: &mut DynQuery, if_exists: bool)
+    fn write_drop_schema(&self, out: &mut AnyQuery, table: &TableRef, if_exists: bool)
     where
         Self: Sized,
-        E: Entity,
     {
-        let table = E::table();
         if table.schema.is_empty() {
             return;
         }
-        let mut context = Context::new(Fragment::SqlDropSchema, E::qualified_columns());
+        let mut context = Context::new(Fragment::SqlDropSchema, table.qualified_columns());
         out.buffer().reserve(32 + table.schema.len());
         if !out.is_empty() {
             out.push('\n');
@@ -511,5 +521,49 @@ impl SqlWriter for ClickHouseSqlWriter {
         }
         self.write_identifier(&mut context, out, &table.schema, true);
         out.push(';');
+    }
+
+    fn write_update<Data>(&self, out: &mut AnyQuery, query: impl UpdateQuery<Data>)
+    where
+        Self: Sized,
+        Data: Dataset,
+    {
+        let table = query.get_from();
+        let assignments = query.get_set();
+        let assignments_count = assignments.clone().count();
+        if assignments_count == 0 {
+            return;
+        }
+        out.buffer().reserve(160 + assignments_count * 32);
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("ALTER TABLE ");
+        let mut context = Context::new(Fragment::SqlUpdate, table.qualified_columns());
+        table.write_table_name(self, &mut context, out);
+        out.push_str("\nUPDATE ");
+        {
+            let mut set = context.switch_fragment(Fragment::SqlUpdateSet);
+            set.current.qualify_columns = false;
+            separated_by(
+                out,
+                assignments,
+                |out, assignment| assignment.write_query(self, &mut set.current, out),
+                ",\n",
+            );
+        }
+        out.push_str("\nWHERE ");
+        if let Some(condition) = query.get_where()
+            && !condition.accept_visitor(&mut IsTrue, self, &mut context, out)
+        {
+            condition.write_query(
+                self,
+                &mut context.switch_fragment(Fragment::SqlUpdateWhere).current,
+                out,
+            );
+        } else {
+            out.push('1');
+        }
+        out.push_str("\nSETTINGS mutations_sync = 1;");
     }
 }

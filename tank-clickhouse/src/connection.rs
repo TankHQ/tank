@@ -110,15 +110,15 @@ impl Executor for ClickHouseConnection {
         false
     }
 
-    async fn do_prepare(&mut self, sql: String) -> Result<Query<ClickHouseDriver>> {
-        Ok(Query::Prepared(ClickHousePrepared::new(sql)))
+    async fn do_prepare(&mut self, sql: &str) -> Result<ClickHousePrepared> {
+        Ok(ClickHousePrepared::new(sql.to_string()))
     }
 
     fn run<'s>(
         &'s mut self,
         query: impl AsQuery<ClickHouseDriver> + 's,
     ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        let mut query = query.as_query();
+        let mut query = query.as_query(&self.driver());
         let context = format!("While running the query:\n{}", query.as_mut());
         let client = self.client.clone();
 
@@ -174,8 +174,12 @@ impl Executor for ClickHouseConnection {
                     let values = columns
                         .iter()
                         .map(|(ty, column)| {
-                            extract_value(ty, column[row_idx].clone())
-                                .with_context(|| context.clone())
+                            let val = column
+                                .get(row_idx)
+                                .cloned()
+                                .ok_or_else(|| anyhow!("Missing ClickHouse column value at row {row_idx}"))
+                                .with_context(|| context.clone())?;
+                            extract_value(ty, val).with_context(|| context.clone())
                         })
                         .collect::<Result<Vec<_>>>()?;
                     yield QueryResult::Row(RowOwned::new(names.clone(), values));

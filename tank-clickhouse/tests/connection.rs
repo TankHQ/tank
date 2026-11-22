@@ -214,7 +214,7 @@ mod tests {
                 .get_column("value")
                 .expect("Could not find the session setting value");
             assert_eq!(
-                String::try_from_value(value).as_deref().ok(),
+                String::decode_value(value).as_deref().ok(),
                 Some(expected),
                 "Unexpected value for the '{name}' setting"
             );

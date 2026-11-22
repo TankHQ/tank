@@ -1,14 +1,14 @@
 #[cfg(test)]
 mod tests {
+    use tank::{AnyQuery, Context, Expression, Fragment, Prepared, RawQuery, Value};
     use tank_clickhouse::{ClickHousePrepared, ClickHouseSqlWriter};
-    use tank_core::{Context, DynQuery, Expression, Fragment, Prepared, RawQuery, Value};
 
     fn render(expression: &dyn Expression) -> RawQuery {
         let writer = ClickHouseSqlWriter::new();
-        let mut out = DynQuery::default();
+        let mut out = AnyQuery::default();
         let mut context = Context::fragment(Fragment::SqlSelect);
         expression.write_query(&writer, &mut context, &mut out);
-        let DynQuery::Raw(raw) = out else {
+        let AnyQuery::Raw(raw) = out else {
             panic!("The writer only produces raw queries");
         };
         raw
