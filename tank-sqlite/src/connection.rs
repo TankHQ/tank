@@ -222,12 +222,12 @@ impl Executor for SQLiteConnection {
         It::IntoIter: Send,
         It::Item: AsEntity,
     {
-        const ROWS: usize = 256;
+        const BATCH_SIZE: usize = 255;
         let table = <It::Item as AsEntity>::Entity::table();
         let mut entities = entities.into_iter();
         let mut affected = RowsAffected::default();
         // Scoped so `first` and the DB lock never live across `.await`, keeping the future `Send`.
-        let (mut prepared, db_handle, transaction, has_more) = {
+        let (mut prepared, db_handle, transaction, mut has_more) = {
             let Some(first) = entities.next() else {
                 return Ok(affected);
             };
@@ -254,36 +254,35 @@ impl Executor for SQLiteConnection {
             };
             let count = {
                 let db = db_handle.lock();
-                let count = prepared
-                    .append_batch(&db, iter::once(first).chain(entities.by_ref()).take(ROWS))?;
+                let count = prepared.append_batch(
+                    &db,
+                    iter::once(first).chain(entities.by_ref()).take(BATCH_SIZE),
+                )?;
                 affected.extend([RowsAffected {
                     rows_affected: Some(count),
                     last_affected_id: Some(prepared.last_insert_rowid_locked(&db)),
                 }]);
                 count
             };
-            (prepared, db_handle, transaction, count as usize == ROWS)
+            (
+                prepared,
+                db_handle,
+                transaction,
+                count as usize == BATCH_SIZE,
+            )
         };
-        if has_more {
-            loop {
-                yield_now().await;
-                // Scoped so `entity` and the DB lock never live across `.await`, keeping the future `Send`.
-                let count = {
-                    let db = db_handle.lock();
-                    let count = prepared.append_batch(&db, entities.by_ref().take(ROWS))?;
-                    if count == 0 {
-                        break;
-                    }
-                    affected.extend([RowsAffected {
-                        rows_affected: Some(count),
-                        last_affected_id: Some(prepared.last_insert_rowid_locked(&db)),
-                    }]);
-                    count
-                };
-                if (count as usize) < ROWS {
-                    break;
-                }
+        while has_more {
+            yield_now().await;
+            // `entity` and `db` drop at the end of each iteration before the next `.await`.
+            let db = db_handle.lock();
+            let count = prepared.append_batch(&db, entities.by_ref().take(BATCH_SIZE))?;
+            if count > 0 {
+                affected.extend([RowsAffected {
+                    rows_affected: Some(count),
+                    last_affected_id: Some(prepared.last_insert_rowid_locked(&db)),
+                }]);
             }
+            has_more = count as usize == BATCH_SIZE;
         }
         if let Some(transaction) = transaction {
             transaction.commit().await?;
