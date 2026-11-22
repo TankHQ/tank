@@ -10,13 +10,11 @@ categories.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-async-stream.workspace = true
 chrono = { workspace = true, optional = true }
 convert_case.workspace = true
 deadpool.workspace = true
 futures.workspace = true
 hex = "0"
-indoc.workspace = true
 itoa = "1"
 log.workspace = true
 proc-macro2.workspace = true

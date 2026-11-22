@@ -4462,13 +4462,11 @@ name = "tank-core"
 version = "0.49.0"
 dependencies = [
  "anyhow",
- "async-stream",
  "chrono",
  "convert_case",
  "deadpool",
  "futures",
  "hex",
- "indoc",
  "itoa",
  "log",
  "proc-macro2",
