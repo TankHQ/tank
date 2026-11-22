@@ -98,6 +98,7 @@ entity.delete(&mut connection).await?;
 
 ## Delete Many
 
+<<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-delete-many [Rust]
 ```rust
 use tank::{Entity, expr};
 

@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 const EXPECTED_SUM: u32 = 68978385; // 1 + .. + 11745 = 68978385
 const EXPECTED_AVG: u32 = 5873; // avg(1, .., 11745) = 5873
-const COUNT: u32 = 11745;
+const COUNT: u64 = 11745;
 
 #[derive(Default, Entity)]
 struct Values {
@@ -26,24 +26,16 @@ pub async fn aggregates(executor: &mut impl Executor) -> Result<()> {
     Values::create_table(executor, false, false).await?;
 
     // Insert 1..11746
-    let mut values = (1..11746).map(|value| Values {
+    let values = (1..11746).map(|value| Values {
         id: value,
         value: value as u32,
     });
-    loop {
-        let rows = values.by_ref().take(2000).collect::<Vec<_>>();
-        if rows.is_empty() {
-            break;
-        }
-        let result = Values::insert_many(executor, &rows).await?;
-        if let Some(affected) = result.rows_affected {
-            assert_eq!(
-                affected,
-                rows.len() as u64,
-                "Values::insert_many should have affected {} rows",
-                rows.len()
-            );
-        }
+    let result = Values::insert_many(executor, values).await?;
+    if let Some(affected) = result.rows_affected {
+        assert_eq!(
+            affected, COUNT,
+            "Values::insert_many should have affected {COUNT} rows",
+        );
     }
 
     // SELECT COUNT(*), SUM(value)
@@ -53,7 +45,6 @@ pub async fn aggregates(executor: &mut impl Executor) -> Result<()> {
                 Sql()
                     .select(cols!(COUNT(*), SUM(Values::value)))
                     .from(Values::table())
-                    .where_expr(true)
                     .build(&executor.driver())
             )
         );
@@ -65,7 +56,7 @@ pub async fn aggregates(executor: &mut impl Executor) -> Result<()> {
             stream.try_next().await?.is_none(),
             "The query is expected to return a single row"
         );
-        let expected = (COUNT as i128, EXPECTED_SUM as i128);
+        let expected = (COUNT as _, EXPECTED_SUM as _);
         let actual = (
             i128::decode_value(row.value(0).unwrap())?,
             i128::decode_value(row.value(1).unwrap())?,
@@ -95,7 +86,7 @@ pub async fn aggregates(executor: &mut impl Executor) -> Result<()> {
             .try_collect::<BTreeSet<_>>()
             .await?;
         assert!(
-            values.into_iter().eq(1..=COUNT),
+            values.into_iter().eq(1..=(COUNT as u32)),
             "The result didn't received from the db contains all the values that were inserted"
         );
     }

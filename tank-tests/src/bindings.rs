@@ -35,7 +35,7 @@ pub struct BoundTypes {
     pub decimal: FixedDecimal<20, 4>,
 }
 
-fn sample() -> BoundTypes {
+fn sample_1() -> BoundTypes {
     BoundTypes {
         id: 7,
         boolean: true,
@@ -56,7 +56,7 @@ fn sample() -> BoundTypes {
     }
 }
 
-fn sample_other() -> BoundTypes {
+fn sample_2() -> BoundTypes {
     BoundTypes {
         id: 8,
         boolean: false,
@@ -86,8 +86,8 @@ pub async fn bindings(executor: &mut impl Executor) -> Result<()> {
     }
     BoundTypes::create_table(executor, true, true).await?;
 
-    let first = sample();
-    let second = sample_other();
+    let first = sample_1();
+    let second = sample_2();
     BoundTypes::insert_many(executor, [first.clone(), second.clone()]).await?;
 
     let mut query = BoundTypes::prepare_find(
@@ -131,18 +131,14 @@ pub async fn bindings(executor: &mut impl Executor) -> Result<()> {
     ] {
         query
             .bind(value.clone())
-            .context(format!("While binding to bind column {name}: {value:?}"))?;
+            .context(format!("While binding to bind field {name}: {value:?}"))?;
     }
     let loaded = executor
         .fetch(&mut query)
         .map(|row| row.and_then(BoundTypes::from_row))
         .try_collect::<Vec<_>>()
         .await?;
-    assert_eq!(
-        loaded.as_slice(),
-        slice::from_ref(&first),
-        "Bound values did not round-trip"
-    );
+    assert_eq!(loaded, &[first], "Bound values did not round-trip");
 
     query.clear_bindings()?;
     for (name, value) in [
@@ -164,7 +160,7 @@ pub async fn bindings(executor: &mut impl Executor) -> Result<()> {
     ] {
         query
             .bind(value.clone())
-            .context(format!("While binding to bind column {name}: {value:?}"))?;
+            .context(format!("While binding to bind field {name}: {value:?}"))?;
     }
     let loaded = executor
         .fetch(&mut query)
@@ -172,9 +168,9 @@ pub async fn bindings(executor: &mut impl Executor) -> Result<()> {
         .try_collect::<Vec<_>>()
         .await?;
     assert_eq!(
-        loaded.as_slice(),
-        slice::from_ref(&second),
-        "Reused statement did not re-read the bindings"
+        loaded,
+        &[second],
+        "Second time bounded values did not round-trip"
     );
 
     Ok(())

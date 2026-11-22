@@ -1,30 +1,34 @@
 #![allow(unused_variables)]
 use crate::silent_logs;
-use std::{collections::HashMap, sync::LazyLock};
-use tank::{AsValue, Entity, Result, Value, ValueOwned, anyhow, expr};
+use std::sync::LazyLock;
 use tokio::sync::Mutex;
-use uuid::Uuid;
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 // #region cheat-sheet-conversion
-#[derive(Clone)]
-pub struct Notes(pub String); // Third party type
-pub struct NotesWrap(pub Notes); // Local wrapper
+use anyhow::anyhow;
+use tank::Entity;
 
-impl AsValue for NotesWrap {
-    fn as_empty_value() -> ValueOwned {
-        Value::Varchar(None)
+#[derive(Clone)]
+pub struct Notes(pub String); // Third party type (cannot impl tank::AsValue)
+pub struct NotesWrap(pub Notes); // Wrapper type defined in this crate
+
+impl tank::AsValue for NotesWrap {
+    fn as_empty_value() -> tank::ValueOwned {
+        tank::Value::Varchar(None) // You decide the value it translates to
     }
-    fn as_value<'a>(self) -> Value<'a>
+    fn as_value<'a>(self) -> tank::Value<'a>
     where
         Self: 'a,
     {
-        Value::Varchar(Some(self.0.0.into()))
+        tank::Value::Varchar(Some(self.0.0.into()))
     }
-    fn decode_value(value: impl AsValue) -> Result<Self> {
-        match value.as_value().try_as(&Value::Varchar(None)) {
-            Ok(Value::Varchar(Some(s))) => Ok(NotesWrap(Notes(s.to_string()))),
+    fn decode_value(value: impl tank::AsValue) -> tank::Result<Self> {
+        // Take advantage of the tank::Value conversion.
+        // Call `value.as_value()try_as(&Self::as_empty_value())` first.
+        match value.as_value().try_as(&Self::as_empty_value()) {
+            // Once you have the specific `tank::Value` variant, convert it back.
+            Ok(tank::Value::Varchar(Some(s))) => Ok(Self(Notes(s.to_string()))),
             _ => Err(anyhow!("Expected Varchar for Notes")),
         }
     }
@@ -42,7 +46,10 @@ impl From<NotesWrap> for Notes {
 // #endregion cheat-sheet-conversion
 
 // #region cheat-sheet-entity
-#[derive(Entity)]
+use std::collections::HashMap;
+use uuid::{Uuid, uuid};
+
+#[derive(tank::Entity)]
 #[tank(
     schema = "army",
     name = "deployments",
@@ -62,7 +69,7 @@ struct EntityExample {
 }
 // #endregion cheat-sheet-entity
 
-pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<()> {
+pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> tank::Result<()> {
     let _lock = MUTEX.lock().await;
 
     {
@@ -75,7 +82,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         region: "North".into(),
         callsign: "Alpha".into(),
         casualties: 0,
-        metadata: Notes("mission".into()),
+        metadata: Notes("mission 1".into()),
         transient_cache: HashMap::new(),
     };
 
@@ -84,7 +91,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         region: "South".into(),
         callsign: "Bravo-2".into(),
         casualties: 3,
-        metadata: Notes("mission-2".into()),
+        metadata: Notes("mission 2".into()),
         transient_cache: HashMap::new(),
     };
     let entity3 = EntityExample {
@@ -92,7 +99,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
         region: "East".into(),
         callsign: "Charlie-3".into(),
         casualties: 5,
-        metadata: Notes("mission-3".into()),
+        metadata: Notes("mission 3".into()),
         transient_cache: HashMap::new(),
     };
 
@@ -124,7 +131,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
                 println!("{}", entity.callsign);
             }
         }
-        let uid = Uuid::parse_str("94f0cbcc-1fce-454e-a6e4-4e3587741808")?;
+        let uid = uuid!("94f0cbcc-1fce-454e-a6e4-4e3587741808");
         let entities: Vec<EntityExample> =
             EntityExample::find_many(&mut connection, expr!(EntityExample::unit_id == #uid), None)
                 .try_collect()
@@ -133,11 +140,13 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> Result<(
     }
 
     {
+        // #region cheat-sheet-delete-many
         let uid = entity2.unit_id;
         EntityExample::delete_many(&mut connection, expr!(EntityExample::unit_id == #uid)).await?;
 
         let uid = entity3.unit_id;
         EntityExample::delete_many(&mut connection, expr!(EntityExample::unit_id == #uid)).await?;
+        // #endregion cheat-sheet-delete-many
     }
 
     #[cfg(not(feature = "disable-transactions"))]
