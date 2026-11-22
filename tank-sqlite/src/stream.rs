@@ -170,10 +170,9 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
         }
     }
     #[inline(always)]
-    fn poll_item<T>(
+    fn poll_item<T: From<SQLiteRow>>(
         &mut self,
         cx: &mut Context<'_>,
-        wrap_row: impl FnOnce(SQLiteRow) -> T,
         prepare_next: impl FnOnce(&mut Self) -> Result<Option<T>>,
     ) -> Poll<Option<Result<T>>> {
         if self.remaining == 0 {
@@ -184,7 +183,7 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
         self.remaining -= 1;
         if self.state == State::Stepping {
             match self.do_step_current_prepared() {
-                Ok(Some(row)) => return Poll::Ready(Some(Ok(wrap_row(row)))),
+                Ok(Some(row)) => return Poll::Ready(Some(Ok(row.into()))),
                 Ok(None) => self.finish_statement(),
                 Err(error) => {
                     self.finish_statement();
@@ -209,7 +208,7 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Stream for SQLiteStream<'_, Q> {
     #[inline(always)]
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = unsafe { self.get_unchecked_mut() };
-        this.poll_item(cx, QueryResult::Row, Self::prepare_next_statement)
+        this.poll_item(cx, Self::prepare_next_statement)
     }
 }
 
@@ -239,6 +238,6 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Stream for SQLiteRowStream<'_, Q> {
     #[inline(always)]
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = &mut unsafe { self.get_unchecked_mut() }.0;
-        this.poll_item(cx, |row| row, SQLiteStream::prepare_next_row)
+        this.poll_item(cx, SQLiteStream::prepare_next_row)
     }
 }
