@@ -4,7 +4,7 @@
 
 # tank-scylladb
 
-`tank-scylladb` is the ScyllaDB and Cassandra driver for [Tank](https://crates.io/crates/tank): the Rust data layer.
+`tank-scylladb` is the ScyllaDB and Cassandra driver for [**Tank**: the Rust data layer](https://crates.io/crates/tank).
 
 It maps Tank operations and queries to native CQL commands. Use it with the main [`tank`](https://crates.io/crates/tank) crate, which provides entity definitions and the query API.
 

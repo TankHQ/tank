@@ -4,7 +4,7 @@
 
 # tank-mysql
 
-`tank-mysql` is the MySQL and MariaDB driver for [Tank](https://crates.io/crates/tank): the Rust data layer.
+`tank-mysql` is the MySQL and MariaDB driver for [**Tank**: the Rust data layer](https://crates.io/crates/tank).
 
 It maps Tank operations and queries to native MySQL and MariaDB commands. Use it with the main [`tank`](https://crates.io/crates/tank) crate, which provides entity definitions and the query API.
 

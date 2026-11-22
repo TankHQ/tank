@@ -4,7 +4,7 @@
 
 # tank-tests
 
-Reusable integration test suite for [Tank](https://crates.io/crates/tank): the Rust data layer.
+Reusable integration test suite for [**Tank**: the Rust data layer](https://crates.io/crates/tank).
 
 Instead of duplicating many nearly identical tests inside every driver crate, `tank-tests` centralizes them with feature flags so each driver can opt out gracefully skipping unsupported features.
 

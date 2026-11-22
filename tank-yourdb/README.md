@@ -4,7 +4,7 @@
 
 # tank-yourdb
 
-`tank-yourdb` is the driver template for [Tank](https://crates.io/crates/tank): the Rust data layer.
+`tank-yourdb` is the driver template for [**Tank**: the Rust data layer](https://crates.io/crates/tank).
 
 Use this crate as a starting point when implementing a new driver for Tank.
 

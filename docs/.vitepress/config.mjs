@@ -3,7 +3,7 @@ import { defineConfig } from "vitepress"
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
     title: "Tank",
-    description: "Table Abstraction and Navigation Kit",
+    description: "Tank (Table Abstraction & Navigation Kit): the Rust data layer",
     base: "/tank/",
     srcExclude: ["components/**"],
     themeConfig: {
