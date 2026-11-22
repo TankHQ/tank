@@ -17,7 +17,10 @@ enum State {
 }
 
 /// Lazily runs one prepared statement or each statement in raw SQL, yielding rows or effects.
-pub(crate) struct SQLiteStream<'s, Q: AsMut<Query<SQLiteDriver>>> {
+pub(crate) struct SQLiteStream<'s, Q>
+where
+    Q: AsMut<Query<SQLiteDriver>>,
+{
     connection: &'s mut SQLiteConnection,
     query: Q,
     current_statement: Option<SQLitePrepared>,
@@ -26,7 +29,10 @@ pub(crate) struct SQLiteStream<'s, Q: AsMut<Query<SQLiteDriver>>> {
     state: State,
 }
 
-impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
+impl<'s, Q> SQLiteStream<'s, Q>
+where
+    Q: AsMut<Query<SQLiteDriver>>,
+{
     const BATCH_SIZE: u16 = 256;
 
     #[inline(always)]
@@ -92,12 +98,10 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
                     self.connection.prepare_statement::<false, false>(rest)?;
                 if consumed == 0 {
                     hint::cold_path();
-                    let error = anyhow!("SQLite made no progress while preparing the query")
-                        .context(format!(
-                            "At byte {} of:\n{}",
-                            self.offset,
-                            truncate_long(sql)
-                        ));
+                    let error =
+                        anyhow!("SQLite made no progress while preparing the query").context(
+                            format!("At byte {} of:\n{}", self.offset, truncate_long(sql)),
+                        );
                     log::error!("{error:#}");
                     return Err(error);
                 }
@@ -202,7 +206,10 @@ impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteStream<'s, Q> {
     }
 }
 
-impl<Q: AsMut<Query<SQLiteDriver>>> Stream for SQLiteStream<'_, Q> {
+impl<Q> Stream for SQLiteStream<'_, Q>
+where
+    Q: AsMut<Query<SQLiteDriver>>,
+{
     type Item = Result<QueryResult<SQLiteRow>>;
 
     #[inline(always)]
@@ -223,16 +230,24 @@ impl<Q: AsMut<Query<SQLiteDriver>>> Drop for SQLiteStream<'_, Q> {
 }
 
 /// Row-only stream returned by `Executor::fetch`, avoiding `QueryResult` wrapping per row.
-pub(crate) struct SQLiteRowStream<'s, Q: AsMut<Query<SQLiteDriver>>>(SQLiteStream<'s, Q>);
+pub(crate) struct SQLiteRowStream<'s, Q>(SQLiteStream<'s, Q>)
+where
+    Q: AsMut<Query<SQLiteDriver>>;
 
-impl<'s, Q: AsMut<Query<SQLiteDriver>>> SQLiteRowStream<'s, Q> {
+impl<'s, Q> SQLiteRowStream<'s, Q>
+where
+    Q: AsMut<Query<SQLiteDriver>>,
+{
     #[inline(always)]
     pub(crate) const fn new(connection: &'s mut SQLiteConnection, query: Q) -> Self {
         Self(SQLiteStream::new(connection, query))
     }
 }
 
-impl<Q: AsMut<Query<SQLiteDriver>>> Stream for SQLiteRowStream<'_, Q> {
+impl<Q> Stream for SQLiteRowStream<'_, Q>
+where
+    Q: AsMut<Query<SQLiteDriver>>,
+{
     type Item = Result<SQLiteRow>;
 
     #[inline(always)]

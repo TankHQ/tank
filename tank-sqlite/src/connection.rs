@@ -65,7 +65,6 @@ impl SQLiteConnection {
         );
         // SQLite stops after the first statement's semicolon or at a NUL byte.
         let consumed = (tail as usize).wrapping_sub(ptr as usize);
-        // A prepared statement must hold one, unlike the stream walking empty statements.
         if SINGLE_STATEMENT && statement.is_null() {
             hint::cold_path();
             let error = anyhow!("No statement to prepare").context(make_context());
