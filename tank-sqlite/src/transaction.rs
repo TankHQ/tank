@@ -13,13 +13,15 @@ pub struct SQLiteTransaction<'c> {
 }
 
 impl<'c> SQLiteTransaction<'c> {
+    fn sql_cstr(write: fn(&SQLiteSqlWriter, &mut AnyQuery)) -> CString {
+        let mut out = AnyQuery::default();
+        write(&SQLiteSqlWriter {}, &mut out);
+        unsafe { CString::from_vec_unchecked(mem::take(out.buffer().as_mut_vec())) }
+    }
+
     pub(crate) fn new(connection: &'c mut SQLiteConnection) -> Result<Self> {
-        static BEGIN: LazyLock<CString> = LazyLock::new(|| {
-            let mut out = AnyQuery::default();
-            let writer = SQLiteSqlWriter {};
-            writer.write_transaction_begin(&mut out);
-            unsafe { CString::from_vec_unchecked(mem::take(out.buffer().as_mut_vec())) }
-        });
+        static BEGIN: LazyLock<CString> =
+            LazyLock::new(|| SQLiteTransaction::sql_cstr(SQLiteSqlWriter::write_transaction_begin));
         let transaction = Self {
             connection,
             is_done: false,
@@ -30,10 +32,7 @@ impl<'c> SQLiteTransaction<'c> {
 
     fn do_commit(&mut self) -> Result<()> {
         static COMMIT: LazyLock<CString> = LazyLock::new(|| {
-            let mut out = AnyQuery::default();
-            let writer = SQLiteSqlWriter {};
-            writer.write_transaction_commit(&mut out);
-            unsafe { CString::from_vec_unchecked(mem::take(out.buffer().as_mut_vec())) }
+            SQLiteTransaction::sql_cstr(SQLiteSqlWriter::write_transaction_commit)
         });
         self.connection.do_execute(&COMMIT)?;
         self.is_done = true;
@@ -42,10 +41,7 @@ impl<'c> SQLiteTransaction<'c> {
 
     fn do_rollback(&mut self) -> Result<()> {
         static ROLLBACK: LazyLock<CString> = LazyLock::new(|| {
-            let mut out = AnyQuery::default();
-            let writer = SQLiteSqlWriter {};
-            writer.write_transaction_rollback(&mut out);
-            unsafe { CString::from_vec_unchecked(mem::take(out.buffer().as_mut_vec())) }
+            SQLiteTransaction::sql_cstr(SQLiteSqlWriter::write_transaction_rollback)
         });
         self.connection.do_execute(&ROLLBACK)?;
         self.is_done = true;

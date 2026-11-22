@@ -51,11 +51,6 @@ impl SQLitePrepared {
         self.statement.belongs_to(&connection.db)
     }
 
-    #[inline(always)]
-    pub(crate) fn last_insert_rowid_locked(&self, db: &RawDb) -> i64 {
-        unsafe { sqlite3_last_insert_rowid(db.as_ptr()) }
-    }
-
     fn fmt_statement(statement: *mut sqlite3_stmt, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unsafe {
             f.write_str("SQLitePrepared:")?;
@@ -152,47 +147,43 @@ impl SQLitePrepared {
         Self::do_step_row_locked(&db, self.statement.as_ptr(&db), &mut self.row, initialize)
     }
 
-    /// Steps once under a held DB lock, expects `SQLITE_DONE`, and resets for the next row.
-    #[inline(always)]
-    fn do_step_reset_locked(&mut self, db: &RawDb) -> Result<()> {
-        let statement = self.statement.as_ptr(db);
-        unsafe {
-            if sqlite3_step(statement) != SQLITE_DONE {
-                hint::cold_path();
-                return Err(Self::step_error(db, statement));
-            }
-            sqlite3_reset(statement);
-        }
-        self.index = 0;
-        Ok(())
-    }
-
-    /// Binds and steps a batch of entities under a held DB lock.
+    /// Binds and steps a batch of entities under a single DB lock, returning affected rows.
     ///
     /// Borrowed strings and blobs bind with `SQLITE_STATIC` because each entity
     /// lives across `bind`, `step`, and `reset`, and `self` is never exposed to callers.
     pub(crate) fn append_batch<E: AsEntity>(
         &mut self,
-        db: &RawDb,
         batch: impl IntoIterator<Item = E>,
-    ) -> Result<u64> {
+    ) -> Result<RowsAffected> {
+        let db = self.statement.lock();
+        let statement = self.statement.as_ptr(&db);
         let mut count = 0;
         for entity in batch {
             for value in entity.as_entity().row_values() {
                 let index = self.index;
                 Self::bind_value::<true>(
-                    db,
-                    self.statement.as_ptr(db),
+                    &db,
+                    statement,
                     &mut self.draft,
                     &mut self.index,
                     value,
                     index,
                 )?;
             }
-            self.do_step_reset_locked(db)?;
+            unsafe {
+                if sqlite3_step(statement) != SQLITE_DONE {
+                    hint::cold_path();
+                    return Err(Self::step_error(&db, statement));
+                }
+                sqlite3_reset(statement);
+            }
+            self.index = 0;
             count += 1;
         }
-        Ok(count)
+        Ok(RowsAffected {
+            rows_affected: Some(count),
+            last_affected_id: Some(unsafe { sqlite3_last_insert_rowid(db.as_ptr()) }),
+        })
     }
 
     /// Runs a statement's first step for `fetch`, returning its first row or draining if columnless.

@@ -13,7 +13,7 @@ use std::{
 };
 use tank_core::{
     AnyQuery, AsEntity, AsQuery, ColumnDef, Connection, Driver, Entity, ErrorContext, Executor,
-    Operand, QueryResult, Result, Row, RowsAffected, Sql, Transaction, describe_path,
+    Operand, QueryResult, Result, Row, RowsAffected, Sql, TableRef, Transaction, describe_path,
     stream::Stream, truncate_long,
 };
 
@@ -132,6 +132,31 @@ impl SQLiteConnection {
         );
         Ok(())
     }
+
+    fn prepare_append(
+        &mut self,
+        table: &'static TableRef,
+    ) -> Result<(SQLitePrepared, Option<SQLiteTransaction<'_>>)> {
+        let mut out = mem::take(&mut self.draft);
+        out.clear(); // Clear the content, keep the allocated memory
+        Sql()
+            .insert_into(table)
+            .columns(table.columns.iter().map(ColumnDef::name))
+            .values([iter::repeat_n(&Operand::QuestionMark, table.columns.len())])
+            .write_into(&self.driver().sql_writer(), &mut out);
+        let prepared = self
+            .prepare_statement::<true, false>(out.buffer())
+            .map(|(prepared, _)| prepared);
+        self.draft = out;
+        let prepared = prepared?;
+        let transaction = if self.is_autocommit() {
+            // Start a transaction if not inside one so the append either all succeeds or rolls back.
+            Some(SQLiteTransaction::new(self)?)
+        } else {
+            None
+        };
+        Ok((prepared, transaction))
+    }
 }
 
 impl Connection for SQLiteConnection {
@@ -222,69 +247,36 @@ impl Executor for SQLiteConnection {
         It::IntoIter: Send,
         It::Item: AsEntity,
     {
-        const BATCH_SIZE: usize = 255;
+        const BATCH_SIZE: usize = 256;
         let table = <It::Item as AsEntity>::Entity::table();
         let mut entities = entities.into_iter();
         let mut affected = RowsAffected::default();
-        // Scoped so `first` and the DB lock never live across `.await`, keeping the future `Send`.
-        let (mut prepared, db_handle, transaction, mut has_more) = {
-            let Some(first) = entities.next() else {
-                return Ok(affected);
-            };
-            let mut prepared = {
-                let mut out = mem::take(&mut self.draft);
-                out.clear(); // Clear the content, keep the allocated memory
-                Sql()
-                    .insert_into(table)
-                    .columns(table.columns.iter().map(ColumnDef::name))
-                    .values([iter::repeat_n(&Operand::QuestionMark, table.columns.len())])
-                    .write_into(&self.driver().sql_writer(), &mut out);
-                let prepared = self
-                    .prepare_statement::<true, false>(out.buffer())
-                    .map(|(prepared, _)| prepared);
-                self.draft = out;
-                prepared?
-            };
-            let db_handle = self.db.clone();
-            let transaction = if self.is_autocommit() {
-                // Start a transaction if not inside one so the append either all succeeds or rolls back.
-                Some(SQLiteTransaction::new(self)?)
-            } else {
-                None
-            };
-            let count = {
-                let db = db_handle.lock();
-                let count = prepared.append_batch(
-                    &db,
-                    iter::once(first).chain(entities.by_ref()).take(BATCH_SIZE),
-                )?;
-                affected.extend([RowsAffected {
-                    rows_affected: Some(count),
-                    last_affected_id: Some(prepared.last_insert_rowid_locked(&db)),
-                }]);
-                count
-            };
-            (
-                prepared,
-                db_handle,
-                transaction,
-                count as usize == BATCH_SIZE,
-            )
-        };
-        while has_more {
-            yield_now().await;
-            // `entity` and `db` drop at the end of each iteration before the next `.await`.
-            let db = db_handle.lock();
-            let count = prepared.append_batch(&db, entities.by_ref().take(BATCH_SIZE))?;
-            if count > 0 {
-                affected.extend([RowsAffected {
-                    rows_affected: Some(count),
-                    last_affected_id: Some(prepared.last_insert_rowid_locked(&db)),
-                }]);
+        let mut connection = Some(self);
+        let mut state = None;
+        loop {
+            if state.is_some() {
+                yield_now().await;
             }
-            has_more = count as usize == BATCH_SIZE;
+            let Some(first) = entities.next() else {
+                break;
+            };
+            let (prepared, _) = match state.as_mut() {
+                Some(state) => state,
+                None => {
+                    let Some(connection) = connection.take() else {
+                        break;
+                    };
+                    state.insert(connection.prepare_append(table)?)
+                }
+            };
+            let batch = prepared
+                .append_batch(iter::once(first).chain(entities.by_ref()).take(BATCH_SIZE))?;
+            affected.extend([batch]);
+            if batch.rows_affected.unwrap_or_default() < BATCH_SIZE as u64 {
+                break;
+            }
         }
-        if let Some(transaction) = transaction {
+        if let Some((_, Some(transaction))) = state {
             transaction.commit().await?;
         }
         Ok(affected)
