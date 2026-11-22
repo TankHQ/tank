@@ -3,9 +3,12 @@
 </div>
 
 # Tank
-Tank (Table Abstraction & Navigation Kit) is the Rust data layer that lets you define an entity once and use the same explicit query API across a wide range of database management systems.
 
-**One entity model. Any terrain.**
+**Tank (Table Abstraction & Navigation Kit)**: the Rust data layer
+
+[![Crates.io](https://img.shields.io/crates/v/tank.svg)](https://crates.io/crates/tank)
+[![Docs.rs](https://docs.rs/tank/badge.svg)](https://docs.rs/tank)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 📘 **Docs:** https://tankhq.github.io/tank
 
@@ -13,46 +16,40 @@ Tank (Table Abstraction & Navigation Kit) is the Rust data layer that lets you d
 
 📦 **Crate:** https://crates.io/crates/tank
 
-## Mission Briefing
-In plain terms, Tank is a thin layer over your database workflow for Rust teams that need one interface across different databases. Whether you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or managing a Postgres stronghold, Tank keeps your entity and query code consistent. You define your entities. Tank and your chosen driver handle the ballistics.
+Tank lets you define a Rust struct once with `#[derive(Entity)]` and run typed, streaming queries across relational, analytical, document, wide-column, and key-value databases without rewriting your data model or giving up control over the queries being executed.
 
-**Known battlefields**:
-- Postgres
-- SQLite
-- MySQL/MariaDB
-- DuckDB
-- MongoDB
-- ScyllaDB/Cassandra
-- Valkey/Redis
+## Supported Databases
 
-## Mission Objectives
-Tank aims to provide a clean ORM design focused on ergonomics, flexibility and broad database support.
+All drivers live in separate crates behind `tank-core` traits and are validated against the same shared integration suite (`tank-tests`):
 
-- **Async operations** - Streaming database operations exposed through an async Rust API.
-- **Designed to be extensible** - Swap database drivers without changing Tank's core.
-- **SQL and NoSQL support** - One Tank, all terrains.
-- **Transaction abstraction** - Commit on success or rollback and retreat.
-- **Rich type arsenal** - Automatic conversions between Rust and database types.
-- **Optional appender API** - High caliber bulk inserts where the database supports them.
-- **TLS** - Encrypted supply lines for network drivers when configured.
-- **Joins** - Explicit multi-unit coordination.
-- **Raw SQL** - Bypass the query builder on drivers that accept SQL or CQL.
-- **Zero setup** - Skip training. Go straight to live fire.
+- [Postgres](https://crates.io/crates/tank-postgres)
+- [SQLite](https://crates.io/crates/tank-sqlite)
+- [MySQL / MariaDB](https://crates.io/crates/tank-mysql)
+- [DuckDB](https://crates.io/crates/tank-duckdb)
+- [MongoDB](https://crates.io/crates/tank-mongodb)
+- [ScyllaDB / Cassandra](https://crates.io/crates/tank-scylladb)
+- [Valkey / Redis](https://crates.io/crates/tank-valkey)
+
+See the [Capabilities Matrix](https://tankhq.github.io/tank/04-capabilities.html) for per-driver feature support and engine caveats.
+
+## Design Principles
+
+- **One entity definition, zero setup**: Derive `Entity` on a plain Rust struct to get table creation, upserts, inserts, typed queries, and row decoding. No schema CLI or external build step required.
+- **Explicit queries with `expr!`**: Filter, project, order, and join using typed Rust expressions compiled into an AST that each driver translates into its native dialect. Drop down to raw SQL or CQL whenever you want.
+- **Streaming by default**: Query results stream asynchronously rather than buffering whole result sets up front. Where a database provides native bulk ingestion (Postgres, SQLite, DuckDB), Tank uses it.
+- **Extensible driver model**: Database support lives behind `Driver`, `Connection`, `Executor`, `Prepared`, and `SqlWriter` traits. You can write a [custom driver](https://tankhq.github.io/tank/10-drivers.html) for another SQL or NoSQL store without touching `tank-core`.
+- **Rich type mapping**: Built-in conversions for standard Rust types, decimals, dates, UUIDs, intervals, JSON, arrays, and maps, plus `AsValue` for custom types. Network drivers support TLS when configured in the connection URL.
 
 ## No-Fly Zone
-- No schema migrations (only table creation and drop for fast setup).
-- No implicit joins (no entities as fields, joins are explicit, every alliance is signed).
 
-## Why Tank?
-**Intelligence Report**: Existing Rust data layers are effective, but Tank takes a different approach: one entity definition, explicit queries and an extensible driver model for SQL and NoSQL databases.
+Some features are deliberately out of scope:
 
-**1. Modular Architecture**: Database support lives behind driver traits rather than a hardcoded list in the core library. A driver can be implemented for a new SQL or NoSQL database without changing Tank itself. If it can hold data, Tank can likely target it.
-
-**2. Zero Boilerplate**: Field operations shouldn't require filling out forms in triplicate. Define a normal Rust struct once, then let Tank's macros derive table creation, selection and insertion. The result is less setup for tests and prototypes, with the same API available across production backends.
+- **No schema migrations**: Tank creates and drops tables for fast setup, tests, and prototypes, then stays out of the way of dedicated migration tools.
+- **No implicit joins or nested entities**: Entities never hold other entities as fields. Joins are explicit via `join!`, so an innocent field access will never hide an N+1 query.
 
 ## Operational Guide
 
-*For more examples, check the [cheat sheet](https://tankhq.github.io/tank/00-cheat-sheet.html).*
+*Looking for more patterns? See the [cheat sheet](https://tankhq.github.io/tank/00-cheat-sheet.html).*
 
 <!-- #region getting-started -->
 1) Arm your cargo
@@ -63,7 +60,7 @@ cargo add tokio --features macros,rt-multi-thread
 
 2) Choose your battlefield
 
-Check the [drivers list](https://tankhq.github.io/tank/01-introduction.html#drivers) and select one that matches your terrain.
+Check the [drivers list](https://tankhq.github.io/tank/01-introduction.html#drivers) and pick the one matching your terrain. This example uses DuckDB so you can run it locally with zero setup.
 ```sh
 cargo add tank-duckdb
 ```
@@ -88,7 +85,7 @@ pub struct Tank {
 }
 ```
 
-4) Fire for effect
+4) Fire a query
 ```rust
 use std::collections::HashSet;
 use tank::{ConnectionPool, Driver, PoolConfig, expr, stream::TryStreamExt};
@@ -197,10 +194,9 @@ Place both Rust snippets in `src/main.rs` and run `cargo run`. Tank will create 
 <!-- #endregion getting-started -->
 
 ## Support the Mission
-Building and maintaining drivers for several database families is a major effort. **If Tank saves your company time, infrastructure headaches, or boilerplate, please consider supporting its development.**
 
-Sponsorship helps keep Tank maintained, well-tested and moving toward new capabilities faster.
+Tank is an independent project maintained by [barsdeveloper](https://github.com/barsdeveloper). Building and testing drivers across several database families takes steady work, and sponsorship directly buys time for new drivers, bug fixes, and performance improvements.
 
-🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**. Tank is carefully designed, written and maintained by (human) [barsdeveloper](https://github.com/barsdeveloper).
+If Tank is useful to you or your team, please consider [sponsoring via GitHub Sponsors](https://github.com/sponsors/TankHQ).
 
 *Rustaceans don't hide behind ORMs, they drive Tanks.*

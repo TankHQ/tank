@@ -66,7 +66,7 @@ const drivers = [
 ]
 </script>
 
-Welcome to the armored division, commander. Tank (**T**able **A**bstraction & **N**avigation **K**it) is the Rust data layer built for teams fighting across multiple fronts. Whether you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or holding a Postgres stronghold, you define your entities once and issue the same explicit orders everywhere. You call the targets, Tank and your driver handle the ballistics.
+Welcome to the armored division, commander. **Tank (Table Abstraction & Navigation Kit)**: the Rust data layer. Define your entities once and issue the same explicit orders across SQL and NoSQL backends, from a local SQLite file to a Postgres cluster or a distributed ScyllaDB deployment.
 
 <dl class="home-stats">
   <div><dt>10</dt><dd>Database backends</dd></div>
@@ -150,11 +150,10 @@ cargo add tank-duckdb   # choose your battlefield
 
 ###### 05 · Logistics
 ## Support the Mission
-Building and maintaining drivers for several database families is a major effort. **If Tank saves your company time, infrastructure headaches, or boilerplate, please consider supporting its development.**
 
-Sponsorship helps keep Tank maintained, well-tested and moving toward new capabilities faster.
+Tank is an independent project maintained by [barsdeveloper](https://github.com/barsdeveloper). Building and testing drivers across several database families takes steady work, and sponsorship directly buys time for new drivers, bug fixes, and performance improvements.
 
-🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**. Tank is carefully designed, written and maintained by (human) [barsdeveloper](https://github.com/barsdeveloper).
+If Tank is useful to you or your team, please consider [sponsoring via GitHub Sponsors](https://github.com/sponsors/TankHQ).
 
 ###### 06 · Get a joke
 

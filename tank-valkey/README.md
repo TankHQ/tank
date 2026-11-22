@@ -4,7 +4,7 @@
 
 # tank-valkey
 
-`tank-valkey` is the Valkey and Redis driver for [Tank](https://crates.io/crates/tank): the Rust data layer.
+`tank-valkey` is the Valkey and Redis driver for [**Tank**: the Rust data layer](https://crates.io/crates/tank).
 
 It maps Tank operations and queries to native key-value commands through the [`redis`](https://crates.io/crates/redis) crate. It supports both Valkey and Redis servers.
 

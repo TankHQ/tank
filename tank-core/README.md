@@ -4,7 +4,7 @@
 
 # tank-core
 
-Core logic and traits for [Tank](https://crates.io/crates/tank): the Rust data layer.
+Core logic and traits for [**Tank**: the Rust data layer](https://crates.io/crates/tank).
 
 This crate defines the types that form the foundation of the library. It is intended to be used by driver implementors. For application development, depend on `tank` instead.
 

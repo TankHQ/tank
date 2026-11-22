@@ -7,7 +7,7 @@ use tank::{
     stream::{StreamExt, TryStreamExt},
 };
 use tokio::sync::Mutex;
-use uuid::Uuid;
+use uuid::{Uuid, uuid};
 
 static MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
@@ -48,27 +48,27 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
     Book::create_table(executor, false, true).await?;
 
     // Author objects
-    let authors = vec![
+    let authors = [
         Author {
-            id: Uuid::parse_str("f938f818-0a40-4ce3-8fbc-259ac252a1b5").unwrap(),
+            id: uuid!("f938f818-0a40-4ce3-8fbc-259ac252a1b5"),
             name: "J.K. Rowling".into(),
             country: "UK".into(),
             books_published: 24.into(),
         },
         Author {
-            id: Uuid::parse_str("a73bc06a-ff89-44b9-a62f-416ebe976285").unwrap(),
+            id: uuid!("a73bc06a-ff89-44b9-a62f-416ebe976285"),
             name: "J.R.R. Tolkien".into(),
             country: "USA".into(),
             books_published: 6.into(),
         },
         Author {
-            id: Uuid::parse_str("6b2f56a1-316d-42b9-a8ba-baca42c5416c").unwrap(),
+            id: uuid!("6b2f56a1-316d-42b9-a8ba-baca42c5416c"),
             name: "Dmitrij Gluchovskij".into(),
             country: "Russia".into(),
             books_published: 7.into(),
         },
         Author {
-            id: Uuid::parse_str("d3d3d3d3-d3d3-d3d3-d3d3-d3d3d3d3d3d3").unwrap(),
+            id: uuid!("d3d3d3d3-d3d3-d3d3-d3d3-d3d3d3d3d3d3"),
             name: "Linus Torvalds".into(),
             country: "Finland".into(),
             books_published: None,
@@ -79,7 +79,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
     let gluchovskij_id = authors[2].id.clone();
 
     // Book objects
-    let books = vec![
+    let books = [
         Book {
             #[cfg(not(feature = "disable-arrays"))]
             isbn: [9, 7, 8, 0, 7, 4, 7, 5, 3, 2, 6, 9, 9],
@@ -123,24 +123,22 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
     ];
 
     // Insert
-    let result = Author::insert_many(executor, authors.iter()).await?;
+    let result = Author::insert_many(executor, authors).await?;
     if let Some(affected) = result.rows_affected {
         assert_eq!(affected, 4);
     }
-    let result = Book::insert_many(executor, books.iter()).await?;
+    let result = Book::insert_many(executor, books).await?;
     if let Some(affected) = result.rows_affected {
         assert_eq!(affected, 5);
     }
 
     // Find authors
-    let id = Uuid::parse_str("f938f818-0a40-4ce3-8fbc-259ac252a1b5")
-        .unwrap()
-        .as_value();
+    let id = uuid!("f938f818-0a40-4ce3-8fbc-259ac252a1b5").as_value();
     let author = Author::find_one(executor, expr!(Author::id == #id)).await?;
     assert_eq!(
         author,
         Some(Author {
-            id: Uuid::parse_str("f938f818-0a40-4ce3-8fbc-259ac252a1b5").unwrap(),
+            id: uuid!("f938f818-0a40-4ce3-8fbc-259ac252a1b5"),
             name: "J.K. Rowling".into(),
             country: "UK".into(),
             books_published: 24.into(),
@@ -151,7 +149,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
     assert_eq!(
         author,
         Some(Author {
-            id: Uuid::parse_str("d3d3d3d3-d3d3-d3d3-d3d3-d3d3d3d3d3d3").unwrap(),
+            id: uuid!("d3d3d3d3-d3d3-d3d3-d3d3-d3d3d3d3d3d3"),
             name: "Linus Torvalds".into(),
             country: "Finland".into(),
             books_published: None,
@@ -173,7 +171,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
                 Sql()
                     .select(cols!(B.title, A.name))
                     .from(join!(Book B JOIN Author A ON B.author == A.author_id))
-                    .where_expr(expr!(B.year < 2000))
+                    .where_expr(expr!(B.year < 2_000))
                     .order_by(cols!(B.title DESC))
                     .build(&executor.driver()),
             )
@@ -205,7 +203,6 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
                 Sql()
                     .select(cols!(B.title, A1.name as author, A2.name as co_author))
                     .from(dataset)
-                    .where_expr(true)
                     .build(&executor.driver()),
             )
             .try_collect::<Vec<_>>()
@@ -269,7 +266,6 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
                 Sql()
                     .select(cols!(Book::title, Author::name as author, Book::year))
                     .from(join!(Book JOIN Author ON Book::author == Author::id))
-                    .where_expr(true)
                     .build(&executor.driver()),
             )
             .and_then(|row| async { Books::from_row(row) })
@@ -309,7 +305,7 @@ pub async fn books(executor: &mut impl Executor) -> Result<()> {
             #[cfg(not(feature = "disable-arrays"))]
             isbn: [9, 7, 8, 1, 7, 3, 3, 5, 6, 1, 0, 8, 0],
             title: "My book".into(),
-            author: Uuid::parse_str("c18c04b4-1aae-48a3-9814-9b70f7a38315").unwrap(),
+            author: uuid!("c18c04b4-1aae-48a3-9814-9b70f7a38315"),
             co_author: None,
             year: 2025,
         };

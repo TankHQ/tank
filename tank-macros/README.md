@@ -4,7 +4,7 @@
 
 # tank-macros
 
-Procedural macros for [Tank](https://crates.io/crates/tank): the Rust data layer.
+Procedural macros for [**Tank**: the Rust data layer](https://crates.io/crates/tank).
 
 This crate defines procedural macros used for code generation purposes. It exists in a separate crate to overcome a Rust build system limitation. For application development, depend on `tank` instead.
 

@@ -4,7 +4,7 @@
 
 # tank-duckdb
 
-`tank-duckdb` is the DuckDB driver for [Tank](https://crates.io/crates/tank): the Rust data layer.
+`tank-duckdb` is the DuckDB driver for [**Tank**: the Rust data layer](https://crates.io/crates/tank).
 
 It maps Tank operations and queries to native DuckDB commands. Use it with the main [`tank`](https://crates.io/crates/tank) crate, which provides entity definitions and the query API.
 

@@ -4,32 +4,29 @@
 # Introduction
 ###### *Field Manual Section 1* - Mission Briefing
 
-Welcome to the Tank field manual. This is the quick guide for developers who want to drive, fight and survive with Tank (Table Abstraction & Navigation Kit): the Rust data layer.
+Welcome to the Tank field manual. This is the quick guide for developers who want to drive, fight and survive with **Tank (Table Abstraction & Navigation Kit)**: the Rust data layer.
 
-In plain terms, Tank is a thin layer over your database workflow for Rust teams that need one interface across different databases. Whether you are digging into a local SQLite trench, coordinating a distributed ScyllaDB offensive, or managing a Postgres stronghold, Tank keeps your entity and query code consistent. You define your entities. Tank and your chosen driver handle the ballistics.
+Tank lets you define a Rust struct once with `#[derive(Entity)]` and run typed, streaming queries across relational, analytical, document, wide-column, and key-value databases without rewriting your data model or giving up control over the queries being executed.
 
-## Mission Objectives
-Tank aims to provide a clean ORM design focused on ergonomics, flexibility and broad database support.
+## Design Principles
 
-- **Async operations** - Streaming database operations exposed through an async Rust API.
-- **Designed to be extensible** - Swap database drivers without changing Tank's core.
-- **SQL and NoSQL support** - One Tank, all terrains.
-- **Transaction abstraction** - Commit on success or rollback and retreat.
-- **Rich type arsenal** - Automatic conversions between Rust and database types.
-- **Optional appender API** - High caliber bulk inserts where the database supports them.
-- **TLS** - Encrypted supply lines for network drivers when configured.
-- **Joins** - Explicit multi-unit coordination.
-- **Raw SQL** - Bypass the query builder on drivers that accept SQL or CQL.
-- **Zero setup** - Skip training. Go straight to live fire.
+- **One entity definition, zero setup**: Derive `Entity` on a plain Rust struct to get table creation, upserts, inserts, typed queries, and row decoding. No schema CLI or external build step required.
+- **Explicit queries with `expr!`**: Filter, project, order, and join using typed Rust expressions compiled into an AST that each driver translates into its native dialect. Drop down to raw SQL or CQL whenever you want.
+- **Streaming by default**: Query results stream asynchronously rather than buffering whole result sets up front. Where a database provides native bulk ingestion (Postgres, SQLite, DuckDB), Tank uses it.
+- **Extensible driver model**: Database support lives behind `Driver`, `Connection`, `Executor`, `Prepared`, and `SqlWriter` traits. You can write a [custom driver](10-drivers.md) for another SQL or NoSQL store without touching `tank-core`.
+- **Rich type mapping**: Built-in conversions for standard Rust types, decimals, dates, UUIDs, intervals, JSON, arrays, and maps, plus `AsValue` for custom types. Network drivers support TLS when configured in the connection URL.
 
 ## No-Fly Zone
-- No schema migrations (only table creation and drop for fast setup).
-- No implicit joins (no entities as fields, joins are explicit, every alliance is signed).
+
+Some features are deliberately out of scope:
+
+- **No schema migrations**: Tank creates and drops tables for fast setup, tests, and prototypes, then stays out of the way of dedicated migration tools.
+- **No implicit joins or nested entities**: Entities never hold other entities as fields. Joins are explicit via `join!`, so an innocent field access will never hide an N+1 query.
 
 ## Equipment
 ###### Core Arsenal
 - [**tank**](https://crates.io/crates/tank): The command vehicle, main crate to use together with a driver.
-- [**tank-core**](https://crates.io/crates/tank-core): All the heavy machinery that makes the Tank move.
+- [**tank-core**](https://crates.io/crates/tank-core): All the heavy machinery that makes Tank move.
 - [**tank-macros**](https://crates.io/crates/tank-macros): Derives and helper macros.
 - [**tank-tests**](https://crates.io/crates/tank-tests): Shared integration tests for drivers.
 
@@ -42,20 +39,12 @@ Tank aims to provide a clean ORM design focused on ergonomics, flexibility and b
 - [**tank-scylladb**](https://crates.io/crates/tank-scylladb)
 - [**tank-valkey**](https://crates.io/crates/tank-valkey)
 
-All the crates in this workspace share the same version.
-
-## Why Tank?
-**Intelligence Report**: Existing Rust data layers are effective, but Tank takes a different approach: one entity definition, explicit queries and an extensible driver model for SQL and NoSQL databases.
-
-**1. Modular Architecture**: Database support lives behind driver traits rather than a hardcoded list in the core library. A driver can be implemented for a new SQL or NoSQL database without changing Tank itself. If it can hold data, Tank can likely target it.
-
-**2. Zero Boilerplate**: Field operations shouldn't require filling out forms in triplicate. Define a normal Rust struct once, then let Tank's macros derive table creation, selection and insertion. The result is less setup for tests and prototypes, with the same API available across production backends.
+All the crates in this workspace share the same version. See the [Capabilities Matrix](04-capabilities.md) for per-driver feature support and engine caveats.
 
 ## Support the Mission
-Building and maintaining drivers for several database families is a major effort. **If Tank saves your company time, infrastructure headaches, or boilerplate, please consider supporting its development.**
 
-Sponsorship helps keep Tank maintained, well-tested and moving toward new capabilities faster.
+Tank is an independent project maintained by [barsdeveloper](https://github.com/barsdeveloper). Building and testing drivers across several database families takes steady work, and sponsorship directly buys time for new drivers, bug fixes, and performance improvements.
 
-🔗 **[Sponsor the Commander via GitHub Sponsors](https://github.com/sponsors/TankHQ)**. Tank is carefully designed, written and maintained by (human) [barsdeveloper](https://github.com/barsdeveloper).
+If Tank is useful to you or your team, please consider [sponsoring via GitHub Sponsors](https://github.com/sponsors/TankHQ).
 
 *Hold the line. Maintain discipline. Tank out.*

@@ -73,6 +73,7 @@ pub async fn case(executor: &mut impl Executor) -> Result<()> {
         expr!(
             (match CaseOrder::status {
                 1 => "open",
+                // status value 2 or 3 is considered "closed"
                 2 | #closed => "closed",
                 _ => "unknown",
             }) == "closed"
@@ -113,6 +114,8 @@ pub async fn case(executor: &mut impl Executor) -> Result<()> {
     .try_collect::<BTreeSet<_>>()
     .await?;
     assert_eq!(ids, BTreeSet::from([1, 4]));
+
+    // Logical condition combined with a CASE statement
     let ids = CaseOrder::find_many(
         executor,
         expr!(

@@ -1,4 +1,4 @@
-# Support Tank: The Battle-Ready Rust Data Layer
+# Support **Tank**: the Rust data layer
 
 Hey there! 👋
 
