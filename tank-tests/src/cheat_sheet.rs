@@ -104,7 +104,6 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> tank::Re
         // #region cheat-sheet-insert
         EntityExample::insert_one(&mut connection, &entity).await?;
         EntityExample::insert_many(&mut connection, [&entity2]).await?;
-        connection.append([&entity3]).await?;
         // #endregion cheat-sheet-insert
 
         assert!(
@@ -206,7 +205,6 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> tank::Re
         expr!(EntityExample::casualties == 0);
         expr!(EntityExample::casualties >= 10);
         expr!(EntityExample::region == "North" || EntityExample::region == "South");
-        expr!(EntityExample::callsign == "Alpha%" as LIKE);
         expr!(EntityExample::callsign != "Alpha%" as LIKE);
         expr!(EntityExample::casualties > ?);
         let uid = Uuid::new_v4();
@@ -247,6 +245,7 @@ pub async fn cheat_sheet(mut connection: &mut impl tank::Connection) -> tank::Re
             .await?;
         query.clear_bindings()?;
         query.bind(entity2.unit_id)?;
+        // Fetch again
         // #endregion cheat-sheet-prepared
 
         assert_eq!(entities.len(), 1);

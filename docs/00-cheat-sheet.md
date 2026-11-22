@@ -69,7 +69,7 @@ Tank calls `NotesWrap::from(field_value)` when writing and reconstructs the fiel
 <<< @/../tank-tests/src/cheat_sheet.rs#cheat-sheet-save-delete [Rust]
 
 > [!NOTE]
-> The Entity must have a primary key for this to work.
+> The Entity must have a primary key for this to work. It adds a `ON CONFLICT` clause that turns the insertion into a update statement.
 
 ## Find
 
@@ -97,9 +97,9 @@ Both transactions and connections can serve as executors in methods such as `Ent
 
 Call `tank::Sql()` to start a typed builder for the operations that go beyond the entity helpers.
 
-Finish a builder with `.build(&driver)`, which returns a query for that driver, ready for `run`, `fetch` or `execute` on the executor of the same driver.
+Finish a builder with `.build(&driver)`, which returns a query for that driver ready for `run`, `fetch` or `execute` on the executor.
 
-Call `.boxed()` instead to erase the driver and get a [`BoxQueryBuilder`](https://docs.rs/tank/latest/tank/struct.BoxQueryBuilder.html): store it, then any executor runs it with `execute(&query)`, rendered by its own driver.
+Call `.boxed()` instead to erase the driver and get a [`BoxQueryBuilder`](https://docs.rs/tank/latest/tank/struct.BoxQueryBuilder.html): store it then run it later with any executor (of different drivers).
 
 To append a statement to an existing [`AnyQuery`](https://docs.rs/tank/latest/tank/enum.AnyQuery.html) buffer, call `.write_into(&driver.sql_writer(), &mut out)`.
 
@@ -195,16 +195,17 @@ let mut query = connection.prepare(indoc! {r#"
 "#}).await?;
 query.bind(uid)?;
 query.bind(25)?;
-
 let rows = connection.fetch(&mut query).try_collect::<Vec<_>>().await?;
-
 for row in rows {
     let entity = EntityExample::from_row(&row)?;
     let slim = Slim::from_row(&row)?;
 }
+
+// Clear, rebing and repeat
 query.clear_bindings()?;
 query.bind(other_uid)?;
 query.bind(10)?;
+connection.fetch(&mut query)...
 ```
 
 ### SqlWriter
