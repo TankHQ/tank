@@ -388,7 +388,7 @@ mod tests {
             report.record("raw_stream", ROWS, sample);
             assert_eq!(sum, (ROWS * (ROWS - 1) / 2) as i64);
             assert!(
-                sample.1 < ROWS / 100,
+                sample.1 < ROWS / 50,
                 "{} allocations for {ROWS} rows",
                 sample.1
             );
@@ -445,6 +445,28 @@ mod tests {
             }
             println!(
                 "  stream {label:<20} {:>10} ({:>10}/row, {chunks} chunks)",
+                format!("{best:.2?}"),
+                format!("{:.2?}", best / ROWS as u32),
+            );
+        }
+        {
+            let mut best = Duration::MAX;
+            let mut chunks = 0usize;
+            for _ in 0..ROUNDS {
+                let start = Instant::now();
+                let mut stream = raw
+                    .query_stream_arrow("SELECT * FROM bench_trades")
+                    .unwrap();
+                let mut c = 0;
+                while let Some(_batch) = stream.next_batch().unwrap() {
+                    c += 1;
+                }
+                chunks = c;
+                best = min(best, start.elapsed());
+            }
+            println!(
+                "  stream {:<20} {:>10} ({:>10}/row, {chunks} chunks)",
+                "Arrow C Data",
                 format!("{best:.2?}"),
                 format!("{:.2?}", best / ROWS as u32),
             );

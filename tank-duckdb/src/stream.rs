@@ -62,17 +62,6 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
 
     #[cold]
     #[inline(never)]
-    fn fail(&mut self, error: Error) -> Error {
-        let context = format!("While running the query:\n{}", self.query.as_mut());
-        let _ = self
-            .finish()
-            .context("While cleaning up DuckDB execution")
-            .inspect_err(|e| log::error!("{e:#}"));
-        error.context(context)
-    }
-
-    #[cold]
-    #[inline(never)]
     fn advance(&mut self) -> Result<Option<RowsAffected>> {
         unsafe {
             loop {
@@ -201,7 +190,23 @@ impl<Q: AsMut<Query<DuckDBDriver>>> Stream for DuckDBStream<'_, Q> {
                 }
                 Ok(None) if this.row < this.size => {}
                 Ok(None) => return Poll::Ready(None),
-                Err(error) => return Poll::Ready(Some(Err(this.fail(error)))),
+                Err(error) => {
+                    let error = fail(this, error);
+                    #[cold]
+                    #[inline(never)]
+                    fn fail<Q: AsMut<Query<DuckDBDriver>>>(
+                        stream: &mut DuckDBStream<'_, Q>,
+                        error: Error,
+                    ) -> Error {
+                        let context = format!("While running the query:\n{}", stream.query.as_mut());
+                        let _ = stream
+                            .finish()
+                            .context("While cleaning up DuckDB execution")
+                            .inspect_err(|e| log::error!("{e:#}"));
+                        error.context(context)
+                    }
+                    return Poll::Ready(Some(Err(error)));
+                }
             }
         }
     }

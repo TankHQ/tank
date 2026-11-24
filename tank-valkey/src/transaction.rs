@@ -14,6 +14,23 @@ pub struct ValkeyTransaction<'c> {
     pub(crate) commands: Vec<Cmd>,
 }
 
+impl<'c> Transaction<'c> for ValkeyTransaction<'c> {
+    async fn commit(self) -> Result<()> {
+        let mut pipeline = Pipeline::new();
+        for command in self.commands {
+            pipeline.add_command(command);
+        }
+        pipeline
+            .query_async(&mut self.connection.connection)
+            .await
+            .map_err(|e| anyhow!("{e:?}"))
+    }
+
+    fn rollback(self) -> impl Future<Output = Result<()>> + Send {
+        future::ready(Ok(()))
+    }
+}
+
 impl Executor for ValkeyTransaction<'_> {
     type Driver = ValkeyDriver;
 
@@ -41,22 +58,5 @@ impl Executor for ValkeyTransaction<'_> {
         }
         self.commands.extend(prepared.commands.iter().cloned());
         Either::Right(stream::empty::<Result<QueryResult>>())
-    }
-}
-
-impl<'c> Transaction<'c> for ValkeyTransaction<'c> {
-    async fn commit(self) -> Result<()> {
-        let mut pipeline = Pipeline::new();
-        for command in self.commands {
-            pipeline.add_command(command);
-        }
-        pipeline
-            .query_async(&mut self.connection.connection)
-            .await
-            .map_err(|e| anyhow!("{e:?}"))
-    }
-
-    fn rollback(self) -> impl Future<Output = Result<()>> + Send {
-        future::ready(Ok(()))
     }
 }

@@ -14,9 +14,8 @@ bundled = ["chdb-rust/static"]
 
 [dependencies]
 anyhow.workspace = true
-chdb-rust = { version = "2.2", default-features = false }
+chdb-rust = { version = "2.2", default-features = false, features = ["arrow"] }
 log.workspace = true
-rust_decimal.workspace = true
 tank-clickhouse = { version = "0", path = "../tank-clickhouse" }
 tank-core.workspace = true
 time.workspace = true

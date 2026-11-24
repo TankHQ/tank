@@ -33,10 +33,6 @@ pub struct SQLitePrepared {
     draft: AnyQuery,
 }
 
-// Every SQLite C API call on `statement` locks `db`, and all other fields are `Send + Sync`.
-unsafe impl Send for SQLitePrepared {}
-unsafe impl Sync for SQLitePrepared {}
-
 impl SQLitePrepared {
     const WRITER: SQLiteSqlWriter = SQLiteSqlWriter {};
 
@@ -546,6 +542,17 @@ impl Prepared for SQLitePrepared {
     }
 }
 
+// Every SQLite C API call on `statement` locks `db`, and all other fields are `Send + Sync`.
+unsafe impl Send for SQLitePrepared {}
+unsafe impl Sync for SQLitePrepared {}
+
+impl Display for SQLitePrepared {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let _db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
+        Self::fmt_statement(self.statement, f)
+    }
+}
+
 impl Drop for SQLitePrepared {
     fn drop(&mut self) {
         if !self.statement.is_null() {
@@ -554,12 +561,5 @@ impl Drop for SQLitePrepared {
             Self::finish_locked(&db, statement);
             db.finalize(statement);
         }
-    }
-}
-
-impl Display for SQLitePrepared {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let _db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
-        Self::fmt_statement(self.statement, f)
     }
 }

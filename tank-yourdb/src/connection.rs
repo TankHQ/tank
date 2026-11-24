@@ -11,22 +11,6 @@ pub struct YourDBConnection {
     pub(crate) url: Url,
 }
 
-impl Executor for YourDBConnection {
-    type Driver = YourDBDriver;
-
-    async fn do_prepare(&mut self, _sql: &str) -> Result<YourDBPrepared> {
-        // Return Err if not supported
-        Ok(YourDBPrepared::new())
-    }
-
-    fn run<'s>(
-        &'s mut self,
-        query: impl AsQuery<YourDBDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        stream::empty::<Result<QueryResult<RowOwned>>>()
-    }
-}
-
 impl Connection for YourDBConnection {
     async fn connect(driver: &YourDBDriver, url: Cow<'static, str>) -> Result<Self> {
         let url = Self::sanitize_url(driver, url)?;
@@ -42,5 +26,21 @@ impl Connection for YourDBConnection {
 
     async fn begin(&mut self) -> Result<YourDBTransaction<'_>> {
         Err(anyhow!("Transactions are not supported by YourDB"))
+    }
+}
+
+impl Executor for YourDBConnection {
+    type Driver = YourDBDriver;
+
+    async fn do_prepare(&mut self, _sql: &str) -> Result<YourDBPrepared> {
+        // Return Err if not supported
+        Ok(YourDBPrepared::new())
+    }
+
+    fn run<'s>(
+        &'s mut self,
+        query: impl AsQuery<YourDBDriver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
+        stream::empty::<Result<QueryResult<RowOwned>>>()
     }
 }

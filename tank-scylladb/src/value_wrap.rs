@@ -30,18 +30,6 @@ use uuid::Uuid;
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct ValueWrap(pub(crate) ValueOwned);
 
-impl From<ValueOwned> for ValueWrap {
-    fn from(value: ValueOwned) -> Self {
-        Self(value)
-    }
-}
-
-impl From<ValueWrap> for ValueOwned {
-    fn from(value: ValueWrap) -> Self {
-        value.0
-    }
-}
-
 impl AsValue for ValueWrap {
     fn as_empty_value() -> ValueOwned {
         Value::Unknown(None)
@@ -459,5 +447,17 @@ impl<'frame, 'metadata> DeserializeValue<'frame, 'metadata> for ValueWrap {
             }
         };
         Ok(ValueWrap(value))
+    }
+}
+
+impl From<ValueOwned> for ValueWrap {
+    fn from(value: ValueOwned) -> Self {
+        Self(value)
+    }
+}
+
+impl From<ValueWrap> for ValueOwned {
+    fn from(value: ValueWrap) -> Self {
+        value.0
     }
 }

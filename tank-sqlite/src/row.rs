@@ -4,10 +4,6 @@ use libsqlite3_sys::*;
 use std::{borrow::Cow, ffi::c_int, hint, ops::Range, slice, str, sync::Arc};
 use tank_core::{Result, Row, RowLabels, RowOwned, Value};
 
-/// A stable row snapshot, independent of SQLite's transient column buffers.
-#[derive(Debug)]
-pub struct SQLiteRow(Arc<SQLiteRowData>);
-
 #[derive(Debug)]
 enum Cell {
     Null,
@@ -25,21 +21,6 @@ struct SQLiteRowData {
 }
 
 impl SQLiteRowData {
-    #[cold]
-    #[inline(never)]
-    fn push_lossy(dst: &mut Vec<u8>, raw: &[u8]) {
-        let mut replacement = [0u8; 4];
-        let replacement = char::REPLACEMENT_CHARACTER
-            .encode_utf8(&mut replacement)
-            .as_bytes();
-        for chunk in raw.utf8_chunks() {
-            dst.extend_from_slice(chunk.valid().as_bytes());
-            if !chunk.invalid().is_empty() {
-                dst.extend_from_slice(replacement);
-            }
-        }
-    }
-
     fn new(labels: RowLabels) -> Self {
         Self {
             cells: (0..labels.len()).map(|_| Cell::Null).collect(),
@@ -79,7 +60,21 @@ impl SQLiteRowData {
                         } else {
                             let raw = slice::from_raw_parts(data, len);
                             if kind == SQLITE_TEXT && str::from_utf8(raw).is_err() {
-                                Self::push_lossy(&mut self.bytes, raw);
+                                push_lossy(&mut self.bytes, raw);
+                                #[cold]
+                                #[inline(never)]
+                                fn push_lossy(dst: &mut Vec<u8>, raw: &[u8]) {
+                                    let mut replacement = [0u8; 4];
+                                    let replacement = char::REPLACEMENT_CHARACTER
+                                        .encode_utf8(&mut replacement)
+                                        .as_bytes();
+                                    for chunk in raw.utf8_chunks() {
+                                        dst.extend_from_slice(chunk.valid().as_bytes());
+                                        if !chunk.invalid().is_empty() {
+                                            dst.extend_from_slice(replacement);
+                                        }
+                                    }
+                                }
                             } else {
                                 self.bytes.extend_from_slice(raw);
                             }
@@ -103,6 +98,10 @@ impl SQLiteRowData {
         Ok(())
     }
 }
+
+/// A stable row snapshot, independent of SQLite's transient column buffers.
+#[derive(Debug)]
+pub struct SQLiteRow(Arc<SQLiteRowData>);
 
 impl SQLiteRow {
     pub(crate) fn new(labels: RowLabels) -> Self {

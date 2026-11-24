@@ -13,9 +13,6 @@ use tank_core::{Error, error_message_from_ptr};
 #[derive(Debug)]
 pub(crate) struct RawDb(*mut sqlite3);
 
-// SQLite allows moving a NOMUTEX connection across threads when access is serialized.
-unsafe impl Send for RawDb {}
-
 impl RawDb {
     #[inline(always)]
     pub(crate) const fn null() -> Self {
@@ -60,6 +57,9 @@ impl RawDb {
         }
     }
 }
+
+// SQLite allows moving a NOMUTEX connection across threads when access is serialized.
+unsafe impl Send for RawDb {}
 
 impl Drop for RawDb {
     fn drop(&mut self) {

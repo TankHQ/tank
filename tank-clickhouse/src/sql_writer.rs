@@ -18,12 +18,6 @@ pub struct ClickHouseSqlWriter {
     replacing_merge_tree: bool,
 }
 
-impl Default for ClickHouseSqlWriter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl ClickHouseSqlWriter {
     pub const fn new() -> Self {
         Self {
@@ -130,6 +124,12 @@ impl ClickHouseSqlWriter {
             let _ = write!(out, ".{nanos:0width$}");
         }
         out.push_str(quote);
+    }
+}
+
+impl Default for ClickHouseSqlWriter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

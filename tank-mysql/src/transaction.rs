@@ -32,8 +32,6 @@ impl<'c> MySQLTransaction<'c> {
     }
 }
 
-impl_executor_transaction!(MySQLDriver, MySQLTransaction<'c>, transaction);
-
 impl<'c> Transaction<'c> for MySQLTransaction<'c> {
     async fn commit(self) -> Result<()> {
         self.transaction
@@ -53,3 +51,5 @@ impl<'c> Transaction<'c> for MySQLTransaction<'c> {
             .map_err(Into::into)
     }
 }
+
+impl_executor_transaction!(MySQLDriver, MySQLTransaction<'c>, transaction);

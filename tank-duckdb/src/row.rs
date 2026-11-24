@@ -57,6 +57,9 @@ impl Batch {
     }
 }
 
+unsafe impl Send for Batch {}
+unsafe impl Sync for Batch {}
+
 /// A native row view borrowing a DuckDB data chunk shared with its siblings.
 pub struct DuckDBRow {
     pub(crate) batch: Arc<Batch>,
@@ -92,9 +95,6 @@ impl Row for DuckDBRow {
         )
     }
 }
-
-unsafe impl Send for Batch {}
-unsafe impl Sync for Batch {}
 
 impl Debug for DuckDBRow {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

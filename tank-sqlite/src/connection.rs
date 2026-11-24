@@ -69,12 +69,8 @@ impl SQLiteConnection {
         if SINGLE_STATEMENT && consumed != sql.len() {
             hint::cold_path();
             // The rest must parse as no statement: whitespace, comments or empty statements.
-            if let Err(error) = check_rest(&db, sql.get(consumed..).unwrap_or_default()) {
-                db.finalize(statement);
-                let error = error.context(make_context());
-                log::error!("{error:#}");
-                return Err(error);
-            }
+            let res = check_rest(&db, sql.get(consumed..).unwrap_or_default());
+            #[cold]
             #[inline(never)]
             fn check_rest(db: &RawDb, sql: &str) -> Result<()> {
                 let mut statement = ptr::null_mut();
@@ -103,6 +99,12 @@ impl SQLiteConnection {
                         truncate_long(sql)
                     ))
                 }
+            }
+            if let Err(error) = res {
+                db.finalize(statement);
+                let error = error.context(make_context());
+                log::error!("{error:#}");
+                return Err(error);
             }
         }
         Ok((

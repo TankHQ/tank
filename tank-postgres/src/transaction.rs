@@ -23,6 +23,24 @@ impl<'c> PostgresTransaction<'c> {
     }
 }
 
+impl<'c> Transaction<'c> for PostgresTransaction<'c> {
+    fn commit(self) -> impl Future<Output = Result<()>> + Send {
+        self.0.commit().map_err(|e| {
+            let error = Error::new(e);
+            log::error!("{error:#}");
+            error
+        })
+    }
+
+    fn rollback(self) -> impl Future<Output = Result<()>> + Send {
+        self.0.rollback().map_err(|e| {
+            let error = Error::new(e);
+            log::error!("{error:#}");
+            error
+        })
+    }
+}
+
 impl Executor for PostgresTransaction<'_> {
     type Driver = PostgresDriver;
 
@@ -57,23 +75,5 @@ impl Executor for PostgresTransaction<'_> {
             }
         })
         .inspect_err(|e| log::error!("{e:#}"))
-    }
-}
-
-impl<'c> Transaction<'c> for PostgresTransaction<'c> {
-    fn commit(self) -> impl Future<Output = Result<()>> + Send {
-        self.0.commit().map_err(|e| {
-            let error = Error::new(e);
-            log::error!("{error:#}");
-            error
-        })
-    }
-
-    fn rollback(self) -> impl Future<Output = Result<()>> + Send {
-        self.0.rollback().map_err(|e| {
-            let error = Error::new(e);
-            log::error!("{error:#}");
-            error
-        })
     }
 }

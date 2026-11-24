@@ -14,8 +14,6 @@ pub struct MySQLConnection {
     pub(crate) conn: MySQLQueryable<Conn>,
 }
 
-impl_executor_transaction!(MySQLDriver, MySQLConnection, conn);
-
 pub type MariaDBConnection = MySQLConnection;
 
 impl Connection for MySQLConnection {
@@ -128,6 +126,8 @@ impl Connection for MySQLConnection {
         MySQLTransaction::new(self)
     }
 }
+
+impl_executor_transaction!(MySQLDriver, MySQLConnection, conn);
 
 impl Debug for MySQLConnection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

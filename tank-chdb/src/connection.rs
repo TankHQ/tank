@@ -1,281 +1,294 @@
 use crate::{
     ChDBDriver, ChDBPrepared, ChDBSqlWriter, ChDBTransaction,
-    batch::ChDBBatch,
-    ffi::{
-        chdb_close_conn, chdb_connect, chdb_destroy_insert_stream, chdb_destroy_query_result,
-        chdb_result_rows_written, chdb_stream_append, chdb_stream_cancel_insert, chdb_stream_done,
-        chdb_stream_insert_error, chdb_stream_insert_n, query_error, result_error,
-    },
     stream::{ChDBRowStream, ChDBStream},
 };
-use anyhow::{anyhow, ensure};
-use rust_decimal::Decimal;
+use anyhow::anyhow;
+use chdb_rust::{
+    InsertOptions,
+    arrow::{
+        array::{
+            ArrayBuilder, ArrayRef, BooleanBuilder, Date32Builder, Decimal128Builder,
+            Float32Builder, Float64Builder, Int8Builder, Int16Builder, Int32Builder, Int64Builder,
+            RecordBatch, StringBuilder, TimestampNanosecondBuilder, UInt8Builder, UInt16Builder,
+            UInt32Builder, UInt64Builder, make_builder,
+        },
+        datatypes::{DataType, Field, Schema, TimeUnit},
+    },
+    connection::Connection as RawConnection,
+    insert_record_batch_direct,
+};
 use std::{
     borrow::Cow,
-    ffi::{CStr, CString, c_int, c_void},
+    cmp::{max, min},
     fmt::Write as _,
     future::{self, Future},
-    hint, mem,
     net::IpAddr,
-    ptr::{self, NonNull},
     sync::Arc,
     task::Poll,
 };
 use tank_core::{
-    AnyQuery, AppendDefault, AsEntity, AsQuery, ColumnDef, Connection, Context, Entity,
+    AnyQuery, AppendDefault, AsEntity, AsQuery, ColumnDef, Connection, Context, Entity, Error,
     ErrorContext, Executor, Fragment, PrimaryKeyType, QueryResult, Result, Row, RowsAffected,
-    SqlCoreWriter, SqlValueWriter, Value, describe_path, separated_by, stream::Stream,
+    SqlCoreWriter, SqlValueWriter, Value, describe_path, stream::Stream,
 };
 
 /// Wrapper around an embedded chDB connection.
 #[derive(Debug)]
 pub struct ChDBConnection {
-    handle: NonNull<*mut c_void>,
-    pub(crate) batch: Option<Arc<ChDBBatch>>,
-    draft: AnyQuery,
-    write_buf: Vec<u8>,
+    pub(crate) inner: RawConnection,
 }
 
 impl ChDBConnection {
     const WRITER: ChDBSqlWriter = ChDBSqlWriter::chdb();
-    const WRITE_BATCH_BYTES: usize = 256 * 1024;
+    const APPEND_BATCH_ROWS: usize = 65_536;
     const EPOCH_JULIAN_DAY: i32 = 2_440_588;
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
 
-    #[inline(always)]
-    pub(crate) fn raw(&self) -> *mut c_void {
-        unsafe { *self.handle.as_ptr() }
-    }
-
-    #[inline(always)]
-    fn write_varuint(dst: &mut Vec<u8>, mut n: usize) {
-        if n < 0x80 {
-            dst.push(n as u8);
-            return;
-        }
-        loop {
-            let mut b = (n & 0x7f) as u8;
-            n >>= 7;
-            if n != 0 {
-                b |= 0x80;
-            }
-            dst.push(b);
-            if n == 0 {
-                break;
-            }
-        }
-    }
-
-    #[inline(always)]
-    fn write_rb_bytes(dst: &mut Vec<u8>, bytes: &[u8]) {
-        Self::write_varuint(dst, bytes.len());
-        dst.extend_from_slice(bytes);
-    }
-
-    #[inline(always)]
-    fn write_rb_value(
-        dst: &mut Vec<u8>,
-        scratch: &mut AnyQuery,
-        column: &ColumnDef,
-        value: Value<'_>,
-    ) -> Result<()> {
-        #[cold]
-        #[inline(never)]
-        fn write_decimal(dst: &mut Vec<u8>, value: Decimal, precision: u8, scale: u8) -> Result<()> {
-            let (p, s) = if (precision, scale) == (0, 0) {
-                (38u8, 9u8)
-            } else {
-                (precision, scale)
-            };
-            let target_scale = s as u32;
-            let v_scale = value.scale();
-            let mut mantissa = value.mantissa();
-            if v_scale < target_scale {
-                let factor = 10i128
-                    .checked_pow(target_scale - v_scale)
-                    .ok_or_else(|| anyhow!("Decimal scale {target_scale} overflow"))?;
-                mantissa = mantissa
-                    .checked_mul(factor)
-                    .ok_or_else(|| anyhow!("Decimal {value} overflows Decimal({p},{s})"))?;
-            } else if v_scale > target_scale {
-                let factor = 10i128
-                    .checked_pow(v_scale - target_scale)
-                    .ok_or_else(|| anyhow!("Decimal scale {v_scale} overflow"))?;
-                mantissa /= factor;
-            }
-            match p {
-                1..=9 => dst.extend_from_slice(
-                    &i32::try_from(mantissa)
-                        .map_err(|_| anyhow!("Decimal {value} overflows Decimal32({s})"))?
-                        .to_le_bytes(),
-                ),
-                10..=18 => dst.extend_from_slice(
-                    &i64::try_from(mantissa)
-                        .map_err(|_| anyhow!("Decimal {value} overflows Decimal64({s})"))?
-                        .to_le_bytes(),
-                ),
-                19..=38 => dst.extend_from_slice(&mantissa.to_le_bytes()),
-                _ => return Err(anyhow!("Unsupported ClickHouse Decimal precision {p}")),
-            }
-            Ok(())
-        }
-        macro_rules! write_le {
-            ($v:expr) => {
-                dst.extend_from_slice(&$v.to_le_bytes())
-            };
+    fn arrow_field(column: &ColumnDef) -> Option<Field> {
+        if !column.column_type.is_empty() {
+            return None;
         }
         let nullable = column.nullable && column.primary_key == PrimaryKeyType::None;
-        if value.is_null() {
-            if nullable {
-                dst.push(1);
-                return Ok(());
+        let dt = match column.value {
+            Value::Boolean(..) => DataType::Boolean,
+            Value::Int8(..) => DataType::Int8,
+            Value::Int16(..) => DataType::Int16,
+            Value::Int32(..) => DataType::Int32,
+            Value::Int64(..) => DataType::Int64,
+            Value::UInt8(..) => DataType::UInt8,
+            Value::UInt16(..) => DataType::UInt16,
+            Value::UInt32(..) => DataType::UInt32,
+            Value::UInt64(..) => DataType::UInt64,
+            Value::Float32(..) => DataType::Float32,
+            Value::Float64(..) => DataType::Float64,
+            Value::Decimal(_, p, s) => {
+                let (p, s) = if (p, s) == (0, 0) { (38, 9) } else { (p, s) };
+                DataType::Decimal128(p, s as i8)
             }
-            hint::cold_path();
-            return Err(anyhow!(
-                "Cannot insert NULL into non-nullable column `{}`",
-                column.name()
-            ));
-        }
-        if nullable {
-            dst.push(0);
-        }
-        'simple_value: {
-            match value {
-                Value::Boolean(Some(v)) => dst.push(u8::from(v)),
-                Value::Int8(Some(v)) => dst.push(v as u8),
-                Value::UInt8(Some(v)) => dst.push(v),
-                Value::Int16(Some(v)) => write_le!(v),
-                Value::Int32(Some(v)) => write_le!(v),
-                Value::Int64(Some(v)) => write_le!(v),
-                Value::UInt16(Some(v)) => write_le!(v),
-                Value::UInt32(Some(v)) => write_le!(v),
-                Value::UInt64(Some(v)) => write_le!(v),
-                Value::Float32(Some(v)) => write_le!(v),
-                Value::Float64(Some(v)) => write_le!(v),
-                Value::Int128(Some(ref v)) => {
-                    write_le!(**v);
-                    break 'simple_value;
-                }
-                Value::UInt128(Some(ref v)) => {
-                    write_le!(**v);
-                    break 'simple_value;
-                }
-                Value::Varchar(Some(ref v)) => {
-                    Self::write_rb_bytes(dst, v.as_bytes());
-                    if matches!(v, Cow::Owned(_)) {
-                        break 'simple_value;
-                    }
-                }
-                Value::Char(Some(v)) => {
-                    let mut buf = [0u8; 4];
-                    Self::write_rb_bytes(dst, v.encode_utf8(&mut buf).as_bytes());
-                }
-                Value::Timestamp(Some(v)) => {
-                    let days = (v.date().to_julian_day() - Self::EPOCH_JULIAN_DAY) as i64;
-                    let (h, m, s, ns) = v.time().as_hms_nano();
-                    let day_ns =
-                        (h as i64 * 3600 + m as i64 * 60 + s as i64) * 1_000_000_000 + ns as i64;
-                    let nanos = days
-                        .checked_mul(86_400_000_000_000)
-                        .and_then(|d| d.checked_add(day_ns))
-                        .ok_or_else(|| {
-                            anyhow!("Timestamp {v} out of ClickHouse DateTime64(9) range")
-                        })?;
-                    write_le!(nanos);
-                }
-                Value::TimestampWithTimezone(Some(v)) => {
-                    let nanos = i64::try_from(v.unix_timestamp_nanos()).map_err(|_| {
-                        anyhow!("Timestamp {v} out of ClickHouse DateTime64(9) range")
-                    })?;
-                    write_le!(nanos);
-                }
-                Value::Date(Some(v)) => {
-                    // ClickHouse `Date` saturates outside 1970-01-01..=2149-06-06 (u16 days).
-                    let days = (v.to_julian_day() - Self::EPOCH_JULIAN_DAY)
-                        .clamp(0, u16::MAX as i32) as u16;
-                    write_le!(days);
-                }
-                Value::Decimal(Some(v), ..) => {
-                    let (p, s) = match column.value {
-                        Value::Decimal(_, p, s) => (p, s),
-                        _ => (0, 0),
-                    };
-                    write_decimal(dst, v, p, s)?;
-                }
-                Value::Blob(Some(ref v)) => {
-                    Self::write_varuint(dst, v.len() * 2);
-                    dst.reserve(v.len() * 2);
-                    for &b in v.as_ref() {
-                        dst.push(Self::HEX[(b >> 4) as usize]);
-                        dst.push(Self::HEX[(b & 0xf) as usize]);
-                    }
-                    if matches!(v, Cow::Owned(_)) {
-                        break 'simple_value;
-                    }
-                }
-                Value::Time(Some(v)) => {
-                    scratch.clear();
-                    Self::WRITER.write_time(&mut Context::fragment(Fragment::None), scratch, &v);
-                    Self::write_rb_bytes(dst, scratch.buffer().as_bytes());
-                }
-                Value::Interval(Some(v)) => {
-                    scratch.clear();
-                    let _ = write!(scratch, "{}ns", v.as_ns());
-                    Self::write_rb_bytes(dst, scratch.buffer().as_bytes());
-                }
-                Value::Uuid(Some(v)) => {
-                    let raw = v.as_u128();
-                    dst.extend_from_slice(&((raw >> 64) as u64).to_le_bytes());
-                    dst.extend_from_slice(&(raw as u64).to_le_bytes());
-                }
-                Value::IpAddr(Some(v)) => {
-                    let octets = match v {
-                        IpAddr::V4(v4) => v4.to_ipv6_mapped().octets(),
-                        IpAddr::V6(v6) => v6.octets(),
-                    };
-                    dst.extend_from_slice(&octets);
-                }
-                Value::Json(Some(ref v)) => {
-                    scratch.clear();
-                    let _ = write!(scratch, "{v}");
-                    Self::write_rb_bytes(dst, scratch.buffer().as_bytes());
-                    break 'simple_value;
-                }
-                other => {
-                    hint::cold_path();
-                    return Err(anyhow!(
-                        "Unsupported RowBinary value {other:?} for column `{}`",
-                        column.name()
-                    ));
-                }
+            Value::Char(..)
+            | Value::Varchar(..)
+            | Value::Blob(..)
+            | Value::Time(..)
+            | Value::Interval(..)
+            | Value::Uuid(..)
+            | Value::IpAddr(..)
+            | Value::Json(..) => DataType::Utf8,
+            Value::Date(..) => DataType::Date32,
+            Value::Timestamp(..) | Value::TimestampWithTimezone(..) => {
+                DataType::Timestamp(TimeUnit::Nanosecond, Some("UTC".into()))
             }
-            // Avoid an opaque Value::drop call for simple values that do not allocate memory.
-            mem::forget(value);
-        }
-        Ok(())
-    }
-
-    #[cold]
-    #[inline(never)]
-    fn insert_error(handle: *mut c_void, fallback: &str) -> tank_core::Error {
-        let err = unsafe { chdb_stream_insert_error(handle) };
-        if err.is_null() {
-            anyhow!("{fallback}")
-        } else {
-            anyhow!(
-                "ChDB insert stream failed: {}",
-                unsafe { CStr::from_ptr(err) }.to_string_lossy()
-            )
-        }
+            _ => return None,
+        };
+        Some(Field::new(column.name(), dt, nullable))
     }
 
     #[inline(always)]
-    fn flush_insert(handle: *mut c_void, buf: &mut Vec<u8>) -> Result<()> {
-        let state = unsafe { chdb_stream_append(handle, buf.as_ptr().cast(), buf.len()) };
-        buf.clear();
-        if state != 0 {
-            hint::cold_path();
-            return Err(Self::insert_error(handle, "ChDB insert stream append failed"));
+    fn push_arrow(
+        builder: &mut dyn ArrayBuilder,
+        data_type: &DataType,
+        value: Value<'_>,
+        scratch: &mut AnyQuery,
+    ) -> Result<()> {
+        macro_rules! push_prim {
+            ($b:ty, $v:expr) => {{
+                let b = builder
+                    .as_any_mut()
+                    .downcast_mut::<$b>()
+                    .ok_or_else(|| anyhow!("Mismatched Arrow builder for {data_type:?}"))?;
+                b.append_option($v);
+            }};
+        }
+        match (data_type, value) {
+            (DataType::Boolean, Value::Boolean(v)) => push_prim!(BooleanBuilder, v),
+            (DataType::Int8, Value::Int8(v)) => push_prim!(Int8Builder, v),
+            (DataType::Int16, Value::Int16(v)) => push_prim!(Int16Builder, v),
+            (DataType::Int32, Value::Int32(v)) => push_prim!(Int32Builder, v),
+            (DataType::Int64, Value::Int64(v)) => push_prim!(Int64Builder, v),
+            (DataType::UInt8, Value::UInt8(v)) => push_prim!(UInt8Builder, v),
+            (DataType::UInt16, Value::UInt16(v)) => push_prim!(UInt16Builder, v),
+            (DataType::UInt32, Value::UInt32(v)) => push_prim!(UInt32Builder, v),
+            (DataType::UInt64, Value::UInt64(v)) => push_prim!(UInt64Builder, v),
+            (DataType::Float32, Value::Float32(v)) => push_prim!(Float32Builder, v),
+            (DataType::Float64, Value::Float64(v)) => push_prim!(Float64Builder, v),
+            (DataType::Utf8, Value::Varchar(v)) => {
+                let b = builder
+                    .as_any_mut()
+                    .downcast_mut::<StringBuilder>()
+                    .ok_or_else(|| anyhow!("Mismatched Arrow builder for Utf8"))?;
+                b.append_option(v.as_deref());
+            }
+            (DataType::Timestamp(TimeUnit::Nanosecond, _), Value::Timestamp(Some(v))) => {
+                let b = builder
+                    .as_any_mut()
+                    .downcast_mut::<TimestampNanosecondBuilder>()
+                    .ok_or_else(|| anyhow!("Mismatched Arrow builder for Timestamp"))?;
+                let days = (v.date().to_julian_day() - Self::EPOCH_JULIAN_DAY) as i64;
+                let (h, m, s, ns) = v.time().as_hms_nano();
+                let day_ns =
+                    (h as i64 * 3600 + m as i64 * 60 + s as i64) * 1_000_000_000 + ns as i64;
+                let nanos = days
+                    .checked_mul(86_400_000_000_000)
+                    .and_then(|d| d.checked_add(day_ns))
+                    .ok_or_else(|| anyhow!("Timestamp {v} out of ClickHouse DateTime64(9) range"))?;
+                b.append_value(nanos);
+            }
+            (_, value) => {
+                let res = push_other(builder, data_type, value, scratch);
+                #[inline(never)]
+                fn push_other(
+                    builder: &mut dyn ArrayBuilder,
+                    data_type: &DataType,
+                    value: Value<'_>,
+                    scratch: &mut AnyQuery,
+                ) -> Result<()> {
+                    if value.is_null() {
+                        macro_rules! push_null {
+                            ($b:ty) => {{
+                                builder
+                                    .as_any_mut()
+                                    .downcast_mut::<$b>()
+                                    .ok_or_else(|| anyhow!("Mismatched Arrow builder for {data_type:?}"))?
+                                    .append_null();
+                            }};
+                        }
+                        match data_type {
+                            DataType::Boolean => push_null!(BooleanBuilder),
+                            DataType::Int8 => push_null!(Int8Builder),
+                            DataType::Int16 => push_null!(Int16Builder),
+                            DataType::Int32 => push_null!(Int32Builder),
+                            DataType::Int64 => push_null!(Int64Builder),
+                            DataType::UInt8 => push_null!(UInt8Builder),
+                            DataType::UInt16 => push_null!(UInt16Builder),
+                            DataType::UInt32 => push_null!(UInt32Builder),
+                            DataType::UInt64 => push_null!(UInt64Builder),
+                            DataType::Float32 => push_null!(Float32Builder),
+                            DataType::Float64 => push_null!(Float64Builder),
+                            DataType::Decimal128(..) => push_null!(Decimal128Builder),
+                            DataType::Utf8 => push_null!(StringBuilder),
+                            DataType::Date32 => push_null!(Date32Builder),
+                            DataType::Timestamp(TimeUnit::Nanosecond, _) => {
+                                push_null!(TimestampNanosecondBuilder)
+                            }
+                            _ => return Err(anyhow!("Unsupported Arrow null type {data_type:?}")),
+                        }
+                        return Ok(());
+                    }
+                    match (data_type, value) {
+                        (DataType::Decimal128(p, s), Value::Decimal(Some(v), ..)) => {
+                            let target = max(*s, 0) as u32;
+                            let v_scale = v.scale();
+                            let mut mantissa = v.mantissa();
+                            if v_scale < target {
+                                let factor = 10i128
+                                    .checked_pow(target - v_scale)
+                                    .ok_or_else(|| anyhow!("Decimal scale {target} overflow"))?;
+                                mantissa = mantissa.checked_mul(factor).ok_or_else(|| {
+                                    anyhow!("Decimal {v} overflows Decimal({p},{s})")
+                                })?;
+                            } else if v_scale > target {
+                                let factor = 10i128
+                                    .checked_pow(v_scale - target)
+                                    .ok_or_else(|| anyhow!("Decimal scale {v_scale} overflow"))?;
+                                mantissa /= factor;
+                            }
+                            builder
+                                .as_any_mut()
+                                .downcast_mut::<Decimal128Builder>()
+                                .ok_or_else(|| anyhow!("Mismatched Arrow builder for Decimal128"))?
+                                .append_value(mantissa);
+                        }
+                        (DataType::Date32, Value::Date(Some(v))) => {
+                            let days = (v.to_julian_day() - ChDBConnection::EPOCH_JULIAN_DAY)
+                                .clamp(0, u16::MAX as i32);
+                            builder
+                                .as_any_mut()
+                                .downcast_mut::<Date32Builder>()
+                                .ok_or_else(|| anyhow!("Mismatched Arrow builder for Date32"))?
+                                .append_value(days);
+                        }
+                        (
+                            DataType::Timestamp(TimeUnit::Nanosecond, _),
+                            Value::TimestampWithTimezone(Some(v)),
+                        ) => {
+                            let nanos = i64::try_from(v.unix_timestamp_nanos()).map_err(|_| {
+                                anyhow!("Timestamp {v} out of ClickHouse DateTime64(9) range")
+                            })?;
+                            builder
+                                .as_any_mut()
+                                .downcast_mut::<TimestampNanosecondBuilder>()
+                                .ok_or_else(|| anyhow!("Mismatched Arrow builder for Timestamp"))?
+                                .append_value(nanos);
+                        }
+                        (DataType::Utf8, other) => {
+                            let b = builder
+                                .as_any_mut()
+                                .downcast_mut::<StringBuilder>()
+                                .ok_or_else(|| anyhow!("Mismatched Arrow builder for Utf8"))?;
+                            match other {
+                                Value::Char(Some(c)) => {
+                                    let mut buf = [0u8; 4];
+                                    b.append_value(c.encode_utf8(&mut buf));
+                                }
+                                Value::Blob(Some(v)) => {
+                                    scratch.clear();
+                                    for &byte in v.as_ref() {
+                                        scratch.push(ChDBConnection::HEX[(byte >> 4) as usize] as char);
+                                        scratch.push(ChDBConnection::HEX[(byte & 0xf) as usize] as char);
+                                    }
+                                    b.append_value(scratch.buffer());
+                                }
+                                Value::Time(Some(v)) => {
+                                    scratch.clear();
+                                    ChDBConnection::WRITER.write_time(
+                                        &mut Context::fragment(Fragment::None),
+                                        scratch,
+                                        &v,
+                                    );
+                                    b.append_value(scratch.buffer());
+                                }
+                                Value::Interval(Some(v)) => {
+                                    scratch.clear();
+                                    let _ = write!(scratch, "{}ns", v.as_ns());
+                                    b.append_value(scratch.buffer());
+                                }
+                                Value::Uuid(Some(v)) => {
+                                    let mut buf = [0u8; 36];
+                                    b.append_value(v.hyphenated().encode_lower(&mut buf));
+                                }
+                                Value::IpAddr(Some(v)) => {
+                                    scratch.clear();
+                                    match v {
+                                        IpAddr::V4(v4) => {
+                                            let _ = write!(scratch, "{v4}");
+                                        }
+                                        IpAddr::V6(v6) => {
+                                            let _ = write!(scratch, "{v6}");
+                                        }
+                                    }
+                                    b.append_value(scratch.buffer());
+                                }
+                                Value::Json(Some(v)) => {
+                                    scratch.clear();
+                                    let _ = write!(scratch, "{v}");
+                                    b.append_value(scratch.buffer());
+                                }
+                                other => {
+                                    return Err(anyhow!(
+                                        "Unsupported Arrow append value {other:?}"
+                                    ));
+                                }
+                            }
+                        }
+                        (_, other) => {
+                            return Err(anyhow!(
+                                "Unsupported Arrow append value {other:?} for {data_type:?}"
+                            ));
+                        }
+                    }
+                    Ok(())
+                }
+                res?;
+            }
         }
         Ok(())
     }
@@ -285,45 +298,27 @@ impl Connection for ChDBConnection {
     async fn connect(driver: &ChDBDriver, url: Cow<'static, str>) -> Result<Self> {
         let url = Self::sanitize_url(driver, url)?;
         let make_context = || format!("While trying to connect to chDB {}", describe_path(&url));
-        let path: Option<Cow<'static, str>> = url
+        let path: Option<String> = url
             .query_pairs()
             .find_map(|(k, v)| (k.eq_ignore_ascii_case("path") && !v.is_empty()).then_some(v))
-            .map(|v| Cow::Owned(v.to_string()))
+            .map(|v| format!("--path={v}"))
             .or_else(|| {
                 let raw = url.path().trim();
                 (!raw.is_empty() && raw != "/")
-                    .then(|| Cow::Owned(raw.trim_start_matches('/').to_string()))
+                    .then(|| format!("--path={}", raw.trim_start_matches('/')))
             });
-        let path_arg = path
-            .as_deref()
-            .map(|p| CString::new(format!("--path={p}")))
-            .transpose()?;
-        let mut argv = [
-            c"clickhouse".as_ptr().cast_mut(),
-            c"--allow_experimental_lightweight_delete=1"
-                .as_ptr()
-                .cast_mut(),
-            c"--join_use_nulls=1".as_ptr().cast_mut(),
-            c"--final=1".as_ptr().cast_mut(),
-            ptr::null_mut(),
+        let mut args = vec![
+            "--allow_experimental_lightweight_delete=1",
+            "--join_use_nulls=1",
+            "--final=1",
         ];
-        let argc = if let Some(arg) = path_arg.as_ref() {
-            argv[4] = arg.as_ptr().cast_mut();
-            5
-        } else {
-            4
-        };
-        let handle = NonNull::new(unsafe { chdb_connect(argc as c_int, argv.as_mut_ptr()) })
-            .ok_or_else(|| anyhow!("Cannot open chDB connection"))
+        if let Some(path) = path.as_deref() {
+            args.push(path);
+        }
+        let inner = RawConnection::open(&args)
+            .map_err(Error::new)
             .with_context(make_context)?;
-        let connection = Self {
-            handle,
-            batch: None,
-            draft: AnyQuery::default(),
-            write_buf: Vec::new(),
-        };
-        ensure!(!connection.raw().is_null(), "Cannot open chDB connection");
-        Ok(connection)
+        Ok(Self { inner })
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<ChDBTransaction<'_>>> + Send {
@@ -362,65 +357,46 @@ impl Executor for ChDBConnection {
         It::IntoIter: Send,
         It::Item: AsEntity,
     {
-        struct Guard(*mut c_void, bool);
-        unsafe impl Send for Guard {}
-        impl Drop for Guard {
-            fn drop(&mut self) {
-                if !self.0.is_null() {
-                    if !self.1 {
-                        unsafe { chdb_stream_cancel_insert(self.0) };
-                    }
-                    unsafe { chdb_destroy_insert_stream(self.0) };
-                }
-            }
-        }
-
         type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
         let table = E::<It>::table();
         let columns = E::<It>::columns();
-        let supported = !columns.is_empty()
-            && columns.iter().all(|c| {
-                c.column_type.is_empty()
-                    && matches!(
-                        c.value,
-                        Value::Boolean(..)
-                            | Value::Int8(..)
-                            | Value::Int16(..)
-                            | Value::Int32(..)
-                            | Value::Int64(..)
-                            | Value::Int128(..)
-                            | Value::UInt8(..)
-                            | Value::UInt16(..)
-                            | Value::UInt32(..)
-                            | Value::UInt64(..)
-                            | Value::UInt128(..)
-                            | Value::Float32(..)
-                            | Value::Float64(..)
-                            | Value::Decimal(..)
-                            | Value::Char(..)
-                            | Value::Varchar(..)
-                            | Value::Blob(..)
-                            | Value::Date(..)
-                            | Value::Time(..)
-                            | Value::Timestamp(..)
-                            | Value::TimestampWithTimezone(..)
-                            | Value::Interval(..)
-                            | Value::Uuid(..)
-                            | Value::IpAddr(..)
-                            | Value::Json(..)
-                    )
-            });
-        if !supported {
-            return self.append_default(entities).await;
-        }
         let mut entities = entities.into_iter();
-        let mut guard = Guard(ptr::null_mut(), false);
-        self.write_buf.clear();
+        let fields: Option<Vec<Field>> = (!columns.is_empty())
+            .then(|| columns.iter().map(Self::arrow_field).collect())
+            .flatten();
+        let Some(fields) = fields else {
+            return self.append_default(entities).await;
+        };
+        let cap = min(max(entities.size_hint().0, 64), Self::APPEND_BATCH_ROWS);
+        let mut builders: Vec<Box<dyn ArrayBuilder>> = fields
+            .iter()
+            .map(|f| make_builder(f.data_type(), cap))
+            .collect();
+        let schema = Arc::new(Schema::new(fields));
+        let mut dest = AnyQuery::default();
+        Self::WRITER.write_table_ref(
+            &mut Context::new(Fragment::SqlInsertInto, false),
+            &mut dest,
+            table,
+        );
+        let dest_table = dest.buffer().to_owned();
+        let mut scratch = AnyQuery::default();
+        let mut total = 0u64;
+        let mut batch_rows = 0usize;
+
         loop {
-            if self.write_buf.len() >= Self::WRITE_BATCH_BYTES {
-                if !guard.0.is_null() {
-                    Self::flush_insert(guard.0, &mut self.write_buf)?;
-                }
+            if batch_rows >= Self::APPEND_BATCH_ROWS {
+                let arrays: Vec<ArrayRef> = builders.iter_mut().map(|b| b.finish()).collect();
+                let batch = RecordBatch::try_new(Arc::clone(&schema), arrays).map_err(Error::new)?;
+                insert_record_batch_direct(
+                    &self.inner,
+                    &dest_table,
+                    batch,
+                    InsertOptions::default(),
+                )
+                .map_err(Error::new)?;
+                total += batch_rows as u64;
+                batch_rows = 0;
                 let mut yielded = false;
                 future::poll_fn(move |cx| {
                     if yielded {
@@ -436,83 +412,26 @@ impl Executor for ChDBConnection {
             let Some(entity) = entities.next() else {
                 break;
             };
-            if guard.0.is_null() {
-                self.draft.clear();
-                let mut context = Context::new(Fragment::SqlInsertInto, false);
-                self.draft.push_str("INSERT INTO ");
-                Self::WRITER.write_table_ref(&mut context, &mut self.draft, table);
-                self.draft.push_str(" (");
-                separated_by(
-                    &mut self.draft,
-                    columns.iter(),
-                    |out, col| Self::WRITER.write_identifier(&mut context, out, col.name(), true),
-                    ", ",
-                );
-                self.draft.push(')');
-                const FORMAT: &str = "RowBinary";
-                let conn = self.raw();
-                let sql = self.draft.buffer();
-                let handle = unsafe {
-                    chdb_stream_insert_n(
-                        conn,
-                        sql.as_ptr().cast(),
-                        sql.len(),
-                        FORMAT.as_ptr().cast(),
-                        FORMAT.len(),
-                    )
-                };
-                ensure!(!handle.is_null(), "ChDB returned a null insert stream");
-                guard.0 = handle;
-                if !unsafe { chdb_stream_insert_error(handle) }.is_null() {
-                    hint::cold_path();
-                    return Err(Self::insert_error(
-                        handle,
-                        "ChDB insert stream initialization failed",
-                    ));
-                }
-                if self.write_buf.capacity() < Self::WRITE_BATCH_BYTES {
-                    self.write_buf.reserve(Self::WRITE_BATCH_BYTES);
-                }
+            for ((value, builder), field) in entity
+                .as_entity()
+                .row_values()
+                .zip(&mut builders)
+                .zip(schema.fields())
+            {
+                Self::push_arrow(builder.as_mut(), field.data_type(), value, &mut scratch)?;
             }
-            for (value, column) in entity.as_entity().row_values().zip(columns) {
-                Self::write_rb_value(&mut self.write_buf, &mut self.draft, column, value)?;
-            }
+            batch_rows += 1;
         }
-        if guard.0.is_null() {
-            return Ok(RowsAffected {
-                rows_affected: Some(0),
-                last_affected_id: None,
-            });
-        }
-        if !self.write_buf.is_empty() {
-            Self::flush_insert(guard.0, &mut self.write_buf)?;
-        }
-        guard.1 = true;
-        let result = unsafe { chdb_stream_done(guard.0) };
-        if result.is_null() {
-            return Err(Self::insert_error(
-                guard.0,
-                "ChDB insert stream returned null result",
-            ));
-        }
-        let error = unsafe { result_error(result) }.map(query_error);
-        let rows_written = unsafe { chdb_result_rows_written(result) };
-        unsafe { chdb_destroy_query_result(result) };
-        if let Some(error) = error {
-            return Err(error);
+        if batch_rows > 0 {
+            let arrays: Vec<ArrayRef> = builders.iter_mut().map(|b| b.finish()).collect();
+            let batch = RecordBatch::try_new(schema, arrays).map_err(Error::new)?;
+            insert_record_batch_direct(&self.inner, &dest_table, batch, InsertOptions::default())
+                .map_err(Error::new)?;
+            total += batch_rows as u64;
         }
         Ok(RowsAffected {
-            rows_affected: Some(rows_written),
+            rows_affected: Some(total),
             last_affected_id: None,
         })
-    }
-}
-
-// Access is serialized by `&mut ChDBConnection`.
-unsafe impl Send for ChDBConnection {}
-
-impl Drop for ChDBConnection {
-    fn drop(&mut self) {
-        unsafe { chdb_close_conn(self.handle.as_ptr()) };
     }
 }

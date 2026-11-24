@@ -25,16 +25,6 @@ impl DuckDBPrepared {
     }
 }
 
-impl Display for DuckDBPrepared {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "<prepared statement at {:p}, SQL not retrievable from DuckDB C API>",
-            *self.statement
-        )
-    }
-}
-
 impl Prepared for DuckDBPrepared {
     #[inline(always)]
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
@@ -105,5 +95,15 @@ impl Prepared for DuckDBPrepared {
             self.index = index;
             Ok(self)
         }
+    }
+}
+
+impl Display for DuckDBPrepared {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "<prepared statement at {:p}, SQL not retrievable from DuckDB C API>",
+            *self.statement
+        )
     }
 }

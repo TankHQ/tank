@@ -24,7 +24,6 @@ impl<'c> DuckDBTransaction<'c> {
     }
 }
 
-impl_executor_transaction!(DuckDBDriver, DuckDBTransaction<'c>, connection);
 impl<'c> Transaction<'c> for DuckDBTransaction<'c> {
     fn commit(self) -> impl Future<Output = Result<()>> + Send {
         let mut query = AnyQuery::default();
@@ -42,3 +41,5 @@ impl<'c> Transaction<'c> for DuckDBTransaction<'c> {
         self.connection.execute(query).map_ok(|_| ())
     }
 }
+
+impl_executor_transaction!(DuckDBDriver, DuckDBTransaction<'c>, connection);

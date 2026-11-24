@@ -74,15 +74,6 @@ where
     }
 }
 
-impl<T: CResource> Drop for CBox<T> {
-    #[inline(always)]
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            self.0.finalize();
-        }
-    }
-}
-
 impl<T: CResource> Deref for CBox<T> {
     type Target = T;
 
@@ -101,6 +92,15 @@ impl<T: CResource> DerefMut for CBox<T> {
 
 unsafe impl<T: CResource> Send for CBox<T> {}
 unsafe impl<T: CResource> Sync for CBox<T> {}
+
+impl<T: CResource> Drop for CBox<T> {
+    #[inline(always)]
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            self.0.finalize();
+        }
+    }
+}
 
 #[macro_export]
 macro_rules! ensure_rc {($value:expr, $error:expr $(, $context:expr)? $(,)?) => {{

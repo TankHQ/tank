@@ -13,8 +13,6 @@ impl<'c> ClickHouseTransaction<'c> {
     }
 }
 
-impl_executor_transaction!(ClickHouseDriver, ClickHouseTransaction<'c>, connection);
-
 impl<'c> Transaction<'c> for ClickHouseTransaction<'c> {
     async fn commit(self) -> Result<()> {
         Err(anyhow!("ClickHouse transactions are not supported"))
@@ -24,3 +22,5 @@ impl<'c> Transaction<'c> for ClickHouseTransaction<'c> {
         Err(anyhow!("ClickHouse transactions are not supported"))
     }
 }
+
+impl_executor_transaction!(ClickHouseDriver, ClickHouseTransaction<'c>, connection);

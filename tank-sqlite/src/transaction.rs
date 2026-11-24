@@ -49,6 +49,18 @@ impl<'c> SQLiteTransaction<'c> {
     }
 }
 
+impl<'c> Transaction<'c> for SQLiteTransaction<'c> {
+    fn commit(mut self) -> impl Future<Output = Result<()>> + Send {
+        future::ready(self.do_commit())
+    }
+
+    fn rollback(mut self) -> impl Future<Output = Result<()>> + Send {
+        future::ready(self.do_rollback())
+    }
+}
+
+impl_executor_transaction!(SQLiteDriver, SQLiteTransaction<'c>, connection);
+
 /// Rolls back a transaction dropped without being committed or rolled back.
 impl Drop for SQLiteTransaction<'_> {
     fn drop(&mut self) {
@@ -61,16 +73,5 @@ impl Drop for SQLiteTransaction<'_> {
                 error.context("While rolling back an unfinished transaction")
             );
         }
-    }
-}
-
-impl_executor_transaction!(SQLiteDriver, SQLiteTransaction<'c>, connection);
-impl<'c> Transaction<'c> for SQLiteTransaction<'c> {
-    fn commit(mut self) -> impl Future<Output = Result<()>> + Send {
-        future::ready(self.do_commit())
-    }
-
-    fn rollback(mut self) -> impl Future<Output = Result<()>> + Send {
-        future::ready(self.do_rollback())
     }
 }

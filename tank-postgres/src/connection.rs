@@ -159,6 +159,86 @@ impl PostgresConnection {
     }
 }
 
+impl Connection for PostgresConnection {
+    async fn connect(driver: &PostgresDriver, url: Cow<'static, str>) -> Result<Self> {
+        let mut url = Self::sanitize_url(driver, url)?;
+        let target = describe_url::<PostgresDriver>(&url);
+        let make_context = || format!(r#"Connecting to Postgres "{target}""#);
+        let mut take_url_param = |key: &str, env_var: &str, remove: bool| {
+            let value = url
+                .query_pairs()
+                .find_map(|(k, v)| if k == key { Some(v) } else { None })
+                .map(|v| v.to_string());
+            if remove && let Some(..) = value {
+                let mut result = url.clone();
+                result.set_query(None);
+                result
+                    .query_pairs_mut()
+                    .extend_pairs(url.query_pairs().filter(|(k, _)| k != key));
+                url = result;
+            };
+            value.or_else(|| env::var(env_var).ok().map(Into::into))
+        };
+        let sslmode = take_url_param("sslmode", "PGSSLMODE", false).unwrap_or("disable".into());
+        let (client, handle) = if sslmode == "disable" {
+            let (client, connection) = tokio_postgres::connect(url.as_str(), NoTls).await?;
+            let handle = spawn(async move {
+                if let Err(error) = connection.await
+                    && !error.is_closed()
+                {
+                    log::error!("Postgres connection error: {error:#?}");
+                }
+            });
+            (client, handle)
+        } else {
+            let config = Self::tls_config(
+                take_url_param("sslrootcert", "PGSSLROOTCERT", true),
+                take_url_param("sslcert", "PGSSLCERT", true),
+                take_url_param("sslkey", "PGSSLKEY", true),
+            )
+            .with_context(make_context)?;
+            if !url.query_pairs().any(|(key, _)| key == "sslmode") {
+                let mode = match sslmode.as_str() {
+                    "verify-ca" | "verify-full" => "require",
+                    mode => mode,
+                };
+                url.query_pairs_mut().append_pair("sslmode", mode);
+            }
+            let connector = MakeRustlsConnect::new(config);
+            let (client, connection) = tokio_postgres::connect(url.as_str(), connector)
+                .await
+                .with_context(make_context)?;
+            let handle = spawn(async move {
+                if let Err(error) = connection.await
+                    && !error.is_closed()
+                {
+                    log::error!("Postgres connection error: {error:#?}");
+                }
+            });
+            (client, handle)
+        };
+        Ok(Self {
+            client,
+            handle,
+            labels: Default::default(),
+        })
+    }
+
+    fn begin(&mut self) -> impl Future<Output = Result<PostgresTransaction<'_>>> + Send {
+        PostgresTransaction::new(self)
+    }
+
+    async fn disconnect(self) -> Result<()> {
+        drop(self.client);
+        if let Err(e) = self.handle.await {
+            let error = Error::new(e).context("While disconnecting from Postgres");
+            log::error!("{error:#}");
+            return Err(error);
+        }
+        Ok(())
+    }
+}
+
 impl Executor for PostgresConnection {
     type Driver = PostgresDriver;
 
@@ -302,85 +382,5 @@ impl Executor for PostgresConnection {
                 return Err(e);
             }
         }
-    }
-}
-
-impl Connection for PostgresConnection {
-    async fn connect(driver: &PostgresDriver, url: Cow<'static, str>) -> Result<Self> {
-        let mut url = Self::sanitize_url(driver, url)?;
-        let target = describe_url::<PostgresDriver>(&url);
-        let make_context = || format!(r#"Connecting to Postgres "{target}""#);
-        let mut take_url_param = |key: &str, env_var: &str, remove: bool| {
-            let value = url
-                .query_pairs()
-                .find_map(|(k, v)| if k == key { Some(v) } else { None })
-                .map(|v| v.to_string());
-            if remove && let Some(..) = value {
-                let mut result = url.clone();
-                result.set_query(None);
-                result
-                    .query_pairs_mut()
-                    .extend_pairs(url.query_pairs().filter(|(k, _)| k != key));
-                url = result;
-            };
-            value.or_else(|| env::var(env_var).ok().map(Into::into))
-        };
-        let sslmode = take_url_param("sslmode", "PGSSLMODE", false).unwrap_or("disable".into());
-        let (client, handle) = if sslmode == "disable" {
-            let (client, connection) = tokio_postgres::connect(url.as_str(), NoTls).await?;
-            let handle = spawn(async move {
-                if let Err(error) = connection.await
-                    && !error.is_closed()
-                {
-                    log::error!("Postgres connection error: {error:#?}");
-                }
-            });
-            (client, handle)
-        } else {
-            let config = Self::tls_config(
-                take_url_param("sslrootcert", "PGSSLROOTCERT", true),
-                take_url_param("sslcert", "PGSSLCERT", true),
-                take_url_param("sslkey", "PGSSLKEY", true),
-            )
-            .with_context(make_context)?;
-            if !url.query_pairs().any(|(key, _)| key == "sslmode") {
-                let mode = match sslmode.as_str() {
-                    "verify-ca" | "verify-full" => "require",
-                    mode => mode,
-                };
-                url.query_pairs_mut().append_pair("sslmode", mode);
-            }
-            let connector = MakeRustlsConnect::new(config);
-            let (client, connection) = tokio_postgres::connect(url.as_str(), connector)
-                .await
-                .with_context(make_context)?;
-            let handle = spawn(async move {
-                if let Err(error) = connection.await
-                    && !error.is_closed()
-                {
-                    log::error!("Postgres connection error: {error:#?}");
-                }
-            });
-            (client, handle)
-        };
-        Ok(Self {
-            client,
-            handle,
-            labels: Default::default(),
-        })
-    }
-
-    fn begin(&mut self) -> impl Future<Output = Result<PostgresTransaction<'_>>> + Send {
-        PostgresTransaction::new(self)
-    }
-
-    async fn disconnect(self) -> Result<()> {
-        drop(self.client);
-        if let Err(e) = self.handle.await {
-            let error = Error::new(e).context("While disconnecting from Postgres");
-            log::error!("{error:#}");
-            return Err(error);
-        }
-        Ok(())
     }
 }

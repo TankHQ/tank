@@ -5,8 +5,6 @@ pub struct YourDBTransaction<'c> {
     connection: &'c mut YourDBConnection,
 }
 
-impl_executor_transaction!(YourDBDriver, YourDBTransaction<'c>, connection);
-
 impl<'c> Transaction<'c> for YourDBTransaction<'c> {
     async fn commit(self) -> Result<()> {
         Err(anyhow!("Transactions are not supported by YourDB"))
@@ -15,3 +13,5 @@ impl<'c> Transaction<'c> for YourDBTransaction<'c> {
         Err(anyhow!("Transactions are not supported by YourDB"))
     }
 }
+
+impl_executor_transaction!(YourDBDriver, YourDBTransaction<'c>, connection);

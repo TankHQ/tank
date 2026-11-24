@@ -152,6 +152,10 @@ fn parse_mysql_time(text: &str) -> tank_core::Result<Interval> {
     Ok(if negative { -result } else { result })
 }
 
+impl<'a> mysql_async::prelude::FromValue for ValueWrap<'a> {
+    type Intermediate = ValueWrap<'a>;
+}
+
 impl<'a> From<&'a tank_core::Value<'a>> for ValueWrap<'a> {
     fn from(value: &'a tank_core::Value<'a>) -> Self {
         Self(Cow::Borrowed(value))
@@ -162,10 +166,6 @@ impl<'a> From<tank_core::Value<'a>> for ValueWrap<'a> {
     fn from(value: tank_core::Value<'a>) -> Self {
         Self(Cow::Owned(value))
     }
-}
-
-impl<'a> mysql_async::prelude::FromValue for ValueWrap<'a> {
-    type Intermediate = ValueWrap<'a>;
 }
 
 impl TryFrom<mysql_async::Value> for ValueWrap<'_> {

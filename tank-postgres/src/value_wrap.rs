@@ -19,18 +19,6 @@ impl Default for ValueWrap<'_> {
     }
 }
 
-impl<'a> From<&'a Value<'a>> for ValueWrap<'a> {
-    fn from(value: &'a Value<'a>) -> Self {
-        ValueWrap(Cow::Borrowed(value))
-    }
-}
-
-impl<'a> From<Value<'a>> for ValueWrap<'a> {
-    fn from(value: Value<'a>) -> Self {
-        ValueWrap(Cow::Owned(value))
-    }
-}
-
 impl<'a> FromSql<'a> for ValueWrap<'a> {
     fn from_sql(ty: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
         Self::from_sql_nullable(ty, Some(raw))
@@ -117,4 +105,16 @@ impl ToSql for ValueWrap<'_> {
     }
 
     to_sql_checked!();
+}
+
+impl<'a> From<&'a Value<'a>> for ValueWrap<'a> {
+    fn from(value: &'a Value<'a>) -> Self {
+        ValueWrap(Cow::Borrowed(value))
+    }
+}
+
+impl<'a> From<Value<'a>> for ValueWrap<'a> {
+    fn from(value: Value<'a>) -> Self {
+        ValueWrap(Cow::Owned(value))
+    }
 }

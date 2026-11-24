@@ -37,21 +37,23 @@ impl AnyQuery {
     pub fn buffer(&mut self) -> &mut String {
         match self {
             Self::Raw(RawQuery(value)) => value,
-            Self::Prepared(..) => self.reset_to_raw(),
-        }
-    }
-
-    #[cold]
-    #[inline(never)]
-    fn reset_to_raw(&mut self) -> &mut String {
-        log::error!(
-            "AnyQuery::buffer reset a prepared query to raw, discarding its prepared content"
-        );
-        loop {
-            if let Self::Raw(RawQuery(value)) = self {
-                return value;
+            Self::Prepared(..) => {
+                let res = reset_to_raw(self);
+                #[cold]
+                #[inline(never)]
+                fn reset_to_raw(query: &mut AnyQuery) -> &mut String {
+                    log::error!(
+                        "AnyQuery::buffer reset a prepared query to raw, discarding its prepared content"
+                    );
+                    loop {
+                        if let AnyQuery::Raw(RawQuery(value)) = query {
+                            return value;
+                        }
+                        *query = AnyQuery::Raw(Default::default());
+                    }
+                }
+                res
             }
-            *self = Self::Raw(Default::default());
         }
     }
 

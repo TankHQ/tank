@@ -1,39 +1,41 @@
-use crate::{
-    ChDBConnection, ChDBDriver, ChDBRow,
-    batch::ChDBBatch,
-    ffi::{
-        QUERY_CLASS_READ_ONLY, QueryAnalysis, QueryWithParamsFn, chdb_classify_query_n,
-        chdb_destroy_query_result, chdb_query_with_params_n, chdb_result_column_count,
-        chdb_result_length, chdb_result_rows_read, chdb_stream_cancel_query,
-        chdb_stream_fetch_result, chdb_stream_query_with_params_n, query_error, result_error,
-    },
-};
+use crate::{ChDBConnection, ChDBDriver, ChDBRow};
 use anyhow::anyhow;
+use chdb_rust::{
+    ArrowQueryStream, ArrowReader,
+    admin::QueryClass,
+    arrow::{array::RecordBatch, datatypes::Schema},
+    format::OutputFormat,
+};
 use std::{
-    ffi::c_void,
-    hint, mem,
+    hint,
     pin::Pin,
-    ptr,
     sync::Arc,
     task::{Context, Poll},
 };
-use tank_core::{Error, Query, QueryResult, RawQuery, Result, RowsAffected, stream::Stream};
+use tank_core::{
+    Error, Query, QueryResult, RawQuery, Result, RowLabels, RowsAffected, stream::Stream,
+};
 
-/// Lazily runs a chDB query and streams zero-copy `Native` columnar rows or effects.
+enum ArrowSource<'s> {
+    None,
+    Stream(ArrowQueryStream<'s>),
+    Reader(ArrowReader),
+}
+
+/// Lazily runs a chDB query and streams Arrow `RecordBatch` rows or effects.
 pub(crate) struct ChDBStream<'s, Q>
 where
     Q: AsMut<Query<ChDBDriver>>,
 {
-    connection: &'s mut ChDBConnection,
+    connection: Option<&'s mut ChDBConnection>,
     query: Q,
-    handle: *mut c_void,
-    batch: Option<Arc<ChDBBatch>>,
-    offset: usize,
+    source: ArrowSource<'s>,
+    batch: Option<Arc<(RecordBatch, RowLabels)>>,
+    labels: RowLabels,
     row: usize,
     size: usize,
     remaining: u16,
     started: bool,
-    schema_seen: bool,
     done: bool,
 }
 
@@ -42,43 +44,26 @@ where
     Q: AsMut<Query<ChDBDriver>>,
 {
     const BATCH_SIZE: u16 = 256;
-    const FORMAT: &str = "Native";
-    const STREAM_UNSUPPORTED_PREFIX: &[u8] =
-        b"Code: 36. DB::Exception: Streaming query is not supported for query: ";
-    const STREAM_UNSUPPORTED_SUFFIX: &[u8] = b" (BAD_ARGUMENTS)";
 
     #[inline(always)]
-    pub(crate) const fn new(connection: &'s mut ChDBConnection, query: Q) -> Self {
+    pub(crate) fn new(connection: &'s mut ChDBConnection, query: Q) -> Self {
         Self {
-            connection,
+            connection: Some(connection),
             query,
-            handle: ptr::null_mut(),
+            source: ArrowSource::None,
             batch: None,
-            offset: 0,
+            labels: RowLabels::default(),
             row: 0,
             size: 0,
             remaining: Self::BATCH_SIZE,
             started: false,
-            schema_seen: false,
             done: false,
         }
     }
 
     fn finish(&mut self) {
-        let handle = mem::replace(&mut self.handle, ptr::null_mut());
-        if !handle.is_null() {
-            unsafe {
-                chdb_stream_cancel_query(self.connection.raw(), handle);
-                chdb_destroy_query_result(handle);
-            }
-        }
-        if let Some(mut batch) = self.batch.take()
-            && let Some(inner) = Arc::get_mut(&mut batch)
-        {
-            inner.release();
-            self.connection.batch = Some(batch);
-        }
-        self.offset = 0;
+        self.source = ArrowSource::None;
+        self.batch = None;
         self.row = 0;
         self.size = 0;
         self.done = true;
@@ -88,59 +73,75 @@ where
         }
     }
 
-    fn exec_query(&mut self, ffi_fn: QueryWithParamsFn) -> *mut c_void {
-        let conn = self.connection.raw();
-        match self.query.as_mut() {
-            Query::Raw(RawQuery(sql)) => unsafe {
-                ffi_fn(
-                    conn,
-                    sql.as_ptr().cast(),
-                    sql.len(),
-                    Self::FORMAT.as_ptr().cast(),
-                    Self::FORMAT.len(),
-                    ptr::null(),
-                    ptr::null(),
-                    ptr::null(),
-                    ptr::null(),
-                    0,
-                )
-            },
-            Query::Prepared(prepared) => prepared.exec(conn, Self::FORMAT, ffi_fn),
+    fn update_labels(&mut self, schema: &Schema) {
+        let fields = schema.fields();
+        if self.labels.len() == fields.len()
+            && self.labels.iter().zip(fields).all(|(prev, f)| {
+                let raw = f.name().as_str();
+                let clean = raw
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or(raw)
+                    .trim_matches('`')
+                    .trim_matches('"');
+                prev == clean
+            })
+        {
+            return;
         }
-    }
-
-    fn parse_chunk(&mut self, raw: *mut c_void, parent: Option<Arc<ChDBBatch>>) -> Result<()> {
-        let data_len = unsafe { chdb_result_length(raw) };
-        if parent.is_none() {
-            self.offset = 0;
-        }
-        self.size = ChDBBatch::parse(&mut self.batch, raw, parent, &mut self.offset)?;
-        self.schema_seen = true;
-        self.row = 0;
-        if self.offset >= data_len {
-            self.offset = 0;
-        }
-        Ok(())
+        self.labels = fields
+            .iter()
+            .map(|f| {
+                let raw = f.name().as_str();
+                raw.rsplit('.')
+                    .next()
+                    .unwrap_or(raw)
+                    .trim_matches('`')
+                    .trim_matches('"')
+                    .to_owned()
+            })
+            .collect();
     }
 
     fn start(&mut self) -> Result<Option<RowsAffected>> {
         self.started = true;
-        if self.batch.is_none() {
-            self.batch = self.connection.batch.take();
-        }
-        let conn = self.connection.raw();
-        let sql = match self.query.as_mut() {
-            Query::Raw(RawQuery(sql)) => sql.as_str(),
-            Query::Prepared(prepared) => prepared.sql(),
+        let Some(connection) = self.connection.take() else {
+            return Ok(None);
         };
+        let (sql, params) = match self.query.as_mut() {
+            Query::Raw(RawQuery(sql)) => (sql.as_str(), None),
+            Query::Prepared(prepared) => {
+                let params = prepared
+                    .has_bound_params()
+                    .then(|| prepared.build_query_params());
+                (prepared.sql(), params)
+            }
+        };
+        let mut tokens = sql
+            .trim_end_matches(|c: char| c.is_ascii_whitespace() || c == ';')
+            .rsplit(|c: char| c.is_ascii_whitespace());
+        if matches!(
+            (tokens.next(), tokens.next()),
+            (Some(fmt), Some(kw)) if fmt.eq_ignore_ascii_case("null") && kw.eq_ignore_ascii_case("format")
+        ) {
+            return Err(anyhow!("ChDB SELECT with FORMAT Null suppresses output"));
+        }
+
         let first = sql
             .trim_start()
             .split(|c: char| !c.is_ascii_alphabetic())
             .next()
             .unwrap_or_default();
-        let read_only = if first.eq_ignore_ascii_case("select") || first.eq_ignore_ascii_case("with")
+        let mode = if first.eq_ignore_ascii_case("select") || first.eq_ignore_ascii_case("with") {
+            0u8
+        } else if first.eq_ignore_ascii_case("show")
+            || first.eq_ignore_ascii_case("describe")
+            || first.eq_ignore_ascii_case("desc")
+            || first.eq_ignore_ascii_case("explain")
+            || first.eq_ignore_ascii_case("exists")
+            || first.eq_ignore_ascii_case("check")
         {
-            true
+            1
         } else if first.eq_ignore_ascii_case("insert")
             || first.eq_ignore_ascii_case("create")
             || first.eq_ignore_ascii_case("drop")
@@ -151,157 +152,91 @@ where
             || first.eq_ignore_ascii_case("set")
             || first.eq_ignore_ascii_case("use")
         {
-            false
+            2
         } else {
-            let mut analysis = QueryAnalysis {
-                struct_size: mem::size_of::<QueryAnalysis>() as u32,
-                statement_count: 0,
-                flags: 0,
-                query_class: u32::MAX,
-            };
-            let state = unsafe {
-                chdb_classify_query_n(
-                    conn,
-                    sql.as_ptr().cast(),
-                    sql.len(),
-                    ptr::null(),
-                    0,
-                    &mut analysis,
-                )
-            };
-            state == 0 && analysis.query_class == QUERY_CLASS_READ_ONLY
+            let class = connection
+                .inner
+                .classify_query(sql, None)
+                .map(|a| a.class)
+                .unwrap_or(QueryClass::Unknown);
+            if class == QueryClass::ReadOnly { 0 } else { 2 }
         };
-        if read_only {
-            let handle = self.exec_query(chdb_stream_query_with_params_n);
-            if handle.is_null() {
-                return Err(anyhow!("ChDB returned a null stream result"));
+        match mode {
+            0 => {
+                let stream = match params {
+                    Some(params) => connection
+                        .inner
+                        .query_stream_arrow_with_params(sql, params, None)
+                        .map_err(Error::new)?,
+                    None => connection
+                        .inner
+                        .query_stream_arrow(sql)
+                        .map_err(Error::new)?,
+                };
+                self.source = ArrowSource::Stream(stream);
+                self.fetch_next_batch()?;
+                Ok(None)
             }
-            if let Some(err) = unsafe { result_error(handle) } {
-                let bytes = err.to_bytes();
-                let unsupported = bytes.starts_with(Self::STREAM_UNSUPPORTED_PREFIX)
-                    && bytes.ends_with(Self::STREAM_UNSUPPORTED_SUFFIX);
-                let error = (!unsupported).then(|| {
-                    anyhow!(
-                        "ChDB streaming initialization failed: {}",
-                        err.to_string_lossy()
-                    )
-                });
-                unsafe { chdb_destroy_query_result(handle) };
-                if let Some(error) = error {
-                    return Err(error);
-                }
-                return self.run_materialized();
+            1 => {
+                let reader = connection.inner.query_arrow(sql).map_err(Error::new)?;
+                self.source = ArrowSource::Reader(reader);
+                self.fetch_next_batch()?;
+                Ok(None)
             }
-            self.handle = handle;
-            // Prime the first chunk before returning so early drop can cancel safely.
-            self.fetch_next_chunk()?;
-            return Ok(None);
-        }
-        self.run_materialized()
-    }
-
-    fn run_materialized(&mut self) -> Result<Option<RowsAffected>> {
-        let result = self.exec_query(chdb_query_with_params_n);
-        if result.is_null() {
-            return Err(anyhow!("ChDB returned a null result"));
-        }
-        if let Some(err) = unsafe { result_error(result) } {
-            let error = query_error(err);
-            unsafe { chdb_destroy_query_result(result) };
-            return Err(error);
-        }
-        let data_len = unsafe { chdb_result_length(result) };
-        let col_count = unsafe { chdb_result_column_count(result) };
-        self.done = true;
-        if data_len > 0 {
-            self.parse_chunk(result, None)?;
-            Ok(None)
-        } else {
-            unsafe { chdb_destroy_query_result(result) };
-            self.finish();
-            Ok((col_count == 0).then(RowsAffected::default))
+            _ => {
+                match params {
+                    Some(params) => connection
+                        .inner
+                        .query_with_params(sql, OutputFormat::Null, params)
+                        .map_err(Error::new)?,
+                    None => connection
+                        .inner
+                        .query(sql, OutputFormat::Null)
+                        .map_err(Error::new)?,
+                };
+                self.finish();
+                Ok(Some(RowsAffected::default()))
+            }
         }
     }
 
-    fn fetch_next_chunk(&mut self) -> Result<()> {
+    fn fetch_next_batch(&mut self) -> Result<()> {
         loop {
-            if self.offset > 0
-                && let Some(parent) = self.batch.clone()
-            {
-                let raw = parent.raw;
-                self.parse_chunk(raw, Some(parent))?;
-                if self.size > 0 {
+            let next = match &mut self.source {
+                ArrowSource::None => {
+                    self.finish();
                     return Ok(());
                 }
+                ArrowSource::Stream(stream) => stream.next_batch().map_err(Error::new)?,
+                ArrowSource::Reader(reader) => reader.next().transpose().map_err(Error::new)?,
+            };
+            let Some(batch) = next else {
+                self.finish();
+                return Ok(());
+            };
+            let rows = batch.num_rows();
+            if rows == 0 {
                 continue;
             }
-            if self.handle.is_null() {
-                self.finish();
-                return Ok(());
-            }
-            let chunk = unsafe { chdb_stream_fetch_result(self.connection.raw(), self.handle) };
-            if chunk.is_null() {
-                return Err(anyhow!("ChDB returned a null stream chunk"));
-            }
-            if let Some(err) = unsafe { result_error(chunk) } {
-                let error = query_error(err);
-                unsafe { chdb_destroy_query_result(chunk) };
-                return Err(error);
-            }
-            let data_len = unsafe { chdb_result_length(chunk) };
-            let rows_read = unsafe { chdb_result_rows_read(chunk) };
-            let has_cols = unsafe { chdb_result_column_count(chunk) } > 0;
-            if data_len == 0 {
-                unsafe { chdb_destroy_query_result(chunk) };
-                if rows_read > 0 {
-                    return Err(anyhow!(
-                        "ChDB SELECT produced rows without a Native output block"
-                    ));
-                }
-                if !self.schema_seen {
-                    let sql = match self.query.as_mut() {
-                        Query::Raw(RawQuery(sql)) => sql.as_str(),
-                        Query::Prepared(prepared) => prepared.sql(),
-                    };
-                    let mut tokens = sql
-                        .trim_end_matches(|c: char| c.is_ascii_whitespace() || c == ';')
-                        .rsplit(|c: char| c.is_ascii_whitespace());
-                    let format_null = matches!(
-                        (tokens.next(), tokens.next()),
-                        (Some(fmt), Some(kw)) if fmt.eq_ignore_ascii_case("null") && kw.eq_ignore_ascii_case("format")
-                    );
-                    if !has_cols || format_null {
-                        return Err(anyhow!("ChDB SELECT ended without a schema-bearing result"));
-                    }
-                }
-                let handle = mem::replace(&mut self.handle, ptr::null_mut());
-                unsafe { chdb_destroy_query_result(handle) };
-                self.finish();
-                return Ok(());
-            }
-            self.parse_chunk(chunk, None)?;
-            if rows_read == 0 {
-                let handle = mem::replace(&mut self.handle, ptr::null_mut());
-                unsafe { chdb_destroy_query_result(handle) };
-                self.done = true;
-            }
-            if self.size > 0 {
-                return Ok(());
-            }
+            self.update_labels(batch.schema_ref());
+            self.batch = Some(Arc::new((batch, self.labels.clone())));
+            self.row = 0;
+            self.size = rows;
+            return Ok(());
         }
     }
 
     #[cold]
     #[inline(never)]
     fn advance(&mut self) -> Result<Option<RowsAffected>> {
-        if self.done && self.offset == 0 {
+        if self.done {
             self.finish();
             return Ok(None);
         }
         if !self.started {
             return self.start();
         }
-        self.fetch_next_chunk()?;
+        self.fetch_next_batch()?;
         Ok(None)
     }
 
@@ -311,16 +246,6 @@ where
         cx: &mut Context<'_>,
         emit_affected: impl FnOnce(RowsAffected) -> Option<T>,
     ) -> Poll<Option<Result<T>>> {
-        #[cold]
-        #[inline(never)]
-        fn fail<Q: AsMut<Query<ChDBDriver>>>(stream: &mut ChDBStream<'_, Q>, error: Error) -> Error {
-            let context = format!("While running the query:\n{}", stream.query.as_mut());
-            stream.finish();
-            let error = error.context(context);
-            log::error!("{error:#}");
-            error
-        }
-
         if self.remaining == 0 {
             hint::cold_path();
             self.remaining = Self::BATCH_SIZE;
@@ -344,7 +269,23 @@ where
                 Ok(Some(affected)) => return Poll::Ready(emit_affected(affected).map(Ok)),
                 Ok(None) if self.row < self.size => {}
                 Ok(None) => return Poll::Ready(None),
-                Err(error) => return Poll::Ready(Some(Err(fail(self, error)))),
+                Err(error) => {
+                    let error = fail(self, error);
+                    #[cold]
+                    #[inline(never)]
+                    fn fail<Q: AsMut<Query<ChDBDriver>>>(
+                        stream: &mut ChDBStream<'_, Q>,
+                        error: Error,
+                    ) -> Error {
+                        let context =
+                            format!("While running the query:\n{}", stream.query.as_mut());
+                        stream.finish();
+                        let error = error.context(context);
+                        log::error!("{error:#}");
+                        error
+                    }
+                    return Poll::Ready(Some(Err(error)));
+                }
             }
         }
     }
@@ -365,14 +306,11 @@ where
     #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.size - self.row;
-        (
-            remaining,
-            (self.done && self.offset == 0).then_some(remaining),
-        )
+        (remaining, self.done.then_some(remaining))
     }
 }
 
-// `handle` is exclusively owned by this stream and serialized with `&'s mut ChDBConnection`.
+// `ArrowQueryStream` holds a raw `chdb_result` pointer but exclusively borrows `&'s mut Connection`.
 unsafe impl<Q: AsMut<Query<ChDBDriver>> + Send> Send for ChDBStream<'_, Q> {}
 
 impl<Q: AsMut<Query<ChDBDriver>>> Drop for ChDBStream<'_, Q> {
@@ -391,7 +329,7 @@ where
     Q: AsMut<Query<ChDBDriver>>,
 {
     #[inline(always)]
-    pub(crate) const fn new(connection: &'s mut ChDBConnection, query: Q) -> Self {
+    pub(crate) fn new(connection: &'s mut ChDBConnection, query: Q) -> Self {
         Self(ChDBStream::new(connection, query))
     }
 }

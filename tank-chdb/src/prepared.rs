@@ -1,25 +1,22 @@
-use crate::{ChDBSqlWriter, ffi::QueryWithParamsFn};
+use crate::ChDBSqlWriter;
 use anyhow::anyhow;
+use chdb_rust::{QueryParam, QueryParams};
 use std::{
     borrow::Cow,
-    ffi::{c_char, c_void},
     fmt::{self, Display, Write as _},
-    hint, mem, ptr,
+    hint, mem,
 };
 use tank_core::{
     AnyQuery, AsValue, Context, Fragment, Prepared, Result, SqlCoreWriter, SqlValueWriter, Value,
 };
 
 /// Prepared statement for chDB using native `{pN:Type}` parameter binding.
-///
-/// Reuses per-parameter string buffers and caches the typed SQL text across
-/// executions whenever the bound parameter types stay the same.
 #[derive(Debug)]
 pub struct ChDBPrepared {
     template: String,
     markers: Vec<(usize, usize)>,
-    // Per parameter: (name, ClickHouse type, encoded value, bound flag).
-    params: Vec<(String, Cow<'static, str>, String, bool)>,
+    // Per parameter: (name, ClickHouse type, encoded param, bound flag).
+    params: Vec<(String, Cow<'static, str>, QueryParam, bool)>,
     sql: AnyQuery,
     sql_dirty: bool,
     index: u64,
@@ -47,7 +44,14 @@ impl ChDBPrepared {
         }
         let count = markers.len();
         let params = (0..count)
-            .map(|i| (format!("p{i}"), Cow::Borrowed(Self::NULL_TYPE), String::new(), false))
+            .map(|i| {
+                (
+                    format!("p{i}"),
+                    Cow::Borrowed(Self::NULL_TYPE),
+                    QueryParam::Null,
+                    false,
+                )
+            })
             .collect();
         Self {
             template: sql,
@@ -103,104 +107,59 @@ impl ChDBPrepared {
         }
     }
 
-    fn write_escaped(dst: &mut String, value: &str) {
-        let bytes = value.as_bytes();
-        let mut start = 0;
-        for (i, &b) in bytes.iter().enumerate() {
-            let esc = match b {
-                b'\\' => "\\\\",
-                b'\t' => "\\t",
-                b'\n' => "\\n",
-                b'\r' => "\\r",
-                0 => "\\0",
-                _ => continue,
-            };
-            dst.push_str(&value[start..i]);
-            dst.push_str(esc);
-            start = i + 1;
-        }
-        dst.push_str(&value[start..]);
-    }
-
-    fn write_param(dst: &mut String, value: Value<'_>) {
-        dst.clear();
+    fn to_query_param(value: Value<'_>) -> QueryParam {
         if value.is_null() {
-            dst.push_str("\\N");
-            return;
+            return QueryParam::Null;
         }
-        'simple_value: {
-            match value {
-                Value::Boolean(Some(v)) => dst.push_str(if v { "true" } else { "false" }),
-                Value::Int8(Some(v)) => {
-                    let _ = write!(dst, "{v}");
-                }
-                Value::Int16(Some(v)) => {
-                    let _ = write!(dst, "{v}");
-                }
-                Value::Int32(Some(v)) => {
-                    let _ = write!(dst, "{v}");
-                }
-                Value::Int64(Some(v)) => {
-                    let _ = write!(dst, "{v}");
-                }
-                Value::UInt8(Some(v)) => {
-                    let _ = write!(dst, "{v}");
-                }
-                Value::UInt16(Some(v)) => {
-                    let _ = write!(dst, "{v}");
-                }
-                Value::UInt32(Some(v)) => {
-                    let _ = write!(dst, "{v}");
-                }
-                Value::UInt64(Some(v)) => {
-                    let _ = write!(dst, "{v}");
-                }
-                Value::Float32(Some(v)) => {
-                    let _ = write!(dst, "{v}");
-                }
-                Value::Float64(Some(v)) => {
-                    let _ = write!(dst, "{v}");
-                }
+        let param = 'simple_value: {
+            let param = match value {
+                Value::Boolean(Some(v)) => QueryParam::Bool(v),
+                Value::Int8(Some(v)) => QueryParam::Int64(v as i64),
+                Value::Int16(Some(v)) => QueryParam::Int64(v as i64),
+                Value::Int32(Some(v)) => QueryParam::Int64(v as i64),
+                Value::Int64(Some(v)) => QueryParam::Int64(v),
+                Value::UInt8(Some(v)) => QueryParam::UInt64(v as u64),
+                Value::UInt16(Some(v)) => QueryParam::UInt64(v as u64),
+                Value::UInt32(Some(v)) => QueryParam::UInt64(v as u64),
+                Value::UInt64(Some(v)) => QueryParam::UInt64(v),
+                Value::Float32(Some(v)) => QueryParam::Float64(v as f64),
+                Value::Float64(Some(v)) => QueryParam::Float64(v),
                 Value::Varchar(Some(ref s)) => {
-                    Self::write_escaped(dst, s);
+                    let param = QueryParam::Text(s.as_ref().to_owned());
                     if matches!(s, Cow::Owned(_)) {
-                        break 'simple_value;
+                        break 'simple_value param;
                     }
+                    param
                 }
-                Value::Char(Some(c)) => {
-                    let mut buf = [0u8; 4];
-                    Self::write_escaped(dst, c.encode_utf8(&mut buf));
-                }
+                Value::Char(Some(c)) => QueryParam::Text(c.to_string()),
                 Value::Blob(Some(ref bytes)) => {
-                    dst.reserve(bytes.len() * 2);
+                    let mut hex = String::with_capacity(bytes.len() * 2);
                     for &b in bytes.as_ref() {
-                        dst.push(Self::HEX[(b >> 4) as usize] as char);
-                        dst.push(Self::HEX[(b & 0xf) as usize] as char);
+                        hex.push(Self::HEX[(b >> 4) as usize] as char);
+                        hex.push(Self::HEX[(b & 0xf) as usize] as char);
                     }
+                    let param = QueryParam::Text(hex);
                     if matches!(bytes, Cow::Owned(_)) {
-                        break 'simple_value;
+                        break 'simple_value param;
                     }
+                    param
                 }
-                Value::Json(Some(ref j)) => {
-                    let mut tmp = String::new();
-                    let _ = write!(tmp, "{j}");
-                    Self::write_escaped(dst, &tmp);
-                    break 'simple_value;
-                }
+                Value::Json(Some(ref j)) => break 'simple_value QueryParam::Text(j.to_string()),
                 ref other => {
-                    let mut out = AnyQuery::new(mem::take(dst));
+                    let mut out = AnyQuery::with_capacity(32);
                     Self::WRITER.write_value(
                         &mut Context::fragment(Fragment::None),
                         &mut out,
                         other,
                     );
-                    *dst = out.into();
-                    break 'simple_value;
+                    break 'simple_value QueryParam::Raw(out.into());
                 }
-            }
+            };
             // Avoid an opaque Value::drop call for simple values that do not allocate memory.
             mem::forget(value);
-        }
+            param
+        };
+        param
     }
 
     /// Returns the typed SQL text, rebuilding it only when parameter types changed.
@@ -231,77 +190,18 @@ impl ChDBPrepared {
         self.sql.buffer().as_str()
     }
 
-    /// Invokes a `chdb_*_with_params_n` FFI entry point with the currently bound parameters.
-    pub(crate) fn exec(
-        &mut self,
-        conn: *mut c_void,
-        format: &str,
-        ffi_fn: QueryWithParamsFn,
-    ) -> *mut c_void {
-        const STACK: usize = 8;
-        let _ = self.sql();
-        let sql = if self.markers.is_empty() {
-            self.template.as_str()
-        } else {
-            self.sql.buffer().as_str()
-        };
-        let count = self.params.iter().filter(|p| p.3).count();
-        if count <= STACK {
-            let mut n_ptrs = [ptr::null::<c_char>(); STACK];
-            let mut n_lens = [0usize; STACK];
-            let mut v_ptrs = [ptr::null::<c_char>(); STACK];
-            let mut v_lens = [0usize; STACK];
-            let mut out = 0;
-            for (name, _, val, bound) in &self.params {
-                if *bound {
-                    n_ptrs[out] = name.as_ptr().cast();
-                    n_lens[out] = name.len();
-                    v_ptrs[out] = val.as_ptr().cast();
-                    v_lens[out] = val.len();
-                    out += 1;
-                }
-            }
-            return unsafe {
-                ffi_fn(
-                    conn,
-                    sql.as_ptr().cast(),
-                    sql.len(),
-                    format.as_ptr().cast(),
-                    format.len(),
-                    if out == 0 { ptr::null() } else { n_ptrs.as_ptr() },
-                    if out == 0 { ptr::null() } else { n_lens.as_ptr() },
-                    if out == 0 { ptr::null() } else { v_ptrs.as_ptr() },
-                    if out == 0 { ptr::null() } else { v_lens.as_ptr() },
-                    out,
-                )
-            };
-        }
-        let mut n_ptrs = Vec::with_capacity(count);
-        let mut n_lens = Vec::with_capacity(count);
-        let mut v_ptrs = Vec::with_capacity(count);
-        let mut v_lens = Vec::with_capacity(count);
-        for (name, _, val, bound) in &self.params {
+    pub(crate) fn has_bound_params(&self) -> bool {
+        self.params.iter().any(|p| p.3)
+    }
+
+    pub(crate) fn build_query_params(&self) -> QueryParams {
+        let mut params = QueryParams::new();
+        for (name, _, value, bound) in &self.params {
             if *bound {
-                n_ptrs.push(name.as_ptr().cast());
-                n_lens.push(name.len());
-                v_ptrs.push(val.as_ptr().cast());
-                v_lens.push(val.len());
+                params = params.bind(name.as_str(), value.clone());
             }
         }
-        unsafe {
-            ffi_fn(
-                conn,
-                sql.as_ptr().cast(),
-                sql.len(),
-                format.as_ptr().cast(),
-                format.len(),
-                n_ptrs.as_ptr(),
-                n_lens.as_ptr(),
-                v_ptrs.as_ptr(),
-                v_lens.as_ptr(),
-                n_ptrs.len(),
-            )
-        }
+        params
     }
 }
 
@@ -347,7 +247,7 @@ impl Prepared for ChDBPrepared {
             *prev_ty = ty;
             self.sql_dirty = true;
         }
-        Self::write_param(slot, value);
+        *slot = Self::to_query_param(value);
         *bound = true;
         self.index = index + 1;
         Ok(self)

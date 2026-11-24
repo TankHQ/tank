@@ -1,10 +1,6 @@
 //! chDB driver for `tank`.
-mod batch;
-mod column;
 mod connection;
-mod cursor;
 mod driver;
-mod ffi;
 mod prepared;
 mod row;
 mod stream;

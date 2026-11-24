@@ -212,7 +212,7 @@ impl ValueWrap<'_> {
             DUCKDB_TYPE_DUCKDB_TYPE_UUID => Value::Uuid(None),
             // A different return type keeps the cold call from sharing the caller's return slot.
             id => {
-                #[cold]
+                let res = complex(id, logical_type());
                 #[inline(never)]
                 fn complex(
                     id: DUCKDB_TYPE,
@@ -282,7 +282,7 @@ impl ValueWrap<'_> {
                         }
                     })
                 }
-                complex(id, logical_type()).ok()?
+                res.ok()?
             }
         })
     }

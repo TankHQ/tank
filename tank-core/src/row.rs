@@ -149,25 +149,6 @@ impl RowOwned {
     }
 }
 
-impl Debug for RowOwned {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RowOwned")
-            .field("labels", &self.labels)
-            .field("len", &self.values.len())
-            .finish()
-    }
-}
-
-impl IntoIterator for RowOwned {
-    type Item = ValueOwned;
-    type IntoIter = vec::IntoIter<ValueOwned>;
-
-    #[inline(always)]
-    fn into_iter(self) -> Self::IntoIter {
-        self.values.into_iter()
-    }
-}
-
 impl Row for RowOwned {
     #[inline(always)]
     fn labels(&self) -> &[String] {
@@ -191,6 +172,25 @@ impl Row for RowOwned {
     #[inline(always)]
     fn into_owned(self) -> RowOwned {
         self
+    }
+}
+
+impl Debug for RowOwned {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RowOwned")
+            .field("labels", &self.labels)
+            .field("len", &self.values.len())
+            .finish()
+    }
+}
+
+impl IntoIterator for RowOwned {
+    type Item = ValueOwned;
+    type IntoIter = vec::IntoIter<ValueOwned>;
+
+    #[inline(always)]
+    fn into_iter(self) -> Self::IntoIter {
+        self.values.into_iter()
     }
 }
 

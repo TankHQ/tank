@@ -10,6 +10,34 @@ use tank_core::{Row, RowOwned};
 
 pub(crate) struct RowWrap<'a>(pub(crate) Cow<'a, RowOwned>);
 
+impl Serialize for RowWrap<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_map(Some(self.0.len()))?;
+        for (k, v) in self.0.as_ref().iter() {
+            state.serialize_entry(
+                k,
+                &value_to_bson(v.as_ref()).map_err(|e| S::Error::custom(format!("{e}")))?,
+            )?;
+        }
+        state.end()
+    }
+}
+
+impl<'d> Deserialize<'d> for RowWrap<'_> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'d>,
+    {
+        let doc: Document = Deserialize::deserialize(deserializer)?;
+        Ok(doc
+            .try_into()
+            .map_err(|e| D::Error::custom(format!("{e}")))?)
+    }
+}
+
 impl TryFrom<Document> for RowWrap<'_> {
     type Error = tank_core::Error;
     fn try_from(value: Document) -> tank_core::Result<Self> {
@@ -39,33 +67,5 @@ impl<'a> TryFrom<RowWrap<'a>> for Document {
             result.insert(k, value_to_bson(v.as_ref())?);
         }
         Ok(result)
-    }
-}
-
-impl Serialize for RowWrap<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut state = serializer.serialize_map(Some(self.0.len()))?;
-        for (k, v) in self.0.as_ref().iter() {
-            state.serialize_entry(
-                k,
-                &value_to_bson(v.as_ref()).map_err(|e| S::Error::custom(format!("{e}")))?,
-            )?;
-        }
-        state.end()
-    }
-}
-
-impl<'d> Deserialize<'d> for RowWrap<'_> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'d>,
-    {
-        let doc: Document = Deserialize::deserialize(deserializer)?;
-        Ok(doc
-            .try_into()
-            .map_err(|e| D::Error::custom(format!("{e}")))?)
     }
 }

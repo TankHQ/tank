@@ -21,6 +21,12 @@ impl PoolConfig {
     }
 }
 
+impl Default for PoolConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl From<PoolConfig> for deadpool::managed::PoolConfig {
     fn from(value: PoolConfig) -> Self {
         Self {
@@ -50,11 +56,5 @@ impl From<deadpool::managed::PoolConfig> for PoolConfig {
                 deadpool::managed::QueueMode::Lifo => QueueMode::Lifo,
             },
         }
-    }
-}
-
-impl Default for PoolConfig {
-    fn default() -> Self {
-        Self::new()
     }
 }

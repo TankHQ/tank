@@ -132,6 +132,7 @@ impl DuckDBColumn {
                         .flatten(),
                 ),
                 _ => {
+                    let res = complex(self, row);
                     #[inline(never)]
                     fn complex<'a>(column: &DuckDBColumn, row: usize) -> Option<Value<'a>> {
                         unsafe {
@@ -387,7 +388,7 @@ impl DuckDBColumn {
                             })
                         }
                     }
-                    complex(self, row).unwrap_or(Value::Null)
+                    res.unwrap_or(Value::Null)
                 }
             }))
         }

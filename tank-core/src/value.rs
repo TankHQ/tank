@@ -298,61 +298,6 @@ impl<'a> Value<'a> {
         }
     }
 
-    // Outlining recursive composite arms lets LLVM inline `into_owned` for scalars without a 32-byte `sret` spill.
-    #[cold]
-    #[inline(never)]
-    fn into_owned_nested(self) -> ValueOwned {
-        match self {
-            Value::Array(v, t) => Value::Array(
-                v.map(|v| v.into_vec().into_iter().map(Value::into_owned).collect()),
-                Box::new(CollectionType {
-                    element: t.element.into_owned(),
-                    len: t.len,
-                }),
-            ),
-            Value::List(v, t) => Value::List(
-                v.map(|v| v.into_vec().into_iter().map(Value::into_owned).collect()),
-                Box::new(CollectionType {
-                    element: t.element.into_owned(),
-                    len: t.len,
-                }),
-            ),
-            Value::Map(v, t) => Value::Map(
-                v.map(|v| {
-                    Box::new(
-                        v.into_iter()
-                            .map(|(k, v)| (k.into_owned(), v.into_owned()))
-                            .collect(),
-                    )
-                }),
-                Box::new(MapType {
-                    key: t.key.into_owned(),
-                    value: t.value.into_owned(),
-                }),
-            ),
-            Value::Struct(v, t) => Value::Struct(
-                v.map(|v| {
-                    v.into_vec()
-                        .into_iter()
-                        .map(|(k, v)| (k, v.into_owned()))
-                        .collect()
-                }),
-                Box::new(StructType {
-                    fields: t
-                        .fields
-                        .into_iter()
-                        .map(|(k, v)| (k, v.into_owned()))
-                        .collect(),
-                    name: t.name,
-                }),
-            ),
-            other => {
-                log::error!("Unexpected non composite value value: {other:?}");
-                Value::Null
-            }
-        }
-    }
-
     /// Converts this value into an owning [`ValueOwned`], cloning any borrowed payload.
     #[inline]
     pub fn into_owned(self) -> ValueOwned {
@@ -366,7 +311,61 @@ impl<'a> Value<'a> {
                     Value::Unknown(Some(Cow::Owned(v.to_owned())))
                 }
                 Value::Array(..) | Value::List(..) | Value::Map(..) | Value::Struct(..) => {
-                    break 'simple_value self.into_owned_nested();
+                    let res = nested(self);
+                    // Outlining recursive composite arms lets LLVM inline `into_owned` for scalars without a 32-byte `sret` spill.
+                    #[inline(never)]
+                    fn nested(value: Value<'_>) -> ValueOwned {
+                        match value {
+                            Value::Array(v, t) => Value::Array(
+                                v.map(|v| v.into_vec().into_iter().map(Value::into_owned).collect()),
+                                Box::new(CollectionType {
+                                    element: t.element.into_owned(),
+                                    len: t.len,
+                                }),
+                            ),
+                            Value::List(v, t) => Value::List(
+                                v.map(|v| v.into_vec().into_iter().map(Value::into_owned).collect()),
+                                Box::new(CollectionType {
+                                    element: t.element.into_owned(),
+                                    len: t.len,
+                                }),
+                            ),
+                            Value::Map(v, t) => Value::Map(
+                                v.map(|v| {
+                                    Box::new(
+                                        v.into_iter()
+                                            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+                                            .collect(),
+                                    )
+                                }),
+                                Box::new(MapType {
+                                    key: t.key.into_owned(),
+                                    value: t.value.into_owned(),
+                                }),
+                            ),
+                            Value::Struct(v, t) => Value::Struct(
+                                v.map(|v| {
+                                    v.into_vec()
+                                        .into_iter()
+                                        .map(|(k, v)| (k, v.into_owned()))
+                                        .collect()
+                                }),
+                                Box::new(StructType {
+                                    fields: t
+                                        .fields
+                                        .into_iter()
+                                        .map(|(k, v)| (k, v.into_owned()))
+                                        .collect(),
+                                    name: t.name,
+                                }),
+                            ),
+                            other => {
+                                log::error!("Unexpected non composite value value: {other:?}");
+                                Value::Null
+                            }
+                        }
+                    }
+                    break 'simple_value res;
                 }
                 // All other variants carry no `'a` borrow, and moving `self` avoids `drop_in_place::<Value>`.
                 other => {

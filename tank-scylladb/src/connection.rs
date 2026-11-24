@@ -128,111 +128,6 @@ impl ScyllaDBConnection {
     }
 }
 
-impl Executor for ScyllaDBConnection {
-    type Driver = ScyllaDBDriver;
-
-    fn driver(&self) -> Self::Driver {
-        self.driver
-    }
-
-    fn accepts_multiple_statements(&self) -> bool {
-        false
-    }
-
-    fn batch_size(&self) -> usize {
-        self.batch_size
-    }
-
-    async fn do_prepare(&mut self, sql: &str) -> Result<ScyllaDBPrepared> {
-        let context = format!("While preparing the query:\n{}", truncate_long(sql));
-        let statement = self.session.prepare(sql).await.with_context(|| context)?;
-        Ok(ScyllaDBPrepared::new(statement))
-    }
-
-    fn run<'s>(
-        &'s mut self,
-        query: impl AsQuery<ScyllaDBDriver> + 's,
-    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
-        let mut query = query.as_query(&self.driver());
-        let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
-        stream! {
-            let mut paging_state = PagingState::start();
-            loop {
-                let (query_result, paging_state_response) = match query.as_mut() {
-                    Query::Raw(RawQuery(sql)) => {
-                        self.session
-                            .query_single_page(sql.as_str(), &[], paging_state)
-                            .await?
-                    }
-                    Query::Prepared(prepared) => {
-                        let params = prepared.take_params()?;
-                        self.session
-                            .execute_single_page(&prepared.statement.clone(), params, paging_state)
-                            .await?
-                    }
-                };
-                if query_result.is_rows() {
-                    for row in query_result.into_rows_result()?.rows::<RowWrap>()? {
-                        let row = row?.0;
-                        yield Ok(QueryResult::Row(row));
-                    }
-                } else {
-                    // The driver does not give the number of affected rows
-                    yield Ok(QueryResult::Affected(Default::default()));
-                }
-                match paging_state_response.into_paging_control_flow() {
-                    ControlFlow::Break(..) => {
-                        break;
-                    }
-                    ControlFlow::Continue(new_paging_state) => {
-                        paging_state = new_paging_state;
-                    }
-                }
-            }
-        }
-        .map_err(move |e: Error| {
-            let error = e.context(context.clone());
-            log::error!("{error:#}");
-            error
-        })
-    }
-
-    fn fetch<'s>(
-        &'s mut self,
-        query: impl AsQuery<ScyllaDBDriver> + 's,
-    ) -> impl Stream<Item = Result<impl Row + 's>> + Send {
-        let mut query = query.as_query(&self.driver());
-        let context = Arc::new(format!("While fetching the query:\n{}", query.as_mut()));
-        stream! {
-            let stream = match query.as_mut() {
-                Query::Raw(raw) => {
-                    let sql = raw.0.as_str();
-                    self.session
-                        .query_iter(sql, [])
-                        .await?
-                        .rows_stream::<RowWrap>()?
-                }
-                Query::Prepared(prepared) => {
-                    let params = prepared.take_params()?;
-                    self.session
-                        .execute_iter(prepared.statement.clone(), params)
-                        .await?
-                        .rows_stream::<RowWrap>()?
-                }
-            };
-            let mut stream = pin!(stream);
-            while let Some(row) = stream.next().await.transpose()? {
-                yield Ok(row.0)
-            }
-        }
-        .map_err(move |e: Error| {
-            let error = e.context(context.clone());
-            log::error!("{error:#}");
-            error
-        })
-    }
-}
-
 impl Connection for ScyllaDBConnection {
     async fn connect(driver: &ScyllaDBDriver, url: Cow<'static, str>) -> Result<Self> {
         let url = Self::sanitize_url(driver, url)?;
@@ -467,5 +362,110 @@ impl Connection for ScyllaDBConnection {
 
     async fn begin<'c>(&'c mut self) -> Result<ScyllaDBTransaction<'c>> {
         Ok(Self::begin_logged_batch(self))
+    }
+}
+
+impl Executor for ScyllaDBConnection {
+    type Driver = ScyllaDBDriver;
+
+    fn driver(&self) -> Self::Driver {
+        self.driver
+    }
+
+    fn accepts_multiple_statements(&self) -> bool {
+        false
+    }
+
+    fn batch_size(&self) -> usize {
+        self.batch_size
+    }
+
+    async fn do_prepare(&mut self, sql: &str) -> Result<ScyllaDBPrepared> {
+        let context = format!("While preparing the query:\n{}", truncate_long(sql));
+        let statement = self.session.prepare(sql).await.with_context(|| context)?;
+        Ok(ScyllaDBPrepared::new(statement))
+    }
+
+    fn run<'s>(
+        &'s mut self,
+        query: impl AsQuery<ScyllaDBDriver> + 's,
+    ) -> impl Stream<Item = Result<QueryResult<impl Row + 's>>> + Send {
+        let mut query = query.as_query(&self.driver());
+        let context = Arc::new(format!("While running the query:\n{}", query.as_mut()));
+        stream! {
+            let mut paging_state = PagingState::start();
+            loop {
+                let (query_result, paging_state_response) = match query.as_mut() {
+                    Query::Raw(RawQuery(sql)) => {
+                        self.session
+                            .query_single_page(sql.as_str(), &[], paging_state)
+                            .await?
+                    }
+                    Query::Prepared(prepared) => {
+                        let params = prepared.take_params()?;
+                        self.session
+                            .execute_single_page(&prepared.statement.clone(), params, paging_state)
+                            .await?
+                    }
+                };
+                if query_result.is_rows() {
+                    for row in query_result.into_rows_result()?.rows::<RowWrap>()? {
+                        let row = row?.0;
+                        yield Ok(QueryResult::Row(row));
+                    }
+                } else {
+                    // The driver does not give the number of affected rows
+                    yield Ok(QueryResult::Affected(Default::default()));
+                }
+                match paging_state_response.into_paging_control_flow() {
+                    ControlFlow::Break(..) => {
+                        break;
+                    }
+                    ControlFlow::Continue(new_paging_state) => {
+                        paging_state = new_paging_state;
+                    }
+                }
+            }
+        }
+        .map_err(move |e: Error| {
+            let error = e.context(context.clone());
+            log::error!("{error:#}");
+            error
+        })
+    }
+
+    fn fetch<'s>(
+        &'s mut self,
+        query: impl AsQuery<ScyllaDBDriver> + 's,
+    ) -> impl Stream<Item = Result<impl Row + 's>> + Send {
+        let mut query = query.as_query(&self.driver());
+        let context = Arc::new(format!("While fetching the query:\n{}", query.as_mut()));
+        stream! {
+            let stream = match query.as_mut() {
+                Query::Raw(raw) => {
+                    let sql = raw.0.as_str();
+                    self.session
+                        .query_iter(sql, [])
+                        .await?
+                        .rows_stream::<RowWrap>()?
+                }
+                Query::Prepared(prepared) => {
+                    let params = prepared.take_params()?;
+                    self.session
+                        .execute_iter(prepared.statement.clone(), params)
+                        .await?
+                        .rows_stream::<RowWrap>()?
+                }
+            };
+            let mut stream = pin!(stream);
+            while let Some(row) = stream.next().await.transpose()? {
+                yield Ok(row.0)
+            }
+        }
+        .map_err(move |e: Error| {
+            let error = e.context(context.clone());
+            log::error!("{error:#}");
+            error
+        })
     }
 }

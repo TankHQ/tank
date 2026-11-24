@@ -34,6 +34,22 @@ impl ScyllaDBTransaction<'_> {
     }
 }
 
+impl<'c> Transaction<'c> for ScyllaDBTransaction<'c> {
+    async fn commit(self) -> Result<()> {
+        self.connection
+            .session
+            .batch(&self.batch, self.params)
+            .await
+            .map(|_| ())
+            .map_err(Error::new)
+    }
+
+    async fn rollback(self) -> Result<()> {
+        // Nothing to do, the batch is executed on commit in ScyllaDB/Cassandra which means nothing was sent so far
+        Ok(())
+    }
+}
+
 impl Executor for ScyllaDBTransaction<'_> {
     type Driver = ScyllaDBDriver;
 
@@ -118,21 +134,5 @@ impl Executor for ScyllaDBTransaction<'_> {
             query.clear();
         }
         Ok(Default::default())
-    }
-}
-
-impl<'c> Transaction<'c> for ScyllaDBTransaction<'c> {
-    async fn commit(self) -> Result<()> {
-        self.connection
-            .session
-            .batch(&self.batch, self.params)
-            .await
-            .map(|_| ())
-            .map_err(Error::new)
-    }
-
-    async fn rollback(self) -> Result<()> {
-        // Nothing to do, the batch is executed on commit in ScyllaDB/Cassandra which means nothing was sent so far
-        Ok(())
     }
 }

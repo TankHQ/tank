@@ -6,18 +6,6 @@ use tank_core::AsValue;
 #[derive(PartialEq, Eq, Hash, Debug)]
 pub(crate) struct ValueWrap<'a>(pub(crate) tank_core::Value<'a>);
 
-impl<'a> From<ValueWrap<'a>> for tank_core::Value<'a> {
-    fn from(value: ValueWrap<'a>) -> Self {
-        value.0
-    }
-}
-
-impl<'a> From<tank_core::Value<'a>> for ValueWrap<'a> {
-    fn from(value: tank_core::Value<'a>) -> Self {
-        Self(value)
-    }
-}
-
 impl<'a> ValueWrap<'a> {
     /// Decodes a reply using the declared column type. Bulk strings carry raw bytes, so binary and JSON columns keep their shape.
     pub(crate) fn decode(
@@ -74,6 +62,95 @@ impl<'a> ValueWrap<'a> {
             (_, value) => Self::try_from(value)?.0,
         }
         .into())
+    }
+}
+
+impl FromRedisValue for ValueWrap<'_> {
+    fn from_redis_value(value: redis::Value) -> Result<Self, redis::ParsingError> {
+        Self::try_from(value).map_err(|e| format!("{e}").into())
+    }
+}
+
+impl ToRedisArgs for ValueWrap<'_> {
+    fn write_redis_args<W>(&self, out: &mut W)
+    where
+        W: ?Sized + RedisWrite,
+    {
+        match &self.0 {
+            tank_core::Value::Boolean(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::Int8(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::Int16(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::Int32(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::Int64(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::Int128(Some(v), ..) => (*v).write_redis_args(out),
+            tank_core::Value::UInt8(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::UInt16(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::UInt32(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::UInt64(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::UInt128(Some(v), ..) => (*v).write_redis_args(out),
+            tank_core::Value::Float32(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::Float64(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::Decimal(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::Char(Some(v), ..) => v.to_string().write_redis_args(out),
+            tank_core::Value::Date(Some(..), ..)
+            | tank_core::Value::Time(Some(..), ..)
+            | tank_core::Value::Timestamp(Some(..), ..)
+            | tank_core::Value::TimestampWithTimezone(Some(..), ..)
+            | tank_core::Value::Interval(Some(..), ..)
+            | tank_core::Value::Uuid(Some(..), ..)
+            | tank_core::Value::IpAddr(Some(..), ..) => {
+                if let Ok(v) = self
+                    .0
+                    .clone()
+                    .try_as(&tank_core::Value::Varchar(None))
+                    .inspect_err(|e| {
+                        log::error!("{e:#}");
+                    })
+                {
+                    ValueWrap(v).write_redis_args(out);
+                }
+            }
+            tank_core::Value::Varchar(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::Blob(Some(v), ..) => v.write_redis_args(out),
+            tank_core::Value::Array(Some(v), ..) => v
+                .into_iter()
+                .map(|v| ValueWrap(v.as_value()))
+                .collect::<Vec<_>>()
+                .write_redis_args(out),
+            tank_core::Value::List(Some(v), ..) => v
+                .into_iter()
+                .map(|v| ValueWrap(v.as_value()))
+                .collect::<Vec<_>>()
+                .write_redis_args(out),
+            tank_core::Value::Map(Some(v), ..) => v
+                .iter()
+                .map(|(k, v)| (ValueWrap(k.as_value()), ValueWrap(v.as_value())))
+                .collect::<HashMap<_, _>>()
+                .write_redis_args(out),
+            tank_core::Value::Json(Some(v), ..) => v.to_string().write_redis_args(out),
+            tank_core::Value::Struct(Some(v), ..) => v
+                .into_iter()
+                .map(|(k, v)| (k, ValueWrap(v.as_value())))
+                .collect::<HashMap<_, _>>()
+                .write_redis_args(out),
+            tank_core::Value::Unknown(Some(v), ..) => v.write_redis_args(out),
+            v if v.is_null() => None::<i32>.write_redis_args(out), // This writes nothing
+            v => {
+                log::error!("tank::Value variant `{v:?}` is not supported by Valkey/Redis",)
+            }
+        }
+    }
+}
+
+impl<'a> From<ValueWrap<'a>> for tank_core::Value<'a> {
+    fn from(value: ValueWrap<'a>) -> Self {
+        value.0
+    }
+}
+
+impl<'a> From<tank_core::Value<'a>> for ValueWrap<'a> {
+    fn from(value: tank_core::Value<'a>) -> Self {
+        Self(value)
     }
 }
 
@@ -253,82 +330,5 @@ impl TryFrom<ValueWrap<'_>> for redis::Value {
                 ));
             }
         })
-    }
-}
-
-impl FromRedisValue for ValueWrap<'_> {
-    fn from_redis_value(value: redis::Value) -> Result<Self, redis::ParsingError> {
-        Self::try_from(value).map_err(|e| format!("{e}").into())
-    }
-}
-
-impl ToRedisArgs for ValueWrap<'_> {
-    fn write_redis_args<W>(&self, out: &mut W)
-    where
-        W: ?Sized + RedisWrite,
-    {
-        match &self.0 {
-            tank_core::Value::Boolean(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::Int8(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::Int16(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::Int32(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::Int64(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::Int128(Some(v), ..) => (*v).write_redis_args(out),
-            tank_core::Value::UInt8(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::UInt16(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::UInt32(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::UInt64(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::UInt128(Some(v), ..) => (*v).write_redis_args(out),
-            tank_core::Value::Float32(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::Float64(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::Decimal(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::Char(Some(v), ..) => v.to_string().write_redis_args(out),
-            tank_core::Value::Date(Some(..), ..)
-            | tank_core::Value::Time(Some(..), ..)
-            | tank_core::Value::Timestamp(Some(..), ..)
-            | tank_core::Value::TimestampWithTimezone(Some(..), ..)
-            | tank_core::Value::Interval(Some(..), ..)
-            | tank_core::Value::Uuid(Some(..), ..)
-            | tank_core::Value::IpAddr(Some(..), ..) => {
-                if let Ok(v) = self
-                    .0
-                    .clone()
-                    .try_as(&tank_core::Value::Varchar(None))
-                    .inspect_err(|e| {
-                        log::error!("{e:#}");
-                    })
-                {
-                    ValueWrap(v).write_redis_args(out);
-                }
-            }
-            tank_core::Value::Varchar(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::Blob(Some(v), ..) => v.write_redis_args(out),
-            tank_core::Value::Array(Some(v), ..) => v
-                .into_iter()
-                .map(|v| ValueWrap(v.as_value()))
-                .collect::<Vec<_>>()
-                .write_redis_args(out),
-            tank_core::Value::List(Some(v), ..) => v
-                .into_iter()
-                .map(|v| ValueWrap(v.as_value()))
-                .collect::<Vec<_>>()
-                .write_redis_args(out),
-            tank_core::Value::Map(Some(v), ..) => v
-                .iter()
-                .map(|(k, v)| (ValueWrap(k.as_value()), ValueWrap(v.as_value())))
-                .collect::<HashMap<_, _>>()
-                .write_redis_args(out),
-            tank_core::Value::Json(Some(v), ..) => v.to_string().write_redis_args(out),
-            tank_core::Value::Struct(Some(v), ..) => v
-                .into_iter()
-                .map(|(k, v)| (k, ValueWrap(v.as_value())))
-                .collect::<HashMap<_, _>>()
-                .write_redis_args(out),
-            tank_core::Value::Unknown(Some(v), ..) => v.write_redis_args(out),
-            v if v.is_null() => None::<i32>.write_redis_args(out), // This writes nothing
-            v => {
-                log::error!("tank::Value variant `{v:?}` is not supported by Valkey/Redis",)
-            }
-        }
     }
 }

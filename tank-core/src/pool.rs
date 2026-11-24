@@ -178,6 +178,24 @@ where
     }
 }
 
+impl<D: Driver> Connection for PooledConnection<D> {
+    fn connect(
+        _driver: &D,
+        _url: Cow<'static, str>,
+    ) -> impl Future<Output = Result<<D as Driver>::Connection>> + Send
+    where
+        Self: Sized,
+    {
+        future::ready(Err(anyhow!(
+            "Cannot connect using a PooledConnection, such object must be obtained from a connection pool",
+        )))
+    }
+
+    fn begin(&mut self) -> impl Future<Output = Result<<D as Driver>::Transaction<'_>>> + Send {
+        self.object.begin()
+    }
+}
+
 impl<D: Driver> Executor for PooledConnection<D> {
     type Driver = D;
 
@@ -232,24 +250,6 @@ impl<D: Driver> Executor for PooledConnection<D> {
         It::Item: AsEntity,
     {
         self.object.append(entities)
-    }
-}
-
-impl<D: Driver> Connection for PooledConnection<D> {
-    fn connect(
-        _driver: &D,
-        _url: Cow<'static, str>,
-    ) -> impl Future<Output = Result<<D as Driver>::Connection>> + Send
-    where
-        Self: Sized,
-    {
-        future::ready(Err(anyhow!(
-            "Cannot connect using a PooledConnection, such object must be obtained from a connection pool",
-        )))
-    }
-
-    fn begin(&mut self) -> impl Future<Output = Result<<D as Driver>::Transaction<'_>>> + Send {
-        self.object.begin()
     }
 }
 

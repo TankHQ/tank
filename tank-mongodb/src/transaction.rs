@@ -15,8 +15,6 @@ impl<'c> MongoDBTransaction<'c> {
     }
 }
 
-impl_executor_transaction!(MongoDBDriver, MongoDBTransaction<'c>, connection);
-
 impl<'c> Transaction<'c> for MongoDBTransaction<'c> {
     async fn commit(self) -> Result<()> {
         let Some(session) = self.connection.session.as_mut() else {
@@ -33,6 +31,8 @@ impl<'c> Transaction<'c> for MongoDBTransaction<'c> {
         Ok(())
     }
 }
+
+impl_executor_transaction!(MongoDBDriver, MongoDBTransaction<'c>, connection);
 
 impl Drop for MongoDBTransaction<'_> {
     fn drop(&mut self) {

@@ -186,95 +186,94 @@ macro_rules! impl_as_value {
             }
             #[inline(always)]
             fn decode_value(value: impl AsValue) -> Result<Self> {
-                #[cold]
-                #[inline(never)]
-                // Pass `&mut` + `mem::take` instead of by-value `Value` so LLVM does not
-                // coalesce the match scrutinee into a `byval` stack slot on the hot path,
-                // then `forget` the `Value::Null` left behind to omit inline drop glue.
-                fn fallback(value: &mut Value<'_>) -> Result<$source> {
-                    let value = mem::take(value);
-                    match value {
-                        $($pat_rest => $expr_rest,)*
-                        Value::Int8(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
-                            anyhow!("Value {v}: i8 is out of range for {}", any::type_name::<$source>())
-                        }),
-                        Value::Int16(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
-                            anyhow!("Value {v}: i16 is out of range for {}", any::type_name::<$source>())
-                        }),
-                        Value::Int32(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
-                            anyhow!("Value {v}: i32 is out of range for {}", any::type_name::<$source>())
-                        }),
-                        Value::Int64(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
-                            anyhow!("Value {v}: i64 is out of range for {}", any::type_name::<$source>())
-                        }),
-                        Value::Int128(Some(v), ..) => <$source>::try_from(*v).map_err(|_| {
-                            anyhow!("Value {v}: i128 is out of range for {}", any::type_name::<$source>())
-                        }),
-                        Value::UInt8(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
-                            anyhow!("Value {v}: u8 is out of range for {}", any::type_name::<$source>())
-                        }),
-                        Value::UInt16(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
-                            anyhow!("Value {v}: u16 is out of range for {}", any::type_name::<$source>())
-                        }),
-                        Value::UInt32(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
-                            anyhow!("Value {v}: u32 is out of range for {}", any::type_name::<$source>())
-                        }),
-                        Value::UInt64(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
-                            anyhow!("Value {v}: u64 is out of range for {}", any::type_name::<$source>())
-                        }),
-                        Value::UInt128(Some(v), ..) => <$source>::try_from(*v).map_err(|_| {
-                            anyhow!("Value {v}: u128 is out of range for {}", any::type_name::<$source>())
-                        }),
-                        Value::Float64(Some(v), ..) => {
-                            if v.is_finite() && v.fract() == 0.0 {
-                                let min = <$source>::MIN as f64;
-                                let max_exclusive = <$source>::MAX as f64 + 1.0;
-                                if v >= min && v < max_exclusive {
-                                    return Ok(v as $source);
-                                }
-                            }
-                            Err(anyhow!(
-                                "Value {v}: f64 does not fit into {}",
-                                any::type_name::<$source>(),
-                            ))
-                        }
-                        Value::Float32(Some(v), ..) => {
-                            <$source>::decode_value(Value::Float64(Some(v as f64)))
-                        }
-                        Value::Varchar(Some(ref v), ..) => <$source as AsValue>::parse(v).with_context(|| {
-                            format!("While parsing a {} from `{}`", any::type_name::<$source>(), v)
-                        }),
-                        Value::Json(Some(serde_json::Value::Number(v)), ..) => {
-                            let integer = v.as_i128().or_else(|| {
-                                let f = v.as_f64()?;
-                                let max_exclusive = i128::MAX as f64 + 1.0;
-                                (f.fract() == 0.0 && f >= i128::MIN as f64 && f < max_exclusive)
-                                    .then_some(f as i128)
-                            });
-                            if let Some(v) = integer
-                                && let Ok(v) = <$source>::try_from(v)
-                            {
-                                return Ok(v);
-                            }
-                            Err(anyhow!(
-                                "Value {v} from json number is out of range for {} (extracted integer is: {integer:?})",
-                                any::type_name::<$source>(),
-                            ))
-                        }
-                        Value::Json(Some(serde_json::Value::String(ref v)), ..) => <$source as AsValue>::parse(v),
-                        Value::Unknown(Some(ref v), ..) => <$source>::parse(v).with_context(|| {
-                            format!("While parsing a {} from `{}`", any::type_name::<$source>(), v)
-                        }),
-                        _ => Err(anyhow!(
-                            "Cannot convert {value:?} to {}",
-                            any::type_name::<$source>(),
-                        )),
-                    }
-                }
                 match value.as_value() {
                     $fast_pat => Ok($unwrap),
                     mut other => {
                         let res = fallback(&mut other);
+                        // Pass `&mut` + `mem::take` instead of by-value `Value` so LLVM does not
+                        // coalesce the match scrutinee into a `byval` stack slot on the hot path,
+                        // then `forget` the `Value::Null` left behind to omit inline drop glue.
+                        #[inline(never)]
+                        fn fallback(value: &mut Value<'_>) -> Result<$source> {
+                            let value = mem::take(value);
+                            match value {
+                                $($pat_rest => $expr_rest,)*
+                                Value::Int8(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                                    anyhow!("Value {v}: i8 is out of range for {}", any::type_name::<$source>())
+                                }),
+                                Value::Int16(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                                    anyhow!("Value {v}: i16 is out of range for {}", any::type_name::<$source>())
+                                }),
+                                Value::Int32(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                                    anyhow!("Value {v}: i32 is out of range for {}", any::type_name::<$source>())
+                                }),
+                                Value::Int64(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                                    anyhow!("Value {v}: i64 is out of range for {}", any::type_name::<$source>())
+                                }),
+                                Value::Int128(Some(v), ..) => <$source>::try_from(*v).map_err(|_| {
+                                    anyhow!("Value {v}: i128 is out of range for {}", any::type_name::<$source>())
+                                }),
+                                Value::UInt8(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                                    anyhow!("Value {v}: u8 is out of range for {}", any::type_name::<$source>())
+                                }),
+                                Value::UInt16(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                                    anyhow!("Value {v}: u16 is out of range for {}", any::type_name::<$source>())
+                                }),
+                                Value::UInt32(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                                    anyhow!("Value {v}: u32 is out of range for {}", any::type_name::<$source>())
+                                }),
+                                Value::UInt64(Some(v), ..) => <$source>::try_from(v).map_err(|_| {
+                                    anyhow!("Value {v}: u64 is out of range for {}", any::type_name::<$source>())
+                                }),
+                                Value::UInt128(Some(v), ..) => <$source>::try_from(*v).map_err(|_| {
+                                    anyhow!("Value {v}: u128 is out of range for {}", any::type_name::<$source>())
+                                }),
+                                Value::Float64(Some(v), ..) => {
+                                    if v.is_finite() && v.fract() == 0.0 {
+                                        let min = <$source>::MIN as f64;
+                                        let max_exclusive = <$source>::MAX as f64 + 1.0;
+                                        if v >= min && v < max_exclusive {
+                                            return Ok(v as $source);
+                                        }
+                                    }
+                                    Err(anyhow!(
+                                        "Value {v}: f64 does not fit into {}",
+                                        any::type_name::<$source>(),
+                                    ))
+                                }
+                                Value::Float32(Some(v), ..) => {
+                                    <$source>::decode_value(Value::Float64(Some(v as f64)))
+                                }
+                                Value::Varchar(Some(ref v), ..) => <$source as AsValue>::parse(v).with_context(|| {
+                                    format!("While parsing a {} from `{}`", any::type_name::<$source>(), v)
+                                }),
+                                Value::Json(Some(serde_json::Value::Number(v)), ..) => {
+                                    let integer = v.as_i128().or_else(|| {
+                                        let f = v.as_f64()?;
+                                        let max_exclusive = i128::MAX as f64 + 1.0;
+                                        (f.fract() == 0.0 && f >= i128::MIN as f64 && f < max_exclusive)
+                                            .then_some(f as i128)
+                                    });
+                                    if let Some(v) = integer
+                                        && let Ok(v) = <$source>::try_from(v)
+                                    {
+                                        return Ok(v);
+                                    }
+                                    Err(anyhow!(
+                                        "Value {v} from json number is out of range for {} (extracted integer is: {integer:?})",
+                                        any::type_name::<$source>(),
+                                    ))
+                                }
+                                Value::Json(Some(serde_json::Value::String(ref v)), ..) => <$source as AsValue>::parse(v),
+                                Value::Unknown(Some(ref v), ..) => <$source>::parse(v).with_context(|| {
+                                    format!("While parsing a {} from `{}`", any::type_name::<$source>(), v)
+                                }),
+                                _ => Err(anyhow!(
+                                    "Cannot convert {value:?} to {}",
+                                    any::type_name::<$source>(),
+                                )),
+                            }
+                        }
                         mem::forget(other);
                         res
                     }
@@ -425,40 +424,39 @@ macro_rules! impl_as_value {
             }
             #[inline(always)]
             fn decode_value(value: impl AsValue) -> Result<Self> {
-                #[cold]
-                #[inline(never)]
-                // Pass `&mut` + `mem::take` instead of by-value `Value` so LLVM does not
-                // coalesce the match scrutinee into a `byval` stack slot on the hot path,
-                // then `forget` the `Value::Null` left behind to omit inline drop glue.
-                fn fallback(value: &mut Value<'_>) -> Result<$source> {
-                    let value = mem::take(value);
-                    match value {
-                        $($pat_rest => $expr_rest,)*
-                        #[allow(unreachable_patterns)]
-                        Value::Varchar(Some(ref v), ..) => {
-                            <$source as AsValue>::parse(v).with_context(|| {
-                                format!("While parsing a {} from `{}`", any::type_name::<$source>(), v)
-                            })
-                        }
-                        #[allow(unreachable_patterns)]
-                        Value::Json(Some(serde_json::Value::String(ref v)), ..) => {
-                            <$source as AsValue>::parse(v)
-                        }
-                        Value::Unknown(Some(ref v), ..) => {
-                            <$source as AsValue>::parse(v).with_context(|| {
-                                format!("While parsing a {} from `{}`", any::type_name::<$source>(), v)
-                            })
-                        }
-                        _ => Err(anyhow!(
-                            "Cannot convert {value:?} to {}",
-                            any::type_name::<$source>(),
-                        )),
-                    }
-                }
                 match value.as_value() {
                     $fast_pat => Ok($unwrap),
                     mut other => {
                         let res = fallback(&mut other);
+                        // Pass `&mut` + `mem::take` instead of by-value `Value` so LLVM does not
+                        // coalesce the match scrutinee into a `byval` stack slot on the hot path,
+                        // then `forget` the `Value::Null` left behind to omit inline drop glue.
+                        #[inline(never)]
+                        fn fallback(value: &mut Value<'_>) -> Result<$source> {
+                            let value = mem::take(value);
+                            match value {
+                                $($pat_rest => $expr_rest,)*
+                                #[allow(unreachable_patterns)]
+                                Value::Varchar(Some(ref v), ..) => {
+                                    <$source as AsValue>::parse(v).with_context(|| {
+                                        format!("While parsing a {} from `{}`", any::type_name::<$source>(), v)
+                                    })
+                                }
+                                #[allow(unreachable_patterns)]
+                                Value::Json(Some(serde_json::Value::String(ref v)), ..) => {
+                                    <$source as AsValue>::parse(v)
+                                }
+                                Value::Unknown(Some(ref v), ..) => {
+                                    <$source as AsValue>::parse(v).with_context(|| {
+                                        format!("While parsing a {} from `{}`", any::type_name::<$source>(), v)
+                                    })
+                                }
+                                _ => Err(anyhow!(
+                                    "Cannot convert {value:?} to {}",
+                                    any::type_name::<$source>(),
+                                )),
+                            }
+                        }
                         mem::forget(other);
                         res
                     }
@@ -1632,14 +1630,6 @@ impl<T: AsValue> AsValue for Option<T> {
     }
     #[inline(always)]
     fn decode_value(value: impl AsValue) -> Result<Self> {
-        #[cold]
-        #[inline(never)]
-        // Return `Option<Result<T>>` instead of `Result<Option<T>>` so the cold call does not
-        // share `decode_value`'s `sret` slot, and take `&mut Value` so `val` stays in registers.
-        fn fallback<T: AsValue>(value: &mut Value<'_>) -> Option<Result<T>> {
-            let value = mem::take(value);
-            (!value.is_null()).then(|| <T as AsValue>::decode_value(value))
-        }
         match value.as_value() {
             v @ Value::Null => {
                 // Avoid an opaque Value::drop call for simple values that don't allocate memory.
@@ -1675,9 +1665,16 @@ impl<T: AsValue> AsValue for Option<T> {
                     }
                 } else {
                     let mut other = v;
-                    let res = fallback(&mut other).transpose();
+                    let res = fallback(&mut other);
+                    // Return `Option<Result<T>>` instead of `Result<Option<T>>` so the fallback call does not
+                    // share `decode_value`'s `sret` slot, and take `&mut Value` so `val` stays in registers.
+                    #[inline(never)]
+                    fn fallback<T: AsValue>(value: &mut Value<'_>) -> Option<Result<T>> {
+                        let value = mem::take(value);
+                        (!value.is_null()).then(|| <T as AsValue>::decode_value(value))
+                    }
                     mem::forget(other);
-                    res
+                    res.transpose()
                 }
             }
         }

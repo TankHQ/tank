@@ -48,23 +48,6 @@ pub struct PostgresRow<'a> {
     pub(crate) labels: &'a RowLabels,
 }
 
-impl Debug for PostgresRow<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PostgresRow")
-            .field("labels", &self.labels)
-            .field("len", &self.len())
-            .finish()
-    }
-}
-
-impl PostgresRow<'_> {
-    #[cold]
-    #[inline(never)]
-    fn decode_fallback<'a>(ty: &Type, raw: &'a [u8]) -> Option<Value<'a>> {
-        extract_value(ty, Some(raw)).ok()
-    }
-}
-
 impl Row for PostgresRow<'_> {
     #[inline(always)]
     fn labels(&self) -> &[String] {
@@ -104,11 +87,27 @@ impl Row for PostgresRow<'_> {
                 Ok(text) => Some(Cow::Owned(Value::Varchar(Some(Cow::Borrowed(text))))),
                 Err(_) => Some(Cow::Owned(Value::Null)),
             },
-            ref ty => match Self::decode_fallback(ty, raw) {
-                Some(v) => Some(Cow::Owned(v)),
-                None => Some(Cow::Owned(Value::Null)),
-            },
+            ref ty => {
+                let res = decode_fallback(ty, raw);
+                #[inline(never)]
+                fn decode_fallback<'a>(ty: &Type, raw: &'a [u8]) -> Option<Value<'a>> {
+                    extract_value(ty, Some(raw)).ok()
+                }
+                match res {
+                    Some(v) => Some(Cow::Owned(v)),
+                    None => Some(Cow::Owned(Value::Null)),
+                }
+            }
         }
+    }
+}
+
+impl Debug for PostgresRow<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PostgresRow")
+            .field("labels", &self.labels)
+            .field("len", &self.len())
+            .finish()
     }
 }
 
@@ -151,14 +150,6 @@ impl<'s> PostgresRows<'s> {
         }
     }
 
-    #[cold]
-    #[inline(never)]
-    fn row_error(e: tokio_postgres::Error) -> TankError {
-        let error = TankError::new(e);
-        log::error!("{error:#}");
-        error
-    }
-
     #[inline(always)]
     fn poll_next(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<PostgresRow<'s>>>> {
         if self.done {
@@ -175,7 +166,17 @@ impl<'s> PostgresRows<'s> {
                 row,
                 labels: self.labels,
             }))),
-            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(Self::row_error(e)))),
+            Poll::Ready(Some(Err(e))) => {
+                let error = row_error(e);
+                #[cold]
+                #[inline(never)]
+                fn row_error(e: tokio_postgres::Error) -> TankError {
+                    let error = TankError::new(e);
+                    log::error!("{error:#}");
+                    error
+                }
+                Poll::Ready(Some(Err(error)))
+            }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }
