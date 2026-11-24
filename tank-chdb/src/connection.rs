@@ -479,21 +479,13 @@ impl Executor for ChDBConnection {
             let Some(entity) = entities.next() else {
                 break;
             };
-            let mut values = entity.as_entity().row_values();
-            let schema_fields = schema.fields();
-            if values.len() == builders.len() && builders.len() == schema_fields.len() {
-                values.try_fold(0usize, |i, value| {
-                    if let (Some(builder), Some(field)) =
-                        (builders.get_mut(i), schema_fields.get(i))
-                    {
-                        Self::push_arrow(builder.as_mut(), field.data_type(), value, &mut scratch)?;
-                    }
-                    Ok::<_, Error>(i + 1)
-                })?;
-            } else {
-                for ((value, builder), field) in values.zip(&mut builders).zip(schema_fields) {
-                    Self::push_arrow(builder.as_mut(), field.data_type(), value, &mut scratch)?;
-                }
+            for ((value, builder), field) in entity
+                .as_entity()
+                .row_values()
+                .zip(&mut builders)
+                .zip(schema.fields())
+            {
+                Self::push_arrow(builder.as_mut(), field.data_type(), value, &mut scratch)?;
             }
             batch_rows += 1;
         }

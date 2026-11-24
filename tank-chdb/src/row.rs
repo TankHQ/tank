@@ -44,15 +44,15 @@ impl ChDBRow {
         let value = match array.data_type() {
             DataType::Boolean => {
                 let a = array.as_any().downcast_ref::<BooleanArray>()?;
-                if a.is_null(row) {
+                if a.nulls().is_some_and(|n| n.is_null(row)) {
                     Value::Null
                 } else {
-                    Value::Boolean(Some(a.value(row)))
+                    Value::Boolean(Some(a.values().value(row)))
                 }
             }
             DataType::Int32 => {
                 let a = array.as_any().downcast_ref::<Int32Array>()?;
-                if a.is_null(row) {
+                if a.nulls().is_some_and(|n| n.is_null(row)) {
                     Value::Null
                 } else {
                     Value::Int32(Some(*a.values().get(row)?))
@@ -60,7 +60,7 @@ impl ChDBRow {
             }
             DataType::Int64 => {
                 let a = array.as_any().downcast_ref::<Int64Array>()?;
-                if a.is_null(row) {
+                if a.nulls().is_some_and(|n| n.is_null(row)) {
                     Value::Null
                 } else {
                     Value::Int64(Some(*a.values().get(row)?))
@@ -68,7 +68,7 @@ impl ChDBRow {
             }
             DataType::Float64 => {
                 let a = array.as_any().downcast_ref::<Float64Array>()?;
-                if a.is_null(row) {
+                if a.nulls().is_some_and(|n| n.is_null(row)) {
                     Value::Null
                 } else {
                     Value::Float64(Some(*a.values().get(row)?))
@@ -76,7 +76,7 @@ impl ChDBRow {
             }
             DataType::Utf8 => {
                 let a = array.as_any().downcast_ref::<StringArray>()?;
-                if a.is_null(row) {
+                if a.nulls().is_some_and(|n| n.is_null(row)) {
                     Value::Null
                 } else {
                     Value::Varchar(Some(Cow::Borrowed(a.value(row))))
