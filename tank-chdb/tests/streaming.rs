@@ -1,9 +1,9 @@
 use std::{pin::pin, sync::Mutex};
-use tank_chdb::{ChDBConnection, ChDBDriver};
-use tank_core::{
+use tank::{
     AsValue, Connection, Executor, QueryResult, Row, Value,
     stream::{Stream, StreamExt, TryStreamExt},
 };
+use tank_chdb::{ChDBConnection, ChDBDriver};
 
 static MUTEX: Mutex<()> = Mutex::new(());
 
@@ -67,10 +67,7 @@ async fn streaming_public_execution_and_reuse() {
             rows.next().await.unwrap().unwrap();
         }
         assert_eq!(first.labels(), ["number"]);
-        assert_eq!(
-            first.value(0).unwrap().as_ref(),
-            &Value::Json(Some(0.into()))
-        );
+        assert_eq!(first.value(0).unwrap().as_ref(), &Value::UInt64(Some(0)));
     }
 
     for sql in [

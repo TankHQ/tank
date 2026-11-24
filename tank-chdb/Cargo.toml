@@ -14,15 +14,18 @@ bundled = ["chdb-rust/static"]
 
 [dependencies]
 anyhow.workspace = true
-chdb-rust = { version = "2.1", default-features = false }
+chdb-rust = { version = "2.2", default-features = false }
 log.workspace = true
-serde_json = { workspace = true, features = ["preserve_order"] }
+rust_decimal.workspace = true
 tank-clickhouse = { version = "0", path = "../tank-clickhouse" }
 tank-core.workspace = true
-tokio.workspace = true
+time.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tank = { path = "..", features = ["chrono"] }
+time.workspace = true
+tokio.workspace = true
 tank-tests = { path = "../tank-tests", features = [
     "disable-arrays",
     "disable-infinity",

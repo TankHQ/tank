@@ -120,14 +120,14 @@ impl ClickHouseSqlWriter {
             value.minute(),
             value.second(),
         );
-        let nanos = value.nanosecond();
+        let mut nanos = value.nanosecond();
         if nanos != 0 {
-            let mut frac = format!("{nanos:09}");
-            while frac.ends_with('0') {
-                frac.pop();
+            let mut width = 9;
+            while width > 1 && nanos % 10 == 0 {
+                nanos /= 10;
+                width -= 1;
             }
-            out.push('.');
-            out.push_str(&frac);
+            let _ = write!(out, ".{nanos:0width$}");
         }
         out.push_str(quote);
     }

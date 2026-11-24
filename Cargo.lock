@@ -4430,12 +4430,14 @@ dependencies = [
  "anyhow",
  "chdb-rust",
  "log",
- "serde_json",
+ "rust_decimal",
  "tank",
  "tank-clickhouse",
  "tank-core",
  "tank-tests",
+ "time",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

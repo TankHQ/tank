@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
+    use tank::{Driver, PoolConfig};
     use tank_chdb::ChDBDriver;
-    use tank_core::{Driver, PoolConfig};
     use tank_tests::{execute_tests, init_logs};
 
     static MUTEX: Mutex<()> = Mutex::new(());

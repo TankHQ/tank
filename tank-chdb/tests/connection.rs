@@ -6,11 +6,11 @@ mod tests {
         pin::pin,
         sync::Mutex,
     };
-    use tank_chdb::{ChDBConnection, ChDBDriver};
-    use tank_core::{
-        Connection, Entity, Executor, QueryResult,
+    use tank::{
+        Connection, Entity, Executor, QueryResult, expr,
         stream::{StreamExt, TryStreamExt},
     };
+    use tank_chdb::{ChDBConnection, ChDBDriver};
     use tank_tests::{init_logs, silent_logs};
     use tokio::fs;
 
@@ -21,7 +21,7 @@ mod tests {
         init_logs();
         let _guard = MUTEX.lock().unwrap();
 
-        #[derive(tank::Entity, Debug, PartialEq, Clone)]
+        #[derive(Entity, Debug, PartialEq, Clone)]
         #[tank(name = "prepared_nullable")]
         struct PreparedNullable {
             #[tank(primary_key)]
@@ -54,7 +54,7 @@ mod tests {
         // Binding NULL is a real NULL parameter: `value = NULL` matches no row.
         let mut query = PreparedNullable::prepare_find(
             &mut connection,
-            tank::expr!(PreparedNullable::value == ?),
+            expr!(PreparedNullable::value == ?),
             None,
         )
         .await
@@ -82,7 +82,7 @@ mod tests {
         // string "NULL" (or empty), this would have matched every row.
         let mut not_null = PreparedNullable::prepare_find(
             &mut connection,
-            tank::expr!(PreparedNullable::id != ?),
+            expr!(PreparedNullable::id != ?),
             None,
         )
         .await
