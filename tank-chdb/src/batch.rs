@@ -1,11 +1,16 @@
-use crate::{column::Column, cursor::Cursor, native::NativeResult};
-use std::{ptr, sync::Arc};
+use crate::{
+    column::Column,
+    cursor::Cursor,
+    ffi::{chdb_destroy_query_result, result_data},
+};
+use std::{ffi::c_void, mem, ptr, sync::Arc};
 use tank_core::{Result, RowLabels};
 
-/// A decoded ClickHouse `Native` block owning the underlying chunk buffer.
+/// A decoded ClickHouse `Native` block owning (or sharing) the underlying `chdb_result`.
 #[derive(Debug)]
 pub(crate) struct ChDBBatch {
-    result: Option<Arc<NativeResult>>,
+    raw: *mut c_void,
+    parent: Option<Arc<ChDBBatch>>,
     pub(crate) labels: RowLabels,
     pub(crate) columns: Vec<Column>,
     pub(crate) spans: Vec<(u32, u32)>,
@@ -13,12 +18,27 @@ pub(crate) struct ChDBBatch {
 }
 
 impl ChDBBatch {
+    #[inline(always)]
+    pub(crate) fn raw_result(&self) -> *mut c_void {
+        if !self.raw.is_null() {
+            self.raw
+        } else if let Some(parent) = self.parent.as_ref() {
+            parent.raw_result()
+        } else {
+            ptr::null_mut()
+        }
+    }
+
     /// Drops the underlying C++ chunk buffer while retaining vector capacities and labels.
     pub(crate) fn release(&mut self) {
         self.columns.clear();
         self.spans.clear();
         self.rows = 0;
-        self.result = None;
+        self.parent = None;
+        let raw = mem::replace(&mut self.raw, ptr::null_mut());
+        if !raw.is_null() {
+            unsafe { chdb_destroy_query_result(raw) };
+        }
     }
 
     fn clean_label(name: &str) -> &str {
@@ -29,23 +49,50 @@ impl ChDBBatch {
             .trim_matches('"')
     }
 
-    /// Parses one ClickHouse `Native` block into `slot`, reusing buffers when unshared.
-    pub(crate) fn parse_into(
+    /// Parses one ClickHouse `Native` block from a fresh `chdb_result` handle into `slot`.
+    /// Takes ownership of `raw` and destroys it on error.
+    pub(crate) fn parse_raw(
         slot: &mut Option<Arc<Self>>,
-        result: Arc<NativeResult>,
+        raw: *mut c_void,
         offset: &mut usize,
     ) -> Result<usize> {
-        let data = result.data()?;
+        let res = Self::parse_inner(slot, raw, None, offset);
+        if res.is_err() && !raw.is_null() {
+            unsafe { chdb_destroy_query_result(raw) };
+        }
+        res
+    }
+
+    /// Parses a subsequent `Native` block from the same multi-block `parent` buffer into `slot`.
+    pub(crate) fn parse_next(
+        slot: &mut Option<Arc<Self>>,
+        parent: Arc<Self>,
+        offset: &mut usize,
+    ) -> Result<usize> {
+        let raw = parent.raw_result();
+        Self::parse_inner(slot, raw, Some(parent), offset)
+    }
+
+    fn parse_inner(
+        slot: &mut Option<Arc<Self>>,
+        data_handle: *mut c_void,
+        parent: Option<Arc<Self>>,
+        offset: &mut usize,
+    ) -> Result<usize> {
+        let data = unsafe { result_data(data_handle)? };
         let mut cursor = Cursor::new(data, *offset);
         let num_cols = cursor.read_varuint()?;
         let rows = cursor.read_varuint()?;
+        let owned_raw = if parent.is_some() {
+            ptr::null_mut()
+        } else {
+            data_handle
+        };
 
         if let Some(existing) = slot.as_mut()
             && let Some(batch) = Arc::get_mut(existing)
         {
-            batch.columns.clear();
-            batch.spans.clear();
-            batch.result = None;
+            batch.release();
             let labels = Self::parse_columns(
                 num_cols,
                 rows,
@@ -58,8 +105,9 @@ impl ChDBBatch {
                 batch.labels = labels;
             }
             batch.rows = rows;
+            batch.raw = owned_raw;
+            batch.parent = parent;
             *offset = cursor.pos();
-            batch.result = Some(result);
             return Ok(rows);
         }
 
@@ -80,7 +128,8 @@ impl ChDBBatch {
         };
         *offset = cursor.pos();
         *slot = Some(Arc::new(Self {
-            result: Some(result),
+            raw: owned_raw,
+            parent,
             labels,
             columns,
             spans,
@@ -129,5 +178,14 @@ impl ChDBBatch {
     }
 }
 
+// `raw` is a read-only chDB result buffer, and pointers inside `Column` borrow from `raw` or `parent`.
 unsafe impl Send for ChDBBatch {}
 unsafe impl Sync for ChDBBatch {}
+
+impl Drop for ChDBBatch {
+    fn drop(&mut self) {
+        if !self.raw.is_null() {
+            unsafe { chdb_destroy_query_result(self.raw) };
+        }
+    }
+}

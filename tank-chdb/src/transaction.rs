@@ -13,8 +13,6 @@ impl<'c> ChDBTransaction<'c> {
     }
 }
 
-impl_executor_transaction!(ChDBDriver, ChDBTransaction<'c>, connection);
-
 impl<'c> Transaction<'c> for ChDBTransaction<'c> {
     async fn commit(self) -> Result<()> {
         Err(anyhow!("ChDB transactions are not supported"))
@@ -24,3 +22,5 @@ impl<'c> Transaction<'c> for ChDBTransaction<'c> {
         Err(anyhow!("ChDB transactions are not supported"))
     }
 }
+
+impl_executor_transaction!(ChDBDriver, ChDBTransaction<'c>, connection);

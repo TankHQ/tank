@@ -1,17 +1,24 @@
 use crate::{
     ChDBDriver, ChDBPrepared, ChDBSqlWriter, ChDBTransaction,
     batch::ChDBBatch,
-    native::{NativeConnection, NativeInsertStream, ParamBuffer},
+    ffi::{
+        QueryAnalysis, chdb_classify_query_n, chdb_close_conn, chdb_connect,
+        chdb_destroy_insert_stream, chdb_destroy_query_result, chdb_result_rows_written,
+        chdb_stream_append, chdb_stream_cancel_insert, chdb_stream_done, chdb_stream_insert_error,
+        chdb_stream_insert_n, query_error, result_error,
+    },
     stream::{ChDBRowStream, ChDBStream},
 };
-use anyhow::anyhow;
+use anyhow::{anyhow, ensure};
 use rust_decimal::Decimal;
 use std::{
     borrow::Cow,
+    ffi::{CStr, CString, c_int, c_void},
     fmt::Write as _,
     future::{self, Future},
     hint, mem,
     net::IpAddr,
+    ptr::{self, NonNull},
     sync::Arc,
     task::Poll,
 };
@@ -24,11 +31,9 @@ use tank_core::{
 /// Wrapper around an embedded chDB connection.
 #[derive(Debug)]
 pub struct ChDBConnection {
-    pub(crate) native: NativeConnection,
-    pub(crate) draft: AnyQuery,
-    pub(crate) params: ParamBuffer,
+    handle: NonNull<*mut c_void>,
     pub(crate) batch: Option<Arc<ChDBBatch>>,
-    scratch: AnyQuery,
+    draft: AnyQuery,
     write_buf: Vec<u8>,
 }
 
@@ -37,6 +42,36 @@ impl ChDBConnection {
     const WRITE_BATCH_BYTES: usize = 256 * 1024;
     const EPOCH_JULIAN_DAY: i32 = 2_440_588;
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
+
+    #[inline(always)]
+    pub(crate) fn raw(&self) -> *mut c_void {
+        unsafe { *self.handle.as_ptr() }
+    }
+
+    #[inline(always)]
+    pub(crate) fn classify(&self, sql: &str) -> u32 {
+        let mut analysis = QueryAnalysis {
+            struct_size: mem::size_of::<QueryAnalysis>() as u32,
+            statement_count: 0,
+            flags: 0,
+            query_class: u32::MAX,
+        };
+        let state = unsafe {
+            chdb_classify_query_n(
+                self.raw(),
+                sql.as_ptr().cast(),
+                sql.len(),
+                ptr::null(),
+                0,
+                &mut analysis,
+            )
+        };
+        if state == 0 {
+            analysis.query_class
+        } else {
+            u32::MAX
+        }
+    }
 
     /// Yields once to the async executor so synchronous batches stay cooperative.
     fn yield_now() -> impl Future<Output = ()> + Send {
@@ -50,129 +85,6 @@ impl ChDBConnection {
                 Poll::Pending
             }
         })
-    }
-
-    fn write_escaped_param(dst: &mut Vec<u8>, value: &str) {
-        let bytes = value.as_bytes();
-        let mut start = 0;
-        for (i, &b) in bytes.iter().enumerate() {
-            let esc = match b {
-                b'\\' => b"\\\\".as_slice(),
-                b'\t' => b"\\t".as_slice(),
-                b'\n' => b"\\n".as_slice(),
-                b'\r' => b"\\r".as_slice(),
-                0 => b"\\0".as_slice(),
-                _ => continue,
-            };
-            dst.extend_from_slice(&bytes[start..i]);
-            dst.extend_from_slice(esc);
-            start = i + 1;
-        }
-        dst.extend_from_slice(&bytes[start..]);
-    }
-
-    /// Rewrites provisional `{pN:Nullable(String)}` markers into `self.draft` and
-    /// encodes bound parameters into `self.params` for native `chdb_*_with_params_n`.
-    pub(crate) fn prepare_params(&mut self, prepared: &ChDBPrepared) -> Result<()> {
-        let markers = prepared.markers();
-        let params = prepared.params();
-        if markers.len() < params.len() {
-            hint::cold_path();
-            return Err(anyhow!("Not enough parameter markers for the bound values"));
-        }
-        self.params.clear();
-        let mut name_buf = [0u8; 16];
-        let scratch = &mut self.scratch;
-        for (i, value) in params.iter().enumerate() {
-            let name = Self::format_param_name(&mut name_buf, i);
-            self.params.push(name, |dst| {
-                if value.is_null() {
-                    dst.extend_from_slice(b"\\N");
-                    return;
-                }
-                match value {
-                    Value::Varchar(Some(s)) => Self::write_escaped_param(dst, s),
-                    Value::Char(Some(c)) => {
-                        let mut buf = [0u8; 4];
-                        Self::write_escaped_param(dst, c.encode_utf8(&mut buf));
-                    }
-                    Value::Blob(Some(bytes)) => {
-                        dst.reserve(bytes.len() * 2);
-                        for &b in bytes.as_ref() {
-                            dst.push(Self::HEX[(b >> 4) as usize]);
-                            dst.push(Self::HEX[(b & 0xf) as usize]);
-                        }
-                    }
-                    Value::Json(Some(j)) => {
-                        scratch.clear();
-                        let _ = write!(scratch, "{j}");
-                        Self::write_escaped_param(dst, scratch.buffer());
-                    }
-                    other => {
-                        scratch.clear();
-                        Self::WRITER.write_value(
-                            &mut Context::fragment(Fragment::None),
-                            scratch,
-                            other,
-                        );
-                        dst.extend_from_slice(scratch.buffer().as_bytes());
-                    }
-                }
-            });
-        }
-        self.params.finish();
-
-        self.draft.clear();
-        let sql = prepared.sql();
-        self.draft.buffer().reserve(sql.len() + 16);
-        let mut cursor = 0;
-        for (i, marker) in markers.iter().enumerate() {
-            if marker.begin > marker.end
-                || marker.end > sql.len()
-                || marker.begin < cursor
-                || !sql.is_char_boundary(marker.begin)
-                || !sql.is_char_boundary(marker.end)
-            {
-                continue;
-            }
-            self.draft.push_str(&sql[cursor..marker.begin]);
-            let _ = write!(self.draft, "{{p{i}:");
-            match params.get(i) {
-                Some(value) if !value.is_null() => {
-                    self.draft.push_str("Nullable(");
-                    Self::WRITER.write_column_type(
-                        &mut Context::fragment(Fragment::SqlCreateTable),
-                        &mut self.draft,
-                        value,
-                    );
-                    self.draft.push(')');
-                }
-                _ => self.draft.push_str("Nullable(Nothing)"),
-            }
-            self.draft.push('}');
-            cursor = marker.end;
-        }
-        self.draft.push_str(&sql[cursor..]);
-        Ok(())
-    }
-
-    fn format_param_name(buf: &mut [u8; 16], index: usize) -> &[u8] {
-        buf[0] = b'p';
-        let mut n = index;
-        let mut digits = [0u8; 15];
-        let mut count = 0;
-        loop {
-            digits[count] = b'0' + (n % 10) as u8;
-            count += 1;
-            n /= 10;
-            if n == 0 {
-                break;
-            }
-        }
-        for i in 0..count {
-            buf[1 + i] = digits[count - 1 - i];
-        }
-        &buf[..1 + count]
     }
 
     fn supports_row_binary(column: &ColumnDef) -> bool {
@@ -438,6 +350,20 @@ impl ChDBConnection {
         }
         Ok(())
     }
+
+    #[cold]
+    #[inline(never)]
+    fn insert_error(handle: *mut c_void, fallback: &str) -> tank_core::Error {
+        let err = unsafe { chdb_stream_insert_error(handle) };
+        if err.is_null() {
+            anyhow!("{fallback}")
+        } else {
+            anyhow!(
+                "ChDB insert stream failed: {}",
+                unsafe { CStr::from_ptr(err) }.to_string_lossy()
+            )
+        }
+    }
 }
 
 impl Connection for ChDBConnection {
@@ -453,15 +379,30 @@ impl Connection for ChDBConnection {
                 (!raw.is_empty() && raw != "/")
                     .then(|| Cow::Owned(raw.trim_start_matches('/').to_string()))
             });
-        let native = NativeConnection::open(path.as_deref()).with_context(make_context)?;
-        Ok(Self {
-            native,
-            draft: AnyQuery::default(),
-            params: ParamBuffer::default(),
+        let mut args = vec![
+            CString::new("clickhouse")?,
+            CString::new("--allow_experimental_lightweight_delete=1")?,
+            CString::new("--join_use_nulls=1")?,
+            CString::new("--final=1")?,
+        ];
+        if let Some(path) = path.as_deref() {
+            args.push(CString::new(format!("--path={path}"))?);
+        }
+        let mut argv: Vec<_> = args.iter().map(|arg| arg.as_ptr().cast_mut()).collect();
+        let handle = NonNull::new(unsafe { chdb_connect(argv.len() as c_int, argv.as_mut_ptr()) })
+            .ok_or_else(|| anyhow!("Cannot open chDB connection"))
+            .with_context(make_context)?;
+        let connection = Self {
+            handle,
             batch: None,
-            scratch: AnyQuery::default(),
+            draft: AnyQuery::default(),
             write_buf: Vec::new(),
-        })
+        };
+        ensure!(
+            !connection.raw().is_null(),
+            "Cannot open chDB connection"
+        );
+        Ok(connection)
     }
 
     fn begin(&mut self) -> impl Future<Output = Result<ChDBTransaction<'_>>> + Send {
@@ -500,6 +441,19 @@ impl Executor for ChDBConnection {
         It::IntoIter: Send,
         It::Item: AsEntity,
     {
+        struct Guard(*mut c_void, bool);
+        unsafe impl Send for Guard {}
+        impl Drop for Guard {
+            fn drop(&mut self) {
+                if !self.0.is_null() {
+                    if !self.1 {
+                        unsafe { chdb_stream_cancel_insert(self.0) };
+                    }
+                    unsafe { chdb_destroy_insert_stream(self.0) };
+                }
+            }
+        }
+
         type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
         let table = E::<It>::table();
         let columns = E::<It>::columns();
@@ -507,12 +461,22 @@ impl Executor for ChDBConnection {
             return self.append_default(entities).await;
         }
         let mut entities = entities.into_iter();
-        let mut stream: Option<NativeInsertStream> = None;
+        let mut guard = Guard(ptr::null_mut(), false);
         self.write_buf.clear();
         loop {
             if self.write_buf.len() >= Self::WRITE_BATCH_BYTES {
-                if let Some(stream) = stream.as_mut() {
-                    stream.append(&self.write_buf)?;
+                if !guard.0.is_null() {
+                    let state = unsafe {
+                        chdb_stream_append(
+                            guard.0,
+                            self.write_buf.as_ptr().cast(),
+                            self.write_buf.len(),
+                        )
+                    };
+                    if state != 0 {
+                        hint::cold_path();
+                        return Err(Self::insert_error(guard.0, "ChDB insert stream append failed"));
+                    }
                     self.write_buf.clear();
                 }
                 Self::yield_now().await;
@@ -520,7 +484,7 @@ impl Executor for ChDBConnection {
             let Some(entity) = entities.next() else {
                 break;
             };
-            if stream.is_none() {
+            if guard.0.is_null() {
                 self.draft.clear();
                 let mut context = Context::new(Fragment::SqlInsertInto, false);
                 self.draft.push_str("INSERT INTO ");
@@ -533,7 +497,27 @@ impl Executor for ChDBConnection {
                     ", ",
                 );
                 self.draft.push(')');
-                stream = Some(self.native.insert_stream(self.draft.buffer(), "RowBinary")?);
+                const FORMAT: &str = "RowBinary";
+                let conn = self.raw();
+                let sql = self.draft.buffer();
+                let handle = unsafe {
+                    chdb_stream_insert_n(
+                        conn,
+                        sql.as_ptr().cast(),
+                        sql.len(),
+                        FORMAT.as_ptr().cast(),
+                        FORMAT.len(),
+                    )
+                };
+                ensure!(!handle.is_null(), "ChDB returned a null insert stream");
+                guard.0 = handle;
+                if !unsafe { chdb_stream_insert_error(handle) }.is_null() {
+                    hint::cold_path();
+                    return Err(Self::insert_error(
+                        handle,
+                        "ChDB insert stream initialization failed",
+                    ));
+                }
                 if self.write_buf.capacity() < Self::WRITE_BATCH_BYTES {
                     self.write_buf.reserve(Self::WRITE_BATCH_BYTES);
                 }
@@ -542,20 +526,52 @@ impl Executor for ChDBConnection {
                 Self::write_rb_value(&mut self.write_buf, &mut self.draft, column, value)?;
             }
         }
-        let Some(mut stream) = stream else {
+        if guard.0.is_null() {
             return Ok(RowsAffected {
                 rows_affected: Some(0),
                 last_affected_id: None,
             });
-        };
-        if !self.write_buf.is_empty() {
-            stream.append(&self.write_buf)?;
-            self.write_buf.clear();
         }
-        let rows_written = stream.finish()?;
+        if !self.write_buf.is_empty() {
+            let state = unsafe {
+                chdb_stream_append(
+                    guard.0,
+                    self.write_buf.as_ptr().cast(),
+                    self.write_buf.len(),
+                )
+            };
+            self.write_buf.clear();
+            if state != 0 {
+                hint::cold_path();
+                return Err(Self::insert_error(guard.0, "ChDB insert stream append failed"));
+            }
+        }
+        guard.1 = true;
+        let result = unsafe { chdb_stream_done(guard.0) };
+        if result.is_null() {
+            return Err(Self::insert_error(
+                guard.0,
+                "ChDB insert stream returned null result",
+            ));
+        }
+        let error = unsafe { result_error(result) }.map(query_error);
+        let rows_written = unsafe { chdb_result_rows_written(result) };
+        unsafe { chdb_destroy_query_result(result) };
+        if let Some(error) = error {
+            return Err(error);
+        }
         Ok(RowsAffected {
             rows_affected: Some(rows_written),
             last_affected_id: None,
         })
+    }
+}
+
+// Access is serialized by `&mut ChDBConnection`.
+unsafe impl Send for ChDBConnection {}
+
+impl Drop for ChDBConnection {
+    fn drop(&mut self) {
+        unsafe { chdb_close_conn(self.handle.as_ptr()) };
     }
 }

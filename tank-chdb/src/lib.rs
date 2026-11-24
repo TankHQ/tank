@@ -4,7 +4,7 @@ mod column;
 mod connection;
 mod cursor;
 mod driver;
-mod native;
+mod ffi;
 mod prepared;
 mod row;
 mod stream;
