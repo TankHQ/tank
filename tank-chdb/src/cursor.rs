@@ -4,8 +4,8 @@ use tank_core::Result;
 
 /// Cursor over a ClickHouse `Native` byte buffer.
 pub(crate) struct Cursor<'a> {
-    data: &'a [u8],
-    pos: usize,
+    pub(crate) data: &'a [u8],
+    pub(crate) pos: usize,
 }
 
 impl<'a> Cursor<'a> {
@@ -15,22 +15,27 @@ impl<'a> Cursor<'a> {
     }
 
     #[inline(always)]
-    pub(crate) fn data_ptr(&self) -> *const u8 {
-        self.data.as_ptr()
-    }
-
-    #[inline(always)]
-    pub(crate) const fn pos(&self) -> usize {
-        self.pos
-    }
-
-    #[inline(always)]
-    pub(crate) fn data_len(&self) -> usize {
-        self.data.len()
-    }
-
-    #[inline(always)]
     pub(crate) fn read_varuint(&mut self) -> Result<usize> {
+        #[cold]
+        #[inline(never)]
+        fn rest(cursor: &mut Cursor<'_>, first: u8) -> Result<usize> {
+            let mut value = (first & 0x7f) as u64;
+            let mut shift = 7u32;
+            while shift < 64 {
+                let Some(&byte) = cursor.data.get(cursor.pos) else {
+                    return Err(anyhow!("Unexpected end of ClickHouse Native varuint"));
+                };
+                cursor.pos += 1;
+                value |= ((byte & 0x7f) as u64) << shift;
+                if byte < 0x80 {
+                    return usize::try_from(value)
+                        .map_err(|_| anyhow!("ClickHouse Native varuint overflow"));
+                }
+                shift += 7;
+            }
+            Err(anyhow!("Malformed ClickHouse Native varuint"))
+        }
+
         let Some(&first) = self.data.get(self.pos) else {
             hint::cold_path();
             return Err(anyhow!("Unexpected end of ClickHouse Native varuint"));
@@ -39,27 +44,7 @@ impl<'a> Cursor<'a> {
         if first < 0x80 {
             return Ok(first as usize);
         }
-        self.read_varuint_rest(first)
-    }
-
-    #[cold]
-    #[inline(never)]
-    fn read_varuint_rest(&mut self, first: u8) -> Result<usize> {
-        let mut value = (first & 0x7f) as u64;
-        let mut shift = 7u32;
-        while shift < 64 {
-            let Some(&byte) = self.data.get(self.pos) else {
-                return Err(anyhow!("Unexpected end of ClickHouse Native varuint"));
-            };
-            self.pos += 1;
-            value |= ((byte & 0x7f) as u64) << shift;
-            if byte < 0x80 {
-                return usize::try_from(value)
-                    .map_err(|_| anyhow!("ClickHouse Native varuint overflow"));
-            }
-            shift += 7;
-        }
-        Err(anyhow!("Malformed ClickHouse Native varuint"))
+        rest(self, first)
     }
 
     #[inline(always)]

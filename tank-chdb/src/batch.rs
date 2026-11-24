@@ -1,16 +1,16 @@
 use crate::{
     column::Column,
     cursor::Cursor,
-    ffi::{chdb_destroy_query_result, result_data},
+    ffi::{chdb_destroy_query_result, chdb_result_buffer, chdb_result_length},
 };
 use anyhow::anyhow;
-use std::{ffi::c_void, mem, ptr, sync::Arc};
+use std::{ffi::c_void, hint, mem, ptr, slice, sync::Arc};
 use tank_core::{Result, RowLabels};
 
 /// A decoded ClickHouse `Native` block owning (or sharing via `parent`) a `chdb_result`.
 #[derive(Debug)]
 pub(crate) struct ChDBBatch {
-    raw: *mut c_void,
+    pub(crate) raw: *mut c_void,
     parent: Option<Arc<ChDBBatch>>,
     pub(crate) labels: RowLabels,
     pub(crate) columns: Vec<Column>,
@@ -18,11 +18,6 @@ pub(crate) struct ChDBBatch {
 }
 
 impl ChDBBatch {
-    #[inline(always)]
-    pub(crate) fn raw(&self) -> *mut c_void {
-        self.raw
-    }
-
     /// Drops the underlying C++ chunk buffer while retaining vector capacities and labels.
     pub(crate) fn release(&mut self) {
         self.columns.clear();
@@ -32,14 +27,6 @@ impl ChDBBatch {
         if owned && !raw.is_null() {
             unsafe { chdb_destroy_query_result(raw) };
         }
-    }
-
-    fn clean_label(name: &str) -> &str {
-        name.rsplit('.')
-            .next()
-            .unwrap_or(name)
-            .trim_matches('`')
-            .trim_matches('"')
     }
 
     /// Parses one ClickHouse `Native` block from `raw` into `slot`, reusing buffers when unshared.
@@ -52,7 +39,17 @@ impl ChDBBatch {
     ) -> Result<usize> {
         let owns_raw = parent.is_none();
         let res = (|| -> Result<usize> {
-            let data = unsafe { result_data(raw)? };
+            let len = unsafe { chdb_result_length(raw) };
+            let data = if len == 0 {
+                &[][..]
+            } else {
+                let ptr = unsafe { chdb_result_buffer(raw) };
+                if ptr.is_null() {
+                    hint::cold_path();
+                    return Err(anyhow!("ChDB returned a null buffer with nonzero length"));
+                }
+                unsafe { slice::from_raw_parts(ptr.cast(), len) }
+            };
             let mut cursor = Cursor::new(data, *offset);
             let num_cols = cursor.read_varuint()?;
             let rows = cursor.read_varuint()?;
@@ -76,7 +73,13 @@ impl ChDBBatch {
             let mut reuse_labels = batch.labels.len() == num_cols;
             let mut names = Vec::new();
             for col_idx in 0..num_cols {
-                let clean = Self::clean_label(cursor.read_str()?);
+                let raw_name = cursor.read_str()?;
+                let clean = raw_name
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or(raw_name)
+                    .trim_matches('`')
+                    .trim_matches('"');
                 if reuse_labels {
                     if batch.labels.get(col_idx).is_none_or(|prev| prev != clean) {
                         reuse_labels = false;
@@ -101,7 +104,7 @@ impl ChDBBatch {
             }
             batch.raw = raw;
             batch.parent = parent;
-            *offset = cursor.pos();
+            *offset = cursor.pos;
             Ok(rows)
         })();
         if res.is_err() && owns_raw && !raw.is_null() {

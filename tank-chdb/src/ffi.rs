@@ -1,11 +1,8 @@
 use anyhow::anyhow;
 // Retain the dependency's native link directives, including the bundled feature.
 use chdb_rust as _;
-use std::{
-    ffi::{CStr, c_char, c_int, c_void},
-    hint, slice,
-};
-use tank_core::{Error, Result};
+use std::ffi::{CStr, c_char, c_int, c_void};
+use tank_core::Error;
 
 pub(crate) const QUERY_CLASS_READ_ONLY: u32 = 0;
 
@@ -109,18 +106,4 @@ pub(crate) unsafe fn result_error<'a>(result: *mut c_void) -> Option<&'a CStr> {
 #[inline(never)]
 pub(crate) fn query_error(error: &CStr) -> Error {
     anyhow!("ChDB query failed: {}", error.to_string_lossy())
-}
-
-#[inline(always)]
-pub(crate) unsafe fn result_data<'a>(result: *mut c_void) -> Result<&'a [u8]> {
-    let len = unsafe { chdb_result_length(result) };
-    if len == 0 {
-        return Ok(&[]);
-    }
-    let data = unsafe { chdb_result_buffer(result) };
-    if data.is_null() {
-        hint::cold_path();
-        return Err(anyhow!("ChDB returned a null buffer with nonzero length"));
-    }
-    Ok(unsafe { slice::from_raw_parts(data.cast(), len) })
 }

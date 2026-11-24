@@ -31,22 +31,6 @@ impl ChDBPrepared {
     const NULL_TYPE: &'static str = "Nullable(Nothing)";
 
     pub fn new(sql: String) -> Self {
-        let markers = Self::scan_markers(&sql);
-        let count = markers.len();
-        let params = (0..count)
-            .map(|i| (format!("p{i}"), Cow::Borrowed(Self::NULL_TYPE), String::new(), false))
-            .collect();
-        Self {
-            template: sql,
-            markers,
-            params,
-            sql: AnyQuery::default(),
-            sql_dirty: count > 0,
-            index: 0,
-        }
-    }
-
-    fn scan_markers(sql: &str) -> Vec<(usize, usize)> {
         const SUFFIX: &str = ":Nullable(String)}";
         let mut markers = Vec::new();
         let mut cursor = 0;
@@ -61,7 +45,18 @@ impl ChDBPrepared {
             }
             cursor = begin + end + SUFFIX.len();
         }
-        markers
+        let count = markers.len();
+        let params = (0..count)
+            .map(|i| (format!("p{i}"), Cow::Borrowed(Self::NULL_TYPE), String::new(), false))
+            .collect();
+        Self {
+            template: sql,
+            markers,
+            params,
+            sql: AnyQuery::default(),
+            sql_dirty: count > 0,
+            index: 0,
+        }
     }
 
     fn param_type(value: &Value<'_>) -> Cow<'static, str> {

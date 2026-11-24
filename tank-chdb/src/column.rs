@@ -134,7 +134,7 @@ impl Column {
         }
         if ty == "String" {
             ensure!(
-                cursor.data_len() <= u32::MAX as usize,
+                cursor.data.len() <= u32::MAX as usize,
                 "ClickHouse Native chunk exceeds 4 GiB"
             );
             let base = u32::try_from(spans.len())
@@ -142,13 +142,13 @@ impl Column {
             spans.reserve(rows);
             for _ in 0..rows {
                 let len = cursor.read_varuint()?;
-                let start = cursor.pos();
+                let start = cursor.pos;
                 cursor.read_bytes(len)?;
                 spans.push((start as u32, len as u32));
             }
             return Ok(Self {
                 nulls,
-                data: cursor.data_ptr(),
+                data: cursor.data.as_ptr(),
                 kind: ColumnKind::String(base),
             });
         }
@@ -340,25 +340,6 @@ impl Column {
         }
     }
 
-    #[inline(always)]
-    fn nanos_to_datetime(nanos: i64) -> Option<PrimitiveDateTime> {
-        const DAY_NANOS: i64 = 86_400_000_000_000;
-        let days = nanos.div_euclid(DAY_NANOS) as i32;
-        let rem = nanos.rem_euclid(DAY_NANOS) as u64;
-        let secs = (rem / 1_000_000_000) as u32;
-        let ns = (rem % 1_000_000_000) as u32;
-        Some(PrimitiveDateTime::new(
-            Date::from_julian_day(Self::EPOCH_JULIAN_DAY + days).ok()?,
-            Time::from_hms_nano(
-                (secs / 3600) as u8,
-                ((secs / 60) % 60) as u8,
-                (secs % 60) as u8,
-                ns,
-            )
-            .ok()?,
-        ))
-    }
-
     /// Hot inline decoder for common scalar column kinds.
     #[inline(always)]
     pub(crate) fn extract<'a>(
@@ -394,10 +375,23 @@ impl Column {
                     }
                 }
                 ColumnKind::DateTime64(9, false) => {
+                    const DAY_NANOS: i64 = 86_400_000_000_000;
                     let nanos = (data as *const i64).add(row).read_unaligned();
-                    match Self::nanos_to_datetime(nanos) {
-                        Some(dt) => Value::Timestamp(Some(dt)),
-                        None => Value::Null,
+                    let days = nanos.div_euclid(DAY_NANOS) as i32;
+                    let rem = nanos.rem_euclid(DAY_NANOS) as u64;
+                    let secs = (rem / 1_000_000_000) as u32;
+                    let ns = (rem % 1_000_000_000) as u32;
+                    match (
+                        Date::from_julian_day(Self::EPOCH_JULIAN_DAY + days),
+                        Time::from_hms_nano(
+                            (secs / 3600) as u8,
+                            ((secs / 60) % 60) as u8,
+                            (secs % 60) as u8,
+                            ns,
+                        ),
+                    ) {
+                        (Ok(date), Ok(time)) => Value::Timestamp(Some(PrimitiveDateTime::new(date, time))),
+                        _ => Value::Null,
                     }
                 }
                 _ => return self.extract_cold(batch, row).map(Cow::Owned),

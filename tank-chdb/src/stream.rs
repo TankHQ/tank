@@ -2,10 +2,10 @@ use crate::{
     ChDBConnection, ChDBDriver, ChDBRow,
     batch::ChDBBatch,
     ffi::{
-        QUERY_CLASS_READ_ONLY, QueryWithParamsFn, chdb_destroy_query_result,
-        chdb_query_with_params_n, chdb_result_column_count, chdb_result_length,
-        chdb_result_rows_read, chdb_stream_cancel_query, chdb_stream_fetch_result,
-        chdb_stream_query_with_params_n, query_error, result_error,
+        QUERY_CLASS_READ_ONLY, QueryAnalysis, QueryWithParamsFn, chdb_classify_query_n,
+        chdb_destroy_query_result, chdb_query_with_params_n, chdb_result_column_count,
+        chdb_result_length, chdb_result_rows_read, chdb_stream_cancel_query,
+        chdb_stream_fetch_result, chdb_stream_query_with_params_n, query_error, result_error,
     },
 };
 use anyhow::anyhow;
@@ -88,16 +88,6 @@ where
         }
     }
 
-    #[cold]
-    #[inline(never)]
-    fn fail(&mut self, error: Error) -> Error {
-        let context = format!("While running the query:\n{}", self.query.as_mut());
-        self.finish();
-        let error = error.context(context);
-        log::error!("{error:#}");
-        error
-    }
-
     fn exec_query(&mut self, ffi_fn: QueryWithParamsFn) -> *mut c_void {
         let conn = self.connection.raw();
         match self.query.as_mut() {
@@ -133,17 +123,25 @@ where
         Ok(())
     }
 
-    /// Classifies common SQL prefixes without invoking ClickHouse's parser twice.
-    fn is_read_only(connection: &ChDBConnection, sql: &str) -> bool {
+    fn start(&mut self) -> Result<Option<RowsAffected>> {
+        self.started = true;
+        if self.batch.is_none() {
+            self.batch = self.connection.batch.take();
+        }
+        let conn = self.connection.raw();
+        let sql = match self.query.as_mut() {
+            Query::Raw(RawQuery(sql)) => sql.as_str(),
+            Query::Prepared(prepared) => prepared.sql(),
+        };
         let first = sql
             .trim_start()
             .split(|c: char| !c.is_ascii_alphabetic())
             .next()
             .unwrap_or_default();
-        if first.eq_ignore_ascii_case("select") || first.eq_ignore_ascii_case("with") {
-            return true;
-        }
-        if first.eq_ignore_ascii_case("insert")
+        let read_only = if first.eq_ignore_ascii_case("select") || first.eq_ignore_ascii_case("with")
+        {
+            true
+        } else if first.eq_ignore_ascii_case("insert")
             || first.eq_ignore_ascii_case("create")
             || first.eq_ignore_ascii_case("drop")
             || first.eq_ignore_ascii_case("alter")
@@ -153,19 +151,25 @@ where
             || first.eq_ignore_ascii_case("set")
             || first.eq_ignore_ascii_case("use")
         {
-            return false;
-        }
-        connection.classify(sql) == QUERY_CLASS_READ_ONLY
-    }
-
-    fn start(&mut self) -> Result<Option<RowsAffected>> {
-        self.started = true;
-        if self.batch.is_none() {
-            self.batch = self.connection.batch.take();
-        }
-        let read_only = match self.query.as_mut() {
-            Query::Raw(RawQuery(sql)) => Self::is_read_only(self.connection, sql),
-            Query::Prepared(prepared) => Self::is_read_only(self.connection, prepared.sql()),
+            false
+        } else {
+            let mut analysis = QueryAnalysis {
+                struct_size: mem::size_of::<QueryAnalysis>() as u32,
+                statement_count: 0,
+                flags: 0,
+                query_class: u32::MAX,
+            };
+            let state = unsafe {
+                chdb_classify_query_n(
+                    conn,
+                    sql.as_ptr().cast(),
+                    sql.len(),
+                    ptr::null(),
+                    0,
+                    &mut analysis,
+                )
+            };
+            state == 0 && analysis.query_class == QUERY_CLASS_READ_ONLY
         };
         if read_only {
             let handle = self.exec_query(chdb_stream_query_with_params_n);
@@ -219,24 +223,12 @@ where
         }
     }
 
-    #[cold]
-    #[inline(never)]
-    fn has_format_null(sql: &str) -> bool {
-        let mut tokens = sql
-            .trim_end_matches(|c: char| c.is_ascii_whitespace() || c == ';')
-            .rsplit(|c: char| c.is_ascii_whitespace());
-        matches!(
-            (tokens.next(), tokens.next()),
-            (Some(fmt), Some(kw)) if fmt.eq_ignore_ascii_case("null") && kw.eq_ignore_ascii_case("format")
-        )
-    }
-
     fn fetch_next_chunk(&mut self) -> Result<()> {
         loop {
             if self.offset > 0
                 && let Some(parent) = self.batch.clone()
             {
-                let raw = parent.raw();
+                let raw = parent.raw;
                 self.parse_chunk(raw, Some(parent))?;
                 if self.size > 0 {
                     return Ok(());
@@ -271,7 +263,14 @@ where
                         Query::Raw(RawQuery(sql)) => sql.as_str(),
                         Query::Prepared(prepared) => prepared.sql(),
                     };
-                    if !has_cols || Self::has_format_null(sql) {
+                    let mut tokens = sql
+                        .trim_end_matches(|c: char| c.is_ascii_whitespace() || c == ';')
+                        .rsplit(|c: char| c.is_ascii_whitespace());
+                    let format_null = matches!(
+                        (tokens.next(), tokens.next()),
+                        (Some(fmt), Some(kw)) if fmt.eq_ignore_ascii_case("null") && kw.eq_ignore_ascii_case("format")
+                    );
+                    if !has_cols || format_null {
                         return Err(anyhow!("ChDB SELECT ended without a schema-bearing result"));
                     }
                 }
@@ -312,6 +311,16 @@ where
         cx: &mut Context<'_>,
         emit_affected: impl FnOnce(RowsAffected) -> Option<T>,
     ) -> Poll<Option<Result<T>>> {
+        #[cold]
+        #[inline(never)]
+        fn fail<Q: AsMut<Query<ChDBDriver>>>(stream: &mut ChDBStream<'_, Q>, error: Error) -> Error {
+            let context = format!("While running the query:\n{}", stream.query.as_mut());
+            stream.finish();
+            let error = error.context(context);
+            log::error!("{error:#}");
+            error
+        }
+
         if self.remaining == 0 {
             hint::cold_path();
             self.remaining = Self::BATCH_SIZE;
@@ -335,18 +344,9 @@ where
                 Ok(Some(affected)) => return Poll::Ready(emit_affected(affected).map(Ok)),
                 Ok(None) if self.row < self.size => {}
                 Ok(None) => return Poll::Ready(None),
-                Err(error) => return Poll::Ready(Some(Err(self.fail(error)))),
+                Err(error) => return Poll::Ready(Some(Err(fail(self, error)))),
             }
         }
-    }
-
-    #[inline(always)]
-    fn remaining_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.size - self.row;
-        (
-            remaining,
-            (self.done && self.offset == 0).then_some(remaining),
-        )
     }
 }
 
@@ -364,7 +364,11 @@ where
 
     #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.remaining_hint()
+        let remaining = self.size - self.row;
+        (
+            remaining,
+            (self.done && self.offset == 0).then_some(remaining),
+        )
     }
 }
 
@@ -406,6 +410,6 @@ where
 
     #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.0.remaining_hint()
+        self.0.size_hint()
     }
 }

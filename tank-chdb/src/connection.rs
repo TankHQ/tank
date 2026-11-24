@@ -2,10 +2,9 @@ use crate::{
     ChDBDriver, ChDBPrepared, ChDBSqlWriter, ChDBTransaction,
     batch::ChDBBatch,
     ffi::{
-        QueryAnalysis, chdb_classify_query_n, chdb_close_conn, chdb_connect,
-        chdb_destroy_insert_stream, chdb_destroy_query_result, chdb_result_rows_written,
-        chdb_stream_append, chdb_stream_cancel_insert, chdb_stream_done, chdb_stream_insert_error,
-        chdb_stream_insert_n, query_error, result_error,
+        chdb_close_conn, chdb_connect, chdb_destroy_insert_stream, chdb_destroy_query_result,
+        chdb_result_rows_written, chdb_stream_append, chdb_stream_cancel_insert, chdb_stream_done,
+        chdb_stream_insert_error, chdb_stream_insert_n, query_error, result_error,
     },
     stream::{ChDBRowStream, ChDBStream},
 };
@@ -49,79 +48,6 @@ impl ChDBConnection {
     }
 
     #[inline(always)]
-    pub(crate) fn classify(&self, sql: &str) -> u32 {
-        let mut analysis = QueryAnalysis {
-            struct_size: mem::size_of::<QueryAnalysis>() as u32,
-            statement_count: 0,
-            flags: 0,
-            query_class: u32::MAX,
-        };
-        let state = unsafe {
-            chdb_classify_query_n(
-                self.raw(),
-                sql.as_ptr().cast(),
-                sql.len(),
-                ptr::null(),
-                0,
-                &mut analysis,
-            )
-        };
-        if state == 0 {
-            analysis.query_class
-        } else {
-            u32::MAX
-        }
-    }
-
-    /// Yields once to the async executor so synchronous batches stay cooperative.
-    fn yield_now() -> impl Future<Output = ()> + Send {
-        let mut yielded = false;
-        future::poll_fn(move |cx| {
-            if yielded {
-                Poll::Ready(())
-            } else {
-                yielded = true;
-                cx.waker().wake_by_ref();
-                Poll::Pending
-            }
-        })
-    }
-
-    fn supports_row_binary(column: &ColumnDef) -> bool {
-        if !column.column_type.is_empty() {
-            return false;
-        }
-        matches!(
-            column.value,
-            Value::Boolean(..)
-                | Value::Int8(..)
-                | Value::Int16(..)
-                | Value::Int32(..)
-                | Value::Int64(..)
-                | Value::Int128(..)
-                | Value::UInt8(..)
-                | Value::UInt16(..)
-                | Value::UInt32(..)
-                | Value::UInt64(..)
-                | Value::UInt128(..)
-                | Value::Float32(..)
-                | Value::Float64(..)
-                | Value::Decimal(..)
-                | Value::Char(..)
-                | Value::Varchar(..)
-                | Value::Blob(..)
-                | Value::Date(..)
-                | Value::Time(..)
-                | Value::Timestamp(..)
-                | Value::TimestampWithTimezone(..)
-                | Value::Interval(..)
-                | Value::Uuid(..)
-                | Value::IpAddr(..)
-                | Value::Json(..)
-        )
-    }
-
-    #[inline(always)]
     fn write_varuint(dst: &mut Vec<u8>, mut n: usize) {
         if n < 0x80 {
             dst.push(n as u8);
@@ -146,45 +72,6 @@ impl ChDBConnection {
         dst.extend_from_slice(bytes);
     }
 
-    fn write_rb_decimal(dst: &mut Vec<u8>, value: Decimal, precision: u8, scale: u8) -> Result<()> {
-        let (p, s) = if (precision, scale) == (0, 0) {
-            (38u8, 9u8)
-        } else {
-            (precision, scale)
-        };
-        let target_scale = s as u32;
-        let v_scale = value.scale();
-        let mut mantissa = value.mantissa();
-        if v_scale < target_scale {
-            let factor = 10i128
-                .checked_pow(target_scale - v_scale)
-                .ok_or_else(|| anyhow!("Decimal scale {target_scale} overflow"))?;
-            mantissa = mantissa
-                .checked_mul(factor)
-                .ok_or_else(|| anyhow!("Decimal {value} overflows Decimal({p},{s})"))?;
-        } else if v_scale > target_scale {
-            let factor = 10i128
-                .checked_pow(v_scale - target_scale)
-                .ok_or_else(|| anyhow!("Decimal scale {v_scale} overflow"))?;
-            mantissa /= factor;
-        }
-        match p {
-            1..=9 => dst.extend_from_slice(
-                &i32::try_from(mantissa)
-                    .map_err(|_| anyhow!("Decimal {value} overflows Decimal32({s})"))?
-                    .to_le_bytes(),
-            ),
-            10..=18 => dst.extend_from_slice(
-                &i64::try_from(mantissa)
-                    .map_err(|_| anyhow!("Decimal {value} overflows Decimal64({s})"))?
-                    .to_le_bytes(),
-            ),
-            19..=38 => dst.extend_from_slice(&mantissa.to_le_bytes()),
-            _ => return Err(anyhow!("Unsupported ClickHouse Decimal precision {p}")),
-        }
-        Ok(())
-    }
-
     #[inline(always)]
     fn write_rb_value(
         dst: &mut Vec<u8>,
@@ -192,6 +79,46 @@ impl ChDBConnection {
         column: &ColumnDef,
         value: Value<'_>,
     ) -> Result<()> {
+        #[cold]
+        #[inline(never)]
+        fn write_decimal(dst: &mut Vec<u8>, value: Decimal, precision: u8, scale: u8) -> Result<()> {
+            let (p, s) = if (precision, scale) == (0, 0) {
+                (38u8, 9u8)
+            } else {
+                (precision, scale)
+            };
+            let target_scale = s as u32;
+            let v_scale = value.scale();
+            let mut mantissa = value.mantissa();
+            if v_scale < target_scale {
+                let factor = 10i128
+                    .checked_pow(target_scale - v_scale)
+                    .ok_or_else(|| anyhow!("Decimal scale {target_scale} overflow"))?;
+                mantissa = mantissa
+                    .checked_mul(factor)
+                    .ok_or_else(|| anyhow!("Decimal {value} overflows Decimal({p},{s})"))?;
+            } else if v_scale > target_scale {
+                let factor = 10i128
+                    .checked_pow(v_scale - target_scale)
+                    .ok_or_else(|| anyhow!("Decimal scale {v_scale} overflow"))?;
+                mantissa /= factor;
+            }
+            match p {
+                1..=9 => dst.extend_from_slice(
+                    &i32::try_from(mantissa)
+                        .map_err(|_| anyhow!("Decimal {value} overflows Decimal32({s})"))?
+                        .to_le_bytes(),
+                ),
+                10..=18 => dst.extend_from_slice(
+                    &i64::try_from(mantissa)
+                        .map_err(|_| anyhow!("Decimal {value} overflows Decimal64({s})"))?
+                        .to_le_bytes(),
+                ),
+                19..=38 => dst.extend_from_slice(&mantissa.to_le_bytes()),
+                _ => return Err(anyhow!("Unsupported ClickHouse Decimal precision {p}")),
+            }
+            Ok(())
+        }
         macro_rules! write_le {
             ($v:expr) => {
                 dst.extend_from_slice(&$v.to_le_bytes())
@@ -273,7 +200,7 @@ impl ChDBConnection {
                         Value::Decimal(_, p, s) => (p, s),
                         _ => (0, 0),
                     };
-                    Self::write_rb_decimal(dst, v, p, s)?;
+                    write_decimal(dst, v, p, s)?;
                 }
                 Value::Blob(Some(ref v)) => {
                     Self::write_varuint(dst, v.len() * 2);
@@ -451,7 +378,39 @@ impl Executor for ChDBConnection {
         type E<It> = <<It as IntoIterator>::Item as AsEntity>::Entity;
         let table = E::<It>::table();
         let columns = E::<It>::columns();
-        if columns.is_empty() || !columns.iter().all(Self::supports_row_binary) {
+        let supported = !columns.is_empty()
+            && columns.iter().all(|c| {
+                c.column_type.is_empty()
+                    && matches!(
+                        c.value,
+                        Value::Boolean(..)
+                            | Value::Int8(..)
+                            | Value::Int16(..)
+                            | Value::Int32(..)
+                            | Value::Int64(..)
+                            | Value::Int128(..)
+                            | Value::UInt8(..)
+                            | Value::UInt16(..)
+                            | Value::UInt32(..)
+                            | Value::UInt64(..)
+                            | Value::UInt128(..)
+                            | Value::Float32(..)
+                            | Value::Float64(..)
+                            | Value::Decimal(..)
+                            | Value::Char(..)
+                            | Value::Varchar(..)
+                            | Value::Blob(..)
+                            | Value::Date(..)
+                            | Value::Time(..)
+                            | Value::Timestamp(..)
+                            | Value::TimestampWithTimezone(..)
+                            | Value::Interval(..)
+                            | Value::Uuid(..)
+                            | Value::IpAddr(..)
+                            | Value::Json(..)
+                    )
+            });
+        if !supported {
             return self.append_default(entities).await;
         }
         let mut entities = entities.into_iter();
@@ -462,7 +421,17 @@ impl Executor for ChDBConnection {
                 if !guard.0.is_null() {
                     Self::flush_insert(guard.0, &mut self.write_buf)?;
                 }
-                Self::yield_now().await;
+                let mut yielded = false;
+                future::poll_fn(move |cx| {
+                    if yielded {
+                        Poll::Ready(())
+                    } else {
+                        yielded = true;
+                        cx.waker().wake_by_ref();
+                        Poll::Pending
+                    }
+                })
+                .await;
             }
             let Some(entity) = entities.next() else {
                 break;
