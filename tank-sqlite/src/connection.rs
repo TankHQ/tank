@@ -51,9 +51,7 @@ impl SQLiteConnection {
         let mut statement = ptr::null_mut();
         let mut tail = ptr::null();
         ensure_rc!(
-            unsafe {
-                sqlite3_prepare_v3(db.as_ptr(), ptr, len, flags, &mut statement, &mut tail)
-            },
+            unsafe { sqlite3_prepare_v3(db.as_ptr(), ptr, len, flags, &mut statement, &mut tail) },
             db.last_error(),
             make_context(),
         );
@@ -65,12 +63,12 @@ impl SQLiteConnection {
             log::error!("{error:#}");
             return Err(error);
         }
-        // Anything left after the statement must parse as no further statement.
         if SINGLE_STATEMENT && consumed != sql.len() {
             hint::cold_path();
             // The rest must parse as no statement: whitespace, comments or empty statements.
-            let res = check_rest(&db, sql.get(consumed..).unwrap_or_default());
-            #[cold]
+            check_rest(&db, sql.get(consumed..).unwrap_or_default())
+                .with_context(make_context)
+                .inspect_err(|e| log::error!("{e:#}"))?;
             #[inline(never)]
             fn check_rest(db: &RawDb, sql: &str) -> Result<()> {
                 let mut statement = ptr::null_mut();
@@ -100,17 +98,8 @@ impl SQLiteConnection {
                     ))
                 }
             }
-            if let Err(error) = res {
-                db.finalize(statement);
-                let error = error.context(make_context());
-                log::error!("{error:#}");
-                return Err(error);
-            }
         }
-        Ok((
-            SQLitePrepared::new(self.db.clone(), statement),
-            consumed,
-        ))
+        Ok((SQLitePrepared::new(self.db.clone(), statement), consumed))
     }
 
     #[inline(always)]
