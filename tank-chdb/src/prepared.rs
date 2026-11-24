@@ -1,9 +1,10 @@
-use crate::ChDBSqlWriter;
+use crate::{ChDBSqlWriter, ffi::QueryWithParamsFn};
 use anyhow::anyhow;
 use std::{
     borrow::Cow,
+    ffi::{c_char, c_void},
     fmt::{self, Display, Write as _},
-    hint, mem,
+    hint, mem, ptr,
 };
 use tank_core::{
     AnyQuery, AsValue, Context, Fragment, Prepared, Result, SqlCoreWriter, SqlValueWriter, Value,
@@ -17,10 +18,8 @@ use tank_core::{
 pub struct ChDBPrepared {
     template: String,
     markers: Vec<(usize, usize)>,
-    names: Vec<String>,
-    types: Vec<Cow<'static, str>>,
-    values: Vec<String>,
-    bound: Vec<bool>,
+    // Per parameter: (name, ClickHouse type, encoded value, bound flag).
+    params: Vec<(String, Cow<'static, str>, String, bool)>,
     sql: AnyQuery,
     sql_dirty: bool,
     index: u64,
@@ -34,17 +33,13 @@ impl ChDBPrepared {
     pub fn new(sql: String) -> Self {
         let markers = Self::scan_markers(&sql);
         let count = markers.len();
-        let names = (0..count).map(|i| format!("p{i}")).collect();
-        let types = vec![Cow::Borrowed(Self::NULL_TYPE); count];
-        let values = (0..count).map(|_| String::new()).collect();
-        let bound = vec![false; count];
+        let params = (0..count)
+            .map(|i| (format!("p{i}"), Cow::Borrowed(Self::NULL_TYPE), String::new(), false))
+            .collect();
         Self {
             template: sql,
             markers,
-            names,
-            types,
-            values,
-            bound,
+            params,
             sql: AnyQuery::default(),
             sql_dirty: count > 0,
             index: 0,
@@ -138,89 +133,85 @@ impl ChDBPrepared {
             dst.push_str("\\N");
             return;
         }
-        match value {
-            Value::Boolean(Some(v)) => {
-                dst.push_str(if v { "true" } else { "false" });
-                mem::forget(value);
-            }
-            Value::Int8(Some(v)) => {
-                let _ = write!(dst, "{v}");
-                mem::forget(value);
-            }
-            Value::Int16(Some(v)) => {
-                let _ = write!(dst, "{v}");
-                mem::forget(value);
-            }
-            Value::Int32(Some(v)) => {
-                let _ = write!(dst, "{v}");
-                mem::forget(value);
-            }
-            Value::Int64(Some(v)) => {
-                let _ = write!(dst, "{v}");
-                mem::forget(value);
-            }
-            Value::UInt8(Some(v)) => {
-                let _ = write!(dst, "{v}");
-                mem::forget(value);
-            }
-            Value::UInt16(Some(v)) => {
-                let _ = write!(dst, "{v}");
-                mem::forget(value);
-            }
-            Value::UInt32(Some(v)) => {
-                let _ = write!(dst, "{v}");
-                mem::forget(value);
-            }
-            Value::UInt64(Some(v)) => {
-                let _ = write!(dst, "{v}");
-                mem::forget(value);
-            }
-            Value::Float32(Some(v)) => {
-                let _ = write!(dst, "{v}");
-                mem::forget(value);
-            }
-            Value::Float64(Some(v)) => {
-                let _ = write!(dst, "{v}");
-                mem::forget(value);
-            }
-            Value::Varchar(Some(ref s)) => {
-                Self::write_escaped(dst, s);
-                if matches!(s, Cow::Borrowed(_)) {
-                    mem::forget(value);
+        'simple_value: {
+            match value {
+                Value::Boolean(Some(v)) => dst.push_str(if v { "true" } else { "false" }),
+                Value::Int8(Some(v)) => {
+                    let _ = write!(dst, "{v}");
+                }
+                Value::Int16(Some(v)) => {
+                    let _ = write!(dst, "{v}");
+                }
+                Value::Int32(Some(v)) => {
+                    let _ = write!(dst, "{v}");
+                }
+                Value::Int64(Some(v)) => {
+                    let _ = write!(dst, "{v}");
+                }
+                Value::UInt8(Some(v)) => {
+                    let _ = write!(dst, "{v}");
+                }
+                Value::UInt16(Some(v)) => {
+                    let _ = write!(dst, "{v}");
+                }
+                Value::UInt32(Some(v)) => {
+                    let _ = write!(dst, "{v}");
+                }
+                Value::UInt64(Some(v)) => {
+                    let _ = write!(dst, "{v}");
+                }
+                Value::Float32(Some(v)) => {
+                    let _ = write!(dst, "{v}");
+                }
+                Value::Float64(Some(v)) => {
+                    let _ = write!(dst, "{v}");
+                }
+                Value::Varchar(Some(ref s)) => {
+                    Self::write_escaped(dst, s);
+                    if matches!(s, Cow::Owned(_)) {
+                        break 'simple_value;
+                    }
+                }
+                Value::Char(Some(c)) => {
+                    let mut buf = [0u8; 4];
+                    Self::write_escaped(dst, c.encode_utf8(&mut buf));
+                }
+                Value::Blob(Some(ref bytes)) => {
+                    dst.reserve(bytes.len() * 2);
+                    for &b in bytes.as_ref() {
+                        dst.push(Self::HEX[(b >> 4) as usize] as char);
+                        dst.push(Self::HEX[(b & 0xf) as usize] as char);
+                    }
+                    if matches!(bytes, Cow::Owned(_)) {
+                        break 'simple_value;
+                    }
+                }
+                Value::Json(Some(ref j)) => {
+                    let mut tmp = String::new();
+                    let _ = write!(tmp, "{j}");
+                    Self::write_escaped(dst, &tmp);
+                    break 'simple_value;
+                }
+                ref other => {
+                    let mut out = AnyQuery::new(mem::take(dst));
+                    Self::WRITER.write_value(
+                        &mut Context::fragment(Fragment::None),
+                        &mut out,
+                        other,
+                    );
+                    *dst = out.into();
+                    break 'simple_value;
                 }
             }
-            Value::Char(Some(c)) => {
-                let mut buf = [0u8; 4];
-                Self::write_escaped(dst, c.encode_utf8(&mut buf));
-                mem::forget(value);
-            }
-            Value::Blob(Some(ref bytes)) => {
-                dst.reserve(bytes.len() * 2);
-                for &b in bytes.as_ref() {
-                    dst.push(Self::HEX[(b >> 4) as usize] as char);
-                    dst.push(Self::HEX[(b & 0xf) as usize] as char);
-                }
-                if matches!(bytes, Cow::Borrowed(_)) {
-                    mem::forget(value);
-                }
-            }
-            Value::Json(Some(ref j)) => {
-                let mut tmp = String::new();
-                let _ = write!(tmp, "{j}");
-                Self::write_escaped(dst, &tmp);
-            }
-            other => {
-                let mut out = AnyQuery::new(mem::take(dst));
-                Self::WRITER.write_value(&mut Context::fragment(Fragment::None), &mut out, &other);
-                *dst = out.into();
-            }
+            // Avoid an opaque Value::drop call for simple values that do not allocate memory.
+            mem::forget(value);
         }
     }
 
-    /// Returns the typed SQL text and bound `(name, value)` pairs for FFI execution.
-    pub(crate) fn prepare_for_exec(&mut self) -> (&str, &[String], &[String], &[bool]) {
+    /// Returns the typed SQL text, rebuilding it only when parameter types changed.
+    pub(crate) fn sql(&mut self) -> &str {
         if self.markers.is_empty() {
-            return (&self.template, &[], &[], &[]);
+            return &self.template;
         }
         if self.sql_dirty {
             self.sql.clear();
@@ -236,13 +227,86 @@ impl ChDBPrepared {
                     continue;
                 }
                 self.sql.push_str(&self.template[cursor..begin]);
-                let _ = write!(self.sql, "{{p{i}:{}}}", self.types[i]);
+                let _ = write!(self.sql, "{{p{i}:{}}}", self.params[i].1);
                 cursor = end;
             }
             self.sql.push_str(&self.template[cursor..]);
             self.sql_dirty = false;
         }
-        (self.sql.buffer().as_str(), &self.names, &self.values, &self.bound)
+        self.sql.buffer().as_str()
+    }
+
+    /// Invokes a `chdb_*_with_params_n` FFI entry point with the currently bound parameters.
+    pub(crate) fn exec(
+        &mut self,
+        conn: *mut c_void,
+        format: &str,
+        ffi_fn: QueryWithParamsFn,
+    ) -> *mut c_void {
+        const STACK: usize = 8;
+        let _ = self.sql();
+        let sql = if self.markers.is_empty() {
+            self.template.as_str()
+        } else {
+            self.sql.buffer().as_str()
+        };
+        let count = self.params.iter().filter(|p| p.3).count();
+        if count <= STACK {
+            let mut n_ptrs = [ptr::null::<c_char>(); STACK];
+            let mut n_lens = [0usize; STACK];
+            let mut v_ptrs = [ptr::null::<c_char>(); STACK];
+            let mut v_lens = [0usize; STACK];
+            let mut out = 0;
+            for (name, _, val, bound) in &self.params {
+                if *bound {
+                    n_ptrs[out] = name.as_ptr().cast();
+                    n_lens[out] = name.len();
+                    v_ptrs[out] = val.as_ptr().cast();
+                    v_lens[out] = val.len();
+                    out += 1;
+                }
+            }
+            return unsafe {
+                ffi_fn(
+                    conn,
+                    sql.as_ptr().cast(),
+                    sql.len(),
+                    format.as_ptr().cast(),
+                    format.len(),
+                    if out == 0 { ptr::null() } else { n_ptrs.as_ptr() },
+                    if out == 0 { ptr::null() } else { n_lens.as_ptr() },
+                    if out == 0 { ptr::null() } else { v_ptrs.as_ptr() },
+                    if out == 0 { ptr::null() } else { v_lens.as_ptr() },
+                    out,
+                )
+            };
+        }
+        let mut n_ptrs = Vec::with_capacity(count);
+        let mut n_lens = Vec::with_capacity(count);
+        let mut v_ptrs = Vec::with_capacity(count);
+        let mut v_lens = Vec::with_capacity(count);
+        for (name, _, val, bound) in &self.params {
+            if *bound {
+                n_ptrs.push(name.as_ptr().cast());
+                n_lens.push(name.len());
+                v_ptrs.push(val.as_ptr().cast());
+                v_lens.push(val.len());
+            }
+        }
+        unsafe {
+            ffi_fn(
+                conn,
+                sql.as_ptr().cast(),
+                sql.len(),
+                format.as_ptr().cast(),
+                format.len(),
+                n_ptrs.as_ptr(),
+                n_lens.as_ptr(),
+                v_ptrs.as_ptr(),
+                v_lens.as_ptr(),
+                n_ptrs.len(),
+            )
+        }
     }
 }
 
@@ -259,7 +323,9 @@ impl Prepared for ChDBPrepared {
 
     #[inline(always)]
     fn clear_bindings(&mut self) -> Result<&mut Self> {
-        self.bound.fill(false);
+        for param in &mut self.params {
+            param.3 = false;
+        }
         self.index = 0;
         Ok(self)
     }
@@ -271,8 +337,7 @@ impl Prepared for ChDBPrepared {
 
     #[inline(always)]
     fn bind_index(&mut self, value: impl AsValue, index: u64) -> Result<&mut Self> {
-        let idx = index as usize;
-        let Some(slot) = self.values.get_mut(idx) else {
+        let Some((_, prev_ty, slot, bound)) = self.params.get_mut(index as usize) else {
             hint::cold_path();
             let error = anyhow!(
                 "Index {index} cannot be bound, the query has only {} parameters",
@@ -283,16 +348,12 @@ impl Prepared for ChDBPrepared {
         };
         let value = value.as_value();
         let ty = Self::param_type(&value);
-        if let Some(prev) = self.types.get_mut(idx)
-            && *prev != ty
-        {
-            *prev = ty;
+        if *prev_ty != ty {
+            *prev_ty = ty;
             self.sql_dirty = true;
         }
         Self::write_param(slot, value);
-        if let Some(b) = self.bound.get_mut(idx) {
-            *b = true;
-        }
+        *bound = true;
         self.index = index + 1;
         Ok(self)
     }

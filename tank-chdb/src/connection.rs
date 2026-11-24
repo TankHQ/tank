@@ -192,6 +192,11 @@ impl ChDBConnection {
         column: &ColumnDef,
         value: Value<'_>,
     ) -> Result<()> {
+        macro_rules! write_le {
+            ($v:expr) => {
+                dst.extend_from_slice(&$v.to_le_bytes())
+            };
+        }
         let nullable = column.nullable && column.primary_key == PrimaryKeyType::None;
         if value.is_null() {
             if nullable {
@@ -207,146 +212,118 @@ impl ChDBConnection {
         if nullable {
             dst.push(0);
         }
-        match value {
-            Value::Boolean(Some(v)) => {
-                dst.push(u8::from(v));
-                mem::forget(value);
-            }
-            Value::Int8(Some(v)) => {
-                dst.push(v as u8);
-                mem::forget(value);
-            }
-            Value::Int16(Some(v)) => {
-                dst.extend_from_slice(&v.to_le_bytes());
-                mem::forget(value);
-            }
-            Value::Int32(Some(v)) => {
-                dst.extend_from_slice(&v.to_le_bytes());
-                mem::forget(value);
-            }
-            Value::Int64(Some(v)) => {
-                dst.extend_from_slice(&v.to_le_bytes());
-                mem::forget(value);
-            }
-            Value::Int128(Some(v)) => dst.extend_from_slice(&v.to_le_bytes()),
-            Value::UInt8(Some(v)) => {
-                dst.push(v);
-                mem::forget(value);
-            }
-            Value::UInt16(Some(v)) => {
-                dst.extend_from_slice(&v.to_le_bytes());
-                mem::forget(value);
-            }
-            Value::UInt32(Some(v)) => {
-                dst.extend_from_slice(&v.to_le_bytes());
-                mem::forget(value);
-            }
-            Value::UInt64(Some(v)) => {
-                dst.extend_from_slice(&v.to_le_bytes());
-                mem::forget(value);
-            }
-            Value::UInt128(Some(v)) => dst.extend_from_slice(&v.to_le_bytes()),
-            Value::Float32(Some(v)) => {
-                dst.extend_from_slice(&v.to_le_bytes());
-                mem::forget(value);
-            }
-            Value::Float64(Some(v)) => {
-                dst.extend_from_slice(&v.to_le_bytes());
-                mem::forget(value);
-            }
-            Value::Varchar(Some(ref v)) => {
-                Self::write_rb_bytes(dst, v.as_bytes());
-                if matches!(v, Cow::Borrowed(_)) {
-                    mem::forget(value);
+        'simple_value: {
+            match value {
+                Value::Boolean(Some(v)) => dst.push(u8::from(v)),
+                Value::Int8(Some(v)) => dst.push(v as u8),
+                Value::UInt8(Some(v)) => dst.push(v),
+                Value::Int16(Some(v)) => write_le!(v),
+                Value::Int32(Some(v)) => write_le!(v),
+                Value::Int64(Some(v)) => write_le!(v),
+                Value::UInt16(Some(v)) => write_le!(v),
+                Value::UInt32(Some(v)) => write_le!(v),
+                Value::UInt64(Some(v)) => write_le!(v),
+                Value::Float32(Some(v)) => write_le!(v),
+                Value::Float64(Some(v)) => write_le!(v),
+                Value::Int128(Some(ref v)) => {
+                    write_le!(**v);
+                    break 'simple_value;
+                }
+                Value::UInt128(Some(ref v)) => {
+                    write_le!(**v);
+                    break 'simple_value;
+                }
+                Value::Varchar(Some(ref v)) => {
+                    Self::write_rb_bytes(dst, v.as_bytes());
+                    if matches!(v, Cow::Owned(_)) {
+                        break 'simple_value;
+                    }
+                }
+                Value::Char(Some(v)) => {
+                    let mut buf = [0u8; 4];
+                    Self::write_rb_bytes(dst, v.encode_utf8(&mut buf).as_bytes());
+                }
+                Value::Timestamp(Some(v)) => {
+                    let days = (v.date().to_julian_day() - Self::EPOCH_JULIAN_DAY) as i64;
+                    let (h, m, s, ns) = v.time().as_hms_nano();
+                    let day_ns =
+                        (h as i64 * 3600 + m as i64 * 60 + s as i64) * 1_000_000_000 + ns as i64;
+                    let nanos = days
+                        .checked_mul(86_400_000_000_000)
+                        .and_then(|d| d.checked_add(day_ns))
+                        .ok_or_else(|| {
+                            anyhow!("Timestamp {v} out of ClickHouse DateTime64(9) range")
+                        })?;
+                    write_le!(nanos);
+                }
+                Value::TimestampWithTimezone(Some(v)) => {
+                    let nanos = i64::try_from(v.unix_timestamp_nanos()).map_err(|_| {
+                        anyhow!("Timestamp {v} out of ClickHouse DateTime64(9) range")
+                    })?;
+                    write_le!(nanos);
+                }
+                Value::Date(Some(v)) => {
+                    // ClickHouse `Date` saturates outside 1970-01-01..=2149-06-06 (u16 days).
+                    let days = (v.to_julian_day() - Self::EPOCH_JULIAN_DAY)
+                        .clamp(0, u16::MAX as i32) as u16;
+                    write_le!(days);
+                }
+                Value::Decimal(Some(v), ..) => {
+                    let (p, s) = match column.value {
+                        Value::Decimal(_, p, s) => (p, s),
+                        _ => (0, 0),
+                    };
+                    Self::write_rb_decimal(dst, v, p, s)?;
+                }
+                Value::Blob(Some(ref v)) => {
+                    Self::write_varuint(dst, v.len() * 2);
+                    dst.reserve(v.len() * 2);
+                    for &b in v.as_ref() {
+                        dst.push(Self::HEX[(b >> 4) as usize]);
+                        dst.push(Self::HEX[(b & 0xf) as usize]);
+                    }
+                    if matches!(v, Cow::Owned(_)) {
+                        break 'simple_value;
+                    }
+                }
+                Value::Time(Some(v)) => {
+                    scratch.clear();
+                    Self::WRITER.write_time(&mut Context::fragment(Fragment::None), scratch, &v);
+                    Self::write_rb_bytes(dst, scratch.buffer().as_bytes());
+                }
+                Value::Interval(Some(v)) => {
+                    scratch.clear();
+                    let _ = write!(scratch, "{}ns", v.as_ns());
+                    Self::write_rb_bytes(dst, scratch.buffer().as_bytes());
+                }
+                Value::Uuid(Some(v)) => {
+                    let raw = v.as_u128();
+                    dst.extend_from_slice(&((raw >> 64) as u64).to_le_bytes());
+                    dst.extend_from_slice(&(raw as u64).to_le_bytes());
+                }
+                Value::IpAddr(Some(v)) => {
+                    let octets = match v {
+                        IpAddr::V4(v4) => v4.to_ipv6_mapped().octets(),
+                        IpAddr::V6(v6) => v6.octets(),
+                    };
+                    dst.extend_from_slice(&octets);
+                }
+                Value::Json(Some(ref v)) => {
+                    scratch.clear();
+                    let _ = write!(scratch, "{v}");
+                    Self::write_rb_bytes(dst, scratch.buffer().as_bytes());
+                    break 'simple_value;
+                }
+                other => {
+                    hint::cold_path();
+                    return Err(anyhow!(
+                        "Unsupported RowBinary value {other:?} for column `{}`",
+                        column.name()
+                    ));
                 }
             }
-            Value::Char(Some(v)) => {
-                let mut buf = [0u8; 4];
-                Self::write_rb_bytes(dst, v.encode_utf8(&mut buf).as_bytes());
-                mem::forget(value);
-            }
-            Value::Timestamp(Some(v)) => {
-                let days = (v.date().to_julian_day() - Self::EPOCH_JULIAN_DAY) as i64;
-                let (h, m, s, ns) = v.time().as_hms_nano();
-                let day_ns = (h as i64 * 3600 + m as i64 * 60 + s as i64) * 1_000_000_000
-                    + ns as i64;
-                let nanos = days
-                    .checked_mul(86_400_000_000_000)
-                    .and_then(|d| d.checked_add(day_ns))
-                    .ok_or_else(|| anyhow!("Timestamp {v} out of ClickHouse DateTime64(9) range"))?;
-                dst.extend_from_slice(&nanos.to_le_bytes());
-                mem::forget(value);
-            }
-            Value::TimestampWithTimezone(Some(v)) => {
-                let nanos = i64::try_from(v.unix_timestamp_nanos())
-                    .map_err(|_| anyhow!("Timestamp {v} out of ClickHouse DateTime64(9) range"))?;
-                dst.extend_from_slice(&nanos.to_le_bytes());
-                mem::forget(value);
-            }
-            Value::Date(Some(v)) => {
-                // ClickHouse `Date` saturates outside 1970-01-01..=2149-06-06 (u16 days).
-                let days = (v.to_julian_day() - Self::EPOCH_JULIAN_DAY).clamp(0, u16::MAX as i32)
-                    as u16;
-                dst.extend_from_slice(&days.to_le_bytes());
-                mem::forget(value);
-            }
-            Value::Decimal(Some(v), ..) => {
-                let (p, s) = match column.value {
-                    Value::Decimal(_, p, s) => (p, s),
-                    _ => (0, 0),
-                };
-                Self::write_rb_decimal(dst, v, p, s)?;
-                mem::forget(value);
-            }
-            Value::Blob(Some(ref v)) => {
-                Self::write_varuint(dst, v.len() * 2);
-                dst.reserve(v.len() * 2);
-                for &b in v.as_ref() {
-                    dst.push(Self::HEX[(b >> 4) as usize]);
-                    dst.push(Self::HEX[(b & 0xf) as usize]);
-                }
-                if matches!(v, Cow::Borrowed(_)) {
-                    mem::forget(value);
-                }
-            }
-            Value::Time(Some(v)) => {
-                scratch.clear();
-                Self::WRITER.write_time(&mut Context::fragment(Fragment::None), scratch, &v);
-                Self::write_rb_bytes(dst, scratch.buffer().as_bytes());
-                mem::forget(value);
-            }
-            Value::Interval(Some(v)) => {
-                scratch.clear();
-                let _ = write!(scratch, "{}ns", v.as_ns());
-                Self::write_rb_bytes(dst, scratch.buffer().as_bytes());
-                mem::forget(value);
-            }
-            Value::Uuid(Some(v)) => {
-                let raw = v.as_u128();
-                dst.extend_from_slice(&((raw >> 64) as u64).to_le_bytes());
-                dst.extend_from_slice(&(raw as u64).to_le_bytes());
-                mem::forget(value);
-            }
-            Value::IpAddr(Some(v)) => {
-                let octets = match v {
-                    IpAddr::V4(v4) => v4.to_ipv6_mapped().octets(),
-                    IpAddr::V6(v6) => v6.octets(),
-                };
-                dst.extend_from_slice(&octets);
-                mem::forget(value);
-            }
-            Value::Json(Some(ref v)) => {
-                scratch.clear();
-                let _ = write!(scratch, "{v}");
-                Self::write_rb_bytes(dst, scratch.buffer().as_bytes());
-            }
-            other => {
-                hint::cold_path();
-                return Err(anyhow!(
-                    "Unsupported RowBinary value {other:?} for column `{}`",
-                    column.name()
-                ));
-            }
+            // Avoid an opaque Value::drop call for simple values that do not allocate memory.
+            mem::forget(value);
         }
         Ok(())
     }
@@ -364,6 +341,17 @@ impl ChDBConnection {
             )
         }
     }
+
+    #[inline(always)]
+    fn flush_insert(handle: *mut c_void, buf: &mut Vec<u8>) -> Result<()> {
+        let state = unsafe { chdb_stream_append(handle, buf.as_ptr().cast(), buf.len()) };
+        buf.clear();
+        if state != 0 {
+            hint::cold_path();
+            return Err(Self::insert_error(handle, "ChDB insert stream append failed"));
+        }
+        Ok(())
+    }
 }
 
 impl Connection for ChDBConnection {
@@ -379,17 +367,26 @@ impl Connection for ChDBConnection {
                 (!raw.is_empty() && raw != "/")
                     .then(|| Cow::Owned(raw.trim_start_matches('/').to_string()))
             });
-        let mut args = vec![
-            CString::new("clickhouse")?,
-            CString::new("--allow_experimental_lightweight_delete=1")?,
-            CString::new("--join_use_nulls=1")?,
-            CString::new("--final=1")?,
+        let path_arg = path
+            .as_deref()
+            .map(|p| CString::new(format!("--path={p}")))
+            .transpose()?;
+        let mut argv = [
+            c"clickhouse".as_ptr().cast_mut(),
+            c"--allow_experimental_lightweight_delete=1"
+                .as_ptr()
+                .cast_mut(),
+            c"--join_use_nulls=1".as_ptr().cast_mut(),
+            c"--final=1".as_ptr().cast_mut(),
+            ptr::null_mut(),
         ];
-        if let Some(path) = path.as_deref() {
-            args.push(CString::new(format!("--path={path}"))?);
-        }
-        let mut argv: Vec<_> = args.iter().map(|arg| arg.as_ptr().cast_mut()).collect();
-        let handle = NonNull::new(unsafe { chdb_connect(argv.len() as c_int, argv.as_mut_ptr()) })
+        let argc = if let Some(arg) = path_arg.as_ref() {
+            argv[4] = arg.as_ptr().cast_mut();
+            5
+        } else {
+            4
+        };
+        let handle = NonNull::new(unsafe { chdb_connect(argc as c_int, argv.as_mut_ptr()) })
             .ok_or_else(|| anyhow!("Cannot open chDB connection"))
             .with_context(make_context)?;
         let connection = Self {
@@ -398,10 +395,7 @@ impl Connection for ChDBConnection {
             draft: AnyQuery::default(),
             write_buf: Vec::new(),
         };
-        ensure!(
-            !connection.raw().is_null(),
-            "Cannot open chDB connection"
-        );
+        ensure!(!connection.raw().is_null(), "Cannot open chDB connection");
         Ok(connection)
     }
 
@@ -466,18 +460,7 @@ impl Executor for ChDBConnection {
         loop {
             if self.write_buf.len() >= Self::WRITE_BATCH_BYTES {
                 if !guard.0.is_null() {
-                    let state = unsafe {
-                        chdb_stream_append(
-                            guard.0,
-                            self.write_buf.as_ptr().cast(),
-                            self.write_buf.len(),
-                        )
-                    };
-                    if state != 0 {
-                        hint::cold_path();
-                        return Err(Self::insert_error(guard.0, "ChDB insert stream append failed"));
-                    }
-                    self.write_buf.clear();
+                    Self::flush_insert(guard.0, &mut self.write_buf)?;
                 }
                 Self::yield_now().await;
             }
@@ -533,18 +516,7 @@ impl Executor for ChDBConnection {
             });
         }
         if !self.write_buf.is_empty() {
-            let state = unsafe {
-                chdb_stream_append(
-                    guard.0,
-                    self.write_buf.as_ptr().cast(),
-                    self.write_buf.len(),
-                )
-            };
-            self.write_buf.clear();
-            if state != 0 {
-                hint::cold_path();
-                return Err(Self::insert_error(guard.0, "ChDB insert stream append failed"));
-            }
+            Self::flush_insert(guard.0, &mut self.write_buf)?;
         }
         guard.1 = true;
         let result = unsafe { chdb_stream_done(guard.0) };

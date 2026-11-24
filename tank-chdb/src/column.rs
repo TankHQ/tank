@@ -178,6 +178,17 @@ impl Column {
         Ok((ptr, total))
     }
 
+    unsafe fn offset_range(data: *const u8, row: usize) -> (usize, usize) {
+        let offsets = data as *const u64;
+        let start = if row == 0 {
+            0
+        } else {
+            unsafe { offsets.add(row - 1).read_unaligned() as usize }
+        };
+        let end = unsafe { offsets.add(row).read_unaligned() as usize };
+        (start, end)
+    }
+
     fn strip_wrapper<'a>(ty: &'a str, name: &str) -> Option<&'a str> {
         ty.strip_prefix(name)?.strip_prefix('(')?.strip_suffix(')')
     }
@@ -201,8 +212,14 @@ impl Column {
         None
     }
 
+    fn parse_u8(s: &str, ty: &str) -> Result<u8> {
+        s.trim()
+            .parse()
+            .map_err(|_| anyhow!("Invalid numeric parameter in `{ty}`"))
+    }
+
     fn parse_fixed_kind(ty: &str) -> Result<(ColumnKind, usize)> {
-        let result = match ty {
+        Ok(match ty {
             "Bool" => (ColumnKind::Bool, 1),
             "Int8" => (ColumnKind::Int8, 1),
             "Int16" => (ColumnKind::Int16, 2),
@@ -223,70 +240,57 @@ impl Column {
             "IPv4" => (ColumnKind::IPv4, 4),
             "IPv6" => (ColumnKind::IPv6, 16),
             "Nothing" => (ColumnKind::Nothing, 1),
-            _ => {
-                if let Some(inner) = Self::strip_wrapper(ty, "FixedString") {
-                    let n: u32 = inner
-                        .trim()
-                        .parse()
-                        .map_err(|_| anyhow!("Invalid FixedString length in `{ty}`"))?;
-                    (ColumnKind::FixedString(n), n as usize)
-                } else if let Some(inner) = Self::strip_wrapper(ty, "DateTime") {
-                    let tz = inner.trim().trim_matches('\'');
-                    (ColumnKind::DateTime(tz != "UTC"), 4)
-                } else if let Some(inner) = Self::strip_wrapper(ty, "DateTime64") {
-                    let (scale_str, non_utc) = match Self::split_top_level_comma(inner) {
-                        Some((s, tz)) => (s.trim(), tz.trim().trim_matches('\'') != "UTC"),
-                        None => (inner.trim(), false),
-                    };
-                    let scale: u8 = scale_str
-                        .parse()
-                        .map_err(|_| anyhow!("Invalid DateTime64 scale in `{ty}`"))?;
-                    (ColumnKind::DateTime64(scale, non_utc), 8)
-                } else if let Some(inner) = Self::strip_wrapper(ty, "Decimal") {
-                    let (p_str, s_str) = Self::split_top_level_comma(inner)
-                        .ok_or_else(|| anyhow!("Invalid Decimal type `{ty}`"))?;
-                    let p: u8 = p_str
-                        .trim()
-                        .parse()
-                        .map_err(|_| anyhow!("Invalid Decimal precision in `{ty}`"))?;
-                    let s: u8 = s_str
-                        .trim()
-                        .parse()
-                        .map_err(|_| anyhow!("Invalid Decimal scale in `{ty}`"))?;
-                    match p {
-                        1..=9 => (ColumnKind::Decimal32(p, s), 4),
-                        10..=18 => (ColumnKind::Decimal64(p, s), 8),
-                        19..=38 => (ColumnKind::Decimal128(p, s), 16),
-                        _ => return Err(anyhow!("Unsupported Decimal precision in `{ty}`")),
-                    }
-                } else if let Some(inner) = Self::strip_wrapper(ty, "Decimal32") {
-                    let s: u8 = inner
-                        .trim()
-                        .parse()
-                        .map_err(|_| anyhow!("Invalid Decimal32 scale in `{ty}`"))?;
-                    (ColumnKind::Decimal32(9, s), 4)
-                } else if let Some(inner) = Self::strip_wrapper(ty, "Decimal64") {
-                    let s: u8 = inner
-                        .trim()
-                        .parse()
-                        .map_err(|_| anyhow!("Invalid Decimal64 scale in `{ty}`"))?;
-                    (ColumnKind::Decimal64(18, s), 8)
-                } else if let Some(inner) = Self::strip_wrapper(ty, "Decimal128") {
-                    let s: u8 = inner
-                        .trim()
-                        .parse()
-                        .map_err(|_| anyhow!("Invalid Decimal128 scale in `{ty}`"))?;
-                    (ColumnKind::Decimal128(38, s), 16)
-                } else if Self::strip_wrapper(ty, "Enum8").is_some() {
-                    (ColumnKind::Int8, 1)
-                } else if Self::strip_wrapper(ty, "Enum16").is_some() {
-                    (ColumnKind::Int16, 2)
-                } else {
-                    return Err(anyhow!("Unsupported ClickHouse Native column type `{ty}`"));
+            _ if Self::strip_wrapper(ty, "FixedString").is_some() => {
+                let n: u32 = Self::strip_wrapper(ty, "FixedString")
+                    .unwrap_or_default()
+                    .trim()
+                    .parse()
+                    .map_err(|_| anyhow!("Invalid FixedString length in `{ty}`"))?;
+                (ColumnKind::FixedString(n), n as usize)
+            }
+            _ if Self::strip_wrapper(ty, "DateTime").is_some() => {
+                let tz = Self::strip_wrapper(ty, "DateTime")
+                    .unwrap_or_default()
+                    .trim()
+                    .trim_matches('\'');
+                (ColumnKind::DateTime(tz != "UTC"), 4)
+            }
+            _ if Self::strip_wrapper(ty, "DateTime64").is_some() => {
+                let inner = Self::strip_wrapper(ty, "DateTime64").unwrap_or_default();
+                let (scale, non_utc) = match Self::split_top_level_comma(inner) {
+                    Some((s, tz)) => (Self::parse_u8(s, ty)?, tz.trim().trim_matches('\'') != "UTC"),
+                    None => (Self::parse_u8(inner, ty)?, false),
+                };
+                (ColumnKind::DateTime64(scale, non_utc), 8)
+            }
+            _ if Self::strip_wrapper(ty, "Decimal").is_some() => {
+                let inner = Self::strip_wrapper(ty, "Decimal").unwrap_or_default();
+                let (p_str, s_str) = Self::split_top_level_comma(inner)
+                    .ok_or_else(|| anyhow!("Invalid Decimal type `{ty}`"))?;
+                let (p, s) = (Self::parse_u8(p_str, ty)?, Self::parse_u8(s_str, ty)?);
+                match p {
+                    1..=9 => (ColumnKind::Decimal32(p, s), 4),
+                    10..=18 => (ColumnKind::Decimal64(p, s), 8),
+                    19..=38 => (ColumnKind::Decimal128(p, s), 16),
+                    _ => return Err(anyhow!("Unsupported Decimal precision in `{ty}`")),
                 }
             }
-        };
-        Ok(result)
+            _ if Self::strip_wrapper(ty, "Decimal32").is_some() => (
+                ColumnKind::Decimal32(9, Self::parse_u8(Self::strip_wrapper(ty, "Decimal32").unwrap_or_default(), ty)?),
+                4,
+            ),
+            _ if Self::strip_wrapper(ty, "Decimal64").is_some() => (
+                ColumnKind::Decimal64(18, Self::parse_u8(Self::strip_wrapper(ty, "Decimal64").unwrap_or_default(), ty)?),
+                8,
+            ),
+            _ if Self::strip_wrapper(ty, "Decimal128").is_some() => (
+                ColumnKind::Decimal128(38, Self::parse_u8(Self::strip_wrapper(ty, "Decimal128").unwrap_or_default(), ty)?),
+                16,
+            ),
+            _ if Self::strip_wrapper(ty, "Enum8").is_some() => (ColumnKind::Int8, 1),
+            _ if Self::strip_wrapper(ty, "Enum16").is_some() => (ColumnKind::Int16, 2),
+            _ => return Err(anyhow!("Unsupported ClickHouse Native column type `{ty}`")),
+        })
     }
 
     fn prototype(&self) -> ValueOwned {
@@ -400,39 +404,6 @@ impl Column {
             }
         };
         Some(Cow::Owned(value))
-    }
-
-    fn extract_any<'a>(&self, batch: &'a ChDBBatch, row: usize) -> Option<Value<'a>> {
-        if !self.nulls.is_null() && unsafe { *self.nulls.add(row) != 0 } {
-            return Some(Value::Null);
-        }
-        let data = self.data;
-        unsafe {
-            match self.kind {
-                ColumnKind::Bool => Some(Value::Boolean(Some(*data.add(row) != 0))),
-                ColumnKind::Int32 => Some(Value::Int32(Some(
-                    (data as *const i32).add(row).read_unaligned(),
-                ))),
-                ColumnKind::Int64 => Some(Value::Int64(Some(
-                    (data as *const i64).add(row).read_unaligned(),
-                ))),
-                ColumnKind::UInt64 => Some(Value::UInt64(Some(
-                    (data as *const u64).add(row).read_unaligned(),
-                ))),
-                ColumnKind::Float64 => Some(Value::Float64(Some(
-                    (data as *const f64).add(row).read_unaligned(),
-                ))),
-                ColumnKind::String(base) => {
-                    let &(start, len) = batch.spans.get(base as usize + row)?;
-                    let bytes = slice::from_raw_parts(data.add(start as usize), len as usize);
-                    Some(match str::from_utf8(bytes) {
-                        Ok(s) => Value::Varchar(Some(Cow::Borrowed(s))),
-                        Err(_) => Value::Blob(Some(Cow::Borrowed(bytes))),
-                    })
-                }
-                _ => self.extract_cold(batch, row),
-            }
-        }
     }
 
     /// Cold decoder for less common scalar and nested types.
@@ -561,20 +532,14 @@ impl Column {
                     if *nullable && dict_row == 0 {
                         Value::Null
                     } else {
-                        return dict.extract_any(batch, dict_row);
+                        return dict.extract(batch, dict_row).map(Cow::into_owned);
                     }
                 }
                 ColumnKind::Array(element) => {
-                    let offsets = data as *const u64;
-                    let start = if row == 0 {
-                        0
-                    } else {
-                        offsets.add(row - 1).read_unaligned() as usize
-                    };
-                    let end = offsets.add(row).read_unaligned() as usize;
+                    let (start, end) = Self::offset_range(data, row);
                     let mut values = Vec::with_capacity(end.saturating_sub(start));
                     for i in start..end {
-                        values.push(element.extract_any(batch, i)?);
+                        values.push(element.extract(batch, i)?.into_owned());
                     }
                     Value::List(
                         Some(values.into_boxed_slice()),
@@ -586,16 +551,13 @@ impl Column {
                 }
                 ColumnKind::Map(kv) => {
                     let (key, value) = kv.as_ref();
-                    let offsets = data as *const u64;
-                    let start = if row == 0 {
-                        0
-                    } else {
-                        offsets.add(row - 1).read_unaligned() as usize
-                    };
-                    let end = offsets.add(row).read_unaligned() as usize;
+                    let (start, end) = Self::offset_range(data, row);
                     let mut map = HashMap::with_capacity(end.saturating_sub(start));
                     for i in start..end {
-                        map.insert(key.extract_any(batch, i)?, value.extract_any(batch, i)?);
+                        map.insert(
+                            key.extract(batch, i)?.into_owned(),
+                            value.extract(batch, i)?.into_owned(),
+                        );
                     }
                     Value::Map(
                         Some(Box::new(map)),
@@ -605,12 +567,7 @@ impl Column {
                         }),
                     )
                 }
-                ColumnKind::Bool
-                | ColumnKind::Int32
-                | ColumnKind::Int64
-                | ColumnKind::UInt64
-                | ColumnKind::Float64
-                | ColumnKind::String(_) => return self.extract_any(batch, row),
+                _ => return None,
             })
         }
     }

@@ -3,10 +3,11 @@ use crate::{
     cursor::Cursor,
     ffi::{chdb_destroy_query_result, result_data},
 };
+use anyhow::anyhow;
 use std::{ffi::c_void, mem, ptr, sync::Arc};
 use tank_core::{Result, RowLabels};
 
-/// A decoded ClickHouse `Native` block owning (or sharing) the underlying `chdb_result`.
+/// A decoded ClickHouse `Native` block owning (or sharing via `parent`) a `chdb_result`.
 #[derive(Debug)]
 pub(crate) struct ChDBBatch {
     raw: *mut c_void,
@@ -14,29 +15,21 @@ pub(crate) struct ChDBBatch {
     pub(crate) labels: RowLabels,
     pub(crate) columns: Vec<Column>,
     pub(crate) spans: Vec<(u32, u32)>,
-    rows: usize,
 }
 
 impl ChDBBatch {
     #[inline(always)]
-    pub(crate) fn raw_result(&self) -> *mut c_void {
-        if !self.raw.is_null() {
-            self.raw
-        } else if let Some(parent) = self.parent.as_ref() {
-            parent.raw_result()
-        } else {
-            ptr::null_mut()
-        }
+    pub(crate) fn raw(&self) -> *mut c_void {
+        self.raw
     }
 
     /// Drops the underlying C++ chunk buffer while retaining vector capacities and labels.
     pub(crate) fn release(&mut self) {
         self.columns.clear();
         self.spans.clear();
-        self.rows = 0;
-        self.parent = None;
         let raw = mem::replace(&mut self.raw, ptr::null_mut());
-        if !raw.is_null() {
+        let owned = self.parent.take().is_none();
+        if owned && !raw.is_null() {
             unsafe { chdb_destroy_query_result(raw) };
         }
     }
@@ -49,142 +42,82 @@ impl ChDBBatch {
             .trim_matches('"')
     }
 
-    /// Parses one ClickHouse `Native` block from a fresh `chdb_result` handle into `slot`.
-    /// Takes ownership of `raw` and destroys it on error.
-    pub(crate) fn parse_raw(
+    /// Parses one ClickHouse `Native` block from `raw` into `slot`, reusing buffers when unshared.
+    /// When `parent` is `None`, takes ownership of `raw` and destroys it on error.
+    pub(crate) fn parse(
         slot: &mut Option<Arc<Self>>,
         raw: *mut c_void,
+        parent: Option<Arc<Self>>,
         offset: &mut usize,
     ) -> Result<usize> {
-        let res = Self::parse_inner(slot, raw, None, offset);
-        if res.is_err() && !raw.is_null() {
+        let owns_raw = parent.is_none();
+        let res = (|| -> Result<usize> {
+            let data = unsafe { result_data(raw)? };
+            let mut cursor = Cursor::new(data, *offset);
+            let num_cols = cursor.read_varuint()?;
+            let rows = cursor.read_varuint()?;
+
+            if slot.as_mut().and_then(Arc::get_mut).is_none() {
+                let labels = slot.as_ref().map(|b| b.labels.clone()).unwrap_or_default();
+                *slot = Some(Arc::new(Self {
+                    raw: ptr::null_mut(),
+                    parent: None,
+                    labels,
+                    columns: Vec::with_capacity(num_cols),
+                    spans: Vec::new(),
+                }));
+            }
+            let Some(batch) = slot.as_mut().and_then(Arc::get_mut) else {
+                return Err(anyhow!("ChDB batch slot unexpectedly shared"));
+            };
+            batch.release();
+            batch.columns.reserve(num_cols);
+
+            let mut reuse_labels = batch.labels.len() == num_cols;
+            let mut names = Vec::new();
+            for col_idx in 0..num_cols {
+                let clean = Self::clean_label(cursor.read_str()?);
+                if reuse_labels {
+                    if batch.labels.get(col_idx).is_none_or(|prev| prev != clean) {
+                        reuse_labels = false;
+                        names.reserve(num_cols);
+                        names.extend(batch.labels.iter().take(col_idx).cloned());
+                        names.push(clean.to_owned());
+                    }
+                } else {
+                    names.push(clean.to_owned());
+                }
+                let ty = cursor.read_str()?;
+                batch.columns.push(Column::parse(
+                    ty,
+                    rows,
+                    &mut cursor,
+                    &mut batch.spans,
+                    ptr::null(),
+                )?);
+            }
+            if !reuse_labels {
+                batch.labels = names.into();
+            }
+            batch.raw = raw;
+            batch.parent = parent;
+            *offset = cursor.pos();
+            Ok(rows)
+        })();
+        if res.is_err() && owns_raw && !raw.is_null() {
             unsafe { chdb_destroy_query_result(raw) };
         }
         res
     }
-
-    /// Parses a subsequent `Native` block from the same multi-block `parent` buffer into `slot`.
-    pub(crate) fn parse_next(
-        slot: &mut Option<Arc<Self>>,
-        parent: Arc<Self>,
-        offset: &mut usize,
-    ) -> Result<usize> {
-        let raw = parent.raw_result();
-        Self::parse_inner(slot, raw, Some(parent), offset)
-    }
-
-    fn parse_inner(
-        slot: &mut Option<Arc<Self>>,
-        data_handle: *mut c_void,
-        parent: Option<Arc<Self>>,
-        offset: &mut usize,
-    ) -> Result<usize> {
-        let data = unsafe { result_data(data_handle)? };
-        let mut cursor = Cursor::new(data, *offset);
-        let num_cols = cursor.read_varuint()?;
-        let rows = cursor.read_varuint()?;
-        let owned_raw = if parent.is_some() {
-            ptr::null_mut()
-        } else {
-            data_handle
-        };
-
-        if let Some(existing) = slot.as_mut()
-            && let Some(batch) = Arc::get_mut(existing)
-        {
-            batch.release();
-            let labels = Self::parse_columns(
-                num_cols,
-                rows,
-                &mut cursor,
-                Some(&batch.labels),
-                &mut batch.columns,
-                &mut batch.spans,
-            )?;
-            if let Some(labels) = labels {
-                batch.labels = labels;
-            }
-            batch.rows = rows;
-            batch.raw = owned_raw;
-            batch.parent = parent;
-            *offset = cursor.pos();
-            return Ok(rows);
-        }
-
-        let prev_labels = slot.as_ref().map(|b| &b.labels);
-        let mut columns = Vec::with_capacity(num_cols);
-        let mut spans = Vec::new();
-        let new_labels = Self::parse_columns(
-            num_cols,
-            rows,
-            &mut cursor,
-            prev_labels,
-            &mut columns,
-            &mut spans,
-        )?;
-        let labels = match new_labels {
-            Some(labels) => labels,
-            None => prev_labels.cloned().unwrap_or_default(),
-        };
-        *offset = cursor.pos();
-        *slot = Some(Arc::new(Self {
-            raw: owned_raw,
-            parent,
-            labels,
-            columns,
-            spans,
-            rows,
-        }));
-        Ok(rows)
-    }
-
-    fn parse_columns(
-        num_cols: usize,
-        rows: usize,
-        cursor: &mut Cursor<'_>,
-        prev_labels: Option<&RowLabels>,
-        columns: &mut Vec<Column>,
-        spans: &mut Vec<(u32, u32)>,
-    ) -> Result<Option<RowLabels>> {
-        columns.reserve(num_cols);
-        let mut reuse_labels = prev_labels.is_some_and(|l| l.len() == num_cols);
-        let mut names = if reuse_labels {
-            Vec::new()
-        } else {
-            Vec::with_capacity(num_cols)
-        };
-        for col_idx in 0..num_cols {
-            let raw_name = cursor.read_str()?;
-            let clean = Self::clean_label(raw_name);
-            if reuse_labels {
-                if prev_labels
-                    .and_then(|l| l.get(col_idx))
-                    .is_none_or(|prev| prev != clean)
-                {
-                    reuse_labels = false;
-                    names.reserve(num_cols);
-                    if let Some(prev) = prev_labels {
-                        names.extend(prev.iter().take(col_idx).cloned());
-                    }
-                    names.push(clean.to_owned());
-                }
-            } else {
-                names.push(clean.to_owned());
-            }
-            let ty = cursor.read_str()?;
-            columns.push(Column::parse(ty, rows, cursor, spans, ptr::null())?);
-        }
-        Ok((!reuse_labels).then(|| names.into()))
-    }
 }
 
-// `raw` is a read-only chDB result buffer, and pointers inside `Column` borrow from `raw` or `parent`.
+// `raw` is a read-only chDB result buffer, and pointers inside `Column` borrow from it.
 unsafe impl Send for ChDBBatch {}
 unsafe impl Sync for ChDBBatch {}
 
 impl Drop for ChDBBatch {
     fn drop(&mut self) {
-        if !self.raw.is_null() {
+        if self.parent.is_none() && !self.raw.is_null() {
             unsafe { chdb_destroy_query_result(self.raw) };
         }
     }

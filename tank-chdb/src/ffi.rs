@@ -9,6 +9,19 @@ use tank_core::{Error, Result};
 
 pub(crate) const QUERY_CLASS_READ_ONLY: u32 = 0;
 
+pub(crate) type QueryWithParamsFn = unsafe extern "C" fn(
+    *mut c_void,
+    *const c_char,
+    usize,
+    *const c_char,
+    usize,
+    *const *const c_char,
+    *const usize,
+    *const *const c_char,
+    *const usize,
+    usize,
+) -> *mut c_void;
+
 #[repr(C)]
 pub(crate) struct QueryAnalysis {
     pub(crate) struct_size: u32,
@@ -28,13 +41,6 @@ unsafe extern "C" {
         target_database_len: usize,
         out_analysis: *mut QueryAnalysis,
     ) -> c_int;
-    pub(crate) fn chdb_query_n(
-        connection: *mut c_void,
-        sql: *const c_char,
-        sql_len: usize,
-        format: *const c_char,
-        format_len: usize,
-    ) -> *mut c_void;
     pub(crate) fn chdb_query_with_params_n(
         connection: *mut c_void,
         sql: *const c_char,
@@ -46,13 +52,6 @@ unsafe extern "C" {
         param_values: *const *const c_char,
         param_value_lens: *const usize,
         param_count: usize,
-    ) -> *mut c_void;
-    pub(crate) fn chdb_stream_query_n(
-        connection: *mut c_void,
-        sql: *const c_char,
-        sql_len: usize,
-        format: *const c_char,
-        format_len: usize,
     ) -> *mut c_void;
     pub(crate) fn chdb_stream_query_with_params_n(
         connection: *mut c_void,
