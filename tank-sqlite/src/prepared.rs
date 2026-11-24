@@ -1,6 +1,4 @@
-use crate::{
-    OwnedStmt, RawDb, SQLiteConnection, SQLiteRow, ensure_rc, sql_writer::SQLiteSqlWriter,
-};
+use crate::{RawDb, SQLiteConnection, SQLiteRow, ensure_rc, sql_writer::SQLiteSqlWriter};
 use anyhow::anyhow;
 use libsqlite3_sys::*;
 use rust_decimal::prelude::ToPrimitive;
@@ -8,7 +6,8 @@ use std::{
     borrow::Cow,
     ffi::{CStr, c_int},
     fmt::{self, Display, Write as _},
-    hint, mem,
+    hint, mem, ptr,
+    sync::{Arc, Mutex, PoisonError},
 };
 use tank_core::{
     AnyQuery, AsEntity, AsValue, Context, Entity, Error, ErrorContext, Fragment, Prepared,
@@ -26,19 +25,25 @@ impl Display for FmtStmt {
 /// Prepared statement wrapper for SQLite.
 #[derive(Debug)]
 pub struct SQLitePrepared {
-    statement: OwnedStmt,
+    db: Arc<Mutex<RawDb>>,
+    statement: *mut sqlite3_stmt,
     index: u64,
     /// Reusable row snapshot storage and column labels for the current result shape.
     row: Option<SQLiteRow>,
     draft: AnyQuery,
 }
 
+// Every SQLite C API call on `statement` locks `db`, and all other fields are `Send + Sync`.
+unsafe impl Send for SQLitePrepared {}
+unsafe impl Sync for SQLitePrepared {}
+
 impl SQLitePrepared {
     const WRITER: SQLiteSqlWriter = SQLiteSqlWriter {};
 
     #[inline(always)]
-    pub(crate) const fn new(statement: OwnedStmt) -> Self {
+    pub(crate) const fn new(db: Arc<Mutex<RawDb>>, statement: *mut sqlite3_stmt) -> Self {
         Self {
+            db,
             statement,
             index: 0,
             row: None,
@@ -48,7 +53,7 @@ impl SQLitePrepared {
 
     #[inline(always)]
     pub(crate) fn belongs_to(&self, connection: &SQLiteConnection) -> bool {
-        self.statement.belongs_to(&connection.db)
+        Arc::ptr_eq(&self.db, &connection.db)
     }
 
     fn fmt_statement(statement: *mut sqlite3_stmt, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -143,8 +148,8 @@ impl SQLitePrepared {
     /// Steps once, returning the next row or `None` at `SQLITE_DONE`.
     #[inline(always)]
     pub(crate) fn do_step_row(&mut self, initialize: bool) -> Result<Option<SQLiteRow>> {
-        let db = self.statement.lock();
-        Self::do_step_row_locked(&db, self.statement.as_ptr(&db), &mut self.row, initialize)
+        let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
+        Self::do_step_row_locked(&db, self.statement, &mut self.row, initialize)
     }
 
     /// Binds and steps a batch of entities under a single DB lock, returning affected rows.
@@ -155,8 +160,8 @@ impl SQLitePrepared {
         &mut self,
         batch: impl IntoIterator<Item = E>,
     ) -> Result<RowsAffected> {
-        let db = self.statement.lock();
-        let statement = self.statement.as_ptr(&db);
+        let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
+        let statement = self.statement;
         let mut count = 0;
         for entity in batch {
             for value in entity.as_entity().row_values() {
@@ -188,8 +193,8 @@ impl SQLitePrepared {
 
     /// Runs a statement's first step for `fetch`, returning its first row or draining if columnless.
     pub(crate) fn start_row(&mut self) -> Result<Option<SQLiteRow>> {
-        let db = self.statement.lock();
-        let statement = self.statement.as_ptr(&db);
+        let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
+        let statement = self.statement;
         if unsafe { sqlite3_column_count(statement) } > 0 {
             return Self::do_step_row_locked(&db, statement, &mut self.row, true);
         }
@@ -206,8 +211,8 @@ impl SQLitePrepared {
 
     /// Runs a statement's first step, returning its first row or affected rows if columnless.
     pub(crate) fn start(&mut self) -> Result<Option<QueryResult<SQLiteRow>>> {
-        let db = self.statement.lock();
-        let statement = self.statement.as_ptr(&db);
+        let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
+        let statement = self.statement;
         if unsafe { sqlite3_column_count(statement) } > 0 {
             return Self::do_step_row_locked(&db, statement, &mut self.row, true)
                 .map(|row| row.map(QueryResult::Row));
@@ -511,8 +516,8 @@ impl Prepared for SQLitePrepared {
     #[inline(always)]
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         if !self.is_empty() {
-            let db = self.statement.lock();
-            Self::clear_bindings_inner(&db, self.statement.as_ptr(&db))?;
+            let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
+            Self::clear_bindings_inner(&db, self.statement)?;
         }
         self.index = 0;
         Ok(self)
@@ -527,10 +532,10 @@ impl Prepared for SQLitePrepared {
     #[inline(always)]
     fn bind_index(&mut self, v: impl AsValue, index: u64) -> Result<&mut Self> {
         {
-            let db = self.statement.lock();
+            let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
             Self::bind_value::<false>(
                 &db,
-                self.statement.as_ptr(&db),
+                self.statement,
                 &mut self.draft,
                 &mut self.index,
                 v,
@@ -543,13 +548,18 @@ impl Prepared for SQLitePrepared {
 
 impl Drop for SQLitePrepared {
     fn drop(&mut self) {
-        self.statement.finish_and_finalize(Self::finish_locked);
+        if !self.statement.is_null() {
+            let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
+            let statement = mem::replace(&mut self.statement, ptr::null_mut());
+            Self::finish_locked(&db, statement);
+            db.finalize(statement);
+        }
     }
 }
 
 impl Display for SQLitePrepared {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let db = self.statement.lock();
-        Self::fmt_statement(self.statement.as_ptr(&db), f)
+        let _db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
+        Self::fmt_statement(self.statement, f)
     }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    RawDb, SQLiteDriver, SQLitePrepared, SQLiteTransaction, ScopedStmt, SharedDb, ensure_rc,
+    RawDb, SQLiteDriver, SQLitePrepared, SQLiteTransaction, ensure_rc,
     stream::{SQLiteRowStream, SQLiteStream},
     yield_now,
 };
@@ -10,6 +10,7 @@ use std::{
     ffi::{CStr, CString, c_int},
     future::{self, Future},
     hint, iter, mem, ptr,
+    sync::{Arc, Mutex, PoisonError},
 };
 use tank_core::{
     AnyQuery, AsEntity, AsQuery, ColumnDef, Connection, Driver, Entity, ErrorContext, Executor,
@@ -20,7 +21,7 @@ use tank_core::{
 /// Wrapper for a SQLite `sqlite3` connection pointer used by the SQLite driver.
 #[derive(Debug)]
 pub struct SQLiteConnection {
-    pub(crate) db: SharedDb,
+    pub(crate) db: Arc<Mutex<RawDb>>,
     draft: AnyQuery,
 }
 
@@ -29,7 +30,7 @@ impl SQLiteConnection {
 
     #[inline(always)]
     pub(crate) fn is_autocommit(&self) -> bool {
-        let db = self.db.lock();
+        let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
         unsafe { sqlite3_get_autocommit(db.as_ptr()) != 0 }
     }
 
@@ -38,7 +39,7 @@ impl SQLiteConnection {
         &mut self,
         sql: &str,
     ) -> Result<(SQLitePrepared, usize)> {
-        let db = self.db.lock();
+        let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
         let make_context = || format!("While preparing the query:\n{}", truncate_long(sql));
         let len = c_int::try_from(sql.len())?;
         let ptr = sql.as_ptr() as _;
@@ -47,18 +48,11 @@ impl SQLiteConnection {
         } else {
             0
         };
-        let mut statement = ScopedStmt::null(&db);
+        let mut statement = ptr::null_mut();
         let mut tail = ptr::null();
         ensure_rc!(
             unsafe {
-                sqlite3_prepare_v3(
-                    db.as_ptr(),
-                    ptr,
-                    len,
-                    flags,
-                    statement.as_mut_ptr(),
-                    &mut tail,
-                )
+                sqlite3_prepare_v3(db.as_ptr(), ptr, len, flags, &mut statement, &mut tail)
             },
             db.last_error(),
             make_context(),
@@ -75,23 +69,31 @@ impl SQLiteConnection {
         if SINGLE_STATEMENT && consumed != sql.len() {
             hint::cold_path();
             // The rest must parse as no statement: whitespace, comments or empty statements.
-            check_rest(&db, sql.get(consumed..).unwrap_or_default())
-                .with_context(make_context)
-                .inspect_err(|error| log::error!("{error:#}"))?;
+            if let Err(error) = check_rest(&db, sql.get(consumed..).unwrap_or_default()) {
+                db.finalize(statement);
+                let error = error.context(make_context());
+                log::error!("{error:#}");
+                return Err(error);
+            }
             #[inline(never)]
             fn check_rest(db: &RawDb, sql: &str) -> Result<()> {
-                let mut statement = ScopedStmt::null(db);
+                let mut statement = ptr::null_mut();
                 let mut tail = ptr::null();
-                if unsafe {
+                let rc = unsafe {
                     sqlite3_prepare_v2(
                         db.as_ptr(),
                         sql.as_ptr() as _,
                         c_int::try_from(sql.len())?,
-                        statement.as_mut_ptr(),
+                        &mut statement,
                         &mut tail,
                     )
-                } == SQLITE_OK
-                    && statement.is_null()
+                };
+                let is_null = statement.is_null();
+                if !is_null {
+                    db.finalize(statement);
+                }
+                if rc == SQLITE_OK
+                    && is_null
                     && tail as *const u8 == sql.as_ptr().wrapping_add(sql.len())
                 {
                     Ok(())
@@ -104,14 +106,14 @@ impl SQLiteConnection {
             }
         }
         Ok((
-            SQLitePrepared::new(statement.into_owned(self.db.clone())),
+            SQLitePrepared::new(self.db.clone(), statement),
             consumed,
         ))
     }
 
     #[inline(always)]
     pub(crate) fn do_execute(&mut self, statement: &CStr) -> Result<()> {
-        let db = self.db.lock();
+        let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
         ensure_rc!(
             unsafe {
                 sqlite3_exec(
@@ -204,7 +206,7 @@ impl Connection for SQLiteConnection {
             );
         }
         let mut connection = Self {
-            db: SharedDb::new(raw),
+            db: Arc::new(Mutex::new(raw)),
             draft: Default::default(),
         };
         connection.do_execute(c"PRAGMA foreign_keys = ON")?;
