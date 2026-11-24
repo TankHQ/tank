@@ -113,9 +113,15 @@ async fn native_complex_types() {
     // Verifies retained rows across multiple chunks stay intact.
     assert_eq!(rows.len(), 5);
     for row in &rows {
-        assert_eq!(row.value(0).unwrap().as_ref(), &Value::Varchar(Some("alpha".into())));
+        assert_eq!(
+            row.value(0).unwrap().as_ref(),
+            &Value::Varchar(Some("alpha".into()))
+        );
         assert_eq!(row.value(1).unwrap().as_ref(), &Value::Null);
-        assert_eq!(row.value(2).unwrap().as_ref(), &Value::Varchar(Some("hi".into())));
+        assert_eq!(
+            row.value(2).unwrap().as_ref(),
+            &Value::Varchar(Some("hi".into()))
+        );
         assert!(matches!(row.value(3).unwrap().as_ref(), Value::List(Some(v), _) if v.len() == 2));
         assert!(matches!(row.value(4).unwrap().as_ref(), Value::Map(Some(m), _) if m.len() == 1));
     }

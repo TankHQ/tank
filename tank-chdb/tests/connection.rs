@@ -80,13 +80,10 @@ mod tests {
 
         // `id != NULL` also matches nothing. Had the binding degraded to the
         // string "NULL" (or empty), this would have matched every row.
-        let mut not_null = PreparedNullable::prepare_find(
-            &mut connection,
-            expr!(PreparedNullable::id != ?),
-            None,
-        )
-        .await
-        .expect("Could not prepare the not-null query");
+        let mut not_null =
+            PreparedNullable::prepare_find(&mut connection, expr!(PreparedNullable::id != ?), None)
+                .await
+                .expect("Could not prepare the not-null query");
         not_null
             .bind(Option::<i64>::None)
             .expect("Could not bind a NULL");

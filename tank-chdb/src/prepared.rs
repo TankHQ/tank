@@ -10,6 +10,15 @@ use tank_core::{
     AnyQuery, AsValue, Context, Fragment, Prepared, Result, SqlCoreWriter, SqlValueWriter, Value,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QueryMode {
+    Stream,
+    Reader,
+    Command,
+    Unknown,
+    FormatNullError,
+}
+
 /// Prepared statement for chDB using native `{pN:Type}` parameter binding.
 #[derive(Debug)]
 pub struct ChDBPrepared {
@@ -18,6 +27,7 @@ pub struct ChDBPrepared {
     // Per parameter: (name, ClickHouse type, encoded param, bound flag).
     params: Vec<(String, Cow<'static, str>, QueryParam, bool)>,
     sql: AnyQuery,
+    mode: QueryMode,
     sql_dirty: bool,
     index: u64,
 }
@@ -27,8 +37,50 @@ impl ChDBPrepared {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     const NULL_TYPE: &'static str = "Nullable(Nothing)";
 
+    pub(crate) fn classify_sql(sql: &str) -> QueryMode {
+        let mut tokens = sql
+            .trim_end_matches(|c: char| c.is_ascii_whitespace() || c == ';')
+            .rsplit(|c: char| c.is_ascii_whitespace());
+        if matches!(
+            (tokens.next(), tokens.next()),
+            (Some(fmt), Some(kw)) if fmt.eq_ignore_ascii_case("null") && kw.eq_ignore_ascii_case("format")
+        ) {
+            return QueryMode::FormatNullError;
+        }
+        let first = sql
+            .trim_start()
+            .split(|c: char| !c.is_ascii_alphabetic())
+            .next()
+            .unwrap_or_default();
+        if first.eq_ignore_ascii_case("select") || first.eq_ignore_ascii_case("with") {
+            QueryMode::Stream
+        } else if first.eq_ignore_ascii_case("show")
+            || first.eq_ignore_ascii_case("describe")
+            || first.eq_ignore_ascii_case("desc")
+            || first.eq_ignore_ascii_case("explain")
+            || first.eq_ignore_ascii_case("exists")
+            || first.eq_ignore_ascii_case("check")
+        {
+            QueryMode::Reader
+        } else if first.eq_ignore_ascii_case("insert")
+            || first.eq_ignore_ascii_case("create")
+            || first.eq_ignore_ascii_case("drop")
+            || first.eq_ignore_ascii_case("alter")
+            || first.eq_ignore_ascii_case("delete")
+            || first.eq_ignore_ascii_case("update")
+            || first.eq_ignore_ascii_case("truncate")
+            || first.eq_ignore_ascii_case("set")
+            || first.eq_ignore_ascii_case("use")
+        {
+            QueryMode::Command
+        } else {
+            QueryMode::Unknown
+        }
+    }
+
     pub fn new(sql: String) -> Self {
         const SUFFIX: &str = ":Nullable(String)}";
+        let mode = Self::classify_sql(&sql);
         let mut markers = Vec::new();
         let mut cursor = 0;
         while let Some(found) = sql[cursor..].find("{p") {
@@ -58,9 +110,15 @@ impl ChDBPrepared {
             markers,
             params,
             sql: AnyQuery::default(),
+            mode,
             sql_dirty: count > 0,
             index: 0,
         }
+    }
+
+    #[inline(always)]
+    pub(crate) const fn mode(&self) -> QueryMode {
+        self.mode
     }
 
     fn param_type(value: &Value<'_>) -> Cow<'static, str> {
@@ -124,13 +182,8 @@ impl ChDBPrepared {
                 Value::UInt64(Some(v)) => QueryParam::UInt64(v),
                 Value::Float32(Some(v)) => QueryParam::Float64(v as f64),
                 Value::Float64(Some(v)) => QueryParam::Float64(v),
-                Value::Varchar(Some(ref s)) => {
-                    let param = QueryParam::Text(s.as_ref().to_owned());
-                    if matches!(s, Cow::Owned(_)) {
-                        break 'simple_value param;
-                    }
-                    param
-                }
+                Value::Varchar(Some(Cow::Owned(s))) => break 'simple_value QueryParam::Text(s),
+                Value::Varchar(Some(Cow::Borrowed(s))) => QueryParam::Text(s.to_owned()),
                 Value::Char(Some(c)) => QueryParam::Text(c.to_string()),
                 Value::Blob(Some(ref bytes)) => {
                     let mut hex = String::with_capacity(bytes.len() * 2);

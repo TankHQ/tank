@@ -41,57 +41,45 @@ impl ChDBRow {
         field: Option<&Field>,
         row: usize,
     ) -> Option<Cow<'a, Value<'a>>> {
-        if array.is_null(row) {
-            return Some(Cow::Owned(Value::Null));
-        }
         let value = match array.data_type() {
             DataType::Boolean => {
                 let a = array.as_any().downcast_ref::<BooleanArray>()?;
-                Value::Boolean(Some(a.value(row)))
+                if a.is_null(row) {
+                    Value::Null
+                } else {
+                    Value::Boolean(Some(a.value(row)))
+                }
             }
             DataType::Int32 => {
                 let a = array.as_any().downcast_ref::<Int32Array>()?;
-                Value::Int32(Some(a.value(row)))
+                if a.is_null(row) {
+                    Value::Null
+                } else {
+                    Value::Int32(Some(*a.values().get(row)?))
+                }
             }
             DataType::Int64 => {
                 let a = array.as_any().downcast_ref::<Int64Array>()?;
-                Value::Int64(Some(a.value(row)))
-            }
-            DataType::UInt64 => {
-                let a = array.as_any().downcast_ref::<UInt64Array>()?;
-                Value::UInt64(Some(a.value(row)))
+                if a.is_null(row) {
+                    Value::Null
+                } else {
+                    Value::Int64(Some(*a.values().get(row)?))
+                }
             }
             DataType::Float64 => {
                 let a = array.as_any().downcast_ref::<Float64Array>()?;
-                Value::Float64(Some(a.value(row)))
+                if a.is_null(row) {
+                    Value::Null
+                } else {
+                    Value::Float64(Some(*a.values().get(row)?))
+                }
             }
             DataType::Utf8 => {
                 let a = array.as_any().downcast_ref::<StringArray>()?;
-                Value::Varchar(Some(Cow::Borrowed(a.value(row))))
-            }
-            DataType::Timestamp(TimeUnit::Nanosecond, tz)
-                if tz.as_deref().is_none_or(|t| t == "UTC") =>
-            {
-                const DAY_NANOS: i64 = 86_400_000_000_000;
-                let a = array.as_any().downcast_ref::<TimestampNanosecondArray>()?;
-                let nanos = a.value(row);
-                let days = nanos.div_euclid(DAY_NANOS) as i32;
-                let rem = nanos.rem_euclid(DAY_NANOS) as u64;
-                let secs = (rem / 1_000_000_000) as u32;
-                let ns = (rem % 1_000_000_000) as u32;
-                match (
-                    Date::from_julian_day(Self::EPOCH_JULIAN_DAY + days),
-                    Time::from_hms_nano(
-                        (secs / 3600) as u8,
-                        ((secs / 60) % 60) as u8,
-                        (secs % 60) as u8,
-                        ns,
-                    ),
-                ) {
-                    (Ok(date), Ok(time)) => {
-                        Value::Timestamp(Some(PrimitiveDateTime::new(date, time)))
-                    }
-                    _ => Value::Null,
+                if a.is_null(row) {
+                    Value::Null
+                } else {
+                    Value::Varchar(Some(Cow::Borrowed(a.value(row))))
                 }
             }
             _ => {
@@ -104,6 +92,9 @@ impl ChDBRow {
                     field: Option<&Field>,
                     row: usize,
                 ) -> Option<Value<'a>> {
+                    if array.is_null(row) {
+                        return Some(Value::Null);
+                    }
                     fn prototype(data_type: &DataType) -> ValueOwned {
                         match data_type {
                             DataType::Boolean => Value::Boolean(None),
@@ -161,9 +152,9 @@ impl ChDBRow {
                     });
                     Some(match array.data_type() {
                         DataType::Null => Value::Null,
-                        DataType::Int8 => {
-                            Value::Int8(Some(array.as_any().downcast_ref::<Int8Array>()?.value(row)))
-                        }
+                        DataType::Int8 => Value::Int8(Some(
+                            array.as_any().downcast_ref::<Int8Array>()?.value(row),
+                        )),
                         DataType::Int16 => Value::Int16(Some(
                             array.as_any().downcast_ref::<Int16Array>()?.value(row),
                         )),
@@ -176,11 +167,17 @@ impl ChDBRow {
                         DataType::UInt32 => Value::UInt32(Some(
                             array.as_any().downcast_ref::<UInt32Array>()?.value(row),
                         )),
+                        DataType::UInt64 => Value::UInt64(Some(
+                            array.as_any().downcast_ref::<UInt64Array>()?.value(row),
+                        )),
                         DataType::Float32 => Value::Float32(Some(
                             array.as_any().downcast_ref::<Float32Array>()?.value(row),
                         )),
                         DataType::LargeUtf8 => Value::Varchar(Some(Cow::Borrowed(
-                            array.as_any().downcast_ref::<LargeStringArray>()?.value(row),
+                            array
+                                .as_any()
+                                .downcast_ref::<LargeStringArray>()?
+                                .value(row),
                         ))),
                         DataType::Utf8View => Value::Varchar(Some(Cow::Borrowed(
                             array.as_any().downcast_ref::<StringViewArray>()?.value(row),
@@ -193,8 +190,10 @@ impl ChDBRow {
                             }
                         }
                         DataType::LargeBinary => {
-                            let bytes =
-                                array.as_any().downcast_ref::<LargeBinaryArray>()?.value(row);
+                            let bytes = array
+                                .as_any()
+                                .downcast_ref::<LargeBinaryArray>()?
+                                .value(row);
                             match str::from_utf8(bytes) {
                                 Ok(s) => Value::Varchar(Some(Cow::Borrowed(s))),
                                 Err(_) => Value::Blob(Some(Cow::Borrowed(bytes))),
@@ -205,7 +204,9 @@ impl ChDBRow {
                                 .as_any()
                                 .downcast_ref::<FixedSizeBinaryArray>()?
                                 .value(row);
-                            if *len == 16 && let Ok(octets) = <[u8; 16]>::try_from(bytes) {
+                            if *len == 16
+                                && let Ok(octets) = <[u8; 16]>::try_from(bytes)
+                            {
                                 let is_uuid = field
                                     .and_then(|f| f.metadata().get("ARROW:extension:name"))
                                     .is_some_and(|name| name == "arrow.uuid");
@@ -242,6 +243,45 @@ impl ChDBRow {
                                     .and_then(|jd| Date::from_julian_day(jd).ok()),
                             )
                         }
+                        DataType::Timestamp(TimeUnit::Nanosecond, tz)
+                            if tz.as_deref().is_none_or(|t| t == "UTC") =>
+                        {
+                            const DAY_SECS: u64 = 86_400;
+                            const DAY_NANOS: i64 = 86_400_000_000_000;
+                            let nanos = array
+                                .as_any()
+                                .downcast_ref::<TimestampNanosecondArray>()?
+                                .value(row);
+                            let (days, secs, ns) = if nanos >= 0 {
+                                let u = nanos as u64;
+                                let total_secs = u / 1_000_000_000;
+                                let ns = (u - total_secs * 1_000_000_000) as u32;
+                                let days = (total_secs / DAY_SECS) as i32;
+                                let secs = (total_secs - days as u64 * DAY_SECS) as u32;
+                                (days, secs, ns)
+                            } else {
+                                let days = nanos.div_euclid(DAY_NANOS) as i32;
+                                let rem = (nanos - days as i64 * DAY_NANOS) as u64;
+                                let secs = (rem / 1_000_000_000) as u32;
+                                let ns = (rem - secs as u64 * 1_000_000_000) as u32;
+                                (days, secs, ns)
+                            };
+                            let mins = secs / 60;
+                            let second = (secs - mins * 60) as u8;
+                            let hour = (mins / 60) as u8;
+                            let minute = (mins - hour as u32 * 60) as u8;
+                            match (
+                                ChDBRow::EPOCH_JULIAN_DAY
+                                    .checked_add(days)
+                                    .and_then(|jd| Date::from_julian_day(jd).ok()),
+                                Time::from_hms_nano(hour, minute, second, ns).ok(),
+                            ) {
+                                (Some(date), Some(time)) => {
+                                    Value::Timestamp(Some(PrimitiveDateTime::new(date, time)))
+                                }
+                                _ => Value::Null,
+                            }
+                        }
                         DataType::Timestamp(unit, tz) => {
                             let nanos: i128 = match unit {
                                 TimeUnit::Second => {
@@ -265,12 +305,11 @@ impl ChDBRow {
                                         .value(row) as i128
                                         * 1_000
                                 }
-                                TimeUnit::Nanosecond => {
-                                    array
-                                        .as_any()
-                                        .downcast_ref::<TimestampNanosecondArray>()?
-                                        .value(row) as i128
-                                }
+                                TimeUnit::Nanosecond => array
+                                    .as_any()
+                                    .downcast_ref::<TimestampNanosecondArray>()?
+                                    .value(row)
+                                    as i128,
                             };
                             let Ok(odt) = OffsetDateTime::from_unix_timestamp_nanos(nanos) else {
                                 return Some(Value::Null);
@@ -305,11 +344,7 @@ impl ChDBRow {
                         DataType::Decimal128(p, s) => {
                             let raw = array.as_any().downcast_ref::<Decimal128Array>()?.value(row);
                             let scale = max(*s, 0) as u8;
-                            Value::Decimal(
-                                decimal_from_scaled(raw, scale as u32).ok(),
-                                *p,
-                                scale,
-                            )
+                            Value::Decimal(decimal_from_scaled(raw, scale as u32).ok(), *p, scale)
                         }
                         DataType::List(field) => {
                             let list = array.as_any().downcast_ref::<ListArray>()?;
