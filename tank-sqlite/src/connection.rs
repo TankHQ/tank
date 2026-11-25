@@ -157,16 +157,17 @@ impl Connection for SQLiteConnection {
         let mut busy_timeout_ms = Self::DEFAULT_BUSY_TIMEOUT_MS;
         for (key, value) in url.query_pairs() {
             if key == "busy_timeout" {
-                let Some(ms) = value.parse::<c_int>().ok().filter(|&ms| ms >= 0) else {
-                    hint::cold_path();
-                    let error = anyhow!(
-                        "Invalid `busy_timeout` value {value:?}, expected a non-negative integer in milliseconds"
-                    )
-                    .context(make_context());
-                    log::error!("{error:#}");
-                    return Err(error);
-                };
-                busy_timeout_ms = ms;
+                busy_timeout_ms = value
+                    .parse::<c_int>()
+                    .ok()
+                    .filter(|&ms| ms >= 0)
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "Invalid `busy_timeout` value {value:?}, expected a non-negative integer in milliseconds"
+                        )
+                    })
+                    .with_context(make_context)
+                    .inspect_err(|e| log::error!("{e:#}"))?;
             }
         }
         let url = CString::from_vec_with_nul({

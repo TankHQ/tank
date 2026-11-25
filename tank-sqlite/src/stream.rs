@@ -61,11 +61,8 @@ where
         let prepared = match self.query.as_mut() {
             Query::Prepared(prepared) => Some(prepared),
             Query::Raw(_) => self.current_statement.as_mut(),
-        };
-        let Some(prepared) = prepared else {
-            hint::cold_path();
-            return Err(anyhow!("Active SQLite stream has no statement"));
-        };
+        }
+        .ok_or_else(|| anyhow!("Active SQLite stream has no statement"))?;
         prepared.do_step_row(false)
     }
 

@@ -89,13 +89,15 @@ impl SQLitePrepared {
                 if initialize {
                     Self::init_row(statement, row).map_err(Some)?;
                 }
-                let Some(row) = row.as_mut() else {
-                    hint::cold_path();
-                    return Err(Some(anyhow!(
-                        "Row storage was not initialized before reading a row"
-                    )));
-                };
-                row.read(db, statement).map(Some).map_err(Some)
+                row.as_mut()
+                    .ok_or_else(|| {
+                        Some(anyhow!(
+                            "Row storage was not initialized before reading a row"
+                        ))
+                    })?
+                    .read(db, statement)
+                    .map(Some)
+                    .map_err(Some)
             }
             SQLITE_DONE => Ok(None),
             _ => Err(None),
@@ -124,17 +126,16 @@ impl SQLitePrepared {
         for entity in batch {
             for value in entity.as_entity().row_values() {
                 let index = self.index;
-                ensure_rc!(
-                    Self::bind_value::<true>(
-                        statement,
-                        &mut self.draft,
-                        &mut self.index,
-                        value,
-                        index,
-                    )?,
-                    db.last_error(),
-                    format!("While binding {index} (0-based) to {self}"),
-                );
+                Self::bind_value::<true>(
+                    &db,
+                    statement,
+                    &mut self.draft,
+                    &mut self.index,
+                    value,
+                    index,
+                )
+                .with_context(|| format!("While binding {index} (0-based) to {self}"))
+                .inspect_err(|e| log::error!("{e:#}"))?;
             }
             unsafe {
                 if sqlite3_step(statement) != SQLITE_DONE {
@@ -276,74 +277,72 @@ impl SQLitePrepared {
         }
     }
 
-    #[cold]
-    #[inline(never)]
-    fn unsupported_value(index: c_int, value: Value<'_>) -> Error {
-        anyhow!("Cannot use {value:?} as the parameter at index {index}")
-    }
-
     #[inline(always)]
     fn bind_value<const STATIC_BORROW: bool>(
+        db: &RawDb,
         statement: *mut sqlite3_stmt,
         draft: &mut AnyQuery,
         next_index: &mut u64,
         v: impl AsValue,
         index: u64,
-    ) -> Result<c_int> {
+    ) -> Result<()> {
         // SQLite's parameter index is 1-based.
         let index = c_int::try_from(index)
             .ok()
             .and_then(|i| i.checked_add(1))
             .ok_or_else(|| anyhow!("SQLite parameter index {index} exceeds maximum"))?;
-        let value = v.as_value();
-        unsafe {
-            let rc = if value.is_null() {
-                sqlite3_bind_null(statement, index)
-            } else {
-                'simple_value: {
-                    let rc = match value {
+        let rc = 'simple_value: {
+            let value = v.as_value();
+            let make_error = || {
+                hint::cold_path();
+                anyhow!("Cannot use {value:?} as the parameter at index {index}")
+            };
+            unsafe {
+                let rc = if value.is_null() {
+                    let rc = sqlite3_bind_null(statement, index);
+                    if matches!(
+                        value,
+                        Value::Array(..) | Value::List(..) | Value::Map(..) | Value::Struct(..)
+                    ) {
+                        break 'simple_value rc;
+                    }
+                    rc
+                } else {
+                    match value {
                         Value::Boolean(Some(v)) => sqlite3_bind_int(statement, index, v as _),
                         Value::Int8(Some(v)) => sqlite3_bind_int(statement, index, v as _),
                         Value::Int16(Some(v)) => sqlite3_bind_int(statement, index, v as _),
                         Value::Int32(Some(v)) => sqlite3_bind_int(statement, index, v as _),
                         Value::Int64(Some(v)) => sqlite3_bind_int64(statement, index, v as _),
                         Value::Int128(Some(ref v)) => {
-                            break 'simple_value match sqlite3_int64::try_from(**v) {
-                                Ok(v) => sqlite3_bind_int64(statement, index, v as _),
-                                Err(_) => {
-                                    hint::cold_path();
-                                    return Err(Self::unsupported_value(index, value));
-                                }
-                            };
+                            break 'simple_value sqlite3_bind_int64(
+                                statement,
+                                index,
+                                sqlite3_int64::try_from(**v).map_err(|_| make_error())?,
+                            );
                         }
                         Value::UInt8(Some(v)) => sqlite3_bind_int64(statement, index, v as _),
                         Value::UInt16(Some(v)) => sqlite3_bind_int64(statement, index, v as _),
                         Value::UInt32(Some(v)) => sqlite3_bind_int64(statement, index, v as _),
-                        Value::UInt64(Some(v)) => match sqlite3_int64::try_from(v) {
-                            Ok(v) => sqlite3_bind_int64(statement, index, v as _),
-                            Err(_) => {
-                                hint::cold_path();
-                                return Err(Self::unsupported_value(index, value));
-                            }
-                        },
+                        Value::UInt64(Some(v)) => sqlite3_bind_int64(
+                            statement,
+                            index,
+                            sqlite3_int64::try_from(v).map_err(|_| make_error())?,
+                        ),
                         Value::UInt128(Some(ref v)) => {
-                            break 'simple_value match sqlite3_int64::try_from(**v) {
-                                Ok(v) => sqlite3_bind_int64(statement, index, v as _),
-                                Err(_) => {
-                                    hint::cold_path();
-                                    return Err(Self::unsupported_value(index, value));
-                                }
-                            };
+                            break 'simple_value sqlite3_bind_int64(
+                                statement,
+                                index,
+                                sqlite3_int64::try_from(**v).map_err(|_| make_error())?,
+                            );
                         }
                         Value::Float32(Some(v)) => sqlite3_bind_double(statement, index, v as _),
                         Value::Float64(Some(v)) => sqlite3_bind_double(statement, index, v as _),
-                        Value::Decimal(Some(v), ..) => match v.to_f64() {
-                            Some(v) => sqlite3_bind_double(statement, index, v as _),
-                            None => {
-                                hint::cold_path();
-                                return Err(Self::unsupported_value(index, value));
-                            }
-                        },
+                        Value::Decimal(Some(v), ..) => sqlite3_bind_double(
+                            statement,
+                            index,
+                            v.to_f64().ok_or_else(make_error)?,
+                        ),
                         Value::Char(Some(v)) => {
                             let mut buffer = [0u8; 4];
                             let value = v.encode_utf8(&mut buffer);
@@ -438,20 +437,19 @@ impl SQLitePrepared {
                                 },
                             );
                         }
-                        _ => {
-                            hint::cold_path();
-                            return Err(Self::unsupported_value(index, value));
-                        }
-                    };
-                    // Avoid an opaque Value::drop call for simple values that don't allocate memory.
-                    mem::forget(value);
-                    rc
-                }
-            };
-            if rc == SQLITE_OK {
-                *next_index = index as u64;
+                        _ => Err(make_error())?,
+                    }
+                };
+                // Avoid an opaque Value::drop call for simple values that don't allocate memory.
+                mem::forget(value);
+                rc
             }
-            Ok(rc)
+        };
+        if rc == SQLITE_OK {
+            *next_index = index as u64;
+            Ok(())
+        } else {
+            Err(db.last_error())
         }
     }
 }
@@ -487,17 +485,16 @@ impl Prepared for SQLitePrepared {
     fn bind_index(&mut self, v: impl AsValue, index: u64) -> Result<&mut Self> {
         {
             let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
-            ensure_rc!(
-                Self::bind_value::<false>(
-                    self.statement,
-                    &mut self.draft,
-                    &mut self.index,
-                    v,
-                    index,
-                )?,
-                db.last_error(),
-                format!("While binding {index} (0-based) to {self}"),
-            );
+            Self::bind_value::<false>(
+                &db,
+                self.statement,
+                &mut self.draft,
+                &mut self.index,
+                v,
+                index,
+            )
+            .with_context(|| format!("While binding {index} (0-based) to {self}"))
+            .inspect_err(|e| log::error!("{e:#}"))?;
         }
         Ok(self)
     }
