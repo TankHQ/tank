@@ -10,7 +10,7 @@ use std::{
     ffi::{CStr, CString, c_int},
     future::{self, Future},
     hint, iter, mem, ptr,
-    sync::{Arc, Mutex, PoisonError},
+    sync::{Arc, Mutex},
 };
 use tank_core::{
     AnyQuery, AsEntity, AsQuery, ColumnDef, Connection, Driver, Entity, ErrorContext, Executor,
@@ -30,7 +30,7 @@ impl SQLiteConnection {
 
     #[inline(always)]
     pub(crate) fn is_autocommit(&self) -> bool {
-        let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
+        let db = RawDb::lock(&self.db);
         unsafe { sqlite3_get_autocommit(db.as_ptr()) != 0 }
     }
 
@@ -39,7 +39,7 @@ impl SQLiteConnection {
         &mut self,
         sql: &str,
     ) -> Result<(SQLitePrepared, usize)> {
-        let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
+        let db = RawDb::lock(&self.db);
         let make_context = || format!("While preparing the query:\n{}", truncate_long(sql));
         let len = c_int::try_from(sql.len())?;
         let ptr = sql.as_ptr() as _;
@@ -104,7 +104,7 @@ impl SQLiteConnection {
 
     #[inline(always)]
     pub(crate) fn do_execute(&mut self, statement: &CStr) -> Result<()> {
-        let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
+        let db = RawDb::lock(&self.db);
         ensure_rc!(
             unsafe {
                 sqlite3_exec(

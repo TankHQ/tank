@@ -7,7 +7,7 @@ use std::{
     ffi::{CStr, c_int},
     fmt::{self, Display, Write as _},
     hint, mem, ptr,
-    sync::{Arc, Mutex, PoisonError},
+    sync::{Arc, Mutex},
 };
 use tank_core::{
     AnyQuery, AsEntity, AsValue, Context, Entity, Error, ErrorContext, Fragment, Prepared,
@@ -44,23 +44,47 @@ impl SQLitePrepared {
         Arc::ptr_eq(&self.db, &connection.db)
     }
 
-    #[cold]
-    #[inline(never)]
-    fn last_error(&self, db: &RawDb) -> Error {
-        let error = db.last_error().context(format!("While executing {self}"));
-        // Reset here so a later reset or finalize does not report the same step error again.
-        unsafe { sqlite3_reset(self.statement) };
-        log::error!("{error:#}");
-        error
+    fn fmt_statement(statement: *mut sqlite3_stmt, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unsafe {
+            f.write_str("SQLitePrepared:")?;
+            if !statement.is_null() {
+                let ptr = sqlite3_sql(statement);
+                if !ptr.is_null() {
+                    f.write_str("\n")?;
+                    return write!(
+                        f,
+                        "{}",
+                        truncate_long(&CStr::from_ptr(ptr).to_string_lossy())
+                    );
+                }
+            }
+            write!(f, " {statement:p}")
+        }
     }
 
     #[cold]
     #[inline(never)]
-    fn init_row(statement: *mut sqlite3_stmt, row: &mut Option<SQLiteRow>) -> Result<()> {
-        let columns = unsafe { sqlite3_column_count(statement) };
+    fn last_error(db: &RawDb, statement: *mut sqlite3_stmt) -> Error {
+        let error = db.last_error().context(format!(
+            "While executing {}",
+            fmt::from_fn(|f| Self::fmt_statement(statement, f))
+        ));
+        // Reset here so a later reset or finalize does not report the same step error again.
+        unsafe { sqlite3_reset(statement) };
+        log::error!("{error:#}");
+        error
+    }
+
+    #[inline(never)]
+    fn init_row(
+        statement: *mut sqlite3_stmt,
+        columns: c_int,
+        row: &mut Option<SQLiteRow>,
+    ) -> Result<()> {
         let recompiled =
             unsafe { sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_REPREPARE, 1) } != 0;
         if row.as_ref().is_none_or(|row| row.len() != columns as usize) || recompiled {
+            hint::cold_path();
             let labels = (0..columns)
                 .map(|index| unsafe {
                     let name = sqlite3_column_name(statement, index);
@@ -76,40 +100,45 @@ impl SQLitePrepared {
         Ok(())
     }
 
-    /// Steps a row-returning statement, returning `Err(None)` on a SQLite step failure.
+    /// Steps a columnless or abandoned statement to completion, returning `false` on error.
     #[inline(always)]
-    fn do_step_row_locked(
-        db: &RawDb,
-        statement: *mut sqlite3_stmt,
-        row: &mut Option<SQLiteRow>,
-        initialize: bool,
-    ) -> std::result::Result<Option<SQLiteRow>, Option<Error>> {
-        match unsafe { sqlite3_step(statement) } {
-            SQLITE_ROW => {
-                if initialize {
-                    Self::init_row(statement, row).map_err(Some)?;
-                }
-                row.as_mut()
-                    .ok_or_else(|| {
-                        Some(anyhow!(
-                            "Row storage was not initialized before reading a row"
-                        ))
-                    })?
-                    .read(db, statement)
-                    .map(Some)
-                    .map_err(Some)
+    unsafe fn drain_locked(statement: *mut sqlite3_stmt) -> bool {
+        loop {
+            match unsafe { sqlite3_step(statement) } {
+                SQLITE_ROW => {}
+                SQLITE_DONE => return true,
+                _ => return false,
             }
-            SQLITE_DONE => Ok(None),
-            _ => Err(None),
         }
     }
 
-    /// Steps once, returning the next row or `None` at `SQLITE_DONE`.
     #[inline(always)]
-    pub(crate) fn do_step_row(&mut self, initialize: bool) -> Result<Option<SQLiteRow>> {
-        let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
-        Self::do_step_row_locked(&db, self.statement, &mut self.row, initialize)
-            .map_err(|error| error.unwrap_or_else(|| self.last_error(&db)))
+    fn step_row_locked<const INITIALIZE: bool>(
+        db: &RawDb,
+        statement: *mut sqlite3_stmt,
+        row: &mut Option<SQLiteRow>,
+        columns: c_int,
+    ) -> Result<Option<SQLiteRow>> {
+        match unsafe { sqlite3_step(statement) } {
+            SQLITE_ROW => {
+                if INITIALIZE {
+                    Self::init_row(statement, columns, row)?;
+                }
+                row.as_mut()
+                    .ok_or_else(|| anyhow!("Row storage was not initialized before reading a row"))?
+                    .read(db, statement)
+                    .map(Some)
+            }
+            SQLITE_DONE => Ok(None),
+            _ => Err(Self::last_error(db, statement)),
+        }
+    }
+
+    /// Steps once on an active row-returning statement, returning the next row or `None`.
+    #[inline(always)]
+    pub(crate) fn step_row(&mut self) -> Result<Option<SQLiteRow>> {
+        let db = RawDb::lock(&self.db);
+        Self::step_row_locked::<false>(&db, self.statement, &mut self.row, 0)
     }
 
     /// Binds and steps a batch of entities under a single DB lock, returning affected rows.
@@ -120,31 +149,22 @@ impl SQLitePrepared {
         &mut self,
         batch: impl IntoIterator<Item = E>,
     ) -> Result<RowsAffected> {
-        let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
+        let db = RawDb::lock(&self.db);
         let statement = self.statement;
         let mut count = 0;
         for entity in batch {
-            for value in entity.as_entity().row_values() {
-                let index = self.index;
-                Self::bind_value::<true>(
-                    &db,
-                    statement,
-                    &mut self.draft,
-                    &mut self.index,
-                    value,
-                    index,
-                )
-                .with_context(|| format!("While binding {index} (0-based) to {self}"))
-                .inspect_err(|e| log::error!("{e:#}"))?;
+            for (index, value) in entity.as_entity().row_values().enumerate() {
+                Self::bind_value::<true>(&db, statement, &mut self.draft, value, index as u64)
+                    .with_context(|| format!("While binding {index} (0-based) to {self}"))
+                    .inspect_err(|e| log::error!("{e:#}"))?;
             }
             unsafe {
                 if sqlite3_step(statement) != SQLITE_DONE {
                     hint::cold_path();
-                    return Err(self.last_error(&db));
+                    return Err(Self::last_error(&db, statement));
                 }
                 sqlite3_reset(statement);
             }
-            self.index = 0;
             count += 1;
         }
         Ok(RowsAffected {
@@ -153,44 +173,22 @@ impl SQLitePrepared {
         })
     }
 
-    /// Runs a statement's first step for `fetch`, returning its first row or draining if columnless.
-    pub(crate) fn start_row(&mut self) -> Result<Option<SQLiteRow>> {
-        let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
-        let statement = self.statement;
-        if unsafe { sqlite3_column_count(statement) } > 0 {
-            return Self::do_step_row_locked(&db, statement, &mut self.row, true)
-                .map_err(|error| error.unwrap_or_else(|| self.last_error(&db)));
-        }
-        unsafe {
-            loop {
-                match sqlite3_step(statement) {
-                    SQLITE_DONE => return Ok(None),
-                    SQLITE_ROW => {}
-                    _ => return Err(self.last_error(&db)),
-                }
-            }
-        }
-    }
-
     /// Runs a statement's first step, returning its first row or affected rows if columnless.
     pub(crate) fn start(&mut self) -> Result<Option<QueryResult<SQLiteRow>>> {
-        let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
+        let db = RawDb::lock(&self.db);
         let statement = self.statement;
-        if unsafe { sqlite3_column_count(statement) } > 0 {
-            return Self::do_step_row_locked(&db, statement, &mut self.row, true)
-                .map(|row| row.map(QueryResult::Row))
-                .map_err(|error| error.unwrap_or_else(|| self.last_error(&db)));
+        let columns = unsafe { sqlite3_column_count(statement) };
+        if columns > 0 {
+            return Self::step_row_locked::<true>(&db, statement, &mut self.row, columns)
+                .map(|row| row.map(QueryResult::Row));
         }
         unsafe {
             let handle = db.as_ptr();
             let total_changes_before = sqlite3_total_changes64(handle);
             let last_rowid_before = sqlite3_last_insert_rowid(handle);
-            loop {
-                match sqlite3_step(statement) {
-                    SQLITE_DONE => break,
-                    SQLITE_ROW => {}
-                    _ => return Err(self.last_error(&db)),
-                }
+            if !Self::drain_locked(statement) {
+                hint::cold_path();
+                return Err(Self::last_error(&db, statement));
             }
             // `changes64` is stale after DDL. `total_changes64` detects DML while `changes64` excludes triggers.
             let rows_affected = if sqlite3_total_changes64(handle) != total_changes_before {
@@ -221,37 +219,17 @@ impl SQLitePrepared {
             // Reads are never walked because they can be unbounded.
             if sqlite3_stmt_busy(statement) != 0 && sqlite3_stmt_readonly(statement) == 0 {
                 hint::cold_path();
-                loop {
-                    match sqlite3_step(statement) {
-                        SQLITE_ROW => {}
-                        SQLITE_DONE => break,
-                        _ => {
-                            log::error!(
-                                "{:#}",
-                                db.last_error()
-                                    .context("While finishing an abandoned SQLite write")
-                            );
-                            break;
-                        }
-                    }
+                if !Self::drain_locked(statement) {
+                    log::error!(
+                        "{:#}",
+                        db.last_error()
+                            .context("While finishing an abandoned SQLite write")
+                    );
                 }
             }
             // Release locks and clear any prior step error so later reset or finalize succeeds.
             sqlite3_reset(statement);
         }
-    }
-
-    #[inline(always)]
-    fn clear_bindings_inner(db: &RawDb, statement: *mut sqlite3_stmt) -> Result<()> {
-        Self::finish_locked(db, statement);
-        unsafe {
-            ensure_rc!(
-                sqlite3_clear_bindings(statement),
-                db.last_error(),
-                "While clearing SQLite statement bindings"
-            );
-        }
-        Ok(())
     }
 
     /// Binds a temporal value written by the dialect, whose text only lives for this call.
@@ -282,10 +260,9 @@ impl SQLitePrepared {
         db: &RawDb,
         statement: *mut sqlite3_stmt,
         draft: &mut AnyQuery,
-        next_index: &mut u64,
         v: impl AsValue,
         index: u64,
-    ) -> Result<()> {
+    ) -> Result<u64> {
         // SQLite's parameter index is 1-based.
         let index = c_int::try_from(index)
             .ok()
@@ -446,8 +423,7 @@ impl SQLitePrepared {
             }
         };
         if rc == SQLITE_OK {
-            *next_index = index as u64;
-            Ok(())
+            Ok(index as u64)
         } else {
             Err(db.last_error())
         }
@@ -468,8 +444,15 @@ impl Prepared for SQLitePrepared {
     #[inline(always)]
     fn clear_bindings(&mut self) -> Result<&mut Self> {
         if !self.is_empty() {
-            let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
-            Self::clear_bindings_inner(&db, self.statement)?;
+            let db = RawDb::lock(&self.db);
+            Self::finish_locked(&db, self.statement);
+            unsafe {
+                ensure_rc!(
+                    sqlite3_clear_bindings(self.statement),
+                    db.last_error(),
+                    "While clearing SQLite statement bindings"
+                );
+            }
         }
         self.index = 0;
         Ok(self)
@@ -484,17 +467,10 @@ impl Prepared for SQLitePrepared {
     #[inline(always)]
     fn bind_index(&mut self, v: impl AsValue, index: u64) -> Result<&mut Self> {
         {
-            let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
-            Self::bind_value::<false>(
-                &db,
-                self.statement,
-                &mut self.draft,
-                &mut self.index,
-                v,
-                index,
-            )
-            .with_context(|| format!("While binding {index} (0-based) to {self}"))
-            .inspect_err(|e| log::error!("{e:#}"))?;
+            let db = RawDb::lock(&self.db);
+            self.index = Self::bind_value::<false>(&db, self.statement, &mut self.draft, v, index)
+                .with_context(|| format!("While binding {index} (0-based) to {self}"))
+                .inspect_err(|e| log::error!("{e:#}"))?;
         }
         Ok(self)
     }
@@ -507,28 +483,14 @@ unsafe impl Sync for SQLitePrepared {}
 
 impl Display for SQLitePrepared {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unsafe {
-            f.write_str("SQLitePrepared:")?;
-            if !self.statement.is_null() {
-                let ptr = sqlite3_sql(self.statement);
-                if !ptr.is_null() {
-                    f.write_str("\n")?;
-                    return write!(
-                        f,
-                        "{}",
-                        truncate_long(&CStr::from_ptr(ptr).to_string_lossy())
-                    );
-                }
-            }
-            write!(f, " {:p}", self.statement)
-        }
+        Self::fmt_statement(self.statement, f)
     }
 }
 
 impl Drop for SQLitePrepared {
     fn drop(&mut self) {
         if !self.statement.is_null() {
-            let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
+            let db = RawDb::lock(&self.db);
             let statement = mem::replace(&mut self.statement, ptr::null_mut());
             Self::finish_locked(&db, statement);
             db.finalize(statement);

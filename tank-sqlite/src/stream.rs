@@ -63,7 +63,7 @@ where
             Query::Raw(_) => self.current_statement.as_mut(),
         }
         .ok_or_else(|| anyhow!("Active SQLite stream has no statement"))?;
-        prepared.do_step_row(false)
+        prepared.step_row()
     }
 
     /// Releases the current statement and moves to the next state.
@@ -154,19 +154,10 @@ where
     #[inline(never)]
     fn prepare_next_row(&mut self) -> Result<Option<SQLiteRow>> {
         loop {
-            let Some(prepared) = self.next_prepared()? else {
-                return Ok(None);
-            };
-            match prepared.start_row() {
-                Ok(Some(row)) => {
-                    self.state = State::Stepping;
-                    return Ok(Some(row));
-                }
-                Ok(None) => self.finish_statement(),
-                Err(error) => {
-                    self.finish_statement();
-                    return Err(error);
-                }
+            match self.prepare_next_statement()? {
+                Some(QueryResult::Row(row)) => return Ok(Some(row)),
+                Some(QueryResult::Affected(_)) => {}
+                None => return Ok(None),
             }
         }
     }

@@ -3,6 +3,7 @@ use libsqlite3_sys::*;
 use std::{
     future::{self, Future},
     hint, ptr,
+    sync::{Mutex, MutexGuard, PoisonError},
     task::Poll,
 };
 use tank_core::{Error, error_message_from_ptr};
@@ -17,6 +18,11 @@ impl RawDb {
     #[inline(always)]
     pub(crate) const fn null() -> Self {
         Self(ptr::null_mut())
+    }
+
+    #[inline(always)]
+    pub(crate) fn lock(db: &Mutex<Self>) -> MutexGuard<'_, Self> {
+        db.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     #[inline(always)]
