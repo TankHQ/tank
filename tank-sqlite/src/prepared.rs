@@ -14,14 +14,6 @@ use tank_core::{
     QueryResult, Result, Row, RowsAffected, SqlValueWriter, Value, truncate_long,
 };
 
-struct FmtStmt(*mut sqlite3_stmt);
-
-impl Display for FmtStmt {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        SQLitePrepared::fmt_statement(self.0, f)
-    }
-}
-
 /// Prepared statement wrapper for SQLite.
 #[derive(Debug)]
 pub struct SQLitePrepared {
@@ -52,44 +44,12 @@ impl SQLitePrepared {
         Arc::ptr_eq(&self.db, &connection.db)
     }
 
-    fn fmt_statement(statement: *mut sqlite3_stmt, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unsafe {
-            f.write_str("SQLitePrepared:")?;
-            if !statement.is_null() {
-                let ptr = sqlite3_sql(statement);
-                if !ptr.is_null() {
-                    f.write_str("\n")?;
-                    return write!(
-                        f,
-                        "{}",
-                        truncate_long(&CStr::from_ptr(ptr).to_string_lossy())
-                    );
-                }
-            }
-            write!(f, " {statement:p}")
-        }
-    }
-
     #[cold]
     #[inline(never)]
-    fn step_error(db: &RawDb, statement: *mut sqlite3_stmt) -> Error {
-        let error = db
-            .last_error()
-            .context(format!("While executing {}", FmtStmt(statement)));
+    fn step_error(&self, db: &RawDb) -> Error {
+        let error = db.last_error().context(format!("While executing {self}"));
         // Reset here so a later reset or finalize does not report the same step error again.
-        unsafe { sqlite3_reset(statement) };
-        log::error!("{error:#}");
-        error
-    }
-
-    #[cold]
-    #[inline(never)]
-    fn bind_error(db: &RawDb, statement: *mut sqlite3_stmt, index: c_int) -> Error {
-        let error = db.last_error().context(format!(
-            "While binding {} (0-based) to {}",
-            index - 1,
-            FmtStmt(statement),
-        ));
+        unsafe { sqlite3_reset(self.statement) };
         log::error!("{error:#}");
         error
     }
@@ -116,28 +76,29 @@ impl SQLitePrepared {
         Ok(())
     }
 
+    /// Steps a row-returning statement, returning `Err(None)` on a SQLite step failure.
     #[inline(always)]
     fn do_step_row_locked(
         db: &RawDb,
         statement: *mut sqlite3_stmt,
         row: &mut Option<SQLiteRow>,
         initialize: bool,
-    ) -> Result<Option<SQLiteRow>> {
+    ) -> std::result::Result<Option<SQLiteRow>, Option<Error>> {
         match unsafe { sqlite3_step(statement) } {
             SQLITE_ROW => {
                 if initialize {
-                    Self::init_row(statement, row)?;
+                    Self::init_row(statement, row).map_err(Some)?;
                 }
                 let Some(row) = row.as_mut() else {
                     hint::cold_path();
-                    return Err(anyhow!(
+                    return Err(Some(anyhow!(
                         "Row storage was not initialized before reading a row"
-                    ));
+                    )));
                 };
-                row.read(db, statement).map(Some)
+                row.read(db, statement).map(Some).map_err(Some)
             }
             SQLITE_DONE => Ok(None),
-            _ => Err(Self::step_error(db, statement)),
+            _ => Err(None),
         }
     }
 
@@ -146,6 +107,7 @@ impl SQLitePrepared {
     pub(crate) fn do_step_row(&mut self, initialize: bool) -> Result<Option<SQLiteRow>> {
         let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
         Self::do_step_row_locked(&db, self.statement, &mut self.row, initialize)
+            .map_err(|error| error.unwrap_or_else(|| self.step_error(&db)))
     }
 
     /// Binds and steps a batch of entities under a single DB lock, returning affected rows.
@@ -162,19 +124,22 @@ impl SQLitePrepared {
         for entity in batch {
             for value in entity.as_entity().row_values() {
                 let index = self.index;
-                Self::bind_value::<true>(
-                    &db,
-                    statement,
-                    &mut self.draft,
-                    &mut self.index,
-                    value,
-                    index,
-                )?;
+                ensure_rc!(
+                    Self::bind_value::<true>(
+                        statement,
+                        &mut self.draft,
+                        &mut self.index,
+                        value,
+                        index,
+                    )?,
+                    db.last_error(),
+                    format!("While binding {index} (0-based) to {self}"),
+                );
             }
             unsafe {
                 if sqlite3_step(statement) != SQLITE_DONE {
                     hint::cold_path();
-                    return Err(Self::step_error(&db, statement));
+                    return Err(self.step_error(&db));
                 }
                 sqlite3_reset(statement);
             }
@@ -192,14 +157,15 @@ impl SQLitePrepared {
         let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
         let statement = self.statement;
         if unsafe { sqlite3_column_count(statement) } > 0 {
-            return Self::do_step_row_locked(&db, statement, &mut self.row, true);
+            return Self::do_step_row_locked(&db, statement, &mut self.row, true)
+                .map_err(|error| error.unwrap_or_else(|| self.step_error(&db)));
         }
         unsafe {
             loop {
                 match sqlite3_step(statement) {
                     SQLITE_DONE => return Ok(None),
                     SQLITE_ROW => {}
-                    _ => return Err(Self::step_error(&db, statement)),
+                    _ => return Err(self.step_error(&db)),
                 }
             }
         }
@@ -211,7 +177,8 @@ impl SQLitePrepared {
         let statement = self.statement;
         if unsafe { sqlite3_column_count(statement) } > 0 {
             return Self::do_step_row_locked(&db, statement, &mut self.row, true)
-                .map(|row| row.map(QueryResult::Row));
+                .map(|row| row.map(QueryResult::Row))
+                .map_err(|error| error.unwrap_or_else(|| self.step_error(&db)));
         }
         unsafe {
             let handle = db.as_ptr();
@@ -221,7 +188,7 @@ impl SQLitePrepared {
                 match sqlite3_step(statement) {
                     SQLITE_DONE => break,
                     SQLITE_ROW => {}
-                    _ => return Err(Self::step_error(&db, statement)),
+                    _ => return Err(self.step_error(&db)),
                 }
             }
             // `changes64` is stale after DDL. `total_changes64` detects DML while `changes64` excludes triggers.
@@ -323,13 +290,12 @@ impl SQLitePrepared {
 
     #[inline(always)]
     fn bind_value<const STATIC_BORROW: bool>(
-        db: &RawDb,
         statement: *mut sqlite3_stmt,
         draft: &mut AnyQuery,
         next_index: &mut u64,
         v: impl AsValue,
         index: u64,
-    ) -> Result<()> {
+    ) -> Result<c_int> {
         // SQLite's parameter index is 1-based.
         let Some(index) = c_int::try_from(index).ok().and_then(|i| i.checked_add(1)) else {
             hint::cold_path();
@@ -488,13 +454,11 @@ impl SQLitePrepared {
                     rc
                 }
             };
-            if rc != SQLITE_OK {
-                hint::cold_path();
-                return Err(Self::bind_error(db, statement, index));
+            if rc == SQLITE_OK {
+                *next_index = index as u64;
             }
+            Ok(rc)
         }
-        *next_index = index as u64;
-        Ok(())
     }
 }
 
@@ -529,27 +493,44 @@ impl Prepared for SQLitePrepared {
     fn bind_index(&mut self, v: impl AsValue, index: u64) -> Result<&mut Self> {
         {
             let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
-            Self::bind_value::<false>(
-                &db,
-                self.statement,
-                &mut self.draft,
-                &mut self.index,
-                v,
-                index,
-            )?;
+            ensure_rc!(
+                Self::bind_value::<false>(
+                    self.statement,
+                    &mut self.draft,
+                    &mut self.index,
+                    v,
+                    index,
+                )?,
+                db.last_error(),
+                format!("While binding {index} (0-based) to {self}"),
+            );
         }
         Ok(self)
     }
 }
 
-// Every SQLite C API call on `statement` locks `db`, and all other fields are `Send + Sync`.
+// Every SQLite C API call on `statement` locks `db`, except `sqlite3_sql` which reads an immutable
+// string owned by `statement` for its lifetime.
 unsafe impl Send for SQLitePrepared {}
 unsafe impl Sync for SQLitePrepared {}
 
 impl Display for SQLitePrepared {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let _db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
-        Self::fmt_statement(self.statement, f)
+        unsafe {
+            f.write_str("SQLitePrepared:")?;
+            if !self.statement.is_null() {
+                let ptr = sqlite3_sql(self.statement);
+                if !ptr.is_null() {
+                    f.write_str("\n")?;
+                    return write!(
+                        f,
+                        "{}",
+                        truncate_long(&CStr::from_ptr(ptr).to_string_lossy())
+                    );
+                }
+            }
+            write!(f, " {:p}", self.statement)
+        }
     }
 }
 

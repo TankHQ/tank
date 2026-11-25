@@ -148,9 +148,7 @@ impl Row for SQLiteRow {
                     str::from_utf8_unchecked(bytes)
                 })))
             }
-            Cell::Blob(range) => {
-                Value::Blob(Some(Cow::Borrowed(self.0.bytes.get(range.clone())?)))
-            }
+            Cell::Blob(range) => Value::Blob(Some(Cow::Borrowed(self.0.bytes.get(range.clone())?))),
         }))
     }
 
