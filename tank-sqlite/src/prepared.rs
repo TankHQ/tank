@@ -46,7 +46,7 @@ impl SQLitePrepared {
 
     #[cold]
     #[inline(never)]
-    fn step_error(&self, db: &RawDb) -> Error {
+    fn last_error(&self, db: &RawDb) -> Error {
         let error = db.last_error().context(format!("While executing {self}"));
         // Reset here so a later reset or finalize does not report the same step error again.
         unsafe { sqlite3_reset(self.statement) };
@@ -109,7 +109,7 @@ impl SQLitePrepared {
     pub(crate) fn do_step_row(&mut self, initialize: bool) -> Result<Option<SQLiteRow>> {
         let db = self.db.lock().unwrap_or_else(PoisonError::into_inner);
         Self::do_step_row_locked(&db, self.statement, &mut self.row, initialize)
-            .map_err(|error| error.unwrap_or_else(|| self.step_error(&db)))
+            .map_err(|error| error.unwrap_or_else(|| self.last_error(&db)))
     }
 
     /// Binds and steps a batch of entities under a single DB lock, returning affected rows.
@@ -140,7 +140,7 @@ impl SQLitePrepared {
             unsafe {
                 if sqlite3_step(statement) != SQLITE_DONE {
                     hint::cold_path();
-                    return Err(self.step_error(&db));
+                    return Err(self.last_error(&db));
                 }
                 sqlite3_reset(statement);
             }
@@ -159,14 +159,14 @@ impl SQLitePrepared {
         let statement = self.statement;
         if unsafe { sqlite3_column_count(statement) } > 0 {
             return Self::do_step_row_locked(&db, statement, &mut self.row, true)
-                .map_err(|error| error.unwrap_or_else(|| self.step_error(&db)));
+                .map_err(|error| error.unwrap_or_else(|| self.last_error(&db)));
         }
         unsafe {
             loop {
                 match sqlite3_step(statement) {
                     SQLITE_DONE => return Ok(None),
                     SQLITE_ROW => {}
-                    _ => return Err(self.step_error(&db)),
+                    _ => return Err(self.last_error(&db)),
                 }
             }
         }
@@ -179,7 +179,7 @@ impl SQLitePrepared {
         if unsafe { sqlite3_column_count(statement) } > 0 {
             return Self::do_step_row_locked(&db, statement, &mut self.row, true)
                 .map(|row| row.map(QueryResult::Row))
-                .map_err(|error| error.unwrap_or_else(|| self.step_error(&db)));
+                .map_err(|error| error.unwrap_or_else(|| self.last_error(&db)));
         }
         unsafe {
             let handle = db.as_ptr();
@@ -189,7 +189,7 @@ impl SQLitePrepared {
                 match sqlite3_step(statement) {
                     SQLITE_DONE => break,
                     SQLITE_ROW => {}
-                    _ => return Err(self.step_error(&db)),
+                    _ => return Err(self.last_error(&db)),
                 }
             }
             // `changes64` is stale after DDL. `total_changes64` detects DML while `changes64` excludes triggers.
