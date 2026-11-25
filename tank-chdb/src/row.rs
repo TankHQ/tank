@@ -19,7 +19,8 @@ use std::{
     sync::Arc,
 };
 use tank_core::{
-    CollectionType, MapType, Row, RowLabels, RowOwned, Value, ValueOwned, decimal_from_scaled,
+    CollectionType, Interval, MapType, Row, RowLabels, RowOwned, Value, ValueOwned,
+    decimal_from_scaled,
 };
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 use uuid::Uuid;
@@ -31,9 +32,6 @@ pub struct ChDBRow {
 }
 
 impl ChDBRow {
-    /// Unix epoch `1970-01-01` as a Julian day number.
-    const EPOCH_JULIAN_DAY: i32 = 2_440_588;
-
     #[inline(always)]
     fn extract<'a>(
         array: &'a dyn Array,
@@ -229,7 +227,7 @@ impl ChDBRow {
                         DataType::Date32 => {
                             let days = array.as_any().downcast_ref::<Date32Array>()?.value(row);
                             Value::Date(
-                                ChDBRow::EPOCH_JULIAN_DAY
+                                Interval::EPOCH_JULIAN_DAY
                                     .checked_add(days)
                                     .and_then(|jd| Date::from_julian_day(jd).ok()),
                             )
@@ -238,7 +236,7 @@ impl ChDBRow {
                             let ms = array.as_any().downcast_ref::<Date64Array>()?.value(row);
                             let days = ms.div_euclid(86_400_000) as i32;
                             Value::Date(
-                                ChDBRow::EPOCH_JULIAN_DAY
+                                Interval::EPOCH_JULIAN_DAY
                                     .checked_add(days)
                                     .and_then(|jd| Date::from_julian_day(jd).ok()),
                             )
@@ -271,7 +269,7 @@ impl ChDBRow {
                             let hour = (mins / 60) as u8;
                             let minute = (mins - hour as u32 * 60) as u8;
                             match (
-                                ChDBRow::EPOCH_JULIAN_DAY
+                                Interval::EPOCH_JULIAN_DAY
                                     .checked_add(days)
                                     .and_then(|jd| Date::from_julian_day(jd).ok()),
                                 Time::from_hms_nano(hour, minute, second, ns).ok(),

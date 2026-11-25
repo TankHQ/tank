@@ -5,6 +5,7 @@ use std::{
     ops::{Add, AddAssign, Neg, Sub, SubAssign},
     time::Duration,
 };
+use time::macros::date;
 
 /// Time interval units.
 ///
@@ -62,6 +63,7 @@ impl Interval {
     pub const NANOS_IN_HOUR: i128 = Self::NANOS_IN_SEC * 3600;
     pub const NANOS_IN_DAY: i128 = Self::SECS_IN_DAY as i128 * Self::NANOS_IN_SEC;
     pub const MICROS_IN_DAY: i128 = Self::SECS_IN_DAY as i128 * 1_000_000;
+    pub const EPOCH_JULIAN_DAY: i32 = date!(1970 - 01 - 01).to_julian_day();
 
     pub const fn new(months: i32, days: i32, nanos: i64) -> Self {
         Self {

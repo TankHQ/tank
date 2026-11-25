@@ -1,13 +1,8 @@
-use crate::{
-    DuckDBConnection, DuckDBDriver, ensure_rc,
-    row::{Batch, DuckDBRow},
-    util::CBox,
-};
+use crate::{CBox, DuckDBConnection, DuckDBDriver, DuckDBRow, batch::Batch, ensure_rc};
 use libduckdb_sys::*;
 use std::{
     ffi::{CStr, CString},
     hint, mem,
-    ops::DerefMut,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -18,7 +13,7 @@ use tank_core::{
 };
 
 /// Lazily runs each statement of a query, yielding its rows or affected-row count.
-pub struct DuckDBStream<'s, Q: AsMut<Query<DuckDBDriver>>> {
+pub(crate) struct DuckDBStream<'s, Q: AsMut<Query<DuckDBDriver>>> {
     batch: Option<Arc<Batch>>,
     row: usize,
     size: usize,
@@ -32,9 +27,9 @@ pub struct DuckDBStream<'s, Q: AsMut<Query<DuckDBDriver>>> {
 
 impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
     #[inline(always)]
-    pub(crate) const fn new(connection: &'s mut DuckDBConnection, query: Q) -> Self {
+    pub(crate) fn new(connection: &'s mut DuckDBConnection, query: Q) -> Self {
         Self {
-            batch: None,
+            batch: connection.batch.take(),
             row: 0,
             size: 0,
             result: None,
@@ -49,7 +44,12 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
     fn finish(&mut self) -> Result<()> {
         self.row = 0;
         self.size = 0;
-        self.batch = None;
+        if let Some(mut batch) = self.batch.take()
+            && let Some(inner) = Arc::get_mut(&mut batch)
+        {
+            inner.clear();
+            self.connection.batch = Some(batch);
+        }
         self.result = None;
         self.extracted = None;
         if self.count != 0 {
@@ -68,7 +68,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                 if let Some(result) = &mut self.result {
                     let chunk = CBox(duckdb_fetch_chunk(**result));
                     if chunk.is_null() {
-                        let error = duckdb_result_error(result.deref_mut());
+                        let error = duckdb_result_error(&mut **result);
                         if !error.is_null() {
                             hint::cold_path();
                             let error =
@@ -85,12 +85,7 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
                     if size == 0 {
                         continue;
                     }
-                    // Rows of the previous chunk may still be alive, keep it in their batch.
-                    let batch = match &self.batch {
-                        Some(batch) if self.size != 0 => batch.next(chunk),
-                        _ => Batch::new(&mut **result, chunk),
-                    };
-                    self.batch = Some(Arc::new(batch));
+                    Batch::load(&mut self.batch, &mut **result, chunk, self.size != 0);
                     self.row = 0;
                     self.size = size;
                     return Ok(None);
@@ -172,15 +167,17 @@ impl<'s, Q: AsMut<Query<DuckDBDriver>>> DuckDBStream<'s, Q> {
 impl<Q: AsMut<Query<DuckDBDriver>>> Stream for DuckDBStream<'_, Q> {
     type Item = Result<QueryResult<DuckDBRow>>;
 
-    #[inline]
+    #[inline(always)]
     fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = unsafe { self.get_unchecked_mut() };
         loop {
-            if this.row < this.size {
+            if this.row < this.size
+                && let Some(batch) = this.batch.as_ref()
+            {
                 let row = this.row;
                 this.row = row + 1;
                 return Poll::Ready(Some(Ok(QueryResult::Row(DuckDBRow {
-                    batch: unsafe { this.batch.as_ref().unwrap_unchecked() }.clone(),
+                    batch: Arc::clone(batch),
                     row,
                 }))));
             }
@@ -198,7 +195,8 @@ impl<Q: AsMut<Query<DuckDBDriver>>> Stream for DuckDBStream<'_, Q> {
                         stream: &mut DuckDBStream<'_, Q>,
                         error: Error,
                     ) -> Error {
-                        let context = format!("While running the query:\n{}", stream.query.as_mut());
+                        let context =
+                            format!("While running the query:\n{}", stream.query.as_mut());
                         let _ = stream
                             .finish()
                             .context("While cleaning up DuckDB execution")
@@ -214,7 +212,10 @@ impl<Q: AsMut<Query<DuckDBDriver>>> Stream for DuckDBStream<'_, Q> {
     #[inline(always)]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.size - self.row;
-        (remaining, (remaining > 0).then_some(remaining))
+        (
+            remaining,
+            (self.result.is_none() && self.index == self.count).then_some(remaining),
+        )
     }
 }
 

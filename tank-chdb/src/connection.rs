@@ -29,8 +29,8 @@ use std::{
 };
 use tank_core::{
     AnyQuery, AppendDefault, AsEntity, AsQuery, ColumnDef, Connection, Context, Entity, Error,
-    ErrorContext, Executor, Fragment, PrimaryKeyType, QueryResult, Result, Row, RowLabels,
-    RowsAffected, SqlCoreWriter, SqlValueWriter, Value, describe_path, stream::Stream,
+    ErrorContext, Executor, Fragment, Interval, PrimaryKeyType, QueryResult, Result, Row,
+    RowLabels, RowsAffected, SqlCoreWriter, SqlValueWriter, Value, describe_path, stream::Stream,
 };
 
 /// Wrapper around an embedded chDB connection.
@@ -43,7 +43,6 @@ pub struct ChDBConnection {
 impl ChDBConnection {
     const WRITER: ChDBSqlWriter = ChDBSqlWriter::chdb();
     const APPEND_BATCH_ROWS: usize = 262_144;
-    const EPOCH_JULIAN_DAY: i32 = 2_440_588;
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
 
     fn arrow_field(column: &ColumnDef) -> Option<Field> {
@@ -131,7 +130,7 @@ impl ChDBConnection {
                         .as_any_mut()
                         .downcast_mut::<TimestampNanosecondBuilder>()
                         .ok_or_else(|| anyhow!("Mismatched Arrow builder for Timestamp"))?;
-                    let days = (ts.date().to_julian_day() - Self::EPOCH_JULIAN_DAY) as i64;
+                    let days = (ts.date().to_julian_day() - Interval::EPOCH_JULIAN_DAY) as i64;
                     if (days as u64).wrapping_add(106_750) > 213_500 {
                         return Err(anyhow!(
                             "Timestamp {ts} out of ClickHouse DateTime64(9) range"
@@ -243,7 +242,7 @@ impl ChDBConnection {
                                     .append_value(mantissa);
                             }
                             (DataType::Date32, Value::Date(Some(v))) => {
-                                let days = (v.to_julian_day() - ChDBConnection::EPOCH_JULIAN_DAY)
+                                let days = (v.to_julian_day() - Interval::EPOCH_JULIAN_DAY)
                                     .clamp(0, u16::MAX as i32);
                                 builder
                                     .as_any_mut()

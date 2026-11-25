@@ -1,4 +1,4 @@
-use crate::{ValueWrap, ensure_rc, util::CBox};
+use crate::{CBox, ensure_rc};
 use anyhow::anyhow;
 use libduckdb_sys::*;
 use std::{
@@ -79,11 +79,26 @@ impl Prepared for DuckDBPrepared {
                         state
                     }
                     other => {
-                        break 'simple_value CBox::try_from(ValueWrap::from(other))
-                            .map(|v| duckdb_bind_value(prepared, index, *v));
+                        let res = bind_other(prepared, index, other);
+                        #[inline(never)]
+                        fn bind_other(
+                            prepared: duckdb_prepared_statement,
+                            index: u64,
+                            value: Value<'_>,
+                        ) -> Result<duckdb_state> {
+                            unsafe {
+                                if value.is_null() {
+                                    Ok(duckdb_bind_null(prepared, index))
+                                } else {
+                                    CBox::<duckdb_value>::try_from(&value)
+                                        .map(|v| duckdb_bind_value(prepared, index, *v))
+                                }
+                            }
+                        }
+                        break 'simple_value res;
                     }
                 };
-                // Avoid an opaque Value::drop call for simple values that don't allocate memory.
+                // Avoid an opaque Value::drop call for simple values that do not allocate memory.
                 mem::forget(value);
                 state
             };

@@ -1,5 +1,5 @@
 //! DuckDB driver for `tank`.
-mod appender;
+mod batch;
 mod column;
 mod connection;
 mod driver;
@@ -9,11 +9,11 @@ mod sql_writer;
 mod stream;
 mod transaction;
 mod util;
-mod value_wrap;
 
 pub use connection::*;
 pub use driver::*;
 pub use prepared::*;
+pub use row::DuckDBRow;
 pub use sql_writer::*;
 pub use transaction::*;
-pub(crate) use value_wrap::*;
+pub(crate) use util::*;

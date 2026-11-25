@@ -1,297 +1,22 @@
 //! Mixed-workload benchmark measuring the driver and ORM overhead around DuckDB.
 //!
-//! Debug builds run a reduced workload as a smoke test; for meaningful numbers run:
+//! Debug builds run a reduced workload as a smoke test. For meaningful numbers run:
 //! `cargo test --release -p tank-duckdb --test benchmark -- --nocapture`
 #[cfg(test)]
 mod tests {
+    use libduckdb_sys::*;
     use std::{
         cmp::min,
-        fmt::{self, Display, Formatter},
-        future::ready,
+        ffi::CString,
+        mem, ptr,
         time::{Duration, Instant},
     };
-    use tank::{
-        AsValue, Connection, Entity, Executor, Row, Sql, Transaction, cols, expr,
-        stream::TryStreamExt,
-    };
+    use tank::Connection;
     use tank_duckdb::{DuckDBConnection, DuckDBDriver};
-    use tank_tests::init_logs;
-    use time::{Duration as TimeDuration, PrimitiveDateTime, macros::datetime};
+    use tank_tests::{BenchmarkConfig, CountingAllocator, benchmark, benchmark_spread, init_logs};
 
-    const SCALE: usize = if cfg!(debug_assertions) { 1 } else { 10 };
-    const ROWS: usize = 10_000 * SCALE;
-    const ROUNDS: usize = if cfg!(debug_assertions) { 1 } else { 7 };
-    const LOOKUPS: usize = 500 * SCALE;
-    const RANGES: usize = 20 * SCALE;
-    const FILTERS: usize = 10 * SCALE;
-    const AGGREGATES: usize = 5 * SCALE;
-    const SINGLE_WRITES: usize = 50 * SCALE;
-    const MIXED: usize = 200 * SCALE;
-    const ACCOUNTS: usize = 512;
-    const SYMBOLS: [&str; 16] = [
-        "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO", "BRK.B", "JPM", "V",
-        "XOM", "UNH", "MA", "COST", "HD",
-    ];
-
-    #[derive(Entity, Debug, Clone, PartialEq)]
-    #[tank(name = "bench_trades")]
-    struct Trade {
-        #[tank(primary_key)]
-        id: i64,
-        account: i32,
-        symbol: String,
-        buy: bool,
-        quantity: i32,
-        price: f64,
-        note: String,
-        memo: Option<String>,
-        executed_at: PrimitiveDateTime,
-    }
-
-    impl Trade {
-        fn generate(id: usize) -> Self {
-            Self {
-                id: id as i64,
-                account: (id % ACCOUNTS) as i32,
-                symbol: SYMBOLS[id % SYMBOLS.len()].into(),
-                buy: id % 3 != 0,
-                quantity: (id * 37 % 1000 + 1) as i32,
-                price: 50.0 + (id * 7919 % 100_000) as f64 / 100.0,
-                note: format!("order {id:08} routed via smart order router"),
-                memo: (id % 4 == 0).then(|| format!("client memo #{id}")),
-                executed_at: datetime!(2026-01-02 09:30:00) + TimeDuration::milliseconds(id as i64),
-            }
-        }
-    }
-
-    /// Fastest observed time per phase across rounds, with the work each round performs.
-    #[derive(Default)]
-    struct Report(Vec<(&'static str, usize, Duration)>);
-
-    impl Report {
-        fn record(&mut self, name: &'static str, ops: usize, elapsed: Duration) {
-            match self.0.iter_mut().find(|(n, ..)| *n == name) {
-                Some((_, _, best)) => *best = min(*best, elapsed),
-                None => self.0.push((name, ops, elapsed)),
-            }
-        }
-    }
-
-    impl Display for Report {
-        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-            writeln!(
-                f,
-                "DuckDB benchmark: {ROWS} rows, best of {ROUNDS} rounds\n{:<20} {:>8} {:>12} {:>12}",
-                "phase", "ops", "total", "per op"
-            )?;
-            let mut total = Duration::ZERO;
-            for &(name, ops, elapsed) in &self.0 {
-                total += elapsed;
-                writeln!(
-                    f,
-                    "{name:<20} {ops:>8} {:>12} {:>12}",
-                    format!("{elapsed:.2?}"),
-                    format!("{:.2?}", elapsed / ops as u32),
-                )?;
-            }
-            write!(
-                f,
-                "{:<20} {:>8} {:>12}",
-                "total",
-                "",
-                format!("{total:.2?}")
-            )
-        }
-    }
-
-    /// Deterministic, well spread sequence of ids in `0..ROWS`.
-    fn spread(i: usize) -> i64 {
-        (i * 7919 % ROWS) as i64
-    }
-
-    async fn round(connection: &mut DuckDBConnection, trades: &[Trade], report: &mut Report) {
-        Trade::drop_table(connection, true, false).await.unwrap();
-        Trade::create_table(connection, true, false).await.unwrap();
-
-        // Bulk load through the appender.
-        let start = Instant::now();
-        let affected = Trade::insert_many(connection, trades).await.unwrap();
-        report.record("append", ROWS, start.elapsed());
-        assert_eq!(affected.rows_affected, Some(ROWS as u64));
-
-        // Full table scan decoded into entities.
-        let start = Instant::now();
-        let loaded: Vec<Trade> = Trade::find_many(connection, true, None)
-            .try_collect()
-            .await
-            .unwrap();
-        report.record("scan", ROWS, start.elapsed());
-        assert_eq!(loaded.len(), ROWS);
-        assert_eq!(loaded[ROWS / 2], trades[ROWS / 2]);
-
-        // Ad hoc filtered queries, rendered and parsed each time.
-        let start = Instant::now();
-        let mut found = 0;
-        for i in 0..FILTERS {
-            let account = (i * 13 % ACCOUNTS) as i32;
-            found += Trade::find_many(
-                connection,
-                expr!(Trade::account == #account && Trade::buy == true),
-                None,
-            )
-            .try_fold(0, |n, _| ready(Ok(n + 1)))
-            .await
-            .unwrap();
-        }
-        report.record("filter", FILTERS, start.elapsed());
-        assert!(found > 0);
-
-        // Prepared point lookups by primary key.
-        let mut by_id = Trade::prepare_find(connection, expr!(Trade::id == ?), Some(1))
-            .await
-            .unwrap();
-        let start = Instant::now();
-        for i in 0..LOOKUPS {
-            let id = spread(i);
-            by_id.bind(id).unwrap();
-            let trade: Vec<Trade> = connection
-                .fetch(&mut by_id)
-                .and_then(|row| ready(Trade::from_row(row)))
-                .try_collect()
-                .await
-                .unwrap();
-            assert_eq!(trade[0].id, id);
-        }
-        report.record("lookup_prepared", LOOKUPS, start.elapsed());
-
-        // Prepared range queries binding a string and an integer.
-        let mut by_symbol = Trade::prepare_find(
-            connection,
-            expr!(Trade::symbol == ? && Trade::account < ?),
-            None,
-        )
-        .await
-        .unwrap();
-        let start = Instant::now();
-        for i in 0..RANGES {
-            let symbol = SYMBOLS[i % SYMBOLS.len()];
-            by_symbol.bind(symbol).unwrap().bind(64).unwrap();
-            let trades: Vec<Trade> = connection
-                .fetch(&mut by_symbol)
-                .and_then(|row| ready(Trade::from_row(row)))
-                .try_collect()
-                .await
-                .unwrap();
-            assert!(trades.iter().all(|t| t.symbol == symbol && t.account < 64));
-        }
-        report.record("range_prepared", RANGES, start.elapsed());
-
-        // Aggregation decoded through the raw row interface.
-        let query = Sql()
-            .select(cols!(
-                Trade::symbol,
-                COUNT(*),
-                SUM(Trade::quantity),
-                AVG(Trade::price)
-            ))
-            .from(Trade::table())
-            .where_expr(expr!(Trade::buy == true))
-            .group_by(cols!(Trade::symbol))
-            .build(&connection.driver());
-        let sql = query.as_str().into_owned();
-        let start = Instant::now();
-        for _ in 0..AGGREGATES {
-            let groups = connection
-                .fetch(sql.as_str())
-                .try_fold(0, |groups, row| {
-                    ready(
-                        String::decode_value(row.value(0).unwrap())
-                            .and_then(|_| i64::decode_value(row.value(1).unwrap()))
-                            .and_then(|_| f64::decode_value(row.value(3).unwrap()))
-                            .map(|_| groups + 1),
-                    )
-                })
-                .await
-                .unwrap();
-            assert_eq!(groups, SYMBOLS.len());
-        }
-        report.record("aggregate", AGGREGATES, start.elapsed());
-
-        // Single-row writes going through the SQL writer.
-        let start = Instant::now();
-        for i in 0..SINGLE_WRITES {
-            Trade::insert_one(connection, &Trade::generate(ROWS + i))
-                .await
-                .unwrap();
-        }
-        report.record("insert_one", SINGLE_WRITES, start.elapsed());
-
-        let start = Instant::now();
-        for i in 0..SINGLE_WRITES {
-            let mut trade = loaded[spread(i) as usize].clone();
-            trade.quantity += 1;
-            trade.memo = Some("amended".into());
-            trade.save(connection).await.unwrap();
-        }
-        report.record("save", SINGLE_WRITES, start.elapsed());
-
-        // Interleaved workload resembling an application serving requests.
-        let start = Instant::now();
-        let mut next_id = ROWS + SINGLE_WRITES;
-        for i in 0..MIXED {
-            by_id.bind(spread(i)).unwrap();
-            let trade = connection
-                .fetch(&mut by_id)
-                .and_then(|row| ready(Trade::from_row(row)))
-                .try_next()
-                .await
-                .unwrap()
-                .unwrap();
-            match i % 10 {
-                0 => {
-                    let batch = (next_id..next_id + 32)
-                        .map(Trade::generate)
-                        .collect::<Vec<_>>();
-                    next_id += batch.len();
-                    Trade::insert_many(connection, &batch).await.unwrap();
-                }
-                3 => {
-                    let mut trade = trade;
-                    trade.price *= 1.01;
-                    trade.save(connection).await.unwrap();
-                }
-                7 => {
-                    let account = trade.account;
-                    Trade::find_many(connection, expr!(Trade::account == #account), Some(16))
-                        .try_collect::<Vec<_>>()
-                        .await
-                        .unwrap();
-                }
-                _ => {}
-            }
-        }
-        report.record("mixed", MIXED, start.elapsed());
-
-        // Bulk maintenance inside a transaction.
-        let start = Instant::now();
-        let mut tx = connection.begin().await.unwrap();
-        let updated = tx
-            .execute(
-                Sql()
-                    .update(Trade::table())
-                    .set(cols!(Trade::price == Trade::price * 1.001))
-                    .where_expr(expr!(Trade::buy == true))
-                    .build(&tx.driver()),
-            )
-            .await
-            .unwrap();
-        let deleted = Trade::delete_many(&mut tx, expr!(Trade::account >= 500))
-            .await
-            .unwrap();
-        tx.commit().await.unwrap();
-        report.record("transaction", 1, start.elapsed());
-        assert!(updated.rows_affected.unwrap() > 0 && deleted.rows_affected.unwrap() > 0);
-    }
+    #[global_allocator]
+    static GLOBAL: CountingAllocator = CountingAllocator;
 
     #[tokio::test]
     async fn duckdb_benchmark() {
@@ -301,11 +26,183 @@ mod tests {
             DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
                 .await
                 .unwrap();
-        let trades = (0..ROWS).map(Trade::generate).collect::<Vec<_>>();
-        let mut report = Report::default();
-        for _ in 0..ROUNDS {
-            round(&mut connection, &trades, &mut report).await;
+        let config = BenchmarkConfig::default();
+        let trades = benchmark(&mut connection, &config).await;
+
+        // Outside timed phases: isolate DuckDB C API cost from Tank's driver overhead.
+        unsafe {
+            let mut db = ptr::null_mut();
+            let mut conn = ptr::null_mut();
+            let mut cfg = ptr::null_mut();
+            duckdb_create_config(&mut cfg);
+            duckdb_set_config(cfg, c"threads".as_ptr(), c"1".as_ptr());
+            duckdb_open_ext(c":memory:".as_ptr(), &mut db, cfg, ptr::null_mut());
+            duckdb_destroy_config(&mut cfg);
+            duckdb_connect(db, &mut conn);
+            let create_sql = CString::new(
+                "CREATE TABLE bench_trades (id BIGINT PRIMARY KEY, account INTEGER, \
+                 symbol VARCHAR, buy BOOLEAN, quantity INTEGER, price DOUBLE, \
+                 note VARCHAR, memo VARCHAR, executed_at TIMESTAMP)",
+            )
+            .unwrap();
+            duckdb_query(conn, create_sql.as_ptr(), ptr::null_mut());
+
+            // Raw DuckDB C API data-chunk append baseline.
+            let mut types = [
+                duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_BIGINT),
+                duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_INTEGER),
+                duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR),
+                duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_BOOLEAN),
+                duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_INTEGER),
+                duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_DOUBLE),
+                duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR),
+                duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_VARCHAR),
+                duckdb_create_logical_type(DUCKDB_TYPE_DUCKDB_TYPE_TIMESTAMP),
+            ];
+            let mut chunk = duckdb_create_data_chunk(types.as_mut_ptr(), types.len() as _);
+            let batch_size = duckdb_vector_size() as usize;
+            let mut best_append = Duration::MAX;
+            for _ in 0..config.rounds {
+                duckdb_query(conn, c"DELETE FROM bench_trades".as_ptr(), ptr::null_mut());
+                let start = Instant::now();
+                let mut appender = ptr::null_mut();
+                duckdb_appender_create(conn, ptr::null(), c"bench_trades".as_ptr(), &mut appender);
+                for slice in trades.chunks(batch_size) {
+                    duckdb_data_chunk_reset(chunk);
+                    let v0 = duckdb_data_chunk_get_vector(chunk, 0);
+                    let v1 = duckdb_data_chunk_get_vector(chunk, 1);
+                    let v2 = duckdb_data_chunk_get_vector(chunk, 2);
+                    let v3 = duckdb_data_chunk_get_vector(chunk, 3);
+                    let v4 = duckdb_data_chunk_get_vector(chunk, 4);
+                    let v5 = duckdb_data_chunk_get_vector(chunk, 5);
+                    let v6 = duckdb_data_chunk_get_vector(chunk, 6);
+                    let v7 = duckdb_data_chunk_get_vector(chunk, 7);
+                    let v8 = duckdb_data_chunk_get_vector(chunk, 8);
+                    let d0 = duckdb_vector_get_data(v0) as *mut i64;
+                    let d1 = duckdb_vector_get_data(v1) as *mut i32;
+                    let d3 = duckdb_vector_get_data(v3) as *mut bool;
+                    let d4 = duckdb_vector_get_data(v4) as *mut i32;
+                    let d5 = duckdb_vector_get_data(v5) as *mut f64;
+                    let d8 = duckdb_vector_get_data(v8) as *mut i64;
+                    let mut val7: *mut u64 = ptr::null_mut();
+                    for (r, t) in slice.iter().enumerate() {
+                        *d0.add(r) = t.id;
+                        *d1.add(r) = t.account;
+                        duckdb_unsafe_vector_assign_string_element_len(
+                            v2,
+                            r as _,
+                            t.symbol.as_ptr() as _,
+                            t.symbol.len() as _,
+                        );
+                        *d3.add(r) = t.buy;
+                        *d4.add(r) = t.quantity;
+                        *d5.add(r) = t.price;
+                        duckdb_unsafe_vector_assign_string_element_len(
+                            v6,
+                            r as _,
+                            t.note.as_ptr() as _,
+                            t.note.len() as _,
+                        );
+                        match &t.memo {
+                            Some(m) => duckdb_unsafe_vector_assign_string_element_len(
+                                v7,
+                                r as _,
+                                m.as_ptr() as _,
+                                m.len() as _,
+                            ),
+                            None => {
+                                if val7.is_null() {
+                                    duckdb_vector_ensure_validity_writable(v7);
+                                    val7 = duckdb_vector_get_validity(v7);
+                                }
+                                *val7.add(r >> 6) &= !(1 << (r & 63));
+                            }
+                        }
+                        *d8.add(r) =
+                            (t.executed_at.assume_utc().unix_timestamp_nanos() / 1_000) as i64;
+                    }
+                    duckdb_data_chunk_set_size(chunk, slice.len() as _);
+                    duckdb_append_data_chunk(appender, chunk);
+                }
+                duckdb_appender_close(appender);
+                duckdb_appender_destroy(&mut appender);
+                best_append = min(best_append, start.elapsed());
+            }
+            duckdb_destroy_data_chunk(&mut chunk);
+            for t in &mut types {
+                duckdb_destroy_logical_type(t);
+            }
+
+            // Raw DuckDB C API scan baseline.
+            let mut best_scan = Duration::MAX;
+            let mut prep = ptr::null_mut();
+            duckdb_prepare(conn, c"SELECT * FROM bench_trades".as_ptr(), &mut prep);
+            for _ in 0..config.rounds {
+                let start = Instant::now();
+                let mut res = mem::zeroed();
+                duckdb_execute_prepared_streaming(prep, &mut res);
+                let mut sum = 0i64;
+                loop {
+                    let mut chunk = duckdb_fetch_chunk(res);
+                    if chunk.is_null() {
+                        break;
+                    }
+                    let size = duckdb_data_chunk_get_size(chunk) as usize;
+                    let vec = duckdb_data_chunk_get_vector(chunk, 0);
+                    let data = duckdb_vector_get_data(vec) as *const i64;
+                    for r in 0..size {
+                        sum += *data.add(r);
+                    }
+                    duckdb_destroy_data_chunk(&mut chunk);
+                }
+                best_scan = min(best_scan, start.elapsed());
+                assert_eq!(sum, (config.rows * (config.rows - 1) / 2) as i64);
+                duckdb_destroy_result(&mut res);
+            }
+            duckdb_destroy_prepare(&mut prep);
+
+            // Raw DuckDB C API prepared point lookup baseline.
+            let mut best_lookup = Duration::MAX;
+            let mut lookup_prep = ptr::null_mut();
+            duckdb_prepare(
+                conn,
+                c"SELECT * FROM bench_trades WHERE id = ? LIMIT 1".as_ptr(),
+                &mut lookup_prep,
+            );
+            for _ in 0..config.rounds {
+                let start = Instant::now();
+                for i in 0..config.lookups {
+                    let id = benchmark_spread(i, config.rows);
+                    duckdb_bind_int64(lookup_prep, 1, id);
+                    let mut res = mem::zeroed();
+                    duckdb_execute_prepared_streaming(lookup_prep, &mut res);
+                    let mut chunk = duckdb_fetch_chunk(res);
+                    assert!(!chunk.is_null());
+                    let vec = duckdb_data_chunk_get_vector(chunk, 0);
+                    assert_eq!(*(duckdb_vector_get_data(vec) as *const i64), id);
+                    duckdb_destroy_data_chunk(&mut chunk);
+                    duckdb_destroy_result(&mut res);
+                }
+                best_lookup = min(best_lookup, start.elapsed());
+            }
+            duckdb_destroy_prepare(&mut lookup_prep);
+
+            println!(
+                "\nRaw DuckDB C API baseline ({} rows, best of {}):\n  \
+                 append {:>10} ({:>10}/row)\n  \
+                 scan   {:>10} ({:>10}/row)\n  \
+                 lookup {:>10} ({:>10}/op)",
+                config.rows,
+                config.rounds,
+                format!("{best_append:.2?}"),
+                format!("{:.2?}", best_append / config.rows as u32),
+                format!("{best_scan:.2?}"),
+                format!("{:.2?}", best_scan / config.rows as u32),
+                format!("{best_lookup:.2?}"),
+                format!("{:.2?}", best_lookup / config.lookups as u32),
+            );
+            duckdb_disconnect(&mut conn);
+            duckdb_close(&mut db);
         }
-        println!("{report}");
     }
 }

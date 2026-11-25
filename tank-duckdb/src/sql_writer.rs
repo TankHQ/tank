@@ -6,7 +6,7 @@ use tank_core::{
 
 /// SQL writer for the DuckDB dialect.
 ///
-/// Emits DuckDB specific SQL syntax to mantain compatibility with tank operations.
+/// Emits DuckDB specific SQL syntax to maintain compatibility with tank operations.
 #[derive(Default)]
 pub struct DuckDBSqlWriter {}
 

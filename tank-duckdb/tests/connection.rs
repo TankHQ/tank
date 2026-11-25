@@ -3,8 +3,8 @@ mod tests {
     use indoc::indoc;
     use std::{path::Path, pin::pin, sync::Mutex};
     use tank::{
-        AnyQuery, AsValue, Connection, Driver, Entity, Executor, QueryResult, Row, Sql, Value,
-        cols, expr,
+        AnyQuery, AsValue, Connection, Driver, Entity, Executor, QueryResult, Row, Sql,
+        Transaction, Value, cols, expr,
         stream::{StreamExt, TryStreamExt},
     };
     use tank_duckdb::{DuckDBConnection, DuckDBDriver};
@@ -470,6 +470,28 @@ mod tests {
             Path::new(DB_PATH).exists(),
             "Database file should be created after connection"
         );
+    }
+
+    #[tokio::test]
+    async fn drop_rolls_back() {
+        init_logs();
+        let mut connection =
+            DuckDBConnection::connect(&DuckDBDriver::new(), "duckdb://:memory:?threads=1".into())
+                .await
+                .unwrap();
+        connection
+            .execute("CREATE TABLE t (v INTEGER)")
+            .await
+            .unwrap();
+        {
+            let mut tx = connection.begin().await.unwrap();
+            tx.execute("INSERT INTO t VALUES (1)").await.unwrap();
+        }
+        assert_eq!(connection.fetch("SELECT v FROM t").count().await, 0);
+        let mut tx = connection.begin().await.unwrap();
+        tx.execute("INSERT INTO t VALUES (2)").await.unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(connection.fetch("SELECT v FROM t").count().await, 1);
     }
 
     #[tokio::test]
