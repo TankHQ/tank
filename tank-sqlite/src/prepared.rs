@@ -282,12 +282,6 @@ impl SQLitePrepared {
         anyhow!("Cannot use {value:?} as the parameter at index {index}")
     }
 
-    #[cold]
-    #[inline(never)]
-    fn invalid_index(index: u64) -> Error {
-        anyhow!("SQLite parameter index {index} exceeds maximum")
-    }
-
     #[inline(always)]
     fn bind_value<const STATIC_BORROW: bool>(
         statement: *mut sqlite3_stmt,
@@ -297,10 +291,10 @@ impl SQLitePrepared {
         index: u64,
     ) -> Result<c_int> {
         // SQLite's parameter index is 1-based.
-        let Some(index) = c_int::try_from(index).ok().and_then(|i| i.checked_add(1)) else {
-            hint::cold_path();
-            return Err(Self::invalid_index(index));
-        };
+        let index = c_int::try_from(index)
+            .ok()
+            .and_then(|i| i.checked_add(1))
+            .ok_or_else(|| anyhow!("SQLite parameter index {index} exceeds maximum"))?;
         let value = v.as_value();
         unsafe {
             let rc = if value.is_null() {
